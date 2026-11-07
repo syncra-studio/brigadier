@@ -1,12 +1,22 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { TooltipProvider } from "./components/tooltip";
 import { useDaemon } from "./daemon";
+import { Demo } from "./session/Demo";
 import "./theme.css";
+
+// A hash change is in-page, so Electron's will-navigate guard lets it through.
+const onHash = (listener: () => void) => {
+  window.addEventListener("hashchange", listener);
+  return () => window.removeEventListener("hashchange", listener);
+};
+const useHash = (): string => useSyncExternalStore(onHash, () => window.location.hash);
 
 function App() {
   const daemon = useDaemon();
+  const hash = useHash();
+  if (hash === "#states") return <Demo />;
   return (
     <main className="fixed inset-0 flex flex-col items-center justify-center gap-2">
       <div className="app-drag fixed inset-x-0 top-0 h-titlebar" />
@@ -17,6 +27,9 @@ function App() {
         </p>
       )}
       {daemon === null && <p className="text-sm text-destructive">Daemon not reachable</p>}
+      <a href="#states" className="text-sm text-muted-foreground hover:text-foreground">
+        Session states
+      </a>
     </main>
   );
 }
