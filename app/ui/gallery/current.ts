@@ -6,3 +6,5 @@ export * from "../src/components/dialog";
 export * from "../src/components/confirm-dialog";
 export * from "../src/components/toast";
 export * from "../src/components/select";
+export { Spinner } from "../src/icons";
+export const spin: string = "animate-spin motion-reduce:animate-none";

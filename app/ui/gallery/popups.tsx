@@ -4,7 +4,7 @@ import { Toast } from "@base-ui/react/toast";
 import { useEffect, useState } from "react";
 
 import { Button } from "../src/components/button";
-import { Copy, Spinner, X } from "../src/icons";
+import { Copy, X } from "../src/icons";
 import { Compare, Held, type KitSet, Section, State } from "./parts";
 
 // A frozen popup never shifts to stay in view.
@@ -75,7 +75,7 @@ function DropdownMenus() {
               </k.DropdownMenu>
             </State>
             <State label="open">
-              <Held className="h-88 w-48">
+              <Held className="h-88 w-56">
                 {(box) => (
                   <k.DropdownMenu open modal={false}>
                     <k.DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>Open menu</k.DropdownMenuTrigger>
@@ -206,7 +206,7 @@ function Popovers() {
                 </k.Popover>
               </State>
               <State label="open">
-                <Held className="h-32 w-60">
+                <Held className="h-36 w-60">
                   {(box) => (
                     <k.Popover open modal={false}>
                       <k.PopoverTrigger render={<Button size="sm" variant="outline" />}>Open popover</k.PopoverTrigger>
@@ -268,7 +268,7 @@ function SelectStates({ k }: { k: KitSet }) {
       </State>
       <State label="disabled">{select({ disabled: true })}</State>
       <State label="open">
-        <Held className="h-44 w-60">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
+        <Held className="h-52 w-60 pt-10">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
       </State>
     </>
   );
@@ -293,7 +293,7 @@ function Dialogs() {
               </k.Dialog>
             </State>
             <State label="open">
-              <Held className="h-44 w-96 overflow-hidden rounded-surface">
+              <Held className="h-60 w-full max-w-96 overflow-hidden rounded-surface">
                 {(box) => (
                   <k.Dialog open modal={false}>
                     <k.DialogContent container={box} initialFocus={false}>
@@ -319,7 +319,7 @@ function Confirms({ k }: { k: KitSet }) {
   const [open, setOpen] = useState(false);
   const frozen = (label: string, props: { destructive?: boolean; busy?: boolean }) => (
     <State label={label}>
-      <Held className="h-44 w-96 overflow-hidden rounded-surface">
+      <Held className="h-60 w-full max-w-96 overflow-hidden rounded-surface">
         {(box) => (
           <k.Dialog open modal={false}>
             <k.DialogContent container={box} initialFocus={false}>
@@ -390,7 +390,7 @@ function ToastStates({ k }: { k: KitSet }) {
   return (
     <>
       <State label="live">
-        <div className="relative flex h-24 w-80 items-end gap-2">
+        <div className="relative flex h-24 w-full max-w-96 items-end gap-2">
           <k.Toaster className="top-0" />
           <Button size="xs" variant="outline" onClick={() => k.showToast("Archived chat")}>
             Neutral
@@ -408,7 +408,7 @@ function ToastStates({ k }: { k: KitSet }) {
         </div>
       </State>
       <State label="frozen">
-        <div className="relative h-52 w-96">
+        <div className="relative h-80 w-full max-w-96">
           <k.Toaster className="top-0" manager={frozen} />
         </div>
       </State>
@@ -420,16 +420,16 @@ function Spinners() {
   return (
     <Section title="Spinner">
       <Compare name="sizes · on a busy button (it stops under Reduce Motion)">
-        {() => (
+        {(k) => (
           <>
             {(["size-icon-xs", "size-icon-sm", "size-icon-md", "size-icon-lg"] as const).map((size) => (
               <State key={size} label={size.replace("size-", "")}>
-                <Spinner className={`${size} animate-spin motion-reduce:animate-none`} />
+                <k.Spinner className={`${size} ${k.spin}`} />
               </State>
             ))}
             <State label="busy button">
               <Button size="sm" disabled>
-                <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />
+                <k.Spinner className={`size-icon-xs ${k.spin}`} />
                 Delete
               </Button>
             </State>

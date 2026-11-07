@@ -5,13 +5,15 @@ import { cx } from "../src/components/cx";
 import { Kbd } from "../src/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
 import * as Current from "./current";
+import * as Apple from "./apple";
 import * as Old from "./old";
 
-/** A set of slice 2's components: the kit's (Current) or the old app's exact copies (Old app). */
+/** A set of slice 2's components: the kit's (Current), the old app's exact copies, or Apple-style ones (D40). */
 export type KitSet = typeof Current;
 const SETS: [string, KitSet, string?][] = [
   ["Current", Current],
   ["Old app", Old, "old-app-colours"],
+  ["Apple style (approximation)", Apple],
 ];
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -33,14 +35,14 @@ export function Row({ name, children }: { name: string; children: ReactNode }) {
   );
 }
 
-/** A row of states shown twice: with the kit (Current) and as the old app had it (D22). */
+/** A row of states shown three times: the kit (Current), as the old app had it (D22), and Apple style (D40). */
 export function Compare({ name, children }: { name: string; children: (k: KitSet) => ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className="grid grid-cols-2">
+      <div className="grid grid-cols-3">
         {SETS.map(([label, k, colours], i) => (
-          <div key={label} className={cx("flex flex-col gap-3", i === 0 ? "pe-6" : "border-s border-divider ps-6", colours)}>
+          <div key={label} className={cx("flex min-w-0 flex-col gap-3 px-6 first:ps-0 last:pe-0", i > 0 && "border-s border-divider", colours)}>
             <span className="text-2xs font-medium">{label}</span>
             <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children(k)}</div>
           </div>
