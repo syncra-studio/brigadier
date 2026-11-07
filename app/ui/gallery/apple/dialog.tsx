@@ -12,7 +12,7 @@ export const DialogClose = BaseDialog.Close;
 export function pushButton(kind: "plain" | "default" | "destructive" = "plain") {
   return cx(
     "inline-flex h-control-sm min-w-20 cursor-default items-center justify-center gap-1.5 rounded-capsule px-4 text-label font-medium",
-    "outline-none transition-colors focus-visible:outline-3 focus-visible:outline-apple-focus disabled:opacity-disabled",
+    "outline-none transition-colors focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-apple-focus disabled:opacity-disabled",
     kind === "default" ? "bg-apple-accent text-apple-on-accent hover:bg-apple-accent-hover" : "bg-apple-button hover:bg-apple-button-hover",
     kind === "plain" && "text-foreground",
     kind === "destructive" && "text-destructive",

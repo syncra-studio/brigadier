@@ -145,7 +145,7 @@ export function DropdownMenuSeparator({ className, ...props }: Omit<Menu.Separat
   return <Menu.Separator data-slot="dropdown-menu-separator" className={cx("mx-2.5 my-1 h-px bg-border", className)} {...props} />;
 }
 
-const QUIET = "text-muted-foreground group-data-highlighted:text-apple-on-accent";
+const QUIET = "text-muted-foreground group-highlighted:text-apple-on-accent";
 
 export function DropdownMenuShortcut({ className, ...props }: ComponentProps<"span">) {
   return <span data-slot="dropdown-menu-shortcut" className={cx("ms-auto ps-4", QUIET, className)} {...props} />;

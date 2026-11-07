@@ -60,7 +60,7 @@ function ToastList() {
             }}
             className={cx(
               "h-control-xs shrink-0 cursor-default rounded-capsule bg-apple-button px-3 font-medium transition-colors",
-              "hover:bg-apple-button-hover focus-visible:outline-3 focus-visible:outline-apple-focus",
+              "hover:bg-apple-button-hover focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-apple-focus",
             )}
           >
             {action.label}
@@ -72,7 +72,7 @@ function ToastList() {
           className={cx(
             "absolute -start-1.5 -top-1.5 flex size-control-xs cursor-default items-center justify-center rounded-capsule bg-apple-material",
             "opacity-0 shadow-apple-material backdrop-blur-material transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
-            "focus-visible:outline-3 focus-visible:outline-apple-focus",
+            "focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-apple-focus",
           )}
         >
           <X className="size-icon-xs" />

@@ -1,10 +1,9 @@
 // The select as a macOS pop-up button, as Apple might draw it (D40): an approximation, gallery-only.
-// Base UI's Select opens its menu with the chosen item over the button, as macOS does.
+// Its menu opens with the chosen row over the button, as macOS does.
 import { Select as BaseSelect } from "@base-ui/react/select";
-import { type ComponentProps, type ReactNode, useId } from "react";
+import { type ComponentProps, type ReactNode, useId, useRef } from "react";
 
 import { cx } from "../../src/components/cx";
-import { spacingPx } from "../../src/components/tooltip";
 import { Check } from "../../src/icons";
 import { menuSurface } from "./menu";
 
@@ -45,7 +44,7 @@ export function SelectTrigger({
       aria-labelledby={`${named} ${value}`}
       className={cx(
         "inline-flex h-control-xs max-w-full min-w-0 shrink-0 cursor-default items-center gap-1.5 rounded-capsule bg-apple-button ps-2.5 pe-1.5",
-        "text-label outline-none transition-colors hover:bg-apple-button-hover focus-visible:outline-3 focus-visible:outline-apple-focus",
+        "text-label outline-none transition-colors hover:bg-apple-button-hover focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-apple-focus",
         "disabled:opacity-disabled svg:size-icon-sm",
         className,
       )}
@@ -94,6 +93,13 @@ export function Select<T extends string>({
   collisionAvoidance?: BaseSelect.Positioner.Props["collisionAvoidance"];
 }) {
   const chosen = options.find((option) => option.value === value);
+  const popup = useRef<HTMLDivElement>(null);
+  // The chosen row's middle on the button's middle. Base UI's own way (alignItemWithTrigger) measures the
+  // window once on opening and gives up near its edges or inside a moved box, as the gallery's held ones are.
+  const overButton = ({ anchor }: { anchor: { height: number } }) => {
+    const row = popup.current?.querySelector<HTMLElement>("[data-selected]");
+    return row ? -(anchor.height / 2 + row.offsetTop + row.offsetHeight / 2) : 0;
+  };
   return (
     <BaseSelect.Root value={value} onValueChange={(next) => onChange(next as T)} open={open} modal={false} disabled={disabled}>
       <BaseSelect.Trigger
@@ -104,8 +110,16 @@ export function Select<T extends string>({
         }
       />
       <BaseSelect.Portal container={container}>
-        <BaseSelect.Positioner className="z-popup outline-none" align={align} sideOffset={spacingPx} collisionAvoidance={collisionAvoidance}>
-          <BaseSelect.Popup data-slot="select-content" className={cx(menuSurface, "max-h-select max-w-select min-w-anchor overflow-y-auto")}>
+        <BaseSelect.Positioner
+          className="z-popup outline-none"
+          alignItemWithTrigger={false}
+          align={align}
+          sideOffset={overButton}
+          // The rows' words start where the button's do.
+          alignOffset={align === "start" ? -14 : 0}
+          collisionAvoidance={collisionAvoidance}
+        >
+          <BaseSelect.Popup ref={popup} data-slot="select-content" className={cx(menuSurface, "max-h-select max-w-select min-w-anchor overflow-y-auto")}>
             <BaseSelect.List>
               {options.map((option) => (
                 <BaseSelect.Item
@@ -123,7 +137,7 @@ export function Select<T extends string>({
                   <span className="flex min-w-0 flex-col">
                     <BaseSelect.ItemText className="truncate">{option.label}</BaseSelect.ItemText>
                     {option.hint && (
-                      <span className="text-2xs whitespace-normal text-muted-foreground group-data-highlighted:text-apple-on-accent">{option.hint}</span>
+                      <span className="text-2xs whitespace-normal text-muted-foreground group-highlighted:text-apple-on-accent">{option.hint}</span>
                     )}
                   </span>
                 </BaseSelect.Item>

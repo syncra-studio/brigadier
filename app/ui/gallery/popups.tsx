@@ -268,7 +268,7 @@ function SelectStates({ k }: { k: KitSet }) {
       </State>
       <State label="disabled">{select({ disabled: true })}</State>
       <State label="open">
-        <Held className="h-52 w-60 pt-10">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
+        <Held className="h-52 w-60 pt-12">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
       </State>
     </>
   );
@@ -293,7 +293,7 @@ function Dialogs() {
               </k.Dialog>
             </State>
             <State label="open">
-              <Held className="h-60 w-full max-w-96 overflow-hidden rounded-surface">
+              <Held className="h-48 w-88 overflow-hidden rounded-surface">
                 {(box) => (
                   <k.Dialog open modal={false}>
                     <k.DialogContent container={box} initialFocus={false}>
@@ -319,7 +319,7 @@ function Confirms({ k }: { k: KitSet }) {
   const [open, setOpen] = useState(false);
   const frozen = (label: string, props: { destructive?: boolean; busy?: boolean }) => (
     <State label={label}>
-      <Held className="h-60 w-full max-w-96 overflow-hidden rounded-surface">
+      <Held className="h-56 w-88 overflow-hidden rounded-surface">
         {(box) => (
           <k.Dialog open modal={false}>
             <k.DialogContent container={box} initialFocus={false}>
@@ -390,7 +390,7 @@ function ToastStates({ k }: { k: KitSet }) {
   return (
     <>
       <State label="live">
-        <div className="relative flex h-24 w-full max-w-96 items-end gap-2">
+        <div className="relative flex h-24 w-88 items-end gap-2">
           <k.Toaster className="top-0" />
           <Button size="xs" variant="outline" onClick={() => k.showToast("Archived chat")}>
             Neutral
@@ -408,7 +408,7 @@ function ToastStates({ k }: { k: KitSet }) {
         </div>
       </State>
       <State label="frozen">
-        <div className="relative h-80 w-full max-w-96">
+        <div className="relative h-80 w-88">
           <k.Toaster className="top-0" manager={frozen} />
         </div>
       </State>
