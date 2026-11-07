@@ -1,5 +1,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
+import { Button } from "../components/button";
+import { Checkbox } from "../components/checkbox";
 import { Switch } from "../components/switch";
 import type { Item } from "../thread/item";
 import { preview, type Fake, type FakeCommand, type Knobs } from "./fake";
@@ -71,7 +73,7 @@ export function Controls({
           <input type="range" min={0} max={5000} step={100} defaultValue={knobs.delayMs} onChange={(event) => (knobs.delayMs = Number(event.target.value))} />
         </label>
         <label className="flex items-center gap-2 text-label">
-          <input type="checkbox" defaultChecked={knobs.reorder} onChange={(event) => (knobs.reorder = event.target.checked)} />
+          <Checkbox defaultChecked={knobs.reorder} onCheckedChange={(checked) => (knobs.reorder = checked)} />
           Deliver frames out of order
         </label>
       </Group>
@@ -118,22 +120,20 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-const BUTTON = "h-control-sm rounded-control border px-2.5 text-left text-label hover:bg-muted";
-
 function Action({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} className={`${BUTTON} border-border bg-card`}>
+    <Button size="sm" variant="outline" onClick={onClick}>
       {children}
-    </button>
+    </Button>
   );
 }
 
 /** A one-shot: armed until the fake uses it. */
 function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-pressed={on} onClick={onClick} className={`${BUTTON} ${on ? "border-ring bg-muted" : "border-border bg-card"}`}>
+    <Button size="sm" variant={on ? "secondary" : "outline"} aria-pressed={on} onClick={onClick}>
       {on ? "Armed · " : ""}
       {children}
-    </button>
+    </Button>
   );
 }

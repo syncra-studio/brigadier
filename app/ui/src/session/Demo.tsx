@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import { Badge } from "../components/badge";
+import { Button } from "../components/button";
 import { Spinner } from "../icons";
 import type { Item } from "../thread/item";
 import { Controls, useSeen } from "./Controls";
@@ -49,14 +51,14 @@ function Header({ session }: { session: DemoSession }) {
     <header className="app-drag flex h-titlebar shrink-0 items-center gap-2 border-b border-divider ps-traffic-lights pe-4">
       <span className="truncate text-sm font-medium">Session states</span>
       {badge === "reconnecting" && (
-        <span role="status" className="rounded-capsule bg-warning/15 px-2 py-0.5 text-xs text-warning">
+        <Badge role="status" variant="warning">
           Reconnecting…
-        </span>
+        </Badge>
       )}
       {badge === "disconnected" && (
-        <span role="alert" className="rounded-capsule bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
+        <Badge role="alert" variant="destructive">
           Disconnected · the background service isn't answering
-        </span>
+        </Badge>
       )}
     </header>
   );
@@ -135,12 +137,12 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
           <span className="text-destructive">
             {pending.status === "unsent" ? "Not sent · it never reached the agent" : `Not sent · ${pending.error}`}
           </span>
-          <button type="button" onClick={() => session.retry(entryKey)} className="text-foreground hover:text-foreground/80">
+          <Button size="xs" variant="soft" onClick={() => session.retry(entryKey)}>
             Try again
-          </button>
-          <button type="button" onClick={() => session.discard(entryKey)} className="text-muted-foreground hover:text-foreground">
+          </Button>
+          <Button size="xs" variant="ghost" onClick={() => session.discard(entryKey)}>
             Discard
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -210,16 +212,10 @@ function Composer({ session, wait }: { session: DemoSession; wait: boolean }) {
           placeholder={live ? "Message the agent" : "Waiting for the link to come back"}
           className="min-h-control-md flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground"
         />
-        <button
-          type="button"
-          onClick={send}
-          aria-busy={busy}
-          disabled={!busy && (!live || !text.trim())}
-          className="inline-flex h-control-md items-center gap-1.5 rounded-capsule bg-primary px-4 text-label font-medium text-primary-fg disabled:opacity-40"
-        >
-          {busy && <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
+        <Button onClick={send} aria-busy={busy} disabled={!busy && (!live || !text.trim())}>
+          {busy && <Spinner className="animate-spin motion-reduce:animate-none" />}
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );
