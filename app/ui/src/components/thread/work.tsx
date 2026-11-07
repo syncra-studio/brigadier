@@ -1,6 +1,6 @@
 import type { Item, Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
-import { groupWords, ORDER, useSecond, workWords } from "../../thread/words";
+import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { FILE_VERBS, fileName } from "./file-change";
@@ -11,11 +11,33 @@ const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
 
 /**
  * Over a turn's work, on a hairline: "Working for 12s" ticking while it runs (`open` null: it doesn't fold),
- * then "Worked for 3m 4s ›", which opens and shuts the turn's folded work.
+ * "Waiting for 1m 3s" while it waits on the user's answer, then "Worked for 3m 4s ›" (with "· waited for
+ * 1m 2s" when it waited), which opens and shuts the turn's folded work.
  */
-export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
+export function WorkHeader({
+  turn,
+  work,
+  open,
+  onToggle,
+  waitingSince = null,
+  waited = null,
+}: {
+  turn: Turn;
+  work: Work | undefined;
+  open: boolean | null;
+  onToggle: (id: string) => void;
+  /** When the running turn began waiting on the user (a question or an approval); null when it isn't. */
+  waitingSince?: number | null;
+  /** How long the finished turn waited on the user, in all (ms); its work time leaves it out. */
+  waited?: number | null;
+}) {
   const now = useSecond(turn.status === "running");
-  const label = workWords(turn, work, now);
+  const label =
+    turn.status === "running" && waitingSince !== null
+      ? `Waiting for ${duration(now - waitingSince)}`
+      : turn.status === "done" && waited !== null && waited >= 1000
+        ? `${workWords(turn, work, now)} · waited for ${duration(waited)}`
+        : workWords(turn, work, now);
   if (open === null) {
     return (
       <p className={RULE}>

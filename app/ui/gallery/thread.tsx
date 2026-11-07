@@ -9,6 +9,7 @@ import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/i
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
 import { Compare, Section, State } from "./parts";
+import { ProposedStep, type Step } from "./proposed-tool";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -73,6 +74,16 @@ export function blocks(text: string) {
 
 const LONG_CODE = "```bash\n" + Array.from({ length: 30 }, (_, i) => `echo "step ${i + 1}"`).join("\n") + "\n```";
 
+/** Opened tool steps, as real ones read: a file, matches, pages, a subagent's answer, another tool's arguments. */
+const STEPS: Step[] = [
+  { id: "o-read", kind: "read", name: "read", input: "src/thread/kept.ts", output: Array.from({ length: 17 }, (_, i) => `${String(i + 1).padStart(3)}  ${["import { useSyncExternalStore } from \"react\";", "", "const kept = new Map<string, boolean>();", "export function useKept(id: string) {"][i % 4]}`).join("\n") },
+  { id: "o-search", kind: "search", name: "rg", input: "“useKept” in src", output: "src/thread/kept.ts:4: export function useKept(id: string) {\nsrc/components/thread/activity-row.tsx:62:   const [open, setOpen] = useKept(keep);\nsrc/components/thread/tool.tsx:118:   const [whole, setWhole] = useKept(`${keep}:command`);" },
+  { id: "o-web", kind: "web", name: "web_search", input: "base ui collapsible", output: "Collapsible · Base UI — base-ui.com/react/components/collapsible\nBase UI v1 release notes — base-ui.com/react/overview/releases\nAnimating height with Collapsible — github.com/mui/base-ui/discussions" },
+  { id: "o-agent", kind: "agent", name: "task", input: "Find the parser", output: "The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold. Nothing else parses events in the UI." },
+  { id: "o-other", kind: "other", name: "linear.search_issues", input: '{ "query": "thread rows", "limit": 3 }', output: '[\n  { "id": "BRG-41", "title": "Thread rows match the old app" },\n  { "id": "BRG-44", "title": "Shell box copy output" }\n]' },
+  { id: "o-fail", kind: "other", name: "linear.search_issues", input: '{ "query": "thread" }', output: "", failed: true },
+];
+
 const USER = "Can you make the thread rows match the old app, and check the shell box against a failing test?";
 const LONG_USER = Array.from({ length: 28 }, (_, i) => `Line ${i + 1} of a long pasted message.`).join("\n");
 
@@ -130,12 +141,18 @@ export function Thread() {
   return (
     <>
       <Section title="Thread · work header · group · working line">
-        <Compare name="working (ticking) · worked, shut · open · hover · focus">
+        <Compare name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
           <Wide label="running">
             <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} />
           </Wide>
+          <Wide label="waiting on your answer">
+            <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} waitingSince={NOW - 63_000} />
+          </Wide>
           <Wide label="done, shut">
             <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} />
+          </Wide>
+          <Wide label="done, waited">
+            <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} waited={62_000} />
           </Wide>
           <Wide label="done, open">
             <WorkHeader turn={DONE} work={WORK} open onToggle={noop} />
@@ -201,6 +218,39 @@ export function Thread() {
               {item(tool("s-stop", "read", "read", "src/huge.log", "cancelled"))}
               {item(tool("s-wait", "run", "shell", "pnpm build", "pending"), RUNNING)}
               {item(tool("s-step", "run", "shell", "pnpm test", "done", { exitCode: 0, output: OUTPUT, startedAt: NOW - 41_000, endedAt: NOW }), DONE, true)}
+            </div>
+          </Wide>
+        </Compare>
+        <Compare
+          name="opened: read · search · web · subagent · other tool · failed"
+          proposed={
+            <>
+              <Wide label="A · hanging: output under the words on a hairline, no box">
+                <div className="flex flex-col gap-1">
+                  {STEPS.map((step) => (
+                    <Opened key={step.id}>
+                      <ProposedStep step={step} look="hanging" />
+                    </Opened>
+                  ))}
+                </div>
+              </Wide>
+              <Wide label="B · block: one quiet block, no labels">
+                <div className="flex flex-col gap-1">
+                  {STEPS.map((step) => (
+                    <Opened key={step.id}>
+                      <ProposedStep step={step} look="block" />
+                    </Opened>
+                  ))}
+                </div>
+              </Wide>
+            </>
+          }
+        >
+          <Wide label="opened">
+            <div className="flex flex-col gap-1">
+              {STEPS.map((step) => (
+                <Opened key={step.id}>{item(tool(step.id, step.kind, step.name, step.input, step.failed ? "failed" : "done", { output: step.output }))}</Opened>
+              ))}
             </div>
           </Wide>
         </Compare>
