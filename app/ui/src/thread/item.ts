@@ -1,11 +1,15 @@
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
 
+// Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`.
+
 export type Session = {
   id: string;
   title: string;
   turns: Turn[];
   /** Every item of every turn, oldest first: the rows of the thread. */
   items: Item[];
+  /** One per finished turn that did work. */
+  work?: Work[];
 };
 
 export type Turn = {
@@ -13,7 +17,18 @@ export type Turn = {
   status: "running" | "done" | "failed" | "cancelled";
   startedAt: number;
   endedAt: number | null;
+  /** Which backend ran the turn. */
+  backend?: string;
 };
+
+/** What a step of work did, provider-neutral. */
+export type StepKind = "read" | "edit" | "search" | "run" | "web" | "agent" | "other";
+
+/**
+ * A finished turn's work: how long it took and the items folded under "Worked for …", by `n`, first and last.
+ * It folds exactly one turn. A background job still running after the turn ends is its own status, not part of it.
+ */
+export type Work = { turnId: string; ms: number; folded: [number, number] };
 
 /** How far an action has got. */
 export type Progress = "pending" | "running" | "done" | "failed" | "cancelled";
@@ -27,11 +42,28 @@ export type FileChange = {
   diff: string;
 };
 
-type Base = { id: string; turnId: string };
+type Base = {
+  id: string;
+  turnId: string;
+  /** Monotonic across the session: a snapshot is at N, events after it count on from N. */
+  n?: number;
+};
 
 export type Item = Base &
   (
-    | { kind: "message"; role: "user" | "assistant"; text: string; streaming: boolean }
+    | {
+        kind: "message";
+        role: "user" | "assistant";
+        text: string;
+        streaming: boolean;
+        /** Who sent an input item: the user, or the app on their behalf. */
+        origin?: "user" | "system";
+      }
+    /**
+     * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first
+     * and last, which follow it. Its id is the turn id plus the group's index in the turn, so an update replaces it.
+     */
+    | { kind: "group"; steps: { kind: StepKind; n: number }[]; span: [number, number] }
     | { kind: "reasoning"; text: string; streaming: boolean }
     | {
         kind: "tool";
