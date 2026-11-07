@@ -1,6 +1,6 @@
 // Fake sessions for the demo: huge mixed threads, and replies that stream at a token rate.
 // Only a stand-in for what Rust will send; it holds no thread rules.
-import type { FileChange, Item, Session, StepKind, Turn, Work } from "./item";
+import type { ApprovalAction, FileChange, Item, Session, StepKind, Turn, Work } from "./item";
 
 /** Seeded so every run draws the same thread. */
 function random(seed: number): () => number {
@@ -106,7 +106,25 @@ function diff(fake: Fake): FileChange {
     return [` ${line}`];
   });
   const change = pick(fake, ["added", "modified", "modified", "modified", "deleted"] as const);
-  return { path, change, from: null, diff: [`@@ -1,${lines.length} +1,${body.length} @@`, ...body].join("\n") };
+  // Some changes come without counts: "not reported".
+  const counted = fake.rand() < 0.95;
+  const added = counted ? body.filter((line) => line.startsWith("+")).length : null;
+  const removed = counted ? body.filter((line) => line.startsWith("-")).length : null;
+  return { path, change, from: null, diff: [`@@ -1,${lines.length} +1,${body.length} @@`, ...body].join("\n"), added, removed };
+}
+
+const ACTIONS: ApprovalAction[] = ["command", "command", "edit", "network", "permission", "plan", "land", "message", "browser", "other"];
+
+/** A short bold heading, as Rust would pull from a thought, or none. */
+function heading(fake: Fake): string | null {
+  return fake.rand() < 0.6 ? `${pick(fake, WORDS)} ${pick(fake, WORDS)}`.replace(/^./, (c) => c.toUpperCase()) : null;
+}
+
+/** Times a finished session's items: inputs when sent, tools when run; some tools report no end. */
+function stamp(draft: Draft, at: number): Draft {
+  if (draft.kind === "message" && draft.role === "user") return { ...draft, sentAt: at };
+  if (draft.kind === "tool") return { ...draft, startedAt: at, endedAt: at % 13000 === 0 ? null : at + (at % 7000) + 400 };
+  return draft;
 }
 
 type Draft = Item extends infer T ? (T extends Item ? Omit<T, "id" | "turnId"> : never) : never;
@@ -126,6 +144,7 @@ function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
       output: output(fake, lines),
       progress: fake.rand() < 0.05 ? "failed" : "done",
       exitCode: 0,
+      step: kind,
     });
     switch (kind) {
       case "run":
@@ -158,9 +177,9 @@ function group(fake: Fake): GroupDraft {
 /** Something between two groups that ends the first. */
 function part(fake: Fake): Draft | null {
   const roll = fake.rand();
-  if (roll < 0.08) return { kind: "approval", title: `Allow ${pick(fake, COMMANDS)}?`, detail: sentence(fake), decision: fake.rand() < 0.8 ? "approved" : "denied" };
+  if (roll < 0.08) return { kind: "approval", title: `Allow ${pick(fake, COMMANDS)}?`, detail: sentence(fake), decision: fake.rand() < 0.8 ? "approved" : "denied", action: pick(fake, ACTIONS) };
   if (roll < 0.13) return { kind: "question", question: sentence(fake), options: ["Yes", "No", "Not now"], answer: "Yes" };
-  if (roll < 0.15) return { kind: "compaction", summary: paragraph(fake) };
+  if (roll < 0.15) return { kind: "compaction", summary: paragraph(fake), progress: "done" };
   if (roll < 0.2) return { kind: "notice", level: pick(fake, ["info", "warning", "error"] as const), text: sentence(fake) };
   if (roll < 0.22) return { kind: "unknown", raw: { type: "provider.custom", payload: { value: between(fake, 1, 99) } } };
   return null;
@@ -171,7 +190,7 @@ function turnParts(fake: Fake): (Draft | GroupDraft)[] {
   const system = fake.rand() < 0.03;
   const text = system ? "Continue from where you stopped." : paragraph(fake);
   const parts: (Draft | GroupDraft)[] = [{ kind: "message", role: "user", origin: system ? "system" : "user", text, streaming: false }];
-  if (fake.rand() < 0.7) parts.push({ kind: "reasoning", text: paragraph(fake), streaming: false });
+  if (fake.rand() < 0.7) parts.push({ kind: "reasoning", text: paragraph(fake), streaming: false, heading: heading(fake) });
   for (let at = between(fake, 0, 3); at > 0; at--) {
     parts.push(group(fake));
     const between = part(fake);
@@ -189,7 +208,7 @@ class Writer {
   private n = 1;
 
   add(draft: Draft, turn: Turn, at?: string): Item {
-    const item = { ...draft, id: at ?? `item-${this.n.toString(36)}`, turnId: turn.id, n: this.n++ } as Item;
+    const item = { ...stamp(draft, turn.startedAt + (this.n % 60) * 1000), id: at ?? `item-${this.n.toString(36)}`, turnId: turn.id, n: this.n++ } as Item;
     this.items.push(item);
     return item;
   }
@@ -319,8 +338,8 @@ export class FakeThread {
       while (!stopped) {
         const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake" };
         this.emit({ turns: [...this.session.turns, turn] });
-        this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false }, turn));
-        const thought = this.item({ kind: "reasoning", text: "", streaming: true }, turn);
+        this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false, sentAt: Date.now() }, turn));
+        const thought = this.item({ kind: "reasoning", text: "", streaming: true, heading: heading(this.fake) }, turn);
         this.append(thought);
         await this.grow(this.session.items.length - 1, thought, paragraph(this.fake), charsPerSecond, () => stopped, wait);
         // The group row comes with its first step and is replaced as each next step starts.
@@ -330,7 +349,7 @@ export class FakeThread {
         for (let step = 1; step <= commands && !stopped; step++) {
           const fresh: boolean = row === null;
           const base: Group = row ?? (this.item({ kind: "group", steps: [], span: [0, 0] }, turn, `${turn.id}:g0`) as Group);
-          const command = this.item({ kind: "tool", name: "shell", input: pick(this.fake, COMMANDS), output: "", progress: "running", exitCode: null }, turn);
+          const command = this.item({ kind: "tool", name: "shell", input: pick(this.fake, COMMANDS), output: "", progress: "running", exitCode: null, step: "run", startedAt: Date.now(), endedAt: null }, turn);
           const next: Group = { ...base, steps: [{ kind: "run", n: step }], span: [fresh ? command.n! : base.span[0], command.n!] };
           row = next;
           if (fresh) this.append(next, command);
@@ -362,7 +381,7 @@ export class FakeThread {
 }
 
 function withText(item: Item, text: string, done: boolean): Item {
-  if (item.kind === "tool") return { ...item, output: text, progress: done ? "done" : "running", exitCode: done ? 0 : null };
+  if (item.kind === "tool") return { ...item, output: text, progress: done ? "done" : "running", exitCode: done ? 0 : null, endedAt: done ? Date.now() : null };
   if (item.kind === "message" || item.kind === "reasoning") return { ...item, text, streaming: !done };
   return item;
 }
