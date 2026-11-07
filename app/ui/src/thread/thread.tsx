@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
 import { VList, type VListHandle } from "virtua";
 
 import type { Session } from "./item";
@@ -11,9 +11,14 @@ export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scr
 
 /** How close to the end, in px, still counts as at the bottom. */
 const NEAR_END = 2;
+/** The footer's place in the list, after the last row. */
+const FOOTER = { type: "footer", id: "footer" } as const;
 
-/** The session's rows, virtualised, with groups and finished turns' work closed until opened; it follows the bottom while the user is there. */
-export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle> }) {
+/**
+ * The session's rows, virtualised, with groups and finished turns' work closed until opened; it follows the bottom
+ * while the user is there. `footer` goes under the last row (the working line).
+ */
+export function Thread({ source, footer, ref }: { source: Source; footer?: ReactNode; ref?: Ref<ThreadHandle> }) {
   const session = useSyncExternalStore(source.subscribe, source.get);
   const list = useRef<VListHandle>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -64,7 +69,9 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
     clearTimeout(wait.current);
     wait.current = setTimeout(() => scrolled.current || letGo(), 200);
   });
-  const last = rows.length - 1;
+  const hasFooter = footer !== undefined && footer !== null && footer !== false;
+  const data = useMemo(() => (hasFooter ? [...rows, FOOTER] : rows), [rows, hasFooter]);
+  const last = data.length - 1;
 
   const toBottom = () => {
     stuck.current = true;
@@ -82,11 +89,11 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
 
   useLayoutEffect(() => {
     if (stuck.current) list.current?.scrollToIndex(last, { align: "end" });
-  }, [rows, last]);
+  }, [data, last]);
 
-  // A growing last row is measured after the effect above, and the viewport can shrink (window, composer), so
-  // follow the bottom again on either. Coming back to the bottom (away turns false) finds the row remounted.
-  const lastId = rows[last]?.id;
+  // A growing last row or footer is measured after the effect above, and the viewport can shrink (window, composer),
+  // so follow the bottom again on any. Coming back to the bottom (away turns false) finds them remounted.
+  const lastId = rows.at(-1)?.id;
   useEffect(() => {
     const viewport = box.current;
     if (!viewport) return;
@@ -96,8 +103,10 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
     observer.observe(viewport);
     const row = lastId && viewport.querySelector(`[data-item="${CSS.escape(lastId)}"]`);
     if (row) observer.observe(row);
+    const end = viewport.querySelector("[data-footer]");
+    if (end) observer.observe(end);
     return () => observer.disconnect();
-  }, [lastId, last, away]);
+  }, [lastId, last, away, hasFooter]);
 
   if (!session) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</p>;
   if (rows.length === 0) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
@@ -105,7 +114,7 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
     <div ref={box} className="relative h-full">
       <VList
         ref={list}
-        data={rows}
+        data={data}
         shift={shift}
         bufferSize={800}
         className="h-full"
@@ -118,7 +127,15 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
           setAway(!stuck.current);
         }}
       >
-        {(line: Line) => <LineRow key={line.id} {...line} onToggle={toggle} />}
+        {(line: Line | typeof FOOTER) =>
+          line.type === "footer" ? (
+            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pt-4">
+              {footer}
+            </div>
+          ) : (
+            <LineRow key={line.id} {...line} onToggle={toggle} />
+          )
+        }
       </VList>
       {away && (
         <button
