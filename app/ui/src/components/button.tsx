@@ -17,17 +17,18 @@ const VARIANTS = {
   "link-blue": "text-link hover:underline",
 };
 
-// Buttons with words are capsules; icon buttons have the icon-button corner.
+// Buttons with words are capsules; icon buttons have the icon-button corner. Pressed, a button shrinks
+// a little and springs back; inline words don't.
 const SIZES = {
-  md: "rounded-capsule h-control-md px-3.5 gap-1.5 svg:size-icon-md",
-  xs: "rounded-capsule h-control-xs px-2 gap-1 svg:size-icon-xs",
-  sm: "rounded-capsule h-control-sm px-2.5 gap-1 svg:size-icon-md",
+  md: "rounded-capsule h-control-md px-3.5 gap-1.5 svg:size-icon-md motion-safe:active:scale-press-button",
+  xs: "rounded-capsule h-control-xs px-2 gap-1 svg:size-icon-xs motion-safe:active:scale-press-button",
+  sm: "rounded-capsule h-control-sm px-2.5 gap-1 svg:size-icon-md motion-safe:active:scale-press-button",
   // Words with no box of their own (a row's "Show all").
   inline: "h-auto gap-1 p-0 svg:size-icon-xs",
-  icon: "rounded-icon-button size-control-md svg:size-icon-md",
-  "icon-xs": "rounded-icon-button size-5 svg:size-icon-xs",
-  "icon-sm": "rounded-icon-button size-control-xs svg:size-icon-sm",
-  "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md",
+  icon: "rounded-icon-button size-control-md svg:size-icon-md motion-safe:active:scale-press",
+  "icon-xs": "rounded-icon-button size-5 svg:size-icon-xs motion-safe:active:scale-press",
+  "icon-sm": "rounded-icon-button size-control-xs svg:size-icon-sm motion-safe:active:scale-press",
+  "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md motion-safe:active:scale-press",
 };
 
 // Each property is set once (cx doesn't merge): small sizes take the small type, soft looks the label's regular type.
@@ -51,8 +52,8 @@ export function Button({ className, variant = "default", size = "md", type = "bu
       // A button submits its form only when it says so: Enter in any field clicks an untyped one.
       type={type}
       className={cx(
-        "shrink-0 items-center justify-center whitespace-nowrap focus-visible:focus-ring",
-        "disabled:pointer-events-none disabled:opacity-disabled svg:pointer-events-none svg:shrink-0",
+        "shrink-0 cursor-pointer items-center justify-center whitespace-nowrap focus-visible:focus-ring",
+        "disabled:cursor-not-allowed disabled:opacity-disabled svg:pointer-events-none svg:shrink-0",
         typeClasses(variant, size),
         variant && VARIANTS[variant],
         // No size leaves the box and its motion to the caller (an icon button's strip look).

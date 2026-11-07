@@ -126,6 +126,7 @@
   --opacity-disabled: 50%;
   --opacity-switch-disabled: 60%;
   --scale-press: 90%;
+  --scale-press-button: 95%;
   --scale-popup: 95%;
   --z-index-popup: 50;
   --text-underline-offset-link: 4px;
@@ -139,6 +140,16 @@
 @utility app-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* A disabled control keeps the pointer (for its not-allowed cursor), so hover and press skip it. */
+@custom-variant hover {
+  @media (hover: hover) {
+    &:hover:not(:disabled, [data-disabled]) {
+      @slot;
+    }
+  }
+}
+@custom-variant active (&:active:not(:disabled, [data-disabled]));
 
 /* An icon inside a control, unless the icon sets its own size. */
 @custom-variant svg (& :where(svg:not([class*="size-"])));
@@ -182,3 +193,4 @@
     transition: none;
   }
 }
+

@@ -1,14 +1,15 @@
 /* Dev-only: the gallery's classes, and every component's again with frozen states. Never in the app's CSS. */
 @reference "../src/theme.css";
 
-/* A wrapper's data-frozen="hover focus active" holds those states still. */
+/* A wrapper's data-frozen="hover focus active" holds those states still. Disabled controls skip hover and
+   press, as in theme.css. */
 @custom-variant hover {
   @media (hover: hover) {
-    &:hover {
+    &:hover:not(:disabled, [data-disabled]) {
       @slot;
     }
   }
-  :where([data-frozen~="hover"]) & {
+  :where([data-frozen~="hover"]) &:not(:disabled, [data-disabled]) {
     @slot;
   }
 }
@@ -21,10 +22,10 @@
   }
 }
 @custom-variant active {
-  &:active {
+  &:active:not(:disabled, [data-disabled]) {
     @slot;
   }
-  :where([data-frozen~="active"]) & {
+  :where([data-frozen~="active"]) &:not(:disabled, [data-disabled]) {
     @slot;
   }
 }

@@ -13,7 +13,7 @@ export function Checkbox({ className, ...props }: Omit<BaseCheckbox.Root.Props, 
       data-slot="checkbox"
       className={cx(
         BOX,
-        "focus-visible:focus-ring data-disabled:cursor-not-allowed",
+        "cursor-pointer focus-visible:focus-ring data-disabled:cursor-not-allowed",
         "data-checked:border-toggle-on data-checked:bg-toggle-on data-checked:text-foreground",
         "data-indeterminate:border-toggle-on data-indeterminate:bg-toggle-on data-indeterminate:text-foreground",
         className,

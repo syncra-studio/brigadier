@@ -12,7 +12,7 @@ const TOOLBAR = cx(
 
 // A sidebar strip or foot icon: a row tall, filled while hovered, pressed or while its menu is open.
 const STRIP = cx(
-  "relative flex h-7.5 min-w-8 gap-1.5 rounded-icon-button text-strip-foreground transition-colors",
+  "relative flex h-7.5 min-w-8 gap-1.5 rounded-icon-button text-strip-foreground transition-all motion-safe:active:scale-press",
   "hover:bg-fill hover:text-foreground aria-expanded:bg-fill aria-expanded:text-foreground",
   "aria-pressed:bg-fill aria-pressed:text-foreground",
 );
@@ -58,7 +58,6 @@ export function TooltipIconButton({
       aria-label={tooltip}
       aria-pressed={pressed}
       className={cx(
-        ghost && "active:scale-press",
         ghost && (variant ?? "ghost") === "ghost" && "aria-expanded:bg-fill",
         look === "toolbar" && TOOLBAR,
         look === "strip" && STRIP,

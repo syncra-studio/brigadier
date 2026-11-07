@@ -8,7 +8,7 @@ export function Switch({ className, ...props }: Omit<BaseSwitch.Root.Props, "cla
     <BaseSwitch.Root
       data-slot="switch"
       className={cx(
-        "inline-flex h-5 w-8 shrink-0 items-center rounded-capsule bg-fill-hover transition-colors ease-out",
+        "inline-flex h-5 w-8 shrink-0 cursor-pointer items-center rounded-capsule bg-fill-hover transition-colors ease-out",
         "focus-visible:focus-ring data-checked:bg-toggle-on data-disabled:cursor-not-allowed data-disabled:opacity-switch-disabled",
         className,
       )}
