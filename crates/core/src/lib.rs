@@ -115,7 +115,7 @@ pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
                 .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
         })
         .flatten()
-        .filter(|f| f.pos <= log_len)
+        .filter(|f| f.v == norm::VERSION && f.pos <= log_len)
         .unwrap_or_default();
     let start = f.pos;
     let f = fold_from(dir, f, |_| {})?;

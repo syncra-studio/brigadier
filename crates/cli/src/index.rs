@@ -75,35 +75,7 @@ impl Index {
             version()
         ))
         .map_err(db_err)?;
-        let mut entries = BTreeMap::new();
-        {
-            let mut q = db
-                .prepare("SELECT id, title, folded FROM sessions")
-                .map_err(db_err)?;
-            let rows = q
-                .query_map([], |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, Option<Vec<u8>>>(2)?,
-                    ))
-                })
-                .map_err(db_err)?;
-            for row in rows {
-                let (id, title, folded) = row.map_err(db_err)?;
-                let done = folded
-                    .and_then(|b| serde_json::from_slice(&b).ok())
-                    .unwrap_or_default();
-                entries.insert(
-                    id,
-                    Entry {
-                        done,
-                        title,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
+        let entries = load(&db).map_err(db_err)?;
         Ok(Index {
             db,
             data: data.to_path_buf(),
@@ -124,7 +96,7 @@ impl Index {
             .filter(|id| ids.binary_search(id).is_err())
             .cloned()
             .collect();
-        let (mut changed, mut commits) = (vec![], vec![]);
+        let (mut changed, mut commits, mut resets) = (vec![], vec![], vec![]);
         for id in ids.iter().filter(|id| core::check_id(id).is_ok()) {
             let dir = core::session_dir(&self.data, id);
             let meta = fs::metadata(dir.join("log")).ok();
@@ -135,7 +107,8 @@ impl Index {
                 .map_or(0, |d| d.as_millis() as u64);
             let e = self.entries.entry(id.clone()).or_default();
             if len < e.done.pos {
-                *e = Entry::default(); // the log was replaced: start over
+                *e = Entry::default(); // the log was replaced: start over, old text included
+                resets.push(id.clone());
             }
             if len != e.seen_len {
                 let mut texts = vec![];
@@ -200,7 +173,12 @@ impl Index {
             self.entries.remove(id);
             self.rows.remove(id);
         }
-        self.write(&changed, &commits, &gone).map_err(db_err)?;
+        if let Err(e) = self.write(&changed, &commits, &resets, &gone) {
+            // Nothing of this pass was stored: carry on from what was, so the next pass redoes it.
+            self.entries = load(&self.db).map_err(db_err)?;
+            self.rows.clear();
+            return Err(db_err(e));
+        }
         Ok((changed, gone))
     }
 
@@ -208,9 +186,10 @@ impl Index {
         &mut self,
         changed: &[Value],
         commits: &[(String, Vec<String>)],
+        resets: &[String],
         gone: &[String],
     ) -> rusqlite::Result<()> {
-        if changed.is_empty() && commits.is_empty() && gone.is_empty() {
+        if changed.is_empty() && commits.is_empty() && resets.is_empty() && gone.is_empty() {
             return Ok(());
         }
         let tx = self.db.transaction()?;
@@ -221,6 +200,9 @@ impl Index {
                 params![row["id"].as_str(), row["title"].as_str(), row["state"].as_str(),
                         row["backend"].as_str(), row["updated"].as_i64(), row["items"].as_i64()],
             )?;
+        }
+        for id in resets {
+            tx.execute("DELETE FROM text WHERE id=?1", params![id])?;
         }
         for (id, texts) in commits {
             let blob = serde_json::to_vec(&self.entries[id].done).unwrap_or_default();
@@ -245,6 +227,32 @@ impl Index {
     }
 }
 
+/// Each session's stored fold and title: where the next pass carries on from.
+fn load(db: &Connection) -> rusqlite::Result<BTreeMap<String, Entry>> {
+    let mut q = db.prepare("SELECT id, title, folded FROM sessions")?;
+    let rows = q.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<Vec<u8>>>(2)?,
+        ))
+    })?;
+    let mut entries = BTreeMap::new();
+    for row in rows {
+        let (id, title, folded) = row?;
+        let done = folded
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        let entry = Entry {
+            done,
+            title,
+            ..Default::default()
+        };
+        entries.insert(id, entry);
+    }
+    Ok(entries)
+}
+
 /// Session ids whose text holds every word, each as a whole word or a word start. Its own
 /// read-only connection and a single statement, so no read transaction stays open.
 pub fn search(data: &Path, q: &str) -> io::Result<Vec<String>> {
@@ -259,7 +267,8 @@ pub fn search(data: &Path, q: &str) -> io::Result<Vec<String>> {
         .map_err(db_err)?;
     // Each word may sit in a different message of the same session.
     let one = "SELECT id FROM text WHERE text MATCH ?";
-    let sql = format!("{} LIMIT 500", vec![one; terms.len()].join(" INTERSECT "));
+    let inner = vec![one; terms.len()].join(" INTERSECT ");
+    let sql = format!("SELECT DISTINCT id FROM ({inner}) LIMIT 500");
     let mut stmt = db.prepare(&sql).map_err(db_err)?;
     stmt.query_map(rusqlite::params_from_iter(&terms), |r| r.get(0))
         .map_err(db_err)?

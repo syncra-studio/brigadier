@@ -10,6 +10,7 @@ use brigadier_frames::{log, procs, take_lock};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{env, process, thread};
 
@@ -211,9 +212,12 @@ fn send(
     cid: Option<&str>,
     backend: Option<&str>,
 ) -> io::Result<Value> {
-    let cid = cid
-        .map(String::from)
-        .unwrap_or_else(|| format!("c{}-{}", log::now_ms(), process::id()));
+    let cid = cid.map(String::from).unwrap_or_else(|| {
+        // The daemon sends from many threads of one process: the counter keeps ids apart.
+        static N: AtomicU64 = AtomicU64::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        format!("c{}-{}-{n}", log::now_ms(), process::id())
+    });
     let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);
     let mut reply = core::send(
