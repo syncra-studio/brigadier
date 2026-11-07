@@ -229,7 +229,8 @@ export function fakeSession(count: number, seed = 1, huge = false, prefix = ""):
     const turn: Turn = { id: prefix + id(fake, "turn"), status: "done", startedAt, endedAt: (time += between(fake, 5, 300) * 1000), backend: "fake" };
     writer.turn(fake, turn);
   }
-  const items = writer.items.slice(0, count).map((item) => (prefix ? { ...item, id: prefix + item.id } : item));
+  // Whole turns only: a cut turn's group and fold would cover the items after it.
+  const items = writer.items.map((item) => (prefix && !item.id.startsWith(prefix) ? { ...item, id: prefix + item.id } : item));
   if (huge && count > 4) {
     const from = Math.floor(count / 2);
     const tool = items.findIndex((item, at) => at >= from && item.kind === "tool" && item.name === "shell");
