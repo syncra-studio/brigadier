@@ -12,7 +12,8 @@ const STEPS: Record<StepKind, [string, string]> = {
   agent: ["ran a subagent", "ran {n} subagents"],
   other: ["used a tool", "used {n} tools"],
 };
-const ORDER = Object.keys(STEPS) as StepKind[];
+/** Kinds in the order a group names them; its icon is the first one it holds. */
+export const ORDER = Object.keys(STEPS) as StepKind[];
 
 /** "Edited 3 files, ran 2 commands": a group's counts, in a fixed kind order, only the first part capitalised. */
 export function groupWords(steps: readonly { kind: StepKind; n: number }[]): string {

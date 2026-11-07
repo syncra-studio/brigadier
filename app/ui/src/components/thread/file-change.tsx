@@ -5,7 +5,7 @@ import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
-const VERBS: Record<FileChange["change"], [string, string]> = {
+export const FILE_VERBS: Record<FileChange["change"], [string, string]> = {
   added: ["Creating", "Created"],
   modified: ["Editing", "Edited"],
   deleted: ["Deleting", "Deleted"],
@@ -15,16 +15,17 @@ const VERBS: Record<FileChange["change"], [string, string]> = {
 /** A diff past this many lines isn't drawn. */
 const MAX_DIFF_LINES = 5000;
 
-const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
  * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a dot for a
  * created (blue) or deleted (red) file. A finished one opens to its diff. A declined change reads "Rejected".
  */
-export function FileChangeRow({ change, progress, added, removed }: { change: FileChange; progress: Progress; added?: number; removed?: number }) {
+export function FileChangeRow({ keep, change, progress }: { keep: string; change: FileChange; progress: Progress }) {
+  const { added, removed } = change;
   const running = progress === "running" || progress === "pending";
   const name = fileName(change.path);
-  const [doing, done] = VERBS[change.change];
+  const [doing, done] = FILE_VERBS[change.change];
   const object = change.change === "renamed" && change.from ? `${fileName(change.from)} to ${name}` : name;
   const head = (
     <>
@@ -39,13 +40,13 @@ export function FileChangeRow({ change, progress, added, removed }: { change: Fi
   if (running) return <div className={ROW}>{head}</div>;
   const trail = (
     <>
-      {added !== undefined && removed !== undefined && <Counts added={added} removed={removed} quiet />}
+      {added !== null && removed !== null && <Counts added={added} removed={removed} quiet />}
       {change.change === "added" && <span className="size-1.5 rounded-capsule bg-link" />}
       {change.change === "deleted" && <span className="size-1.5 rounded-capsule bg-destructive" />}
     </>
   );
   return (
-    <OpeningRow trail={trail} detail={<DiffCard change={change} added={added} removed={removed} />}>
+    <OpeningRow keep={keep} trail={trail} detail={<DiffCard change={change} />}>
       {head}
     </OpeningRow>
   );
@@ -63,14 +64,15 @@ function Counts({ added, removed, quiet = false }: { added: number; removed: num
 }
 
 /** A file's diff: its name, counts and copy over the lines, added green, removed red. */
-export function DiffCard({ change, added, removed }: { change: FileChange; added?: number; removed?: number }) {
+export function DiffCard({ change }: { change: FileChange }) {
+  const { added, removed } = change;
   return (
     <div className="mt-1 flex min-h-0 min-w-0 flex-col overflow-clip rounded-shell border border-border">
       <div className="flex min-h-8 items-center gap-2 bg-fill-subtle ps-3 pe-1 text-sm text-action-hover">
         <span title={change.path} className="min-w-0 truncate">
           {fileName(change.path)}
         </span>
-        {added !== undefined && removed !== undefined && <Counts added={added} removed={removed} />}
+        {added !== null && removed !== null && <Counts added={added} removed={removed} />}
         <CopyButton text={change.diff} tooltip="Copy diff" size="icon-xs" className="ms-auto" />
       </div>
       <DiffLines diff={change.diff} gone={change.change === "deleted"} />

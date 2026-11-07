@@ -1,15 +1,21 @@
-import type { StepKind } from "../../thread/item";
+import type { Item, Turn, Work } from "../../thread/item";
+import { type Group, workKey } from "../../thread/lines";
+import { groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
+import { FILE_VERBS, fileName } from "./file-change";
+import { toolObject, VERBS } from "./tool";
 
 const RULE = "flex w-full items-center border-b border-divider pb-2";
 const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
 
 /**
- * Over a turn's work, on a hairline: "Working for 12s" while it runs (`open` null: it doesn't fold), then
- * "Worked for 3m 4s ›", which opens and shuts the turn's folded work.
+ * Over a turn's work, on a hairline: "Working for 12s" ticking while it runs (`open` null: it doesn't fold),
+ * then "Worked for 3m 4s ›", which opens and shuts the turn's folded work.
  */
-export function WorkHeader({ label, open, onToggle }: { label: string; open: boolean | null; onToggle: () => void }) {
+export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
+  const now = useSecond(turn.status === "running");
+  const label = workWords(turn, work, now);
   if (open === null) {
     return (
       <p className={RULE}>
@@ -18,7 +24,12 @@ export function WorkHeader({ label, open, onToggle }: { label: string; open: boo
     );
   }
   return (
-    <button type="button" aria-expanded={open} onClick={onToggle} className={cx(RULE, "group cursor-pointer gap-1 text-start focus-visible:focus-ring")}>
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => onToggle(workKey(turn.id))}
+      className={cx(RULE, "group cursor-pointer gap-1 text-start focus-visible:focus-ring")}
+    >
       <span className={cx(LABEL, "transition-colors group-hover:text-foreground group-focus-visible:text-foreground")}>{label}</span>
       <span className="flex text-faint-foreground">
         <Chevron always />
@@ -27,27 +38,30 @@ export function WorkHeader({ label, open, onToggle }: { label: string; open: boo
   );
 }
 
+/** A running step's words ("Reading blocks.ts"); nothing once it isn't running. */
+function doing(item: Item | undefined): string | undefined {
+  if (item?.kind === "tool" && item.progress === "running") {
+    const kind = item.step ?? "other";
+    return `${VERBS[kind][0]} ${toolObject(kind, item.name, item.input)}`;
+  }
+  if (item?.kind === "fileChange" && item.progress === "running" && item.changes[0]) {
+    return `${FILE_VERBS[item.changes[0].change][0]} ${fileName(item.changes[0].path)}`;
+  }
+  if (item?.kind === "childAgent" && item.progress === "running") return "Running a subagent";
+  return undefined;
+}
+
 /**
  * Steps that came one after another, as one row: "Edited 3 files, ran 2 commands ›", with the first kind's
- * icon. While its turn runs, `live` is the running step's words ("Reading blocks.ts"), shimmering.
+ * icon. While its turn runs and a step of it is running, that step's words ("Reading blocks.ts"), shimmering.
  */
-export function GroupRow({
-  kind,
-  words,
-  live,
-  open,
-  onToggle,
-}: {
-  kind: StepKind;
-  words: string;
-  live?: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
+export function GroupRow({ item, live, open, onToggle }: { item: Group; live: Item | undefined; open: boolean; onToggle: (id: string) => void }) {
+  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";
+  const running = doing(live);
   return (
-    <button type="button" aria-expanded={open} onClick={onToggle} className={cx(ROW, TOGGLE)}>
+    <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
       <StepIcon kind={kind} />
-      <Words verb={live ?? words} live={live !== undefined} />
+      <Words verb={running ?? groupWords(item.steps)} live={running !== undefined} />
       <Chevron />
     </button>
   );

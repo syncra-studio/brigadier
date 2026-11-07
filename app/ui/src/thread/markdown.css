@@ -2,25 +2,37 @@
 @reference "../theme.css";
 
 .markdown {
-  @apply font-prose text-base break-words;
+  @apply font-prose leading-relaxed wrap-break-word;
 
+  & :is(h1, h2, h3, h4) {
+    @apply scroll-m-20;
+  }
   & :is(h1, h2, h3, h4, h5, h6) {
-    @apply mt-5 mb-2 font-semibold first:mt-0 last:mb-0;
+    @apply first:mt-0 last:mb-0;
   }
   & h1 {
-    @apply text-xl;
+    @apply mt-5 mb-2 text-xl font-semibold;
   }
   & h2 {
-    @apply text-lg;
+    @apply mt-5 mb-2 text-lg font-semibold;
   }
-  & :is(h3, h4) {
-    @apply text-base;
+  & h3 {
+    @apply mt-4 mb-1.5 text-base font-semibold;
   }
-  & :is(h5, h6) {
-    @apply text-sm;
+  & h4 {
+    @apply mt-3.5 mb-1 text-base font-medium;
   }
-  & :is(p, ul, ol, blockquote, table, hr) {
+  & h5 {
+    @apply mt-3 mb-1 text-sm font-semibold;
+  }
+  & h6 {
+    @apply mt-3 mb-1 text-sm font-medium;
+  }
+  & :is(p, ul, ol, blockquote, hr) {
     @apply my-3 first:mt-0 last:mb-0;
+  }
+  & p {
+    @apply leading-relaxed;
   }
   & :is(ul, ol) {
     @apply ms-5 marker:text-muted-foreground;
@@ -31,34 +43,40 @@
   & ol {
     @apply list-decimal;
   }
-  & li + li {
-    @apply mt-1;
+  & li {
+    @apply mt-1 leading-relaxed;
   }
   & blockquote {
-    @apply border-s-2 border-border ps-4 text-muted-foreground;
+    @apply border-s-2 border-quote-edge ps-4 text-muted-foreground;
   }
   & hr {
-    @apply border-divider;
+    @apply border-prose-rule;
   }
   & strong {
     @apply font-semibold;
   }
+  & sup > a {
+    @apply text-xs no-underline;
+  }
   & a {
-    @apply underline;
+    @apply font-medium text-link underline-offset-2 hover:text-link-hover hover:underline hover:decoration-dashed;
   }
   & :not(pre) > code {
-    @apply rounded-sm bg-muted px-1.5 py-0.5 font-mono text-code;
+    @apply rounded-control bg-muted px-1.5 py-0.5 font-mono text-code-inline;
   }
   & table {
-    @apply block w-full overflow-x-auto border-collapse text-sm;
+    @apply my-3 block w-full overflow-x-auto border-collapse text-sm first:mt-0 last:mb-0;
   }
   & :is(th, td) {
-    @apply px-3 py-2 text-start align-top;
+    @apply min-w-24 px-3 py-2 text-start align-top;
   }
   & th {
     @apply border-b border-border font-semibold;
   }
-  & tr + tr {
-    @apply border-t border-divider;
+  & tr {
+    @apply border-b border-table-rule last:border-b-0;
+  }
+  & img {
+    @apply my-3 max-h-80 max-w-full rounded-icon-button;
   }
 }

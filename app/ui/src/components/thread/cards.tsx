@@ -1,20 +1,47 @@
-import { Check, Info, QuestionMarkCircle, TextShorterConcise, Tools, Warning, X } from "../../icons";
-import type { Progress } from "../../thread/item";
+import type { ComponentType } from "react";
+
+import { Chat, Check, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning, X } from "../../icons";
+import type { IconProps } from "../../icons";
+import type { ApprovalAction, Progress } from "../../thread/item";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { ToolBox } from "./tool";
 
+/** What an approval asks to do, as the old app's approval kinds drew it. */
+const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
+  command: Dock,
+  edit: PencilSquare,
+  network: Globe,
+  permission: Key,
+  plan: Sparkle,
+  land: Commit,
+  message: Chat,
+  browser: Globe,
+  other: Tools,
+};
+
 /**
  * An approval. Waiting: "Awaiting approval", quietly live (the card to decide sits in the composer's
  * place). Decided: a card with what was asked and "Allowed" or "Denied".
  */
-export function ApprovalRow({ title, detail, decision }: { title: string; detail: string; decision: "approved" | "denied" | null }) {
+export function ApprovalRow({
+  title,
+  detail,
+  decision,
+  action = "other",
+}: {
+  title: string;
+  detail: string;
+  decision: "approved" | "denied" | null;
+  action?: ApprovalAction;
+}) {
+  const Icon = ACTIONS[action];
   if (decision === null) {
     return (
       <p className="flex min-h-7 min-w-0 items-center gap-2 text-sm text-muted-foreground">
-        <Tools className="size-icon-md shrink-0" />
-        <span className="min-w-0 truncate shimmer shimmer-quiet">Awaiting approval</span>
+        <Icon className="size-icon-md shrink-0" />
+        <span className="min-w-0 truncate shimmer-quiet">Awaiting approval</span>
       </p>
     );
   }
@@ -22,7 +49,7 @@ export function ApprovalRow({ title, detail, decision }: { title: string; detail
     <div className="flex w-full flex-col rounded-thread border border-border bg-card text-foreground">
       <div className="flex min-w-0 items-start gap-2 px-4 pt-3.5 pb-2.5">
         <span className="flex h-5 shrink-0 items-center text-quiet-foreground">
-          <Tools className="size-4.5" />
+          <Icon className="size-4.5" />
         </span>
         <p className="min-w-0 text-sm leading-5 font-medium wrap-anywhere">{title}</p>
       </div>
@@ -44,7 +71,7 @@ export function ApprovalRow({ title, detail, decision }: { title: string; detail
  * in the composer's place). Answered, it opens to the question and the answer; unanswered once the turn
  * has moved on, it was withdrawn.
  */
-export function QuestionRow({ question, answer, waiting }: { question: string; answer: string | null; waiting: boolean }) {
+export function QuestionRow({ keep, question, answer, waiting }: { keep: string; question: string; answer: string | null; waiting: boolean }) {
   const icon = <StepIcon icon={QuestionMarkCircle} />;
   if (answer === null) {
     return (
@@ -56,6 +83,7 @@ export function QuestionRow({ question, answer, waiting }: { question: string; a
   }
   return (
     <OpeningRow
+      keep={keep}
       detail={
         <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm">
           <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{question}</dt>
@@ -117,9 +145,9 @@ export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"
 }
 
 /** An event the app can't draw yet: it opens to the event as it came. */
-export function UnknownRow({ raw }: { raw: unknown }) {
+export function UnknownRow({ keep, raw }: { keep: string; raw: unknown }) {
   return (
-    <OpeningRow detail={<ToolBox title="Event">{JSON.stringify(raw, null, 2)}</ToolBox>}>
+    <OpeningRow keep={keep} detail={<ToolBox title="Event">{JSON.stringify(raw, null, 2)}</ToolBox>}>
       <StepIcon icon={Info} />
       <Words verb="Can’t show this event yet" />
     </OpeningRow>

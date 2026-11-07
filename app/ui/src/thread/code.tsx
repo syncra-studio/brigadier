@@ -1,32 +1,76 @@
 import { useEffect, useState } from "react";
 
+import { CopyButton } from "../components/copy-button";
+import { ChevronDown, ChevronUp, Code } from "../icons";
 import { highlight } from "./highlight";
 import { useKept } from "./kept";
 import "./code.css";
 
-/** Lines a block shows before it folds. */
-const FOLDED_LINES = 12;
+/** A block longer than this many lines starts folded, to `FOLDED_LINES`. */
+const LONG_LINES = 14;
+const FOLDED_LINES = 10;
 
-/** A fenced code block: its language, the code coloured once it settles, folded when long. */
+const NAMES: Record<string, string> = {
+  bash: "Bash",
+  sh: "Shell",
+  zsh: "Shell",
+  shell: "Shell",
+  ts: "TypeScript",
+  typescript: "TypeScript",
+  tsx: "TSX",
+  js: "JavaScript",
+  javascript: "JavaScript",
+  jsx: "JSX",
+  py: "Python",
+  python: "Python",
+  rs: "Rust",
+  rust: "Rust",
+  json: "JSON",
+  diff: "Diff",
+  css: "CSS",
+  html: "HTML",
+  md: "Markdown",
+  markdown: "Markdown",
+  yaml: "YAML",
+  yml: "YAML",
+  toml: "TOML",
+  sql: "SQL",
+};
+const languageName = (language: string) => NAMES[language.toLowerCase()] ?? (language ? language[0]!.toUpperCase() + language.slice(1) : "Text");
+
+/** A fenced code block: its language and copy over the code, coloured once it settles, folded when long. */
 export function CodeBlock({ code, language, keep }: { code: string; language: string; keep: string }) {
   const [open, setOpen] = useKept(keep);
-  const long = code.split("\n", FOLDED_LINES + 1).length > FOLDED_LINES;
+  const count = code.split("\n").length;
+  const long = count > LONG_LINES;
   // Folded, only the lines on show are drawn and coloured, so a huge block costs no more than a short one.
   const shown = long && !open ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
   return (
-    <div className="my-3 flex flex-col rounded-control bg-code-surface first:mt-0 last:mb-0">
-      <div className="flex items-center justify-between px-3 pt-2 text-xs text-muted-foreground">
-        <span>{language || "text"}</span>
-        {long && (
-          <button type="button" className="hover:text-foreground" onClick={() => setOpen(!open)}>
-            {open ? "Collapse" : "Expand"}
-          </button>
-        )}
+    <div className="relative my-3 overflow-clip rounded-thread border border-border bg-code-surface first:mt-0 last:mb-0">
+      <div className="flex h-control-md items-center gap-1.5 bg-code-surface ps-3 pe-1.5 text-xs text-muted-foreground">
+        <Code className="size-icon-sm" />
+        <span className="font-medium">{languageName(language)}</span>
+        {long && <span>· {count.toLocaleString()} lines</span>}
+        <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
       </div>
-      <pre className="overflow-x-auto px-3 pt-1 pb-2 font-mono text-code">
-        {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
-      </pre>
+      <div className="relative">
+        <pre className="overflow-x-auto px-3 pb-3 font-mono text-sm leading-relaxed">
+          {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
+        </pre>
+        {long && !open && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t from-code-surface" />}
+      </div>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="flex h-control-md w-full cursor-pointer items-center gap-1.5 border-t border-divider px-3 text-xs text-muted-foreground transition-colors hover:bg-fill-subtle hover:text-foreground focus-visible:focus-ring"
+        >
+          {open ? <ChevronUp className="size-icon-sm" /> : <ChevronDown className="size-icon-sm" />}
+          {open ? "Show less" : `Show more · lines ${FOLDED_LINES + 1}–${count.toLocaleString()}`}
+        </button>
+      )}
     </div>
   );
 }

@@ -45,3 +45,10 @@
 .hljs-selector-pseudo {
   @apply text-syntax-tag;
 }
+/* A diff's added and removed lines, as a file change's diff card draws them. */
+.hljs-addition {
+  @apply bg-diff-added text-success;
+}
+.hljs-deletion {
+  @apply bg-diff-removed text-destructive;
+}

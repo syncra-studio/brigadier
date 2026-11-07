@@ -1,6 +1,7 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
 import { ChevronRightAlt } from "../../icons";
+import { useKept } from "../../thread/kept";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 
@@ -33,6 +34,7 @@ const LONG_CHARS = 1200;
  * Try again and Discard. `dimmed` greys it (a message the turn hasn't reached).
  */
 export function UserBubble({
+  keep,
   text,
   time,
   sending,
@@ -41,6 +43,8 @@ export function UserBubble({
   onDiscard,
   dimmed = false,
 }: {
+  /** Keeps its fold while it scrolls out of view. */
+  keep: string;
   text: string;
   /** When it was sent (ms). */
   time?: number;
@@ -51,11 +55,10 @@ export function UserBubble({
   onDiscard?: () => void;
   dimmed?: boolean;
 }) {
-  // shortcut: the fold is lost when the row scrolls out of view; switch to the thread's useKept once it's on main.
-  const [more, setMore] = useState(false);
+  const [more, setMore] = useKept(`${keep}:more`);
   const long = text.length > LONG_CHARS || text.split("\n", LONG_LINES + 1).length > LONG_LINES;
   return (
-    <div className="group/user flex flex-col items-end gap-y-1 px-2">
+    <div className="group/user flex flex-col items-end gap-y-1">
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
         <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", (dimmed || sending) && "opacity-row-disabled")}>
           <p className={cx("whitespace-pre-wrap wrap-anywhere", long && !more && "max-h-user-message overflow-y-clip")}>{text}</p>
@@ -101,7 +104,7 @@ export function UserBubble({
 /** A line the app sent on the user's behalf: centred and muted. */
 export function SystemLine({ text }: { text: string }) {
   return (
-    <div className="flex justify-center px-2 text-center text-xs text-muted-foreground">
+    <div className="flex justify-center text-center text-xs text-muted-foreground">
       <p className="max-w-4/5 whitespace-pre-wrap">{text}</p>
     </div>
   );
@@ -113,7 +116,7 @@ export function SystemLine({ text }: { text: string }) {
  */
 export function AssistantMessage({ text, streaming, time, children }: { text: string; streaming: boolean; time?: number; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 px-2">
+    <div className="flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
       {!streaming && (
         <div className="-ms-1 flex items-center gap-0.5 text-faint-foreground">
@@ -126,7 +129,7 @@ export function AssistantMessage({ text, streaming, time, children }: { text: st
 }
 
 /** The live "Thinking" line while the agent thinks: the thought's newest heading if there is one. */
-export function ThinkingLine({ heading }: { heading?: string }) {
+export function ThinkingLine({ heading }: { heading?: string | null }) {
   const words = heading || "Thinking";
   return (
     <p key={words} className="w-fit max-w-full truncate text-sm leading-5.25 shimmer">

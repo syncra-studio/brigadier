@@ -1,14 +1,15 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 
 import { Check, Stop } from "../../icons";
 import type { Progress, StepKind } from "../../thread/item";
+import { useKept } from "../../thread/kept";
 import { Button } from "../button";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
 /** A step's verb while it runs and once done ("Reading", "Read"), by kind. */
-const VERBS: Record<StepKind, [string, string]> = {
+export const VERBS: Record<StepKind, [string, string]> = {
   read: ["Reading", "Read"],
   edit: ["Editing", "Edited"],
   search: ["Searching for", "Searched for"],
@@ -17,6 +18,9 @@ const VERBS: Record<StepKind, [string, string]> = {
   agent: ["Running a subagent:", "Ran a subagent:"],
   other: ["Using", "Used"],
 };
+
+/** What a step acted on: a command, a path, a query; another tool's own name. */
+export const toolObject = (kind: StepKind, name: string, input: string) => (kind === "other" ? name : input || name);
 
 /** Lines of output drawn until the user asks for all of them: a huge log stays cheap. */
 const TAIL_LINES = 400;
@@ -27,6 +31,7 @@ const TAIL_LINES = 400;
  * tool reads "— failed" (a command's exit code shows in its box); a stopped one "Stopped …".
  */
 export function ToolRow({
+  keep,
   kind = "other",
   name,
   input,
@@ -35,6 +40,7 @@ export function ToolRow({
   exitCode,
   took,
 }: {
+  keep: string;
   kind?: StepKind;
   name: string;
   input: string;
@@ -45,7 +51,7 @@ export function ToolRow({
   took?: string;
 }) {
   const command = kind === "run";
-  const object = kind === "other" ? name : input || name;
+  const object = toolObject(kind, name, input);
   const running = progress === "running" || progress === "pending";
   const [doing, done] = VERBS[kind];
   const words =
@@ -65,9 +71,10 @@ export function ToolRow({
   if (running && !command) return <div className={ROW}>{head}</div>;
   return (
     <OpeningRow
+      keep={keep}
       detail={
         command ? (
-          <ShellBox command={object} output={output} progress={progress} exitCode={exitCode} />
+          <ShellBox keep={keep} command={object} output={output} progress={progress} exitCode={exitCode} />
         ) : (
           <ToolDetail name={name} input={input} output={output} failed={progress === "failed"} />
         )
@@ -79,8 +86,20 @@ export function ToolRow({
 }
 
 /** A command's box: "Shell", the command (two lines until clicked), its newest output, how it ended. */
-export function ShellBox({ command, output, progress, exitCode }: { command: string; output: string; progress: Progress; exitCode: number | null }) {
-  const [whole, setWhole] = useState(false);
+export function ShellBox({
+  keep,
+  command,
+  output,
+  progress,
+  exitCode,
+}: {
+  keep: string;
+  command: string;
+  output: string;
+  progress: Progress;
+  exitCode: number | null;
+}) {
+  const [whole, setWhole] = useKept(`${keep}:command`);
   const ending =
     progress === "cancelled" ? "Stopped" : progress === "failed" && exitCode === null ? "Failed" : exitCode ? `Exit code ${exitCode}` : progress === "done" ? "Success" : null;
   return (
@@ -101,7 +120,7 @@ export function ShellBox({ command, output, progress, exitCode }: { command: str
         <span className="text-muted-foreground">$ </span>
         {command}
       </button>
-      <Output text={output} />
+      <Output keep={keep} text={output} />
       {ending && (
         <p className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
           <span className="ms-auto flex shrink-0 items-center gap-1">
@@ -115,8 +134,8 @@ export function ShellBox({ command, output, progress, exitCode }: { command: str
 }
 
 /** A command's output, newest line in view; older lines fade out at the top. */
-function Output({ text }: { text: string }) {
-  const [all, setAll] = useState(false);
+function Output({ keep, text }: { keep: string; text: string }) {
+  const [all, setAll] = useKept(`${keep}:all`);
   const lines = useMemo(() => text.split("\n"), [text]);
   const cut = !all && lines.length > TAIL_LINES;
   return (

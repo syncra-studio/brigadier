@@ -1,8 +1,9 @@
-import { type ComponentType, type ReactNode, useState } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import { ChevronRightAlt, EditPencil, File, Globe, MagnifyingGlassSmSearch, Terminal, Tools } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { StepKind } from "../../thread/item";
+import { useKept } from "../../thread/kept";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { cx } from "../cx";
 
@@ -56,22 +57,11 @@ export function Words({ verb, object, live = false }: { verb: string; object?: R
 }
 
 /**
- * A row that opens to its detail when clicked (Enter or Space too). Open state is the row's own;
- * `trail` sits after the chevron and hides while the row is open.
+ * A row that opens to its detail when clicked (Enter or Space too), kept open or shut by `keep` while it
+ * scrolls out of view. `trail` sits after the chevron and hides while the row is open.
  */
-export function OpeningRow({
-  children,
-  detail,
-  trail,
-  defaultOpen = false,
-}: {
-  children: ReactNode;
-  detail: ReactNode;
-  trail?: ReactNode;
-  defaultOpen?: boolean;
-}) {
-  // shortcut: the open state is lost when the row scrolls out of view; switch to the thread's useKept once it's on main.
-  const [open, setOpen] = useState(defaultOpen);
+export function OpeningRow({ keep, children, detail, trail }: { keep: string; children: ReactNode; detail: ReactNode; trail?: ReactNode }) {
+  const [open, setOpen] = useKept(keep);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex min-w-0 flex-col">
       <CollapsibleTrigger className={cx(ROW, TOGGLE)}>

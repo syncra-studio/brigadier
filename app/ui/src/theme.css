@@ -82,6 +82,10 @@
   /* Live words waiting on an approval: quieter than the shimmer's base. */
   --color-live-text-quiet: color-mix(in oklab, var(--color-foreground) 30%, transparent);
   --color-link-hover: color-mix(in oklab, var(--color-link) 80%, transparent);
+  /* A reply's blockquote edge, its rules (hr), and the lines between its table rows. */
+  --color-quote-edge: color-mix(in oklab, var(--color-muted-foreground) 30%, transparent);
+  --color-prose-rule: color-mix(in oklab, var(--color-muted-foreground) 20%, transparent);
+  --color-table-rule: color-mix(in oklab, var(--color-border) 60%, transparent);
   /* A diff's added and removed lines. */
   --color-diff-added: color-mix(in oklab, var(--color-success) 12%, transparent);
   --color-diff-removed: color-mix(in oklab, var(--color-destructive) 12%, transparent);
@@ -113,6 +117,8 @@
   --text-diff--line-height: 1.35rem;
   /* Inline code, a little smaller than the words around it. */
   --text-code-inline: 0.85em;
+  /* A reply's line height (the old app's, Tailwind's relaxed). */
+  --leading-relaxed: 1.625;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, "Ubuntu",
@@ -600,6 +606,7 @@
 
 /* Live words waiting on someone: the shimmer over a quieter base. */
 @utility shimmer-quiet {
+  @apply shimmer;
   background-color: var(--color-live-text-quiet);
 }
 
