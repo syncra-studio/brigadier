@@ -205,3 +205,42 @@
   --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
   --color-invalid-ring: color-mix(in oklab, var(--color-destructive) 40%, transparent);
 }
+
+/* Pending owner pick (D31): Kbd corners and input shapes for the gallery's pick rows. The losers are deleted
+   once the owner picks. */
+@utility pending-kbd-4 {
+  & [data-slot="kbd"] {
+    border-radius: 0.25rem;
+  }
+}
+@utility pending-kbd-5 {
+  & [data-slot="kbd"] {
+    border-radius: var(--radius-checkbox);
+  }
+}
+@utility pending-kbd-6 {
+  & [data-slot="kbd"] {
+    border-radius: var(--radius-sm);
+  }
+}
+/* Like a macOS text field: a smaller corner, a hairline edge on the fill, a soft blue ring outside on focus. */
+@utility pending-input-apple {
+  & [data-slot="input"] {
+    border-radius: var(--radius-sm);
+  }
+  & [data-slot="input"]:not([aria-invalid="true"]) {
+    border-color: var(--color-border);
+  }
+  & [data-slot="input"]:focus-visible,
+  & [data-frozen~="focus"] [data-slot="input"] {
+    outline: none;
+    border-color: var(--color-toggle-on);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-toggle-on) 45%, transparent);
+  }
+}
+@utility pending-input-capsule {
+  & [data-slot="input"] {
+    border-radius: var(--radius-capsule);
+    padding-inline: calc(var(--spacing) * 3.5);
+  }
+}

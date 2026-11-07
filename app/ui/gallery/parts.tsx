@@ -22,13 +22,14 @@ export function Section({ title, children }: { title: string; children: ReactNod
 }
 
 /** One component's row: each state side by side, once with the kit (Current) and once as the old app had it. */
-export function Row({ name, children }: { name: string; children: (k: KitSet) => ReactNode }) {
+export function Row({ name, current, children }: { name: string; current?: boolean; children: (k: KitSet) => ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
       <div className="grid grid-cols-2">
-        {SETS.map((k, i) => (
-          <div key={i} className={cx("flex flex-wrap items-start gap-x-8 gap-y-4", i === 0 ? "pe-6" : "old-app-colours border-s border-divider ps-6")}>
+        {/* `current`: a choice for the kit only, across both columns. */}
+        {(current ? SETS.slice(0, 1) : SETS).map((k, i) => (
+          <div key={i} className={cx("flex flex-wrap items-start gap-x-8 gap-y-4", current ? "col-span-2" : i === 0 ? "pe-6" : "old-app-colours border-s border-divider ps-6")}>
             {children(k)}
           </div>
         ))}
@@ -76,6 +77,16 @@ export function OpenTip({
           {shortcut && <Kbd>{shortcut}</Kbd>}
         </TooltipContent>
       </Tooltip>
+    </div>
+  );
+}
+
+/** One option in a pick row: its states, under the option's own classes (theme.css, "Pending owner pick"). */
+export function Choice({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-label">{label}</span>
+      <div className={cx("flex flex-wrap items-start gap-x-6 gap-y-3", className)}>{children}</div>
     </div>
   );
 }

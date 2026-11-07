@@ -26,8 +26,8 @@ const SIZES = {
   // Words with no box of their own (a row's "Show all").
   inline: "h-auto gap-1 p-0 svg:size-icon-xs",
   icon: "rounded-icon-button size-control-md svg:size-icon-md motion-safe:active:scale-press",
-  "icon-xs": "rounded-icon-button size-5 svg:size-icon-xs motion-safe:active:scale-press",
-  // The ghost icon button's box: 24px, so a smaller corner keeps the 28px buttons' shape.
+  "icon-xs": "rounded-sm size-5 svg:size-icon-xs motion-safe:active:scale-press",
+  // Smaller boxes take smaller corners, so every icon button keeps the 28px one's shape.
   "icon-sm": "rounded-control size-control-xs svg:size-icon-sm motion-safe:active:scale-press",
   "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md motion-safe:active:scale-press",
 };
