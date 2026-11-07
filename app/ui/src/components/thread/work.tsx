@@ -14,29 +14,14 @@ const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
  * "Waiting for 1m 3s" while it waits on the user's answer, then "Worked for 3m 4s ›" (with "· waited for
  * 1m 2s" when it waited), which opens and shuts the turn's folded work.
  */
-export function WorkHeader({
-  turn,
-  work,
-  open,
-  onToggle,
-  waitingSince = null,
-  waited = null,
-}: {
-  turn: Turn;
-  work: Work | undefined;
-  open: boolean | null;
-  onToggle: (id: string) => void;
-  /** When the running turn began waiting on the user (a question or an approval); null when it isn't. */
-  waitingSince?: number | null;
-  /** How long the finished turn waited on the user, in all (ms); its work time leaves it out. */
-  waited?: number | null;
-}) {
+export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
   const now = useSecond(turn.status === "running");
+  const { waitingSince, waitedMs } = turn;
   const label =
-    turn.status === "running" && waitingSince !== null
+    turn.status === "running" && waitingSince != null
       ? `Waiting for ${duration(now - waitingSince)}`
-      : turn.status === "done" && waited !== null && waited >= 1000
-        ? `${workWords(turn, work, now)} · waited for ${duration(waited)}`
+      : turn.status === "done" && waitedMs !== undefined && waitedMs >= 1000
+        ? `${workWords(turn, work, now)} · waited for ${duration(waitedMs)}`
         : workWords(turn, work, now);
   if (open === null) {
     return (

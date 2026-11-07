@@ -1,7 +1,8 @@
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
 
 // Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`, and
-// `sentAt`, a tool's `step`/`startedAt`/`endedAt`, `added`/`removed`, `action`, `heading` and a compaction's `progress`.
+// `sentAt`, a tool's `step`/`startedAt`/`endedAt`, `added`/`removed`, `action`, `heading`, a compaction's `progress`
+// and a turn's `waitingSince`/`waitedMs`.
 // A null number or text means "not reported": rows show nothing for it, never 0 or an empty label.
 
 export type Session = {
@@ -21,6 +22,10 @@ export type Turn = {
   endedAt: number | null;
   /** Which backend ran the turn. */
   backend?: string;
+  /** When the running turn began waiting on the user (a question or an approval); null when it isn't waiting. */
+  waitingSince?: number | null;
+  /** How long the turn has waited on the user in all (ms). */
+  waitedMs?: number;
 };
 
 /** What a step of work did, provider-neutral. */
@@ -28,6 +33,7 @@ export type StepKind = "read" | "edit" | "search" | "run" | "web" | "agent" | "o
 
 /**
  * A finished turn's work: how long it took and the items folded under "Worked for …", by `n`, first and last.
+ * `ms` leaves out the turn's waits on the user (`Turn.waitedMs`): "Worked for 3m 4s · waited for 1m 2s".
  * It folds exactly one turn. A background job still running after the turn ends is its own status, not part of it.
  */
 export type Work = { turnId: string; ms: number; folded: [number, number] };

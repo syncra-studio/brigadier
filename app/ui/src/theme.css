@@ -653,10 +653,6 @@
   /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
   animation-direction: reverse;
 }
-@utility edge-fade-diff {
-  --edge-size-top: 0px;
-  --edge-size-bottom: 2rem;
-}
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
 @utility wash-line {
   display: inline-block;

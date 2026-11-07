@@ -1,6 +1,5 @@
-import { memo } from "react";
-
 import type { FileChange, Progress } from "../../thread/item";
+import { CodeBlock } from "../../thread/code";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
@@ -48,7 +47,7 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
     </>
   );
   return (
-    <OpeningRow keep={keep} trail={trail} detail={<DiffCard change={change} />}>
+    <OpeningRow keep={keep} trail={trail} detail={<DiffCard keep={keep} change={change} />}>
       {head}
     </OpeningRow>
   );
@@ -65,49 +64,31 @@ function Counts({ added, removed, quiet = false }: { added: number; removed: num
   );
 }
 
-/** A file's diff: its name, counts and copy over the lines, added green, removed red. */
-export function DiffCard({ change }: { change: FileChange }) {
+/**
+ * A file's diff: its name, counts and copy over the lines, added green, removed red. The thread's code block
+ * draws it (coloured once it settles, folded past 14 lines), in the diff card's frame.
+ */
+export function DiffCard({ keep, change }: { keep: string; change: FileChange }) {
   const { added, removed } = change;
+  const diff = change.diff.replace(/\n$/, "");
+  const count = diff ? diff.split("\n", MAX_DIFF_LINES + 1).length : 0;
+  const title = (
+    <>
+      <span title={change.path} className="min-w-0 truncate">
+        {fileName(change.path)}
+      </span>
+      {added !== null && removed !== null && <Counts added={added} removed={removed} />}
+    </>
+  );
+  const empty = count === 0 ? (change.change === "deleted" ? "Contents deleted" : "No changes") : count > MAX_DIFF_LINES ? "Diff too large to preview" : null;
+  if (empty === null) return <CodeBlock code={diff} language="diff" keep={`${keep}:diff`} title={title} look="diff" />;
   return (
-    <div className="mt-1 flex min-h-0 min-w-0 flex-col overflow-clip rounded-shell border border-border">
+    <div className="mt-1 flex min-w-0 flex-col overflow-clip rounded-shell border border-border">
       <div className="flex min-h-8 items-center gap-2 bg-fill-subtle ps-3 pe-1 text-sm text-action-hover">
-        <span title={change.path} className="min-w-0 truncate">
-          {fileName(change.path)}
-        </span>
-        {added !== null && removed !== null && <Counts added={added} removed={removed} />}
-        <CopyButton text={change.diff} tooltip="Copy diff" size="icon-xs" className="ms-auto" />
+        {title}
+        {count > 0 && <CopyButton text={change.diff} tooltip="Copy diff" size="icon-xs" className="ms-auto" />}
       </div>
-      <DiffLines diff={change.diff} gone={change.change === "deleted"} />
+      <p className="px-3 py-2 text-sm text-muted-foreground">{empty}</p>
     </div>
   );
 }
-
-const LINE = { "+": "bg-diff-added text-success", "-": "bg-diff-removed text-destructive", "@": "text-link" } as const;
-
-/** The unified diff's lines, coloured by their first character; only drawn once the card is open. */
-const DiffLines = memo(function DiffLines({ diff, gone }: { diff: string; gone: boolean }) {
-  const lines = diff ? diff.split("\n") : [];
-  if (lines.at(-1) === "") lines.pop();
-  const empty = lines.length === 0 ? (gone ? "Contents deleted" : "No changes") : lines.length > MAX_DIFF_LINES ? "Diff too large to preview" : null;
-  if (empty) return <p className="px-3 py-2 text-sm text-muted-foreground">{empty}</p>;
-  // Inside a hunk "+++x" is an added "++x": only lines before the first @@ are file headers.
-  const hunk = lines.findIndex((line) => line.startsWith("@@"));
-  return (
-    <div className="max-h-60 min-w-0 scroll-edge-fade edge-fade-diff overflow-auto">
-      <pre className="flex w-max min-w-full flex-col font-mono text-diff">
-        {lines.map((line, i) => (
-          <span
-            // Lines never move within a diff, so their place is their key.
-            key={i}
-            className={cx(
-              "px-3 whitespace-pre",
-              i < hunk && (line.startsWith("+++") || line.startsWith("---")) ? "text-muted-foreground italic" : LINE[line[0] as keyof typeof LINE],
-            )}
-          >
-            {line || " "}
-          </span>
-        ))}
-      </pre>
-    </div>
-  );
-});

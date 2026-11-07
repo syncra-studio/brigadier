@@ -57,3 +57,10 @@
 .hljs-deletion {
   @apply wash-line;
 }
+/* A diff card keeps the file change's look: hunk heads in link blue, file heads muted and italic. */
+[data-look="diff"] .hljs-meta {
+  @apply text-link;
+}
+[data-look="diff"] .hljs-comment {
+  @apply text-muted-foreground italic;
+}

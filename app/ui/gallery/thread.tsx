@@ -10,7 +10,7 @@ import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
 import { OldApproval } from "./old-approval";
 import { Compare, Section, State } from "./parts";
-import { ProposedDiff, ProposedShell, ProposedStep, ProposedSubagent, type Step } from "./proposed-tool";
+import { ProposedSubagent } from "./proposed-subagent";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -81,16 +81,6 @@ export function blocks(text: string) {
 
 const LONG_CODE = "```bash\n" + Array.from({ length: 30 }, (_, i) => `echo "step ${i + 1}"`).join("\n") + "\n```";
 
-/** Opened tool steps, as real ones read: a file, matches, pages, a subagent's answer, another tool's arguments. */
-const STEPS: Step[] = [
-  { id: "o-read", kind: "read", name: "read", input: "src/thread/kept.ts", output: Array.from({ length: 17 }, (_, i) => `${String(i + 1).padStart(3)}  ${["import { useSyncExternalStore } from \"react\";", "", "const kept = new Map<string, boolean>();", "export function useKept(id: string) {"][i % 4]}`).join("\n") },
-  { id: "o-search", kind: "search", name: "rg", input: "“useKept” in src", output: "src/thread/kept.ts:4: export function useKept(id: string) {\nsrc/components/thread/activity-row.tsx:62:   const [open, setOpen] = useKept(keep);\nsrc/components/thread/tool.tsx:118:   const [whole, setWhole] = useKept(`${keep}:command`);" },
-  { id: "o-web", kind: "web", name: "web_search", input: "base ui collapsible", output: "Collapsible · Base UI — base-ui.com/react/components/collapsible\nBase UI v1 release notes — base-ui.com/react/overview/releases\nAnimating height with Collapsible — github.com/mui/base-ui/discussions" },
-  { id: "o-agent", kind: "agent", name: "task", input: "Find the parser", output: "The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold. Nothing else parses events in the UI." },
-  { id: "o-other", kind: "other", name: "linear.search_issues", input: '{ "query": "thread rows", "limit": 3 }', output: '[\n  { "id": "BRG-41", "title": "Thread rows match the old app" },\n  { "id": "BRG-44", "title": "Shell box copy output" }\n]' },
-  { id: "o-fail", kind: "other", name: "linear.search_issues", input: '{ "query": "thread" }', output: "", failed: true },
-];
-
 /** A running subagent's own steps, one a second. */
 const SUBAGENT_STEPS = ["Reading src/thread/lines.ts", "Searching for “toLines” in src", "Reading src/thread/item.ts", "Running pnpm typecheck"];
 
@@ -156,13 +146,13 @@ export function Thread() {
             <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} />
           </Wide>
           <Wide label="waiting on your answer">
-            <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} waitingSince={NOW - 63_000} />
+            <WorkHeader turn={{ ...RUNNING, waitingSince: NOW - 63_000 }} work={undefined} open={null} onToggle={noop} />
           </Wide>
           <Wide label="done, shut">
             <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} />
           </Wide>
           <Wide label="done, waited">
-            <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} waited={62_000} />
+            <WorkHeader turn={{ ...DONE, waitedMs: 62_000 }} work={WORK} open={false} onToggle={noop} />
           </Wide>
           <Wide label="done, open">
             <WorkHeader turn={DONE} work={WORK} open onToggle={noop} />
@@ -232,58 +222,7 @@ export function Thread() {
           </Wide>
         </Compare>
         <Compare
-          name="opened: read · search · web · subagent · other tool · failed"
-          proposed={
-            <>
-              <Wide label="A · hanging: output under the words on a hairline, no box">
-                <div className="flex flex-col gap-1">
-                  {STEPS.map((step) => (
-                    <Opened key={step.id}>
-                      <ProposedStep step={step} look="hanging" />
-                    </Opened>
-                  ))}
-                </div>
-              </Wide>
-              <Wide label="B · block: one quiet block, no labels">
-                <div className="flex flex-col gap-1">
-                  {STEPS.map((step) => (
-                    <Opened key={step.id}>
-                      <ProposedStep step={step} look="block" />
-                    </Opened>
-                  ))}
-                </div>
-              </Wide>
-            </>
-          }
-        >
-          <Wide label="opened">
-            <div className="flex flex-col gap-1">
-              {STEPS.map((step) => (
-                <Opened key={step.id}>{item(tool(step.id, step.kind, step.name, step.input, step.failed ? "failed" : "done", { output: step.output }))}</Opened>
-              ))}
-            </div>
-          </Wide>
-        </Compare>
-        <Compare
           name="shell box: success · exit code · running (output growing) · stopped · no output · 900 lines"
-          proposed={(["hanging", "block"] as const).map((look) => (
-            <Wide key={look} label={look === "hanging" ? "A · hanging: under the words on a hairline" : "B · block: one quiet block"}>
-              <div className="flex flex-col gap-1">
-                <Opened>
-                  <ProposedShell id="ok" look={look} command="pnpm test --filter thread" output={OUTPUT} progress="done" exitCode={0} />
-                </Opened>
-                <Opened>
-                  <ProposedShell id="exit" look={look} command="pnpm typecheck && pnpm exec eslint app/ui/src --max-warnings 0" output="src/rows.tsx(4,1): error TS2307: Cannot find module './kept'." progress="failed" exitCode={1} />
-                </Opened>
-                <Opened>
-                  <ProposedShell id="live" look={look} command="pnpm test" output={grown} progress="running" exitCode={null} />
-                </Opened>
-                <Opened>
-                  <ProposedShell id="stop" look={look} command="sleep 600" output="" progress="cancelled" exitCode={null} />
-                </Opened>
-              </div>
-            </Wide>
-          ))}
         >
           <Wide label="success" open>
             {item(tool("sh-ok", "run", "shell", "pnpm test --filter thread", "done", { exitCode: 0, output: OUTPUT }))}
@@ -308,18 +247,6 @@ export function Thread() {
       <Section title="Thread · file changes · diff card">
         <Compare
           name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open"
-          proposed={
-            <Wide label="open: the diff in the thread's code block (short; long, folded)">
-              <div className="flex w-full flex-col gap-1">
-                <Opened>
-                  <ProposedDiff id="short" change={file("src/thread/blocks.ts", "modified", 3, 1)} />
-                </Opened>
-                <Opened>
-                  <ProposedDiff id="long" change={{ ...file("src/thread/rows.tsx", "modified", 4, 4), diff: LONG_DIFF }} />
-                </Opened>
-              </div>
-            </Wide>
-          }
         >
           <Wide label="by change; hover shows the counts' colours">
             <div className="flex flex-col gap-1">
@@ -338,6 +265,9 @@ export function Thread() {
           </Wide>
           <Wide label="open: the diff card" open>
             {item({ ...base("f6"), kind: "fileChange", progress: "done", changes: [file("src/thread/blocks.ts", "modified", 3, 1)] })}
+          </Wide>
+          <Wide label="open: a long diff, folded" open>
+            {item({ ...base("f7"), kind: "fileChange", progress: "done", changes: [{ ...file("src/thread/rows.tsx", "modified", 4, 4), diff: LONG_DIFF }] })}
           </Wide>
         </Compare>
       </Section>

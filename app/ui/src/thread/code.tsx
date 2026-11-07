@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { CopyButton } from "../components/copy-button";
+import { cx } from "../components/cx";
 import { ChevronDown, ChevronUp, Code } from "../icons";
 import { highlight } from "./highlight";
 import { useKept } from "./kept";
@@ -38,8 +39,40 @@ const NAMES: Record<string, string> = {
 };
 const languageName = (language: string) => NAMES[language.toLowerCase()] ?? (language ? language[0]!.toUpperCase() + language.slice(1) : "Text");
 
-/** A fenced code block: its language and copy over the code, coloured once it settles, folded when long. */
-export function CodeBlock({ code, language, keep }: { code: string; language: string; keep: string }) {
+/** A reply's code block, or a file change's diff card: the same drawing, each in its own frame. */
+const LOOKS = {
+  code: {
+    card: "my-3 rounded-thread bg-code-surface first:mt-0 last:mb-0",
+    head: "h-control-md gap-1.5 bg-code-surface pe-1.5 text-xs text-muted-foreground",
+    pre: "pb-3 text-sm leading-relaxed",
+    fade: "from-code-surface",
+  },
+  diff: {
+    card: "mt-1 rounded-shell",
+    head: "min-h-8 gap-2 bg-fill-subtle pe-1 text-sm text-action-hover",
+    pre: "text-diff",
+    fade: "from-background",
+  },
+} as const;
+
+/**
+ * A fenced code block: its language and copy over the code, coloured once it settles, folded when long.
+ * `title` stands in for the language's icon and name; `look` "diff" draws it as a file change's diff card.
+ */
+export function CodeBlock({
+  code,
+  language,
+  keep,
+  title,
+  look = "code",
+}: {
+  code: string;
+  language: string;
+  keep: string;
+  title?: ReactNode;
+  look?: keyof typeof LOOKS;
+}) {
+  const frame = LOOKS[look];
   const [open, setOpen] = useKept(keep);
   const count = code.split("\n").length;
   const long = count > LONG_LINES;
@@ -47,18 +80,22 @@ export function CodeBlock({ code, language, keep }: { code: string; language: st
   const shown = long && !open ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
   return (
-    <div className="relative my-3 overflow-clip rounded-thread border border-border bg-code-surface first:mt-0 last:mb-0">
-      <div className="flex h-control-md items-center gap-1.5 bg-code-surface ps-3 pe-1.5 text-xs text-muted-foreground">
-        <Code className="size-icon-sm" />
-        <span className="font-medium">{languageName(language)}</span>
+    <div data-look={look} className={cx("relative overflow-clip border border-border", frame.card)}>
+      <div className={cx("flex items-center ps-3", frame.head)}>
+        {title ?? (
+          <>
+            <Code className="size-icon-sm" />
+            <span className="font-medium">{languageName(language)}</span>
+          </>
+        )}
         {long && <span>· {count.toLocaleString()} lines</span>}
         <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
       </div>
       <div className="relative">
-        <pre className="overflow-x-auto px-3 pb-3 font-mono text-sm leading-relaxed">
+        <pre className={cx("overflow-x-auto px-3 font-mono", frame.pre)}>
           {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
         </pre>
-        {long && !open && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t from-code-surface" />}
+        {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}
       </div>
       {long && (
         <button
