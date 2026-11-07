@@ -1,6 +1,6 @@
 // Fake sessions for the demo: huge mixed threads, and replies that stream at a token rate.
 // Only a stand-in for what Rust will send; it holds no thread rules.
-import type { FileChange, Item, Session, Turn } from "./item";
+import type { FileChange, Item, Session, StepKind, Turn, Work } from "./item";
 
 /** Seeded so every run draws the same thread. */
 function random(seed: number): () => number {
@@ -110,52 +110,134 @@ function diff(fake: Fake): FileChange {
 }
 
 type Draft = Item extends infer T ? (T extends Item ? Omit<T, "id" | "turnId"> : never) : never;
+/** A group as the source sends it: the row, then its steps' items. */
+type GroupDraft = { group: { kind: StepKind; n: number }[]; members: Draft[] };
 
-/** One turn's items, as a finished turn holds them. */
-function turnItems(fake: Fake): Draft[] {
-  const items: Draft[] = [{ kind: "message", role: "user", text: paragraph(fake), streaming: false }];
-  if (fake.rand() < 0.7) items.push({ kind: "reasoning", text: paragraph(fake), streaming: false });
-  for (let at = between(fake, 0, 6); at > 0; at--) {
+const READS = ["crates/daemon/src/fold.rs", "app/ui/src/thread/item.ts", "Cargo.toml", "app/main/main.ts"];
+
+/** `count` steps of one kind, as the items a turn holds for them. */
+function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
+  return Array.from({ length: count }, (): Draft => {
     const lines = fake.rand() < 0.03 ? between(fake, 500, 3000) : between(fake, 0, 40);
-    items.push({
+    const tool = (name: string, input: string): Draft => ({
       kind: "tool",
-      name: pick(fake, ["shell", "read", "search", "web"]),
-      input: pick(fake, COMMANDS),
+      name,
+      input,
       output: output(fake, lines),
       progress: fake.rand() < 0.05 ? "failed" : "done",
       exitCode: 0,
     });
-  }
-  if (fake.rand() < 0.4) items.push({ kind: "fileChange", changes: Array.from({ length: between(fake, 1, 4) }, () => diff(fake)), progress: "done" });
-  const roll = fake.rand();
-  if (roll < 0.05) items.push({ kind: "approval", title: `Run ${pick(fake, COMMANDS)}`, detail: sentence(fake), decision: fake.rand() < 0.8 ? "approved" : "denied" });
-  else if (roll < 0.08) items.push({ kind: "question", question: sentence(fake), options: ["Yes", "No", "Not now"], answer: "Yes" });
-  else if (roll < 0.11) items.push({ kind: "childAgent", sessionId: id(fake, "session"), title: sentence(fake).slice(0, 48), progress: "done" });
-  else if (roll < 0.12) items.push({ kind: "compaction", summary: paragraph(fake) });
-  else if (roll < 0.15) items.push({ kind: "notice", level: pick(fake, ["info", "warning", "error"] as const), text: sentence(fake) });
-  else if (roll < 0.16) items.push({ kind: "unknown", raw: { type: "provider.custom", payload: { value: between(fake, 1, 99) } } });
-  items.push({ kind: "message", role: "assistant", text: markdown(fake), streaming: false });
-  return items;
+    switch (kind) {
+      case "run":
+        return tool("shell", pick(fake, COMMANDS));
+      case "read":
+        return tool("read", pick(fake, READS));
+      case "search":
+        return tool("search", `"${pick(fake, WORDS)}" in ${pick(fake, ["crates", "app/ui/src", "app/main"])}`);
+      case "web":
+        return tool("web", `${pick(fake, WORDS)} ${pick(fake, WORDS)}`);
+      case "agent":
+        return { kind: "childAgent", sessionId: id(fake, "session"), title: sentence(fake).slice(0, 48), progress: "done" };
+      case "other":
+        return tool("issues.search", pick(fake, WORDS));
+      case "edit":
+        return { kind: "fileChange", changes: [diff(fake)], progress: "done" };
+    }
+  });
 }
 
-/** A finished session of about `count` items. `huge` adds one very long tool output and one very long reply. */
-export function fakeSession(count: number, seed = 1, huge = false): Session {
+const KINDS: StepKind[] = ["run", "run", "run", "read", "read", "edit", "edit", "search", "web", "agent", "other"];
+
+/** A group of 1–3 kinds, 1–4 steps each, drawn up front so the source sends the group ready-made. */
+function group(fake: Fake): GroupDraft {
+  const kinds = [...new Set(Array.from({ length: between(fake, 1, 3) }, () => pick(fake, KINDS)))];
+  const plan = kinds.map((kind) => ({ kind, n: between(fake, 1, 4) }));
+  return { group: plan, members: plan.flatMap((step) => steps(fake, step.kind, step.n)) };
+}
+
+/** Something between two groups that ends the first. */
+function part(fake: Fake): Draft | null {
+  const roll = fake.rand();
+  if (roll < 0.08) return { kind: "approval", title: `Allow ${pick(fake, COMMANDS)}?`, detail: sentence(fake), decision: fake.rand() < 0.8 ? "approved" : "denied" };
+  if (roll < 0.13) return { kind: "question", question: sentence(fake), options: ["Yes", "No", "Not now"], answer: "Yes" };
+  if (roll < 0.15) return { kind: "compaction", summary: paragraph(fake) };
+  if (roll < 0.2) return { kind: "notice", level: pick(fake, ["info", "warning", "error"] as const), text: sentence(fake) };
+  if (roll < 0.22) return { kind: "unknown", raw: { type: "provider.custom", payload: { value: between(fake, 1, 99) } } };
+  return null;
+}
+
+/** One finished turn: the input, its work (thinking, groups, the parts between), then the answer. */
+function turnParts(fake: Fake): (Draft | GroupDraft)[] {
+  const system = fake.rand() < 0.03;
+  const text = system ? "Continue from where you stopped." : paragraph(fake);
+  const parts: (Draft | GroupDraft)[] = [{ kind: "message", role: "user", origin: system ? "system" : "user", text, streaming: false }];
+  if (fake.rand() < 0.7) parts.push({ kind: "reasoning", text: paragraph(fake), streaming: false });
+  for (let at = between(fake, 0, 3); at > 0; at--) {
+    parts.push(group(fake));
+    const between = part(fake);
+    if (between) parts.push(between);
+  }
+  parts.push({ kind: "message", role: "assistant", text: markdown(fake), streaming: false });
+  return parts;
+}
+
+/** Numbers items in order, with group rows and work folds as Rust sends them. */
+class Writer {
+  items: Item[] = [];
+  turns: Turn[] = [];
+  work: Work[] = [];
+  private n = 1;
+
+  add(draft: Draft, turn: Turn, at?: string): Item {
+    const item = { ...draft, id: at ?? `item-${this.n.toString(36)}`, turnId: turn.id, n: this.n++ } as Item;
+    this.items.push(item);
+    return item;
+  }
+
+  turn(fake: Fake, turn: Turn): void {
+    this.turns.push(turn);
+    let groups = 0;
+    let first = 0;
+    let last = 0;
+    const parts = turnParts(fake);
+    for (const [at, part] of parts.entries()) {
+      const work = at > 0 && at < parts.length - 1;
+      if ("group" in part) {
+        const row = this.add({ kind: "group", steps: part.group, span: [this.n + 1, this.n + part.members.length] }, turn, `${turn.id}:g${groups++}`);
+        for (const member of part.members) this.add(member, turn);
+        first ||= row.n!;
+        last = this.n - 1;
+      } else {
+        const item = this.add(part, turn);
+        if (work) {
+          first ||= item.n!;
+          last = item.n!;
+        }
+      }
+    }
+    if (first) this.work.push({ turnId: turn.id, ms: turn.endedAt! - turn.startedAt, folded: [first, last] });
+  }
+}
+
+/** A finished session of about `count` items. `huge` adds one very long command output and one very long reply. */
+export function fakeSession(count: number, seed = 1, huge = false, prefix = ""): Session {
   const fake: Fake = { rand: random(seed), seq: 0 };
-  const turns: Turn[] = [];
-  const items: Item[] = [];
+  const writer = new Writer();
   let time = Date.UTC(2026, 10, 1);
-  while (items.length < count) {
-    const turn: Turn = { id: id(fake, "turn"), status: "done", startedAt: time, endedAt: (time += between(fake, 5, 300) * 1000) };
-    turns.push(turn);
-    for (const draft of turnItems(fake)) items.push({ ...draft, id: id(fake, "item"), turnId: turn.id } as Item);
+  while (writer.items.length < count) {
+    const startedAt = time;
+    const turn: Turn = { id: prefix + id(fake, "turn"), status: "done", startedAt, endedAt: (time += between(fake, 5, 300) * 1000), backend: "fake" };
+    writer.turn(fake, turn);
   }
-  items.length = count;
+  const items = writer.items.slice(0, count).map((item) => (prefix ? { ...item, id: prefix + item.id } : item));
   if (huge && count > 4) {
-    const at = Math.floor(count / 2);
-    items[at] = { id: id(fake, "item"), turnId: items[at]!.turnId, kind: "tool", name: "shell", input: "cargo test -- --nocapture", output: output(fake, 30000), progress: "done", exitCode: 0 };
-    items[at + 1] = { id: id(fake, "item"), turnId: items[at + 1]!.turnId, kind: "message", role: "assistant", text: markdown(fake, 600), streaming: false };
+    const from = Math.floor(count / 2);
+    const tool = items.findIndex((item, at) => at >= from && item.kind === "tool" && item.name === "shell");
+    const answer = items.findIndex((item, at) => at >= from && item.kind === "message" && item.role === "assistant");
+    if (tool >= 0) items[tool] = { ...items[tool]!, input: "cargo test -- --nocapture", output: output(fake, 30000) } as Item;
+    if (answer >= 0) items[answer] = { ...items[answer]!, text: markdown(fake, 600) } as Item;
   }
-  return { id: `session-${seed}`, title: "Fake session", turns, items };
+  return { id: `session-${seed}`, title: "Fake session", turns: writer.turns, items, work: writer.work };
 }
 
 /** A session that changes: a tiny external store for useSyncExternalStore. */
@@ -163,10 +245,12 @@ export class FakeThread {
   session: Session;
   private readonly fake: Fake;
   private readonly listeners = new Set<() => void>();
+  private n: number;
 
   constructor(count: number, seed = 1, huge = false) {
     this.session = fakeSession(count, seed, huge);
     this.fake = { rand: random(seed + 1), seq: 1e9 };
+    this.n = (this.session.items.at(-1)?.n ?? 0) + 1;
   }
 
   subscribe = (listener: () => void) => {
@@ -175,8 +259,8 @@ export class FakeThread {
   };
   get = () => this.session;
 
-  private emit(items: Item[], turns = this.session.turns): void {
-    this.session = { ...this.session, turns, items };
+  private emit(change: Partial<Session>): void {
+    this.session = { ...this.session, ...change };
     for (const listener of this.listeners) listener();
   }
 
@@ -184,57 +268,88 @@ export class FakeThread {
   replace(at: number, item: Item): void {
     const items = this.session.items.slice();
     items[at] = item;
-    this.emit(items);
+    this.emit({ items });
   }
 
-  append(item: Item, turns?: Turn[]): void {
-    this.emit([...this.session.items, item], turns);
+  append(...items: Item[]): void {
+    this.emit({ items: [...this.session.items, ...items] });
   }
 
+  /** Older history arriving above: `count` items numbered before the first one. */
   prepend(count: number): void {
-    const older = fakeSession(count, this.fake.seq++).items.map((item) => ({ ...item, id: id(this.fake, "old") }));
-    this.emit([...older, ...this.session.items]);
+    const older = fakeSession(count, this.fake.seq++, false, `old${this.fake.seq}-`);
+    const shift = (this.session.items[0]?.n ?? 1) - 1 - (older.items.at(-1)?.n ?? 0);
+    const items = older.items.map((item) => {
+      const moved = { ...item, n: item.n! + shift } as Item;
+      return moved.kind === "group" ? { ...moved, span: [moved.span[0] + shift, moved.span[1] + shift] as [number, number] } : moved;
+    });
+    const work = (older.work ?? []).map((each) => ({ ...each, folded: [each.folded[0] + shift, each.folded[1] + shift] as [number, number] }));
+    this.emit({ items: [...items, ...this.session.items], turns: [...older.turns, ...this.session.turns], work: [...work, ...(this.session.work ?? [])] });
+  }
+
+  private item(draft: Draft, turn: Turn, at?: string): Item {
+    return { ...draft, id: at ?? id(this.fake, "item"), turnId: turn.id, n: this.n++ } as Item;
+  }
+
+  /** Grows item `at`'s text to `full`, paced by the clock (a slow renderer gets the same text in fewer updates). */
+  private async grow(at: number, item: Item, full: string, charsPerSecond: number, stopped: () => boolean, wait: (ms: number) => Promise<unknown>) {
+    const start = performance.now();
+    let shown = 0;
+    while (!stopped() && shown < full.length) {
+      await wait(16 + this.fake.rand() * 34);
+      const due = Math.min(full.length, Math.floor(((performance.now() - start) / 1000) * charsPerSecond));
+      if (due === shown) continue;
+      shown = due;
+      this.replace(at, withText(item, full.slice(0, shown), false));
+    }
+    if (!stopped()) this.replace(at, withText(item, full, true));
   }
 
   /**
-   * Streams turns for ever until stopped: reasoning, a tool whose output grows, then a markdown reply.
-   * Text is paced by the clock, not by ticks, so a slow renderer gets the same text in fewer updates.
+   * Streams turns for ever until stopped: thinking, a group of commands whose output grows, then a markdown reply,
+   * then the turn's work summary. `prefill` blocks of reply are there before it starts growing.
    */
   stream(tokensPerSecond = 60, prefill = 0): () => void {
     const charsPerSecond = tokensPerSecond * 4;
     let stopped = false;
     let timer = 0;
+    const wait = (ms: number) => new Promise((done) => (timer = window.setTimeout(done, ms)));
     const run = async () => {
       while (!stopped) {
-        const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null };
-        const turns = [...this.session.turns, turn];
-        this.append({ id: id(this.fake, "item"), turnId: turn.id, kind: "message", role: "user", text: paragraph(this.fake), streaming: false }, turns);
-        const plan: Draft[] = [
-          { kind: "reasoning", text: paragraph(this.fake), streaming: true },
-          { kind: "tool", name: "shell", input: pick(this.fake, COMMANDS), output: output(this.fake, between(this.fake, 20, 200)), progress: "running", exitCode: null },
-          { kind: "message", role: "assistant", text: markdown(this.fake, between(this.fake, 4, 12)), streaming: true },
-        ];
-        if (prefill) plan[2] = { kind: "message", role: "assistant", text: markdown(this.fake, prefill + 20), streaming: true };
-        for (const draft of plan) {
-          const full = draft.kind === "tool" ? draft.output : "text" in draft ? draft.text : "";
-          const item = { ...draft, id: id(this.fake, "item"), turnId: turn.id } as Item;
-          const at = this.session.items.length;
-          const head = prefill && draft.kind === "message" ? markdown({ rand: random(prefill), seq: 0 }, prefill) + "\n\n" : "";
-          this.append(withText(item, head, false));
-          const start = performance.now();
-          let shown = 0;
-          while (!stopped && shown < full.length) {
-            await new Promise((done) => (timer = window.setTimeout(done, 16 + this.fake.rand() * 34)));
-            const due = Math.min(full.length, Math.floor(((performance.now() - start) / 1000) * charsPerSecond));
-            if (due === shown) continue;
-            shown = due;
-            this.replace(at, withText(item, head + full.slice(0, shown), false));
+        const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake" };
+        this.emit({ turns: [...this.session.turns, turn] });
+        this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false }, turn));
+        const thought = this.item({ kind: "reasoning", text: "", streaming: true }, turn);
+        this.append(thought);
+        await this.grow(this.session.items.length - 1, thought, paragraph(this.fake), charsPerSecond, () => stopped, wait);
+        // The group row comes with its first step and is replaced as each next step starts.
+        const commands = between(this.fake, 1, 3);
+        type Group = Extract<Item, { kind: "group" }>;
+        let row: Group | null = null;
+        for (let step = 1; step <= commands && !stopped; step++) {
+          const fresh: boolean = row === null;
+          const base: Group = row ?? (this.item({ kind: "group", steps: [], span: [0, 0] }, turn, `${turn.id}:g0`) as Group);
+          const command = this.item({ kind: "tool", name: "shell", input: pick(this.fake, COMMANDS), output: "", progress: "running", exitCode: null }, turn);
+          const next: Group = { ...base, steps: [{ kind: "run", n: step }], span: [fresh ? command.n! : base.span[0], command.n!] };
+          row = next;
+          if (fresh) this.append(next, command);
+          else {
+            this.replace(this.session.items.findIndex((item) => item.id === base.id), next);
+            this.append(command);
           }
-          if (stopped) return;
-          this.replace(at, withText(item, head + full, true));
+          await this.grow(this.session.items.length - 1, command, output(this.fake, between(this.fake, 20, 200)), charsPerSecond * 4, () => stopped, wait);
         }
+        const head = prefill ? markdown({ rand: random(prefill), seq: 0 }, prefill) + "\n\n" : "";
+        const answer = this.item({ kind: "message", role: "assistant", text: head, streaming: true }, turn);
+        const folded: [number, number] = [thought.n!, answer.n! - 1];
+        this.append(answer);
+        await this.grow(this.session.items.length - 1, answer, head + markdown(this.fake, prefill ? prefill + 20 : between(this.fake, 4, 12)), charsPerSecond, () => stopped, wait);
+        if (stopped) return;
         const ended = { ...turn, status: "done" as const, endedAt: Date.now() };
-        this.emit(this.session.items, this.session.turns.map((each) => (each.id === turn.id ? ended : each)));
+        this.emit({
+          turns: this.session.turns.map((each) => (each.id === turn.id ? ended : each)),
+          work: [...(this.session.work ?? []), { turnId: turn.id, ms: ended.endedAt - turn.startedAt, folded }],
+        });
       }
     };
     void run();
