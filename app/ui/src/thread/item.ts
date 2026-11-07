@@ -1,6 +1,8 @@
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
 
-// Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`.
+// Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`, and
+// `sentAt`, a tool's `step`/`startedAt`/`endedAt`, `added`/`removed`, `action`, `heading` and a compaction's `progress`.
+// A null number or text means "not reported": rows show nothing for it, never 0 or an empty label.
 
 export type Session = {
   id: string;
@@ -40,7 +42,13 @@ export type FileChange = {
   from: string | null;
   /** Unified diff. */
   diff: string;
+  /** Lines added and removed; null when not reported. */
+  added: number | null;
+  removed: number | null;
 };
+
+/** What an approval asks to do, provider-neutral (the old app's approval kinds). */
+export type ApprovalAction = "command" | "edit" | "network" | "permission" | "plan" | "land" | "message" | "browser" | "other";
 
 type Base = {
   id: string;
@@ -58,13 +66,21 @@ export type Item = Base &
         streaming: boolean;
         /** Who sent an input item: the user, or the app on their behalf. */
         origin?: "user" | "system";
+        /** When it was sent, ms since the epoch. */
+        sentAt?: number;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first
      * and last, which follow it. Its id is the turn id plus the group's index in the turn, so an update replaces it.
      */
     | { kind: "group"; steps: { kind: StepKind; n: number }[]; span: [number, number] }
-    | { kind: "reasoning"; text: string; streaming: boolean }
+    | {
+        kind: "reasoning";
+        text: string;
+        streaming: boolean;
+        /** The newest bold heading in the text, which Rust extracts; null when there is none. */
+        heading?: string | null;
+      }
     | {
         kind: "tool";
         /** What the agent ran, as it named it: a shell command, a search, an MCP tool. */
@@ -73,12 +89,17 @@ export type Item = Base &
         output: string;
         progress: Progress;
         exitCode: number | null;
+        /** Which kind of step it is, the same kinds as groups. */
+        step?: StepKind;
+        startedAt?: number;
+        /** Null while it runs or when not reported. */
+        endedAt?: number | null;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress }
-    | { kind: "approval"; title: string; detail: string; decision: "approved" | "denied" | null }
+    | { kind: "approval"; title: string; detail: string; decision: "approved" | "denied" | null; action?: ApprovalAction }
     | { kind: "question"; question: string; options: string[]; answer: string | null }
     | { kind: "childAgent"; sessionId: string; title: string; progress: Progress }
-    | { kind: "compaction"; summary: string | null }
+    | { kind: "compaction"; summary: string | null; progress?: Progress }
     | { kind: "notice"; level: "info" | "warning" | "error"; text: string }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
