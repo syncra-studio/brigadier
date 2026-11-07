@@ -1,6 +1,7 @@
 // The thread on fake data: `pnpm thread`. Pick a size, stream replies, jump around.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import { WorkingLine } from "../components/thread/work";
 import { FakeThread } from "./fake";
 import { Thread, type ThreadHandle } from "./thread";
 
@@ -28,6 +29,7 @@ export function Demo() {
   const thread = useRef<ThreadHandle>(null);
   const store = useMemo(() => new FakeThread(size, 1, huge), [size, huge]);
   useEffect(() => (streaming ? store.stream() : undefined), [store, streaming]);
+  const running = useSyncExternalStore(store.subscribe, () => store.get().turns.at(-1)?.status === "running");
   return (
     <main className="fixed inset-0 flex flex-col">
       {/* Buttons in a drag region don't take clicks, so only the empty parts drag. */}
@@ -50,7 +52,7 @@ export function Demo() {
         <div className="app-drag h-full flex-1" />
       </header>
       <div className="min-h-0 flex-1">
-        <Thread key={`${size}:${huge}`} source={store} ref={thread} />
+        <Thread key={`${size}:${huge}`} source={store} ref={thread} footer={running ? <Working store={store} /> : null} />
       </div>
       <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-4">
         <textarea
@@ -62,6 +64,20 @@ export function Demo() {
       </div>
     </main>
   );
+}
+
+/** The running turn's working line: its newest thought's heading, else "Thinking". */
+function Working({ store }: { store: FakeThread }) {
+  const words = useSyncExternalStore(store.subscribe, () => {
+    const { items } = store.get();
+    const turnId = items.at(-1)?.turnId;
+    for (let at = items.length - 1; at >= 0 && items[at]!.turnId === turnId; at--) {
+      const item = items[at]!;
+      if (item.kind === "reasoning" && item.heading) return item.heading;
+    }
+    return "Thinking";
+  });
+  return <WorkingLine state="live">{words}</WorkingLine>;
 }
 
 function Toggle({ on, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
