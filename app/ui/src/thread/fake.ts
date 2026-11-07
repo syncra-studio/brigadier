@@ -123,7 +123,7 @@ function heading(fake: Fake): string | null {
 /** Times a finished session's items: inputs when sent, tools when run; some tools report no end. */
 function stamp(draft: Draft, at: number): Draft {
   if (draft.kind === "message" && draft.role === "user") return { ...draft, sentAt: at };
-  if (draft.kind === "tool") return { ...draft, startedAt: at, endedAt: at % 13000 === 0 ? null : at + (at % 7000) + 400 };
+  if (draft.kind === "tool" || draft.kind === "childAgent") return { ...draft, startedAt: at, endedAt: at % 13000 === 0 ? null : at + (at % 7000) + 400 };
   return draft;
 }
 
@@ -156,7 +156,16 @@ function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
       case "web":
         return tool("web", `${pick(fake, WORDS)} ${pick(fake, WORDS)}`);
       case "agent":
-        return { kind: "childAgent", sessionId: id(fake, "session"), title: sentence(fake).slice(0, 48), progress: "done" };
+        // Some subagents report no step count or answer.
+        return {
+          kind: "childAgent",
+          sessionId: id(fake, "session"),
+          title: sentence(fake).slice(0, 48),
+          progress: "done",
+          current: null,
+          steps: fake.rand() < 0.9 ? between(fake, 2, 40) : null,
+          answer: fake.rand() < 0.85 ? paragraph(fake) : null,
+        };
       case "other":
         return tool("issues.search", pick(fake, WORDS));
       case "edit":
@@ -215,10 +224,14 @@ class Writer {
 
   turn(fake: Fake, turn: Turn): void {
     this.turns.push(turn);
+    const parts = turnParts(fake);
+    // Each approval or question waited on the user; "Worked for" leaves the waits out.
+    const asks = parts.filter((part) => "kind" in part && (part.kind === "approval" || part.kind === "question")).length;
+    turn.waitingSince = null;
+    turn.waitedMs = Math.min(asks * between(fake, 3, 90) * 1000, Math.floor((turn.endedAt! - turn.startedAt) / 2));
     let groups = 0;
     let first = 0;
     let last = 0;
-    const parts = turnParts(fake);
     for (const [at, part] of parts.entries()) {
       const work = at > 0 && at < parts.length - 1;
       if ("group" in part) {
@@ -234,7 +247,7 @@ class Writer {
         }
       }
     }
-    if (first) this.work.push({ turnId: turn.id, ms: turn.endedAt! - turn.startedAt, folded: [first, last] });
+    if (first) this.work.push({ turnId: turn.id, ms: turn.endedAt! - turn.startedAt - turn.waitedMs, folded: [first, last] });
   }
 }
 
@@ -336,7 +349,7 @@ export class FakeThread {
     const wait = (ms: number) => new Promise((done) => (timer = window.setTimeout(done, ms)));
     const run = async () => {
       while (!stopped) {
-        const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake" };
+        const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake", waitingSince: null, waitedMs: 0 };
         this.emit({ turns: [...this.session.turns, turn] });
         this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false, sentAt: Date.now() }, turn));
         const thought = this.item({ kind: "reasoning", text: "", streaming: true, heading: heading(this.fake) }, turn);
