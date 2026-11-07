@@ -1,7 +1,7 @@
 // Icons copied from @openai/apps-sdk-ui 0.2.2 (MIT, see THIRD_PARTY_NOTICES.md). Add only what the app draws.
 import type { SVGProps } from "react";
 
-type IconProps = SVGProps<SVGSVGElement>;
+export type IconProps = SVGProps<SVGSVGElement>;
 
 export function Check(props: IconProps) {
   return (
@@ -122,3 +122,4 @@ export function ExclamationMarkCircle(props: IconProps) {
     </svg>
   );
 }
+export * from "./thread";

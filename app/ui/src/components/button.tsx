@@ -30,6 +30,8 @@ const SIZES = {
   // Smaller boxes take smaller corners, so every icon button keeps the 28px one's shape.
   "icon-sm": "rounded-control size-control-xs svg:size-icon-sm motion-safe:active:scale-press",
   "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md motion-safe:active:scale-press",
+  // An answer's actions (copy, …): a little roomier than icon-sm, the same glyph.
+  "icon-answer": "rounded-control size-6.5 svg:size-icon-sm motion-safe:active:scale-press",
 };
 
 // Each property is set once (cx doesn't merge): small sizes take the small type, soft looks the label's regular type.

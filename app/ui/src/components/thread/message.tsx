@@ -1,0 +1,136 @@
+import { type ReactNode, useState } from "react";
+
+import { ChevronRightAlt } from "../../icons";
+import { CopyButton } from "../copy-button";
+import { cx } from "../cx";
+
+const DAY_MS = 86_400_000;
+const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const monthDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+const fullDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+/** When a message was sent: "3:09 PM", "Yesterday 3:09 PM", "Mon 3:09 PM", "Mon, Mar 3 at 3:09 PM", "Mar 3, 2025 at 3:09 PM". */
+export function sentAt(ms: number, now = Date.now()): string {
+  const at = new Date(ms);
+  const today = new Date(now).setHours(0, 0, 0, 0);
+  const clock = time.format(at);
+  if (ms >= today) return clock;
+  if (ms >= today - DAY_MS) return `Yesterday ${clock}`;
+  if (ms >= today - 6 * DAY_MS) return `${weekday.format(at)} ${clock}`;
+  if (at.getFullYear() === new Date(now).getFullYear()) return `${monthDay.format(at)} at ${clock}`;
+  return `${fullDate.format(at)} at ${clock}`;
+}
+
+// shortcut: guesses a long message from its text (no measuring, so rows stay cheap); a message of many
+// short wrapped lines may show "Show more" with little to show. Measure once rows may measure.
+const LONG_LINES = 20;
+const LONG_CHARS = 1200;
+
+/**
+ * The user's message, on the right. Hovered or focused, its time and a copy button show under it; past 20
+ * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why with
+ * Try again and Discard. `dimmed` greys it (a message the turn hasn't reached).
+ */
+export function UserBubble({
+  text,
+  time,
+  sending,
+  failed,
+  onRetry,
+  onDiscard,
+  dimmed = false,
+}: {
+  text: string;
+  /** When it was sent (ms). */
+  time?: number;
+  sending?: boolean;
+  /** Why it wasn't sent. */
+  failed?: string;
+  onRetry?: () => void;
+  onDiscard?: () => void;
+  dimmed?: boolean;
+}) {
+  // shortcut: the fold is lost when the row scrolls out of view; switch to the thread's useKept once it's on main.
+  const [more, setMore] = useState(false);
+  const long = text.length > LONG_CHARS || text.split("\n", LONG_LINES + 1).length > LONG_LINES;
+  return (
+    <div className="group/user flex flex-col items-end gap-y-1 px-2">
+      <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", (dimmed || sending) && "opacity-row-disabled")}>
+          <p className={cx("whitespace-pre-wrap wrap-anywhere", long && !more && "max-h-user-message overflow-y-clip")}>{text}</p>
+          {long && (
+            <button
+              type="button"
+              aria-expanded={more}
+              onClick={() => setMore(!more)}
+              className="flex cursor-pointer items-center gap-0.5 self-start rounded-control pt-1 text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring"
+            >
+              {more ? "Show less" : "Show more"}
+              <ChevronRightAlt className={cx("size-icon-xs transition-transform", more ? "-rotate-90" : "rotate-90")} />
+            </button>
+          )}
+        </div>
+        {sending ? (
+          <p className="text-xs text-muted-foreground">Sending…</p>
+        ) : failed ? (
+          <p className="flex flex-wrap items-center justify-end gap-x-2 text-xs text-muted-foreground">
+            <span className="wrap-anywhere">Not sent · {failed}</span>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                Try again
+              </button>
+            )}
+            {onDiscard && (
+              <button type="button" onClick={onDiscard} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
+                Discard
+              </button>
+            )}
+          </p>
+        ) : (
+          <div className="-mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100">
+            {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
+            <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A line the app sent on the user's behalf: centred and muted. */
+export function SystemLine({ text }: { text: string }) {
+  return (
+    <div className="flex justify-center px-2 text-center text-xs text-muted-foreground">
+      <p className="max-w-4/5 whitespace-pre-wrap">{text}</p>
+    </div>
+  );
+}
+
+/**
+ * The agent's answer: `children` is the rendered reply. Once it stops streaming, its actions show under
+ * it, always (not only on hover): copy, then the time.
+ */
+export function AssistantMessage({ text, streaming, time, children }: { text: string; streaming: boolean; time?: number; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 px-2">
+      <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
+      {!streaming && (
+        <div className="-ms-1 flex items-center gap-0.5 text-faint-foreground">
+          <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
+          {time !== undefined && <span className="ps-1 text-xs tabular-nums">{sentAt(time)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The live "Thinking" line while the agent thinks: the thought's newest heading if there is one. */
+export function ThinkingLine({ heading }: { heading?: string }) {
+  const words = heading || "Thinking";
+  return (
+    <p key={words} className="w-fit max-w-full truncate text-sm leading-5.25 shimmer">
+      {words}
+    </p>
+  );
+}
