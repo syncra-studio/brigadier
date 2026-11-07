@@ -27,7 +27,7 @@ export function Tooltip(props: BaseTooltip.Root.Props) {
 export const TooltipTrigger = BaseTooltip.Trigger;
 
 // One spacing step from the trigger, read from the theme.
-function spacingPx(): number {
+export function spacingPx(): number {
   const root = getComputedStyle(document.documentElement);
   return parseFloat(root.getPropertyValue("--spacing")) * parseFloat(root.fontSize);
 }

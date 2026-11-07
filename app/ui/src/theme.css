@@ -56,6 +56,14 @@
   --color-syntax-builtin: #ffa657;
   --color-syntax-comment: #8b949e;
   --color-syntax-tag: #7ee787;
+  /* A select's pill at rest, fainter than fill-subtle. */
+  --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+  /* Behind an open dialog: the page, dimmed and blurred. */
+  --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
+  --color-success-border: color-mix(in oklab, var(--color-success) 30%, transparent);
+  --color-destructive-border: color-mix(in oklab, var(--color-destructive) 30%, transparent);
+  /* Words that act inside a toast, hovered. */
+  --color-action-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -93,6 +101,8 @@
   --font-weight-semibold: 600;
 
   --tracking-tooltip: -0.01em;
+  --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
 
   --spacing: 0.25rem;
   --spacing-control-xs: 1.5rem;
@@ -106,16 +116,24 @@
   --spacing-titlebar: 2.75rem;
   --spacing-traffic-lights: 4.75rem;
   --container-reading: 46rem;
+  /* A menu's least width, and a select's longest list and widest menu. */
+  --spacing-menu: 8rem;
+  --spacing-select: 24rem;
+  --container-dialog: 24rem;
+  --container-toast: 32rem;
   /* A popup slides in from its trigger by this much. */
   --spacing-popup-shift: 0.5rem;
 
   --radius-sm: 0.375rem;
+  --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
   --radius-control: 0.5rem;
   --radius-surface: 0.75rem;
   --radius-tooltip: 1rem;
   --radius-overlay: 1.25rem;
+  /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
+  --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
   --radius-capsule: 9999px;
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
@@ -129,10 +147,22 @@
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-popup: ease;
   --default-transition-duration: 150ms;
+  /* Menus, popovers and dialogs open and close faster than other motion. */
+  --duration-popup-fast: 100ms;
+  --blur-xs: 4px;
+  --animate-spin: spin 1s linear infinite;
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
   --opacity-switch-disabled: 60%;
+  --opacity-spinner-track: 25%;
+  --opacity-dialog-close: 70%;
+  --opacity-toast-close: 80%;
   --scale-press: 90%;
   --scale-press-button: 95%;
   --scale-popup: 95%;
@@ -158,6 +188,12 @@
   }
 }
 @custom-variant active (&:active:not(:disabled, [data-disabled]));
+
+/* A menu row Base UI highlights (pointer or keys), and a row marked destructive. */
+@custom-variant highlighted (&[data-highlighted]);
+@custom-variant destructive (&[data-variant="destructive"]);
+/* An icon inside a row that sets no colour of its own. */
+@custom-variant svg-uncoloured (& :where(svg:not([class*="text-"])));
 
 /* An icon inside a control, unless the icon sets its own size. */
 @custom-variant svg (& :where(svg:not([class*="size-"])));
@@ -200,4 +236,91 @@
   &[data-instant] {
     transition: none;
   }
+}
+
+/* Base UI's popup measures: room left on screen, the trigger's width. */
+@utility max-h-available {
+  max-height: var(--available-height);
+}
+@utility min-w-anchor {
+  min-width: var(--anchor-width);
+}
+
+/* A menu's or popover's way in (faded, shifted toward its trigger) and out (faded). */
+@utility menu-motion {
+  transform-origin: var(--transform-origin);
+  transition-property: opacity, translate;
+  transition-duration: var(--duration-popup-fast);
+  transition-timing-function: var(--ease-popup);
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+  }
+  &[data-side="bottom"][data-starting-style] {
+    translate: 0 calc(var(--spacing-popup-shift) * -1);
+  }
+  &[data-side="top"][data-starting-style] {
+    translate: 0 var(--spacing-popup-shift);
+  }
+  &[data-side="left"][data-starting-style] {
+    translate: var(--spacing-popup-shift) 0;
+  }
+  &[data-side="right"][data-starting-style] {
+    translate: calc(var(--spacing-popup-shift) * -1) 0;
+  }
+  &[data-instant] {
+    transition: none;
+  }
+}
+
+/* A dialog's way in and out: faded and a little smaller. Its backdrop only fades. */
+@utility dialog-motion {
+  transition-property: opacity, scale;
+  transition-duration: var(--duration-popup-fast);
+  transition-timing-function: var(--ease-popup);
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    scale: var(--scale-popup);
+  }
+}
+@utility backdrop-motion {
+  transition-property: opacity;
+  transition-duration: var(--duration-popup-fast);
+  transition-timing-function: var(--ease-popup);
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+  }
+}
+
+/* A dialog held by its top edge where it opened (dialog.tsx measures it), so new content only grows
+   it downward. */
+@utility dialog-top {
+  top: attr(data-top px, 0px);
+}
+
+/* A toast's way in (faded, from above) and out (faded). */
+@utility toast-motion {
+  transition-property: opacity, translate;
+  transition-duration: var(--default-transition-duration);
+  transition-timing-function: var(--ease-popup);
+  &[data-starting-style] {
+    opacity: 0;
+    translate: 0 calc(var(--spacing-popup-shift) * -1);
+  }
+  &[data-ending-style] {
+    opacity: 0;
+  }
+}
+
+
+/* The old app's red, for the gallery's "Old app" column only: deleted with that column. */
+@utility old-app-colours {
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  --color-destructive-border: color-mix(in oklab, var(--color-destructive) 30%, transparent);
 }
