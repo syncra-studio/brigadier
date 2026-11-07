@@ -8,9 +8,11 @@
   "scripts": {
     "start": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo build && pnpm build && electron .",
     "build": "tsc -p app/main && vite build app/ui",
-    "typecheck": "tsc -p app/main --noEmit && tsc -p app/ui --noEmit"
+    "typecheck": "tsc -p app/main --noEmit && tsc -p app/ui --noEmit",
+    "gallery": "tsc -p app/main && vite build app/ui --mode gallery && electron ."
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
