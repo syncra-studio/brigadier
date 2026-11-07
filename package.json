@@ -9,7 +9,7 @@
     "start": "PATH=\"$HOME/.cargo/bin:$PATH\" cargo build && pnpm build && electron .",
     "build": "tsc -p app/main && vite build app/ui",
     "typecheck": "tsc -p app/main --noEmit && tsc -p app/ui --noEmit",
-    "gallery": "tsc -p app/main && vite build app/ui --mode gallery && electron ."
+    "gallery": "scripts/gallery"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
