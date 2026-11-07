@@ -17,7 +17,10 @@ export function RowAction({ className, ...props }: ComponentProps<"button">) {
   );
 }
 
-/** A row's hover actions, over its end. They stay while a menu they opened is open. */
+/**
+ * A row's hover actions, over its end. They stay while a menu they opened is open. The row must keep its
+ * hover look while the pointer is on them: style it with `group-hover/row:` as NavRow does.
+ */
 export function RowActionsSlot({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <div

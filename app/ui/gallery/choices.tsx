@@ -7,32 +7,8 @@ import { Radio, RadioGroup } from "../src/components/radio";
 import { ScrollFade } from "../src/components/scroll-fade";
 import { type Choice, Segmented } from "../src/components/segmented";
 import { Skeleton } from "../src/components/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../src/components/tabs";
 import { ChevronDown, Copy, InfoCircle, Warning } from "../src/icons";
 import { Compare, Section, State } from "./parts";
-
-function TabsDemo({ disabled }: { disabled?: boolean }) {
-  return (
-    <Tabs defaultValue="events" className="w-64">
-      <TabsList>
-        <TabsTrigger value="events">Events</TabsTrigger>
-        <TabsTrigger value="brain">Brain</TabsTrigger>
-        <TabsTrigger value="providers" disabled={disabled}>
-          Providers
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent value="events" className="text-sm text-muted-foreground">
-        Events panel
-      </TabsContent>
-      <TabsContent value="brain" className="text-sm text-muted-foreground">
-        Brain panel
-      </TabsContent>
-      <TabsContent value="providers" className="text-sm text-muted-foreground">
-        Providers panel
-      </TabsContent>
-    </Tabs>
-  );
-}
 
 const RANGES: Choice<string>[] = [
   { value: "day", label: "Day" },
@@ -98,22 +74,6 @@ function CollapsibleDemo({ open }: { open?: boolean }) {
 export function Choices() {
   return (
     <>
-      <Section title="Tabs">
-        <Compare name="live · hover · focus · with a disabled tab">
-          <State label="live">
-            <TabsDemo />
-          </State>
-          <State label="hover" frozen="hover">
-            <TabsDemo />
-          </State>
-          <State label="focus" frozen="focus">
-            <TabsDemo />
-          </State>
-          <State label="disabled tab">
-            <TabsDemo disabled />
-          </State>
-        </Compare>
-      </Section>
       <Section title="Segmented">
         <Compare name="pills · on a track (fill) · icons with tips · a choice with a reason · disabled">
           <State label="live">

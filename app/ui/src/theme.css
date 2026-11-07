@@ -70,8 +70,6 @@
   --color-quiet-foreground: color-mix(in oklab, var(--color-foreground) 65%, transparent);
   /* An unchosen segment, a sidebar section's title. */
   --color-faint-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
-  /* The chosen tab's fill. */
-  --color-tab-active: color-mix(in oklab, var(--color-input) 30%, transparent);
   /* An error banner's edge. */
   --color-destructive-line: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   /* A progress bar: filling, and stopped. */

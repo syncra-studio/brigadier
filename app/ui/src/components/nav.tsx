@@ -8,14 +8,18 @@ import { cx } from "./cx";
  * their list away, and lists of rows.
  */
 
-/** A navigation row: icon, label, then anything at its end. Hovered or current (`aria-current`, `data-active`), it is filled. */
+/**
+ * A navigation row: icon, label, then anything at its end. Hovered or current (`aria-current`, `data-active`),
+ * it is filled. Inside a `group/row` it stays filled while the pointer is anywhere in the row, its hover
+ * actions (RowActionsSlot) too.
+ */
 export function NavRow({ className, ...props }: ComponentProps<"button">) {
   return (
     <button
       type="button"
       className={cx(
         "relative flex h-nav-row w-full min-w-0 cursor-pointer items-center gap-2 rounded-nav px-2 text-start text-sm text-strip-foreground",
-        "hover:bg-fill focus-visible:focus-ring page-current:bg-fill data-active:bg-fill svg:shrink-0 svg:size-icon-md",
+        "hover:bg-fill group-hover/row:bg-fill focus-visible:focus-ring page-current:bg-fill data-active:bg-fill svg:shrink-0 svg:size-icon-md",
         className,
       )}
       {...props}
