@@ -1,0 +1,11 @@
+[package]
+name = "brigadier-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+brigadier-frames = { path = "../frames" }
+libc.workspace = true
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json.workspace = true
