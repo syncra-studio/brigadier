@@ -262,7 +262,7 @@ export function Panes() {
             <CopyButton text="brigadier --version" />
           </State>
           <State label="labeled divider">
-            <div className="flex w-72">
+            <div className="w-72">
               <LabeledDivider>Usage limit reset · 9:39 PM</LabeledDivider>
             </div>
           </State>
