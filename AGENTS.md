@@ -35,4 +35,4 @@
 ## Theme
 
 - Add no token without picking it from the old theme or getting the owner's OK.
-- The UI/UX follows a reference desktop app, with our own customizations.
+- The UI/UX reference is the old app (`~/Development/brigadier-ai`, read-only).
