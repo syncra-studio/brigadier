@@ -194,3 +194,27 @@
   }
 }
 
+/* Pending owner pick (D20): Apple's system colours (HIG, dark) laid over the status tokens, for the gallery's
+   "Colours" comparison. The losers are deleted once the owner picks. */
+@utility pending-apple-red-tint {
+  --color-destructive: rgb(255 66 69);
+  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+}
+@utility pending-apple-red-solid {
+  --color-destructive: rgb(255 66 69);
+  --color-destructive-fill: var(--color-destructive);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 90%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+}
+@utility pending-apple-status {
+  --color-warning: rgb(255 146 48);
+  --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
+  --color-success: rgb(48 209 88);
+  --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
+  --color-link: rgb(0 145 255);
+  --color-toggle-on: rgb(0 145 255);
+}
