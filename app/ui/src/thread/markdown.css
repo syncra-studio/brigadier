@@ -1,0 +1,64 @@
+/* A reply's markdown, as the old app drew it. Any renderer's plain elements get these. */
+@reference "../theme.css";
+
+.markdown {
+  @apply font-prose text-base break-words;
+
+  & :is(h1, h2, h3, h4, h5, h6) {
+    @apply mt-5 mb-2 font-semibold first:mt-0 last:mb-0;
+  }
+  & h1 {
+    @apply text-xl;
+  }
+  & h2 {
+    @apply text-lg;
+  }
+  & :is(h3, h4) {
+    @apply text-base;
+  }
+  & :is(h5, h6) {
+    @apply text-sm;
+  }
+  & :is(p, ul, ol, blockquote, table, hr) {
+    @apply my-3 first:mt-0 last:mb-0;
+  }
+  & :is(ul, ol) {
+    @apply ms-5 marker:text-muted-foreground;
+  }
+  & ul {
+    @apply list-disc;
+  }
+  & ol {
+    @apply list-decimal;
+  }
+  & li + li {
+    @apply mt-1;
+  }
+  & blockquote {
+    @apply border-s-2 border-border ps-4 text-muted-foreground;
+  }
+  & hr {
+    @apply border-divider;
+  }
+  & strong {
+    @apply font-semibold;
+  }
+  & a {
+    @apply underline;
+  }
+  & :not(pre) > code {
+    @apply rounded-sm bg-muted px-1.5 py-0.5 font-mono text-code;
+  }
+  & table {
+    @apply block w-full overflow-x-auto border-collapse text-sm;
+  }
+  & :is(th, td) {
+    @apply px-3 py-2 text-start align-top;
+  }
+  & th {
+    @apply border-b border-border font-semibold;
+  }
+  & tr + tr {
+    @apply border-t border-divider;
+  }
+}
