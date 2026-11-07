@@ -10,11 +10,11 @@
 ## Ponytail
 
 - Use the ponytail skill for all work. Where it isn't installed, follow its core rules: the smallest complete change, reuse before writing, nothing nobody asked for.
-- Write no tests, even where ponytail asks for one. This rule overrides it.
+- Write no tests, even where ponytail asks for one.
 
 ## Done
 
-- No tests, ever. Done means the owner has seen it running.
+- No tests, ever, except `drills/drill.mjs` before a release or a provider CLI change. Done means the owner has seen it running.
 - Show looks on screen before asking the owner to choose between them.
 
 ## Git
