@@ -13,7 +13,7 @@ import { ToolBox, VERBS } from "./tool";
 const HANGING = "ms-2 border-s border-divider ps-3.5 text-sm text-row-foreground";
 
 /** What an approval asks to do, as the old app's approval kinds drew it. */
-export const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
+const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
   command: Dock,
   edit: PencilSquare,
   network: Globe,

@@ -1,4 +1,4 @@
-// Slice 4's thread rows in every state, Current beside Old app, on fake items. The live copies tick: the
+// Slice 4's thread rows in every state, on fake items. The live copies tick: the
 // answer streams, the work header counts, the group's running step changes, the shell output grows.
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
@@ -8,8 +8,7 @@ import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
-import { OldApproval, OldSubagent } from "./old-rows";
-import { Compare, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -130,7 +129,7 @@ function Opened({ children }: { children: ReactNode }) {
 /** A state as wide as the thread's column allows. */
 function Wide({ label, frozen, open, children }: { label: string; frozen?: string; open?: boolean; children: ReactNode }) {
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2">
+    <div className="flex w-full max-w-reading min-w-0 flex-col gap-2">
       <span className="text-2xs text-muted-foreground">{label}</span>
       <div data-frozen={frozen} className="flex w-full min-w-0 flex-col">
         {open ? <Opened>{children}</Opened> : children}
@@ -158,7 +157,7 @@ export function Thread() {
   return (
     <>
       <Section title="Thread · work header · group · working line">
-        <Compare name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
+        <Row name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
           <Wide label="running">
             <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} />
           </Wide>
@@ -180,8 +179,8 @@ export function Thread() {
           <Wide label="focus" frozen="focus">
             <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} />
           </Wide>
-        </Compare>
-        <Compare name="group: shut · open · hover · focus · live (its running step, changing each second)">
+        </Row>
+        <Row name="group: shut · open · hover · focus · live (its running step, changing each second)">
           <State label="shut">
             <GroupRow item={GROUP} live={undefined} open={false} onToggle={noop} />
           </State>
@@ -197,8 +196,8 @@ export function Thread() {
           <State label="live">
             <GroupRow item={GROUP} live={LIVE_STEPS[tick % LIVE_STEPS.length]} open={false} onToggle={noop} />
           </State>
-        </Compare>
-        <Compare name="working line: live · stalled · interrupted · disconnected · thinking · thinking with a heading">
+        </Row>
+        <Row name="working line: live · stalled · interrupted · disconnected · thinking · thinking with a heading">
           <State label="live">
             <WorkingLine state="live">Thinking</WorkingLine>
           </State>
@@ -213,10 +212,10 @@ export function Thread() {
           </State>
           <State label="thinking">{item({ ...base("r1", RUNNING), kind: "reasoning", text: "", streaming: true }, RUNNING)}</State>
           <State label="heading">{item({ ...base("r2", RUNNING), kind: "reasoning", text: "", streaming: true, heading: "Checking the row recipe" }, RUNNING)}</State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Thread · tool steps · shell box">
-        <Compare name="steps by kind: read · search · web · subagent · other · failed · stopped · waiting · in an opened group">
+        <Row name="steps by kind: read · search · web · subagent · other · failed · stopped · waiting · in an opened group">
           <Wide label="done, by kind; hover; focus">
             <div className="flex flex-col gap-1">
               {item(tool("k-read", "read", "read", "src/thread/blocks.ts", "done", { output: "…" }))}
@@ -237,8 +236,8 @@ export function Thread() {
               {item(tool("s-step", "run", "shell", "pnpm test", "done", { exitCode: 0, output: OUTPUT, startedAt: NOW - 41_000, endedAt: NOW }), DONE, true)}
             </div>
           </Wide>
-        </Compare>
-        <Compare
+        </Row>
+        <Row
           name="shell box: success · exit code · running (output growing) · stopped · no output · 900 lines"
         >
           <Wide label="success" open>
@@ -259,10 +258,10 @@ export function Thread() {
           <Wide label="another tool, open" open>
             {item(tool("t-other", "other", "linear.search_issues", '{ "query": "thread rows" }', "done", { output: '[{ "id": "BRG-12", "title": "Thread rows" }]' }))}
           </Wide>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Thread · file changes · diff card">
-        <Compare
+        <Row
           name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open"
         >
           <Wide label="by change; hover shows the counts' colours">
@@ -286,10 +285,10 @@ export function Thread() {
           <Wide label="open: a long diff, folded" open>
             {item({ ...base("f7"), kind: "fileChange", progress: "done", changes: [{ ...file("src/thread/rows.tsx", "modified", 4, 4), diff: LONG_DIFF }] })}
           </Wide>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Thread · messages">
-        <Compare name="user: hover (time, copy) · long (Show more) · sending · not sent · dimmed · system line">
+        <Row name="user: hover (time, copy) · long (Show more) · sending · not sent · dimmed · system line">
           <Wide label="hover" frozen="hover">
             {item({ ...base("u1"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 })}
           </Wide>
@@ -298,29 +297,16 @@ export function Thread() {
             <Bubbles />
           </Wide>
           <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
-        </Compare>
-        <Compare name="answer: streaming (live) · finished with its actions · a long code block">
+        </Row>
+        <Row name="answer: streaming (live) · finished with its actions · a long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
           <Wide label="finished">{item({ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}</Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false })}</Wide>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Thread · approvals · questions · subagents · compaction · notices · unknown">
-        <Compare
+        <Row
           name="approval: waiting · allowed (open) · denied · withdrawn"
-          old={
-            <>
-              <Wide label="waiting">
-                <OldApproval title="Allow this command?" detail="rm -rf dist" decision={null} action="command" />
-              </Wide>
-              <Wide label="allowed">
-                <OldApproval title="Run a command that reaches outside?" detail="curl https://registry.npmjs.org/@base-ui/react" decision="approved" action="network" />
-              </Wide>
-              <Wide label="denied">
-                <OldApproval title="Allow editing this file?" detail="~/.zshrc" decision="denied" action="edit" />
-              </Wide>
-            </>
-          }
         >
           <Wide label="waiting · withdrawn">
             <div className="flex flex-col gap-1">
@@ -332,8 +318,8 @@ export function Thread() {
             {item({ ...base("p2"), kind: "approval", title: "Run a command that reaches outside?", detail: "curl https://registry.npmjs.org/@base-ui/react", decision: "approved", action: "network" })}
           </Wide>
           <Wide label="denied">{item({ ...base("p3"), kind: "approval", title: "Allow editing this file?", detail: "~/.zshrc", decision: "denied", action: "edit" })}</Wide>
-        </Compare>
-        <Compare name="question: waiting · answered (open) · withdrawn">
+        </Row>
+        <Row name="question: waiting · answered (open) · withdrawn">
           <Wide label="question">
             <div className="flex flex-col gap-1">
               {item({ ...base("q1", RUNNING), kind: "question", question: "Which branch?", options: ["main", "ui/kit"], answer: null }, RUNNING)}
@@ -343,18 +329,9 @@ export function Thread() {
           <Wide label="answered, open" open>
             {item({ ...base("q2"), kind: "question", question: "Land on main now?", options: ["Yes", "No"], answer: "Yes, after CI is green." })}
           </Wide>
-        </Compare>
-        <Compare
+        </Row>
+        <Row
           name="subagent: waiting · running (live) · done (open) · failed · stopped · without its step and count"
-          old={
-            <Wide label="subagent">
-              <div className="flex flex-col gap-1">
-                {(["pending", "running", "done", "failed", "cancelled"] as const).map((progress) => (
-                  <OldSubagent key={progress} title="Find the parser" progress={progress} />
-                ))}
-              </div>
-            </Wide>
-          }
         >
           <Wide label="waiting · running (its step changes each second)">
             <div className="flex flex-col gap-1">
@@ -375,8 +352,8 @@ export function Thread() {
               {item({ ...agent("c-done-bare", "done"), steps: null, answer: null })}
             </div>
           </Wide>
-        </Compare>
-        <Compare name="compaction: waiting · running · done · failed · not reported · notices: note · warning · error · unknown (shut, open)">
+        </Row>
+        <Row name="compaction: waiting · running · done · failed · not reported · notices: note · warning · error · unknown (shut, open)">
           <Wide label="compaction">
             <div className="flex w-full flex-col">
               {(["pending", "running", "done", "failed", undefined] as const).map((progress) => (
@@ -395,7 +372,7 @@ export function Thread() {
           <Wide label="unknown, open" open>
             {item({ ...base("x2"), kind: "unknown", raw: { type: "provider.event", data: { a: 1 } } })}
           </Wide>
-        </Compare>
+        </Row>
       </Section>
     </>
   );
