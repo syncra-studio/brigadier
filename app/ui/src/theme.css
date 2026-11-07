@@ -593,3 +593,31 @@
     scale: none !important;
   }
 }
+
+/* ── Pending owner pick (D66): "Apple style" candidates for the Settings section's third column only.
+   Apple's HIG gives no macOS form sizes, so each value approximates System Settings' grouped forms in
+   dark mode. Deleted, or moved up into the theme, once the owner picks. ── */
+@theme static {
+  /* The group's fill, its hairline edge, and its corners. */
+  --color-apple-group: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  --shadow-apple-group: inset 0 0 0 0.5px var(--color-divider);
+  --radius-apple-group: 0.625rem;
+  /* A description under a label (secondary label). */
+  --color-apple-secondary: color-mix(in oklab, var(--color-foreground) 55%, transparent);
+}
+
+/* A hairline (one device pixel) under each row but the last, 10 in from both edges. */
+@utility apple-form-rows {
+  & > :not(:last-child) {
+    position: relative;
+  }
+  & > :not(:last-child)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset-inline: calc(var(--spacing) * 2.5);
+    bottom: 0;
+    height: 0.5px;
+    background: var(--color-divider);
+  }
+}
