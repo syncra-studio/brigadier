@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// One re-runnable drill command for the foundation [D52]. It drives only the `brigadier` CLI and
-// the kernel (signals, ps), never the host's internals, so it sees what any client sees.
+// One re-runnable drill command for the foundation [D52]. It drives only the `brigadier` CLI, the
+// daemon's socket and the kernel (signals, ps), never the host's internals, so it sees what any
+// client sees.
 //
-//   BIN=<dir with brigadier, brigadier-host, brigadier-fake> node drills/drill.mjs <drill> [minutes]
+//   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
 //   drills: killloop, hang, catalogue, scale, sleep
 //
 // Results print as JSON lines; the last line is the summary. Scratch lives under $DRILL_ROOT
@@ -10,6 +11,7 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 
 const BIN = process.env.BIN
@@ -98,6 +100,48 @@ async function waitFor(fn, ms, step = 100) {
   return { ok: false, ms: now() - t }
 }
 
+// The daemon, run against this drill's data folder.
+let daemon = null
+function startDaemon() {
+  daemon = spawn(`${BIN}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA }, detached: true, stdio: 'ignore' })
+  daemon.unref()
+}
+function stopDaemon() {
+  if (daemon) kill(daemon.pid)
+  daemon = null
+}
+// One request on a fresh daemon connection: the reply, or null if nothing answers in time.
+function daemonCall(request, ms = 3000) {
+  return new Promise((resolve) => {
+    const s = net.connect(`${DATA}/daemon.sock`)
+    let buf = Buffer.alloc(0)
+    const done = (v) => { clearTimeout(timer); s.destroy(); resolve(v) }
+    const timer = setTimeout(() => done(null), ms)
+    const frame = (o) => { const b = Buffer.from(JSON.stringify(o)); const h = Buffer.alloc(4); h.writeUInt32BE(b.length); return Buffer.concat([h, b]) }
+    s.on('error', () => done(null))
+    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(2); s.write(v) })
+    s.on('data', (c) => {
+      buf = Buffer.concat([buf, c])
+      while (buf.length >= 4 && buf.length >= 4 + buf.readUInt32BE(0)) {
+        const m = JSON.parse(buf.subarray(4, 4 + buf.readUInt32BE(0)))
+        buf = buf.subarray(4 + buf.readUInt32BE(0))
+        if (m.status === 'running') s.write(frame({ id: 1, ...request }))
+        else if (m.re === 1) done(m)
+      }
+    })
+  })
+}
+// The daemon's list as sorted "id title" lines, retried until it answers.
+async function daemonList(ms) {
+  const t = now()
+  while (now() - t < ms) {
+    const m = await daemonCall({ op: 'subscribe' }, 1000)
+    if (m?.rows) return { ms: now() - t, ids: m.rows.map((r) => `${r.id} ${r.title}`).sort() }
+    await sleep(25)
+  }
+  return null
+}
+
 function stopAll() {
   if (!DATA || !fs.existsSync(`${DATA}/sessions`)) return
   for (const id of fs.readdirSync(`${DATA}/sessions`)) cli(['stop', id], {}, 15000)
@@ -105,6 +149,7 @@ function stopAll() {
 }
 
 function cleanup() {
+  stopDaemon()
   stopAll()
   // Give exiting processes a moment before calling them leftovers.
   for (let i = 0; i < 30 && mine().length; i++) spawnSync('sleep', ['0.1'])
@@ -120,7 +165,7 @@ function cleanup() {
 
 function swapTo(dir) {
   // An app update: each binary is replaced by rename, so running processes keep their old file.
-  for (const b of ['brigadier', OWNER_BIN]) {
+  for (const b of ['brigadier', OWNER_BIN, 'brigadierd']) {
     fs.copyFileSync(`${dir}/${b}`, `${BIN}/.${b}.new`)
     fs.renameSync(`${BIN}/.${b}.new`, `${BIN}/${b}`)
   }
@@ -142,7 +187,9 @@ const BUSY = new Set(['working', 'silent', 'starting', 'logged'])
 // Drill 1 ------------------------------------------------------------------------------------------
 async function killloop(minutes) {
   freshData('killloop')
-  const fakes = Array.from({ length: 20 }, (_, i) => `f${String(i + 1).padStart(2, '0')}`)
+  startDaemon()
+  // f01-f20 start through the CLI, d01 through the daemon, the app's way in.
+  const fakes = [...Array.from({ length: 20 }, (_, i) => `f${String(i + 1).padStart(2, '0')}`), 'd01']
   const work = (id) => (fakes.indexOf(id) < 4 ? 'cargo:600' : 'tree:600')
   const acked = {}
   const send = (id, text, c = cid()) => {
@@ -150,7 +197,9 @@ async function killloop(minutes) {
     if (['delivered', 'logged'].includes(r.out.result)) acked[c] = { id, result: r.out.result }
     return r
   }
-  for (const id of fakes) startFake(id)
+  for (const id of fakes.slice(0, 20)) startFake(id)
+  const viaDaemon = await daemonCall({ op: 'run', args: ['start', 'd01', '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()] }, 10000)
+  if (!viaDaemon?.ok) throw new Error(`start through the daemon failed: ${JSON.stringify(viaDaemon)}`)
   startFake('t01', ['--mode', 'pty'])
   startFake('chat')
   for (const id of fakes) send(id, work(id))
@@ -174,10 +223,16 @@ async function killloop(minutes) {
     await sleep(Math.floor(Math.random() * 40))
     inflight.kill('SIGKILL')
     const before = pidsBefore()
-    // There is no central process: the clients die, and the app's binaries are replaced.
+    const listBefore = await daemonList(5000)
+    // The clients and the daemon die, and the app's binaries are replaced.
     for (const f of followers) f.child.kill('SIGKILL')
+    stopDaemon()
     swapTo(builds[k % builds.length])
     const killedAt = now()
+    startDaemon()
+    const listAfter = await daemonList(10000)
+    ev.daemon_list_ms = listAfter?.ms ?? null
+    ev.daemon_same_list = !!listBefore && !!listAfter && listBefore.ids.join('\n') === listAfter.ids.join('\n')
     // Correct status within 2 s: every session still working, or honestly idle if its 10 minutes of
     // work ended on its own.
     const right = await waitFor(() => {
@@ -196,6 +251,7 @@ async function killloop(minutes) {
     const after = pidsBefore()
     ev.agents_replaced = fakes.filter((id) => before[id].join() !== after[id].join()).length
     ev.duplicate_agents = fakes.filter((id) => after[id].length > 1).length
+    ev.orphans = Object.values(statusAll()).reduce((a, x) => a + (x.orphans ?? 0), 0)
     // Keep the load up: idle fakes get new work; real sessions get a short prompt every 5 minutes.
     const s = statusAll()
     for (const id of fakes) if (s[id]?.state === 'idle') send(id, work(id))
@@ -237,6 +293,9 @@ async function killloop(minutes) {
     working_again_ms_max: Math.max(...events.map((e) => e.working_again_ms ?? 1e9)),
     agents_replaced_total: events.reduce((a, e) => a + e.agents_replaced, 0),
     duplicate_agents_seen: events.reduce((a, e) => a + e.duplicate_agents, 0),
+    daemon_list_ms_max: Math.max(...events.map((e) => e.daemon_list_ms ?? 1e9)),
+    daemon_same_list: events.filter((e) => e.daemon_same_list).length,
+    orphans_max: Math.max(...events.map((e) => e.orphans)),
     tool_children_started: Object.keys(L.children).length, tool_children_died: deadChildren, agent_restarts: restarts,
     acked: Object.keys(acked).length, lost, doubled, history, transcripts, usage, versions,
   }
@@ -249,6 +308,7 @@ async function killloop(minutes) {
 // Drill 2 ------------------------------------------------------------------------------------------
 async function hang() {
   freshData('hang')
+  startDaemon()
   const r = {}
   for (const id of ['h1', 'h2', 'h3']) startFake(id)
   for (const id of ['h1', 'h2', 'h3']) cli(['send', id, `${cid()} tree:120`])
@@ -304,6 +364,27 @@ async function hang() {
   kill(o, 'SIGCONT')
   await sleep(500)
   r.owner_frozen.after_cont = status(['h1']).h1.state
+  // Host and watchdog killed together after more than 8 spawns: the daemon sweeps every recorded
+  // group, the first one included.
+  startFake('h4')
+  cli(['send', 'h4', `${cid()} bg:300`])
+  await sleep(500)
+  const first = agentsOf('h4')[0]
+  for (let i = 0; i < 10; i++) {
+    cli(['send', 'h4', `${cid()} exit:0`])
+    await sleep(300)
+  }
+  const bg = ps().filter((p) => p.pgid === first.pgid && p.pid !== first.pid).map((p) => p.pid)
+  const host = ownerPid('h4')
+  const dog = ps().find((p) => p.ppid === host && p.cmd.includes('--watchdog'))
+  kill(host)
+  kill(dog?.pid)
+  const k4 = now()
+  const swept = await waitFor(() => bg.every((p) => !alive(p)), 15000, 100)
+  r.host_and_watchdog_killed = {
+    spawns: cli(['read', 'h4']).all.filter((i) => i.kind === 'spawned').length,
+    background: bg.length, watchdog_found: !!dog, swept_ms: swept.ok ? now() - k4 : null, survivors: bg.filter(alive).length,
+  }
   r.leftovers = cleanup()
   log({ drill: 'hang', ...r })
 }
