@@ -1,0 +1,47 @@
+/* highlight.js classes in the theme's code colours. */
+@reference "../theme.css";
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  @apply text-syntax-keyword;
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_ {
+  @apply text-syntax-function;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  @apply text-syntax-constant;
+}
+.hljs-regexp,
+.hljs-string {
+  @apply text-syntax-string;
+}
+.hljs-built_in,
+.hljs-symbol {
+  @apply text-syntax-builtin;
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  @apply text-syntax-comment;
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  @apply text-syntax-tag;
+}

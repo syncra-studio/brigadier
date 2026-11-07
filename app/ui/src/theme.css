@@ -48,6 +48,14 @@
   --color-input-disabled: color-mix(in oklab, var(--color-input) 80%, transparent);
   --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
   --color-invalid-ring: color-mix(in oklab, var(--color-destructive) 40%, transparent);
+  /* Code colours: the old app's highlighter theme (Shiki github-dark-default). */
+  --color-syntax-keyword: #ff7b72;
+  --color-syntax-function: #d2a8ff;
+  --color-syntax-constant: #79c0ff;
+  --color-syntax-string: #a5d6ff;
+  --color-syntax-builtin: #ffa657;
+  --color-syntax-comment: #8b949e;
+  --color-syntax-tag: #7ee787;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
