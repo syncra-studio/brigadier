@@ -28,7 +28,7 @@ export function Row({ name, children }: { name: string; children: (k: KitSet) =>
       <h3 className="text-label text-muted-foreground">{name}</h3>
       <div className="grid grid-cols-2">
         {SETS.map((k, i) => (
-          <div key={i} className={cx("flex flex-wrap items-start gap-x-8 gap-y-4", i === 0 ? "pe-6" : "border-s border-divider ps-6")}>
+          <div key={i} className={cx("flex flex-wrap items-start gap-x-8 gap-y-4", i === 0 ? "pe-6" : "old-app-colours border-s border-divider ps-6")}>
             {children(k)}
           </div>
         ))}

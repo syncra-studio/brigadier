@@ -17,7 +17,8 @@
   --color-muted-foreground: oklch(0.708 0.004 106);
   --color-primary: oklch(0.922 0.002 106);
   --color-primary-fg: oklch(0.255 0.003 106);
-  --color-destructive: oklch(0.704 0.191 22.216);
+  /* Apple's system red (HIG, dark), the owner's pick. */
+  --color-destructive: rgb(255 66 69);
   --color-warning: oklch(0.769 0.165 62);
   --color-success: oklch(0.765 0.15 155);
   --color-border: oklch(0.985 0.002 106 / 10%);
@@ -28,8 +29,8 @@
   --color-link: oklch(0.618 0.127 259.6);
   --color-toggle-on: oklch(0.63 0.18 259);
   --color-primary-hover: color-mix(in oklab, var(--color-primary) 90%, transparent);
-  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
-  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-fill: var(--color-destructive);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 90%, transparent);
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
@@ -194,27 +195,13 @@
   }
 }
 
-/* Pending owner pick (D20): Apple's system colours (HIG, dark) laid over the status tokens, for the gallery's
-   "Colours" comparison. The losers are deleted once the owner picks. */
-@utility pending-apple-red-tint {
-  --color-destructive: rgb(255 66 69);
+/* The old app's red, for the gallery's "Old app" column only: deleted with that column. */
+@utility old-app-colours {
+  --color-destructive: oklch(0.704 0.191 22.216);
   --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
   --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
-}
-@utility pending-apple-red-solid {
-  --color-destructive: rgb(255 66 69);
-  --color-destructive-fill: var(--color-destructive);
-  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 90%, transparent);
-  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
-  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
-}
-@utility pending-apple-status {
-  --color-warning: rgb(255 146 48);
-  --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
-  --color-success: rgb(48 209 88);
-  --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
-  --color-link: rgb(0 145 255);
-  --color-toggle-on: rgb(0 145 255);
+  --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
+  --color-invalid-ring: color-mix(in oklab, var(--color-destructive) 40%, transparent);
 }

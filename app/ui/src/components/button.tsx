@@ -27,7 +27,8 @@ const SIZES = {
   inline: "h-auto gap-1 p-0 svg:size-icon-xs",
   icon: "rounded-icon-button size-control-md svg:size-icon-md motion-safe:active:scale-press",
   "icon-xs": "rounded-icon-button size-5 svg:size-icon-xs motion-safe:active:scale-press",
-  "icon-sm": "rounded-icon-button size-control-xs svg:size-icon-sm motion-safe:active:scale-press",
+  // The ghost icon button's box: 24px, so a smaller corner keeps the 28px buttons' shape.
+  "icon-sm": "rounded-control size-control-xs svg:size-icon-sm motion-safe:active:scale-press",
   "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md motion-safe:active:scale-press",
 };
 

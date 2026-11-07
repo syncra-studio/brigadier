@@ -1,7 +1,6 @@
 // Every slice 1 component in every state. The first copy in each row is live.
 import type { ButtonProps } from "../src/components/button";
 import { Copy, X } from "../src/icons";
-import { Colours } from "./colours";
 import { type KitSet, OpenTip, Row, Section, State } from "./parts";
 
 const VARIANTS = ["default", "outline", "ghost", "soft", "soft-destructive", "secondary", "destructive", "link", "link-blue"] as const;
@@ -284,7 +283,6 @@ export function Kit() {
     <>
       <Buttons />
       <IconButtons />
-      <Colours />
       <Fields />
     </>
   );
