@@ -5,6 +5,7 @@
 - Research comes first and is mandatory. Find facts and work out how to build things yourself; don't ask the user.
 - Ask the user only about product and technical direction, and architecture that shapes them. Decide low-level code matters yourself.
 - Research every option before presenting it. Recommend one, in plain language, with its real trade-offs.
+- A disassembler may be used on installed desktop apps, for learning only. Commit none of their code, assets or findings.
 
 ## Ponytail
 
