@@ -1,11 +1,11 @@
-// Slice 2: every popup in every state, Current beside Old app. Frozen ones are held open in place,
+// Slice 2: every popup in every state. Frozen ones are held open in place,
 // non-modal (D10); the first copy in each row is live, with its real modal behaviour.
 import { Toast } from "@base-ui/react/toast";
 import { useEffect, useState } from "react";
 
 import { Button } from "../src/components/button";
 import { Copy, X } from "../src/icons";
-import { Compare, Held, type KitSet, Section, State } from "./parts";
+import { Held, KitRow, type KitSet, Section, State } from "./parts";
 
 // A frozen popup never shifts to stay in view.
 const STILL = { side: "none", align: "none" } as const;
@@ -56,7 +56,7 @@ function MenuItems({ k }: { k: KitSet }) {
 function DropdownMenus() {
   return (
     <Section title="Dropdown menu">
-      <Compare name="live · open (frozen) · sub-menu open">
+      <KitRow name="live · open (frozen) · sub-menu open">
         {(k) => (
           <>
             <State label="live">
@@ -107,8 +107,8 @@ function DropdownMenus() {
             </State>
           </>
         )}
-      </Compare>
-      <Compare name="menu rows: detail · two lines · mono hint">
+      </KitRow>
+      <KitRow name="menu rows: detail · two lines · mono hint">
         {(k) => (
           <Held className="h-40 w-72">
             {(box) => (
@@ -129,7 +129,7 @@ function DropdownMenus() {
             )}
           </Held>
         )}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
@@ -137,7 +137,7 @@ function DropdownMenus() {
 function ContextMenus() {
   return (
     <Section title="Context menu">
-      <Compare name="live (right-click the box) · open (frozen)">
+      <KitRow name="live (right-click the box) · open (frozen)">
         {(k) => {
           const items = (
             <>
@@ -181,7 +181,7 @@ function ContextMenus() {
             </>
           );
         }}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
@@ -189,7 +189,7 @@ function ContextMenus() {
 function Popovers() {
   return (
     <Section title="Popover">
-      <Compare name="live · open (frozen)">
+      <KitRow name="live · open (frozen)">
         {(k) => {
           const body = (
             <div className="flex w-56 flex-col">
@@ -220,7 +220,7 @@ function Popovers() {
             </>
           );
         }}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
@@ -235,9 +235,9 @@ type ThemeChoice = (typeof THEMES)[number]["value"];
 function Selects() {
   return (
     <Section title="Select">
-      <Compare name="live · hover · focus · placeholder · with icon · disabled · open (frozen)">
+      <KitRow name="live · hover · focus · placeholder · with icon · disabled · open (frozen)">
         {(k) => <SelectStates k={k} />}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
@@ -268,7 +268,7 @@ function SelectStates({ k }: { k: KitSet }) {
       </State>
       <State label="disabled">{select({ disabled: true })}</State>
       <State label="open">
-        <Held className="h-52 w-60 pt-12">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
+        <Held className="h-44 w-60">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
       </State>
     </>
   );
@@ -277,7 +277,7 @@ function SelectStates({ k }: { k: KitSet }) {
 function Dialogs() {
   return (
     <Section title="Dialog · Confirm dialog">
-      <Compare name="dialog: live · open (frozen)">
+      <KitRow name="dialog: live · open (frozen)">
         {(k) => (
           <>
             <State label="live">
@@ -309,8 +309,8 @@ function Dialogs() {
             </State>
           </>
         )}
-      </Compare>
-      <Compare name="confirm: live · open · destructive · busy (frozen)">{(k) => <Confirms k={k} />}</Compare>
+      </KitRow>
+      <KitRow name="confirm: live · open · destructive · busy (frozen)">{(k) => <Confirms k={k} />}</KitRow>
     </Section>
   );
 }
@@ -363,9 +363,9 @@ function Confirms({ k }: { k: KitSet }) {
 function Toasts() {
   return (
     <Section title="Toast">
-      <Compare name="live (shows above the buttons) · neutral · success · error with an action · long (frozen)">
+      <KitRow name="live (shows above the buttons) · neutral · success · error with an action · long (frozen)">
         {(k) => <ToastStates k={k} />}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
@@ -390,7 +390,7 @@ function ToastStates({ k }: { k: KitSet }) {
   return (
     <>
       <State label="live">
-        <div className="relative flex h-24 w-88 items-end gap-2">
+        <div className="relative flex h-24 w-80 items-end gap-2">
           <k.Toaster className="top-0" />
           <Button size="xs" variant="outline" onClick={() => k.showToast("Archived chat")}>
             Neutral
@@ -408,7 +408,7 @@ function ToastStates({ k }: { k: KitSet }) {
         </div>
       </State>
       <State label="frozen">
-        <div className="relative h-80 w-88">
+        <div className="relative h-52 w-96">
           <k.Toaster className="top-0" manager={frozen} />
         </div>
       </State>
@@ -419,7 +419,7 @@ function ToastStates({ k }: { k: KitSet }) {
 function Spinners() {
   return (
     <Section title="Spinner">
-      <Compare name="sizes · on a busy button (it stops under Reduce Motion)">
+      <KitRow name="sizes · on a busy button (it stops under Reduce Motion)">
         {(k) => (
           <>
             {(["size-icon-xs", "size-icon-sm", "size-icon-md", "size-icon-lg"] as const).map((size) => (
@@ -435,7 +435,7 @@ function Spinners() {
             </State>
           </>
         )}
-      </Compare>
+      </KitRow>
     </Section>
   );
 }
