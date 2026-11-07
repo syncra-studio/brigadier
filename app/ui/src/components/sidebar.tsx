@@ -70,9 +70,12 @@ function subscribeResize(onChange: () => void) {
 }
 const isNarrow = () => innerWidth < tokenPx("--spacing-narrow-window");
 
-/** A menu, popover or dialog is open: the peek neither opens nor closes under it. */
+/**
+ * A menu, popover or dialog is in use (focus is in it): the peek neither opens nor closes under it. Focus,
+ * not presence, so a popup merely shown (the gallery's held ones) doesn't count.
+ */
 function overlayOpen() {
-  return document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]') !== null;
+  return document.activeElement?.closest('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]') != null;
 }
 
 /** After the window is resized, the peek waits this long before it can open again. */

@@ -1,6 +1,6 @@
 // Slice 3's layout and shared parts in every state, Current beside Old app (the sidebar once: it listens
 // to the whole window). The first copy in each row is live.
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Banner } from "../src/components/banner";
 import { Button } from "../src/components/button";
@@ -15,7 +15,7 @@ import { RowAction, RowActionsSlot } from "../src/components/row-action";
 import { Section as KitSection } from "../src/components/section";
 import { RowText, SettingsCard } from "../src/components/settings-card";
 import { SettingsRow } from "../src/components/settings-row";
-import { type SidebarCollapse, SidebarPanel, SidebarProvider } from "../src/components/sidebar";
+import { type SidebarCollapse, SidebarPanel, SidebarProvider, useSidebar } from "../src/components/sidebar";
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
@@ -80,6 +80,16 @@ function Strip() {
   );
 }
 
+/** The sidebar's own toggle: in a narrow window it opens the panel only for now, not the remembered choice. */
+function ToggleButton() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <Button size="sm" variant="soft" onClick={toggleSidebar}>
+      Toggle (or ⌘B)
+    </Button>
+  );
+}
+
 /** A sidebar in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
 function SidebarDemo({ start = true, collapse = "strip", live }: { start?: boolean; collapse?: SidebarCollapse; live?: boolean }) {
   const [open, setOpen] = useState(start);
@@ -97,11 +107,7 @@ function SidebarDemo({ start = true, collapse = "strip", live }: { start?: boole
           <SidebarContents />
         </SidebarPanel>
         <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-titlebar text-sm text-muted-foreground">
-          {live && (
-            <Button size="sm" variant="soft" onClick={() => setOpen(!open)}>
-              Toggle (or ⌘B)
-            </Button>
-          )}
+          {live && <ToggleButton />}
           <span>{live ? "Drag the panel's edge to resize; below half its least width it collapses." : "The content."}</span>
           {width !== null && <span>Width {width}px</span>}
         </div>
@@ -126,10 +132,11 @@ function FoldDemo() {
 
 function SettingsDemo({ error }: { error?: string }) {
   const [on, setOn] = useState(true);
+  const id = useId();
   return (
     <SettingsCard className="w-120">
-      <SettingsRow label="Open at login" description="Start Brigadier when you log in." htmlFor="login">
-        <Switch id="login" checked={on} onCheckedChange={setOn} />
+      <SettingsRow label="Open at login" description="Start Brigadier when you log in." htmlFor={id}>
+        <Switch id={id} checked={on} onCheckedChange={setOn} />
       </SettingsRow>
       <SettingsRow label="Daemon port" description="Where the app reaches the daemon." error={error}>
         <Button size="sm" variant="soft">
