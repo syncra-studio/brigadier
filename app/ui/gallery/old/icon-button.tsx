@@ -1,6 +1,6 @@
 import { Button, type ButtonProps } from "./button";
 import { cx } from "../../src/components/cx";
-import { Kbd } from "../../src/components/kbd";
+import { Kbd } from "./kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../src/components/tooltip";
 
 // A titlebar or pane-toolbar icon: a dim glyph that brightens on hover and shows pressed with a faint fill.

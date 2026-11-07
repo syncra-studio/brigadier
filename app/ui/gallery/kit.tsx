@@ -2,7 +2,6 @@
 import type { ButtonProps } from "../src/components/button";
 import { Copy, X } from "../src/icons";
 import { type KitSet, OpenTip, Row, Section, State } from "./parts";
-import { InputShapePick, KbdCornerPick } from "./picks";
 
 const VARIANTS = ["default", "outline", "ghost", "soft", "soft-destructive", "secondary", "destructive", "link", "link-blue"] as const;
 const SIZES = ["xs", "sm", "md", "inline"] as const;
@@ -186,7 +185,6 @@ function Fields() {
           </>
         )}
       </Row>
-      <KbdCornerPick />
       <Row name="input">
         {(k) => (
           <>
@@ -218,7 +216,6 @@ function Fields() {
           </>
         )}
       </Row>
-      <InputShapePick />
       <Row name="checkbox">
         {(k) => (
           <>
