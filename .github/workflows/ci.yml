@@ -10,8 +10,11 @@ jobs:
           fetch-depth: 0
       - run: rustup show active-toolchain || rustup toolchain install
       - run: cargo fmt --all --check
-      # The daemon is Mac only, so clippy checks it for the Mac target.
+      # The daemon is Mac only, so clippy checks it for the Mac target. Linux can't compile the
+      # bundled SQLite for a Mac, so this check links the system one instead; builds stay bundled.
       - run: cargo clippy --locked --target aarch64-apple-darwin -- -D warnings
+        env:
+          LIBSQLITE3_SYS_USE_PKG_CONFIG: 1
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
