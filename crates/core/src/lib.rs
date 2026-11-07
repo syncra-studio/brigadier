@@ -108,25 +108,43 @@ const CHECKPOINT_EVERY: u64 = 16 << 20;
 pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
     let ckpt = dir.join("fold.json");
     let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
-    let mut f = use_checkpoint
+    let f = use_checkpoint
         .then(|| {
             fs::read(&ckpt)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
         })
         .flatten()
-        .filter(|f| f.v == norm::VERSION && f.pos <= log_len)
-        .unwrap_or(Folded {
+        .filter(|f| f.pos <= log_len)
+        .unwrap_or_default();
+    let start = f.pos;
+    let f = fold_from(dir, f, |_| {})?;
+    // Only a fold that ended clean has its state and offset at the same frame.
+    if use_checkpoint && f.norm.clean() && f.pos - start >= CHECKPOINT_EVERY {
+        let _ = write_atomic(&ckpt, &serde_json::to_vec(&f)?);
+    }
+    Ok(f)
+}
+
+/// Carries a fold on from where `f` stopped, handing each new item to `each`. `pos` moves only at
+/// frames where the normaliser is clean, so when it ends unclean the fold holds items past `pos`:
+/// keep such a result for status, but resume only from a clean one. A fold from another
+/// normaliser version starts over.
+pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io::Result<Folded> {
+    if f.v != norm::VERSION {
+        f = Folded {
             v: norm::VERSION,
             ..Default::default()
-        });
-    let start = f.pos;
-    if log_len > 0 {
+        };
+    }
+    let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
+    if log_len > f.pos {
         let mut reader = Reader::open(&dir.join("log"), f.pos, f.seq)?;
         let mut items = vec![];
         while let Some(frame) = reader.frame()? {
             f.norm.push(&frame, &mut items);
             for item in items.drain(..) {
+                each(&item);
                 f.fold.push(&item);
             }
             // Any output is a sign of life, even bytes that make no item (heartbeats).
@@ -138,10 +156,6 @@ pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
                 f.seq = reader.seq;
             }
         }
-    }
-    // Only a fold that ended clean has its state and offset at the same frame.
-    if use_checkpoint && f.norm.clean() && f.pos - start >= CHECKPOINT_EVERY {
-        let _ = write_atomic(&ckpt, &serde_json::to_vec(&f)?);
     }
     Ok(f)
 }
@@ -328,7 +342,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Option<i32>, call: Cal
 /// Kills what is left of process groups this session recorded, checked by start time. Only for
 /// when no owner holds them any more.
 pub fn sweep(f: &Fold) -> usize {
-    f.groups
+    fold::live_groups(f, &procs::all())
         .iter()
         .map(|&(g, s)| procs::signal_group(g, s, libc::SIGKILL))
         .sum()

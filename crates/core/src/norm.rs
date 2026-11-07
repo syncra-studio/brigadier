@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-/// Bumped whenever the items for the same frames would change; old checkpoints are then ignored.
-pub const VERSION: u32 = 1;
+/// Bumped whenever the items, or the fold over them, would change for the same frames; old
+/// checkpoints and `index.db` are then rebuilt.
+pub const VERSION: u32 = 2;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]

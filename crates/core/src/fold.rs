@@ -140,9 +140,6 @@ impl Fold {
                     pty: item["mode"] == "pty",
                 });
                 self.groups.push((pid, start_us));
-                if self.groups.len() > 8 {
-                    self.groups.remove(0);
-                }
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -237,6 +234,17 @@ pub struct Live {
     pub now: u64,
 }
 
+/// Every recorded group that still has a live member, checked by start time. A set of live group
+/// ids first, so a session with thousands of spawns costs a lookup per group.
+pub fn live_groups(fold: &Fold, all: &[procs::Proc]) -> Vec<(i32, u64)> {
+    let pgids: BTreeSet<i32> = all.iter().map(|p| p.pgid).collect();
+    fold.groups
+        .iter()
+        .filter(|&&(g, s)| pgids.contains(&g) && !procs::group(all, g, s).is_empty())
+        .copied()
+        .collect()
+}
+
 pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs::Proc]) -> Live {
     let child = fold
         .child
@@ -249,8 +257,7 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
             .filter(|p| !p.stopped)
             .count()
     });
-    let members: usize = fold
-        .groups
+    let members: usize = live_groups(fold, all)
         .iter()
         .map(|&(g, s)| procs::group(all, g, s).len())
         .sum();
