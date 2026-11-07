@@ -38,16 +38,31 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
   const items = session?.items;
   const lines = useMemo(lineMaker, []);
   const all = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
-  // Older rows arriving above: Virtua keeps what is on screen in place only when told the list grew at its start, and
-  // it shifts by the whole length change. So an update that adds at both ends is drawn as two commits: the rows above
-  // first, the ones below right after, before the frame paints.
-  const drawn = useRef<{ first?: string; last?: string }>({});
-  const shift = drawn.current.first !== undefined && all[0]?.id !== drawn.current.first && all.some((line) => line.id === drawn.current.first);
-  const end = shift ? all.findLastIndex((line) => line.id === drawn.current.last) : -1;
-  const rows = end >= 0 && end < all.length - 1 ? all.slice(0, end + 1) : all;
+  // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
+  // its next scroll end it holds every later resize to the list's end, so a row added or growing below would move the
+  // screen. So once rows arrive above, the rows from the old first on stay as drawn until Virtua's scroll end.
+  const drawn = useRef<readonly Line[]>([]);
+  const held = useRef<readonly Line[] | null>(null);
+  const scrolled = useRef(0);
+  const wait = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const before = drawn.current[0]?.id;
+  const shift = before !== undefined && all[0]?.id !== before && all.some((line) => line.id === before);
+  const frozen = held.current ?? (shift ? drawn.current : null);
+  const from = frozen ? all.findIndex((line) => line.id === frozen[0]?.id) : -1;
+  const rows = useMemo(() => (frozen && from >= 0 ? [...all.slice(0, from), ...frozen] : all), [all, frozen, from]);
+  const letGo = useCallback(() => {
+    if (!held.current) return;
+    held.current = null;
+    redraw();
+  }, []);
   useLayoutEffect(() => {
-    drawn.current = { first: rows[0]?.id, last: rows.at(-1)?.id };
-    if (rows !== all) redraw();
+    drawn.current = rows;
+    held.current = rows === all ? null : frozen;
+    if (!shift || rows === all) return;
+    // A list too short to scroll gets no scroll end.
+    scrolled.current = 0;
+    clearTimeout(wait.current);
+    wait.current = setTimeout(() => scrolled.current || letGo(), 200);
   });
   const last = rows.length - 1;
 
@@ -94,7 +109,9 @@ export function Thread({ source, ref }: { source: Source; ref?: Ref<ThreadHandle
         shift={shift}
         bufferSize={800}
         className="h-full"
+        onScrollEnd={letGo}
         onScroll={(offset) => {
+          scrolled.current++;
           const handle = list.current;
           if (!handle) return;
           stuck.current = handle.scrollSize - offset - handle.viewportSize <= NEAR_END;
