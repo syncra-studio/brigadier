@@ -2,10 +2,10 @@
 // "Input" / "Output" cards. Both hang under the step line and use only existing tokens.
 import { CopyButton } from "../src/components/copy-button";
 import { cx } from "../src/components/cx";
-import { OpeningRow, StepIcon, Words } from "../src/components/thread/activity-row";
+import { OpeningRow, ROW, StepIcon, Words } from "../src/components/thread/activity-row";
 import { fileName } from "../src/components/thread/file-change";
 import { toolObject, VERBS } from "../src/components/thread/tool";
-import { Check } from "../src/icons";
+import { Check, Spinner } from "../src/icons";
 import { CodeBlock } from "../src/thread/code";
 import type { FileChange, Progress, StepKind } from "../src/thread/item";
 
@@ -96,6 +96,71 @@ export function ProposedDiff({ id, change }: { id: string; change: FileChange })
     <OpeningRow keep={`proposed-diff:${id}`} detail={<CodeBlock code={change.diff} language="diff" keep={`proposed-diff-fold:${id}`} />}>
       <StepIcon kind="edit" />
       <Words verb="Edited" object={fileName(change.path)} />
+    </OpeningRow>
+  );
+}
+
+/**
+ * A subagent you can't miss while it runs, and calm once done. Running: a spinning mark, its task in full white,
+ * how long it has run, and its current step hanging under it. Done: the approved row with its time and steps
+ * quiet after it, opening to its answer. Fields it needs that items don't carry yet: started/ended, the current
+ * step, the step count and the answer.
+ */
+export function ProposedSubagent({
+  id,
+  title,
+  progress,
+  took,
+  doing,
+  steps,
+  answer,
+}: {
+  id: string;
+  title: string;
+  progress: Progress;
+  /** "41s" while it runs, "1m 2s" once done. */
+  took: string;
+  /** Its current step's words ("Reading lines.ts"), while it runs. */
+  doing?: string;
+  steps?: number;
+  answer?: string;
+}) {
+  if (progress === "running") {
+    return (
+      <div className="flex min-w-0 flex-col">
+        <p className={cx(ROW, "text-foreground")}>
+          <Spinner className="size-4 shrink-0 motion-safe:animate-spin" />
+          <span className="min-w-0 truncate">
+            Running a subagent: <span className="font-medium">{title}</span>
+          </span>
+          <span className="shrink-0 text-muted-foreground tabular-nums">{took}</span>
+        </p>
+        {doing && (
+          <p className={cx(HANGING, "py-0.5")}>
+            {/* Keyed by its words: each new step starts the sweep again. */}
+            <span key={doing} className="block truncate text-sm leading-5.25 shimmer">
+              {doing}
+            </span>
+          </p>
+        )}
+      </div>
+    );
+  }
+  const verb = progress === "cancelled" ? "Stopped a subagent:" : "Ran a subagent:";
+  const tail = [took, steps !== undefined ? `${steps} steps` : null].filter(Boolean).join(" · ");
+  const head = (
+    <>
+      <StepIcon kind="agent" />
+      <Words verb={verb} object={progress === "failed" ? `${title} — failed` : title} />
+    </>
+  );
+  return (
+    <OpeningRow
+      keep={`proposed-agent:${id}`}
+      trail={<span className="tabular-nums text-row-object">{tail}</span>}
+      detail={<p className={cx(HANGING, "text-sm whitespace-pre-wrap wrap-anywhere text-row-foreground")}>{answer ?? "No answer"}</p>}
+    >
+      {head}
     </OpeningRow>
   );
 }

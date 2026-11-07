@@ -8,8 +8,9 @@ import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
+import { OldApproval } from "./old-approval";
 import { Compare, Section, State } from "./parts";
-import { ProposedDiff, ProposedShell, ProposedStep, type Step } from "./proposed-tool";
+import { ProposedDiff, ProposedShell, ProposedStep, ProposedSubagent, type Step } from "./proposed-tool";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -89,6 +90,9 @@ const STEPS: Step[] = [
   { id: "o-other", kind: "other", name: "linear.search_issues", input: '{ "query": "thread rows", "limit": 3 }', output: '[\n  { "id": "BRG-41", "title": "Thread rows match the old app" },\n  { "id": "BRG-44", "title": "Shell box copy output" }\n]' },
   { id: "o-fail", kind: "other", name: "linear.search_issues", input: '{ "query": "thread" }', output: "", failed: true },
 ];
+
+/** A running subagent's own steps, one a second. */
+const SUBAGENT_STEPS = ["Reading src/thread/lines.ts", "Searching for “toLines” in src", "Reading src/thread/item.ts", "Running pnpm typecheck"];
 
 const USER = "Can you make the thread rows match the old app, and check the shell box against a failing test?";
 const LONG_USER = Array.from({ length: 28 }, (_, i) => `Line ${i + 1} of a long pasted message.`).join("\n");
@@ -355,12 +359,34 @@ export function Thread() {
         </Compare>
       </Section>
       <Section title="Thread · approvals · questions · subagents · compaction · notices · unknown">
-        <Compare name="approval: waiting · allowed · denied">
-          <Wide label="waiting">{item({ ...base("p1", RUNNING), kind: "approval", title: "Allow this command?", detail: "rm -rf dist", decision: null, action: "command" }, RUNNING)}</Wide>
-          <Wide label="allowed">{item({ ...base("p2"), kind: "approval", title: "Run a command that reaches outside?", detail: "curl https://registry.npmjs.org/@base-ui/react", decision: "approved", action: "network" })}</Wide>
+        <Compare
+          name="approval: waiting · allowed (open) · denied · withdrawn"
+          old={
+            <>
+              <Wide label="waiting">
+                <OldApproval title="Allow this command?" detail="rm -rf dist" decision={null} action="command" />
+              </Wide>
+              <Wide label="allowed">
+                <OldApproval title="Run a command that reaches outside?" detail="curl https://registry.npmjs.org/@base-ui/react" decision="approved" action="network" />
+              </Wide>
+              <Wide label="denied">
+                <OldApproval title="Allow editing this file?" detail="~/.zshrc" decision="denied" action="edit" />
+              </Wide>
+            </>
+          }
+        >
+          <Wide label="waiting · withdrawn">
+            <div className="flex flex-col gap-1">
+              {item({ ...base("p1", RUNNING), kind: "approval", title: "Allow this command?", detail: "rm -rf dist", decision: null, action: "command" }, RUNNING)}
+              {item({ ...base("p4"), kind: "approval", title: "Allow this command?", detail: "rm -rf dist", decision: null, action: "command" })}
+            </div>
+          </Wide>
+          <Wide label="allowed, open" open>
+            {item({ ...base("p2"), kind: "approval", title: "Run a command that reaches outside?", detail: "curl https://registry.npmjs.org/@base-ui/react", decision: "approved", action: "network" })}
+          </Wide>
           <Wide label="denied">{item({ ...base("p3"), kind: "approval", title: "Allow editing this file?", detail: "~/.zshrc", decision: "denied", action: "edit" })}</Wide>
         </Compare>
-        <Compare name="question: waiting · answered (open) · withdrawn · subagent: waiting · running · done · failed · stopped">
+        <Compare name="question: waiting · answered (open) · withdrawn">
           <Wide label="question">
             <div className="flex flex-col gap-1">
               {item({ ...base("q1", RUNNING), kind: "question", question: "Which branch?", options: ["main", "ui/kit"], answer: null }, RUNNING)}
@@ -370,6 +396,22 @@ export function Thread() {
           <Wide label="answered, open" open>
             {item({ ...base("q2"), kind: "question", question: "Land on main now?", options: ["Yes", "No"], answer: "Yes, after CI is green." })}
           </Wide>
+        </Compare>
+        <Compare
+          name="subagent: waiting · running (live) · done (open) · failed · stopped"
+          proposed={
+            <Wide label="running stands out; done stays calm">
+              <div className="flex flex-col gap-1">
+                <ProposedSubagent id="run" title="Find the parser" progress="running" took={`${(tick % 50) + 8}s`} doing={SUBAGENT_STEPS[tick % SUBAGENT_STEPS.length]} />
+                <Opened>
+                  <ProposedSubagent id="done" title="Find the parser" progress="done" took="1m 2s" steps={12} answer="The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold." />
+                </Opened>
+                <ProposedSubagent id="fail" title="Find the parser" progress="failed" took="9s" steps={2} />
+                <ProposedSubagent id="stop" title="Find the parser" progress="cancelled" took="20s" steps={4} />
+              </div>
+            </Wide>
+          }
+        >
           <Wide label="subagent">
             <div className="flex flex-col gap-1">
               {(["pending", "running", "done", "failed", "cancelled"] as const).map((progress) => (

@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-import { Chat, Check, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning, X } from "../../icons";
+import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { ApprovalAction, Progress } from "../../thread/item";
 import { cx } from "../cx";
@@ -9,7 +9,7 @@ import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { ToolBox } from "./tool";
 
 /** What an approval asks to do, as the old app's approval kinds drew it. */
-const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
+export const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
   command: Dock,
   edit: PencilSquare,
   network: Globe,
@@ -22,47 +22,48 @@ const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
 };
 
 /**
- * An approval. Waiting: "Awaiting approval", quietly live (the card to decide sits in the composer's
- * place). Decided: a card with what was asked and "Allowed" or "Denied".
+ * An approval, read like a question: "Asking for approval · waiting" while it waits (the card to decide sits
+ * in the composer's place), then "Asked for approval · allowed" or "· denied", which opens to what was asked.
+ * Undecided once the turn has moved on, it was withdrawn. Its icon says what it asked to do.
  */
 export function ApprovalRow({
+  keep,
   title,
   detail,
   decision,
   action = "other",
+  waiting,
 }: {
+  keep: string;
   title: string;
   detail: string;
   decision: "approved" | "denied" | null;
   action?: ApprovalAction;
+  /** Its turn still runs, so an undecided approval waits rather than being withdrawn. */
+  waiting: boolean;
 }) {
-  const Icon = ACTIONS[action];
+  const icon = <StepIcon icon={ACTIONS[action]} />;
   if (decision === null) {
     return (
-      <p className="flex min-h-7 min-w-0 items-center gap-2 text-sm text-muted-foreground">
-        <Icon className="size-icon-md shrink-0" />
-        <span className="min-w-0 truncate shimmer-quiet">Awaiting approval</span>
+      <p className={ROW}>
+        {icon}
+        <Words verb={waiting ? "Asking for approval · waiting" : "Asked for approval · withdrawn"} live={waiting} />
       </p>
     );
   }
   return (
-    <div className="flex w-full flex-col rounded-thread border border-border bg-card text-foreground">
-      <div className="flex min-w-0 items-start gap-2 px-4 pt-3.5 pb-2.5">
-        <span className="flex h-5 shrink-0 items-center text-quiet-foreground">
-          <Icon className="size-4.5" />
-        </span>
-        <p className="min-w-0 text-sm leading-5 font-medium wrap-anywhere">{title}</p>
-      </div>
-      {detail && (
-        <div className="flex flex-col gap-2 px-4">
-          <ToolBox>{detail}</ToolBox>
+    <OpeningRow
+      keep={keep}
+      detail={
+        <div className="flex flex-col gap-1.5 pt-2 pb-1 text-sm">
+          <p className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{title}</p>
+          {detail && <p className="font-mono text-code whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{detail}</p>}
         </div>
-      )}
-      <p className="flex items-center justify-end gap-1 px-4 pt-2.5 pb-3.5 text-xs text-muted-foreground">
-        {decision === "approved" ? <Check className="size-icon-sm text-success" /> : <X className="size-icon-sm text-destructive" />}
-        {decision === "approved" ? "Allowed" : "Denied"}
-      </p>
-    </div>
+      }
+    >
+      {icon}
+      <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} />
+    </OpeningRow>
   );
 }
 

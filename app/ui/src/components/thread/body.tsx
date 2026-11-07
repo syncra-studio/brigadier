@@ -49,7 +49,7 @@ export function Body({ item, turn, step }: { item: Item; turn: Turn | undefined;
         </div>
       );
     case "approval":
-      return <ApprovalRow title={item.title} detail={item.detail} decision={item.decision} action={item.action} />;
+      return <ApprovalRow keep={item.id} title={item.title} detail={item.detail} decision={item.decision} action={item.action} waiting={turn?.status === "running"} />;
     case "question":
       return <QuestionRow keep={item.id} question={item.question} answer={item.answer} waiting={turn?.status === "running"} />;
     case "childAgent":
