@@ -19,6 +19,7 @@ type DemoSession = Session<Item, FakeCommand>;
 const fake = createFake();
 
 // When the user pressed Send for each draft id, to time how soon its row shows and is confirmed.
+// Cleared on reopen: a row restored from a snapshot wasn't sent from this window.
 const pressedAt = new Map<string, number>();
 
 export function Demo() {
@@ -39,7 +40,16 @@ export function Demo() {
         <Thread session={session} wait={wait} />
         <Composer session={session} wait={wait} />
       </section>
-      <Controls fake={fake} session={session} reopen={() => setSession(createSession(fake.backend))} wait={wait} setWait={setWait} />
+      <Controls
+        fake={fake}
+        session={session}
+        reopen={() => {
+          pressedAt.clear();
+          setSession(createSession(fake.backend));
+        }}
+        wait={wait}
+        setWait={setWait}
+      />
     </main>
   );
 }
