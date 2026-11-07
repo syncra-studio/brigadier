@@ -8,7 +8,7 @@ const VARIANTS = {
   outline: "bg-fill text-foreground hover:bg-muted",
   secondary: "bg-muted text-foreground hover:bg-popover",
   ghost: "hover:bg-fill hover:text-foreground",
-  link: "text-primary hover:underline",
+  link: "text-primary underline-offset-link hover:underline",
   // A row's action in a card: a faint wash, the label's regular type.
   soft: "bg-fill-subtle text-foreground hover:bg-fill-hover",
   // The same, for an action that deletes or removes.
@@ -51,12 +51,12 @@ export function Button({ className, variant = "default", size = "md", type = "bu
       // A button submits its form only when it says so: Enter in any field clicks an untyped one.
       type={type}
       className={cx(
-        "inline-flex shrink-0 items-center justify-center whitespace-nowrap transition",
-        "focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-disabled",
-        "aria-invalid:border aria-invalid:border-invalid svg:pointer-events-none svg:shrink-0",
+        "shrink-0 items-center justify-center whitespace-nowrap focus-visible:focus-ring",
+        "disabled:pointer-events-none disabled:opacity-disabled svg:pointer-events-none svg:shrink-0",
         typeClasses(variant, size),
         variant && VARIANTS[variant],
-        size ? SIZES[size] : "svg:size-icon-md",
+        // No size leaves the box and its motion to the caller (an icon button's strip look).
+        size ? cx("inline-flex transition-all", SIZES[size]) : "svg:size-icon-md",
         className,
       )}
       {...props}

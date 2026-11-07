@@ -42,14 +42,20 @@ type TooltipContentProps = Omit<BaseTooltip.Popup.Props, "className"> &
 export function TooltipContent({ className, side = "top", align, collisionAvoidance, container, ...props }: TooltipContentProps) {
   return (
     <BaseTooltip.Portal container={container}>
-      <BaseTooltip.Positioner side={side} align={align} collisionAvoidance={collisionAvoidance} sideOffset={spacingPx}>
+      <BaseTooltip.Positioner
+        side={side}
+        align={align}
+        collisionAvoidance={collisionAvoidance}
+        sideOffset={spacingPx}
+        className="z-popup"
+      >
         <BaseTooltip.Popup
           data-slot="tooltip"
           className={cx(
             // Never under the pointer: a tip sliding in over its own control would close it.
-            "pointer-events-none popup-motion origin-popup",
-            "inline-flex w-fit max-w-80 items-center gap-1.5 rounded-capsule border border-border bg-popover px-3 py-1.25",
-            "text-center text-sm text-foreground shadow-tooltip has-kbd:pe-1.5",
+            "pointer-events-none popup-motion",
+            "inline-flex w-fit max-w-80 items-center gap-1.5 rounded-tooltip border border-border bg-popover px-3 py-1.25",
+            "text-center text-sm tracking-tooltip text-foreground shadow-tooltip has-kbd:pe-1.5",
             className,
           )}
           {...props}

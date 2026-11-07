@@ -1,9 +1,9 @@
 // The gallery's own layout: rows of frozen states, and tips held open in place.
-import { type ReactElement, type ReactNode, useRef } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 
-import { cx } from "../components/cx";
-import { Kbd } from "../components/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { cx } from "../src/components/cx";
+import { Kbd } from "../src/components/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -51,10 +51,11 @@ export function OpenTip({
   /** Room for a tip wider than its trigger. */
   wide?: boolean;
 }) {
-  const box = useRef<HTMLDivElement>(null);
+  // The box must exist before the tip mounts, or Base UI places it in the page body instead.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
   return (
-    <div ref={box} className={cx("relative flex justify-center", side === "bottom" ? "pb-10" : "pt-10", wide && "min-w-80 pb-16")}>
-      <Tooltip open>
+    <div ref={setBox} className={cx("relative flex justify-center", side === "bottom" ? "pb-10" : "pt-10", wide && "min-w-80 pb-16")}>
+      <Tooltip open={box !== null}>
         <TooltipTrigger render={trigger} />
         {/* Held in place: a frozen tip never shifts to stay in view. */}
         <TooltipContent side={side} container={box} collisionAvoidance={{ side: "none", align: "none" }}>

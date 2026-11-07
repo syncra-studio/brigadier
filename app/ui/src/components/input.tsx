@@ -10,8 +10,8 @@ export function Input({ className, ...props }: Omit<BaseInput.Props, "className"
       className={cx(
         "h-control-md w-full min-w-0 rounded-control border border-transparent bg-fill px-2.5 py-1 text-sm transition-colors",
         "placeholder:text-muted-foreground focus-visible:bg-background focus-visible:focus-ring",
-        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input disabled:opacity-disabled",
-        "aria-invalid:border-invalid aria-invalid:ring aria-invalid:ring-invalid",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input-disabled disabled:opacity-disabled",
+        "aria-invalid:border-invalid aria-invalid:ring aria-invalid:ring-invalid-ring",
         className,
       )}
       {...props}

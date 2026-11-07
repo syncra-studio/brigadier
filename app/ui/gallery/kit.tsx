@@ -1,13 +1,13 @@
 // Every slice 1 component in every state. The first copy in each row is live.
-import { Badge } from "../components/badge";
-import { Button, type ButtonProps } from "../components/button";
-import { Checkbox, CheckboxMark } from "../components/checkbox";
-import { TooltipIconButton } from "../components/icon-button";
-import { Input } from "../components/input";
-import { Kbd } from "../components/kbd";
-import { Switch } from "../components/switch";
-import { TitlebarTips } from "../components/tooltip";
-import { Copy, X } from "../icons";
+import { Badge } from "../src/components/badge";
+import { Button, type ButtonProps } from "../src/components/button";
+import { Checkbox, CheckboxMark } from "../src/components/checkbox";
+import { TooltipIconButton } from "../src/components/icon-button";
+import { Input } from "../src/components/input";
+import { Kbd } from "../src/components/kbd";
+import { Switch } from "../src/components/switch";
+import { TitlebarTips } from "../src/components/tooltip";
+import { Copy, X } from "../src/icons";
 import { OpenTip, Row, Section, State } from "./parts";
 
 const VARIANTS = ["default", "outline", "ghost", "soft", "soft-destructive", "secondary", "destructive", "link", "link-blue"] as const;
@@ -63,7 +63,7 @@ function Buttons() {
           </State>
         ))}
       </Row>
-      <Row name="with a key hint · error (aria-invalid)">
+      <Row name="with a key hint">
         <State label="default">
           <Button size="sm">
             Send <Kbd>⌘↵</Kbd>
@@ -72,11 +72,6 @@ function Buttons() {
         <State label="soft">
           <Button size="sm" variant="soft">
             Cancel <Kbd>Esc</Kbd>
-          </Button>
-        </State>
-        <State label="error">
-          <Button size="sm" variant="outline" aria-invalid>
-            Retry
           </Button>
         </State>
       </Row>

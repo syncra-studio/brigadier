@@ -1,0 +1,33 @@
+/* Dev-only: the gallery's classes, and every component's again with frozen states. Never in the app's CSS. */
+@reference "../src/theme.css";
+
+/* A wrapper's data-frozen="hover focus active" holds those states still. */
+@custom-variant hover {
+  @media (hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+  :where([data-frozen~="hover"]) & {
+    @slot;
+  }
+}
+@custom-variant focus-visible {
+  &:focus-visible {
+    @slot;
+  }
+  :where([data-frozen~="focus"]) & {
+    @slot;
+  }
+}
+@custom-variant active {
+  &:active {
+    @slot;
+  }
+  :where([data-frozen~="active"]) & {
+    @slot;
+  }
+}
+
+@import "tailwindcss/utilities.css" layer(utilities) source("../src");
+@source "./";

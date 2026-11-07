@@ -1,7 +1,8 @@
 /* The only file allowed raw colours and lengths. Values picked from the old app's tokens.css. */
 @layer theme, base, utilities;
 @import "tailwindcss/preflight.css" layer(base);
-@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss/utilities.css" layer(utilities) source("./");
+@source "../index.html";
 
 @theme static {
   --*: initial;
@@ -24,6 +25,28 @@
   --color-input: oklch(0.985 0.002 106 / 15%);
   --color-ring: oklch(0.556 0.004 106);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
+  --color-link: oklch(0.618 0.127 259.6);
+  --color-toggle-on: oklch(0.63 0.18 259);
+  --color-primary-hover: color-mix(in oklab, var(--color-primary) 90%, transparent);
+  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
+  --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
+  /* The text's own colour, faint: a key hint on any button. */
+  --color-current-wash: color-mix(in oklab, currentColor 12%, transparent);
+  /* Faint foreground washes for quiet controls, lightest to strongest. */
+  --color-fill-subtle: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  --color-fill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  --color-fill-hover: color-mix(in oklab, var(--color-foreground) 10%, transparent);
+  --color-fill-active: color-mix(in oklab, var(--color-foreground) 16%, transparent);
+  --color-toolbar-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
+  --color-strip-foreground: color-mix(in oklab, var(--color-foreground) 85%, transparent);
+  --color-kbd-border: color-mix(in oklab, var(--color-border) 60%, transparent);
+  --color-input-disabled: color-mix(in oklab, var(--color-input) 80%, transparent);
+  --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
+  --color-invalid-ring: color-mix(in oklab, var(--color-destructive) 40%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -60,6 +83,8 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
 
+  --tracking-tooltip: -0.01em;
+
   --spacing: 0.25rem;
   --spacing-control-xs: 1.5rem;
   --spacing-control-sm: 1.75rem;
@@ -72,19 +97,39 @@
   --spacing-titlebar: 2.75rem;
   --spacing-traffic-lights: 4.75rem;
   --container-reading: 46rem;
+  /* A popup slides in from its trigger by this much. */
+  --spacing-popup-shift: 0.5rem;
 
   --radius-sm: 0.375rem;
+  --radius-xs: 0.1875rem;
+  --radius-checkbox: 0.3125rem;
+  --radius-icon-button: 0.625rem;
   --radius-control: 0.5rem;
   --radius-surface: 0.75rem;
+  --radius-tooltip: 1rem;
   --radius-overlay: 1.25rem;
   --radius-capsule: 9999px;
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   --shadow-overlay: 0 12px 32px oklch(0 0 0 / 35%);
+  --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
+  --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
 
   --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-popup: ease;
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: var(--ease-standard);
+
+  --opacity-disabled: 50%;
+  --opacity-switch-disabled: 60%;
+  --scale-press: 90%;
+  --scale-popup: 95%;
+  --z-index-popup: 50;
+  --text-underline-offset-link: 4px;
+  --focus-ring-width: 1px;
 }
 
 /* The hidden title bar has to be draggable by hand. */
@@ -95,34 +140,6 @@
   -webkit-app-region: no-drag;
 }
 
-/* Freezes a state for the gallery: a wrapper's data-frozen="hover focus active" shows them still. */
-@custom-variant hover {
-  @media (hover: hover) {
-    &:hover {
-      @slot;
-    }
-  }
-  :where([data-frozen~="hover"]) & {
-    @slot;
-  }
-}
-@custom-variant focus-visible {
-  &:focus-visible {
-    @slot;
-  }
-  :where([data-frozen~="focus"]) & {
-    @slot;
-  }
-}
-@custom-variant active {
-  &:active {
-    @slot;
-  }
-  :where([data-frozen~="active"]) & {
-    @slot;
-  }
-}
-
 /* An icon inside a control, unless the icon sets its own size. */
 @custom-variant svg (& :where(svg:not([class*="size-"])));
 /* A part placed in another: a key hint on a button or in a tooltip. */
@@ -130,113 +147,38 @@
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 
-/* A popup grows from its trigger: Base UI sets --transform-origin on it. */
-@utility origin-popup {
-  transform-origin: var(--transform-origin);
-}
-
-/* The keyboard focus ring. */
+/* The keyboard focus ring, inside the control's edge. */
 @utility focus-ring {
-  outline: var(--focus-outline);
-  outline-offset: var(--focus-outline-offset);
+  outline: var(--focus-ring-width) solid var(--color-ring);
+  outline-offset: calc(var(--focus-ring-width) * -1);
+  box-shadow: none;
 }
 
-/* A popup's way in and out: faded, a little smaller, shifted toward its trigger. */
+/* A popup's way in (faded, smaller, shifted toward its trigger) and out (faded, smaller). Base UI sets
+   --transform-origin. */
 @utility popup-motion {
+  transform-origin: var(--transform-origin);
   transition-property: opacity, scale, translate;
-  transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ease-standard);
+  transition-duration: var(--default-transition-duration);
+  transition-timing-function: var(--ease-popup);
   &[data-starting-style],
   &[data-ending-style] {
     opacity: 0;
     scale: var(--scale-popup);
   }
-  &[data-side="bottom"]:is([data-starting-style], [data-ending-style]) {
+  &[data-side="bottom"][data-starting-style] {
     translate: 0 calc(var(--spacing-popup-shift) * -1);
   }
-  &[data-side="top"]:is([data-starting-style], [data-ending-style]) {
+  &[data-side="top"][data-starting-style] {
     translate: 0 var(--spacing-popup-shift);
   }
-  &[data-side="left"]:is([data-starting-style], [data-ending-style]) {
+  &[data-side="left"][data-starting-style] {
     translate: var(--spacing-popup-shift) 0;
   }
-  &[data-side="right"]:is([data-starting-style], [data-ending-style]) {
+  &[data-side="right"][data-starting-style] {
     translate: calc(var(--spacing-popup-shift) * -1) 0;
   }
   &[data-instant] {
     transition: none;
   }
 }
-
-/* ===== PENDING OWNER OK (D11) =====
-   Each role holds the nearest existing token, or none. [data-old] (gallery comparison only) shows the
-   old app's value. Every line here is promoted or removed before landing. */
-@theme static {
-  --color-toggle-on: var(--color-primary);
-  --color-toggle-on-fg: var(--color-primary-fg);
-  --color-link: var(--color-primary);
-  --color-primary-hover: var(--color-primary);
-  --color-destructive-fill: var(--color-destructive);
-  --color-destructive-fill-hover: var(--color-destructive);
-  --color-destructive-wash: var(--color-chrome);
-  --color-destructive-wash-hover: var(--color-muted);
-  --color-warning-wash: var(--color-muted);
-  --color-success-wash: var(--color-muted);
-  --color-current-wash: var(--color-muted);
-  --color-toolbar-foreground: var(--color-muted-foreground);
-  --color-fill-subtle: var(--color-card);
-  --color-fill: var(--color-chrome);
-  --color-fill-hover: var(--color-popover);
-  --color-fill-active: var(--color-muted);
-  --color-invalid: var(--color-destructive);
-  --opacity-disabled: 100%;
-  --scale-press: 100%;
-  --scale-popup: 100%;
-  --spacing-popup-shift: 0rem;
-  --duration-fast: 0ms;
-  --default-transition-duration: var(--duration-fast);
-  --default-transition-timing-function: var(--ease-standard);
-  --radius-xs: var(--radius-sm);
-  --radius-icon-button: var(--radius-control);
-  --focus-outline: auto;
-  --focus-outline-offset: 0rem;
-}
-:root {
-  --shadow-tooltip: var(--shadow-overlay);
-}
-/* Tailwind inlines a shadow token's value, so this one is read at use for the comparison to work. */
-@utility shadow-tooltip {
-  box-shadow: var(--shadow-tooltip);
-}
-[data-old] {
-  --color-toggle-on: oklch(0.63 0.18 259);
-  --color-toggle-on-fg: var(--color-foreground);
-  --color-link: oklch(0.618 0.127 259.6);
-  --color-primary-hover: color-mix(in oklab, var(--color-primary) 90%, transparent);
-  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
-  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
-  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
-  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
-  --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
-  --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
-  --color-current-wash: color-mix(in oklab, currentColor 12%, transparent);
-  --color-toolbar-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
-  --color-fill-subtle: color-mix(in oklab, var(--color-foreground) 5%, transparent);
-  --color-fill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
-  --color-fill-hover: color-mix(in oklab, var(--color-foreground) 10%, transparent);
-  --color-fill-active: color-mix(in oklab, var(--color-foreground) 16%, transparent);
-  --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
-  --opacity-disabled: 50%;
-  --scale-press: 90%;
-  --scale-popup: 95%;
-  --spacing-popup-shift: 0.5rem;
-  --duration-fast: 150ms;
-  /* An alias resolves where it is declared, so it is declared again here. */
-  --default-transition-duration: var(--duration-fast);
-  --radius-xs: 0.1875rem;
-  --radius-icon-button: 0.625rem;
-  --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
-  --focus-outline: 1px solid var(--color-ring);
-  --focus-outline-offset: -1px;
-}
-/* ===== END PENDING ===== */
