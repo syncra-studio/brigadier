@@ -26,6 +26,8 @@
   --color-input: oklch(0.985 0.002 106 / 15%);
   --color-ring: oklch(0.556 0.004 106);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
+  --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
+  --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
   --color-link: oklch(0.618 0.127 259.6);
   --color-toggle-on: oklch(0.63 0.18 259);
   --color-primary-hover: color-mix(in oklab, var(--color-primary) 90%, transparent);
@@ -70,14 +72,9 @@
   --color-quiet-foreground: color-mix(in oklab, var(--color-foreground) 65%, transparent);
   /* An unchosen segment, a sidebar section's title. */
   --color-faint-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
-  /* An error banner's edge. */
-  --color-destructive-line: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   /* A progress bar: filling, and stopped. */
   --color-progress: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   --color-progress-cancelled: color-mix(in oklab, var(--color-foreground) 20%, transparent);
-  /* Live words ("Downloading"): muted, with a brighter band sweeping across. */
-  --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
-  --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -193,6 +190,20 @@
 
   --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* One sweep in the first second of every four, in 48 steps; at rest the band is past the end. */
+  --animate-shimmer: shimmer 4s 600ms infinite;
+  @keyframes shimmer {
+    0% {
+      background-position: -100% 0;
+      animation-timing-function: steps(48, end);
+    }
+    25%,
+    100% {
+      background-position: 250% 0;
+    }
+  }
+
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-popup: ease;
   /* The sidebar opening and closing: a spring. */
@@ -210,18 +221,6 @@
   @keyframes pulse {
     50% {
       opacity: 0.5;
-    }
-  }
-  /* One sweep in the first second of every four, in 48 steps; at rest the band is past the end. */
-  --animate-shimmer: shimmer 4s 600ms infinite;
-  @keyframes shimmer {
-    0% {
-      background-position: -100% 0;
-      animation-timing-function: steps(48, end);
-    }
-    25%,
-    100% {
-      background-position: 250% 0;
     }
   }
   /* A copy button's icon: the check pops in, the copy icon comes back. */
@@ -282,6 +281,29 @@
 @utility app-drag {
   -webkit-app-region: drag;
 }
+
+/* Live text ("Working"): muted words a highlight band sweeps across now and then. Its motion claims
+   the work is live, so it shows only while that is proven. Still with less motion. */
+@utility shimmer {
+  background-color: var(--color-live-text);
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--color-live-text-highlight) 40%,
+    var(--color-live-text-highlight) 60%,
+    transparent 100%
+  );
+  background-position: -100% 0;
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: var(--animate-shimmer);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @utility app-no-drag {
   -webkit-app-region: no-drag;
 }
@@ -483,27 +505,6 @@
   );
 }
 
-/* Live words: muted, a highlight band sweeping across now and then. Still with less motion. */
-@utility shimmer {
-  background-color: var(--color-live-text);
-  background-image: linear-gradient(
-    to right,
-    transparent 0%,
-    var(--color-live-text-highlight) 40%,
-    var(--color-live-text-highlight) 60%,
-    transparent 100%
-  );
-  background-position: -100% 0;
-  background-size: 50% 100%;
-  background-repeat: no-repeat;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: var(--animate-shimmer);
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
-
 /* Rows split as a card's own are: a hairline under each but the last, 16 in from the edges (flush
    with `settings-rows-flush`, for a card that pads itself). */
 @utility settings-rows {
@@ -584,7 +585,6 @@
   --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
-  --color-destructive-line: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
   & :where(button, label, [role="tab"], [role="radio"]) {
     cursor: default !important;

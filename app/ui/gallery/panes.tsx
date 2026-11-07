@@ -2,7 +2,6 @@
 // to the whole window). The first copy in each row is live.
 import { useId, useState } from "react";
 
-import { Banner } from "../src/components/banner";
 import { Button } from "../src/components/button";
 import { CopyButton } from "../src/components/copy-button";
 import { EmptyState } from "../src/components/empty-state";
@@ -213,22 +212,7 @@ export function Panes() {
           </State>
         </Compare>
       </Section>
-      <Section title="Banner · Error line · Empty state">
-        <Compare name="banner: info · warning · error with a button and ×">
-          <div className="flex w-full flex-col gap-3">
-            <Banner text="A new version is ready." onDismiss={() => {}}>
-              <Button size="xs" variant="soft">
-                Restart
-              </Button>
-            </Banner>
-            <Banner tone="warning" text="The daemon is reconnecting." />
-            <Banner tone="error" text="The daemon stopped: port 7421 is in use." onDismiss={() => {}}>
-              <Button size="xs" variant="soft-destructive">
-                Retry
-              </Button>
-            </Banner>
-          </div>
-        </Compare>
+      <Section title="Error line · Empty state">
         <Compare name="error line · empty state: line, card, centered">
           <State label="error line">
             <ErrorLine error="Couldn't save: the disk is full." />
@@ -271,10 +255,11 @@ export function Panes() {
               <span className="text-sm">~/Development/brigadier</span>
             </KitSection>
           </State>
-          <State label="ready · needs · off">
+          <State label="ready · needs · off · new reply">
             <StateDot tone="ready" />
             <StateDot tone="needs" />
             <StateDot />
+            <StateDot tone="unread" />
           </State>
         </Compare>
       </Section>
