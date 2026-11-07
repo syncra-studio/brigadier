@@ -77,7 +77,8 @@ function Thread({ session, wait }: { session: DemoSession; wait: boolean }) {
   return (
     // Reversed, so the scroll stays at the newest row as rows arrive.
     <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto">
-      <div className="mx-auto flex min-h-full w-full max-w-reading flex-col gap-4 px-6 py-6">
+      {/* shrink-0: a full thread grows past the pane and scrolls, instead of spilling under the composer. */}
+      <div className="mx-auto flex min-h-full w-full max-w-reading shrink-0 flex-col gap-4 px-6 py-6">
         {shownBody === "loading" && <EmptyState variant="centered" title="Loading the session…" className="m-auto" />}
         {shownBody === "empty" && <EmptyState variant="centered" title="No messages yet" detail="Send one to start." className="m-auto" />}
         {shownBody === "disconnected" && (
