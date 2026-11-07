@@ -80,6 +80,7 @@ export function Select<T extends string>({
   className,
   open,
   container,
+  collisionAvoidance,
 }: {
   label: string;
   value: T;
@@ -94,6 +95,8 @@ export function Select<T extends string>({
   open?: boolean;
   /** Where the menu is placed in the page; the body by default. */
   container?: Menu.Portal.Props["container"];
+  /** How the menu keeps in view; it flips and shifts by default. */
+  collisionAvoidance?: Menu.Positioner.Props["collisionAvoidance"];
 }) {
   const chosen = options.find((option) => option.value === value);
   return (
@@ -107,7 +110,7 @@ export function Select<T extends string>({
         }
       />
       <Menu.Portal container={container}>
-        <Menu.Positioner className="z-popup outline-none" align={align} sideOffset={spacingPx}>
+        <Menu.Positioner className="z-popup outline-none" align={align} sideOffset={spacingPx} collisionAvoidance={collisionAvoidance}>
           <Menu.Popup data-slot="select-content" className={cx(menuSurface, "max-h-select max-w-select min-w-anchor overflow-y-auto")}>
             <Menu.RadioGroup value={value} onValueChange={(next) => onChange(next as T)}>
               {options.map((option) => (

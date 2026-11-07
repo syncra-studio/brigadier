@@ -33,7 +33,13 @@ function LiveFrame() {
     }, 500);
     return () => clearInterval(timer);
   }, []);
-  return <iframe ref={frame} src="/" title="Components" className="fixed inset-0 size-full" />;
+  return (
+    <>
+      <iframe ref={frame} src="/" title="Components" className="fixed inset-0 size-full" />
+      {/* The window drags only by regions in its top frame, so this strip lies over the frame's header. */}
+      <div className="app-drag fixed inset-x-0 top-0 h-titlebar" />
+    </>
+  );
 }
 
 export default function Gallery() {

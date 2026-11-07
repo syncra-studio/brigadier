@@ -10,6 +10,14 @@ import { Compare, Held, type KitSet, Section, State } from "./parts";
 // A frozen popup never shifts to stay in view.
 const STILL = { side: "none", align: "none" } as const;
 
+// The point a right-click would open a context menu at: the box's top corner.
+const corner = (box: HTMLElement) => ({
+  getBoundingClientRect: () => {
+    const { x, y } = box.getBoundingClientRect();
+    return new DOMRect(x, y, 0, 0);
+  },
+});
+
 function MenuItems({ k }: { k: KitSet }) {
   const [sort, setSort] = useState("recent");
   const [pinned, setPinned] = useState(true);
@@ -67,7 +75,7 @@ function DropdownMenus() {
               </k.DropdownMenu>
             </State>
             <State label="open">
-              <Held className="h-112 w-64">
+              <Held className="h-88 w-48">
                 {(box) => (
                   <k.DropdownMenu open modal={false}>
                     <k.DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>Open menu</k.DropdownMenuTrigger>
@@ -79,7 +87,7 @@ function DropdownMenus() {
               </Held>
             </State>
             <State label="sub-menu open">
-              <Held className="h-40 w-96">
+              <Held className="h-32 w-64">
                 {(box) => (
                   <k.DropdownMenu open modal={false}>
                     <k.DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>Open menu</k.DropdownMenuTrigger>
@@ -102,7 +110,7 @@ function DropdownMenus() {
       </Compare>
       <Compare name="menu rows: detail · two lines · mono hint">
         {(k) => (
-          <Held className="h-44 w-72">
+          <Held className="h-40 w-72">
             {(box) => (
               <k.DropdownMenu open modal={false}>
                 <k.DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>Rows</k.DropdownMenuTrigger>
@@ -160,10 +168,10 @@ function ContextMenus() {
               <State label="open">
                 {/* Held by a dropdown's non-modal root: a context menu's own root always traps focus, which
                     would lock the gallery. Its surface and rows are the same parts. */}
-                <Held className="h-44 w-52">
+                <Held className="h-28 w-36">
                   {(box) => (
                     <k.DropdownMenu open modal={false}>
-                      <k.DropdownMenuContent container={box} anchor={box} side="bottom" align="start" collisionAvoidance={STILL}>
+                      <k.DropdownMenuContent container={box} anchor={corner(box)} side="bottom" align="start" collisionAvoidance={STILL}>
                         {items}
                       </k.DropdownMenuContent>
                     </k.DropdownMenu>
@@ -198,7 +206,7 @@ function Popovers() {
                 </k.Popover>
               </State>
               <State label="open">
-                <Held className="h-36 w-60">
+                <Held className="h-32 w-60">
                   {(box) => (
                     <k.Popover open modal={false}>
                       <k.PopoverTrigger render={<Button size="sm" variant="outline" />}>Open popover</k.PopoverTrigger>
@@ -236,7 +244,7 @@ function Selects() {
 
 function SelectStates({ k }: { k: KitSet }) {
   const [theme, setTheme] = useState<ThemeChoice>("dark");
-  const select = (props: { open?: boolean; container?: HTMLElement; disabled?: boolean }) => (
+  const select = (props: { open?: boolean; container?: HTMLElement; collisionAvoidance?: typeof STILL; disabled?: boolean }) => (
     <k.Select label="Theme" value={theme} options={THEMES} onChange={setTheme} align="start" {...props} />
   );
   return (
@@ -260,7 +268,7 @@ function SelectStates({ k }: { k: KitSet }) {
       </State>
       <State label="disabled">{select({ disabled: true })}</State>
       <State label="open">
-        <Held className="h-44 w-60">{(box) => select({ open: true, container: box })}</Held>
+        <Held className="h-44 w-60">{(box) => select({ open: true, container: box, collisionAvoidance: STILL })}</Held>
       </State>
     </>
   );
@@ -285,7 +293,7 @@ function Dialogs() {
               </k.Dialog>
             </State>
             <State label="open">
-              <Held className="h-64 w-96 overflow-hidden rounded-surface">
+              <Held className="h-44 w-96 overflow-hidden rounded-surface">
                 {(box) => (
                   <k.Dialog open modal={false}>
                     <k.DialogContent container={box} initialFocus={false}>
@@ -311,7 +319,7 @@ function Confirms({ k }: { k: KitSet }) {
   const [open, setOpen] = useState(false);
   const frozen = (label: string, props: { destructive?: boolean; busy?: boolean }) => (
     <State label={label}>
-      <Held className="h-56 w-96 overflow-hidden rounded-surface">
+      <Held className="h-44 w-96 overflow-hidden rounded-surface">
         {(box) => (
           <k.Dialog open modal={false}>
             <k.DialogContent container={box} initialFocus={false}>
