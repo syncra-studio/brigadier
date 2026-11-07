@@ -22,7 +22,9 @@ export type Frame<I> =
   | { type: "drop"; seq: number; id: string }
   /** `cause`: the command this run change answers, which proves the backend accepted it. */
   | { type: "run"; seq: number; run: Run; cause: string | null }
-  | { type: "rejected"; seq: number; clientId: string; error: string };
+  | { type: "rejected"; seq: number; clientId: string; error: string }
+  /** Sent every second or so while live, outside the seq order: the latest seq, so a lost last frame shows. */
+  | { type: "beat"; seq: number };
 
 export type Link = "connecting" | "live" | "reconnecting" | "disconnected";
 

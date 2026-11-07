@@ -15,7 +15,10 @@ export function Demo() {
   const [session, setSession] = useState(() => createSession(fake.backend));
   useEffect(() => {
     session.connect();
-    return fake.close;
+    return () => {
+      session.close();
+      fake.close();
+    };
   }, [session]);
   return (
     <main className="fixed inset-0 flex">
@@ -166,7 +169,8 @@ function Composer({ session }: { session: DemoSession }) {
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
+            // Enter that ends an IME composition is the composition's, not Send's.
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
             event.preventDefault();
             send();
           }}

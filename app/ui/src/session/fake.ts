@@ -14,7 +14,7 @@ export type Knobs = {
   loseNextFrame: boolean;
 };
 
-type Event = Exclude<Frame<Item>["type"], "snapshot">;
+type Event = Exclude<Frame<Item>["type"], "snapshot" | "beat">;
 type Unsequenced = { [T in Event]: Omit<Extract<Frame<Item>, { type: T }>, "seq"> }[Event];
 
 /** How a send looks before the backend has it. */
@@ -26,6 +26,7 @@ const REPLY = "Here is what I found. The change is small: one function, and its 
 const TOKEN_MS = 70;
 const RECONNECT_MS = 1500;
 const DAEMON_RETRY_MS = 3000;
+const BEAT_MS = 1000;
 
 export function createFake() {
   const knobs: Knobs = { delayMs: 150, reorder: false, failNext: false, loseNextSend: false, dropAfterNextSend: false, loseNextFrame: false };
@@ -39,6 +40,8 @@ export function createFake() {
   let daemonUp = true;
   let stream: { ask: () => string[]; onFrame: (frame: Frame<Item>) => void; onLink: (link: Link) => void } | null = null;
   let streaming: ReturnType<typeof setInterval> | undefined;
+  let replying: { id: string; turnId: string } | null = null;
+  setInterval(() => stream && link === "live" && stream.onFrame({ type: "beat", seq }), BEAT_MS);
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
   const later = (ms: number, then: () => void): void => {
@@ -112,16 +115,16 @@ export function createFake() {
 
   /** A new message lands after the reply in progress, so that reply ends first, whole. */
   function finishReply(): void {
-    const last = rows.at(-1);
-    if (!streaming || last?.item.kind !== "message") return;
+    if (!streaming || !replying) return;
     clearInterval(streaming);
     streaming = undefined;
-    put({ ...last, item: { ...last.item, text: REPLY, streaming: false } });
+    put({ clientId: null, item: { ...replying, kind: "message", role: "assistant", text: REPLY, streaming: false } });
   }
 
   function reply(turnId: string, cause: string): void {
     setRun({ state: "working" }, cause);
     const id = crypto.randomUUID();
+    replying = { id, turnId };
     const words = REPLY.split(" ");
     let shown = 0;
     streaming = setInterval(() => {

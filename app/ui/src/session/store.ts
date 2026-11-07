@@ -39,6 +39,7 @@ export function createSession<I extends { id: string }, C>(backend: Backend<I, C
   const alias = new Map<string, string>();
   const early = new Map<number, Frame<I>>();
   let gapTimer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
 
   const listeners = new Map<string, Set<() => void>>();
   const changed = new Set<string>();
@@ -122,6 +123,12 @@ export function createSession<I extends { id: string }, C>(backend: Backend<I, C
   }
 
   function receive(frame: Frame<I>): void {
+    if (closed) return;
+    if (frame.type === "beat") {
+      // A frame past ours was lost with nothing after it to show the gap.
+      if (head.loaded && frame.seq > seq) gapTimer ??= setTimeout(connect, GAP_MS);
+      return;
+    }
     if (frame.type === "snapshot") snapshot(frame);
     else if (head.loaded && frame.seq > seq) {
       early.set(frame.seq, frame);
@@ -138,7 +145,7 @@ export function createSession<I extends { id: string }, C>(backend: Backend<I, C
   }
 
   function onLink(link: Link): void {
-    if (link === head.link) return;
+    if (closed || link === head.link) return;
     // Written but unanswered when the link went: whether it arrived isn't proven.
     if (link !== "live") for (const entry of own.values()) if (entry.pending.status === "sending") setPending(entry, { status: "unknown" });
     setHead({ link, downSince: link === "live" ? null : (head.downSince ?? Date.now()) });
@@ -151,7 +158,7 @@ export function createSession<I extends { id: string }, C>(backend: Backend<I, C
 
   function connect(): void {
     gapTimer = undefined;
-    backend.connect(ask, receive, onLink);
+    if (!closed) backend.connect(ask, receive, onLink);
   }
 
   // One subscribe function per key and session, so React subscribes again only when either changes.
@@ -171,6 +178,12 @@ export function createSession<I extends { id: string }, C>(backend: Backend<I, C
 
   return {
     connect,
+
+    /** Stops for good: no resync of a session the window no longer shows. */
+    close(): void {
+      closed = true;
+      clearTimeout(gapTimer);
+    },
 
     /** Shows `preview` at once. A second send under the same `clientId` does nothing. */
     send(clientId: string, command: C, preview: I): void {
