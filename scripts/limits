@@ -55,6 +55,9 @@ check "raw length in CSS outside the theme file" \
 check "Tailwind bracket value" \
   '[a-zA-Z0-9]-\[[^] ]*\]|[a-zA-Z0-9]-\(--|\[&[^] ]*\]|[@*]\[[^] ]*\]|\[--?[a-zA-Z-]+:[^] ]+\]|\[[a-z]+(-[a-z]+)*:[^] ]+\]' \
   "${not_theme[@]}"
+check "colour with an opacity suffix outside the theme file" \
+  '(^|[^a-zA-Z0-9_-])(bg|text|border(-[xytrblse])?|ring|ring-offset|inset-ring|outline|fill|stroke|from|via|to|shadow|inset-shadow|divide|placeholder|caret|accent|decoration)-[a-z][a-z0-9-]*/([0-9]|\(|\[)' \
+  "${not_theme[@]}"
 check "inline style value" \
   '(^|[^a-zA-Z0-9_-])style=|\.style([^a-zA-Z0-9_]|$)|<style|\.setProperty\(|\.cssText' \
   "${not_theme[@]}"
