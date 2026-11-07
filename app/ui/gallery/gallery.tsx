@@ -59,9 +59,34 @@ function useKeptScroll(scroller: RefObject<HTMLDivElement | null>) {
   }, [scroller]);
 }
 
+/**
+ * A held-open menu or select takes focus as it mounts (and again later); give it back unless the user
+ * just clicked or typed, so the page rests as the app does and the sidebar's peek isn't held off.
+ */
+function useNoHeldFocus() {
+  useEffect(() => {
+    let actedAt = -Infinity;
+    const acted = () => (actedAt = performance.now());
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      if (performance.now() - actedAt > 500 && target.closest?.("[data-held]")) target.blur();
+    };
+    addEventListener("pointerdown", acted, true);
+    addEventListener("keydown", acted, true);
+    addEventListener("focusin", onFocus, true);
+    if ((document.activeElement as HTMLElement | null)?.closest("[data-held]")) (document.activeElement as HTMLElement).blur();
+    return () => {
+      removeEventListener("pointerdown", acted, true);
+      removeEventListener("keydown", acted, true);
+      removeEventListener("focusin", onFocus, true);
+    };
+  }, []);
+}
+
 function GalleryPage() {
   const scroller = useRef<HTMLDivElement>(null);
   useKeptScroll(scroller);
+  useNoHeldFocus();
   return (
     <div ref={scroller} className="fixed inset-0 overflow-y-auto">
       <header className="app-drag sticky top-0 z-10 flex h-titlebar items-center border-b border-divider bg-background ps-traffic-lights">

@@ -3,6 +3,7 @@ import {
   createContext,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -81,9 +82,9 @@ function overlayOpen() {
 /** After the window is resized, the peek waits this long before it can open again. */
 const RESIZE_SETTLE_MS = 300;
 
-/** What a pointer event is over, for the peek. */
-function peekZone(event: PointerEvent): PeekZone {
-  const target = event.target instanceof Element ? event.target : null;
+/** What a pointer event is over, for this sidebar's peek (its own trigger and panel, not another sidebar's). */
+function peekZone(event: PointerEvent, own: Element | null): PeekZone {
+  const target = event.target instanceof Element && own?.contains(event.target) ? event.target : null;
   if (target?.closest("[data-sidebar-peek-panel]")) return "panel";
   // Only a resting mouse: not a touch, not a drag passing by. A trigger out of use (inert) doesn't count.
   const trigger = target?.closest("[data-sidebar-peek-trigger]");
@@ -92,7 +93,12 @@ function peekZone(event: PointerEvent): PeekZone {
 }
 
 /** The peek's pointer and keyboard wiring. `blocked` says whether it may open now. */
-function usePeek(blocked: () => boolean, open: boolean, navigationKey: string | undefined): PeekPhase {
+function usePeek(
+  wrapper: RefObject<HTMLDivElement | null>,
+  blocked: () => boolean,
+  open: boolean,
+  navigationKey: string | undefined,
+): PeekPhase {
   const [phase, setPhase] = useState<PeekPhase>("closed");
   const peek = useRef<Peek | null>(null);
   const isBlocked = useRef(blocked);
@@ -107,7 +113,7 @@ function usePeek(blocked: () => boolean, open: boolean, navigationKey: string | 
     const controller = createPeek({
       onChange: (next) => {
         // Put away while focus is inside, it hands focus to the sidebar toggle, not to nowhere.
-        const card = document.querySelector("[data-sidebar-peek-panel]");
+        const card = wrapper.current?.querySelector("[data-sidebar-peek-panel]");
         if (next !== "open" && card?.contains(document.activeElement)) {
           document.querySelector<HTMLElement>("[data-slot=sidebar-toggle]")?.focus({ preventScroll: true });
         }
@@ -118,12 +124,12 @@ function usePeek(blocked: () => boolean, open: boolean, navigationKey: string | 
       exitMs: () => (still.matches ? 0 : PEEK_EXIT_MS),
     });
     peek.current = controller;
-    const onPointer = (event: PointerEvent) => controller.point(peekZone(event));
+    const onPointer = (event: PointerEvent) => controller.point(peekZone(event, wrapper.current));
     const onLeave = () => controller.point("outside");
     const onPointerDown = (event: PointerEvent) => {
       if (controller.phase() !== "open" || overlayOpen()) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest("[data-sidebar-peek-panel], [data-sidebar-peek-trigger]")) return;
+      if (target && wrapper.current?.contains(target) && target.closest("[data-sidebar-peek-panel], [data-sidebar-peek-trigger]")) return;
       controller.dismiss();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -151,7 +157,7 @@ function usePeek(blocked: () => boolean, open: boolean, navigationKey: string | 
       document.removeEventListener("keydown", onKeyDown);
       removeEventListener("resize", onResize);
     };
-  }, []);
+  }, [wrapper]);
 
   // Opened for real, it is the panel itself again.
   useEffect(() => {
@@ -211,7 +217,8 @@ export function SidebarProvider({
   const toggleSidebar = useCallback(() => setOpen(!open), [setOpen, open]);
   const [resizing, setResizing] = useState(false);
   const peekBlocked = useCallback(() => open || resizing, [open, resizing]);
-  const peek = usePeek(peekBlocked, open, navigationKey);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const peek = usePeek(wrapper, peekBlocked, open, navigationKey);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -236,6 +243,7 @@ export function SidebarProvider({
     <SidebarContext.Provider value={context}>
       <TooltipProvider delay={0}>
         <div
+          ref={wrapper}
           data-slot="sidebar-wrapper"
           data-state={state}
           data-collapse={hidden ? "hidden" : "strip"}

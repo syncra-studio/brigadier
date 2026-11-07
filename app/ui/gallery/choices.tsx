@@ -14,7 +14,7 @@ import { Compare, Section, State } from "./parts";
 
 function TabsDemo({ disabled }: { disabled?: boolean }) {
   return (
-    <Tabs defaultValue="events" className="w-72">
+    <Tabs defaultValue="events" className="w-64">
       <TabsList>
         <TabsTrigger value="events">Events</TabsTrigger>
         <TabsTrigger value="brain">Brain</TabsTrigger>
@@ -245,7 +245,7 @@ export function Choices() {
             </div>
           </State>
           <State label="scroll fade">
-            <div className="relative h-40 w-56 overflow-hidden rounded-surface border border-divider">
+            <div className="relative h-56 w-56 overflow-hidden rounded-surface border border-divider">
               <ScrollFade edge="top" />
               <div className="h-full overflow-y-auto px-3 py-5 text-sm text-muted-foreground">
                 {Array.from({ length: 14 }, (_, i) => (

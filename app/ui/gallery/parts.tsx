@@ -62,7 +62,7 @@ export function Held({ className, children }: { className: string; children: (bo
   // The box must exist before the popup mounts, or Base UI places it in the page body instead.
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   return (
-    <div ref={setBox} className={cx("relative transform-gpu", className)}>
+    <div ref={setBox} data-held className={cx("relative transform-gpu", className)}>
       {box && children(box)}
     </div>
   );
