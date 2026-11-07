@@ -650,8 +650,28 @@
 @utility edge-fade-shell {
   --edge-size-top: 2rem;
   --edge-size-bottom: 0px;
+  /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
+  animation-direction: reverse;
 }
 @utility edge-fade-diff {
   --edge-size-top: 0px;
   --edge-size-bottom: 2rem;
 }
+
+/* Gallery only, generated where used: the "Old app" column (D22) draws the kit as the old app did, with
+   the arrow cursor, no press and the old red. Deleted with the column. */
+@utility old-app {
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
+  & :where(button, label, [role="tab"], [role="radio"]) {
+    cursor: default !important;
+  }
+  & * {
+    scale: none !important;
+  }
+}
+

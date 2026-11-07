@@ -56,8 +56,12 @@ function doing(item: Item | undefined): string | undefined {
  * icon. While its turn runs and a step of it is running, that step's words ("Reading blocks.ts"), shimmering.
  */
 export function GroupRow({ item, live, open, onToggle }: { item: Group; live: Item | undefined; open: boolean; onToggle: (id: string) => void }) {
-  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";
   const running = doing(live);
+  // Live, the icon is the running step's; otherwise the first kind the group names.
+  const kind =
+    (running && live?.kind === "tool" ? (live.step ?? "other") : running && live?.kind === "fileChange" ? "edit" : running ? "agent" : undefined) ??
+    ORDER.find((k) => item.steps.some((step) => step.kind === k)) ??
+    "other";
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
       <StepIcon kind={kind} />
