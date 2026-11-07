@@ -66,6 +66,8 @@
   --color-action-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   /* A dialog's see-through card (the owner's pick, D46, from the Apple-style column). */
   --color-material: color-mix(in oklab, var(--color-popover) 78%, transparent);
+  --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
+  --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -177,6 +179,19 @@
   --z-index-popup: 50;
   --text-underline-offset-link: 4px;
   --focus-ring-width: 1px;
+
+  /* One sweep in the first second of every four, in 48 steps; at rest the band is past the end. */
+  --animate-shimmer: shimmer 4s 600ms infinite;
+  @keyframes shimmer {
+    0% {
+      background-position: -100% 0;
+      animation-timing-function: steps(48, end);
+    }
+    25%,
+    100% {
+      background-position: 250% 0;
+    }
+  }
 }
 
 /* The hidden title bar has to be draggable by hand. */
@@ -327,5 +342,27 @@
   }
   &[data-ending-style] {
     opacity: 0;
+  }
+}
+
+/* Live text ("Working"): muted words a highlight band sweeps across now and then. Its motion claims
+   the work is live, so it shows only while that is proven. Still with less motion. */
+@utility shimmer {
+  background-color: var(--color-live-text);
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--color-live-text-highlight) 40%,
+    var(--color-live-text-highlight) 60%,
+    transparent 100%
+  );
+  background-position: -100% 0;
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: var(--animate-shimmer);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 }
