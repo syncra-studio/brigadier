@@ -38,18 +38,15 @@ export function KitRow({ name, children }: { name: string; children: (k: KitSet)
  * column is the same components with the old app's arrow cursor, no press and its own red (theme.css
  * `old-app`); it goes once the owner approves.
  */
-export function Compare({ name, children, apple }: { name: string; children: ReactNode; apple?: ReactNode }) {
-  // `apple` adds a third column, the Apple-style copies (D66), until the owner picks.
-  const columns: [string, ReactNode, string?][] = [["Current", children], ["Old app", children, "old-app"]];
-  if (apple) columns.push(["Apple style (approximation)", apple]);
+export function Compare({ name, children }: { name: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className={apple ? "grid grid-cols-3" : "grid grid-cols-2"}>
-        {columns.map(([label, content, look], i) => (
-          <div key={label} className={cx("flex min-w-0 flex-col gap-3 px-6 first:ps-0 last:pe-0", i > 0 && "border-s border-divider", look)}>
+      <div className="grid grid-cols-2">
+        {["Current", "Old app"].map((label, i) => (
+          <div key={label} className={cx("flex min-w-0 flex-col gap-3", i === 0 ? "pe-6" : "old-app border-s border-divider ps-6")}>
             <span className="text-2xs font-medium">{label}</span>
-            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{content}</div>
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
           </div>
         ))}
       </div>

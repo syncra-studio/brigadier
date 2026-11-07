@@ -18,7 +18,6 @@ import { type SidebarCollapse, SidebarPanel, SidebarProvider, useSidebar } from 
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
-import * as Apple from "./apple/settings";
 import { Compare, Row, Section, State } from "./parts";
 
 function Rows({ current = "a" }: { current?: string }) {
@@ -130,46 +129,25 @@ function FoldDemo() {
   );
 }
 
-const KIT = { SettingsCard, SettingsRow, RowText };
-
-function SettingsDemo({ error, k = KIT }: { error?: string; k?: typeof KIT | typeof Apple }) {
+function SettingsDemo({ error }: { error?: string }) {
   const [on, setOn] = useState(true);
   const id = useId();
   return (
-    <k.SettingsCard className="w-84">
-      <k.SettingsRow label="Open at login" description="Start Brigadier when you log in." htmlFor={id}>
+    <SettingsCard className="w-120">
+      <SettingsRow label="Open at login" description="Start Brigadier when you log in." htmlFor={id}>
         <Switch id={id} checked={on} onCheckedChange={setOn} />
-      </k.SettingsRow>
-      <k.SettingsRow label="Daemon port" description="Where the app reaches the daemon." error={error}>
+      </SettingsRow>
+      <SettingsRow label="Daemon port" description="Where the app reaches the daemon." error={error}>
         <Button size="sm" variant="soft">
           Change
         </Button>
-      </k.SettingsRow>
-      <div className={k === KIT ? "flex items-center gap-3 px-4 py-3" : "flex min-h-10 items-center gap-2.5 px-2.5 py-1.75"}>
+      </SettingsRow>
+      <div className="flex items-center gap-3 px-4 py-3">
         <StateDot tone="ready" />
-        <k.RowText title="Local model" line="Ready · 7B · on this Mac" />
+        <RowText title="Local model" line="Ready · 7B · on this Mac" />
         <ChevronRight className="size-icon-sm text-muted-foreground" />
       </div>
-    </k.SettingsCard>
-  );
-}
-
-function SettingsStates({ k = KIT }: { k?: typeof KIT | typeof Apple }) {
-  return (
-    <>
-      <State label="card">
-        <SettingsDemo k={k} />
-      </State>
-      <State label="row error">
-        <SettingsDemo k={k} error="Port 7421 is in use." />
-      </State>
-      <State label="padded">
-        <k.SettingsCard padded className="w-72">
-          <k.RowText title="Storage" line="2.4 GB of 10 GB" />
-          <k.RowText quiet title="Sessions · 1.1 GB" />
-        </k.SettingsCard>
-      </State>
-    </>
+    </SettingsCard>
   );
 }
 
@@ -286,8 +264,19 @@ export function Panes() {
         </Compare>
       </Section>
       <Section title="Settings card · Settings row · Row text">
-        <Compare name="rows split by hairlines · a row with an error · padded" apple={<SettingsStates k={Apple} />}>
-          <SettingsStates />
+        <Compare name="rows split by hairlines · a row with an error · padded">
+          <State label="card">
+            <SettingsDemo />
+          </State>
+          <State label="row error">
+            <SettingsDemo error="Port 7421 is in use." />
+          </State>
+          <State label="padded">
+            <SettingsCard padded className="w-72">
+              <RowText title="Storage" line="2.4 GB of 10 GB" />
+              <RowText quiet title="Sessions · 1.1 GB" />
+            </SettingsCard>
+          </State>
         </Compare>
       </Section>
       <Section title="Progress line">
