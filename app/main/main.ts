@@ -13,7 +13,8 @@ const ORIGIN = `app://${APP_ID}`;
 
 const uiDir = path.join(__dirname, "../../ui");
 const uiDist = path.join(uiDir, "dist");
-const dataDir = path.join(app.getPath("appData"), APP_NAME);
+// BRIGADIER_DATA points the app and its daemon at another data folder, as it does for the CLI.
+const dataDir = process.env.BRIGADIER_DATA ?? path.join(app.getPath("appData"), APP_NAME);
 const socketPath = path.join(dataDir, "daemon.sock");
 const daemonPath = path.join(__dirname, "../../../target/debug/brigadierd");
 
@@ -71,6 +72,7 @@ function openWindow(): void {
   };
   const fork = (): void => {
     utility = utilityProcess.fork(path.join(__dirname, "socket.js"), [socketPath]);
+    utility.on("message", (message) => message === "down" && startDaemonIfNothingAnswers());
     // A dead utility process must not leave the page showing a stale "connected".
     utility.once("exit", () => {
       if (window.isDestroyed()) return;

@@ -5,4 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-libc = "=0.2.191"
+brigadier = { path = "../cli" }
+brigadier-core = { path = "../core" }
+brigadier-frames = { path = "../frames" }
+libc.workspace = true
+serde_json.workspace = true

@@ -1,7 +1,7 @@
-// Holds the daemon socket in a utility process and passes its bytes straight to the page.
+// Holds the daemon socket in a utility process and passes bytes both ways, untouched.
 import net from "node:net";
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const RETRY_MS = 250;
 const socketPath = process.argv[2];
 
@@ -22,6 +22,8 @@ function connect(): void {
   current.on("close", () => {
     if (socket !== current) return;
     port.postMessage(null);
+    // Main starts the daemon again if nothing answers.
+    process.parentPort.postMessage("down");
     retry = setTimeout(connect, RETRY_MS);
   });
 }
@@ -30,6 +32,7 @@ function connect(): void {
 process.parentPort.on("message", ({ ports: [next] }) => {
   port?.close();
   port = next;
+  port.on("message", ({ data }) => socket?.write(data));
   port.start();
   clearTimeout(retry);
   const previous = socket;
