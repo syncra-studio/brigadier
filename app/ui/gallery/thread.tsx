@@ -9,7 +9,7 @@ import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/i
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
 import { Compare, Section, State } from "./parts";
-import { ProposedStep, type Step } from "./proposed-tool";
+import { ProposedDiff, ProposedShell, ProposedStep, type Step } from "./proposed-tool";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -47,6 +47,12 @@ const DIFF = `--- a/src/blocks.ts
 +  const shown = tokens.filter((token) => token.type !== "space");
 +  return shown.map(draw);
  }`;
+
+/** A diff long enough to fold. */
+const LONG_DIFF = `--- a/src/thread/rows.tsx
++++ b/src/thread/rows.tsx
+@@ -1,20 +1,22 @@
+${Array.from({ length: 20 }, (_, i) => (i % 5 === 2 ? `-  const old${i} = draw(${i});\n+  const row${i} = draw(${i}, { keep });` : `   const line${i} = ${i};`)).join("\n")}`;
 
 const OUTPUT = Array.from({ length: 24 }, (_, i) => `✓ test ${i + 1} passes (${(i * 7) % 40}ms)`).join("\n");
 const LONG_OUTPUT = Array.from({ length: 900 }, (_, i) => `line ${i + 1}`).join("\n");
@@ -254,7 +260,27 @@ export function Thread() {
             </div>
           </Wide>
         </Compare>
-        <Compare name="shell box: success · exit code · running (output growing) · stopped · no output · 900 lines">
+        <Compare
+          name="shell box: success · exit code · running (output growing) · stopped · no output · 900 lines"
+          proposed={(["hanging", "block"] as const).map((look) => (
+            <Wide key={look} label={look === "hanging" ? "A · hanging: under the words on a hairline" : "B · block: one quiet block"}>
+              <div className="flex flex-col gap-1">
+                <Opened>
+                  <ProposedShell id="ok" look={look} command="pnpm test --filter thread" output={OUTPUT} progress="done" exitCode={0} />
+                </Opened>
+                <Opened>
+                  <ProposedShell id="exit" look={look} command="pnpm typecheck && pnpm exec eslint app/ui/src --max-warnings 0" output="src/rows.tsx(4,1): error TS2307: Cannot find module './kept'." progress="failed" exitCode={1} />
+                </Opened>
+                <Opened>
+                  <ProposedShell id="live" look={look} command="pnpm test" output={grown} progress="running" exitCode={null} />
+                </Opened>
+                <Opened>
+                  <ProposedShell id="stop" look={look} command="sleep 600" output="" progress="cancelled" exitCode={null} />
+                </Opened>
+              </div>
+            </Wide>
+          ))}
+        >
           <Wide label="success" open>
             {item(tool("sh-ok", "run", "shell", "pnpm test --filter thread", "done", { exitCode: 0, output: OUTPUT }))}
           </Wide>
@@ -276,7 +302,21 @@ export function Thread() {
         </Compare>
       </Section>
       <Section title="Thread · file changes · diff card">
-        <Compare name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open">
+        <Compare
+          name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open"
+          proposed={
+            <Wide label="open: the diff in the thread's code block (short; long, folded)">
+              <div className="flex w-full flex-col gap-1">
+                <Opened>
+                  <ProposedDiff id="short" change={file("src/thread/blocks.ts", "modified", 3, 1)} />
+                </Opened>
+                <Opened>
+                  <ProposedDiff id="long" change={{ ...file("src/thread/rows.tsx", "modified", 4, 4), diff: LONG_DIFF }} />
+                </Opened>
+              </div>
+            </Wide>
+          }
+        >
           <Wide label="by change; hover shows the counts' colours">
             <div className="flex flex-col gap-1">
               {item({

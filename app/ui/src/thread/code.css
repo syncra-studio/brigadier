@@ -52,3 +52,8 @@
 .hljs-deletion {
   @apply bg-diff-removed text-destructive;
 }
+/* Each wash runs the block's full width, through its side padding (px-3), or its longest line's. */
+.hljs-addition,
+.hljs-deletion {
+  @apply wash-line;
+}
