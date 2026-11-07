@@ -226,7 +226,7 @@ export function Thread() {
         </Compare>
       </Section>
       <Section title="Thread · file changes · diff card">
-        <Compare name="edited · created · deleted · renamed · counts not reported · editing · rejected · failed · open">
+        <Compare name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open">
           <Wide label="by change; hover shows the counts' colours">
             <div className="flex flex-col gap-1">
               {item({
@@ -237,6 +237,7 @@ export function Thread() {
               })}
               <div data-frozen="hover">{item({ ...base("f2"), kind: "fileChange", progress: "done", changes: [file("src/thread/blocks.ts", "modified", 7, 2)] })}</div>
               {item({ ...base("f3", RUNNING), kind: "fileChange", progress: "running", changes: [file("src/thread/rows.tsx", "modified", null, null)] }, RUNNING)}
+              {item({ ...base("f3w", RUNNING), kind: "fileChange", progress: "pending", changes: [file("src/thread/body.tsx", "added", null, null)] }, RUNNING)}
               {item({ ...base("f4"), kind: "fileChange", progress: "cancelled", changes: [file("src/main.ts", "modified", 1, 1)] })}
               {item({ ...base("f5"), kind: "fileChange", progress: "failed", changes: [file("src/locked.ts", "modified", null, null)] })}
             </div>
@@ -269,7 +270,7 @@ export function Thread() {
           <Wide label="allowed">{item({ ...base("p2"), kind: "approval", title: "Run a command that reaches outside?", detail: "curl https://registry.npmjs.org/@base-ui/react", decision: "approved", action: "network" })}</Wide>
           <Wide label="denied">{item({ ...base("p3"), kind: "approval", title: "Allow editing this file?", detail: "~/.zshrc", decision: "denied", action: "edit" })}</Wide>
         </Compare>
-        <Compare name="question: waiting · answered (open) · withdrawn · subagent: running · done · failed · stopped">
+        <Compare name="question: waiting · answered (open) · withdrawn · subagent: waiting · running · done · failed · stopped">
           <Wide label="question">
             <div className="flex flex-col gap-1">
               {item({ ...base("q1", RUNNING), kind: "question", question: "Which branch?", options: ["main", "ui/kit"], answer: null }, RUNNING)}
@@ -281,16 +282,16 @@ export function Thread() {
           </Wide>
           <Wide label="subagent">
             <div className="flex flex-col gap-1">
-              {(["running", "done", "failed", "cancelled"] as const).map((progress) => (
+              {(["pending", "running", "done", "failed", "cancelled"] as const).map((progress) => (
                 <div key={progress}>{item({ ...base(`c-${progress}`, RUNNING), kind: "childAgent", sessionId: "s2", title: "Find the parser", progress }, RUNNING)}</div>
               ))}
             </div>
           </Wide>
         </Compare>
-        <Compare name="compaction: running · done · failed · not reported · notices: note · warning · error · unknown (shut, open)">
+        <Compare name="compaction: waiting · running · done · failed · not reported · notices: note · warning · error · unknown (shut, open)">
           <Wide label="compaction">
             <div className="flex w-full flex-col">
-              {(["running", "done", "failed", undefined] as const).map((progress) => (
+              {(["pending", "running", "done", "failed", undefined] as const).map((progress) => (
                 <div key={String(progress)}>{item({ ...base(`m-${String(progress)}`), kind: "compaction", summary: null, progress })}</div>
               ))}
             </div>

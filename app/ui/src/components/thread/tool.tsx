@@ -8,15 +8,15 @@ import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
-/** A step's verb while it runs and once done ("Reading", "Read"), by kind. */
-export const VERBS: Record<StepKind, [string, string]> = {
-  read: ["Reading", "Read"],
-  edit: ["Editing", "Edited"],
-  search: ["Searching for", "Searched for"],
-  run: ["Running", "Ran"],
-  web: ["Searching the web for", "Searched the web for"],
-  agent: ["Running a subagent:", "Ran a subagent:"],
-  other: ["Using", "Used"],
+/** A step's verb while it runs, once done and while it waits to start ("Reading", "Read", "read"), by kind. */
+export const VERBS: Record<StepKind, [string, string, string]> = {
+  read: ["Reading", "Read", "read"],
+  edit: ["Editing", "Edited", "edit"],
+  search: ["Searching for", "Searched for", "search for"],
+  run: ["Running", "Ran", "run"],
+  web: ["Searching the web for", "Searched the web for", "search the web for"],
+  agent: ["Running a subagent:", "Ran a subagent:", "run a subagent:"],
+  other: ["Using", "Used", "use"],
 };
 
 /** What a step acted on: a command, a path, a query; another tool's own name. */
@@ -28,7 +28,8 @@ const TAIL_LINES = 400;
 /**
  * One tool call: "Ran pnpm test", "Reading blocks.ts" (shimmering while it runs), with its kind's icon.
  * A finished call opens: a command to its Shell box, any other tool to its input and output. A failed
- * tool reads "— failed" (a command's exit code shows in its box); a stopped one "Stopped …".
+ * tool reads "— failed" (a command's exit code shows in its box); a stopped one "Stopped …"; a queued one
+ * "Waiting to run …", still.
  */
 export function ToolRow({
   keep,
@@ -53,9 +54,11 @@ export function ToolRow({
   const command = kind === "run";
   const object = toolObject(kind, name, input);
   const running = progress === "running" || progress === "pending";
-  const [doing, done] = VERBS[kind];
+  const [doing, done, waiting] = VERBS[kind];
   const words =
-    progress === "cancelled" ? (
+    progress === "pending" ? (
+      <Words verb={`Waiting to ${waiting}`} object={object} />
+    ) : progress === "cancelled" ? (
       <Words verb="Stopped" object={command ? object : `${doing.toLowerCase()} ${object}`} />
     ) : (
       <Words verb={running ? doing : done} object={progress === "failed" && !command ? `${object} — failed` : object} live={progress === "running"} />

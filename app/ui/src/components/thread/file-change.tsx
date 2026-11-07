@@ -5,11 +5,11 @@ import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
-export const FILE_VERBS: Record<FileChange["change"], [string, string]> = {
-  added: ["Creating", "Created"],
-  modified: ["Editing", "Edited"],
-  deleted: ["Deleting", "Deleted"],
-  renamed: ["Renaming", "Renamed"],
+export const FILE_VERBS: Record<FileChange["change"], [string, string, string]> = {
+  added: ["Creating", "Created", "create"],
+  modified: ["Editing", "Edited", "edit"],
+  deleted: ["Deleting", "Deleted", "delete"],
+  renamed: ["Renaming", "Renamed", "rename"],
 };
 
 /** A diff past this many lines isn't drawn. */
@@ -25,12 +25,14 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
   const { added, removed } = change;
   const running = progress === "running" || progress === "pending";
   const name = fileName(change.path);
-  const [doing, done] = FILE_VERBS[change.change];
+  const [doing, done, waiting] = FILE_VERBS[change.change];
   const object = change.change === "renamed" && change.from ? `${fileName(change.from)} to ${name}` : name;
   const head = (
     <>
       <StepIcon kind="edit" />
-      {progress === "cancelled" ? (
+      {progress === "pending" ? (
+        <Words verb={`Waiting to ${waiting}`} object={object} />
+      ) : progress === "cancelled" ? (
         <Words verb="Rejected" object={name} />
       ) : (
         <Words verb={running ? doing : done} object={progress === "failed" ? `${object} — failed` : object} live={progress === "running"} />
@@ -88,6 +90,8 @@ const DiffLines = memo(function DiffLines({ diff, gone }: { diff: string; gone: 
   if (lines.at(-1) === "") lines.pop();
   const empty = lines.length === 0 ? (gone ? "Contents deleted" : "No changes") : lines.length > MAX_DIFF_LINES ? "Diff too large to preview" : null;
   if (empty) return <p className="px-3 py-2 text-sm text-muted-foreground">{empty}</p>;
+  // Inside a hunk "+++x" is an added "++x": only lines before the first @@ are file headers.
+  const hunk = lines.findIndex((line) => line.startsWith("@@"));
   return (
     <div className="max-h-60 min-w-0 scroll-edge-fade edge-fade-diff overflow-auto">
       <pre className="flex w-max min-w-full flex-col font-mono text-diff">
@@ -97,7 +101,7 @@ const DiffLines = memo(function DiffLines({ diff, gone }: { diff: string; gone: 
             key={i}
             className={cx(
               "px-3 whitespace-pre",
-              line.startsWith("+++") || line.startsWith("---") ? "text-muted-foreground italic" : LINE[line[0] as keyof typeof LINE],
+              i < hunk && (line.startsWith("+++") || line.startsWith("---")) ? "text-muted-foreground italic" : LINE[line[0] as keyof typeof LINE],
             )}
           >
             {line || " "}

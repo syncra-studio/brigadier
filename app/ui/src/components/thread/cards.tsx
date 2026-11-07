@@ -99,21 +99,23 @@ export function QuestionRow({ keep, question, answer, waiting }: { keep: string;
 
 /** A subagent the agent started: "Running a subagent", then "Ran a subagent: Find the parser". */
 export function ChildAgentRow({ title, progress }: { title: string; progress: Progress }) {
-  const running = progress === "running" || progress === "pending";
+  const running = progress === "running";
   return (
     <p className={ROW}>
       <StepIcon kind="agent" />
-      {progress === "cancelled" ? (
+      {progress === "pending" ? (
+        <Words verb="Waiting to run a subagent:" object={title} />
+      ) : progress === "cancelled" ? (
         <Words verb="Stopped a subagent:" object={title} />
       ) : (
-        <Words verb={running ? "Running a subagent" : "Ran a subagent:"} object={running ? undefined : progress === "failed" ? `${title} — failed` : title} live={progress === "running"} />
+        <Words verb={running ? "Running a subagent" : "Ran a subagent:"} object={running ? undefined : progress === "failed" ? `${title} — failed` : title} live={running} />
       )}
     </p>
   );
 }
 
 const COMPACTION: Record<Progress, string> = {
-  pending: "Refreshing context",
+  pending: "Waiting to refresh context",
   running: "Refreshing context",
   done: "Context refreshed · nothing was lost",
   failed: "Couldn’t compact context",
@@ -122,11 +124,10 @@ const COMPACTION: Record<Progress, string> = {
 
 /** The agent shortening its context, as a divider across the column. */
 export function CompactionDivider({ progress = "done" }: { progress?: Progress }) {
-  const live = progress === "running" || progress === "pending";
   return (
     <LabeledDivider>
       <TextShorterConcise className="size-icon-sm shrink-0" />
-      <span key={progress} className={cx("min-w-0 text-center", live && "shimmer")}>
+      <span key={progress} className={cx("min-w-0 text-center", progress === "running" && "shimmer")}>
         {COMPACTION[progress]}
       </span>
     </LabeledDivider>

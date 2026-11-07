@@ -5,7 +5,6 @@ import { useKept } from "../../thread/kept";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 
-const DAY_MS = 86_400_000;
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const monthDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
@@ -14,11 +13,13 @@ const fullDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "nume
 /** When a message was sent: "3:09 PM", "Yesterday 3:09 PM", "Mon 3:09 PM", "Mon, Mar 3 at 3:09 PM", "Mar 3, 2025 at 3:09 PM". */
 export function sentAt(ms: number, now = Date.now()): string {
   const at = new Date(ms);
-  const today = new Date(now).setHours(0, 0, 0, 0);
+  const day = new Date(now);
+  // Midnight `back` calendar days ago: a day across a clock change isn't 24 hours.
+  const midnight = (back: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate() - back).getTime();
   const clock = time.format(at);
-  if (ms >= today) return clock;
-  if (ms >= today - DAY_MS) return `Yesterday ${clock}`;
-  if (ms >= today - 6 * DAY_MS) return `${weekday.format(at)} ${clock}`;
+  if (ms >= midnight(0)) return clock;
+  if (ms >= midnight(1)) return `Yesterday ${clock}`;
+  if (ms >= midnight(6)) return `${weekday.format(at)} ${clock}`;
   if (at.getFullYear() === new Date(now).getFullYear()) return `${monthDay.format(at)} at ${clock}`;
   return `${fullDate.format(at)} at ${clock}`;
 }
