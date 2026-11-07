@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import { Spinner } from "../icons";
 import type { Item } from "../thread/item";
 import { Controls, useSeen } from "./Controls";
 import { createFake, preview, type FakeCommand } from "./fake";
@@ -11,8 +12,13 @@ type DemoSession = Session<Item, FakeCommand>;
 // Lives as long as the page, as the daemon outlives a window.
 const fake = createFake();
 
+// When the user pressed Send for each draft id, to time how soon its row shows and is confirmed.
+const pressedAt = new Map<string, number>();
+
 export function Demo() {
   const [session, setSession] = useState(() => createSession(fake.backend));
+  // Off: optimistic, as the real path is. On: the demo acts like an app that waits for the backend.
+  const [wait, setWait] = useState(false);
   useEffect(() => {
     session.connect();
     return () => {
@@ -24,10 +30,10 @@ export function Demo() {
     <main className="fixed inset-0 flex">
       <section className="flex min-w-0 flex-1 flex-col">
         <Header session={session} />
-        <Thread session={session} />
-        <Composer session={session} />
+        <Thread session={session} wait={wait} />
+        <Composer session={session} wait={wait} />
       </section>
-      <Controls fake={fake} session={session} reopen={() => setSession(createSession(fake.backend))} />
+      <Controls fake={fake} session={session} reopen={() => setSession(createSession(fake.backend))} wait={wait} setWait={setWait} />
     </main>
   );
 }
@@ -56,7 +62,7 @@ function Header({ session }: { session: DemoSession }) {
   );
 }
 
-function Thread({ session }: { session: DemoSession }) {
+function Thread({ session, wait }: { session: DemoSession; wait: boolean }) {
   const head = session.useHead();
   const body = bodyState(head);
   const loading = useAfter(body === "loading");
@@ -72,7 +78,7 @@ function Thread({ session }: { session: DemoSession }) {
           <Placeholder title="Can't load the session" line="The background service isn't answering, so nothing here can be shown as true." />
         )}
         {head.order.map((key) => (
-          <EntryView key={key} session={session} entryKey={key} />
+          <EntryView key={key} session={session} entryKey={key} wait={wait} />
         ))}
         <RunLine session={session} />
       </div>
@@ -89,12 +95,27 @@ function Placeholder({ title, line }: { title: string; line?: string }) {
   );
 }
 
-function EntryView({ session, entryKey }: { session: DemoSession; entryKey: string }) {
+function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey: string; wait: boolean }) {
   const entry = session.useEntry(entryKey);
   const state = entry?.pending ? pendingState(entry.pending) : null;
   const slow = useAfter(state === "pending");
   useSeen(state === "pending" ? (slow ? "pending" : null) : state);
-  if (!entry) return null;
+  const hidden = wait && (state === "pending" || state === "unknown");
+  const drawn = entry !== undefined && !hidden;
+  const confirmed = entry !== undefined && entry.pending === null;
+  const pressed = pressedAt.get(entryKey);
+  const [shownMs, setShownMs] = useState<number | null>(null);
+  const [confirmedMs, setConfirmedMs] = useState<number | null>(null);
+  useEffect(() => {
+    if (!drawn || pressed === undefined || shownMs !== null) return;
+    // Runs in the frame the row is first painted in.
+    const frame = requestAnimationFrame(() => setShownMs(performance.now() - pressed));
+    return () => cancelAnimationFrame(frame);
+  }, [drawn, pressed, shownMs]);
+  useEffect(() => {
+    if (confirmed && pressed !== undefined && confirmedMs === null) setConfirmedMs(performance.now() - pressed);
+  }, [confirmed, pressed, confirmedMs]);
+  if (!entry || hidden) return null;
   const { item, pending } = entry;
   if (item.kind !== "message") return <p className="text-sm text-muted-foreground">{item.kind}</p>;
   if (item.role === "assistant") return <p className="text-base font-prose">{item.text}</p>;
@@ -102,6 +123,11 @@ function EntryView({ session, entryKey }: { session: DemoSession; entryKey: stri
   return (
     <div className="flex flex-col items-end gap-1">
       <div className={`max-w-full min-w-0 rounded-overlay bg-muted px-4 py-2.5 text-base ${refused ? "opacity-50" : ""}`}>{item.text}</div>
+      {shownMs !== null && (
+        <p className="text-xs text-muted-foreground tabular-nums">
+          on screen in {Math.round(shownMs)} ms{confirmedMs !== null && ` · confirmed in ${Math.round(confirmedMs)} ms`}
+        </p>
+      )}
       {state === "pending" && slow && <Note>Sending…</Note>}
       {state === "unknown" && <Note>Not confirmed · it's checked once the link is back</Note>}
       {refused && pending && (
@@ -148,16 +174,23 @@ function RunLine({ session }: { session: DemoSession }) {
   );
 }
 
-function Composer({ session }: { session: DemoSession }) {
+function Composer({ session, wait }: { session: DemoSession; wait: boolean }) {
   const head = session.useHead();
   const [text, setText] = useState("");
   // One id per draft: pressing Send twice can't make two messages.
   const [draftId, setDraftId] = useState(newId);
   const live = head.link === "live";
+  const [lastId, setLastId] = useState("");
+  const last = session.useEntry(lastId);
+  // Waiting for the backend, Send spins until the last send's row arrives or is refused.
+  const busy = wait && !!last?.pending && pendingState(last.pending) !== "error";
   const send = () => {
+    const pressed = performance.now();
     const words = text.trim();
-    if (!words || !live) return;
+    if (!words || !live || busy) return;
+    pressedAt.set(draftId, pressed);
     session.send(draftId, { text: words }, preview(draftId, words));
+    setLastId(draftId);
     setText("");
     setDraftId(newId());
   };
@@ -180,9 +213,11 @@ function Composer({ session }: { session: DemoSession }) {
         <button
           type="button"
           onClick={send}
-          disabled={!live || !text.trim()}
-          className="h-control-md rounded-capsule bg-primary px-4 text-label font-medium text-primary-fg disabled:opacity-40"
+          aria-busy={busy}
+          disabled={!busy && (!live || !text.trim())}
+          className="inline-flex h-control-md items-center gap-1.5 rounded-capsule bg-primary px-4 text-label font-medium text-primary-fg disabled:opacity-40"
         >
+          {busy && <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
           Send
         </button>
       </div>

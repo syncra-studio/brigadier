@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
+import { Switch } from "../components/switch";
 import type { Item } from "../thread/item";
 import { preview, type Fake, type FakeCommand, type Knobs } from "./fake";
 import { useNow, type State } from "./shown";
@@ -27,7 +28,19 @@ export function useSeen(state: string | null): void {
 const STATES: State[] = ["loading", "empty", "pending", "error", "disconnected", "reconnecting", "interrupted", "stalled", "unknown"];
 
 /** The demo's side panel: what the fake backend does next, and which states have shown. */
-export function Controls({ fake, session, reopen }: { fake: Fake; session: Session<Item, FakeCommand>; reopen: () => void }) {
+export function Controls({
+  fake,
+  session,
+  reopen,
+  wait,
+  setWait,
+}: {
+  fake: Fake;
+  session: Session<Item, FakeCommand>;
+  reopen: () => void;
+  wait: boolean;
+  setWait: (wait: boolean) => void;
+}) {
   // The fake turns its one-shot knobs off itself; a quick tick keeps the panel true to them.
   useNow(true, 250);
   useSeenVersion();
@@ -46,10 +59,16 @@ export function Controls({ fake, session, reopen }: { fake: Fake; session: Sessi
           ))}
         </ul>
       </Group>
+      <Group title="This window">
+        <label className="flex items-center gap-2 text-label">
+          <Switch checked={wait} onCheckedChange={setWait} />
+          Wait for the backend · not optimistic
+        </label>
+      </Group>
       <Group title="Backend">
         <label className="flex flex-col gap-1">
           <span className="text-label">Answer delay · {knobs.delayMs} ms</span>
-          <input type="range" min={0} max={3000} step={50} defaultValue={knobs.delayMs} onChange={(event) => (knobs.delayMs = Number(event.target.value))} />
+          <input type="range" min={0} max={5000} step={100} defaultValue={knobs.delayMs} onChange={(event) => (knobs.delayMs = Number(event.target.value))} />
         </label>
         <label className="flex items-center gap-2 text-label">
           <input type="checkbox" defaultChecked={knobs.reorder} onChange={(event) => (knobs.reorder = event.target.checked)} />
