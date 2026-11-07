@@ -55,15 +55,8 @@ function GalleryPage() {
   useKeptScroll(scroller);
   return (
     <div ref={scroller} className="fixed inset-0 overflow-y-auto">
-      <header className="app-drag sticky top-0 z-10 border-b border-divider bg-background">
-        <div className="flex h-titlebar items-center ps-traffic-lights">
-          <h1 className="ps-2 text-sm font-medium">Components</h1>
-        </div>
-        {/* Every row shows the kit beside the old app's exact look (D22). */}
-        <div className="grid grid-cols-2 px-8 pb-2 text-label font-medium">
-          <span className="pe-6">Current</span>
-          <span className="ps-6">Old app</span>
-        </div>
+      <header className="app-drag sticky top-0 z-10 flex h-titlebar items-center border-b border-divider bg-background ps-traffic-lights">
+        <h1 className="ps-2 text-sm font-medium">Components</h1>
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
         <Kit />

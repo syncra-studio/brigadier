@@ -4,13 +4,6 @@ import { type ReactElement, type ReactNode, useState } from "react";
 import { cx } from "../src/components/cx";
 import { Kbd } from "../src/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
-import * as Current from "./final";
-import * as Old from "./old";
-
-/** A set of the components a row shows: the kit (Current) or the old-exact copies (Old app). */
-export type KitSet = typeof Current;
-// In the order of the header's columns.
-const SETS: KitSet[] = [Current, Old];
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -21,18 +14,12 @@ export function Section({ title, children }: { title: string; children: ReactNod
   );
 }
 
-/** One component's row: each state side by side, once with the kit (Current) and once as the old app had it. */
-export function Row({ name, children }: { name: string; children: (k: KitSet) => ReactNode }) {
+/** One component's row: each state side by side. */
+export function Row({ name, children }: { name: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className="grid grid-cols-2">
-        {SETS.map((k, i) => (
-          <div key={i} className={cx("flex flex-wrap items-start gap-x-8 gap-y-4", i === 0 ? "pe-6" : "old-app-colours border-s border-divider ps-6")}>
-            {children(k)}
-          </div>
-        ))}
-      </div>
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
     </div>
   );
 }
@@ -79,4 +66,3 @@ export function OpenTip({
     </div>
   );
 }
-
