@@ -58,7 +58,7 @@
   --color-syntax-tag: #7ee787;
   /* A select's pill at rest, fainter than fill-subtle. */
   --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
-  /* Behind an open dialog: the page, dimmed and blurred. */
+  /* Behind an open dialog: the page, dimmed. */
   --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
   --color-success-border: color-mix(in oklab, var(--color-success) 30%, transparent);
   --color-destructive-border: color-mix(in oklab, var(--color-destructive) 30%, transparent);
@@ -66,6 +66,18 @@
   --color-action-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   /* A dialog's see-through card (the owner's pick, D46, from the Apple-style column). */
   --color-material: color-mix(in oklab, var(--color-popover) 78%, transparent);
+  /* A row's grey second line, a note, an empty list's words. */
+  --color-quiet-foreground: color-mix(in oklab, var(--color-foreground) 65%, transparent);
+  /* An unchosen segment, a sidebar section's title. */
+  --color-faint-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
+  /* The chosen tab's fill. */
+  --color-tab-active: color-mix(in oklab, var(--color-input) 30%, transparent);
+  /* An error banner's edge. */
+  --color-destructive-line: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  /* A progress bar: filling, and stopped. */
+  --color-progress: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  --color-progress-cancelled: color-mix(in oklab, var(--color-foreground) 20%, transparent);
+  /* Live words ("Downloading"): muted, with a brighter band sweeping across. */
   --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
   --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
 
@@ -89,6 +101,9 @@
   --text-2xl--line-height: 2rem;
   --text-hero: 1.875rem;
   --text-hero--line-height: 2.25rem;
+  /* The sidebar panel's title. */
+  --text-nav-title: 1.125rem;
+  --text-nav-title--line-height: 1.5rem;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, "Ubuntu",
@@ -105,6 +120,7 @@
   --font-weight-semibold: 600;
 
   --tracking-tooltip: -0.01em;
+  --tracking-tight: -0.025em;
   --tracking-wide: 0.025em;
   --tracking-wider: 0.05em;
 
@@ -125,6 +141,28 @@
   --spacing-select: 24rem;
   --container-dialog: 24rem;
   --container-toast: 32rem;
+  /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
+  --spacing-nav-row: 1.875rem;
+  --spacing-nav-header: 3.25rem;
+  /* The room a Settings row keeps for its control. */
+  --spacing-settings-control: min(10rem, 40cqw);
+  /* The sidebar panel: its default width, how far it resizes, the content's least room beside it. */
+  --spacing-sidebar: 18rem;
+  --spacing-sidebar-min: 11.75rem;
+  --spacing-sidebar-max: 29.25rem;
+  --spacing-sidebar-thread-min: 20rem;
+  /* Collapsed to a strip of icons, each where it sits in the expanded panel. */
+  --spacing-sidebar-strip: calc(var(--spacing) * 8 + var(--spacing-icon-md));
+  /* The window's start edge that peeks the hidden sidebar, and the panel's grab area. */
+  --spacing-sidebar-peek-edge: 0.5rem;
+  --spacing-resize-handle: 1rem;
+  /* A window narrower than this folds the sidebar by itself. */
+  --spacing-narrow-window: 60rem;
+  /* The page surface's gap to the window's sides. */
+  --spacing-surface-inset: 0.25rem;
+  /* A scroll view's faded edges. */
+  --spacing-fade-top: 1.25rem;
+  --spacing-fade-bottom: 2rem;
   /* A popup slides in from its trigger by this much. */
   --spacing-popup-shift: 0.5rem;
 
@@ -139,6 +177,9 @@
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
   --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
   --radius-capsule: 9999px;
+  /* Sidebar and Settings navigation rows; a Settings card. */
+  --radius-nav: 0.78125rem;
+  --radius-settings: 0.875rem;
   /* A dialog's card, and a confirm's rounder one (D46). */
   --radius-sheet: 1rem;
   --radius-alert: 1.5rem;
@@ -156,30 +197,23 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-popup: ease;
+  /* The sidebar opening and closing: a spring. */
+  --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1.001, 1.001, 1.002, 1.001, 1.001, 1);
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
   --blur-material: 24px;
-  --animate-spin: spin 1s linear infinite;
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
+  /* A list folding open or shut, the sidebar's spring; the peek's way out. */
+  --duration-fold: 300ms;
+  --duration-peek-out: 200ms;
+  /* A progress bar growing. */
+  --duration-bar: 500ms;
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  @keyframes pulse {
+    50% {
+      opacity: 0.5;
     }
   }
-  --default-transition-timing-function: var(--ease-standard);
-
-  --opacity-disabled: 50%;
-  --opacity-switch-disabled: 60%;
-  --opacity-spinner-track: 25%;
-  --opacity-dialog-close: 70%;
-  --opacity-toast-close: 80%;
-  --scale-press: 90%;
-  --scale-press-button: 95%;
-  --scale-popup: 95%;
-  --z-index-popup: 50;
-  --text-underline-offset-link: 4px;
-  --focus-ring-width: 1px;
-
   /* One sweep in the first second of every four, in 48 steps; at rest the band is past the end. */
   --animate-shimmer: shimmer 4s 600ms infinite;
   @keyframes shimmer {
@@ -192,6 +226,58 @@
       background-position: 250% 0;
     }
   }
+  /* A copy button's icon: the check pops in, the copy icon comes back. */
+  --animate-copied-in: copied-in 200ms var(--ease-out);
+  --animate-copy-in: copy-in var(--default-transition-duration) ease;
+  @keyframes copied-in {
+    from {
+      opacity: 0;
+      scale: 0.5;
+    }
+  }
+  @keyframes copy-in {
+    from {
+      opacity: 0;
+      scale: 0.75;
+    }
+  }
+  --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
+  --animate-peek-out: peek-out var(--duration-peek-out) var(--ease-sidebar) forwards;
+  /* The collapsed sidebar peeking: it floats in from the start, and fades back out drifting half as far. */
+  @keyframes peek-in {
+    from {
+      opacity: 0;
+      translate: calc(var(--spacing) * -1.5) 0;
+    }
+  }
+  @keyframes peek-out {
+    to {
+      opacity: 0;
+      translate: calc(var(--spacing) * -0.75) 0;
+    }
+  }
+  --animate-spin: spin 1s linear infinite;
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  --default-transition-timing-function: var(--ease-standard);
+
+  --opacity-disabled: 50%;
+  --opacity-switch-disabled: 60%;
+  --opacity-spinner-track: 25%;
+  --opacity-dialog-close: 70%;
+  /* A disabled checkbox row; a sidebar section's title. */
+  --opacity-row-disabled: 60%;
+  --opacity-nav-title: 75%;
+  --opacity-toast-close: 80%;
+  --scale-press: 90%;
+  --scale-press-button: 95%;
+  --scale-popup: 95%;
+  --z-index-popup: 50;
+  --text-underline-offset-link: 4px;
+  --focus-ring-width: 1px;
 }
 
 /* The hidden title bar has to be draggable by hand. */
@@ -215,6 +301,8 @@
 /* A menu row Base UI highlights (pointer or keys), and a row marked destructive. */
 @custom-variant highlighted (&[data-highlighted]);
 @custom-variant destructive (&[data-variant="destructive"]);
+/* The row for the page on screen. */
+@custom-variant page-current (&[aria-current="page"]);
 /* An icon inside a row that sets no colour of its own. */
 @custom-variant svg-uncoloured (& :where(svg:not([class*="text-"])));
 
@@ -345,8 +433,59 @@
   }
 }
 
-/* Live text ("Working"): muted words a highlight band sweeps across now and then. Its motion claims
-   the work is live, so it shows only while that is proven. Still with less motion. */
+/* Content that folds away to nothing and opens again (inert while shut): height and opacity ease. */
+@utility fold-motion {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition-property: grid-template-rows, opacity;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-enter);
+  &[inert] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* A collapsible's panel opening and closing: its height and opacity. Base UI measures the height. */
+@utility collapsible-motion {
+  overflow: clip;
+  height: var(--collapsible-panel-height);
+  transition-property: height, opacity;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-enter);
+  &[data-starting-style],
+  &[data-ending-style] {
+    height: 0;
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* A scroll view's edges: what scrolls under them fades into the background. Raised, the bottom one
+   reaches over a floating button too. */
+@utility fade-top {
+  height: var(--spacing-fade-top);
+  background-image: linear-gradient(to bottom, var(--color-background), transparent);
+}
+@utility fade-bottom {
+  height: var(--spacing-fade-bottom);
+  &[data-raised] {
+    height: calc(var(--spacing) * 14 + var(--spacing-fade-bottom));
+  }
+  background-image: linear-gradient(
+    to top,
+    var(--color-background) 0%,
+    var(--color-background) calc(100% - var(--spacing-fade-bottom)),
+    transparent 100%
+  );
+}
+
+/* Live words: muted, a highlight band sweeping across now and then. Still with less motion. */
 @utility shimmer {
   background-color: var(--color-live-text);
   background-image: linear-gradient(
@@ -364,5 +503,95 @@
   animation: var(--animate-shimmer);
   @media (prefers-reduced-motion: reduce) {
     animation: none;
+  }
+}
+
+/* Rows split as a card's own are: a hairline under each but the last, 16 in from the edges (flush
+   with `settings-rows-flush`, for a card that pads itself). */
+@utility settings-rows {
+  & > :not(:last-child) {
+    position: relative;
+  }
+  & > :not(:last-child)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset-inline: calc(var(--spacing) * 4);
+    bottom: 0;
+    height: 1px;
+    background: var(--color-divider);
+  }
+}
+@utility settings-rows-flush {
+  & > :not(:last-child)::after {
+    inset-inline: 0;
+  }
+}
+
+/* The sidebar's width: where it was dragged (data-width on the sidebar, sidebar.tsx) or the default,
+   kept in its range and leaving the content beside it room. */
+@utility sidebar-width-source {
+  --sidebar-width: attr(data-width px, var(--spacing-sidebar));
+}
+@utility sidebar-panel-width {
+  width: clamp(
+    var(--spacing-sidebar-min),
+    var(--sidebar-width, var(--spacing-sidebar)),
+    max(
+      var(--spacing-sidebar-min),
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
+    )
+  );
+}
+/* The peeking sidebar beside the strip: a hairline down its start edge, and nothing painted past it. */
+@utility peek-edge {
+  clip-path: inset(calc(var(--spacing) * -12) calc(var(--spacing) * -12) calc(var(--spacing) * -12) 0);
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* A bar growing to its new width (a progress bar). */
+@utility transition-width {
+  transition-property: width;
+  transition-timing-function: var(--default-transition-timing-function);
+  transition-duration: var(--duration-bar);
+}
+
+/* The sidebar's column easing between its widths on a spring; still while it is dragged. */
+@utility sidebar-motion {
+  transition-property: width;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
+  &[data-resizing] {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* Gallery only, generated where used: the "Old app" column (D22) draws the kit as the old app did, with
+   the arrow cursor, no press and the old red. Deleted with the column. */
+@utility old-app {
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-destructive-fill: color-mix(in oklab, var(--color-destructive) 60%, transparent);
+  --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 70%, transparent);
+  --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
+  --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  --color-destructive-line: color-mix(in oklab, var(--color-destructive) 20%, transparent);
+  --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
+  & :where(button, label, [role="tab"], [role="radio"]) {
+    cursor: default !important;
+  }
+  & * {
+    scale: none !important;
   }
 }
