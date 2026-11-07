@@ -26,7 +26,7 @@ export default function Gallery() {
           </Button>
         ))}
       </header>
-      <main className="flex flex-col gap-10 px-8 py-8">{screen === "kit" ? <Kit /> : <Gaps />}</main>
+      <main className="isolate flex flex-col gap-10 px-8 py-8">{screen === "kit" ? <Kit /> : <Gaps />}</main>
     </div>
   );
 }

@@ -37,7 +37,9 @@ const fills = (
       </Button>
     </State>
     <State label="input">
-      <Input placeholder="Search" className="w-32" />
+      <div className="w-32">
+        <Input placeholder="Search" />
+      </div>
     </State>
     <State label="key">
       <Kbd>⌘K</Kbd>
@@ -88,7 +90,9 @@ const GAPS: Gap[] = [
         <Button size="sm" disabled>
           Save
         </Button>
-        <Input placeholder="Disabled" className="w-32" disabled />
+        <div className="w-32">
+          <Input placeholder="Disabled" disabled />
+        </div>
         <Switch aria-label="Disabled" disabled defaultChecked />
       </State>
     ),
@@ -226,7 +230,9 @@ const GAPS: Gap[] = [
         <Button size="sm" variant="outline">
           Open
         </Button>
-        <Input placeholder="Search" className="w-32" />
+        <div className="w-32">
+          <Input placeholder="Search" />
+        </div>
         <Switch aria-label="Focus" />
       </State>
     ),
@@ -295,7 +301,9 @@ const GAPS: Gap[] = [
     where: "an input or button with an error",
     specimen: (
       <State label="error">
-        <Input defaultValue="not a url" className="w-32" aria-invalid />
+        <div className="w-32">
+          <Input defaultValue="not a url" aria-invalid />
+        </div>
       </State>
     ),
   },

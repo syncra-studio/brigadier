@@ -2,6 +2,7 @@ import { Input as BaseInput } from "@base-ui/react/input";
 
 import { cx } from "./cx";
 
+/** Fills its container's width: size it by its container (cx doesn't merge a caller's width). */
 export function Input({ className, ...props }: Omit<BaseInput.Props, "className"> & { className?: string }) {
   return (
     <BaseInput

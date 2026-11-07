@@ -40,7 +40,7 @@ function Buttons() {
   return (
     <Section title="Button">
       {VARIANTS.map((variant) => (
-        <Row key={variant} name={`variant ${variant} · size sm`}>
+        <Row key={variant} name={`variant ${variant} · size ${variant.startsWith("link") ? "inline" : "sm"}`}>
           <ButtonStates variant={variant} size={variant.startsWith("link") ? "inline" : "sm"}>
             {variant === "link-blue" ? "Show all" : "Continue"}
           </ButtonStates>
@@ -175,19 +175,29 @@ function Fields() {
       </Row>
       <Row name="input">
         <State label="live">
-          <Input placeholder="Search settings" className="w-52" />
+          <div className="w-52">
+            <Input placeholder="Search settings" />
+          </div>
         </State>
         <State label="focus" frozen="focus">
-          <Input placeholder="Search settings" className="w-52" />
+          <div className="w-52">
+            <Input placeholder="Search settings" />
+          </div>
         </State>
         <State label="filled">
-          <Input defaultValue="~/Development/brigadier" className="w-52" />
+          <div className="w-52">
+            <Input defaultValue="~/Development/brigadier" />
+          </div>
         </State>
         <State label="disabled">
-          <Input placeholder="Search settings" className="w-52" disabled />
+          <div className="w-52">
+            <Input placeholder="Search settings" disabled />
+          </div>
         </State>
         <State label="error">
-          <Input defaultValue="not a url" className="w-52" aria-invalid />
+          <div className="w-52">
+            <Input defaultValue="not a url" aria-invalid />
+          </div>
         </State>
       </Row>
       <Row name="checkbox">

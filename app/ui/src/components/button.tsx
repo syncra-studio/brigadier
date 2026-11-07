@@ -10,25 +10,32 @@ const VARIANTS = {
   ghost: "hover:bg-fill hover:text-foreground",
   link: "text-primary hover:underline",
   // A row's action in a card: a faint wash, the label's regular type.
-  soft: "bg-fill-subtle text-foreground hover:bg-fill-hover text-label font-normal",
+  soft: "bg-fill-subtle text-foreground hover:bg-fill-hover",
   // The same, for an action that deletes or removes.
-  "soft-destructive": "bg-destructive-wash text-destructive hover:bg-destructive-wash-hover text-label font-normal",
+  "soft-destructive": "bg-destructive-wash text-destructive hover:bg-destructive-wash-hover",
   // Blue words that act (Show all, Add model).
   "link-blue": "text-link hover:underline",
 };
 
 // Buttons with words are capsules; icon buttons have the icon-button corner.
 const SIZES = {
-  md: "rounded-capsule h-control-md px-3.5",
-  xs: "rounded-capsule h-control-xs px-2 gap-1 text-xs svg:size-icon-xs",
-  sm: "rounded-capsule h-control-sm px-2.5 gap-1",
+  md: "rounded-capsule h-control-md px-3.5 gap-1.5 svg:size-icon-md",
+  xs: "rounded-capsule h-control-xs px-2 gap-1 svg:size-icon-xs",
+  sm: "rounded-capsule h-control-sm px-2.5 gap-1 svg:size-icon-md",
   // Words with no box of their own (a row's "Show all").
-  inline: "h-auto gap-1 p-0 text-xs font-medium svg:size-icon-xs",
-  icon: "rounded-icon-button size-control-md",
+  inline: "h-auto gap-1 p-0 svg:size-icon-xs",
+  icon: "rounded-icon-button size-control-md svg:size-icon-md",
   "icon-xs": "rounded-icon-button size-5 svg:size-icon-xs",
   "icon-sm": "rounded-icon-button size-control-xs svg:size-icon-sm",
-  "icon-md": "rounded-icon-button size-control-sm",
+  "icon-md": "rounded-icon-button size-control-sm svg:size-icon-md",
 };
+
+// Each property is set once (cx doesn't merge): small sizes take the small type, soft looks the label's regular type.
+function typeClasses(variant: ButtonProps["variant"], size: ButtonProps["size"]): string {
+  if (size === "xs" || size === "inline") return "text-xs font-medium";
+  if (variant === "soft" || variant === "soft-destructive") return "text-label font-normal";
+  return "text-sm font-medium";
+}
 
 export type ButtonProps = Omit<BaseButton.Props, "className"> & {
   className?: string;
@@ -44,11 +51,12 @@ export function Button({ className, variant = "default", size = "md", type = "bu
       // A button submits its form only when it says so: Enter in any field clicks an untyped one.
       type={type}
       className={cx(
-        "inline-flex shrink-0 items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition",
+        "inline-flex shrink-0 items-center justify-center whitespace-nowrap transition",
         "focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-disabled",
-        "aria-invalid:border aria-invalid:border-invalid svg:pointer-events-none svg:shrink-0 svg:size-icon-md",
+        "aria-invalid:border aria-invalid:border-invalid svg:pointer-events-none svg:shrink-0",
+        typeClasses(variant, size),
         variant && VARIANTS[variant],
-        size && SIZES[size],
+        size ? SIZES[size] : "svg:size-icon-md",
         className,
       )}
       {...props}

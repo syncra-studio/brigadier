@@ -231,6 +231,8 @@
   --scale-popup: 95%;
   --spacing-popup-shift: 0.5rem;
   --duration-fast: 150ms;
+  /* An alias resolves where it is declared, so it is declared again here. */
+  --default-transition-duration: var(--duration-fast);
   --radius-xs: 0.1875rem;
   --radius-icon-button: 0.625rem;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
