@@ -4,8 +4,10 @@ import { Toast } from "@base-ui/react/toast";
 import { useEffect, useState } from "react";
 
 import { Button } from "../src/components/button";
+import { Dialog } from "../src/components/dialog";
 import { Copy, X } from "../src/icons";
-import { Compare, Held, type KitSet, Section, State } from "./parts";
+import { AlertConfirm } from "./alert-confirm";
+import { Compare, Held, type KitSet, Row, Section, State } from "./parts";
 
 // A frozen popup never shifts to stay in view.
 const STILL = { side: "none", align: "none" } as const;
@@ -311,6 +313,9 @@ function Dialogs() {
         )}
       </Compare>
       <Compare name="confirm: live · open · destructive · busy (frozen)">{(k) => <Confirms k={k} />}</Compare>
+      <Row name="confirm · Apple structure (Current only, a candidate): live · open · destructive · busy (frozen)">
+        <AlertConfirms />
+      </Row>
     </Section>
   );
 }
@@ -352,6 +357,37 @@ function Confirms({ k }: { k: KitSet }) {
           destructive
           onConfirm={() => setOpen(false)}
         />
+      </State>
+      {frozen("open", {})}
+      {frozen("destructive", { destructive: true })}
+      {frozen("busy", { destructive: true, busy: true })}
+    </>
+  );
+}
+
+function AlertConfirms() {
+  const [open, setOpen] = useState(false);
+  const text = { title: "Delete this session?", description: "Its messages and files go too. This can't be undone.", confirm: "Delete" };
+  const frozen = (label: string, props: { destructive?: boolean; busy?: boolean }) => (
+    <State label={label}>
+      <Held className="h-56 w-68 overflow-hidden rounded-surface">
+        {(box) => (
+          <Dialog open modal={false}>
+            <AlertConfirm {...text} {...props} container={box} initialFocus={false} onConfirm={() => {}} onCancel={() => {}} />
+          </Dialog>
+        )}
+      </Held>
+    </State>
+  );
+  return (
+    <>
+      <State label="live">
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          Ask to delete
+        </Button>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <AlertConfirm {...text} destructive onConfirm={() => setOpen(false)} onCancel={() => setOpen(false)} />
+        </Dialog>
       </State>
       {frozen("open", {})}
       {frozen("destructive", { destructive: true })}
