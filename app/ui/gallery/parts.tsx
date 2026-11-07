@@ -39,23 +39,17 @@ export function KitRow({ name, children }: { name: string; children: (k: KitSet)
  * `old-app`); it goes once the owner approves.
  */
 /** `old` draws the Old app column when the kit has moved on from the old look; otherwise both columns draw `children`. */
-export function Compare({ name, children, old, proposed }: { name: string; children: ReactNode; old?: ReactNode; proposed?: ReactNode }) {
+export function Compare({ name, children, old }: { name: string; children: ReactNode; old?: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className={proposed ? "grid grid-cols-3" : "grid grid-cols-2"}>
+      <div className="grid grid-cols-2">
         {["Current", "Old app"].map((label, i) => (
-          <div key={label} className={cx("flex min-w-0 flex-col gap-3", i === 0 ? "pe-6" : "old-app border-s border-divider ps-6", proposed !== undefined && i === 1 && "pe-6")}>
+          <div key={label} className={cx("flex min-w-0 flex-col gap-3", i === 0 ? "pe-6" : "old-app border-s border-divider ps-6")}>
             <span className="text-2xs font-medium">{label}</span>
             <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{i === 1 && old !== undefined ? old : children}</div>
           </div>
         ))}
-        {proposed && (
-          <div className="flex min-w-0 flex-col gap-3 border-s border-divider ps-6">
-            <span className="text-2xs font-medium">Proposed</span>
-            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{proposed}</div>
-          </div>
-        )}
       </div>
     </div>
   );

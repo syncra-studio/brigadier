@@ -1,12 +1,16 @@
 import type { ComponentType } from "react";
 
-import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
+import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
-import type { ApprovalAction, Progress } from "../../thread/item";
+import type { ApprovalAction, Progress, StepKind } from "../../thread/item";
+import { duration, useSecond } from "../../thread/words";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
-import { ToolBox } from "./tool";
+import { ToolBox, VERBS } from "./tool";
+
+/** Hangs under a row's words on a hairline, from its icon. */
+const HANGING = "ms-2 border-s border-divider ps-3.5 text-sm text-row-foreground";
 
 /** What an approval asks to do, as the old app's approval kinds drew it. */
 export const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
@@ -98,29 +102,88 @@ export function QuestionRow({ keep, question, answer, waiting }: { keep: string;
   );
 }
 
-/** A subagent the agent started: "Running a subagent", then "Ran a subagent: Find the parser". */
-export function ChildAgentRow({ title, progress }: { title: string; progress: Progress }) {
+/**
+ * A subagent the agent started, hard to miss while it runs and calm once done. Running: a spinning mark,
+ * "Running a subagent: Find the parser" in full white, how long it has run, and its current step hanging
+ * under it on a hairline. Done: "Ran a subagent: Find the parser", its time and steps quiet after it, opening
+ * to its answer. Whatever isn't reported (times, step, count, answer) isn't shown.
+ */
+export function ChildAgentRow({
+  keep,
+  title,
+  progress,
+  startedAt,
+  endedAt,
+  current,
+  steps,
+  answer,
+}: {
+  keep: string;
+  title: string;
+  progress: Progress;
+  startedAt?: number;
+  endedAt?: number | null;
+  current?: { step: StepKind; input: string } | null;
+  steps?: number | null;
+  answer?: string | null;
+}) {
   const running = progress === "running";
-  return (
-    <p className={ROW}>
+  const now = useSecond(running && startedAt !== undefined);
+  if (running) {
+    return (
+      <div className="flex min-w-0 flex-col">
+        <p className={cx(ROW, "text-foreground")}>
+          <Spinner className="size-4 shrink-0 motion-safe:animate-spin" />
+          <span className="min-w-0 truncate">
+            Running a subagent: <span className="font-medium">{title}</span>
+          </span>
+          {startedAt !== undefined && <span className="shrink-0 text-muted-foreground tabular-nums">{duration(now - startedAt)}</span>}
+        </p>
+        {current && (
+          <p className={cx(HANGING, "py-0.5")}>
+            {/* Keyed by its words: each new step starts the sweep again. */}
+            <span key={`${current.step}${current.input}`} className="block truncate text-sm leading-5.25 shimmer">
+              {VERBS[current.step][0]} {current.input}
+            </span>
+          </p>
+        )}
+      </div>
+    );
+  }
+  const head = (
+    <>
       <StepIcon kind="agent" />
       {progress === "pending" ? (
         <Words verb="Waiting to run a subagent:" object={title} />
-      ) : progress === "cancelled" ? (
-        <Words verb="Stopped a subagent:" object={title} />
       ) : (
-        <Words verb={running ? "Running a subagent" : "Ran a subagent:"} object={running ? undefined : progress === "failed" ? `${title} — failed` : title} live={running} />
+        <Words verb={progress === "cancelled" ? "Stopped a subagent:" : "Ran a subagent:"} object={progress === "failed" ? `${title} — failed` : title} />
       )}
-    </p>
+    </>
+  );
+  const took = startedAt !== undefined && endedAt != null ? duration(endedAt - startedAt) : null;
+  const tail = [took, steps != null ? `${steps.toLocaleString()} ${steps === 1 ? "step" : "steps"}` : null].filter(Boolean).join(" · ");
+  const trail = tail && <span className="tabular-nums text-row-object">{tail}</span>;
+  if (answer == null) {
+    return (
+      <p className={ROW}>
+        {head}
+        {trail && <span className="ms-1">{trail}</span>}
+      </p>
+    );
+  }
+  return (
+    <OpeningRow keep={keep} trail={trail || undefined} detail={<p className={cx(HANGING, "whitespace-pre-wrap wrap-anywhere")}>{answer}</p>}>
+      {head}
+    </OpeningRow>
   );
 }
 
 const COMPACTION: Record<Progress, string> = {
-  pending: "Waiting to refresh context",
-  running: "Refreshing context",
-  done: "Context refreshed · nothing was lost",
-  failed: "Couldn’t compact context",
-  cancelled: "Couldn’t compact context",
+  pending: "Waiting to save context",
+  running: "Saving context · nothing will be lost",
+  done: "Context saved · the full thread is still here",
+  failed: "Couldn’t compact · the conversation is unchanged",
+  cancelled: "Couldn’t compact · the conversation is unchanged",
 };
 
 /** The agent shortening its context, as a divider across the column. */
@@ -146,12 +209,12 @@ export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"
   );
 }
 
-/** An event the app can't draw yet: it opens to the event as it came. */
+/** An event the app can't draw yet: "This step isn’t shown yet · details inside", opening to the event as it came. */
 export function UnknownRow({ keep, raw }: { keep: string; raw: unknown }) {
   return (
     <OpeningRow keep={keep} detail={<ToolBox title="Event">{JSON.stringify(raw, null, 2)}</ToolBox>}>
       <StepIcon icon={Info} />
-      <Words verb="Can’t show this event yet" />
+      <Words verb="This step isn’t shown yet · details inside" />
     </OpeningRow>
   );
 }

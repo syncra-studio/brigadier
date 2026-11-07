@@ -2,7 +2,7 @@
 
 // Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`, and
 // `sentAt`, a tool's `step`/`startedAt`/`endedAt`, `added`/`removed`, `action`, `heading`, a compaction's `progress`
-// and a turn's `waitingSince`/`waitedMs`.
+// a turn's `waitingSince`/`waitedMs`, and a subagent's `startedAt`/`endedAt`/`current`/`steps`/`answer`.
 // A null number or text means "not reported": rows show nothing for it, never 0 or an empty label.
 
 export type Session = {
@@ -104,7 +104,21 @@ export type Item = Base &
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress }
     | { kind: "approval"; title: string; detail: string; decision: "approved" | "denied" | null; action?: ApprovalAction }
     | { kind: "question"; question: string; options: string[]; answer: string | null }
-    | { kind: "childAgent"; sessionId: string; title: string; progress: Progress }
+    | {
+        kind: "childAgent";
+        sessionId: string;
+        title: string;
+        progress: Progress;
+        /** When it started and ended (ms); null while it runs. */
+        startedAt?: number;
+        endedAt?: number | null;
+        /** Its running step: the kind and what it acts on (a path, a command, a query, another tool's name); null between steps. */
+        current?: { step: StepKind; input: string } | null;
+        /** How many steps it took so far. */
+        steps?: number | null;
+        /** Its final answer, once done. */
+        answer?: string | null;
+      }
     | { kind: "compaction"; summary: string | null; progress?: Progress }
     | { kind: "notice"; level: "info" | "warning" | "error"; text: string }
     /** An event the UI can't draw yet, kept as it came. */

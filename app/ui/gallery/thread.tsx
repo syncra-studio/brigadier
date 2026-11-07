@@ -8,9 +8,8 @@ import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
-import { OldApproval } from "./old-approval";
+import { OldApproval, OldSubagent } from "./old-rows";
 import { Compare, Section, State } from "./parts";
-import { ProposedSubagent } from "./proposed-subagent";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -82,7 +81,25 @@ export function blocks(text: string) {
 const LONG_CODE = "```bash\n" + Array.from({ length: 30 }, (_, i) => `echo "step ${i + 1}"`).join("\n") + "\n```";
 
 /** A running subagent's own steps, one a second. */
-const SUBAGENT_STEPS = ["Reading src/thread/lines.ts", "Searching for “toLines” in src", "Reading src/thread/item.ts", "Running pnpm typecheck"];
+const SUBAGENT_STEPS: { step: StepKind; input: string }[] = [
+  { step: "read", input: "src/thread/lines.ts" },
+  { step: "search", input: "“toLines” in src" },
+  { step: "read", input: "src/thread/item.ts" },
+  { step: "run", input: "pnpm typecheck" },
+];
+/** A subagent that ran from a minute ago for 1m 2s in 12 steps, with its answer; each state overrides what it lacks. */
+const agent = (id: string, progress: Progress): Extract<Item, { kind: "childAgent" }> => ({
+  ...base(id, progress === "running" || progress === "pending" ? RUNNING : DONE),
+  kind: "childAgent",
+  sessionId: "s2",
+  title: "Find the parser",
+  progress,
+  startedAt: NOW - 60_000,
+  endedAt: NOW + 2_000,
+  current: null,
+  steps: 12,
+  answer: "The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold.",
+});
 
 const USER = "Can you make the thread rows match the old app, and check the shell box against a failing test?";
 const LONG_USER = Array.from({ length: 28 }, (_, i) => `Line ${i + 1} of a long pasted message.`).join("\n");
@@ -328,25 +345,34 @@ export function Thread() {
           </Wide>
         </Compare>
         <Compare
-          name="subagent: waiting · running (live) · done (open) · failed · stopped"
-          proposed={
-            <Wide label="running stands out; done stays calm">
+          name="subagent: waiting · running (live) · done (open) · failed · stopped · without its step and count"
+          old={
+            <Wide label="subagent">
               <div className="flex flex-col gap-1">
-                <ProposedSubagent id="run" title="Find the parser" progress="running" took={`${(tick % 50) + 8}s`} doing={SUBAGENT_STEPS[tick % SUBAGENT_STEPS.length]} />
-                <Opened>
-                  <ProposedSubagent id="done" title="Find the parser" progress="done" took="1m 2s" steps={12} answer="The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold." />
-                </Opened>
-                <ProposedSubagent id="fail" title="Find the parser" progress="failed" took="9s" steps={2} />
-                <ProposedSubagent id="stop" title="Find the parser" progress="cancelled" took="20s" steps={4} />
+                {(["pending", "running", "done", "failed", "cancelled"] as const).map((progress) => (
+                  <OldSubagent key={progress} title="Find the parser" progress={progress} />
+                ))}
               </div>
             </Wide>
           }
         >
-          <Wide label="subagent">
+          <Wide label="waiting · running (its step changes each second)">
             <div className="flex flex-col gap-1">
-              {(["pending", "running", "done", "failed", "cancelled"] as const).map((progress) => (
-                <div key={progress}>{item({ ...base(`c-${progress}`, RUNNING), kind: "childAgent", sessionId: "s2", title: "Find the parser", progress }, RUNNING)}</div>
-              ))}
+              {item({ ...agent("c-wait", "pending"), startedAt: undefined, endedAt: null, steps: null, answer: null }, RUNNING)}
+              {item({ ...agent("c-run", "running"), endedAt: null, current: SUBAGENT_STEPS[tick % SUBAGENT_STEPS.length], answer: null }, RUNNING)}
+            </div>
+          </Wide>
+          <Wide label="done, open · failed · stopped" open>
+            <div className="flex flex-col gap-1">
+              {item(agent("c-done", "done"))}
+              {item({ ...agent("c-fail", "failed"), endedAt: NOW - 51_000, steps: 2, answer: null })}
+              {item({ ...agent("c-stop", "cancelled"), endedAt: NOW - 40_000, steps: 4, answer: null })}
+            </div>
+          </Wide>
+          <Wide label="no step or count reported: running · done">
+            <div className="flex flex-col gap-1">
+              {item({ ...agent("c-run-bare", "running"), endedAt: null, current: null, steps: null, answer: null }, RUNNING)}
+              {item({ ...agent("c-done-bare", "done"), steps: null, answer: null })}
             </div>
           </Wide>
         </Compare>

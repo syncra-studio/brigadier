@@ -53,7 +53,18 @@ export function Body({ item, turn, step }: { item: Item; turn: Turn | undefined;
     case "question":
       return <QuestionRow keep={item.id} question={item.question} answer={item.answer} waiting={turn?.status === "running"} />;
     case "childAgent":
-      return <ChildAgentRow title={item.title} progress={item.progress} />;
+      return (
+        <ChildAgentRow
+          keep={item.id}
+          title={item.title}
+          progress={item.progress}
+          startedAt={item.startedAt}
+          endedAt={item.endedAt}
+          current={item.current}
+          steps={item.steps}
+          answer={item.answer}
+        />
+      );
     case "compaction":
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;

@@ -1,9 +1,11 @@
-// Gallery only, deleted with the "Old app" column: the approval as the old app drew it, a card once decided.
+// Gallery only, deleted with the "Old app" column: rows the kit has moved on from, as the old app drew them.
+import { ROW, StepIcon, Words } from "../src/components/thread/activity-row";
 import { ACTIONS } from "../src/components/thread/cards";
 import { ToolBox } from "../src/components/thread/tool";
 import { Check, X } from "../src/icons";
-import type { ApprovalAction } from "../src/thread/item";
+import type { ApprovalAction, Progress } from "../src/thread/item";
 
+/** The approval: a card once decided. */
 export function OldApproval({ title, detail, decision, action = "other" }: { title: string; detail: string; decision: "approved" | "denied" | null; action?: ApprovalAction }) {
   const Icon = ACTIONS[action];
   if (decision === null) {
@@ -32,5 +34,22 @@ export function OldApproval({ title, detail, decision, action = "other" }: { tit
         {decision === "approved" ? "Allowed" : "Denied"}
       </p>
     </div>
+  );
+}
+
+/** The subagent: one quiet row, "Running a subagent" shimmering. */
+export function OldSubagent({ title, progress }: { title: string; progress: Progress }) {
+  const running = progress === "running";
+  return (
+    <p className={ROW}>
+      <StepIcon kind="agent" />
+      {progress === "pending" ? (
+        <Words verb="Waiting to run a subagent:" object={title} />
+      ) : progress === "cancelled" ? (
+        <Words verb="Stopped a subagent:" object={title} />
+      ) : (
+        <Words verb={running ? "Running a subagent" : "Ran a subagent:"} object={running ? undefined : progress === "failed" ? `${title} — failed` : title} live={running} />
+      )}
+    </p>
   );
 }
