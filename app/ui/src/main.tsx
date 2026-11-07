@@ -66,8 +66,8 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
 // Dev-only component gallery (pnpm gallery); other builds drop it.
 const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../gallery/gallery")) : null;
 // `pnpm thread` builds the thread demo in place of the app.
-const Demo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
-const Screen = Gallery ?? Demo;
+const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
+const Screen = Gallery ?? ThreadDemo;
 
 createRoot(document.getElementById("root")!).render(
   <TooltipProvider>
