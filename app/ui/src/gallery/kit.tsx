@@ -1,0 +1,251 @@
+// Every slice 1 component in every state. The first copy in each row is live.
+import { Badge } from "../components/badge";
+import { Button, type ButtonProps } from "../components/button";
+import { Checkbox, CheckboxMark } from "../components/checkbox";
+import { TooltipIconButton } from "../components/icon-button";
+import { Input } from "../components/input";
+import { Kbd } from "../components/kbd";
+import { Switch } from "../components/switch";
+import { TitlebarTips } from "../components/tooltip";
+import { Copy, X } from "../icons";
+import { OpenTip, Row, Section, State } from "./parts";
+
+const VARIANTS = ["default", "outline", "ghost", "soft", "soft-destructive", "secondary", "destructive", "link", "link-blue"] as const;
+const SIZES = ["xs", "sm", "md", "inline"] as const;
+const ICON_SIZES = ["icon-xs", "icon-sm", "icon-md", "icon"] as const;
+
+function ButtonStates(props: ButtonProps) {
+  return (
+    <>
+      <State label="live">
+        <Button {...props} />
+      </State>
+      <State label="hover" frozen="hover">
+        <Button {...props} />
+      </State>
+      <State label="focus" frozen="focus">
+        <Button {...props} />
+      </State>
+      <State label="pressed" frozen="hover active">
+        <Button {...props} />
+      </State>
+      <State label="disabled">
+        <Button {...props} disabled />
+      </State>
+    </>
+  );
+}
+
+function Buttons() {
+  return (
+    <Section title="Button">
+      {VARIANTS.map((variant) => (
+        <Row key={variant} name={`variant ${variant} · size sm`}>
+          <ButtonStates variant={variant} size={variant.startsWith("link") ? "inline" : "sm"}>
+            {variant === "link-blue" ? "Show all" : "Continue"}
+          </ButtonStates>
+        </Row>
+      ))}
+      <Row name="sizes">
+        {SIZES.map((size) => (
+          <State key={size} label={size}>
+            <Button size={size} variant={size === "inline" ? "link-blue" : "default"}>
+              <Copy />
+              Copy
+            </Button>
+          </State>
+        ))}
+        {ICON_SIZES.map((size) => (
+          <State key={size} label={size}>
+            <Button size={size} variant="outline" aria-label="Copy">
+              <Copy />
+            </Button>
+          </State>
+        ))}
+      </Row>
+      <Row name="with a key hint · error (aria-invalid)">
+        <State label="default">
+          <Button size="sm">
+            Send <Kbd>⌘↵</Kbd>
+          </Button>
+        </State>
+        <State label="soft">
+          <Button size="sm" variant="soft">
+            Cancel <Kbd>Esc</Kbd>
+          </Button>
+        </State>
+        <State label="error">
+          <Button size="sm" variant="outline" aria-invalid>
+            Retry
+          </Button>
+        </State>
+      </Row>
+    </Section>
+  );
+}
+
+function IconButtons() {
+  return (
+    <Section title="Icon button with tooltip">
+      {(["ghost", "toolbar", "strip"] as const).map((look) => (
+        <Row key={look} name={`look ${look}`}>
+          <State label="live (hover for the tip)">
+            <TitlebarTips>
+              <TooltipIconButton look={look} tooltip="Copy" shortcut="⌘C">
+                <Copy />
+              </TooltipIconButton>
+              <TooltipIconButton look={look} tooltip="Close">
+                <X />
+              </TooltipIconButton>
+            </TitlebarTips>
+          </State>
+          {(["hover", "focus", "hover active"] as const).map((frozen) => (
+            <State key={frozen} label={frozen === "hover active" ? "pressed" : frozen} frozen={frozen}>
+              <TooltipIconButton look={look} tooltip="Copy" tip={false}>
+                <Copy />
+              </TooltipIconButton>
+            </State>
+          ))}
+          <State label="switched on">
+            <TooltipIconButton look={look} tooltip="Copy" tip={false} pressed>
+              <Copy />
+            </TooltipIconButton>
+          </State>
+          <State label="menu open">
+            <TooltipIconButton look={look} tooltip="Copy" tip={false} aria-expanded>
+              <Copy />
+            </TooltipIconButton>
+          </State>
+          <State label="with dot">
+            <TooltipIconButton look={look} tooltip="Copy" tip={false} dot="bg-warning">
+              <Copy />
+            </TooltipIconButton>
+          </State>
+          <State label="disabled">
+            <TooltipIconButton look={look} tooltip="Copy" tip={false} disabled>
+              <Copy />
+            </TooltipIconButton>
+          </State>
+          <State label="tip open">
+            <OpenTip
+              label="Copy"
+              shortcut="⌘C"
+              trigger={
+                <TooltipIconButton look={look} tooltip="Copy" tip={false}>
+                  <Copy />
+                </TooltipIconButton>
+              }
+            />
+          </State>
+        </Row>
+      ))}
+      <Row name="tooltip">
+        <State label="above">
+          <OpenTip side="top" label="Close" trigger={<Button size="sm" variant="outline">Trigger</Button>} />
+        </State>
+        <State label="with a key">
+          <OpenTip label="Dictate" shortcut="⌃⇧D" trigger={<Button size="sm" variant="outline">Trigger</Button>} />
+        </State>
+        <State label="long text wraps">
+          <OpenTip
+            wide
+            label="Starts a new session in the background and keeps this one open"
+            trigger={<Button size="sm" variant="outline">Trigger</Button>}
+          />
+        </State>
+      </Row>
+    </Section>
+  );
+}
+
+function Fields() {
+  return (
+    <Section title="Kbd · Input · Checkbox · Switch · Badge">
+      <Row name="kbd">
+        <State label="key">
+          <Kbd>⌘</Kbd>
+          <Kbd>K</Kbd>
+          <Kbd>Esc</Kbd>
+        </State>
+        <State label="chip">
+          <span className="text-sm text-muted-foreground">
+            Press <Kbd variant="chip">⌘↵</Kbd> to send
+          </span>
+        </State>
+      </Row>
+      <Row name="input">
+        <State label="live">
+          <Input placeholder="Search settings" className="w-52" />
+        </State>
+        <State label="focus" frozen="focus">
+          <Input placeholder="Search settings" className="w-52" />
+        </State>
+        <State label="filled">
+          <Input defaultValue="~/Development/brigadier" className="w-52" />
+        </State>
+        <State label="disabled">
+          <Input placeholder="Search settings" className="w-52" disabled />
+        </State>
+        <State label="error">
+          <Input defaultValue="not a url" className="w-52" aria-invalid />
+        </State>
+      </Row>
+      <Row name="checkbox">
+        <State label="live">
+          <Checkbox aria-label="Live" />
+        </State>
+        <State label="checked">
+          <Checkbox aria-label="Checked" defaultChecked />
+        </State>
+        <State label="mixed">
+          <Checkbox aria-label="Mixed" indeterminate />
+        </State>
+        <State label="focus" frozen="focus">
+          <Checkbox aria-label="Focus" />
+          <Checkbox aria-label="Focus checked" defaultChecked />
+        </State>
+        <State label="disabled">
+          <Checkbox aria-label="Disabled" disabled />
+          <Checkbox aria-label="Disabled checked" disabled defaultChecked />
+        </State>
+        <State label="mark (look only)">
+          <CheckboxMark checked={false} />
+          <CheckboxMark checked />
+        </State>
+      </Row>
+      <Row name="switch">
+        <State label="live">
+          <Switch aria-label="Live" />
+        </State>
+        <State label="on">
+          <Switch aria-label="On" defaultChecked />
+        </State>
+        <State label="focus" frozen="focus">
+          <Switch aria-label="Focus" />
+          <Switch aria-label="Focus on" defaultChecked />
+        </State>
+        <State label="disabled">
+          <Switch aria-label="Disabled" disabled />
+          <Switch aria-label="Disabled on" disabled defaultChecked />
+        </State>
+      </Row>
+      <Row name="badge">
+        {(["default", "secondary", "outline", "warning", "success", "destructive"] as const).map((variant) => (
+          <State key={variant} label={variant}>
+            <Badge variant={variant}>{variant === "default" ? "New" : variant}</Badge>
+          </State>
+        ))}
+      </Row>
+    </Section>
+  );
+}
+
+export function Kit() {
+  return (
+    <>
+      <Buttons />
+      <IconButtons />
+      <Fields />
+    </>
+  );
+}

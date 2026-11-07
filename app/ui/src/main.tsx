@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import { useDaemon } from "./daemon";
@@ -19,4 +20,15 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+// Dev-only component gallery (pnpm gallery); other builds drop it.
+const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("./gallery/gallery")) : null;
+
+createRoot(document.getElementById("root")!).render(
+  Gallery ? (
+    <Suspense>
+      <Gallery />
+    </Suspense>
+  ) : (
+    <App />
+  ),
+);
