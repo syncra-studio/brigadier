@@ -31,8 +31,8 @@ function ToastList() {
         swipeDirection="right"
         data-slot="toast"
         className={cx(
-          "group relative flex w-full max-w-apple-banner items-center gap-3 rounded-apple-banner bg-apple-material p-3 text-label",
-          "shadow-apple-material backdrop-blur-material toast-motion motion-reduce:transition-none",
+          "group relative flex w-full max-w-apple-banner items-center gap-3 rounded-apple-banner bg-material p-3 text-label",
+          "shadow-material backdrop-blur-material toast-motion motion-reduce:transition-none",
         )}
       >
         {/* The app's icon goes here; a banner shows the tone by its icon, not by colour. */}
@@ -70,8 +70,8 @@ function ToastList() {
         <Toast.Close
           aria-label="Dismiss"
           className={cx(
-            "absolute -start-1.5 -top-1.5 flex size-control-xs cursor-default items-center justify-center rounded-capsule bg-apple-material",
-            "opacity-0 shadow-apple-material backdrop-blur-material transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+            "absolute -start-1.5 -top-1.5 flex size-control-xs cursor-default items-center justify-center rounded-capsule bg-material",
+            "opacity-0 shadow-material backdrop-blur-material transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
             "focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-apple-focus",
           )}
         >

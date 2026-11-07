@@ -64,6 +64,8 @@
   --color-destructive-border: color-mix(in oklab, var(--color-destructive) 30%, transparent);
   /* Words that act inside a toast, hovered. */
   --color-action-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  /* A dialog's see-through card (the owner's pick, D46, from the Apple-style column). */
+  --color-material: color-mix(in oklab, var(--color-popover) 78%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -135,12 +137,18 @@
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
   --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
   --radius-capsule: 9999px;
+  /* A dialog's card, and a confirm's rounder one (D46). */
+  --radius-sheet: 1rem;
+  --radius-alert: 1.5rem;
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   --shadow-overlay: 0 12px 32px oklch(0 0 0 / 35%);
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
+  /* A dialog card's hairline edges (light inside, dark outside) and soft shadow (D46). */
+  --shadow-material:
+    inset 0 0 0 0.5px oklch(1 0 0 / 15%), 0 0 0 0.5px oklch(0 0 0 / 60%), 0 12px 32px oklch(0 0 0 / 35%);
 
   --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -150,6 +158,7 @@
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
   --blur-xs: 4px;
+  --blur-material: 24px;
   --animate-spin: spin 1s linear infinite;
   @keyframes spin {
     to {
@@ -294,6 +303,14 @@
   }
 }
 
+/* A dialog's card corners; a confirm's are rounder. */
+@utility dialog-card {
+  border-radius: var(--radius-sheet);
+  &:has([data-confirm]) {
+    border-radius: var(--radius-alert);
+  }
+}
+
 /* A dialog held by its top edge where it opened (dialog.tsx measures it), so new content only grows
    it downward. */
 @utility dialog-top {
@@ -333,15 +350,10 @@
   --color-apple-accent-hover: color-mix(in oklab, var(--color-apple-accent) 88%, var(--color-foreground));
   --color-apple-on-accent: rgb(255 255 255);
   --color-apple-focus: color-mix(in oklab, var(--color-apple-accent) 60%, transparent);
-  /* A menu's, popover's, sheet's and banner's see-through material. */
-  --color-apple-material: color-mix(in oklab, var(--color-popover) 78%, transparent);
   --color-apple-disabled: color-mix(in oklab, var(--color-foreground) 30%, transparent);
   /* A push or pop-up button's fill. */
   --color-apple-button: color-mix(in oklab, var(--color-foreground) 14%, transparent);
   --color-apple-button-hover: color-mix(in oklab, var(--color-foreground) 20%, transparent);
-  --blur-material: 24px;
-  --shadow-apple-material:
-    inset 0 0 0 0.5px oklch(1 0 0 / 15%), 0 0 0 0.5px oklch(0 0 0 / 60%), 0 12px 32px oklch(0 0 0 / 35%);
   --spacing-apple-menu-pad: 0.3125rem;
   --spacing-apple-row: 1.5rem;
   --spacing-apple-row-start: 0.625rem;
@@ -353,8 +365,6 @@
   --radius-apple-menu: 0.75rem;
   --radius-apple-menu-item: calc(var(--radius-apple-menu) - var(--spacing-apple-menu-pad));
   --radius-apple-popover: 1rem;
-  --radius-apple-sheet: 1rem;
-  --radius-apple-alert: 1.5rem;
   --radius-apple-banner: 1.25rem;
   --radius-apple-tile: 0.625rem;
   /* The spinning activity indicator: eight spokes, stepping. */
@@ -409,7 +419,7 @@
   max-width: var(--container-dialog);
   &:has([data-slot="apple-alert"]) {
     max-width: var(--container-apple-alert);
-    border-radius: var(--radius-apple-alert);
+    border-radius: var(--radius-alert);
     padding: calc(var(--spacing) * 4);
   }
 }

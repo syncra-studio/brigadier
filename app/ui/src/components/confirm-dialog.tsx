@@ -42,7 +42,8 @@ export function ConfirmForm({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       {children}
-      <DialogFooter>
+      {/* Marks the card as a confirm's, for its rounder corners. */}
+      <DialogFooter data-confirm>
         <Button variant="ghost" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>

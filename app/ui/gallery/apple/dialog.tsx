@@ -63,8 +63,8 @@ export function DialogContent({ className, children, showCloseButton: _close, co
         ref={pin}
         data-slot="dialog-content"
         className={cx(
-          "fixed start-1/2 z-popup grid w-full -translate-x-1/2 gap-4 rounded-apple-sheet bg-apple-material p-5 text-label text-foreground",
-          "shadow-apple-material outline-none backdrop-blur-material apple-dialog dialog-top dialog-motion rtl:translate-x-1/2",
+          "fixed start-1/2 z-popup grid w-full -translate-x-1/2 gap-4 rounded-sheet bg-material p-5 text-label text-foreground",
+          "shadow-material outline-none backdrop-blur-material apple-dialog dialog-top dialog-motion rtl:translate-x-1/2",
           className,
         )}
         {...props}

@@ -50,21 +50,21 @@ type DialogContentProps = Omit<BaseDialog.Popup.Props, "className"> & {
   container?: HTMLElement | null;
 };
 
-/** A centred card over a dimmed, blurred page. */
+/** A centred see-through card over the dimmed page. */
 export function DialogContent({ className, children, showCloseButton = true, container, ...props }: DialogContentProps) {
   const pin = usePinnedTop(container);
   return (
     <BaseDialog.Portal container={container}>
       <BaseDialog.Backdrop
         data-slot="dialog-overlay"
-        className="fixed inset-0 isolate z-popup bg-dialog-backdrop backdrop-blur-xs backdrop-motion"
+        className="fixed inset-0 isolate z-popup bg-dialog-backdrop backdrop-motion"
       />
       <BaseDialog.Popup
         ref={pin}
         data-slot="dialog-content"
         className={cx(
-          "fixed start-1/2 z-popup grid w-full max-w-dialog -translate-x-1/2 gap-4 rounded-surface bg-popover p-5 text-sm text-foreground",
-          "ring ring-border outline-none dialog-top dialog-motion rtl:translate-x-1/2",
+          "fixed start-1/2 z-popup grid w-full max-w-dialog -translate-x-1/2 gap-4 bg-material p-5 text-sm text-foreground shadow-material dialog-card",
+          "outline-none backdrop-blur-material dialog-top dialog-motion rtl:translate-x-1/2",
           className,
         )}
         {...props}

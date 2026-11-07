@@ -43,12 +43,12 @@ export function PopoverContent({
         <BasePopover.Popup
           data-slot="popover-content"
           className={cx(
-            "rounded-apple-popover bg-apple-material p-1.5 text-label text-foreground shadow-apple-material outline-none backdrop-blur-material apple-menu-motion",
+            "rounded-apple-popover bg-material p-1.5 text-label text-foreground shadow-material outline-none backdrop-blur-material apple-menu-motion",
             className,
           )}
           {...props}
         >
-          <BasePopover.Arrow className="flex text-apple-material apple-arrow">
+          <BasePopover.Arrow className="flex text-material apple-arrow">
             <svg viewBox="0 0 16 8" className="size-full fill-current" aria-hidden>
               <path d="M0 8 7 1a1.4 1.4 0 0 1 2 0l7 7Z" />
             </svg>

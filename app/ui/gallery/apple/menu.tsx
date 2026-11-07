@@ -8,7 +8,7 @@ import { Check, ChevronRight } from "../../src/icons";
 
 /** See-through material, a hairline edge, a soft shadow, rounder corners, 13px words. */
 export const menuSurface = cx(
-  "z-popup min-w-menu rounded-apple-menu bg-apple-material p-apple-menu-pad text-label text-foreground shadow-apple-material",
+  "z-popup min-w-menu rounded-apple-menu bg-material p-apple-menu-pad text-label text-foreground shadow-material",
   "outline-none backdrop-blur-material apple-menu apple-menu-motion",
 );
 
