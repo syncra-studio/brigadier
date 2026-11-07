@@ -1,4 +1,4 @@
-// Slice 3's controls in every state, Current beside Old app. The first copy in each row is live.
+// Slice 3's controls in every state. The first copy in each row is live.
 import { useState } from "react";
 
 import { CheckboxRow } from "../src/components/checkbox-row";
@@ -8,7 +8,7 @@ import { ScrollFade } from "../src/components/scroll-fade";
 import { type Choice, Segmented } from "../src/components/segmented";
 import { Skeleton } from "../src/components/skeleton";
 import { ChevronDown, Copy, InfoCircle, Warning } from "../src/icons";
-import { Compare, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const RANGES: Choice<string>[] = [
   { value: "day", label: "Day" },
@@ -75,7 +75,7 @@ export function Choices() {
   return (
     <>
       <Section title="Segmented">
-        <Compare name="pills · on a track (fill) · icons with tips · a choice with a reason · disabled">
+        <Row name="pills · on a track (fill) · icons with tips · a choice with a reason · disabled">
           <State label="live">
             <SegmentedDemo />
           </State>
@@ -97,10 +97,10 @@ export function Choices() {
           <State label="disabled">
             <SegmentedDemo disabled />
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Radio · Checkbox row">
-        <Compare name="radio · checkbox row">
+        <Row name="radio · checkbox row">
           <State label="live">
             <RadioDemo />
           </State>
@@ -116,10 +116,10 @@ export function Choices() {
           <State label="with a note, disabled">
             <CheckboxRowDemo disabled note="Turn on Projects in Settings first." />
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Collapsible · Skeleton · Scroll fade">
-        <Compare name="collapsible · skeleton · scroll fade (top, bottom raised)">
+        <Row name="collapsible · skeleton · scroll fade (top, bottom raised)">
           <State label="closed (live)">
             <CollapsibleDemo />
           </State>
@@ -143,7 +143,7 @@ export function Choices() {
               <ScrollFade edge="bottom" raised />
             </div>
           </State>
-        </Compare>
+        </Row>
       </Section>
     </>
   );

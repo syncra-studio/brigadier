@@ -1,5 +1,4 @@
-// Slice 3's layout and shared parts in every state, Current beside Old app (the sidebar once: it listens
-// to the whole window). The first copy in each row is live.
+// Slice 3's layout and shared parts in every state. The first copy in each row is live.
 import { useId, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -18,7 +17,7 @@ import { type SidebarCollapse, SidebarPanel, SidebarProvider, useSidebar } from 
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
-import { Compare, Row, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 function Rows({ current = "a" }: { current?: string }) {
   return (
@@ -170,7 +169,7 @@ export function Panes() {
         </Row>
       </Section>
       <Section title="Nav parts · Row action">
-        <Compare name="rows (one current) · hover · focus · a section folding · row actions on hover">
+        <Row name="rows (one current) · hover · focus · a section folding · row actions on hover">
           <State label="live">
             <div className="w-60">
               <Rows />
@@ -210,10 +209,10 @@ export function Panes() {
               </RowAction>
             </span>
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Error line · Empty state">
-        <Compare name="error line · empty state: line, card, centered">
+        <Row name="error line · empty state: line, card, centered">
           <State label="error line">
             <ErrorLine error="Couldn't save: the disk is full." />
           </State>
@@ -232,10 +231,10 @@ export function Panes() {
               <EmptyState variant="centered" icon={InfoCircle} title="Nothing here" detail="Sessions you start show here." />
             </div>
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Copy button · Labeled divider · Section · State dot">
-        <Compare name="copy (live: click it) · hover · focus · divider · section · dots">
+        <Row name="copy (live: click it) · hover · focus · divider · section · dots">
           <State label="live">
             <CopyButton text="brigadier --version" />
           </State>
@@ -261,10 +260,10 @@ export function Panes() {
             <StateDot />
             <StateDot tone="unread" />
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Settings card · Settings row · Row text">
-        <Compare name="rows split by hairlines · a row with an error · padded">
+        <Row name="rows split by hairlines · a row with an error · padded">
           <State label="card">
             <SettingsDemo />
           </State>
@@ -277,10 +276,10 @@ export function Panes() {
               <RowText quiet title="Sessions · 1.1 GB" />
             </SettingsCard>
           </State>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Progress line">
-        <Compare name="running · done · partly done · failed · cancelled">
+        <Row name="running · done · partly done · failed · cancelled">
           <State label="running">
             <div className="w-72">
               <ProgressLine {...STEPS} />
@@ -306,7 +305,7 @@ export function Panes() {
               <ProgressLine {...STEPS} outcome={{ status: "cancelled" }} />
             </div>
           </State>
-        </Compare>
+        </Row>
       </Section>
     </>
   );

@@ -34,27 +34,6 @@ export function KitRow({ name, children }: { name: string; children: (k: KitSet)
 }
 
 /**
- * A row shown twice (D22): as the kit has it (Current), and as the old app drew it (Old app). The old
- * column is the same components with the old app's arrow cursor, no press and its own red (theme.css
- * `old-app`); it goes once the owner approves.
- */
-export function Compare({ name, children }: { name: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className="grid grid-cols-2">
-        {["Current", "Old app"].map((label, i) => (
-          <div key={label} className={cx("flex min-w-0 flex-col gap-3", i === 0 ? "pe-6" : "old-app border-s border-divider ps-6")}>
-            <span className="text-2xs font-medium">{label}</span>
-            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
  * A box a frozen popup is held open in, so it shows in the page beside its trigger instead of over it.
  * `transform-gpu` makes it the frame a dialog's fixed position measures from.
  */
