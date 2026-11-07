@@ -30,5 +30,8 @@
   }
 }
 
+/* A menu row marked data-frozen="highlight" shows highlighted. */
+@custom-variant highlighted (&:where([data-highlighted], [data-frozen~="highlight"]));
+
 @import "tailwindcss/utilities.css" layer(utilities) source("../src");
 @source "./";

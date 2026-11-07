@@ -4,6 +4,15 @@ import { type ReactElement, type ReactNode, useState } from "react";
 import { cx } from "../src/components/cx";
 import { Kbd } from "../src/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
+import * as Current from "./current";
+import * as Old from "./old";
+
+/** A set of slice 2's components: the kit's (Current) or the old app's exact copies (Old app). */
+export type KitSet = typeof Current;
+const SETS: [string, KitSet, string?][] = [
+  ["Current", Current],
+  ["Old app", Old, "old-app-colours"],
+];
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -20,6 +29,37 @@ export function Row({ name, children }: { name: string; children: ReactNode }) {
     <div className="flex flex-col gap-2">
       <h3 className="text-label text-muted-foreground">{name}</h3>
       <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
+    </div>
+  );
+}
+
+/** A row of states shown twice: with the kit (Current) and as the old app had it (D22). */
+export function Compare({ name, children }: { name: string; children: (k: KitSet) => ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-label text-muted-foreground">{name}</h3>
+      <div className="grid grid-cols-2">
+        {SETS.map(([label, k, colours], i) => (
+          <div key={label} className={cx("flex flex-col gap-3", i === 0 ? "pe-6" : "border-s border-divider ps-6", colours)}>
+            <span className="text-2xs font-medium">{label}</span>
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children(k)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A box a frozen popup is held open in, so it shows in the page beside its trigger instead of over it.
+ * `transform-gpu` makes it the frame a dialog's fixed position measures from.
+ */
+export function Held({ className, children }: { className: string; children: (box: HTMLDivElement) => ReactNode }) {
+  // The box must exist before the popup mounts, or Base UI places it in the page body instead.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  return (
+    <div ref={setBox} className={cx("relative transform-gpu", className)}>
+      {box && children(box)}
     </div>
   );
 }
