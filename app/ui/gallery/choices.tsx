@@ -8,7 +8,6 @@ import { ScrollFade } from "../src/components/scroll-fade";
 import { type Choice, Segmented } from "../src/components/segmented";
 import { Skeleton } from "../src/components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../src/components/tabs";
-import { Toggle, ToggleGroup, ToggleGroupItem } from "../src/components/toggle";
 import { ChevronDown, Copy, InfoCircle, Warning } from "../src/icons";
 import { Compare, Section, State } from "./parts";
 
@@ -95,58 +94,6 @@ function CollapsibleDemo({ open }: { open?: boolean }) {
   );
 }
 
-function TogglesRow({ variant }: { variant: "default" | "outline" }) {
-  return (
-    <>
-      <State label="live">
-        <Toggle variant={variant} aria-label="Match case">
-          <Copy />
-        </Toggle>
-      </State>
-      <State label="hover" frozen="hover">
-        <Toggle variant={variant} aria-label="Match case">
-          <Copy />
-        </Toggle>
-      </State>
-      <State label="focus" frozen="focus">
-        <Toggle variant={variant} aria-label="Match case">
-          <Copy />
-        </Toggle>
-      </State>
-      <State label="pressed">
-        <Toggle variant={variant} defaultPressed aria-label="Match case">
-          <Copy />
-        </Toggle>
-      </State>
-      <State label="disabled">
-        <Toggle variant={variant} disabled aria-label="Match case">
-          <Copy />
-        </Toggle>
-      </State>
-      <State label="sm · lg · with words">
-        <Toggle variant={variant} size="sm" aria-label="Match case">
-          <Copy />
-        </Toggle>
-        <Toggle variant={variant} size="lg" aria-label="Match case">
-          <Copy />
-        </Toggle>
-        <Toggle variant={variant}>Bold</Toggle>
-      </State>
-    </>
-  );
-}
-
-function GroupDemo({ spacing, variant, multiple }: { spacing: "none" | "tight" | "loose"; variant?: "outline"; multiple?: boolean }) {
-  return (
-    <ToggleGroup spacing={spacing} variant={variant} multiple={multiple} defaultValue={["left"]}>
-      {["left", "center", "right"].map((value) => (
-        <ToggleGroupItem key={value} value={value}>
-          {value}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  );
-}
 
 export function Choices() {
   return (
@@ -189,25 +136,6 @@ export function Choices() {
           </State>
           <State label="disabled">
             <SegmentedDemo disabled />
-          </State>
-        </Compare>
-      </Section>
-      <Section title="Toggle · Toggle group (unused in the old app, D58)">
-        <Compare name="toggle · default">
-          <TogglesRow variant="default" />
-        </Compare>
-        <Compare name="toggle · outline">
-          <TogglesRow variant="outline" />
-        </Compare>
-        <Compare name="toggle group · joined outline · tight · loose · several pressed">
-          <State label="joined, outline">
-            <GroupDemo spacing="none" variant="outline" />
-          </State>
-          <State label="tight">
-            <GroupDemo spacing="tight" />
-          </State>
-          <State label="loose, multiple">
-            <GroupDemo spacing="loose" multiple />
           </State>
         </Compare>
       </Section>
