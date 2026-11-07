@@ -158,14 +158,15 @@ function ContextMenus() {
                 </k.ContextMenu>
               </State>
               <State label="open">
+                {/* Held by a dropdown's non-modal root: a context menu's own root always traps focus, which
+                    would lock the gallery. Its surface and rows are the same parts. */}
                 <Held className="h-44 w-52">
                   {(box) => (
-                    <k.ContextMenu open>
-                      <k.ContextMenuTrigger className="h-0" />
-                      <k.ContextMenuContent container={box} anchor={box} side="bottom" align="start" collisionAvoidance={STILL}>
+                    <k.DropdownMenu open modal={false}>
+                      <k.DropdownMenuContent container={box} anchor={box} side="bottom" align="start" collisionAvoidance={STILL}>
                         {items}
-                      </k.ContextMenuContent>
-                    </k.ContextMenu>
+                      </k.DropdownMenuContent>
+                    </k.DropdownMenu>
                   )}
                 </Held>
               </State>

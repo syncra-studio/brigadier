@@ -20,7 +20,7 @@ export function showToast(text: string, { tone = "neutral", actions = [] }: { to
 const ICONS = { success: CheckCircle, error: Warning, neutral: InfoCircle };
 
 function ToastList() {
-  const { toasts } = Toast.useToastManager();
+  const { toasts, close } = Toast.useToastManager();
   return toasts.map((toast) => {
     const tone = (toast.type ?? "neutral") as Tone;
     const Icon = ICONS[tone];
@@ -45,7 +45,10 @@ function ToastList() {
         {actions.map((action) => (
           <Toast.Action
             key={action.label}
-            onClick={action.run}
+            onClick={() => {
+              action.run();
+              close(toast.id);
+            }}
             className="ms-1 cursor-pointer font-medium text-foreground transition-colors hover:text-action-hover focus-visible:focus-ring"
           >
             {action.label}
@@ -71,7 +74,8 @@ function ToastList() {
  */
 export function Toaster({ className, manager = toastManager }: { className?: string; manager?: typeof toastManager }) {
   return (
-    <Toast.Provider toastManager={manager} timeout={DURATION_MS}>
+    // No limit: the old stack showed every toast, and Base UI makes the ones over its limit inert.
+    <Toast.Provider toastManager={manager} timeout={DURATION_MS} limit={Infinity}>
       <Toast.Viewport
         className={cx(
           "pointer-events-none absolute inset-x-0 z-popup flex flex-col items-center gap-2 outline-none *:pointer-events-auto",

@@ -91,13 +91,20 @@ export function DropdownMenuItem({
 // The mark at a checkbox or radio row's end.
 const MARK = "pointer-events-none absolute end-2 flex items-center justify-center";
 
+// Picking a checkbox or radio row closes its menu, as the old app's menus did.
 export function DropdownMenuCheckboxItem({
   className,
   children,
+  closeOnClick = true,
   ...props
 }: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string }) {
   return (
-    <Menu.CheckboxItem data-slot="dropdown-menu-checkbox-item" className={cx(itemBase, "pe-8", className)} {...props}>
+    <Menu.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      closeOnClick={closeOnClick}
+      className={cx(itemBase, "pe-8", className)}
+      {...props}
+    >
       <Menu.CheckboxItemIndicator className={MARK}>
         <Check className="size-icon-md" />
       </Menu.CheckboxItemIndicator>
@@ -110,6 +117,7 @@ export function DropdownMenuRadioItem({
   className,
   children,
   indicator,
+  closeOnClick = true,
   ...props
 }: Omit<Menu.RadioItem.Props, "className"> & {
   className?: string;
@@ -117,7 +125,12 @@ export function DropdownMenuRadioItem({
   indicator?: ReactNode;
 }) {
   return (
-    <Menu.RadioItem data-slot="dropdown-menu-radio-item" className={cx(itemBase, "pe-8", className)} {...props}>
+    <Menu.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      closeOnClick={closeOnClick}
+      className={cx(itemBase, "pe-8", className)}
+      {...props}
+    >
       <Menu.RadioItemIndicator className={MARK}>{indicator ?? <Dot className="size-icon-md" />}</Menu.RadioItemIndicator>
       {children}
     </Menu.RadioItem>
