@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 
 export type Daemon = { pid: number; version: string };
 export type Row = { id: string; title: string; state: string; backend: string; updated: number; items: number; error: string | null };
-export type Search = { q: string; pending: boolean; ids?: string[]; error?: string };
+/** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
+export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */
@@ -19,6 +20,7 @@ let bytes = new Uint8Array();
 let nextId = 0;
 let listId = 0;
 let searchId = 0;
+const SLOW_MS = 200;
 // The list at N, then each update N+1, N+2… in order [D40]. A gap asks for a fresh list.
 let rows = new Map<string, Row>();
 let n: number | undefined;
@@ -56,7 +58,9 @@ function onFrame(frame: Record<string, any>): void {
     n = frame.n;
     set({ rows: [...rows.values()] });
   } else if (frame.re === searchId) {
-    set({ search: { q: view.search.q, pending: false, ids: frame.ok ? frame.ids : undefined, error: frame.ok ? undefined : frame.error } });
+    // Only the latest query's reply lands; it swaps the results in place, never backwards.
+    const { q, ids } = view.search;
+    set({ search: { q, pending: false, ids: frame.ok ? frame.ids : ids, error: frame.ok ? undefined : frame.error } });
   } else if (frame.re === undefined && typeof frame.n === "number" && n !== undefined) {
     if (frame.n !== n + 1) return subscribe();
     n = frame.n;
@@ -83,8 +87,10 @@ export function search(q: string): void {
     return set({ search: { q, pending: false } });
   }
   if (!view.daemon) return set({ search: { q, pending: false, error: "Daemon not reachable" } });
-  set({ search: { ...view.search, q, pending: true, error: undefined } });
-  searchId = send({ op: "search", q });
+  // The current results stay on screen until the reply swaps them.
+  set({ search: { ...view.search, q, pending: true, slow: false, error: undefined } });
+  const id = (searchId = send({ op: "search", q }));
+  setTimeout(() => searchId === id && view.search.pending && set({ search: { ...view.search, slow: true } }), SLOW_MS);
 }
 
 // At module level, not in an effect: main posts the port once the page has loaded, maybe before React's first effect.

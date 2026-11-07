@@ -43,11 +43,11 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
   return (
     <section className="flex w-full max-w-reading flex-col gap-2 px-4">
       <Input placeholder="Search sessions" value={found.q} onChange={(event) => search(event.target.value)} />
-      {found.pending && <p className="text-sm text-muted-foreground">Searching…</p>}
+      {found.slow && <p className="text-sm text-muted-foreground">Searching…</p>}
       {found.error && <p className="text-sm text-destructive">{found.error}</p>}
       {rows === undefined && <p className="text-sm text-muted-foreground">Loading sessions…</p>}
       {rows?.length === 0 && <p className="text-sm text-muted-foreground">No sessions</p>}
-      {rows?.length !== 0 && shown?.length === 0 && !found.pending && <p className="text-sm text-muted-foreground">No matches</p>}
+      {rows?.length !== 0 && shown?.length === 0 && !found.slow && <p className="text-sm text-muted-foreground">No matches</p>}
       <ul className={offline ? "text-sm text-muted-foreground" : "text-sm"}>
         {list?.map((row) => (
           <li key={row.id} className="flex gap-2 py-1">
