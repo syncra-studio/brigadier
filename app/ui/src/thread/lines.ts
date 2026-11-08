@@ -20,6 +20,9 @@ type GroupLine = Extract<Line, { type: "group" }>;
 /** The id of a turn's work header, which is also what it toggles. */
 export const workKey = (turnId: string) => `work:${turnId}`;
 
+/** A user message that starts a turn: a steer joins the running one [D183]. */
+const opens = (item: Item | undefined) => item?.kind === "message" && item.role === "user" && !item.steer;
+
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
 
 type Walk = { items: readonly Item[]; out: Line[]; starts: number[]; counts: number[] };
@@ -69,15 +72,15 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
 
   // A turn stopped or failed before any output still says so under its input.
   const bare = () => {
-    const turn = before?.kind === "message" && before.role === "user" ? turns.get(before.turnId) : undefined;
+    const turn = opens(before) ? turns.get(before!.turnId) : undefined;
     if (turn && turn.status !== "running" && turn.status !== "done") push({ type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null });
   };
 
   for (let at = from; at < items.length; at++) {
     const item = items[at]!;
     // A turn that begins with a switch note rather than an input also ends the bare turn before it.
-    if ((item.kind === "message" && item.role === "user") || (before && item.turnId !== before.turnId)) bare();
-    if (item.kind === "message" && item.role === "user") {
+    if (opens(item) || (before && item.turnId !== before.turnId)) bare();
+    if (opens(item)) {
       starts.push(at);
       counts.push(out.length);
     }
@@ -85,7 +88,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
     // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
-    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done)) {
+    if (turn && opens(before) && before!.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;

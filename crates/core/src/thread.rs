@@ -133,10 +133,15 @@ impl Thread {
                 }
                 if item["steer"] == true {
                     self.break_group();
-                    self.add(
+                    let at = self.add(
                         json!({"kind": "message", "role": "user", "text": item["text"],
-                        "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"]}),
+                        "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
+                        "steer": true}),
                     );
+                    // The user's own words stay out of the work fold, like a question [D99].
+                    if let Some(o) = self.open.as_mut() {
+                        o.kept.push(at as u64 + 1);
+                    }
                 }
             }
         } else {

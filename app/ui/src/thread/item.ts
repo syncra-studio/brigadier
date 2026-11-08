@@ -87,6 +87,8 @@ export type Item = Base &
         sentAt?: number;
         /** A steered message's command id, which the app's own copy settles by. */
         cid?: string;
+        /** Steered into the running turn: it sits inside that turn's work and starts no turn of its own. */
+        steer?: boolean;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first
