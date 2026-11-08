@@ -41,6 +41,8 @@ export function clickRow(event: { metaKey: boolean; shiftKey: boolean }, row: Se
 }
 
 let undo: (() => void) | null = null;
+let undoFocus: Element | null = null;
+let typedSinceArchive = false;
 /** The open session and the way Home, kept by `useArchiveKeys`. */
 let view: { active: string | null; onHome: () => void } = { active: null, onHome: () => {} };
 
@@ -48,6 +50,8 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
 export function archiveRows(rows: SessionRow[]) {
   const { active, onHome } = view;
   if (rows.length === 0) return;
+  undoFocus = document.activeElement;
+  typedSinceArchive = false;
   clearPicked();
   for (const row of rows) archive(row);
   if (rows.some((row) => row.id === active)) onHome();
@@ -66,7 +70,7 @@ export function archiveRows(rows: SessionRow[]) {
   });
 }
 
-/** A field that types text keeps ⌘Z and ⌘⌫ for itself. */
+/** A field that types text keeps ⌘⌫ for itself. */
 const typing = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || target.tagName === "TEXTAREA" || (target.tagName === "INPUT" && (target as HTMLInputElement).type !== "checkbox"));
 
@@ -74,6 +78,15 @@ const typing = (target: EventTarget | null) =>
 export function useArchiveKeys(order: SessionRow[], active: string | null, onHome: () => void) {
   view = { active, onHome };
   useEffect(() => {
+    const onInput = () => { typedSinceArchive = true; };
+    const onUndoKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || !event.metaKey || event.shiftKey || event.altKey || event.ctrlKey || event.code !== "KeyZ") return;
+      if (!undo || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (typing(event.target) && (typedSinceArchive || event.target === undoFocus)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      undo();
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey) return;
       // Not behind a dialog or menu, where what it would archive can't be seen.
@@ -88,13 +101,16 @@ export function useArchiveKeys(order: SessionRow[], active: string | null, onHom
       } else if (!event.shiftKey && !field && (event.key === "Backspace" || event.key === "Delete") && pick.length > 0) {
         event.preventDefault();
         archiveRows(pick);
-      } else if (!event.shiftKey && !field && event.code === "KeyZ" && undo) {
-        event.preventDefault();
-        undo();
       }
     };
+    addEventListener("beforeinput", onInput, true);
+    addEventListener("keydown", onUndoKey, true);
     addEventListener("keydown", onKeyDown);
-    return () => removeEventListener("keydown", onKeyDown);
+    return () => {
+      removeEventListener("beforeinput", onInput, true);
+      removeEventListener("keydown", onUndoKey, true);
+      removeEventListener("keydown", onKeyDown);
+    };
   });
 }
 

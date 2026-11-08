@@ -48,7 +48,7 @@ export function RemoveProjectHost() {
   const close = () => opened.set(null);
   return (
     <Dialog open={project !== null} onOpenChange={(open) => !open && close()}>
-      <DialogContent showCloseButton={false} frame="max-w-project-dialog gap-5 p-6">
+      <DialogContent showCloseButton={false} frame="project-dialog max-w-project-dialog gap-5 p-6">
         {project && <RemoveFlow key={project.id} project={project} onClose={close} />}
       </DialogContent>
     </Dialog>
@@ -67,6 +67,7 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   const [drops, setDrops] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
   const { daemon, rows, projects } = useDaemon();
+  const sessionStates = JSON.stringify(rows?.filter((row) => row.project === project.id).map((row) => [row.id, row.state, row.mark, row.archived, row.lifecycle]));
   const titleOf = (id: string) => rows?.find((row) => row.id === id)?.title || "New session";
   const done = () => {
     onClose();
@@ -74,9 +75,9 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   };
 
   useEffect(() => {
-    if (given) return;
+    if (given || phase.at !== "form") return;
     let current = true;
-    setLook({ state: "looking" });
+    setLook((last) => last.state === "ready" ? last : { state: "looking" });
     run(["projects", "remove", project.id, "--check"]).then(
       (reply) => {
         if (!current) return;
@@ -88,7 +89,7 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
     return () => {
       current = false;
     };
-  }, [project.id, attempt, given]);
+  }, [project.id, attempt, given, phase.at, sessionStates]);
 
   // No reply is coming: Rust's list, by id, says how it ended once the daemon is back [D30, D40].
   useEffect(() => {
@@ -158,44 +159,46 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
       onConfirm={confirm}
       onCancel={onClose}
     >
-      {anything && (
-        <ul aria-label="What is deleted" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
-          {sessions > 0 && <SummaryRow icon={<Chats />} label={plural(sessions, "session", "sessions")} detail="Can't be undone" />}
-          {preview.worktrees > 0 && <SummaryRow icon={<Folder />} label={plural(preview.worktrees, "worktree", "worktrees")} detail={formatBytes(preview.bytes)} />}
-          {preview.merged > 0 && (
-            <SummaryRow
-              icon={<Branch />}
-              label={plural(preview.merged, "merged branch", "merged branches")}
-              detail={preview.branches.length ? "Already landed" : "Unmerged ones stay"}
-            />
-          )}
-        </ul>
-      )}
-      {preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
-      {preview.branches.map(({ id, branch }) => (
-        <div key={id} className="flex flex-col gap-2.5">
-          <p className="text-xs text-muted-foreground">
-            “{titleOf(id)}”: its branch <code className="font-mono text-foreground">{branch}</code> has work that never landed.
-          </p>
-          <RadioGroup
-            value={drops.has(id) ? "delete" : "keep"}
-            onValueChange={(value) => setDrops((last) => (value === "delete" ? new Set(last).add(id) : new Set([...last].filter((each) => each !== id))))}
-            className="flex gap-4"
-          >
-            <label className="flex items-center gap-2 text-sm">
-              <Radio value="keep" />
-              Keep branch
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Radio value="delete" />
-              Delete it too
-            </label>
-          </RadioGroup>
+      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+        {anything && (
+          <ul aria-label="What is deleted" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
+            {sessions > 0 && <SummaryRow icon={<Chats />} label={plural(sessions, "session", "sessions")} detail="Can't be undone" />}
+            {preview.worktrees > 0 && <SummaryRow icon={<Folder />} label={plural(preview.worktrees, "worktree", "worktrees")} detail={formatBytes(preview.bytes)} />}
+            {preview.merged > 0 && (
+              <SummaryRow
+                icon={<Branch />}
+                label={plural(preview.merged, "merged branch", "merged branches")}
+                detail={preview.branches.length ? "Already landed" : "Unmerged ones stay"}
+              />
+            )}
+          </ul>
+        )}
+        {preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
+        {preview.branches.map(({ id, branch }) => (
+          <div key={id} className="flex flex-col gap-2.5">
+            <p className="text-xs text-muted-foreground">
+              “{titleOf(id)}”: its branch <code className="font-mono text-foreground">{branch}</code> has work that never landed.
+            </p>
+            <RadioGroup
+              value={drops.has(id) ? "delete" : "keep"}
+              onValueChange={(value) => setDrops((last) => (value === "delete" ? new Set(last).add(id) : new Set([...last].filter((each) => each !== id))))}
+              className="flex gap-4"
+            >
+              <label className="flex items-center gap-2 text-sm">
+                <Radio value="keep" />
+                Keep branch
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Radio value="delete" />
+                Delete it too
+              </label>
+            </RadioGroup>
+          </div>
+        ))}
+        <ErrorLine error={blocked} />
+        <div role="alert">
+          <ErrorLine error={error} />
         </div>
-      ))}
-      <ErrorLine error={blocked} />
-      <div role="alert">
-        <ErrorLine error={error} />
       </div>
     </ConfirmForm>
   );
@@ -238,15 +241,15 @@ export function Removed({ name, repo, kept, onClose }: { name: string; repo: str
         <DialogTitle>“{name}” was removed</DialogTitle>
         <DialogDescription>Its repository was not touched.</DialogDescription>
       </DialogHeader>
-      <section aria-labelledby="removed-kept" className="flex flex-col gap-1.5">
+      <section aria-labelledby="removed-kept" className="flex min-h-0 min-w-0 flex-col gap-1.5 overflow-y-auto">
         <h3 id="removed-kept" className="text-label font-medium text-foreground">
           Branches kept with unmerged work
         </h3>
         <ul className="flex flex-col gap-2 text-sm">
           {kept.map((branch) => (
-            <li key={branch} className="flex flex-col gap-0.5">
+            <li key={branch} className="flex min-w-0 flex-col gap-0.5">
               <span className="leading-4.25">{branch}</span>
-              <code className="text-xs leading-4.25 break-all text-muted-foreground select-text">{`git -C ${repo} branch -D ${branch}`}</code>
+              <code tabIndex={0} className="overflow-x-auto text-xs leading-4.25 whitespace-nowrap text-muted-foreground outline-none select-text focus-visible:focus-ring">{`git -C ${repo} branch -D ${branch}`}</code>
             </li>
           ))}
         </ul>

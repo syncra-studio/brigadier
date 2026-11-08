@@ -5,6 +5,14 @@ ipcRenderer.on("daemon-port", (event) => {
   window.postMessage("daemon-port", window.location.origin, event.ports);
 });
 
+// Native Undo roles can bypass page keydown on macOS; the page gets first refusal, then text undo.
+ipcRenderer.on("menu", (_event, command) => {
+  if (command !== "undo") return;
+  const target = document.activeElement ?? document.body;
+  const key = new KeyboardEvent("keydown", { key: "z", code: "KeyZ", metaKey: process.platform === "darwin", ctrlKey: process.platform !== "darwin", bubbles: true, cancelable: true });
+  if (target.dispatchEvent(key)) ipcRenderer.send("text-undo");
+});
+
 // What the page asks of main (main.ts): the native folder pickers, the menu's commands, and the intro's window staging (intro.ts).
 contextBridge.exposeInMainWorld("brigadier", {
   pickFolder: () => ipcRenderer.invoke("pick-folder"),

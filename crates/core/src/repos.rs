@@ -309,6 +309,16 @@ pub fn clone(
     if let Err(e) = cloned {
         // A clone that failed part way leaves nothing behind.
         let _ = fs::remove_dir_all(&dir);
+        let reason = e.to_string().to_lowercase();
+        if reason.contains("repository not found")
+            || (reason.contains("repository ") && reason.contains(" not found"))
+            || reason.contains("could not read username")
+            || reason.contains("could not read password")
+            || reason.contains("authentication failed")
+            || reason.contains("permission denied (publickey")
+        {
+            return err("The repository wasn't found, or you don't have access to it.");
+        }
         return Err(e);
     }
     projects::add(data, &dir.display().to_string(), Some(id), None)
