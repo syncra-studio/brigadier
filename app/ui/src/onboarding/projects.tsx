@@ -51,6 +51,8 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
   const addable = [...byHand.filter((path) => !added.includes(path)), ...history];
   const chosen = addable.filter((path) => selected.has(path));
   const allChosen = addable.length > 0 && chosen.length === addable.length;
+  // The header counts every card shown, already-added ones too, as the old app's did [ProjectsStep.tsx:55].
+  const cards = [...added, ...addable];
   const toggle = (path: string) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -87,7 +89,6 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     setBusy(null);
   };
 
-  const cards = [...added, ...addable];
   const count = chosen.length;
   return (
     <div className="onboarding-step flex min-h-0 flex-1 flex-col">
@@ -96,9 +97,9 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
         <div className="shrink-0 px-6">
           <div className="mx-auto flex w-full max-w-onboarding flex-wrap items-center gap-x-1 gap-y-2">
             <div className="flex items-center gap-2 px-1 text-label text-setup-hint">
-              {history.length > 0 && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />}
+              {cards.length > 0 && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />}
               <span>Found in your history</span>
-              {found && <span className="tabular-nums">{history.length}</span>}
+              {found && <span className="tabular-nums">{cards.length}</span>}
             </div>
             <div className="ms-auto flex items-center gap-1">
               {addable.length > 0 && (
