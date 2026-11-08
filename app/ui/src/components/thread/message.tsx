@@ -4,6 +4,7 @@ import { ChevronRightAlt } from "../../icons";
 import { useKept } from "../../thread/kept";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -31,8 +32,8 @@ const LONG_CHARS = 1200;
 
 /**
  * The user's message, on the right. Hovered or focused, its time and a copy button show under it; past 20
- * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why with
- * Try again; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a message the
+ * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why on one
+ * line (the whole reason in a tooltip) with Try again; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a message the
  * turn hasn't reached).
  */
 export function UserBubble({
@@ -80,10 +81,18 @@ export function UserBubble({
         {sending ? (
           <p className="text-xs text-muted-foreground">Sending…</p>
         ) : failed ? (
-          <p className="flex flex-wrap items-center justify-end gap-x-2 text-xs text-muted-foreground">
-            <span role="alert" className="wrap-anywhere text-destructive">
-              Not sent · {failed}
-            </span>
+          // One line: a long reason truncates, its whole text in the tooltip, and Try again stays at the end.
+          <p className="flex max-w-full min-w-0 items-center justify-end gap-x-2 text-xs text-muted-foreground">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span role="alert" tabIndex={0} className="min-w-0 truncate rounded-control text-destructive focus-visible:focus-ring">
+                    Not sent · {failed}
+                  </span>
+                }
+              />
+              <TooltipContent>{failed}</TooltipContent>
+            </Tooltip>
             {onRetry && (
               <button type="button" onClick={onRetry} className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
                 Try again
