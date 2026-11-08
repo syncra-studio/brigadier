@@ -73,9 +73,10 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       counts.push(out.length);
     }
     const turn = turns.get(item.turnId);
-    // A turn's work starts right after its input, unless the answer comes straight away.
-    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && item.kind !== "message") {
-      const done = work.get(turn.id);
+    const done = turn && work.get(turn.id);
+    // A turn's work starts right after its input, unless the answer comes straight away: a note before its
+    // first step is work too, so a running turn or one Rust gave work always has the header.
+    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && (item.kind !== "message" || turn.status === "running" || done)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;

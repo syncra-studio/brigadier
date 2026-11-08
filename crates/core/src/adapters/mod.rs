@@ -159,7 +159,26 @@ pub fn change(
     added: Option<u64>,
     removed: Option<u64>,
 ) -> Value {
+    let diff = diff.map(|d| hunks(&d)).filter(|d| !d.is_empty());
     serde_json::json!({"path": path, "change": change, "from": null, "diff": diff, "added": added, "removed": removed})
+}
+
+/// A unified diff's hunks alone: the file headers (`Index:`, `===`, `---`, `+++`) dropped.
+fn hunks(diff: &str) -> String {
+    let mut hunk = false;
+    let mut out = String::new();
+    for line in diff.lines() {
+        if line.starts_with("@@") {
+            hunk = true;
+        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
+            hunk = false;
+        }
+        if hunk {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Lines added and removed in a unified diff: only lines inside hunks, so file headers don't count
@@ -227,7 +246,7 @@ pub fn shell_step(command: &str) -> (&'static str, String) {
             None => ("run", command),
         },
         "ls" | "find" | "tree" | "fd" => ("search", path.unwrap_or(command)),
-        "rg" | "grep" | "ag" | "ack" => match rest().find(|w| !w.starts_with('-')) {
+        "rg" | "grep" | "ag" | "ack" => match pattern(&words[1..]) {
             Some(pattern) => ("search", pattern.to_string()),
             None => ("search", command),
         },
@@ -235,9 +254,29 @@ pub fn shell_step(command: &str) -> (&'static str, String) {
     }
 }
 
+/// A search's pattern: its `-e` value, else its first word that is neither an option nor an
+/// option's value.
+fn pattern(args: &[String]) -> Option<&str> {
+    let mut args = args.iter().map(String::as_str);
+    while let Some(w) = args.next() {
+        match w {
+            "-e" | "--regexp" => return args.next(),
+            "-g" | "--glob" | "--iglob" | "-t" | "--type" | "-T" | "--type-not" | "-m"
+            | "--max-count" | "-A" | "-B" | "-C" | "--after-context" | "--before-context"
+            | "--context" | "-d" | "--max-depth" | "-f" | "--file" | "--include" | "--exclude"
+            | "-M" | "--max-columns" | "-j" | "--threads" => {
+                args.next();
+            }
+            w if w.starts_with('-') => {}
+            w => return Some(w),
+        }
+    }
+    None
+}
+
 /// `/bin/zsh -lc 'wc -l a.py'` and `cd /tmp/x && wc -l a.py` → `wc -l a.py`.
 fn unwrap_shell(command: &str) -> String {
-    let mut c = command.trim();
+    let mut c = command.trim().to_string();
     if let Some((program, rest)) = c.split_once(char::is_whitespace)
         && matches!(basename(program), "sh" | "bash" | "zsh")
         && let Some(body) = rest
@@ -246,14 +285,8 @@ fn unwrap_shell(command: &str) -> String {
             .or_else(|| rest.trim_start().strip_prefix("-c"))
             .filter(|b| b.starts_with(char::is_whitespace))
     {
-        let body = body.trim();
-        c = match body.chars().next() {
-            Some(q @ ('\'' | '"')) if body.len() >= 2 && body.ends_with(q) => {
-                &body[1..body.len() - 1]
-            }
-            Some('\'' | '"') => &body[1..],
-            _ => body,
-        };
+        // The script is the shell's next word, its quotes undone as the shell would.
+        c = words(body).into_iter().next().unwrap_or_default();
     }
     let mut c = c.trim();
     while let Some(rest) = c.strip_prefix("cd ") {
@@ -270,26 +303,34 @@ fn unwrap_shell(command: &str) -> String {
     c.to_string()
 }
 
-/// A simple command's words, quotes removed.
+/// A simple command's words, quotes and backslashes undone as the shell does; an unclosed quote
+/// runs to the end.
 fn words(command: &str) -> Vec<String> {
     let mut out = vec![];
     let mut chars = command.chars().peekable();
-    while let Some(&ch) = chars.peek() {
-        if ch.is_whitespace() {
-            chars.next();
-        } else if ch == '\'' || ch == '"' {
-            chars.next();
-            out.push(chars.by_ref().take_while(|&c| c != ch).collect());
-        } else {
-            let mut word = String::new();
-            while let Some(&c) = chars.peek().filter(|c| !c.is_whitespace()) {
-                word.push(c);
-                chars.next();
-            }
-            out.push(word);
+    loop {
+        while chars.next_if(|c| c.is_whitespace()).is_some() {}
+        if chars.peek().is_none() {
+            return out;
         }
+        let mut word = String::new();
+        while let Some(c) = chars.next_if(|c| !c.is_whitespace()) {
+            match c {
+                '\'' => word.extend(chars.by_ref().take_while(|&c| c != '\'')),
+                '"' => {
+                    while let Some(c) = chars.next().filter(|&c| c != '"') {
+                        match chars.next_if(|&n| c == '\\' && matches!(n, '"' | '\\' | '$' | '`')) {
+                            Some(n) => word.push(n),
+                            None => word.push(c),
+                        }
+                    }
+                }
+                '\\' => word.extend(chars.next()),
+                c => word.push(c),
+            }
+        }
+        out.push(word);
     }
-    out
 }
 
 fn basename(path: &str) -> &str {
