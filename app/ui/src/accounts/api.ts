@@ -34,20 +34,23 @@ const subscribe = (listener: () => void) => {
 };
 export const useAccounts = () => useSyncExternalStore(subscribe, () => state);
 
-// The last asked list wins: an older reply never lands over a newer one.
+// The newest reply wins: an older one never lands over a newer one, and slow checks that overlap
+// still land in turn.
 let asked = 0;
+let landed = 0;
 
 /** Every agent's accounts, each checked in its own home. The last list stays while it loads. */
 export function loadAccounts(): Promise<void> {
   const mine = ++asked;
   set({ loading: true });
+  const land = (next: Partial<State>) => {
+    if (mine <= landed) return;
+    landed = mine;
+    set({ ...next, loading: mine < asked });
+  };
   return run(["accounts"]).then(
-    (reply) => {
-      if (mine === asked) set({ agents: reply.agents, switchAgents: reply.switch_agents, error: undefined, loading: false });
-    },
-    (cause) => {
-      if (mine === asked) set({ error: errorText(cause), loading: false });
-    },
+    (reply) => land({ agents: reply.agents, switchAgents: reply.switch_agents, error: undefined }),
+    (cause) => land({ error: errorText(cause) }),
   );
 }
 

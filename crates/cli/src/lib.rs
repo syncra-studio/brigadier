@@ -69,7 +69,7 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     Ok(s)
 }
 
-pub use switching::wants;
+pub use switching::{switch_settings, wants};
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");

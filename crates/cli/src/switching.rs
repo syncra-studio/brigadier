@@ -145,7 +145,7 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
             || (!listed(&v, "released", b)
                 && match kind {
                     "agents" => v["agents"] == true && !listed(&v, "released", to.name()),
-                    _ => listed(&v, "auto", b) || why == "unresumable",
+                    _ => listed(&v, "auto", b),
                 })
     };
     let call = |req| owner::call(data, id, req);
@@ -209,6 +209,14 @@ fn pick_agent(
 
 /// Whether the settings let the daemon act on a limit of `backend`: read once per limit, so off
 /// costs nothing [D51].
+/// What automatic switching depends on, without the limit times a switch itself writes, so a
+/// setting or account change asks again about a session still at its limit [D51].
+pub fn switch_settings(data: &Path) -> Value {
+    let mut v = load(data);
+    v["limited"] = Value::Null;
+    v
+}
+
 pub fn wants(data: &Path, backend: &str, why: &str) -> bool {
     let v = load(data);
     !listed(&v, "released", backend)

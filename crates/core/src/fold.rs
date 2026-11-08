@@ -153,9 +153,11 @@ impl Fold {
                     if let Some(m) = switch["to"]["model"].as_str() {
                         self.models.insert(to.into(), m.into());
                     }
-                    // A new conversation: the old one stays in `convs` for delete.
+                    // For delete, `convs` keeps the old conversation, or the same one's new account.
                     if switch["fresh"] == true {
                         self.resume.remove(to);
+                    } else if let Some(id) = self.resume.get(to) {
+                        self.convs.insert((to.into(), account.into(), id.clone()));
                     }
                 }
                 // An input while the agent waits on a question is its answer, not a new turn.
@@ -321,7 +323,13 @@ impl Fold {
                 self.refused = Some(str_of("message"));
                 self.close("unresumable", item["message"].clone(), ts);
             }
-            "stopped" => self.close_all("stopped", item["by"].clone(), ts),
+            "stopped" => {
+                // The user's Stop ends the limit; a terminal's handoff stop keeps it [D51, D47].
+                if item["by"] == "user" {
+                    (self.limit, self.refused) = (None, None);
+                }
+                self.close_all("stopped", item["by"].clone(), ts)
+            }
             "compaction" if item["progress"] != "running" => self.compactions += 1,
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {

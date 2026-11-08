@@ -125,7 +125,8 @@ fn main() -> io::Result<()> {
             }
         });
     }
-    // The limit each session was last looked at for, by its item count: once per limit [D51].
+    // The limit each session was last looked at for, by its item count and the switching settings:
+    // once per limit, and again when a setting or the accounts change [D51].
     let mut seen: HashMap<String, Value> = HashMap::new();
     loop {
         match index.sync() {
@@ -145,19 +146,22 @@ fn main() -> io::Result<()> {
 }
 
 /// Moves a session at its limit on by itself, only where the user turned that on [D51]. Off costs
-/// one small read per limit and does nothing else. The switch runs off this loop; the host and
+/// one small read a pass while a session is at its limit, and does nothing else. The switch runs off this loop; the host and
 /// the limit's fixed cid keep it to one, whoever else acts on the same limit [D54, D82].
 fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashMap<String, Value>) {
     seen.retain(|id, _| rows.contains_key(id));
+    let mut settings = None; // read once a pass, and only with a session at its limit
     for (id, row) in rows {
         let Some(why) = row["switchable"].as_str() else {
             seen.remove(id);
             continue;
         };
-        if seen.get(id) == Some(&row["items"]) {
+        let settings = settings.get_or_insert_with(|| brigadier::switch_settings(data));
+        let at = json!([row["items"], settings]);
+        if seen.get(id) == Some(&at) {
             continue;
         }
-        seen.insert(id.clone(), row["items"].clone());
+        seen.insert(id.clone(), at);
         if !brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why) {
             continue;
         }

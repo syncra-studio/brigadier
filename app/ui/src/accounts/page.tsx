@@ -50,6 +50,7 @@ export function AccountsPage() {
   // The sign-in terminal shown, and the agent whose account is being added.
   const [open, setOpen] = useState<{ agent: string; id: string } | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
+  const [starting, setStarting] = useState<string | null>(null);
 
   useEffect(() => {
     if (online) void loadAccounts();
@@ -90,10 +91,16 @@ export function AccountsPage() {
         setAdding(null);
       }
     });
+  // The terminal attaches once the sign-in run exists; until then its button shows it starting.
   const reSignIn = (agent: SwitchAgent, account: Account) =>
     act(account.id, async () => {
-      setOpen({ agent: agent.name, id: account.id });
-      await signIn(account.id);
+      setStarting(account.id);
+      try {
+        await signIn(account.id);
+        setOpen({ agent: agent.name, id: account.id });
+      } finally {
+        setStarting(null);
+      }
     });
 
   const confirm = async () => {
@@ -180,6 +187,7 @@ export function AccountsPage() {
                   agent={agent}
                   online={online}
                   adding={adding === agent.name}
+                  starting={starting}
                   failed={failed}
                   onAdd={() => void add(agent)}
                   onSignIn={(account) => void reSignIn(agent, account)}
@@ -236,6 +244,7 @@ function AgentSection({
   agent,
   online,
   adding,
+  starting,
   failed,
   onAdd,
   onSignIn,
@@ -247,6 +256,7 @@ function AgentSection({
   agent: SwitchAgent;
   online: boolean;
   adding: boolean;
+  starting: string | null;
   failed: Record<string, string>;
   onAdd: () => void;
   onSignIn: (account: Account) => void;
@@ -270,6 +280,7 @@ function AgentSection({
             account={account}
             online={online}
             error={failed[account.id]}
+            starting={starting === account.id}
             onSignIn={() => onSignIn(account)}
             onRemove={() => onRemove(account)}
           />
@@ -310,12 +321,14 @@ function AccountRow({
   account,
   online,
   error,
+  starting,
   onSignIn,
   onRemove,
 }: {
   account: Account;
   online: boolean;
   error?: string;
+  starting: boolean;
   onSignIn: () => void;
   onRemove: () => void;
 }) {
@@ -342,7 +355,8 @@ function AccountRow({
         <RowText title={own ? "This computer's login" : account.name} line={line} truncate />
         {account.limited_at && Date.now() - account.limited_at < 5 * 3600 * 1000 && <Badge variant="warning">Hit its limit</Badge>}
         {!own && !signedIn && !account.sign_in?.running && (
-          <Button size="sm" variant="soft" disabled={!online || !c.installed} onClick={onSignIn}>
+          <Button size="sm" variant="soft" disabled={!online || !c.installed || starting} onClick={onSignIn}>
+            {starting && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
             Sign in
           </Button>
         )}
