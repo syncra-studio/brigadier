@@ -62,7 +62,8 @@ function Header({ session }: { session: DemoSession }) {
   const badge = link === "disconnected" ? "disconnected" : reconnecting ? "reconnecting" : null;
   useSeen(badge);
   return (
-    <header className="app-drag flex h-titlebar shrink-0 items-center gap-2 border-b border-divider ps-traffic-lights pe-4">
+    <header className="app-drag flex h-titlebar shrink-0 items-center gap-3 border-b border-divider pe-4">
+      <div className="w-traffic-lights shrink-0" />
       <span className="truncate text-sm font-medium">Session states</span>
       {badge === "reconnecting" && (
         <Badge role="status" variant="warning">
