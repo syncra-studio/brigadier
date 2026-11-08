@@ -78,6 +78,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match cmd {
         "start" => {
             let id = arg(args, 1)?;
+            if id.starts_with(core::SETUP) {
+                return Err(io::Error::other(format!(
+                    "{:?} is kept for setup runs",
+                    core::SETUP
+                )));
+            }
             let backend = flag(args, "--backend").unwrap_or("fake");
             if adapters::get(backend).is_none() {
                 return Err(io::Error::other(format!("unknown backend {backend}")));

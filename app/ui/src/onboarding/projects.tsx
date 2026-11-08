@@ -5,7 +5,7 @@ import { CheckboxMark } from "../components/checkbox";
 import { cx } from "../components/cx";
 import { useDaemon } from "../daemon";
 import { Spinner } from "../icons";
-import { errorText, run, setProfile, useProfile } from "./api";
+import { addPicked, errorText, run, setProfile, useProfile } from "./api";
 import { FolderOpen } from "./icons";
 import { PILL_BUTTON, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
@@ -63,8 +63,7 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     setError(null);
     setBusy("picking");
     try {
-      const picked = await window.brigadier?.pickFolder();
-      if (picked) await setProfile(["--add", picked], {});
+      await addPicked();
     } catch (cause) {
       setError(errorText(cause));
     } finally {

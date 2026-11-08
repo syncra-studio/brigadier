@@ -5,7 +5,7 @@ import { Input } from "../components/input";
 import { Select } from "../components/select";
 import { useDaemon } from "../daemon";
 import { Spinner } from "../icons";
-import { type Agent, checkAll, errorText, run, useAgents, useProfile } from "./api";
+import { addPicked, type Agent, checkAll, errorText, run, useAgents, useProfile } from "./api";
 
 const baseName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
 
@@ -27,6 +27,7 @@ export function StartForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const asked = useRef(0);
+  const [again, setAgain] = useState(0);
 
   useEffect(() => {
     if (daemon && list === undefined) void checkAll();
@@ -42,11 +43,13 @@ export function StartForm() {
       (reply) => {
         if (mine !== asked.current) return;
         const found: Agent | undefined = reply.agents[0];
+        // A check already running answers busy: ask again shortly rather than show no models.
+        if (found?.busy) return void setTimeout(() => mine === asked.current && setAgain((n) => n + 1), 1000);
         setModels(found?.error ? { error: found.error } : (found?.models ?? []));
       },
       (cause) => mine === asked.current && setModels({ error: errorText(cause) }),
     );
-  }, [daemon, chosenAgent, chosenProject]);
+  }, [daemon, chosenAgent, chosenProject, again]);
 
   // Local models first: they need no account and cost nothing [D45].
   const shownModels = Array.isArray(models) ? models.toSorted((a, b) => Number(b.local) - Number(a.local)) : [];
@@ -98,6 +101,11 @@ export function StartForm() {
           {pending ? "Starting…" : "Start"}
         </Button>
       </div>
+      {projects.length === 0 && window.brigadier && (
+        <Button size="sm" variant="outline" className="self-start" disabled={!daemon} onClick={() => addPicked().catch((cause) => setError(errorText(cause)))}>
+          Add folder…
+        </Button>
+      )}
       {(error ?? note) && <p className={`text-sm ${error || (typeof models === "object" && "error" in models && note === models.error) ? "text-destructive" : "text-muted-foreground"}`}>{error ?? note}</p>}
     </form>
   );

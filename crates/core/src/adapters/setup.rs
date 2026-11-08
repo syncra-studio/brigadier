@@ -89,13 +89,15 @@ pub fn run(command: &mut Command, secs: u64) -> Result<Output, String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     let pipe = |r: Option<Box<dyn Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut buf = vec![];
             if let Some(mut r) = r {
                 let _ = r.read_to_end(&mut buf);
             }
-            buf
-        })
+            let _ = tx.send(buf);
+        });
+        rx
     };
     let out = pipe(child.stdout.take().map(|s| Box::new(s) as _));
     let err = pipe(child.stderr.take().map(|s| Box::new(s) as _));
@@ -111,10 +113,16 @@ pub fn run(command: &mut Command, secs: u64) -> Result<Output, String> {
             }
         }
     };
+    // A child it left in its group may hold the pipes open: end it, and never wait past the deadline.
+    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    let drain = |rx: std::sync::mpsc::Receiver<Vec<u8>>| {
+        rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .unwrap_or_default()
+    };
     Ok(Output {
         status,
-        stdout: out.join().unwrap_or_default(),
-        stderr: err.join().unwrap_or_default(),
+        stdout: drain(out),
+        stderr: drain(err),
     })
 }
 

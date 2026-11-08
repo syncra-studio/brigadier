@@ -47,7 +47,11 @@ impl OpenCode {
             .arg("--standalone")
             .env_clear()
             .envs(self.env(spec))
-            .current_dir(&spec.cwd);
+            // A project folder since moved or removed must not block deleting its session.
+            .current_dir(match Path::new(&spec.cwd) {
+                cwd if cwd.is_dir() => cwd,
+                _ => spec.dir.as_path(),
+            });
         let out = bounded(&mut command, 60)?;
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         if out.status.success() {

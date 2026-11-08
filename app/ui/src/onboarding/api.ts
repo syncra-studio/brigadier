@@ -99,6 +99,12 @@ export function loadProfile(): void {
   );
 }
 
+/** The native folder picker, then the profile adds the picked folder (Rust checks it is a repository). */
+export async function addPicked(): Promise<void> {
+  const picked = await window.brigadier?.pickFolder();
+  if (picked) await setProfile(["--add", picked], {});
+}
+
 /**
  * Changes the profile: shown at once, then the reply replaces it; on failure it goes back and
  * the error is thrown for the screen to show [D30].
