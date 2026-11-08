@@ -184,6 +184,11 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     fit();
   }, [newest, fit]);
 
+  // Rows too few to scroll give no scroll to ask for older ones on: ask once they are drawn and measured.
+  const fill = () => {
+    const handle = list.current;
+    if (handle && handle.viewportSize > 0 && handle.scrollSize <= handle.viewportSize) source.older?.();
+  };
   const toBottom = () => {
     stuck.current = true;
     setAway(false);
@@ -204,9 +209,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   useLayoutEffect(() => {
     if (stuck.current) list.current?.scrollToIndex(last, { align: "end" });
     else fit();
-    // Rows too few to scroll give no scroll to ask for older ones on.
-    const handle = list.current;
-    if (handle && handle.scrollSize <= handle.viewportSize) source.older?.();
+    fill();
   }, [data, last, fit]);
 
   // A growing last row or footer is measured after the effect above, and the viewport can shrink (window, composer),
@@ -255,6 +258,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
         bufferSize={800}
         className="h-full"
         onScrollEnd={letGo}
+        onResize={fill}
         onScroll={(offset) => {
           scrolled.current++;
           const handle = list.current;

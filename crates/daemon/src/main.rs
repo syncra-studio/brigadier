@@ -289,9 +289,11 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
                     .as_ref()
                     .filter(|(s, _)| s == id)
                     .map(|(_, t)| t.clone());
-                let reply = match thread {
+                // Sent under the thread's lock, so no update to a row in the page overtakes it.
+                let locked = thread.as_ref().map(|t| t.lock().unwrap());
+                let reply = match &locked {
                     Some(thread) => {
-                        let mut page = thread.lock().unwrap().older(before);
+                        let mut page = thread.older(before);
                         page["re"] = re;
                         page["ok"] = true.into();
                         page
@@ -417,17 +419,18 @@ fn watch(
     }
     interrupted(&mut thread);
     let title = title.as_str().unwrap_or("");
-    let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
-    if out.send(snapshot.to_string()).is_err() {
-        return;
-    }
-    drop(thread);
+    // Shown before the snapshot goes, so its older pages can be asked for at once.
     {
         let mut shown = shown.lock().unwrap();
         if watching.load(Ordering::SeqCst) == mine {
             *shown = Some((id.to_string(), shared.clone()));
         }
     }
+    let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
+    if out.send(snapshot.to_string()).is_err() {
+        return;
+    }
+    drop(thread);
     let tag = |mut frame: Value| {
         frame["thread"] = id.into();
         frame["watch"] = re.clone();
