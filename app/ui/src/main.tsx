@@ -48,6 +48,9 @@ function App() {
   );
 }
 
+// States whose names aren't words, in the old app's wording.
+const STATE_WORDS: Record<string, string> = { no_turn_started: "Not started yet", waiting_answer: "Waiting for your answer" };
+
 // The smallest list that proves the daemon path: plain rows, every state shown.
 function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["search"]; offline: boolean }) {
   const shown = found.ids && rows?.filter((row) => found.ids!.includes(row.id));
@@ -66,7 +69,7 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
             <a href={`#thread/${encodeURIComponent(row.id)}`} className="min-w-0 flex-1 truncate hover:underline">
               {row.title || row.id}
             </a>
-            <span className={row.error ? "text-destructive" : "text-muted-foreground"}>{row.error ?? row.state}</span>
+            <span className={row.error ? "text-destructive" : "text-muted-foreground"}>{row.error ?? STATE_WORDS[row.state] ?? row.state}</span>
             <span className="text-muted-foreground">
               {row.backend} · {row.id}
             </span>
