@@ -1,7 +1,8 @@
 // The composer's pickers (slice 3): the model and permission pills, their popups held open, the Full access confirm, plus live copies.
 import { useState } from "react";
 
-import { FullAccessDialog, SwitchAgentDialog, type ModelChoice, type ModelGroup, ModelPicker, type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
+import { type ModelChoice, type ModelGroup, ModelPicker, SwitchAgentDialog } from "../src/components/composer/model-picker";
+import { FullAccessDialog, type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { Held, Row, Section, State } from "./parts";
 
 const noop = () => {};
@@ -24,6 +25,8 @@ const GROUPS: ModelGroup[] = [
   { provider: "other", label: "Other agent", mark: DIAMOND, models: [{ id: "big", name: "Big model", efforts: ["low", "high", "max"], defaultEffort: "high" }] },
   { provider: "local", label: "Local models", mark: null, models: [{ id: "llama", name: "Local 8B", efforts: [] }] },
   { provider: "new", label: "New agent", mark: null, models: [] },
+  { provider: "absent", label: "Absent agent", mark: DIAMOND, models: [], unavailable: "install" },
+  { provider: "away", label: "Signed-out agent", mark: RING, models: [], unavailable: "sign-in" },
 ];
 
 const LARGE: ModelChoice = { provider: "cloud", model: "large", effort: "high" };
@@ -52,6 +55,26 @@ export function PickersGallery() {
         <State label="A model without effort levels: no footer">
           <Held className="flex h-100 w-140 items-end justify-end">
             {(box) => <ModelPicker groups={GROUPS} value={{ provider: "cloud", model: "mini", effort: null }} onChange={noop} held={box} />}
+          </Held>
+        </State>
+      </Row>
+      <Row name="Model search">
+        <State label="Matches across agents">
+          <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} search="l" />}</Held>
+        </State>
+        <State label="No match">
+          <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} search="gpt" />}</Held>
+        </State>
+      </Row>
+      <Row name="Agent not set up">
+        <State label="Not installed">
+          <Held className="flex h-100 w-140 items-end justify-end">
+            {(box) => <ModelPicker groups={GROUPS} value={{ provider: "absent", model: "Its last model", effort: null }} onChange={noop} onSetUp={noop} held={box} />}
+          </Held>
+        </State>
+        <State label="Not signed in">
+          <Held className="flex h-100 w-140 items-end justify-end">
+            {(box) => <ModelPicker groups={GROUPS} value={{ provider: "away", model: "Its last model", effort: null }} onChange={noop} onSetUp={noop} held={box} />}
           </Held>
         </State>
       </Row>
@@ -99,13 +122,13 @@ export function PickersGallery() {
   );
 }
 
-/** Pick a model and effort (another agent's asks first); Full access asks first. */
+/** Pick or search a model and effort (another agent's asks first), Set up an agent; Full access asks first. */
 function Live() {
   const [model, setModel] = useState(LARGE);
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   return (
     <State label="Live">
-      <ModelPicker groups={GROUPS} value={model} onChange={setModel} />
+      <ModelPicker groups={GROUPS} value={model} onChange={setModel} onSetUp={noop} />
       <PermissionPicker value={permission} onChange={setPermission} />
     </State>
   );
