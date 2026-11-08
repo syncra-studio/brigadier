@@ -111,7 +111,14 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   if (!session) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</p>;
   if (rows.length === 0) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
   return (
-    <div ref={box} className="relative h-full">
+    <div
+      ref={box}
+      className="relative h-full"
+      // Anything the user opens in a row (a code block's "Show more" too) stays where it is instead of following the bottom.
+      onClickCapture={(event) => {
+        if ((event.target as Element).closest("[aria-expanded]")) stuck.current = false;
+      }}
+    >
       <VList
         ref={list}
         data={data}
