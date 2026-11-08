@@ -9,6 +9,7 @@ import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { RailItem } from "./rail";
 import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
+import { plainText } from "./draft";
 import { ComposerField } from "./field";
 
 /** An approval as Rust sends it (msgs/w18-fields-4.md, boss D177). Agent text (`reason`, `body`) passes as is. */
@@ -236,7 +237,7 @@ export function ApprovalCard({
                   placeholder="Tell the agent what to do instead"
                   initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
                   onChange={(parts) => {
-                    const text = parts.filter((part) => typeof part === "string").join("");
+                    const text = plainText(parts);
                     setTyped(text);
                     onReason(text);
                   }}
@@ -252,7 +253,8 @@ export function ApprovalCard({
       <ActionCardActions
         leading={
           <>
-            {onReply && <ReplyButton onClick={onReply} />}
+            {/* Not while an answer goes: the card would move to the rail without it. */}
+            {onReply && <ReplyButton disabled={busy} onClick={onReply} />}
             <ErrorLine error={error} className="me-auto" />
           </>
         }

@@ -3,6 +3,7 @@ import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useEffe
 
 import { ErrorLine } from "../error-line";
 import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
+import { plainText } from "./draft";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
 /** One question of a round, as Rust sends it (msgs/w18-fields-4.md, boss D177). Its text passes as is. */
@@ -346,7 +347,7 @@ function QuestionPage({
                 placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
                 initial={{ parts: initialText ? [initialText] : [], attachmentIds: [] }}
                 onChange={(parts) => {
-                  const value = parts.filter((part) => typeof part === "string").join("");
+                  const value = plainText(parts);
                   setTyped(value);
                   onTyped(value);
                   if (value) setHighlight(-1);

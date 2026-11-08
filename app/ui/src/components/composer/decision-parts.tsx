@@ -35,7 +35,8 @@ export const inField = (target: EventTarget | null) => target instanceof Element
 /**
  * Esc and Enter for a card, from anywhere in the window: not from a text field (the composer sends), not Enter
  * on a focused button, answer row or link (that clicks it), and not while a menu or dialog is open. Without
- * `enter` Enter is left alone; with `within` it answers only from inside that element (the focused card).
+ * `enter` Enter is left alone; with `within` it answers only from inside that element (the focused card), and
+ * neither key answers from inside another card.
  */
 export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape: () => void }, within?: RefObject<HTMLElement | null>) {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -44,6 +45,9 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const target = event.target instanceof Element ? event.target : null;
     if (inField(target)) return;
+    // Focus in another card (a question on the rail while an approval waits): its keys are its own.
+    const card = target?.closest("[data-slot=action-card]");
+    if (within && card && card !== within.current) return;
     if (event.key === "Enter") {
       if (!keys.enter) return;
       if (target?.closest("button, a[href], [role=button], [role=radio], [role=checkbox], summary")) return;
@@ -206,13 +210,14 @@ export function ActionCardActions({ leading, children }: { leading?: ReactNode; 
 }
 
 /** An approval's "Reply…" in the composer's place: brings the message field back. */
-export function ReplyButton({ onClick }: { onClick: () => void }) {
+export function ReplyButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       data-slot="approval-reply"
+      disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-code text-reply transition-all hover:bg-fill hover:text-foreground focus-visible:focus-ring motion-safe:active:scale-press-button"
+      className="inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-code text-reply transition-all enabled:hover:bg-fill enabled:hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled motion-safe:enabled:active:scale-press-button"
     >
       <Reply className="size-icon-sm" />
       Reply…

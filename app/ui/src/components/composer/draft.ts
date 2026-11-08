@@ -26,6 +26,11 @@ export function isEmpty(draft: Draft): boolean {
   return draft.attachmentIds.length === 0 && draft.parts.every((part) => typeof part === "string" && part.trim() === "");
 }
 
+/** A draft's words as plain text: a chip pasted in (a mention, a command) reads as its label; an image or a paste as nothing. */
+export function plainText(parts: Draft["parts"]): string {
+  return parts.map((part) => (typeof part === "string" ? part : "label" in part ? part.label : "")).join("");
+}
+
 /** How a message goes: at once, or while a turn runs, queued after it or steered into it. */
 export type SendMode = "now" | "queue" | "steer";
 

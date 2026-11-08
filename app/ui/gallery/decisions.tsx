@@ -64,7 +64,7 @@ function Live() {
     setApprovals((list) => list.filter((each) => each.id !== id));
     setLog((lines) => [...lines.slice(-3), `${decision}${reason ? ` “${reason}”` : ""} · ${id}`]);
   };
-  const more = () => setApprovals((list) => [...list, ...KINDS.slice(3, 6).map(([, each]) => ({ ...each, id: `${each.id}-${list.length}` }))]);
+  const more = () => setApprovals((list) => [...list, ...KINDS.slice(3, 6).map(([, each]) => ({ ...each, id: crypto.randomUUID() }))]);
   const slot = approvals.length > 0 && !replying;
   if (replying && approvals.length === 0) setReplying(false);
   return (
