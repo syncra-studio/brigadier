@@ -9,8 +9,8 @@ import type { FollowUp } from "./draft";
 const ESC_WINDOW_MS = 2000;
 /** How long Stop stays once the run can't be stopped any more, so the button doesn't flicker between steps. */
 const STOP_HOLD_MS = 700;
-/** Menus, dialogs and the composer's own menus take their Esc first. */
-const TAKES_ESC = "[role=dialog], [role=menu], [role=listbox], [data-slot=composer-menu]";
+/** Menus, dialogs and the composer's own menus take their Esc first (not the gallery's frozen ones, held open). */
+const TAKES_ESC = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
 const TEXT_FIELD = "input, textarea, select, [contenteditable=true], [contenteditable='']";
 
 /** `on`, staying true for `ms` after it goes false (and true at once when it comes back). */

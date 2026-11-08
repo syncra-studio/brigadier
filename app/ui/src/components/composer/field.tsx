@@ -4,19 +4,26 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { $getLexicalContent, $insertDataTransferForRichText } from "@lexical/clipboard";
 import { mergeRegister } from "@lexical/utils";
 import {
   $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
+  $getSelection,
   $isElementNode,
   $isLineBreakNode,
+  $isRangeSelection,
   COMMAND_PRIORITY_NORMAL,
+  COPY_COMMAND,
+  CUT_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
+  type LexicalEditor,
+  PASTE_COMMAND,
 } from "lexical";
 import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 
@@ -70,7 +77,8 @@ function $read(): Parts {
   return parts;
 }
 
-function $write(parts: Parts): void {
+/** `select`: the caret goes to the end (which also focuses the field), as for a recalled prompt; not on mount. */
+function $write(parts: Parts, select = true): void {
   const paragraph = $createParagraphNode();
   for (const part of parts) {
     if (typeof part !== "string") {
@@ -83,7 +91,40 @@ function $write(parts: Parts): void {
     });
   }
   $getRoot().clear().append(paragraph);
-  paragraph.selectEnd();
+  if (select) paragraph.selectEnd();
+}
+
+const NAMESPACE = "composer";
+const LEXICAL = "application/x-lexical-editor";
+
+/**
+ * Copy and cut also put the selection's nodes on the clipboard when it holds a chip (the plain-text field
+ * copies text only); a paste of them in a composer brings the chips back, ids and all.
+ */
+function copyChips(editor: LexicalEditor, event: ClipboardEvent | KeyboardEvent | null): false {
+  const selection = $getSelection();
+  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
+  if (data && $isRangeSelection(selection) && selection.getNodes().some($isChipNode)) {
+    const json = $getLexicalContent(editor);
+    if (json) data.setData(LEXICAL, json);
+  }
+  // The plain-text field still writes the text itself.
+  return false;
+}
+function pasteChips(editor: LexicalEditor, event: ClipboardEvent | InputEvent | KeyboardEvent): boolean {
+  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
+  const selection = $getSelection();
+  const json = data?.getData(LEXICAL);
+  if (!data || !json || !$isRangeSelection(selection)) return false;
+  try {
+    // Only another composer's nodes: a rich editor's (headings, lists) don't belong in this field.
+    if ((JSON.parse(json) as { namespace?: string }).namespace !== NAMESPACE) return false;
+  } catch {
+    return false;
+  }
+  event.preventDefault();
+  $insertDataTransferForRichText(data, selection, editor);
+  return true;
 }
 
 const blank = (parts: Parts) => isEmpty({ parts, attachmentIds: [] });
@@ -118,9 +159,9 @@ export function ComposerField({ initial = EMPTY_DRAFT, placeholder, label = "Mes
   return (
     <LexicalComposer
       initialConfig={{
-        namespace: "composer",
+        namespace: NAMESPACE,
         nodes: [ChipNode],
-        editorState: () => $write(initial.parts),
+        editorState: () => $write(initial.parts, false),
         onError: (error) => console.error("[composer]", error),
       }}
     >
@@ -209,6 +250,9 @@ function Keys({ ref, autoFocus, prompts = [], onChange, onSubmit, onEscape, onPu
         editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
           if (dirtyElements.size > 0 || dirtyLeaves.size > 0) changed(editorState.read($read));
         }),
+        editor.registerCommand(COPY_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(CUT_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(PASTE_COMMAND, (event) => pasteChips(editor, event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ENTER_COMMAND, submit, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ESCAPE_COMMAND, escape, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ARROW_UP_COMMAND, (event) => recall(event, true), COMMAND_PRIORITY_NORMAL),

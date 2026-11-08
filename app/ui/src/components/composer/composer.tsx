@@ -1,12 +1,12 @@
 import { Button as BaseButton } from "@base-ui/react/button";
-import { type ComponentProps, type MouseEvent, useRef } from "react";
+import { type ComponentProps, type MouseEvent, useRef, useState } from "react";
 
 import { Plus } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
-import type { Draft } from "./draft";
+import { type Draft, isEmpty } from "./draft";
 import { ComposerField, type ComposerFieldHandle } from "./field";
 
 /**
@@ -133,16 +133,30 @@ export function ContextRing({ usedTokens, windowTokens }: { usedTokens: number; 
  */
 export function EditComposer({ initial, onCancel, onSend }: { initial: Draft; onCancel: () => void; onSend: (parts: Draft["parts"]) => void }) {
   const field = useRef<ComposerFieldHandle>(null);
-  const send = () => onSend(field.current!.parts());
+  const [empty, setEmpty] = useState(isEmpty(initial));
+  const send = () => {
+    const parts = field.current!.parts();
+    if (!isEmpty({ parts, attachmentIds: initial.attachmentIds })) onSend(parts);
+  };
   return (
     <div className="flex flex-col px-2">
       <div className="ms-auto flex w-full flex-col gap-2 rounded-composer bg-composer p-2">
-        <ComposerField ref={field} initial={initial} placeholder="" label="Edit message" size="edit" autoFocus onSubmit={send} onEscape={onCancel} />
+        <ComposerField
+          ref={field}
+          initial={initial}
+          placeholder=""
+          label="Edit message"
+          size="edit"
+          autoFocus
+          onChange={(parts) => setEmpty(isEmpty({ parts, attachmentIds: initial.attachmentIds }))}
+          onSubmit={send}
+          onEscape={onCancel}
+        />
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" className="border border-border" onClick={onCancel}>
             Cancel
           </Button>
-          <Button size="sm" onClick={send}>
+          <Button size="sm" disabled={empty} onClick={send}>
             Send
           </Button>
         </div>
