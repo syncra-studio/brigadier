@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense, useEffect, useSyncExternalStore } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AccountsPage } from "./accounts/page";
@@ -26,7 +26,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
-import { Thread } from "./thread/thread";
+import { Thread, type ThreadHandle } from "./thread/thread";
 import "./theme.css";
 
 // A hash change is in-page, so Electron's will-navigate guard lets it through.
@@ -149,6 +149,7 @@ function FirstLoad({ error }: { error?: string }) {
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
   const title = row?.title;
+  const thread = useRef<ThreadHandle>(null);
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   const sending = useSending(id);
@@ -178,6 +179,8 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 ) : (
                 <SessionOfThread value={{ id, offline }}>
                   <Thread
+                    key={id}
+                    ref={thread}
                     source={answeringSource}
                     footer={
                       // Read-only while archived: its bar restores it [D180, D198].
@@ -195,7 +198,7 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 )}
               </div>
               {/* A follow-up waits for the start to land, never sent to a session Rust hasn't made [D30]. */}
-              {!row?.archived && <SessionComposer id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
+              {!row?.archived && <SessionComposer onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
             </div>
           )}
         </div>

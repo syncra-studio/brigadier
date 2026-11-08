@@ -125,7 +125,15 @@ fn approval(d: &Value) -> Event {
         }
     };
     if !scope.is_empty() && !save.is_empty() {
-        a["grant"] = json!({"scope": scope, "pattern": save.join(", ")});
+        let pattern = if scope == "command" {
+            save.iter()
+                .map(|p| p.strip_suffix(" *").unwrap_or(p))
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            save.join(", ")
+        };
+        a["grant"] = json!({"scope": scope, "pattern": pattern});
     }
     Event::Approval(a)
 }
