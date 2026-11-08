@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
+import type { PermissionLevel } from "../components/composer/pickers";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
@@ -10,10 +11,14 @@ import { Branch } from "../icons";
 import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
+import { LevelPicker } from "../session/level";
 import { asGroups } from "../session/model";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, retry, setHomeDraft, start, useHomeDraft, useStarting } from "./start";
 import { HomeView } from "./view";
+
+/** A `models --project` group: the agent's levels, the one a new session there starts on, and whether it's held. */
+type LevelGroup = ModelGroup & { levels: PermissionLevel[]; level: PermissionLevel | null; held: boolean };
 
 /** What a row tells of the model its session last ran on (1q's fold). */
 type Ran = { project: string | null; sent: number; backend: string; model?: string | null; effort?: string | null };
@@ -40,22 +45,22 @@ export function HomeDraft() {
   }, [added]);
   const project = projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null;
 
-  const [groups, setGroups] = useState<ModelGroup[] | null>(null);
+  const [groups, setGroups] = useState<LevelGroup[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [setUp, setSetUp] = useState<string | null>(null);
   const asked = useRef(0);
-  const folder = project?.folder;
+  const id = project?.id;
   const load = () => {
-    if (!folder) return;
+    if (!id) return;
     const mine = ++asked.current;
-    const land = (reply: Record<string, any>) => mine === asked.current && (setGroups(asGroups(reply.groups)), setListError(null));
+    const land = (reply: Record<string, any>) => mine === asked.current && (setGroups(asGroups(reply.groups) as LevelGroup[]), setListError(null));
     // The last check lands at once, then a fresh one over it; only the fresh one's failure shows [D128].
-    run(["models", "--cwd", folder]).then(land, () => {});
-    run(["models", "--cwd", folder, "--fresh"]).then(land, (cause) => mine === asked.current && setListError(errorText(cause)));
+    run(["models", "--project", id]).then(land, () => {});
+    run(["models", "--project", id, "--fresh"]).then(land, (cause) => mine === asked.current && setListError(errorText(cause)));
   };
   useEffect(() => {
     if (daemon) load();
-  }, [daemon, folder]);
+  }, [daemon, id]);
 
   const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
     Boolean(choice && groups?.some((group) => !group.unavailable && group.provider === choice.provider && group.models.some((each) => each.id === choice.model)));
@@ -66,6 +71,9 @@ export function HomeDraft() {
   const firstChoice = first && { provider: first.group.provider, model: first.each.id, effort: first.each.defaultEffort ?? null };
   // Before the list lands, what it most likely holds shows, unpickable.
   const model = groups === null ? (draft.model ?? lastChoice) : ([draft.model, lastChoice, firstChoice].find(has) ?? null);
+  // The model's agent's levels here; a pick it can't take, or any while held, falls back to Rust's start default [D166, D187, D239].
+  const agent = groups?.find((group) => group.provider === model?.provider);
+  const pick = agent && !agent.held && agent.levels.includes(draft.level!) ? draft.level : undefined;
 
   return (
     <>
@@ -84,12 +92,13 @@ export function HomeDraft() {
         model={model}
         onModel={(choice) => setHomeDraft({ model: choice })}
         onSetUp={setSetUp}
+        level={agent && <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />}
         modelError={listError}
         offline={!daemon}
         initial={draft.text}
         onDraft={(text) => setHomeDraft({ text })}
         focus={draft.focus}
-        onSend={(text) => project && model && start(project.id, draft.workIn, model, text, draft.level)}
+        onSend={(text) => project && model && start(project.id, draft.workIn, model, text, pick)}
       />
       <SetUpAgentDialog
         name={setUp}

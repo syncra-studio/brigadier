@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
+import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
 import { store } from "../onboarding/api";
 import { newId } from "../session/store";
@@ -26,7 +27,7 @@ export type HomeDraft = {
   /** A model picked here; null: the project's last one. */
   model: ModelChoice | null;
   /** The permission level picked here (1t's LevelPicker); unset: Rust's default for the project. */
-  level?: string;
+  level?: PermissionLevel;
   text?: Draft;
   /** Bumped to put the cursor in the field. */
   focus: number;
