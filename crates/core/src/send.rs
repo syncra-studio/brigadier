@@ -70,7 +70,14 @@ pub fn send(
     let mut req = base;
     for (k, v) in [
         ("op", json!("spawn")),
-        ("argv", json!(launch.argv)),
+        (
+            "argv",
+            json!(crate::worktrees::wrap(
+                &crate::data_of(spec),
+                spec,
+                launch.argv
+            )),
+        ),
         ("env", Value::Object(env)),
         ("cwd", json!(spec.cwd)),
         ("pty", json!(spec.mode == "pty")),

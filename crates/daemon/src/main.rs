@@ -90,6 +90,7 @@ fn main() -> io::Result<()> {
         },
         None => return Ok(()),
     };
+    brigadier_core::worktrees::sweep(&data);
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
     let state = Shared::default();
