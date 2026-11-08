@@ -8,6 +8,8 @@ export type Group = Extract<Item, { kind: "group" }>;
 export type Gap = "first" | "turn" | "part" | "step";
 
 export type Line =
+  /** A finished answer's actions, after the turn's rows. */
+  | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean }
   /** A group row. `live`: its newest step while the turn runs, for the running step's words. */
@@ -60,6 +62,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   let kept: number[] = [];
   let group: { span: [number, number]; open: boolean; single: boolean; line: GroupLine | null } | null = null;
   let before: Item | undefined;
+  let marks: Extract<Line, { type: "marks" }> | null = null;
+  const end = () => {
+    if (marks) out.push(marks);
+    marks = null;
+  };
   const push = (line: Line) => out.push(line);
   const gap = (item: Item | null, step: boolean): Gap => {
     const last = out.at(-1);
@@ -79,7 +86,10 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   for (let at = from; at < items.length; at++) {
     const item = items[at]!;
     // A turn that begins with a switch note rather than an input also ends the bare turn before it.
-    if (opens(item) || (before && item.turnId !== before.turnId)) bare();
+    if (opens(item) || (before && item.turnId !== before.turnId)) {
+      bare();
+      end();
+    }
     if (opens(item)) {
       starts.push(at);
       counts.push(out.length);
@@ -116,7 +126,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       group = { span: item.span, open: single || line!.open, single, line };
       continue;
     }
+    if (item.kind === "message" && item.role === "assistant" && item.final) {
+      marks = { type: "marks", id: `${item.id}:marks`, gap: "step", item, turn };
+    }
     push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
   }
   bare();
+  end();
 }

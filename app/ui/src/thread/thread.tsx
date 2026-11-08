@@ -315,7 +315,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
               <Spacer space={space} />
             </div>
           ) : (
-            <LineRow key={line.id} {...line} dated={marks.dated.has(line.id)} latest={line.id === marks.latest} onToggle={toggle} />
+            <LineRow key={line.id} {...line} dated={marks.dated.has(line.id)} latest={(line.type === "marks" ? line.item.id : line.id) === marks.latest} onToggle={toggle} />
           )
         }
       </VList>

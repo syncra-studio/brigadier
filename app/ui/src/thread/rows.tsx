@@ -1,5 +1,6 @@
 import { memo } from "react";
 
+import { AnswerMarks } from "../components/thread/message";
 import { Body } from "../components/thread/body";
 import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
@@ -17,14 +18,16 @@ export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean
 export const LineRow = memo(function LineRow(props: LineProps) {
   return (
     <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]}`} data-item={props.id}>
-      {props.type === "work" ? (
+      {props.type === "marks" ? (
+        <AnswerMarks text={props.item.text} time={props.item.sentAt} latest={props.latest} />
+      ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
         <GroupRow item={props.item} live={props.live} open={props.open} onToggle={props.onToggle} />
       ) : props.item.kind === "switch" ? (
         <SwitchRow item={props.item} />
       ) : (
-        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} />
+        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} actions={!(props.item.kind === "message" && props.item.final)} />
       )}
     </div>
   );
