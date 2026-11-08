@@ -55,11 +55,18 @@ fn wait_lock(path: &Path) -> io::Result<File> {
 }
 
 fn put(bin: &Path, build: u32) -> io::Result<()> {
+    // Under the lock, so these are what a cut-off or failed install left.
+    for entry in fs::read_dir(bin)?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with(".stage-") || name.starts_with(".current-") {
+            let path = entry.path();
+            let _ = fs::remove_dir_all(&path).or_else(|_| fs::remove_file(&path));
+        }
+    }
     let dest = bin.join(build.to_string());
     // A folder only ever appears whole, so one that exists is complete.
     if !dest.exists() {
         let stage = bin.join(format!(".stage-{}", process::id()));
-        let _ = fs::remove_dir_all(&stage);
         fs::create_dir(&stage)?;
         let here = std::env::current_exe()?;
         for entry in fs::read_dir(here.parent().unwrap_or(Path::new(".")))? {
@@ -73,13 +80,12 @@ fn put(bin: &Path, build: u32) -> io::Result<()> {
         fs::rename(&stage, &dest)?;
     }
     let link = bin.join(format!(".current-{}", process::id()));
-    let _ = fs::remove_file(&link);
     symlink(build.to_string(), &link)?;
     fs::rename(&link, bin.join("current"))
 }
 
-/// Removes leftovers of cut-off installs, and builds older than the one just replaced that no
-/// live host runs. The replaced build stays: its daemon may still be running.
+/// Removes builds older than the one just replaced that no live host runs. The replaced build
+/// stays: its daemon may still be running.
 fn sweep(data: &Path, bin: &Path, mine: u32, replaced: Option<u32>) {
     let live: Vec<u64> = ids(data)
         .iter()
@@ -93,13 +99,11 @@ fn sweep(data: &Path, bin: &Path, mine: u32, replaced: Option<u32>) {
         .collect();
     for entry in fs::read_dir(bin).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let stale = match name.parse::<u32>() {
-            Ok(b) => b != mine && Some(b) != replaced && !live.contains(&(b as u64)),
-            Err(_) => name.starts_with(".stage-") || name.starts_with(".current-"),
-        };
-        if stale {
-            let path = entry.path();
-            let _ = fs::remove_dir_all(&path).or_else(|_| fs::remove_file(&path));
+        if name
+            .parse::<u32>()
+            .is_ok_and(|b| b != mine && Some(b) != replaced && !live.contains(&(b as u64)))
+        {
+            let _ = fs::remove_dir_all(entry.path());
         }
     }
 }
