@@ -1,4 +1,4 @@
-// The sidebar's icons. SettingsSlider, ComposeEditSquare, Pin, Unpin and ArrowDown are from @openai/apps-sdk-ui 0.2.2 (MIT, see
+// The sidebar's icons. SettingsSlider, ComposeEditSquare, Pin, Unpin, ArrowDown and Mail are from @openai/apps-sdk-ui 0.2.2 (MIT, see
 // THIRD_PARTY_NOTICES.md); the three status marks are the old app's own glyphs, copied as they were.
 import type { IconProps } from ".";
 
@@ -70,6 +70,14 @@ export function ArrowDown(props: IconProps) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
       <path fillRule="evenodd" clipRule="evenodd" d="M12.707 18.707a1 1 0 0 1-1.414 0l-5-5a1 1 0 1 1 1.414-1.414L11 15.586V6a1 1 0 1 1 2 0v9.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-5 5Z" />
+    </svg>
+  );
+}
+
+export function Mail(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M5 4a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H5ZM4 7.329V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7.329L13.976 12.6a3 3 0 0 1-3.952 0L4 7.33ZM18.481 6H5.52l5.822 5.095a1 1 0 0 0 1.318 0L18.48 6Z" />
     </svg>
   );
 }

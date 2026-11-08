@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
-import { Dot, Pencil, Pin, Unpin } from "../icons";
+import { Mail, Pencil, Pin, Unpin } from "../icons";
 import { markUnread, pin } from "./actions";
 import type { SessionRow } from "./words";
 
@@ -25,7 +25,7 @@ export function RowMenuItems({ row, active, onRename }: { row: SessionRow; activ
         <DropdownMenuShortcut>⌥⌘R</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuItem disabled={row.mark === "unread"} onClick={() => markUnread(row, active)}>
-        <Dot />
+        <Mail />
         Mark as unread
         <DropdownMenuShortcut>⇧⌘U</DropdownMenuShortcut>
       </DropdownMenuItem>
