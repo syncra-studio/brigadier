@@ -12,7 +12,7 @@ export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scr
 
 /** How close to the end, in px, still counts as at the bottom. */
 const NEAR_END = 2;
-/** The footer's place in the list, after the last row. */
+/** After the last row: the working line, then space so the last row clears the bottom fade. */
 const FOOTER = { type: "footer", id: "footer" } as const;
 
 /**
@@ -71,7 +71,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     wait.current = setTimeout(() => scrolled.current || letGo(), 200);
   });
   const hasFooter = footer !== undefined && footer !== null && footer !== false;
-  const data = useMemo(() => (hasFooter ? [...rows, FOOTER] : rows), [rows, hasFooter]);
+  const data = useMemo(() => [...rows, FOOTER], [rows]);
   const last = data.length - 1;
 
   const toBottom = () => {
@@ -137,8 +137,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
       >
         {(line: Line | typeof FOOTER) =>
           line.type === "footer" ? (
-            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pt-4">
-              {footer}
+            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pb-12">
+              {hasFooter && <div className="pt-4">{footer}</div>}
             </div>
           ) : (
             <LineRow key={line.id} {...line} onToggle={toggle} />
@@ -153,7 +153,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           type="button"
           aria-label="Jump to the latest"
           onClick={toBottom}
-          className="absolute bottom-4 left-1/2 z-20 size-control-md -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay"
+          className="absolute bottom-6 left-1/2 z-20 size-control-md -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay"
         >
           ↓
         </button>
