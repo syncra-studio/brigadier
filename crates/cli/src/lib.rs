@@ -7,6 +7,7 @@ mod mirror;
 pub mod owner;
 mod setup;
 mod switching;
+mod title;
 
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Spec, adapters};
@@ -21,6 +22,7 @@ use std::{env, fs, process, thread};
 pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--cwd D] [--model M] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B]
        brigadier status [<id>...|--all] | seen <id> <ms>
+       brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -154,15 +156,36 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .parse()
                 .map_err(|_| io::Error::other(format!("bad time {at:?}")))?;
             core::load(data, id)?;
-            let path = core::session_dir(data, id).join("seen");
-            let old: u64 = fs::read_to_string(&path)
+            let dir = core::session_dir(data, id);
+            let old: u64 = fs::read_to_string(dir.join("seen"))
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(0);
             if at > old {
-                core::write_atomic(&path, at.to_string().as_bytes())?;
+                core::write_atomic(&dir.join("seen"), at.to_string().as_bytes())?;
             }
-            Ok(json!({"ok": true}))
+            // Opening it reads it, whatever Mark as unread said [D185].
+            remove(&dir.join("unread"))?;
+            Ok(json!({"ok": true, "at": index::touched(&dir)}))
+        }
+        // The user's own marks, one small file each in the session's folder [D185, D186]. Each
+        // answers the folder's time after the write: the row that shows it has `touched` as late.
+        "rename" | "pin" | "unread" => {
+            let id = arg(args, 1)?;
+            core::load(data, id)?;
+            let dir = core::session_dir(data, id);
+            match args[0].as_str() {
+                "rename" => {
+                    let name = title::clean(arg(args, 2)?).map_err(io::Error::other)?;
+                    core::write_atomic(&dir.join("title"), name.as_bytes())?;
+                }
+                "pin" if has(args, "--off") => remove(&dir.join("pinned"))?,
+                cmd => {
+                    let name = if cmd == "pin" { "pinned" } else { "unread" };
+                    core::write_atomic(&dir.join(name), log::now_ms().to_string().as_bytes())?
+                }
+            }
+            Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
         "status" => {
             let all = procs::all();
@@ -438,4 +461,12 @@ fn index(data: &Path, cold: bool) -> io::Result<Value> {
     let mut ix = index::Index::open(data, cold)?;
     ix.sync()?;
     Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
+}
+
+/// Removes a file that may already be gone.
+fn remove(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }

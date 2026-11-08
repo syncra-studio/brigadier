@@ -16,8 +16,8 @@ use std::time::UNIX_EPOCH;
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
-const SCHEMA: i64 = 2;
-const TITLE_CHARS: usize = 80;
+/// 3: titles follow the short local rule [D186], so older indexes rebuild them.
+const SCHEMA: i64 = 3;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
 
@@ -41,6 +41,43 @@ struct Entry {
     orphaned_since: Option<u64>,
     /// Its `session.json`, read once: what never changes after the start.
     spec: Option<core::Spec>,
+    /// The user's own marks in its folder, read again only when the folder changes.
+    marks: Marks,
+}
+
+/// The small files `rename`, `pin`, `unread` and `seen` write, each by temp file and rename, so
+/// every write changes the folder's time [D185, D186].
+#[derive(Default)]
+struct Marks {
+    /// The folder's modification time (ms) these were read at.
+    at: u64,
+    title: Option<String>,
+    pinned: Option<u64>,
+    unread: bool,
+    seen: u64,
+}
+
+impl Marks {
+    fn read(dir: &Path, at: u64) -> Marks {
+        let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
+        let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
+        Marks {
+            at,
+            title: text("title").filter(|t| !t.is_empty()),
+            pinned: ms("pinned"),
+            unread: dir.join("unread").exists(),
+            seen: ms("seen").unwrap_or(0),
+        }
+    }
+}
+
+/// When a folder last changed (ms), or 0.
+pub fn touched(dir: &Path) -> u64 {
+    fs::metadata(dir)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 pub struct Index {
@@ -124,13 +161,7 @@ impl Index {
                     if user || item["kind"] == "text" {
                         let text = item["text"].as_str().unwrap_or("");
                         if user && title.is_empty() {
-                            title = text
-                                .lines()
-                                .next()
-                                .unwrap_or("")
-                                .chars()
-                                .take(TITLE_CHARS)
-                                .collect();
+                            title = crate::title::from(text);
                         }
                         texts.push(text.to_string());
                     }
@@ -155,16 +186,19 @@ impl Index {
                 Some(_) => ("error".into(), Value::Null),
                 None => (status["state"].clone(), status["reason"].clone()),
             };
-            // When the user last saw its end (`brigadier seen`); a later end is unread [D173].
-            let seen = fs::read_to_string(dir.join("seen"))
-                .ok()
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0);
+            let at = touched(&dir);
+            if at != e.marks.at {
+                e.marks = Marks::read(&dir, at);
+            }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let mark = match &e.error {
                 Some(_) => Some("amber"),
-                None => fold::mark(&f.fold, &live, seen, auto),
+                // A later end than the user last saw, or their own Mark as unread [D173, D185].
+                None => match fold::mark(&f.fold, &live, e.marks.seen, auto) {
+                    None if e.marks.unread => Some("unread"),
+                    mark => mark,
+                },
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -188,7 +222,8 @@ impl Index {
                 .spec
                 .as_ref()
                 .and_then(|s| projects::of(s, &projects, &mut self.roots));
-            let row = json!({"id": id, "title": e.title, "state": state, "reason": reason, "mark": mark,
+            let title = e.marks.title.as_ref().unwrap_or(&e.title);
+            let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
