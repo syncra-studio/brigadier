@@ -5,16 +5,18 @@ mod account;
 pub mod adapters;
 pub mod fold;
 pub mod norm;
+mod send;
+mod session;
 pub mod switch;
 pub mod terminal;
 pub mod thread;
 
 use brigadier_frames::log::{self, Reader};
 use brigadier_frames::procs;
-use fold::{Fold, Live};
+use fold::Fold;
 use norm::Norm;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
@@ -22,6 +24,8 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
+pub use send::{Call, Running, recover, send};
+pub use session::delete;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {
@@ -231,157 +235,6 @@ pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
     }
 }
 
-pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
-
-/// The child a host holds, from its ping: its spawn id (0 from a host too old to say) and
-/// whether it runs in a terminal.
-pub type Running = Option<(u64, bool)>;
-
-/// Sends one message: the owner logs it with its command id before writing it anywhere. Prints
-/// back exactly what happened: delivered, logged (not proven delivered) or refused. While the
-/// terminal is open the message is typed into it, made for that one child [D47].
-#[allow(clippy::too_many_arguments)]
-pub fn send(
-    spec: &Spec,
-    f: &Fold,
-    child: Running,
-    call: Call,
-    cid: &str,
-    origin: &str,
-    text: &str,
-    backend: Option<&str>,
-    retry_of: Option<&str>,
-) -> Value {
-    let b = backend.map(String::from).unwrap_or_else(|| {
-        if f.backend.is_empty() {
-            spec.backend.clone()
-        } else {
-            f.backend.clone()
-        }
-    });
-    let Some(a) = adapters::get(&b) else {
-        return json!({"ok": false, "error": format!("unknown backend {b}")});
-    };
-    let base =
-        json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of});
-    let running = child.is_some();
-    let pty = child.is_some_and(|(_, pty)| pty);
-    if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
-        return json!({"ok": false, "result": "refused", "error": "another backend's process is running; stop it first"});
-    }
-    if running && (!a.per_turn() || pty) {
-        let mut req = base.clone();
-        req["op"] = "input".into();
-        let as_typed = if pty {
-            adapters::in_pty(spec)
-        } else {
-            spec.clone()
-        };
-        req["bytes"] = a.encode(&as_typed, text).into();
-        if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
-            req["spawn"] = spawn.into();
-        }
-        let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
-        if reply["error"] != "no_child" {
-            return reply;
-        }
-    } else if running {
-        return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
-    }
-    let resume = f.resume.get(&b).map(String::as_str);
-    let launch = a.launch(&as_run(spec, f, &b, None), resume, Some(text));
-    let env: serde_json::Map<String, Value> =
-        launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
-    let mut req = base;
-    for (k, v) in [
-        ("op", json!("spawn")),
-        ("argv", json!(launch.argv)),
-        ("env", Value::Object(env)),
-        ("cwd", json!(spec.cwd)),
-        ("pty", json!(spec.mode == "pty")),
-        ("keep_stdin", json!(launch.keep_stdin)),
-        ("input", json!(launch.input)),
-        ("cli_version", json!(cli_version(spec, a))),
-    ] {
-        req[k] = v;
-    }
-    call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
-}
-
-/// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself);
-/// an interrupted turn continues through the backend's resume id.
-pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -> Value {
-    let status = fold::status(f, live);
-    let state = status["state"].as_str().unwrap_or("");
-    let now = log::now_ms();
-    let note = |data: Value| call(json!({"op": "note", "data": data}));
-    match state {
-        "undelivered" => {
-            let Some(turn) = f.turns.iter().find(|t| t.delivered.is_none()) else {
-                return json!({"ok": false});
-            };
-            let old = turn.cid.clone().unwrap_or_default();
-            if let Err(e) = note(json!({"event": "interrupted", "reason": {"undelivered": old}})) {
-                return json!({"ok": false, "error": e.to_string()});
-            }
-            let cid = format!("{old}.r{now}");
-            let mut reply = send(
-                spec,
-                f,
-                child,
-                call,
-                &cid,
-                &turn.origin,
-                &turn.text,
-                Some(&turn.backend),
-                Some(&old),
-            );
-            reply["recovered"] = "resent".into();
-            reply
-        }
-        "interrupted" => {
-            let swept = sweep(f);
-            let last = f
-                .turns
-                .first()
-                .map(|t| (t.cid.clone(), t.retry_of.clone(), t.backend.clone()));
-            let last = last.or_else(|| {
-                f.last.as_ref().map(|l| {
-                    (
-                        l["cid"].as_str().map(String::from),
-                        l["retry_of"].as_str().map(String::from),
-                        l["backend"].as_str().unwrap_or("").to_string(),
-                    )
-                })
-            });
-            let (cid, retry_of, backend) = last.unwrap_or_default();
-            let root = retry_of.or(cid).unwrap_or_default();
-            if let Err(e) = note(json!({"event": "interrupted", "reason": status["reason"]})) {
-                return json!({"ok": false, "error": e.to_string()});
-            }
-            if !f.resume.contains_key(&backend) {
-                return json!({"ok": false, "swept": swept, "error": "no resume id was announced, so there is nothing to continue; send a new message"});
-            }
-            let text = "Continue where you left off; your previous run was cut off.";
-            let mut reply = send(
-                spec,
-                f,
-                None,
-                call,
-                &format!("rc{now}"),
-                "system",
-                text,
-                Some(&backend),
-                Some(&root),
-            );
-            reply["recovered"] = "continued".into();
-            reply["swept"] = swept.into();
-            reply
-        }
-        _ => json!({"ok": false, "error": format!("nothing to recover: {state}")}),
-    }
-}
-
 /// Kills what is left of process groups this session recorded, checked by start time. Only for
 /// when no owner holds them any more.
 pub fn sweep(f: &Fold) -> usize {
@@ -434,56 +287,4 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
     map.insert(key, (mtime, version.clone()));
     let _ = write_atomic(&cache, &serde_json::to_vec(&map).unwrap_or_default());
     version
-}
-
-/// Removes the session folder and every recorded path outside it. Reports what stayed.
-pub fn delete(spec: &Spec, f: &Fold) -> Value {
-    let swept = sweep(f);
-    let (mut removed, mut left, mut keep) = (vec![], vec![], false);
-    for (backend, account, id) in &f.convs {
-        let Some(a) = adapters::get(backend) else {
-            continue;
-        };
-        // Each conversation is cleaned where it lives: its account's home [D35, D51].
-        let spec = &as_run(spec, f, backend, Some(account));
-        // The id came from the CLI's output: never let an odd one widen what gets deleted.
-        if check_id(id).is_err() {
-            left.push(format!(
-                "{backend}: unusual resume id {id:?}, nothing removed"
-            ));
-            continue;
-        }
-        // Failed: the folder stays, and its log keeps the ids a later delete tries again with.
-        if let Err(e) = a.forget(spec, id) {
-            left.push(format!("{backend}: {e}"));
-            keep = true;
-        }
-        for path in a.external(spec, id) {
-            let gone = if path.is_dir() {
-                fs::remove_dir_all(&path)
-            } else {
-                fs::remove_file(&path)
-            };
-            match gone {
-                Ok(()) => removed.push(path.display().to_string()),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => left.push(format!("{}: {e}", path.display())),
-            }
-        }
-        // Shared folders go only once empty: other sessions may still have files in them.
-        for path in a.shared(spec) {
-            if fs::remove_dir(&path).is_ok() {
-                removed.push(path.display().to_string());
-            }
-        }
-    }
-    if keep {
-        left.push(format!("{}: kept to try again", spec.dir.display()));
-    } else {
-        match fs::remove_dir_all(&spec.dir) {
-            Ok(()) => removed.push(spec.dir.display().to_string()),
-            Err(e) => left.push(format!("{}: {e}", spec.dir.display())),
-        }
-    }
-    json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left})
 }
