@@ -145,6 +145,11 @@ function grantWords({ scope, pattern }: NonNullable<PendingApproval["grant"]>): 
   return { scope: pattern, tip: `Allow commands that start with ${pattern} in this chat. ${kept}` };
 }
 
+// Deny reasons typed, by approval id, outside any slot: paging away and back, or Reply… moving the card to the
+// rail, keeps them. Read as each card mounts, so not state.
+// shortcut: module-wide and never cleared; scope it per session and drop an id once it's answered when real sessions arrive.
+const reasons = new Map<string, string>();
+
 /** Where a card stands among the approvals waiting: "1 of 3", with ‹ › to step between them. */
 export type ApprovalStep = { index: number; total: number; onStep: (index: number) => void };
 
@@ -328,8 +333,6 @@ export function ApprovalSlot({
   // Answers on their way and refusals, by id: paging away and back keeps them.
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
-  // Deny reasons typed, by id: paging away and back keeps them. Read as each card mounts, so not state.
-  const [reasons] = useState(() => new Map<string, string>());
   // One that came while nobody could see the window is simply there when it shows again.
   const [opens] = useState(() => document.visibilityState === "visible");
   const found = approvals.findIndex((each) => each.id === shown.id);
