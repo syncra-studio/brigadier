@@ -142,10 +142,23 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
         time={item.sentAt}
         sending={state === "pending" && slow}
         failed={failed}
-        onRetry={() => session.retry(entryKey)}
-        onDiscard={() => session.discard(entryKey)}
         dimmed={state === "error" || state === "unknown"}
       />
+      {/* Its own line, not the kit's: there the actions wrap one by one, leaving Discard alone. */}
+      {failed && (
+        <p className="flex gap-x-2 self-end text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => session.retry(entryKey)}
+            className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring"
+          >
+            Try again
+          </button>
+          <button type="button" onClick={() => session.discard(entryKey)} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
+            Discard
+          </button>
+        </p>
+      )}
       {state === "unknown" && (
         <Note role="status">Not confirmed · it's checked once the link is back</Note>
       )}
