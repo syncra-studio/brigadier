@@ -792,12 +792,6 @@
   );
 }
 
-/* The old sidebar's fade lengths, scoped to its list. */
-@utility sidebar-fades {
-  --spacing-fade-top: 0.5rem;
-  --spacing-fade-bottom: 2.5rem;
-}
-
 /* Rows split as a card's own are: a hairline under each but the last, 16 in from the edges (flush
    with `settings-rows-flush`, for a card that pads itself). */
 @utility settings-rows {
@@ -934,6 +928,11 @@
   --edge-size-bottom: 0px;
   /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
   animation-direction: reverse;
+}
+/* The old sidebar's fade lengths, only while there is more to scroll that way. */
+@utility edge-fade-sidebar {
+  --edge-size-top: 0.5rem;
+  --edge-size-bottom: 2.5rem;
 }
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
 @utility wash-line {
