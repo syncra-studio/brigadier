@@ -317,16 +317,24 @@ export function Thread() {
             <Bubbles />
           </Wide>
         </Row>
-        <Row name="answer: streaming (live) · latest (time always) · older (time on hover) · older, hover · long code block">
+        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · latest (time always) · older (time on hover) · older, hover · long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
+          <Wide label="a turn: commentary (no actions) · its final answer">
+            {/* The thread's space between a turn's parts (pt-4). */}
+            <div className="flex flex-col gap-4">
+              {item({ ...base("a0"), kind: "message", role: "assistant", text: "I'll check how the list draws while a reply streams.", streaming: false })}
+              {item({ ...base("a0b"), kind: "message", role: "assistant", text: "Found it: every block draws again. Fixing that now.", streaming: false })}
+              <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+            </div>
+          </Wide>
           <Wide label="latest">
-            <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+            <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
           </Wide>
-          <Wide label="older">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}</Wide>
+          <Wide label="older">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
           <Wide label="older, hover" frozen="hover">
-            {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}
+            {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}
           </Wide>
-          <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false })}</Wide>
+          <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false, final: true })}</Wide>
         </Row>
       </Section>
       <Section title="Thread · jump to the latest">

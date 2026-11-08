@@ -110,7 +110,7 @@ export function createFake() {
     clearInterval(streaming);
     streaming = undefined;
     const last = rows.at(-1);
-    if (last?.item.kind === "message" && last.item.streaming) put({ ...last, item: { ...last.item, streaming: false } });
+    if (last?.item.kind === "message" && last.item.streaming) put({ ...last, item: { ...last.item, streaming: false, final: true } });
   }
 
   /** A new message lands after the reply in progress, so that reply ends first, whole. */
@@ -118,7 +118,7 @@ export function createFake() {
     if (!streaming || !replying) return;
     clearInterval(streaming);
     streaming = undefined;
-    put({ clientId: null, item: { ...replying, kind: "message", role: "assistant", text: REPLY, streaming: false } });
+    put({ clientId: null, item: { ...replying, kind: "message", role: "assistant", text: REPLY, streaming: false, final: true } });
   }
 
   function reply(turnId: string, cause: string): void {
@@ -129,7 +129,7 @@ export function createFake() {
     let shown = 0;
     streaming = setInterval(() => {
       shown += 1;
-      put({ clientId: null, item: { id, turnId, kind: "message", role: "assistant", text: words.slice(0, shown).join(" "), streaming: shown < words.length } });
+      put({ clientId: null, item: { id, turnId, kind: "message", role: "assistant", text: words.slice(0, shown).join(" "), streaming: shown < words.length, final: shown === words.length } });
       if (shown < words.length) return;
       clearInterval(streaming);
       streaming = undefined;

@@ -203,11 +203,13 @@ function turnParts(fake: Fake): (Draft | GroupDraft)[] {
   const parts: (Draft | GroupDraft)[] = [{ kind: "message", role: "user", origin: system ? "system" : "user", text, streaming: false }];
   if (fake.rand() < 0.7) parts.push({ kind: "reasoning", text: paragraph(fake), streaming: false, heading: heading(fake) });
   for (let at = between(fake, 0, 3); at > 0; at--) {
+    // Commentary: a line the agent writes between its steps, with no actions under it.
+    if (fake.rand() < 0.5) parts.push({ kind: "message", role: "assistant", text: sentence(fake), streaming: false });
     parts.push(group(fake));
     const between = part(fake);
     if (between) parts.push(between);
   }
-  parts.push({ kind: "message", role: "assistant", text: markdown(fake), streaming: false });
+  parts.push({ kind: "message", role: "assistant", text: markdown(fake), streaming: false, final: true });
   return parts;
 }
 
@@ -242,7 +244,8 @@ class Writer {
         first ||= row.n!;
         last = this.n - 1;
       } else {
-        const item = this.add(part, turn);
+        // The final answer's time is its turn's end, as Rust sends it.
+        const item = this.add(at === parts.length - 1 ? ({ ...part, sentAt: turn.endedAt! } as Draft) : part, turn);
         if (work) {
           first ||= item.n!;
           last = item.n!;
@@ -330,6 +333,8 @@ export class FakeThread {
   /** Stopped by the user: the turn and whatever in it was still live. */
   private stop(turnId: string): void {
     const now = Date.now();
+    // An ended turn's last assistant message is its final answer, interrupted too.
+    const answer = this.session.items.findLast((item) => item.turnId === turnId && item.kind === "message" && item.role === "assistant");
     this.emit({
       turns: this.session.turns.map((turn) => (turn.id === turnId ? { ...turn, status: "cancelled", endedAt: now } : turn)),
       items: this.session.items.map((item) =>
@@ -337,9 +342,11 @@ export class FakeThread {
           ? item
           : item.kind === "tool" && item.progress === "running"
             ? { ...item, progress: "cancelled", endedAt: now }
-            : (item.kind === "message" || item.kind === "reasoning") && item.streaming
-              ? { ...item, streaming: false }
-              : item,
+            : item === answer
+              ? { ...item, streaming: false, final: true, sentAt: now }
+              : (item.kind === "message" || item.kind === "reasoning") && item.streaming
+                ? { ...item, streaming: false }
+                : item,
       ),
     });
   }
@@ -379,6 +386,9 @@ export class FakeThread {
         const thought = this.item({ kind: "reasoning", text: "", streaming: true, heading: heading(this.fake) }, turn);
         this.append(thought);
         await this.grow(this.session.items.length - 1, thought, paragraph(this.fake), charsPerSecond, () => stopped, wait);
+        const note = this.item({ kind: "message", role: "assistant", text: "", streaming: true }, turn);
+        this.append(note);
+        await this.grow(this.session.items.length - 1, note, sentence(this.fake), charsPerSecond, () => stopped, wait);
         // The group row comes with its first step and is replaced as each next step starts.
         const commands = between(this.fake, 1, 3);
         type Group = Extract<Item, { kind: "group" }>;
@@ -404,7 +414,9 @@ export class FakeThread {
         if (stopped) return;
         live = null;
         const ended = { ...turn, status: "done" as const, endedAt: Date.now() };
+        // The answer is the last item: the turn's end makes it final.
         this.emit({
+          items: [...this.session.items.slice(0, -1), { ...this.session.items.at(-1)!, final: true, sentAt: ended.endedAt } as Item],
           turns: this.session.turns.map((each) => (each.id === turn.id ? ended : each)),
           work: [...(this.session.work ?? []), { turnId: turn.id, ms: ended.endedAt - turn.startedAt, folded }],
         });

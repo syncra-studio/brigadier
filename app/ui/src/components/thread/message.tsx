@@ -188,19 +188,19 @@ export function SystemLine({ text }: { text: string }) {
 }
 
 /**
- * The agent's answer: `children` is the rendered reply. Once it stops streaming, its actions show under
- * it, always (not only on hover): copy, then the time, which shows under the `latest` answer and on hover
- * or focus under an older one.
+ * The agent's message: `children` is the rendered reply. Under a turn's `final` answer its actions show,
+ * always (not only on hover): copy, then the time, which shows under the `latest` answer and on hover
+ * or focus under an older one. Commentary between the turn's steps has none.
  */
 export function AssistantMessage({
   text,
-  streaming,
+  final,
   time,
   latest = false,
   children,
 }: {
   text: string;
-  streaming: boolean;
+  final: boolean;
   time?: number;
   latest?: boolean;
   children: ReactNode;
@@ -208,7 +208,7 @@ export function AssistantMessage({
   return (
     <div className="group/answer flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
-      {!streaming && (
+      {final && (
         <div className="-ms-1 flex items-center gap-0.5 text-faint-foreground">
           <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
           {time !== undefined && (
