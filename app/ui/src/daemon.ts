@@ -28,6 +28,9 @@ const SLOW_MS = 200;
 let rows = new Map<string, Row>();
 let n: number | undefined;
 const listeners = new Set<() => void>();
+// One-off replies by request id (a command, the terminal's stream), and where terminal frames go.
+const replies = new Map<number, (frame: Record<string, any>) => void>();
+let onTerm: ((frame: Record<string, any>) => void) | undefined;
 
 /** The open thread's request: what the view shows beside the rows (loading, not found, an error). */
 export type ThreadState = { id: string; status: "loading" | "ready" | "missing" | "error"; error?: string };
@@ -42,6 +45,22 @@ const threadListeners = new Set<() => void>();
 function set(next: Partial<View>): void {
   view = { ...view, ...next };
   for (const listener of listeners) listener();
+}
+
+/** Sends a request to the daemon; `onReply` gets its answer, or a disconnected error. */
+export function ask(request: object, onReply?: (frame: Record<string, any>) => void): number {
+  if (!view.daemon) {
+    onReply?.({ ok: false, error: "disconnected" });
+    return 0;
+  }
+  const id = send(request);
+  if (onReply) replies.set(id, onReply);
+  return id;
+}
+
+/** Where the terminal's pushed frames go: one terminal view at a time [D47]. */
+export function setTermHandler(handler: typeof onTerm): void {
+  onTerm = handler;
 }
 
 function send(request: object): number {
@@ -100,6 +119,12 @@ function subscribe(): void {
 }
 
 function onFrame(frame: Record<string, any>): void {
+  const reply = replies.get(frame.re);
+  if (reply) {
+    replies.delete(frame.re);
+    return reply(frame);
+  }
+  if (frame.term !== undefined) return onTerm?.(frame);
   if (frame.status === "running") {
     set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
     subscribe();
@@ -166,7 +191,10 @@ window.addEventListener("message", (event) => {
     n = undefined;
     // The open thread keeps its rows while disconnected; reconnecting asks for a fresh snapshot.
     threadN = undefined;
+    const waiting = [...replies.values()];
+    replies.clear();
     set({ daemon: null });
+    for (const reply of waiting) reply({ ok: false, error: "disconnected" });
   };
 });
 

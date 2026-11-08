@@ -6,6 +6,7 @@ import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
 import { Demo } from "./session/Demo";
+import { TerminalPane } from "./terminal/terminal";
 import { Thread } from "./thread/thread";
 import "./theme.css";
 
@@ -23,7 +24,7 @@ function App() {
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
     const row = rows?.find((each) => each.id === id);
-    return <SessionThread id={id} title={row?.title} stalled={row?.state === "stalled"} offline={daemon === null} />;
+    return <SessionThread id={id} title={row?.title} state={row?.state} offline={daemon === null} />;
   }
   return (
     <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
@@ -73,7 +74,8 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
 }
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
-function SessionThread({ id, title, stalled, offline }: { id: string; title: string | undefined; stalled: boolean; offline: boolean }) {
+// Its terminal sits beside it, on the same conversation [D47].
+function SessionThread({ id, title, state: rowState, offline }: { id: string; title: string | undefined; state: string | undefined; offline: boolean }) {
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   return (
@@ -86,15 +88,18 @@ function SessionThread({ id, title, stalled, offline }: { id: string; title: str
         <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{title || id}</span>
       </header>
       {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-      {state?.status === "missing" ? (
-        <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
-      ) : state?.status === "error" ? (
-        <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
-      ) : (
-        <div className={`min-h-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-          <Thread source={threadSource} footer={stalled && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
-        </div>
-      )}
+      <div className="flex min-h-0 flex-1">
+        {state?.status === "missing" ? (
+          <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
+        ) : state?.status === "error" ? (
+          <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
+        ) : (
+          <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
+            <Thread source={threadSource} footer={rowState === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
+          </div>
+        )}
+        {state?.status !== "missing" && <TerminalPane id={id} state={rowState} />}
+      </div>
     </main>
   );
 }

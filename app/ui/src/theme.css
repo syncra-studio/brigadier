@@ -58,6 +58,27 @@
   --color-syntax-builtin: #ffa657;
   --color-syntax-comment: #8b949e;
   --color-syntax-tag: #7ee787;
+  /* The terminal, from the old app: the page and its text, a wash of the text for its selection,
+     and its 16 colours (the status colours for red, green, yellow and blue, a brighter step each). */
+  --color-terminal-background: var(--color-background);
+  --color-terminal-foreground: var(--color-foreground);
+  --color-scrim: color-mix(in oklab, var(--color-foreground) 20%, transparent);
+  --color-ansi-black: oklch(0.315 0.004 106);
+  --color-ansi-red: var(--color-destructive);
+  --color-ansi-green: var(--color-success);
+  --color-ansi-yellow: var(--color-warning);
+  --color-ansi-blue: var(--color-link);
+  --color-ansi-magenta: oklch(0.72 0.16 320);
+  --color-ansi-cyan: oklch(0.74 0.12 200);
+  --color-ansi-white: oklch(0.87 0.002 106);
+  --color-ansi-bright-black: oklch(0.556 0.004 106);
+  --color-ansi-bright-red: oklch(0.79 0.15 22);
+  --color-ansi-bright-green: oklch(0.84 0.13 155);
+  --color-ansi-bright-yellow: oklch(0.86 0.14 85);
+  --color-ansi-bright-blue: oklch(0.8 0.11 255);
+  --color-ansi-bright-magenta: oklch(0.81 0.13 320);
+  --color-ansi-bright-cyan: oklch(0.84 0.1 200);
+  --color-ansi-bright-white: var(--color-foreground);
   /* A select's pill at rest, fainter than fill-subtle. */
   --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
   /* Behind an open dialog: the page, dimmed. */

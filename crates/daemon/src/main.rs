@@ -11,6 +11,9 @@
 //! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
 //! what it names by id [D40, D64, D65]. One thread per connection: a new request ends the last.
 //!
+//! `{"id", "op": "terminal", "session"}` streams the session's terminal (see `term`); `keys` and
+//! `resize` go to its host, named by the terminal's spawn id [D47].
+//!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
 //! replaces an older one (`replace_older`).
 
@@ -37,6 +40,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{process, thread};
 
+mod term;
+
 const PROTOCOL_VERSION: u32 = 2;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -44,7 +49,7 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // kqueue if that shows up in a profile.
 const TICK: Duration = Duration::from_millis(500);
 /// The commands that reach a host. The rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 5] = ["start", "send", "stop", "recover", "delete"];
+const ROUTED: [&str; 6] = ["start", "send", "stop", "recover", "delete", "terminal"];
 /// How often an open thread checks its log for new frames.
 const FOLLOW: Duration = Duration::from_millis(100);
 
@@ -213,6 +218,8 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
     });
     // Bumped to end this connection's thread watch: a new request, or the connection closing.
     let watching = Arc::new(AtomicU64::new(0));
+    // The same for the terminal stream, and the bytes of it the app has drawn.
+    let (terming, acked) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
     let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
     let _ = out.send(hello.to_string());
     while let Ok(text) = wire::read_frame(&mut stream) {
@@ -245,6 +252,30 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
                 let mine = watching.fetch_add(1, Ordering::SeqCst) + 1;
                 let (out, data, watching) = (out.clone(), PathBuf::from(data), watching.clone());
                 thread::spawn(move || watch(&data, &id, title, re, &out, mine, &watching));
+            }
+            "terminal" => {
+                let id = req["session"].as_str().unwrap_or("").to_string();
+                let mine = terming.fetch_add(1, Ordering::SeqCst) + 1;
+                let (out, data) = (out.clone(), PathBuf::from(data));
+                let (terming, acked) = (terming.clone(), acked.clone());
+                thread::spawn(move || term::watch(&data, &id, re, &out, mine, &terming, &acked));
+            }
+            "term_ack" => {
+                acked.fetch_add(req["bytes"].as_u64().unwrap_or(0), Ordering::SeqCst);
+            }
+            // Answered in order on this connection, so keys never pass each other.
+            "keys" | "resize" => {
+                let id = req["session"].as_str().unwrap_or("");
+                let mut call = req.clone();
+                call.as_object_mut()
+                    .map(|o| (o.remove("id"), o.remove("session")));
+                let mut reply = match check_id(id) {
+                    Ok(()) => brigadier::owner::call(data, id, call)
+                        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),
+                    Err(e) => json!({"ok": false, "error": e.to_string()}),
+                };
+                reply["re"] = re;
+                let _ = out.send(reply.to_string());
             }
             "search" => {
                 let q = req["q"].as_str().unwrap_or("");
@@ -281,6 +312,7 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
         }
     }
     watching.fetch_add(1, Ordering::SeqCst);
+    terming.fetch_add(1, Ordering::SeqCst);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
 }
