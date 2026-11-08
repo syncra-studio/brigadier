@@ -1,7 +1,7 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, MenuOption, type MenuRenderFn, type MenuTextMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { $createTextNode, $isTextNode, COMMAND_PRIORITY_HIGH, type LexicalNode, type TextNode } from "lexical";
-import { type ComponentProps, type ReactNode, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Paperclip } from "../../icons";
@@ -140,11 +140,12 @@ function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
  * The `@` and `/` menus' panel: inside the composer card, as wide as it and just above it (over the rail,
  * hidden meanwhile); it scrolls past 10.5 rows. Headings and notes are `MenuHeading` and `MenuNote`.
  */
-export function ComposerMenu({ label, children }: { label: string; children: ReactNode }) {
+export function ComposerMenu({ label, children }: { label?: string; children: ReactNode }) {
   return (
     <div
       data-slot="composer-menu"
-      role="listbox"
+      // Unlabelled inside Lexical's anchor, which is the listbox the field's aria-controls names.
+      role={label ? "listbox" : undefined}
       aria-label={label}
       className={cx(menuSurface, "absolute start-0 bottom-full mb-2 flex max-h-command-list w-full flex-col overflow-y-auto")}
     >
@@ -153,11 +154,22 @@ export function ComposerMenu({ label, children }: { label: string; children: Rea
   );
 }
 
-function Panel(props: { label: string; children: ReactNode }) {
+/** The composer card the field is in, once it's in the page: Lexical's menu anchor goes there. */
+function useCard(): HTMLElement | null {
   const [editor] = useLexicalComposerContext();
-  const card = editor.getRootElement()?.closest("[data-slot=composer-card]");
-  return card ? createPortal(<ComposerMenu {...props} />, card) : null;
+  const [card, setCard] = useState<HTMLElement | null>(null);
+  useEffect(() => editor.registerRootListener((root) => setCard(root?.closest<HTMLElement>("[data-slot=composer-card]") ?? null)), [editor]);
+  return card;
 }
+
+/**
+ * The panel, in Lexical's anchor (the listbox its `#typeahead-menu` scroll helper and aria-controls expect). The
+ * anchor is `display: contents` in the card, so the panel sits by the card, not at the caret Lexical places it.
+ */
+function Panel({ anchor, children }: { anchor: RefObject<HTMLElement | null>; children: ReactNode }) {
+  return anchor.current ? createPortal(<ComposerMenu>{children}</ComposerMenu>, anchor.current) : null;
+}
+const ANCHOR = "contents!";
 
 export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-sm text-muted-foreground">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="px-2 py-1 text-sm text-muted-foreground">{children}</p>;
@@ -196,6 +208,8 @@ function OptionRow<T>({
   return (
     <ComposerMenuOption
       ref={(element) => option.setRefElement(element)}
+      // The id Lexical's aria-activedescendant names.
+      id={`typeahead-item-${index}`}
       selected={props.selectedIndex === index}
       disabled={disabled}
       onMouseEnter={() => props.setHighlightedIndex(index)}
@@ -214,8 +228,12 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
   if (results?.query === query) kept.current = results.groups;
   const groups = kept.current;
   const options = useMemo(() => groups.flatMap((group) => group.items.map((item) => new Row(item, `${group.title}:${item.id}`))), [groups]);
+  const card = useCard();
+  if (!card) return null;
   return (
     <LexicalTypeaheadMenuPlugin<Row<Mention>>
+      parent={card}
+      anchorClassName={ANCHOR}
       triggerFn={AT}
       commandPriority={COMMAND_PRIORITY_HIGH}
       options={options}
@@ -232,11 +250,11 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
         $putWithSpace(new ChipNode({ kind: "mention", id, type, label }), replacing);
         close();
       }}
-      menuRenderFn={(_, props) => {
+      menuRenderFn={(anchor, props) => {
         let at = 0;
         const empty = options.length === 0 && !groups.some((group) => group.note);
         return (
-          <Panel label="Mentions">
+          <Panel anchor={anchor}>
             {groups.map((group, index) => {
               if (group.items.length === 0 && !group.note) return null;
               return (
@@ -276,8 +294,12 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
 export function SlashPlugin({ commands, onRun }: Commands) {
   const [query, setQuery] = useState("");
   const options = useMemo(() => commandMatches(commands, query).map((command) => new Row(command, command.id)), [commands, query]);
+  const card = useCard();
+  if (!card) return null;
   return (
     <LexicalTypeaheadMenuPlugin<Row<SlashCommand>>
+      parent={card}
+      anchorClassName={ANCHOR}
       triggerFn={SLASH}
       commandPriority={COMMAND_PRIORITY_HIGH}
       options={options}
@@ -293,8 +315,8 @@ export function SlashPlugin({ commands, onRun }: Commands) {
         }
         close();
       }}
-      menuRenderFn={(_, props) => (
-        <Panel label="Slash commands">
+      menuRenderFn={(anchor, props) => (
+        <Panel anchor={anchor}>
           {props.options.map((option, index) => {
             const command = option.value;
             const group = command.group ?? null;

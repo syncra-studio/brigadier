@@ -164,7 +164,8 @@ function pasteAttachments(event: ClipboardEvent | InputEvent | KeyboardEvent, on
 function numbersOf(parts: Parts): Map<string, number> {
   const numbers = new Map<string, number>();
   const count = { image: 0, paste: 0 };
-  for (const part of parts) if (typeof part !== "string" && part.kind !== "mention") numbers.set(part.attachmentId, ++count[part.kind]);
+  // A copied chip keeps its id: it keeps the first copy's number.
+  for (const part of parts) if (typeof part !== "string" && part.kind !== "mention" && !numbers.has(part.attachmentId)) numbers.set(part.attachmentId, ++count[part.kind]);
   return numbers;
 }
 const sameNumbers = (a: Map<string, number>, b: Map<string, number>) => a.size === b.size && [...a].every(([id, n]) => b.get(id) === n);
