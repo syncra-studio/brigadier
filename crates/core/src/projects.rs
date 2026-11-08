@@ -32,6 +32,9 @@ pub struct Project {
     /// paths from the repository's top [D178, D211].
     pub include: Vec<String>,
     pub added: u64,
+    /// Set while Remove project runs: its sessions take no new work [D172, D179].
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub removing: bool,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -119,6 +122,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         setup: String::new(),
         include: vec![],
         added,
+        removing: false,
     }
 }
 
@@ -281,7 +285,7 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
         })
         .transpose()?;
     let count = if folder.is_some() {
-        sessions(data, id)?
+        sessions(data, id)?.len()
     } else {
         0
     };
@@ -332,32 +336,56 @@ fn path(p: &str) -> io::Result<String> {
     Ok(p.into())
 }
 
-/// How many sessions are in the project.
-fn sessions(data: &Path, id: &str) -> io::Result<usize> {
+/// The project's sessions, archived ones too.
+pub fn sessions(data: &Path, id: &str) -> io::Result<Vec<String>> {
     let projects = list(data)?;
     let mut roots = Roots::default();
     Ok(ids(data)
-        .iter()
-        .filter_map(|s| load(data, s).ok())
-        .filter(|spec| of(spec, &projects, &mut roots).as_deref() == Some(id))
-        .count())
+        .into_iter()
+        .filter(|s| {
+            load(data, s).is_ok_and(|spec| of(&spec, &projects, &mut roots).as_deref() == Some(id))
+        })
+        .collect())
 }
 
-/// Removes a project with no sessions. Removing one with sessions deletes them, under its own
-/// dialog, which 1w builds [D172, D179]; until then it's refused.
+/// Marks the project as being removed, or clears it; a second Remove while one runs is refused.
+pub fn set_removing(data: &Path, id: &str, on: bool) -> io::Result<()> {
+    change(data, |list| {
+        let p = find(list, id)?;
+        if on && p.removing {
+            return err(format!("\"{}\" is already being removed.", p.name));
+        }
+        p.removing = on;
+        Ok(())
+    })?;
+    Ok(())
+}
+
+/// Removes the record once the project has no sessions left, checked under `projects.lock`, so
+/// one started meanwhile keeps it [D172, D179]. Sessions go first, through Remove project (1w);
+/// stream decision D1's refusal is lifted there.
 pub fn remove(data: &Path, id: &str) -> io::Result<()> {
-    let sessions = sessions(data, id)?;
     change(data, |list| {
         let name = find(list, id)?.name.clone();
-        if sessions > 0 {
-            return err(format!(
-                "\"{name}\" still has {sessions} session(s): delete them first"
-            ));
+        let left = sessions(data, id)?.len();
+        if left > 0 {
+            return err(format!("\"{name}\" still has {left} session(s)."));
         }
         list.retain(|p| p.id != id);
         Ok(())
     })?;
     Ok(())
+}
+
+/// At the daemon's start: a Remove project cut short frees its project for new work again; its
+/// sessions' recorded deletes retry on their own (1v).
+pub fn sweep(data: &Path) {
+    if list(data).is_ok_and(|l| l.iter().any(|p| p.removing)) {
+        let _ = change(data, |list| {
+            list.iter_mut().for_each(|p| p.removing = false);
+            Ok(())
+        });
+    }
 }
 
 /// Each session folder's repository, by its cwd, so a list asks git once per folder.
@@ -390,4 +418,15 @@ pub fn held(data: &Path, spec: &Spec) -> bool {
     projects
         .iter()
         .any(|p| Some(&p.id) == id.as_ref() && p.trusted != Some(true))
+}
+
+/// Whether the session's project is being removed: no new work starts in it then [D172].
+pub fn removing(data: &Path, spec: &Spec) -> bool {
+    let Ok(projects) = list(data) else {
+        return false;
+    };
+    let id = of(spec, &projects, &mut Roots::default());
+    projects
+        .iter()
+        .any(|p| Some(&p.id) == id.as_ref() && p.removing)
 }

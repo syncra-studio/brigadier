@@ -114,6 +114,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     found.ok_or_else(|| io::Error::other(format!("no project {p}")))
                 })
                 .transpose()?;
+            if project.as_ref().is_some_and(|p| p.removing) {
+                return Err(io::Error::other("This project is being removed."));
+            }
             let worktree = project.is_some() && !has(args, "--local");
             let cwd = flag(args, "--cwd")
                 .map(String::from)
@@ -243,6 +246,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            let _fence = core::session::fence(data, &spec)?;
             let f = core::fold(&spec.dir, true)?;
             let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
             let call = call_fn(data, id);
@@ -265,6 +269,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            let _fence = core::session::fence(data, &spec)?;
             // The host's state first, then the fold: the host refuses if the log moved in between.
             let ping = owner::call(data, id, json!({"op": "ping"}))?;
             let f = core::fold(&spec.dir, true)?;
@@ -384,6 +389,7 @@ fn send(
     cid: Option<&str>,
     backend: Option<&str>,
 ) -> io::Result<Value> {
+    let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(control::new_cid, String::from);
     let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);

@@ -9,6 +9,7 @@ import { Plus, Trash } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, setProject, useProjects } from "./projects";
+import { RemoveProjectHost } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
 
 /*
@@ -38,16 +39,20 @@ const opened = store<string | null>(null);
 /** Opens Project settings for a project, from its menu. */
 export const openProjectSettings = (id: string) => opened.set(id);
 
-/** Mounted once beside the sidebar. */
+/** Mounted once beside the sidebar, with Remove project…. */
 export function ProjectSettingsHost() {
   const id = opened.use();
   const project = useProjects()?.find((each) => each.id === id && !each.pending);
   return (
+    <>
     <Dialog open={project !== undefined} onOpenChange={(open) => !open && opened.set(null)}>
       <DialogContent frame="max-w-project-dialog gap-7 p-6">
         {project && <ProjectSettings key={project.id} project={project} source={daemonSettings} onClose={() => opened.set(null)} />}
       </DialogContent>
     </Dialog>
+    {/* Remove project… mounts here too, so main.tsx is untouched (PROPOSED). */}
+    <RemoveProjectHost />
+    </>
   );
 }
 

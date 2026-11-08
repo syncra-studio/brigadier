@@ -3,13 +3,14 @@
 //! rolls back at the daemon's next start; while one is recorded, or the session is archived, it
 //! takes no new work.
 
-use crate::fold::Fold;
+use crate::fold::{Fold, Live, Owner};
 use crate::{
     Spec, adapters, as_run, check_id, ids, projects, session_dir, sweep as kill_left, worktrees,
     write_atomic,
 };
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
+use std::fs::File;
 use std::path::Path;
 use std::{fs, io};
 
@@ -55,6 +56,17 @@ pub fn closed(dir: &Path) -> Option<&'static str> {
             .join(ARCHIVED)
             .exists()
             .then_some("This session is archived. Restore it to continue."),
+    }
+}
+
+/// Held by a turn's start from this check until its turn is logged, and by Remove project around
+/// its busy check, so a send that raced the marker is either seen as busy or refused here [D172].
+pub fn fence(data: &Path, spec: &Spec) -> io::Result<File> {
+    let lock = worktrees::lock(&spec.dir)?;
+    let removing = projects::removing(data, spec).then_some("This project is being removed.");
+    match closed(&spec.dir).or(removing) {
+        Some(why) => Err(io::Error::other(why)),
+        None => Ok(lock),
     }
 }
 
@@ -116,6 +128,16 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
     }
     clear(&spec.dir, ARCHIVED)?;
     clear(&spec.dir, INTENT)
+}
+
+/// Whether the session is busy, whatever its mark: a live host with a turn not yet ended
+/// (waiting on you or stalled too) or background work, or a host that can't be told [D172].
+pub fn busy(f: &Fold, live: &Live) -> bool {
+    match live.owner {
+        Owner::Frozen => true,
+        Owner::Alive => !f.turns.is_empty() || live.jobs > 0,
+        Owner::Dead => false,
+    }
 }
 
 /// The branch a delete would ask about, if any [D181].

@@ -143,10 +143,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     }
                     return Ok(json!({"ok": true}));
                 }
-                "remove" => {
-                    projects::remove(data, arg(2))?;
-                    return Ok(json!({"ok": true}));
-                }
+                "remove" => return crate::sessions::remove_project(data, args),
                 // Add project's (1f, 1g): `find`, `inspect <path>`, `clone <url|owner/name> --to
                 // <dest> [--github] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
                 "find" => return Ok(json!({"ok": true, "repos": repos::find(data)?})),

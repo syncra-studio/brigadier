@@ -1,14 +1,15 @@
-import { DropdownMenuItem } from "../components/menu";
+import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { showToast } from "../components/toast";
-import { ComposeEditSquare, FolderOpen, SettingsCog } from "../icons";
+import { ComposeEditSquare, FolderOpen, SettingsCog, Trash } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "./projects";
+import { openRemoveProject } from "./remove";
 import { openProjectSettings } from "./settings";
 import { enterProject } from "./trust";
 
 /**
  * A project's menu, the core four as the old app had them [D171, D212]: New session, Project settings…,
- * Reveal in Finder; Remove project… joins with 1w. The sidebar's project row puts these in its ⋯ menu.
+ * Reveal in Finder and Remove project… (1w). The sidebar's project row puts these in its ⋯ menu.
  */
 export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "name"> }) {
   return (
@@ -26,6 +27,11 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
       >
         <FolderOpen />
         Reveal in Finder
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem variant="destructive" onClick={() => openRemoveProject(project.id)}>
+        <Trash />
+        Remove project…
       </DropdownMenuItem>
     </>
   );

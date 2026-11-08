@@ -26,6 +26,10 @@ pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
     if let Some(why) = brigadier_core::session::closed(&dir) {
         return Err(io::Error::other(why));
     }
+    // Its project being removed: no new work either [D172, D179].
+    if brigadier_core::projects::removing(data, spec) {
+        return Err(io::Error::other("This project is being removed."));
+    }
     if !lock_held(&dir.join("owner.lock")) {
         let mut host = Command::new(host_exe()?);
         host.arg(&dir)

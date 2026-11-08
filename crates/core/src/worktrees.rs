@@ -368,6 +368,11 @@ pub fn present(dir: &Path) -> bool {
     matches!(read(dir), Ok(Some(o)) if o.path.as_deref().is_some_and(|p| Path::new(p).exists()))
 }
 
+/// The session's branch while it exists: Remove project's preview counts the merged ones.
+pub fn branch(dir: &Path) -> io::Result<Option<String>> {
+    Ok(read(dir)?.and_then(|o| o.branch.filter(|b| has_branch(Path::new(&o.repo), b))))
+}
+
 /// The session's branch when it holds work its base doesn't, uncommitted changes included: the
 /// delete confirm names it [D181]. A check git can't answer counts as unlanded, so it asks.
 pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
@@ -464,6 +469,7 @@ pub fn sweep(data: &Path) {
     }
     // Archives, restores and deletes cut short finish or roll back [D35, D180].
     crate::session::sweep(data);
+    crate::projects::sweep(data);
 }
 
 /// Whether the session has a worktree made in full.

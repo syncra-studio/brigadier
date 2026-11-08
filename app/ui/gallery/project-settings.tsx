@@ -8,6 +8,7 @@ import { DotsHorizontal } from "../src/icons";
 import { DiscoveredFiles } from "../src/projects/files";
 import { ProjectMenuItems } from "../src/projects/menu";
 import type { Project } from "../src/projects/projects";
+import { type Preview, RemoveFlow, Removed } from "../src/projects/remove";
 import { type FilesProps, PathRows, ProjectSettings, type SettingsSource } from "../src/projects/settings";
 import { TrustForm } from "../src/projects/trust";
 import { Held, Row, Section, State } from "./parts";
@@ -33,6 +34,11 @@ function fake(with_: Partial<SettingsSource> = {}): SettingsSource {
   };
 }
 const FAKE = fake();
+
+const PREVIEW: Preview = { sessions: ["s-1", "s-2", "s-3"], working: [], worktrees: 2, bytes: 48_300_000, merged: 1, branches: [] };
+const BRANCHES: Preview = { ...PREVIEW, branches: [{ id: "s-2", branch: "brigadier/s-2" }, { id: "s-3", branch: "brigadier/s-3" }] };
+const REMOVE = "max-w-project-dialog gap-5 p-6";
+const ready = (preview: Preview) => ({ state: "ready" as const, preview });
 
 /** A dialog held open in its own box, as the app shows it. */
 export function Frozen({ label, frame, tall, children }: { label: string; frame: string; tall?: boolean; children: ReactNode }) {
@@ -73,7 +79,7 @@ export function ProjectSettingsGallery() {
       </Row>
       <Row name="project menu (on the sidebar's project row)">
         <State label="open">
-          <Held className="h-40 w-64">
+          <Held className="h-52 w-64">
             {(box) => (
               <DropdownMenu open modal={false}>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Project actions" />}>
@@ -86,6 +92,36 @@ export function ProjectSettingsGallery() {
             )}
           </Held>
         </State>
+      </Row>
+      <Row name="Remove project…: looking · nothing made · what goes · branches to ask about · one working · partly failed · lost the connection · removed, branches kept">
+        <Frozen label="looking" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: { state: "looking" } }} />
+        </Frozen>
+        <Frozen label="nothing made" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready({ ...PREVIEW, sessions: [], worktrees: 0, merged: 0 }) }} />
+        </Frozen>
+        <Frozen label="what goes" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready(PREVIEW) }} />
+        </Frozen>
+        <Frozen label="branches to ask about" frame={REMOVE} tall>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready(BRANCHES) }} />
+        </Frozen>
+        <Frozen label="one working" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready({ ...PREVIEW, working: ["s-1"] }) }} />
+        </Frozen>
+        <Frozen label="partly failed" frame={REMOVE}>
+          <RemoveFlow
+            project={SET}
+            onClose={() => {}}
+            given={{ look: ready(PREVIEW), error: "Not everything went, so “invoice-service” stays: worktree: git worktree remove: permission denied" }}
+          />
+        </Frozen>
+        <Frozen label="lost the connection" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready(PREVIEW), phase: { at: "watching" } }} />
+        </Frozen>
+        <Frozen label="removed, branches kept" frame={REMOVE}>
+          <Removed name={SET.name} repo={SET.folder} kept={["brigadier/s-2"]} onClose={() => {}} />
+        </Frozen>
       </Row>
       <Row name="Files to copy, O20: (a) the old app's path rows (wired) · (b) the repo's ignored files to tick">
         <Settings label="(a) path rows" Files={PathRows} />
