@@ -5,7 +5,7 @@ import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { ScrollFade } from "../components/scroll-fade";
-import { JumpSign, messageMarks } from "../components/thread/message";
+import { JumpSign, datedMessages } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
@@ -78,7 +78,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const work = useMemo(() => new Map(workList?.map((each) => [each.turnId, each])), [workList]);
   const items = session?.items;
   const lines = useMemo(lineMaker, []);
-  const marks = useMemo(() => messageMarks(items ?? []), [items]);
+  const dated = useMemo(() => datedMessages(items ?? []), [items]);
   const all = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
@@ -315,7 +315,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
               <Spacer space={space} />
             </div>
           ) : (
-            <LineRow key={line.id} {...line} dated={marks.dated.has(line.id)} latest={line.id === marks.latest} onToggle={toggle} />
+            <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />
           )
         }
       </VList>

@@ -2,7 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { Item } from "../../thread/item";
 
-import { ChevronRightAlt, Trash } from "../../icons";
+import { ChevronRightAlt, Regenerate, Trash } from "../../icons";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
 import { CopyButton } from "../copy-button";
@@ -38,11 +38,8 @@ function TimeSeparator({ at }: { at: number }) {
 /** A gap before a user's message that a time separator marks (the old app's). */
 const SEPARATOR_GAP_MS = 60 * 60 * 1000;
 
-/**
- * Drawing marks over the session's messages: `dated`, the user's messages with their date above (the first, and one
- * sent more than an hour after the message before it); `latest`, the answer when it is the newest message.
- */
-export function messageMarks(items: readonly Item[]): { dated: ReadonlySet<string>; latest: string | undefined } {
+/** The user's messages with their date above: the first, and one sent more than an hour after the message before it. */
+export function datedMessages(items: readonly Item[]): ReadonlySet<string> {
   const dated = new Set<string>();
   let previous: Extract<Item, { kind: "message" }> | undefined;
   for (const item of items) {
@@ -51,7 +48,7 @@ export function messageMarks(items: readonly Item[]): { dated: ReadonlySet<strin
     if (item.role === "user" && item.origin !== "system" && (!previous || gap > SEPARATOR_GAP_MS)) dated.add(item.id);
     previous = item;
   }
-  return { dated, latest: previous?.role === "assistant" && previous.origin !== "system" ? previous.id : undefined };
+  return dated;
 }
 
 /**
@@ -189,20 +186,20 @@ export function SystemLine({ text }: { text: string }) {
 
 /**
  * The agent's message: `children` is the rendered reply. Under a turn's `final` answer, or one a follow-up
- * joined, its actions show always (not only on hover): copy, then the time, which shows under the `latest`
- * answer and on hover or focus under an older or joined one. Commentary between the turn's steps has none.
+ * joined, its actions stay in view: copy, Try again where `onTryAgain` is given, and the time only on hover or
+ * focus. Commentary between the turn's steps has none.
  */
 export function AssistantMessage({
   text,
   final,
   time,
-  latest = false,
+  onTryAgain,
   children,
 }: {
   text: string;
   final: boolean;
   time?: number;
-  latest?: boolean;
+  onTryAgain?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -211,11 +208,12 @@ export function AssistantMessage({
       {final && (
         <div className="-ms-1 flex items-center gap-0.5 text-faint-foreground">
           <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
-          {time !== undefined && (
-            <span className={cx("ps-1 text-xs tabular-nums", !latest && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
-              {sentAt(time)}
-            </span>
+          {onTryAgain && (
+            <TooltipIconButton tooltip="Try again" size="icon-answer" onClick={onTryAgain}>
+              <Regenerate />
+            </TooltipIconButton>
           )}
+          {time !== undefined && <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>}
         </div>
       )}
     </div>

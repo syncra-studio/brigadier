@@ -3,10 +3,11 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Body } from "../src/components/thread/body";
-import { JumpSign, UserBubble } from "../src/components/thread/message";
+import { AssistantMessage, JumpSign, UserBubble } from "../src/components/thread/message";
 import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work";
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
+import { Markdown } from "../src/thread/markdown";
 import "../src/thread/markdown.css";
 import { Row, Section, State } from "./parts";
 
@@ -317,29 +318,36 @@ export function Thread() {
             <Bubbles />
           </Wide>
         </Row>
-        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · a joined answer · latest (time always) · older (time on hover) · older, hover · long code block">
+        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · a joined answer · at rest (time hidden) · hover (time shows) · with Try again · long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
           <Wide label="a turn: commentary (no actions) · its final answer">
             {/* The thread's space between a turn's parts (pt-4). */}
             <div className="flex flex-col gap-4">
               {item({ ...base("a0"), kind: "message", role: "assistant", text: "I'll check how the list draws while a reply streams.", streaming: false })}
               {item({ ...base("a0b"), kind: "message", role: "assistant", text: "Found it: every block draws again. Fixing that now.", streaming: false })}
-              <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+              <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
             </div>
           </Wide>
           <Wide label="a turn: an answer a follow-up joined (copy, time on hover) · its final answer">
             <div className="flex flex-col gap-4">
               {item({ ...base("a0j"), kind: "message", role: "assistant", text: "Done: the list now draws only the block that changed.", streaming: false, joined: true, sentAt: NOW - 3 * 60_000 })}
               {item({ ...base("a0k"), kind: "message", role: "assistant", text: "Checking the code blocks too, as you asked.", streaming: false })}
-              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
             </div>
           </Wide>
-          <Wide label="latest">
-            <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
-          </Wide>
-          <Wide label="older">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
-          <Wide label="older, hover" frozen="hover">
+          <Wide label="at rest">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
+          <Wide label="hover" frozen="hover">
             {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}
+          </Wide>
+          <Wide label="with Try again">
+            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
+              <Markdown text={REPLY} keep="a2d" />
+            </AssistantMessage>
+          </Wide>
+          <Wide label="with Try again, hover" frozen="hover">
+            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
+              <Markdown text={REPLY} keep="a2e" />
+            </AssistantMessage>
           </Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false, final: true })}</Wide>
         </Row>

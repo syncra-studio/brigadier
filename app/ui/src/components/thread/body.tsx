@@ -8,10 +8,9 @@ import { ToolRow } from "./tool";
 
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
- * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above;
- * `latest`: the newest answer, whose time always shows.
+ * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above.
  */
-export function Body({ item, turn, step, dated = false, latest = false }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; latest?: boolean }) {
+export function Body({ item, turn, step, dated = false }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean }) {
   switch (item.kind) {
     case "group":
       return null;
@@ -23,7 +22,6 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
           text={item.text}
           final={item.final === true || item.joined === true}
           time={item.sentAt}
-          latest={latest && item.final === true}
         >
           <Markdown text={item.text} keep={item.id} />
         </AssistantMessage>

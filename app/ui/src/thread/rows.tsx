@@ -8,7 +8,7 @@ import "./markdown.css";
 
 const GAPS: Record<Gap, string> = { first: "pt-8", turn: "pt-6", part: "pt-4", step: "pt-1" };
 
-export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean; latest?: boolean };
+export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean };
 
 /**
  * The one place a line becomes a row component: the kit's thread rows plug in here. The list owns the column and
@@ -24,7 +24,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.item.kind === "switch" ? (
         <SwitchRow item={props.item} />
       ) : (
-        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} />
+        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} />
       )}
     </div>
   );
