@@ -87,8 +87,8 @@ const WORKING = {
 
 /**
  * A turn's live status under its rows. Only `live` moves: its motion claims the work is proven live.
- * `stalled` is orange and still; `interrupted` and `disconnected` ("Unknown · last seen working 12s ago")
- * are muted and switch at once.
+ * `stalled` is orange and still; `interrupted` and `disconnected` are muted and switch at once.
+ * `disconnected` names the last state known, whatever it was ("Unknown · last seen stalled 12s ago").
  */
 export function WorkingLine({ state, children }: { state: keyof typeof WORKING; children: string }) {
   return (
