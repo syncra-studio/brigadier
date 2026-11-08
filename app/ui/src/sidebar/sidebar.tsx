@@ -6,6 +6,7 @@ import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/n
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Radio, RadioGroup } from "../components/radio";
 import { RowAction } from "../components/row-action";
+import { ScrollFade } from "../components/scroll-fade";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
@@ -45,7 +46,7 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 }
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
-const LIST = "scroll-edge-fade flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
+const LIST = "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
 const MENU_ROW = "flex h-control-sm cursor-pointer items-center gap-2 rounded-menu-item px-2 text-sm hover:bg-fill has-focus-visible:bg-fill";
 
 export function AppSidebar({
@@ -184,7 +185,7 @@ export function AppSidebar({
           </NavRow>
         </li>
       </NavList>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="sidebar-fades relative flex min-h-0 flex-1 flex-col">
         <div ref={list} className={LIST}>
           {rest === undefined ? (
             <Loading />
@@ -260,6 +261,8 @@ export function AppSidebar({
             </>
           )}
         </div>
+        <ScrollFade edge="top" />
+        <ScrollFade edge="bottom" />
         <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
       </div>
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />

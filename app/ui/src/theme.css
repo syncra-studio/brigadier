@@ -792,6 +792,12 @@
   );
 }
 
+/* The old sidebar's fade lengths, scoped to its list. */
+@utility sidebar-fades {
+  --spacing-fade-top: 0.5rem;
+  --spacing-fade-bottom: 2.5rem;
+}
+
 /* Rows split as a card's own are: a hairline under each but the last, 16 in from the edges (flush
    with `settings-rows-flush`, for a card that pads itself). */
 @utility settings-rows {
