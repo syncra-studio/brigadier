@@ -53,10 +53,10 @@ export function closeAddProject(): void {
   dialog.set({ ...dialog.get(), open: false });
 }
 
-// shortcut: nothing shows a project until stream C's sidebar (1c) sets this; it expands the project and drafts a session in it.
-let show: (id: string) => void = () => {};
-export const showProject = (id: string) => show(id);
-export const setShowProject = (next: (id: string) => void) => (show = next);
+// The sidebar reveals added projects; search expands one without changing the chosen grouping [D289].
+let show: (id: string, group: boolean) => void = () => {};
+export const showProject = (id: string, group = true) => show(id, group);
+export const setShowProject = (next: (id: string, group: boolean) => void) => (show = next);
 
 /**
  * Folders picked with ⌘O: each repository is added at once, a project already added shows, and a

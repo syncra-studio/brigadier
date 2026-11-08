@@ -321,7 +321,7 @@ export function GlobalSearch() {
       onOpenProject={(id) => {
         window.location.hash = "";
         startProject.set(id);
-        showProject(id);
+        showProject(id, false);
       }}
     />
   );
