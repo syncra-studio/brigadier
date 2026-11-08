@@ -254,11 +254,24 @@ class Writer {
 }
 
 /** A finished session of about `count` items. `huge` adds one very long command output and one very long reply. */
-export function fakeSession(count: number, seed = 1, huge = false): Session {
+/** Lets the page draw and take input; a message isn't clamped like a nested timeout. */
+const breathe = () => new Promise((done) => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = done;
+  channel.port2.postMessage(null);
+});
+
+export async function fakeSession(count: number, seed = 1, huge = false): Promise<Session> {
   const fake: Fake = { rand: random(seed), seq: 0 };
   const writer = new Writer();
   let time = Date.UTC(2026, 10, 1);
+  let slice = performance.now();
   while (writer.items.length < count) {
+    // Built a few ms at a time, so a big session doesn't freeze the page.
+    if (performance.now() - slice > 8) {
+      await breathe();
+      slice = performance.now();
+    }
     const startedAt = time;
     const turn: Turn = { id: id(fake, "turn"), status: "done", startedAt, endedAt: (time += between(fake, 5, 300) * 1000), backend: "fake" };
     writer.turn(fake, turn);
@@ -282,8 +295,8 @@ export class FakeThread {
   private readonly listeners = new Set<() => void>();
   private n: number;
 
-  constructor(count: number, seed = 1, huge = false) {
-    this.session = fakeSession(count, seed, huge);
+  constructor(session: Session, seed = 1) {
+    this.session = session;
     this.fake = { rand: random(seed + 1), seq: 1e9 };
     this.n = (this.session.items.at(-1)?.n ?? 0) + 1;
   }

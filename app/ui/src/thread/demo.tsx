@@ -1,14 +1,16 @@
 // The thread on fake data: `pnpm thread`. Pick a size, stream replies, jump around.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { WorkingLine } from "../components/thread/work";
-import { FakeThread } from "./fake";
-import { Thread, type ThreadHandle } from "./thread";
+import { FakeThread, fakeSession } from "./fake";
+import { Thread, type Source, type ThreadHandle } from "./thread";
 
 const SIZES = [1_000, 10_000, 100_000];
 /** The bench's fast scroll: 1,500 px a frame (about 90,000 px/s), far past a trackpad flick. */
 const FLING_PX = 1_500;
 const FLING_MS = 2_000;
+/** Before the first session arrives: the thread's loading state. */
+const LOADING: Source = { subscribe: () => () => {}, get: () => null };
 
 /** Scrolls up, then back down, at the bench's speed, to show the rows that aren't drawn in time. */
 function fling(handle: ThreadHandle) {
@@ -27,9 +29,20 @@ export function Demo() {
   const [huge, setHuge] = useState(false);
   const [streaming, setStreaming] = useState(true);
   const thread = useRef<ThreadHandle>(null);
-  const store = useMemo(() => new FakeThread(size, 1, huge), [size, huge]);
-  useEffect(() => (streaming ? store.stream() : undefined), [store, streaming]);
-  const running = useSyncExternalStore(store.subscribe, () => store.get().turns.at(-1)?.status === "running");
+  // Built in slices; the last session stays on screen until the next one is ready.
+  const [shown, setShown] = useState<{ store: FakeThread; key: string } | null>(null);
+  useEffect(() => {
+    let gone = false;
+    // shortcut: a superseded build runs to the end and is dropped, fine for a demo.
+    void fakeSession(size, 1, huge).then((session) => gone || setShown({ store: new FakeThread(session), key: `${size}:${huge}` }));
+    return () => {
+      gone = true;
+    };
+  }, [size, huge]);
+  const store = shown?.store;
+  useEffect(() => (streaming ? store?.stream() : undefined), [store, streaming]);
+  const source = store ?? LOADING;
+  const running = useSyncExternalStore(source.subscribe, () => source.get()?.turns.at(-1)?.status === "running");
   return (
     <main className="fixed inset-0 flex flex-col">
       {/* Buttons in a drag region don't take clicks, so only the empty parts drag. */}
@@ -46,13 +59,13 @@ export function Demo() {
         <Toggle on={streaming} onClick={() => setStreaming(!streaming)}>
           Streaming
         </Toggle>
-        <Toggle onClick={() => thread.current?.toIndex(Math.floor(store.get().items.length * 0.05))}>Jump far up</Toggle>
+        <Toggle onClick={() => store && thread.current?.toIndex(Math.floor(store.get().items.length * 0.05))}>Jump far up</Toggle>
         <Toggle onClick={() => thread.current?.toBottom()}>Jump to bottom</Toggle>
         <Toggle onClick={() => thread.current && fling(thread.current)}>Fling</Toggle>
         <div className="app-drag h-full flex-1" />
       </header>
       <div className="min-h-0 flex-1">
-        <Thread key={`${size}:${huge}`} source={store} ref={thread} footer={running ? <Working store={store} /> : null} />
+        <Thread key={shown?.key} source={source} ref={thread} footer={running && store ? <Working store={store} /> : null} />
       </div>
       <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-4">
         <textarea
