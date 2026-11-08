@@ -49,7 +49,7 @@ const kill = (pid, sig = 'SIGKILL') => { try { process.kill(pid, sig) } catch {}
 const ownerPid = (id) => cli(['owner', id]).out.pid
 // Only processes of this run: its own data folder or its own binaries, never a shell or this script.
 const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsWith(DATA) || p.cmd.startsWith(`${BIN}/`)) && !/drill\.mjs|^\S*(zsh|bash|node)\b/.test(p.cmd))
-const agentsOf = (id) => ps().filter((p) => p.cmd.includes('brigadier-fake agent') && p.cmd.includes(`/sessions/${id}/fake`))
+const agentsOf = (id) => ps().filter((p) => p.cmd.includes('brigadier-fake agent') && p.cmd.includes(`${DATA}/sessions/${id}/fake`))
 
 // The fake agent's ledger: ground truth kept outside Brigadier.
 function ledger(name = 'ledger') {
