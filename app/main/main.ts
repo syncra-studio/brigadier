@@ -15,7 +15,10 @@ const uiDist = path.join(uiDir, "dist");
 // BRIGADIER_DATA points the app and its daemon at another data folder, as it does for the CLI.
 const dataDir = process.env.BRIGADIER_DATA ?? path.join(app.getPath("appData"), APP_NAME);
 const socketPath = path.join(dataDir, "daemon.sock");
-const daemonPath = path.join(__dirname, "../../../target/debug/brigadierd");
+// Packaged, the bundle's daemon installs its build outside the bundle and execs it there [D40].
+const [daemonPath, daemonArgs] = app.isPackaged
+  ? [path.join(process.resourcesPath, "bin/brigadierd"), ["--install"]]
+  : [path.join(__dirname, "../../../target/debug/brigadierd"), []];
 
 const themeBackground = /--color-background:\s*([^;]+);/.exec(readFileSync(path.join(uiDir, "src/theme.css"), "utf8"))![1];
 
@@ -27,7 +30,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: t
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
 // older one, which may answer but refuse this app.
 function startDaemon(): void {
-  const daemon = spawn(daemonPath, { detached: true, stdio: "ignore" });
+  const daemon = spawn(daemonPath, daemonArgs, { detached: true, stdio: "ignore" });
   daemon.once("error", (error) => console.error("Could not start the daemon:", error));
   daemon.unref();
 }

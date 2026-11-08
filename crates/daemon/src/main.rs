@@ -15,7 +15,7 @@
 //! `resize` go to its host, named by the terminal's spawn id [D47].
 //!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
-//! replaces an older one (`replace_older`).
+//! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`).
 
 use brigadier::index::{self, Index};
 use brigadier_core::fold;
@@ -40,6 +40,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{process, thread};
 
+mod install;
 mod term;
 
 const PROTOCOL_VERSION: u32 = 2;
@@ -73,6 +74,9 @@ fn main() -> io::Result<()> {
     let data = data_dir();
     fs::create_dir_all(&data)?;
     fs::set_permissions(&data, Permissions::from_mode(0o700))?;
+    if std::env::args().nth(1).as_deref() == Some("--install") {
+        return install::install_and_exec(&data);
+    }
     // The kernel frees this lock however a daemon dies, so whoever holds it owns the socket and the
     // index, and two daemons starting together can't replace each other's.
     let lock = data.join("daemon.lock");

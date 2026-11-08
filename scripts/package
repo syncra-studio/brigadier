@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Builds out/Brigadier-darwin-arm64/Brigadier.app, signed ad hoc. The Rust binaries ride in
+# Contents/Resources/bin; the app installs them outside the bundle at launch [D40].
+# APP_ID gives a test build its own bundle id, and with it its own privacy permissions.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+export PATH="$HOME/.cargo/bin:$PATH"
+# Packaged builds number themselves by commit count, as `pnpm start` does (proposed).
+BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build --release --locked
+pnpm build
+rm -rf target/bin
+mkdir target/bin
+cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake} target/bin/
+node --input-type=module <<'EOF'
+import { packager } from "@electron/packager";
+// osx-sign's own defaults for an Electron app, plus Apple Events for agents that script other apps.
+const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "device.camera", "device.print", "device.usb",
+  "personal-information.location", "personal-information.photos-library", "automation.apple-events"]
+  .map((e) => `com.apple.security.${e.startsWith("allow") ? "cs." : ""}${e}`);
+await packager({
+  dir: ".",
+  name: "Brigadier",
+  appBundleId: process.env.APP_ID ?? "sh.brigadier.app",
+  out: "out",
+  overwrite: true,
+  extraResource: ["target/bin", "THIRD_PARTY_NOTICES.md"],
+  extendInfo: { NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task." },
+  // Only what the app reads at run time: the UI is bundled, so no node_modules.
+  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist)|\/ui($|\/dist|\/src($|\/theme\.css$))))/,
+  osxSign: {
+    identity: "-",
+    identityValidation: false,
+    // Ad hoc code has no Team ID, so hardened runtime's library validation would refuse Electron's
+    // own framework. A Developer ID build turns it on: notarization requires it.
+    optionsForFile: (file) => ({ timestamp: "none", hardenedRuntime: false, ...(file.endsWith("/Brigadier.app") && { entitlements }) }),
+  },
+});
+EOF
