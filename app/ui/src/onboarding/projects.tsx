@@ -176,7 +176,7 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
       </div>
       <StepFooter
         onBack={onBack}
-        count={`${count} of ${addable.length} selected`}
+        count={addable.length === 0 ? `${added.length} already added` : `${count} of ${addable.length} selected`}
         primary={{
           label: busy === "adding" ? "Adding…" : count === 0 ? (added.length ? "Finish" : "Continue without projects") : `Add ${count} ${count === 1 ? "project" : "projects"}`,
           onClick: () => void finish(),
