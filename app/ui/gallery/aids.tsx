@@ -47,12 +47,12 @@ const CHATS: Mention[] = [
   { id: "c2", type: "chat", label: "Composer slice 3", hint: "yesterday" },
 ];
 export const COMMANDS: SlashCommand[] = [
-  { id: "compact", kind: "command", label: "/compact", description: "Save the context so far" },
-  { id: "review", kind: "command", label: "/review", description: "Review the changes", text: "/review" },
-  { id: "model", kind: "command", label: "/model", description: "Pick another model", disabled: true, hint: "While working" },
-  { id: "skill-docs", kind: "skill", label: "/docs", description: "Write the docs for a change", text: "/docs" },
-  { id: "skill-kit", kind: "skill", label: "/kit", description: "Port a component to the kit", text: "/kit" },
-  { id: "mcp-triage", kind: "mcp", source: "issues", label: "/issues:triage", description: "Sort the new issues by area and urgency", text: "/issues:triage" },
+  { id: "compact", kind: "command", label: "/compact", description: "Save the context so far", instant: true },
+  { id: "review", kind: "command", label: "/review", description: "Review the changes", instant: false },
+  { id: "model", kind: "command", label: "/model", description: "Pick another model", disabled: true, hint: "While working", instant: true },
+  { id: "skill-docs", kind: "skill", label: "/docs", description: "Write the docs for a change", instant: false },
+  { id: "skill-kit", kind: "skill", label: "/kit", description: "Port a component to the kit", instant: false },
+  { id: "mcp-triage", kind: "mcp", source: "issues", label: "/issues:triage", description: "Sort the new issues by area and urgency", instant: false },
 ];
 
 /** Rust's stand-in search: files, folders and chats matching the query, each under its heading; with nothing typed, a hint for files. */

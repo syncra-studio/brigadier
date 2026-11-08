@@ -7,7 +7,7 @@ import { cx } from "../cx";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
-import { Segment, SegmentedRoot } from "../segmented";
+import { Segmented } from "../segmented";
 import { ComposerPill } from "./composer";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
@@ -44,12 +44,6 @@ const MODEL_ROW = cx(
   "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-surface ps-2.5 pe-8 text-start text-sm outline-none",
   "hover:bg-fill focus-visible:bg-fill",
 );
-// One level in the footer: the fill is the chosen one, the ring the keyboard. The old picker's 10% fill, not the kit Segmented's 5%.
-const SEGMENT = cx(
-  "flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-capsule px-2 text-label whitespace-nowrap text-faint-foreground outline-none",
-  "transition-colors hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground motion-reduce:transition-none",
-);
-
 /** ↑ ↓ move through a list's rows, ← → between the agents and the models. */
 function moveKeys(event: KeyboardEvent<HTMLDivElement>) {
   const here = (event.target as HTMLElement).closest<HTMLElement>("[role=listbox]");
@@ -170,19 +164,13 @@ export function ModelPicker({
                   Effort
                   <span className="opacity-75"> · {model.name}</span>
                 </div>
-                {/* Arrow keys move between the levels; the group is one Tab stop. */}
-                <SegmentedRoot
-                  aria-label="Effort"
-                  value={value.effort ? [value.effort] : []}
-                  onValueChange={([level]) => level !== undefined && onChange({ ...value, effort: level })}
-                  className="flex shrink-0 items-center gap-0.5"
-                >
-                  {model.efforts.map((level) => (
-                    <Segment key={level} value={level} title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined} className={SEGMENT}>
-                      {effortLabel(level)}
-                    </Segment>
-                  ))}
-                </SegmentedRoot>
+                <Segmented
+                  label="Effort"
+                  value={value.effort ?? ""}
+                  options={model.efforts.map((level) => ({ value: level, label: effortLabel(level) }))}
+                  onChange={(level) => onChange({ ...value, effort: level })}
+                  className="shrink-0"
+                />
               </div>
             )}
           </div>
@@ -223,7 +211,7 @@ export function SwitchAgentDialog({
       <DialogContent container={held} initialFocus={held ? false : confirm}>
         <ConfirmForm
           title={`Switch to ${name}?`}
-          description={`The chat goes on with ${name} in a new conversation. It gets a hand-off of everything so far, so nothing is lost.`}
+          description={`The chat goes on with ${name} in a new conversation, and it gets everything so far, so nothing is lost.`}
           confirm="Switch"
           onCancel={onCancel}
           onConfirm={onConfirm}
@@ -239,7 +227,7 @@ export type PermissionLevel = "ask" | "acceptEdits" | "full";
 
 const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
   { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
-  { level: "acceptEdits", label: "Accept edits", detail: "Edits files freely, asks before other commands", Icon: ShieldTerminal },
+  { level: "acceptEdits", label: "Auto", detail: "Edits files freely, asks before other commands", Icon: ShieldTerminal },
   { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
 ];
 

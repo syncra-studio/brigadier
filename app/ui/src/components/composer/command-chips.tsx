@@ -45,14 +45,14 @@ function $scanTo(target: TextNode): Scan | null {
 
 /**
  * Turns each of the menu's commands in the text into its chip, picked or typed by hand ("use the /docs skill"),
- * once a space ends it: a `/word` starting a word and naming a listed command that types itself (`text`). One in `code` or a ``` block, or
+ * once a space ends it: a `/word` starting a word and naming a listed command that isn't `instant`. One in `code` or a ``` block, or
  * a path like /usr/bin, stays text.
  */
 export function CommandChips({ commands }: { commands: SlashCommand[] | null }) {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
-    // One that runs at once when picked (no `text`) stays plain when typed.
-    const byLabel = new Map((commands ?? []).filter((command) => command.text).map((command) => [command.label, command]));
+    // One that runs at once when picked stays plain when typed.
+    const byLabel = new Map((commands ?? []).filter((command) => !command.instant).map((command) => [command.label, command]));
     if (byLabel.size === 0) return;
     return editor.registerNodeTransform(TextNode, (node) => {
       if (!node.isSimpleText()) return;

@@ -46,8 +46,8 @@ export type SlashCommand = {
   icon?: string | null;
   hint?: string;
   disabled?: boolean;
-  /** What picking it types where the `/` was (an agent's "/review"), the rest kept; without it, it runs. */
-  text?: string;
+  /** Runs at once when picked (/compact); otherwise picking types its `label` where the `/` was, the rest kept. */
+  instant: boolean;
 };
 
 /** `commands` null: not listed yet (the menu says it's loading, never "No commands"). */
@@ -333,7 +333,7 @@ export function SlashPlugin({ commands, onRun }: Commands) {
       onSelectOption={(option, replacing, close) => {
         const command = option.value;
         if (command.disabled) return;
-        if (command.text !== undefined) $putWithSpace($createTextNode(command.text), replacing);
+        if (!command.instant) $putWithSpace($createTextNode(command.label), replacing);
         else {
           replacing?.remove();
           // After the pick's update, so the command sees the text without its `/`.
