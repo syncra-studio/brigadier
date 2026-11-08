@@ -40,8 +40,11 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
     }
     // On the account the session runs on now [D51].
     let spec = &crate::as_run(spec, f, b, None);
-    // Its account gets the project's trust entry first; a failure only means it may ask [D166].
-    let _ = crate::trust::ensure(spec, a);
+    // Its account gets the project's trust entry first; an untrusted answer that can't be written
+    // refuses the launch, as it does a turn, or the CLI could trust the folder itself [D182].
+    if let Err(e) = crate::trust::ensure(spec, a) {
+        return json!({"ok": false, "error": "unsupported", "message": e});
+    }
     let (launch, conv) = match a.terminal(spec, f.resume.get(b).map(String::as_str)) {
         Ok(l) => l,
         Err(e) => return json!({"ok": false, "error": "unsupported", "message": e}),

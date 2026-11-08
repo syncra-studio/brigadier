@@ -105,7 +105,7 @@ fn real(p: &Path) -> PathBuf {
 }
 
 /// The config files of each CLI that keeps trust: the computer's login (when the CLI is set up)
-/// and each extra account's home that has one; or only `only`'s CLI in its run's home.
+/// and each extra account's home that has one; or only `only`'s CLI in its run's home, new or not.
 fn files(
     data: &Path,
     only: Option<(&dyn Adapter, Option<&Path>)>,
@@ -121,8 +121,10 @@ fn files(
         let mut paths = vec![];
         match only {
             Some((_, Some(h))) => paths.push(h.join(trust.file)),
-            _ if home_path(home).is_dir() => paths.push(home_path(trust.default)),
-            _ => {}
+            // A run is about to make this home if it's new, and may trust the folder itself [D182].
+            Some((_, None)) => paths.push(home_path(trust.default)),
+            None if home_path(home).is_dir() => paths.push(home_path(trust.default)),
+            None => {}
         }
         if only.is_none() {
             let accounts = fs::read_dir(data.join("accounts")).into_iter().flatten();
@@ -251,7 +253,11 @@ pub fn ensure(spec: &Spec, a: &dyn Adapter) -> Result<(), String> {
             if trust.untrusted.is_some()
                 && !projects::get(&data, &id).is_ok_and(|p| p.trusted == Some(true)) =>
         {
-            Err(f["error"].as_str().unwrap_or_default().into())
+            let why = f["error"].as_str().unwrap_or_default();
+            Err(format!(
+                "This folder isn't trusted, and Brigadier couldn't record that in {}'s own settings, so it could trust the folder on its own: {why}",
+                a.label()
+            ))
         }
         _ => Ok(()),
     }
