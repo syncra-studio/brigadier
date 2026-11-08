@@ -41,12 +41,11 @@ struct Entry {
     orphaned_since: Option<u64>,
     /// Its `session.json`, read once: what never changes after the start.
     spec: Option<core::Spec>,
-    /// The user's own marks in its folder, read again only when the folder changes.
+    /// Small session files, read again only when the folder changes.
     marks: Marks,
 }
 
-/// The small files `rename`, `pin`, `unread` and `seen` write, each by temp file and rename, so
-/// every write changes the folder's time [D185, D186].
+/// Marks and setup output, published by creating or renaming entries in the session folder.
 #[derive(Default)]
 struct Marks {
     /// The folder's modification time (ms) these were read at.
@@ -55,6 +54,7 @@ struct Marks {
     pinned: Option<u64>,
     unread: bool,
     seen: u64,
+    setup: Value,
 }
 
 impl Marks {
@@ -67,6 +67,8 @@ impl Marks {
             pinned: ms("pinned"),
             unread: dir.join("unread").exists(),
             seen: ms("seen").unwrap_or(0),
+            // Cache the files; whether an unfinished setup is still alive is checked every tick.
+            setup: core::worktrees::setup_state(dir, true),
         }
     }
 }
@@ -223,11 +225,16 @@ impl Index {
                 .as_ref()
                 .and_then(|s| projects::of(s, &projects, &mut self.roots));
             let title = e.marks.title.as_ref().unwrap_or(&e.title);
+            let alive = live.child.is_some();
+            let mut setup = e.marks.setup.clone();
+            if !alive && setup["state"] == "running" {
+                setup["state"] = "interrupted".into();
+            }
             let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project, "setup": core::worktrees::setup_state(&dir, live.child.is_some())});
+                             "project": project, "setup": setup});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

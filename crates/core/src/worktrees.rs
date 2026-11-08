@@ -329,7 +329,7 @@ pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
         return argv;
     }
     if started.exists() {
-        let _ = fs::write(&exit, "interrupted");
+        let _ = write_atomic(&exit, b"interrupted");
         return argv;
     }
     let script = projects::list(data)
@@ -343,8 +343,21 @@ pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
         return argv;
     }
     let path = |name: &str| spec.dir.join(name).display().to_string();
-    // The script is an argument of its own, never part of this line.
-    let line = r#"if (set -C; : >"$2") 2>/dev/null; then (cd "$5" && /bin/sh -c "$1") </dev/null >"$3" 2>&1; echo $? >"$4"; fi; shift 5; exec "$@""#;
+    // The script stays an argument; renaming the tail wakes the folder-mtime gate in the index.
+    let line = r#"if (set -C; : >"$2") 2>/dev/null; then
+    : >"$3.raw"
+    (cd "$5" && /bin/sh -c "$1") </dev/null >"$3.raw" 2>&1 &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        tail -c 8192 "$3.raw" >"$3.tmp" && mv -f "$3.tmp" "$3"
+        sleep 1
+    done
+    wait "$pid"; code=$?
+    tail -c 8192 "$3.raw" >"$3.tmp" && mv -f "$3.tmp" "$3"
+    rm -f "$3.raw"
+    printf '%s\n' "$code" >"$4.tmp" && mv -f "$4.tmp" "$4"
+fi
+shift 5; exec "$@""#;
     let head = ["/bin/sh", "-c", line, "sh"].map(String::from);
     let files = [
         script,
