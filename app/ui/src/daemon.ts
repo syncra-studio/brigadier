@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Item, Session, Turn } from "./thread/item";
+import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
@@ -40,6 +40,9 @@ let session: Session | null = null;
 let threadRe = 0;
 let threadN: number | undefined;
 let itemAt = new Map<string, number>();
+// The `n` of the first row held, or null once the whole history is in; the older page asked for, if any [D97].
+let before: number | null = null;
+let olderRe = 0;
 const threadListeners = new Set<() => void>();
 
 function set(next: Partial<View>): void {
@@ -81,6 +84,7 @@ function setThread(next: ThreadState | undefined, nextSession = session): void {
 
 function watch(): void {
   threadN = undefined;
+  olderRe = 0;
   if (thread && view.daemon) threadRe = send({ op: "thread", session: thread.id });
 }
 
@@ -102,6 +106,8 @@ function applyThread(frame: Record<string, any>): void {
   const items = session.items.slice();
   for (const item of frame.items as Item[]) {
     const at = itemAt.get(item.id);
+    // A row older than the pages held comes with its page.
+    if (at === undefined && before !== null && item.n !== undefined && item.n < before) continue;
     if (at === undefined) itemAt.set(item.id, items.push(item) - 1);
     else items[at] = item;
   }
@@ -145,7 +151,22 @@ function onFrame(frame: Record<string, any>): void {
     const next: Session = frame.session;
     itemAt = new Map(next.items.map((item, at) => [item.id, at]));
     threadN = frame.n;
+    before = frame.session.before;
     setThread({ id: thread.id, status: "ready" }, next);
+  } else if (thread && session && olderRe && frame.re === olderRe) {
+    olderRe = 0;
+    if (!frame.ok) return;
+    const turns = new Set(session.turns.map((turn) => turn.id));
+    const work = new Set(session.work?.map((each) => each.turnId));
+    const items = [...(frame.items as Item[]), ...session.items];
+    itemAt = new Map(items.map((item, at) => [item.id, at]));
+    before = frame.before;
+    setThread(thread, {
+      ...session,
+      items,
+      turns: [...(frame.turns as Turn[]).filter((turn) => !turns.has(turn.id)), ...session.turns],
+      work: [...(frame.work as Work[]).filter((each) => !work.has(each.turnId)), ...(session.work ?? [])],
+    });
   } else if (frame.thread !== undefined) {
     applyThread(frame);
   } else if (frame.re === undefined && typeof frame.n === "number" && n !== undefined) {
@@ -214,6 +235,9 @@ export const threadSource: Source = {
     return () => threadListeners.delete(listener);
   },
   get: () => session,
+  older() {
+    if (thread && session && before !== null && !olderRe && view.daemon) olderRe = send({ op: "thread_older", session: thread.id, before });
+  },
 };
 
 export const useThread = (): ThreadState | undefined => useSyncExternalStore(threadSource.subscribe, () => thread);

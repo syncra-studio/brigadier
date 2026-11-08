@@ -31,6 +31,8 @@ struct Open {
     asked: Option<usize>,
     wait: Option<u64>,
     waited: u64,
+    /// `n` of its question rows: they stay out of its work fold, like the user's own messages [D99].
+    kept: Vec<u64>,
 }
 
 #[derive(Default)]
@@ -52,6 +54,9 @@ pub struct Thread {
     changed_turns: BTreeSet<usize>,
     sent_work: usize,
 }
+
+/// About how many rows the snapshot and each older page carry [D98].
+const PAGE: usize = 2000;
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
 const CLOSES: [&str; 7] = [
@@ -132,6 +137,7 @@ impl Thread {
             asked: None,
             wait: None,
             waited: 0,
+            kept: vec![],
         });
         // An input, or a prompt typed in the terminal (the user's, with no command id).
         if t.cid.is_some() || t.origin == "user" {
@@ -177,14 +183,18 @@ impl Thread {
         turn["status"] = status.into();
         turn["endedAt"] = ts.into();
         self.changed_turns.insert(o.at);
-        // "Worked for" folds a done turn's work up to its answer, and leaves its waits out [D77].
+        // "Worked for" folds a done turn's work up to its answer, and leaves its waits out [D77]. Its
+        // questions, with the user's answers, stay visible inside it [D99].
         if let (true, true, Some(first), Some(answer)) =
             (status == "done", o.input, o.first, o.answer)
-            && first < answer
         {
-            let ms = ts.saturating_sub(o.started).saturating_sub(o.waited);
-            self.work
-                .push(json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1]}));
+            let kept: Vec<u64> = o.kept.into_iter().filter(|&n| n < answer).collect();
+            if first + (kept.len() as u64) < answer {
+                let ms = ts.saturating_sub(o.started).saturating_sub(o.waited);
+                self.work.push(
+                    json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1], "kept": kept}),
+                );
+            }
         }
     }
 
@@ -268,9 +278,58 @@ impl Thread {
         (!items.is_empty() || !turns.is_empty() || !work.is_empty()).then_some((items, turns, work))
     }
 
-    /// The whole thread as the view's Session; what changed so far counts as sent.
+    /// The view's Session with only its newest page of rows [D97, D98]; what changed so far counts
+    /// as sent.
     pub fn session(&mut self, id: &str, title: &str) -> Value {
         self.take();
-        json!({"id": id, "title": title, "turns": self.turns, "items": self.items, "work": self.work})
+        let mut page = self.page(self.items.len());
+        page["id"] = id.into();
+        page["title"] = title.into();
+        page
+    }
+
+    /// The page of rows just older than row `before` (an `n`), for a view scrolling up [D97].
+    pub fn older(&self, before: u64) -> Value {
+        self.page((before.saturating_sub(1) as usize).min(self.items.len()))
+    }
+
+    /// Whole turns ending at row index `end`, newest first, up to about `PAGE` rows and at least
+    /// one turn, with their turns and work, and `before`: the `n` of its first row, or null when
+    /// nothing is older.
+    fn page(&self, end: usize) -> Value {
+        let turn = |at: usize| &self.items[at]["turnId"];
+        let mut start = end;
+        while start > 0 {
+            let mut from = start - 1;
+            while from > 0 && turn(from - 1) == turn(start - 1) {
+                from -= 1;
+            }
+            if start < end && end - from > PAGE {
+                break;
+            }
+            start = from;
+        }
+        // Its turns run from its first row's to the next page's, so a turn with no rows yet comes too.
+        let place = |at: usize| {
+            self.turns
+                .iter()
+                .position(|t| t["id"] == *turn(at))
+                .unwrap_or(self.turns.len())
+        };
+        let first = if start < end { place(start) } else { 0 };
+        let last = if end < self.items.len() {
+            place(end)
+        } else {
+            self.turns.len()
+        };
+        let turns = &self.turns[first.min(last)..last];
+        let ids: HashSet<&Value> = turns.iter().map(|t| &t["id"]).collect();
+        let work: Vec<&Value> = self
+            .work
+            .iter()
+            .filter(|w| ids.contains(&w["turnId"]))
+            .collect();
+        let before = (start > 0).then(|| self.items[start]["n"].clone());
+        json!({"turns": turns, "items": &self.items[start..end], "work": work, "before": before})
     }
 }

@@ -10,6 +10,9 @@
 //! `{"id", "op": "thread", "session"}` answers `{"re", "ok", "n", "session"}`, the session's thread
 //! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
 //! what it names by id [D40, D64, D65]. One thread per connection: a new request ends the last.
+//! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
+//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
+//! answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that [D97, D98].
 //!
 //! `{"id", "op": "terminal", "session"}` streams the session's terminal (see `term`); `keys` and
 //! `resize` go to its host, named by the terminal's spawn id [D47].
@@ -56,6 +59,8 @@ const TICK: Duration = Duration::from_millis(500);
 const ROUTED: [&str; 6] = ["start", "send", "stop", "recover", "delete", "terminal"];
 /// How often an open thread checks its log for new frames.
 const FOLLOW: Duration = Duration::from_millis(100);
+
+type Shown = Arc<Mutex<Option<(String, Arc<Mutex<Thread>>)>>>;
 
 struct Sub {
     out: Sender<String>,
@@ -239,6 +244,8 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
     let watching = Arc::new(AtomicU64::new(0));
     // The same for the terminal stream, and the bytes of it the app has drawn.
     let (terming, acked) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
+    // The thread this connection watches, by session, for its older pages.
+    let shown: Shown = Arc::default();
     let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
     let _ = out.send(hello.to_string());
     while let Ok(text) = wire::read_frame(&mut stream) {
@@ -269,8 +276,29 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
                     .get(&id)
                     .map_or(Value::Null, |r| r["title"].clone());
                 let mine = watching.fetch_add(1, Ordering::SeqCst) + 1;
-                let (out, data, watching) = (out.clone(), PathBuf::from(data), watching.clone());
-                thread::spawn(move || watch(&data, &id, title, re, &out, mine, &watching));
+                let (out, data) = (out.clone(), PathBuf::from(data));
+                let (watching, shown) = (watching.clone(), shown.clone());
+                thread::spawn(move || watch(&data, &id, title, re, &out, mine, &watching, &shown));
+            }
+            "thread_older" => {
+                let id = req["session"].as_str().unwrap_or("");
+                let before = req["before"].as_u64().unwrap_or(0);
+                let thread = shown
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .filter(|(s, _)| s == id)
+                    .map(|(_, t)| t.clone());
+                let reply = match thread {
+                    Some(thread) => {
+                        let mut page = thread.lock().unwrap().older(before);
+                        page["re"] = re;
+                        page["ok"] = true.into();
+                        page
+                    }
+                    None => json!({"re": re, "ok": false, "error": "not_watching"}),
+                };
+                let _ = out.send(reply.to_string());
             }
             "terminal" => {
                 let id = req["session"].as_str().unwrap_or("").to_string();
@@ -339,8 +367,10 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
 /// Folds a session's log into its thread, sends it, then follows the log and sends what changed,
 /// numbered on from the snapshot and tagged with this watch's request, until `watching` moves past
 /// `mine`. A host that died mid-turn writes no frame, so the live state ends such a turn [D60].
-// shortcut: every open folds the whole log and sends the whole thread; add a thread checkpoint and
-// paging once long sessions make opening slow.
+/// The thread is locked while a change is taken and sent, so an older page never passes it.
+// shortcut: every open folds the whole log; add a thread checkpoint once long sessions make opening
+// slow.
+#[allow(clippy::too_many_arguments)]
 fn watch(
     data: &Path,
     id: &str,
@@ -349,13 +379,15 @@ fn watch(
     out: &Sender<String>,
     mine: u64,
     watching: &AtomicU64,
+    shown: &Shown,
 ) {
     let dir = session_dir(data, id);
     if check_id(id).is_err() || !dir.join("session.json").exists() {
         let _ = out.send(json!({"re": re, "ok": false, "error": "not_found"}).to_string());
         return;
     }
-    let (mut thread, mut norm, mut items) = (Thread::default(), Norm::default(), vec![]);
+    let (shared, mut norm, mut items) = (Arc::<Mutex<Thread>>::default(), Norm::default(), vec![]);
+    let mut thread = shared.lock().unwrap();
     let mut reader: Option<Reader> = None;
     let log = dir.join("log");
     let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
@@ -389,6 +421,13 @@ fn watch(
     if out.send(snapshot.to_string()).is_err() {
         return;
     }
+    drop(thread);
+    {
+        let mut shown = shown.lock().unwrap();
+        if watching.load(Ordering::SeqCst) == mine {
+            *shown = Some((id.to_string(), shared.clone()));
+        }
+    }
     let tag = |mut frame: Value| {
         frame["thread"] = id.into();
         frame["watch"] = re.clone();
@@ -400,6 +439,7 @@ fn watch(
         if watching.load(Ordering::SeqCst) != mine {
             return;
         }
+        let mut thread = shared.lock().unwrap();
         // Deleted: say so. Replaced (deleted and made again): the client asks for a fresh thread.
         if !dir.join("session.json").exists() {
             let _ = out.send(tag(json!({"error": "not_found"})));

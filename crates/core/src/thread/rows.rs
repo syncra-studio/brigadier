@@ -144,6 +144,7 @@ impl Thread {
                 self.keys.insert(key(str_of("id")), at);
                 if let Some(o) = self.open.as_mut() {
                     o.asked = Some(at);
+                    o.kept.push(at as u64 + 1);
                     if o.wait.is_none() {
                         o.wait = Some(ts);
                         self.turns[o.at]["waitingSince"] = ts.into();

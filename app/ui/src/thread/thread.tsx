@@ -7,7 +7,7 @@ import { LineRow } from "./rows";
 import { ScrollFade } from "../components/scroll-fade";
 
 /** Where the session comes from: null while it loads. */
-export type Source = { subscribe(listener: () => void): () => void; get(): Session | null };
+export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
 export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void };
 
 /** How close to the end, in px, still counts as at the bottom. */
@@ -265,6 +265,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           stuck.current = end && space.get() === 0;
           // A pinned message's space is the latest, wherever our own moves pass on the way.
           setAway(!end && pin.current?.released !== false);
+          // Near the top, the source brings older rows, if it has any.
+          if (offset < handle.viewportSize) source.older?.();
         }}
       >
         {(line: Line | typeof FOOTER) =>

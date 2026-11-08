@@ -34,9 +34,10 @@ export type StepKind = "read" | "edit" | "search" | "run" | "web" | "agent" | "o
 /**
  * A finished turn's work: how long it took and the items folded under "Worked for …", by `n`, first and last.
  * `ms` leaves out the turn's waits on the user (`Turn.waitedMs`): "Worked for 3m 4s · waited for 1m 2s".
+ * `kept`: rows in it that stay visible, its questions with the user's answers [D99].
  * It folds exactly one turn. A background job still running after the turn ends is its own status, not part of it.
  */
-export type Work = { turnId: string; ms: number; folded: [number, number] };
+export type Work = { turnId: string; ms: number; folded: [number, number]; kept?: number[] };
 
 /** How far an action has got. */
 export type Progress = "pending" | "running" | "done" | "failed" | "cancelled";

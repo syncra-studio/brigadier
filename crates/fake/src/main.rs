@@ -133,19 +133,20 @@ impl Agent {
         let first = text.split_whitespace().next().unwrap_or("");
         ledger(&format!("recv {} {first}", self.sid));
         self.note(&format!("recv {text}"));
+        let words: Vec<&str> = text.split_whitespace().collect();
+        // An answer goes on with the waiting turn, acting out its own directives.
         if self.waiting {
             self.waiting = false;
             self.say("thanks for the answer");
-            return emit(json!({"t": "done"}));
+        } else {
+            if text.contains("noturn") {
+                return;
+            }
+            if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
+                thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
+            }
+            emit(json!({"t": "turn"}));
         }
-        if text.contains("noturn") {
-            return;
-        }
-        let words: Vec<&str> = text.split_whitespace().collect();
-        if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
-            thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
-        }
-        emit(json!({"t": "turn"}));
         for word in words {
             let word = word.to_lowercase();
             let word = word.as_str();

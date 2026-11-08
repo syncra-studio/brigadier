@@ -54,6 +54,7 @@ export function lineMaker() {
 
 function lines({ items, out, starts, counts }: Walk, from: number, turns: ReadonlyMap<string, Turn>, work: ReadonlyMap<string, Work>, open: ReadonlySet<string>): void {
   let fold: [number, number] | null = null;
+  let kept: number[] = [];
   let group: { span: [number, number]; open: boolean; single: boolean; line: GroupLine | null } | null = null;
   let before: Item | undefined;
   const push = (line: Line) => out.push(line);
@@ -89,10 +90,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       const opened = foldable ? open.has(key) : null;
       push({ type: "work", id: key, gap: "turn", turn, work: done, open: opened });
       fold = foldable && !opened ? done.folded : null;
+      kept = done?.kept ?? [];
     } else if (fold && !within(item.n, fold)) fold = null;
     before = item;
 
-    if (fold) continue;
+    if (fold && !kept.includes(item.n!)) continue;
     // Thinking is a row only while it lasts.
     if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
