@@ -85,6 +85,8 @@ export type Item = Base &
         origin?: "user" | "system";
         /** When it was sent, ms since the epoch. */
         sentAt?: number;
+        /** A steered message's command id, which the app's own copy settles by. */
+        cid?: string;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first

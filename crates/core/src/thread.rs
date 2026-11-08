@@ -135,7 +135,7 @@ impl Thread {
                     self.break_group();
                     self.add(
                         json!({"kind": "message", "role": "user", "text": item["text"],
-                        "streaming": false, "origin": "user", "sentAt": ts}),
+                        "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"]}),
                     );
                 }
             }
