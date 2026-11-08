@@ -19,6 +19,7 @@ import { listenToMenu } from "./projects/store";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { answeringSource } from "./session/decisions";
+import { PendingSideLines, useSidePending } from "./session/side";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { TerminalPane } from "./terminal/terminal";
@@ -146,6 +147,7 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   const sending = useSending(id);
+  const sides = useSidePending(id);
   const line =
     row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
     row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>;
@@ -174,13 +176,14 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                   <Thread
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || setup) && (
+                      (line || sending || starting || setup || sides) && (
                         <>
                           {/* Where the thread meets the composer: the worktree's setup script [D229]. */}
                           <SetupLine id={id} setup={setup} />
                           <StartingBubble id={id} />
                           {line}
                           <SentBubbles id={id} />
+                          <PendingSideLines source={id} />
                         </>
                       )
                     }

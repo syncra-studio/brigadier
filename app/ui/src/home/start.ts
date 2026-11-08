@@ -95,9 +95,12 @@ function runStart(entry: Starting): void {
   ask({ op: "run", args: entry.args }, (reply) => land(entry.id, reply));
 }
 
+/** A new session's id, made here so its row and thread show before Rust has it [D30]. */
+export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
 /** Starts a session from the draft and opens it at once; the draft's text goes. */
 export function start(project: string, workIn: WorkIn, model: ModelChoice, text: string, level?: string): void {
-  const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const id = sessionId();
   const cid = newId();
   const args = ["start", id, "--backend", model.provider, "--project", project, "--model", model.model, "--text", text, "--cid", cid];
   if (model.effort) args.push("--effort", model.effort);

@@ -4,6 +4,7 @@ import { AnswerMarks } from "../components/thread/message";
 import { Body } from "../components/thread/body";
 import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
+import { SideLine } from "../session/side";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -26,6 +27,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <GroupRow item={props.item} live={props.live} open={props.open} onToggle={props.onToggle} />
       ) : props.item.kind === "switch" ? (
         <SwitchRow item={props.item} />
+      ) : props.item.kind === "started" ? (
+        <SideLine item={props.item} />
       ) : (
         <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} actions={!(props.item.kind === "message" && props.item.final)} />
       )}

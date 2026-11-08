@@ -158,6 +158,21 @@ export type Item = Base &
         backend?: string;
         account?: string;
       }
+    /**
+     * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,
+     * with the text) then its result in place. The new session's title and status come from its own row; `title`
+     * here is for when that row is gone. `failed`: Rust's `error`, and what its cleanup couldn't remove (`left`).
+     */
+    | {
+        kind: "started";
+        session: string;
+        state: "starting" | "started" | "failed";
+        text: string | null;
+        base?: string | null;
+        title?: string | null;
+        error?: string | null;
+        left?: string[] | null;
+      }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );

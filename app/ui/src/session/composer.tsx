@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../components/composer/composer";
-import { isEmpty, plainText, sendMode } from "../components/composer/draft";
+import { type Draft, isEmpty, plainText, sendMode } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { ComposerRail, PausedSendDialog } from "../components/composer/rail";
@@ -13,6 +13,7 @@ import type { Source } from "../thread/thread";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
+import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
@@ -176,9 +177,28 @@ export function SessionComposer({ id, row, offline, blocked, run = daemonRun, so
     });
   };
 
+  // Send as new, from a project session only: ⌥⌘⏎, ⌘-click on Send, or the /new chip in the text [D183, D204].
+  const inProject = Boolean(row?.project);
+  const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
+  const submitNew = () => {
+    const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
+    if (held || isEmpty({ parts: rest, attachmentIds: [] })) return;
+    const pulled = editing.current;
+    editing.current = null;
+    field.current?.set([]);
+    setEmpty(true);
+    sendAsNew(id, plainText(rest), pulled?.qid);
+  };
+  usePutBack(id, (message) => {
+    field.current?.set([message]);
+    setEmpty(!message.trim());
+    field.current?.focus();
+  });
+
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
     if (held) return;
+    if (inProject && parts.some(isNew)) return submitNew();
     if (isEmpty({ parts, attachmentIds: [] })) {
       // ⌘⏎ with nothing typed steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued") steerQueued(items[0].id);
@@ -242,6 +262,8 @@ export function SessionComposer({ id, row, offline, blocked, run = daemonRun, so
           placeholder="Do anything"
           onChange={(parts) => changed(isEmpty({ parts, attachmentIds: [] }))}
           onSubmit={submit}
+          onSubmitNew={inProject ? submitNew : undefined}
+          commands={inProject ? { commands: [NEW_SESSION], onRun: () => {} } : undefined}
           onPullQueued={() => {
             const last = items.findLast((each) => each.state === "queued");
             if (!last) return false;
@@ -254,7 +276,7 @@ export function SessionComposer({ id, row, offline, blocked, run = daemonRun, so
           <ComposerTools />
           <ErrorLine error={stopError} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton empty={empty} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onStop={stop} />
+          <SendButton empty={empty} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog

@@ -47,18 +47,18 @@ export function StartedLine({
   const words = starting ? "Starting a new session" : base ? `Started a new session from ${base}` : "Started a new session";
   return (
     <LabeledDivider role="status">
-      {/* One run of words, so a wrapped line never starts at a dot. */}
+      {/* A no-break space before each dot, so a wrapped line never starts at one. */}
       <span className="min-w-0 text-center wrap-break-word">
-        <span className={starting ? "shimmer" : undefined}>{title ? `${words} · ${title}` : words}</span>
+        <span className={starting ? "shimmer" : undefined}>{title ? `${words}\u00a0· ${title}` : words}</span>
         {status && (
           <>
-            {" · "}
+            {"\u00a0· "}
             <span className={status === "working" ? "shimmer" : undefined}>{STATUS[status]}</span>
           </>
         )}
         {status && onOpen && (
           <>
-            {" · "}
+            {"\u00a0· "}
             <Button variant="link-blue" size={null} onClick={onOpen}>
               Open
             </Button>
