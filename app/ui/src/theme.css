@@ -99,6 +99,8 @@
   --color-setup-connected: color-mix(in oklab, var(--color-success) 10%, transparent);
   /* Its project cards' hover (muted/60). */
   --color-setup-card-hover: color-mix(in oklab, var(--color-muted) 60%, transparent);
+  /* The Full access permission level: its pill, row and confirm (the old theme's --full-access). */
+  --color-full-access: oklch(0.72 0.19 45);
   /* Claude's mark on its agent card, the old theme's --brand-claude; its adapter names it. */
   --color-brand-claude: oklch(0.672 0.131 38.8);
   /* An unchosen segment, a sidebar section's title. */
@@ -240,6 +242,9 @@
   /* A composer attachment: an image's thumbnail, a file's card. */
   --spacing-attachment-thumb: 7.625rem;
   --spacing-attachment-card: 14rem;
+  /* The model picker: its width and its one height. */
+  --spacing-model-picker: 33.75rem;
+  --spacing-model-picker-height: 22.25rem;
 
   --radius-sm: 0.375rem;
   --radius-xs: 0.1875rem;

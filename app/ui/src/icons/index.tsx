@@ -250,3 +250,40 @@ export function Paperclip(props: IconProps) {
     </svg>
   );
 }
+
+/** Ask: the agent asks before edits and commands. */
+export function HandRaised(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M10.25 4a.75.75 0 0 0-.75.75V10a1 1 0 1 1-2 0V6.75a.75.75 0 0 0-1.5 0V14a6 6 0 0 0 12 0V9.333A.333.333 0 0 0 17.667 9C16.747 9 16 9.746 16 10.667V12.5a1 1 0 0 1-.684.949l-.628.21A2.469 2.469 0 0 0 13 16a1 1 0 1 1-2 0 4.469 4.469 0 0 1 3-4.22v-1.113c0-.675.182-1.307.5-1.85V5.75a.75.75 0 0 0-1.5 0V9a1 1 0 1 1-2 0V4.75a.75.75 0 0 0-.75-.75Zm2.316-.733A2.75 2.75 0 0 1 16.5 5.75v1.44A3.66 3.66 0 0 1 17.667 7 2.333 2.333 0 0 1 20 9.333V14a8 8 0 1 1-16 0V6.75a2.75 2.75 0 0 1 3.571-2.625 2.751 2.751 0 0 1 4.995-.858Z"
+      />
+    </svg>
+  );
+}
+
+// The old app's own permission shields: apps-sdk-ui's ShieldCheck outline (MIT) with a mark inside.
+const SHIELD =
+  "M13.203 1.935a3 3 0 0 0-2.405 0l-6 2.625A3 3 0 0 0 3 7.308V13a9 9 0 1 0 18 0V7.308a3 3 0 0 0-1.797-2.748l-6-2.625Zm-1.604 1.832a1 1 0 0 1 .802 0l6 2.625a1 1 0 0 1 .599.916V13a7 7 0 1 1-14 0V7.308a1 1 0 0 1 .6-.916l6-2.625Z";
+
+/** Accept edits: a shield with a prompt (›_); edits go ahead, other commands ask. */
+export function ShieldTerminal(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path fillRule="evenodd" clipRule="evenodd" d={SHIELD} />
+      <path d="M7.793 9.793a1 1 0 0 1 1.414 0l2 2a1 1 0 0 1 0 1.414l-2 2a1 1 0 1 1-1.414-1.414L9.086 12.5l-1.293-1.293a1 1 0 0 1 0-1.414ZM12 15a1 1 0 0 1 1-1h3a1 1 0 1 1 0 2h-3a1 1 0 0 1-1-1Z" />
+    </svg>
+  );
+}
+
+/** Full access: a shield with an exclamation mark; nothing asks. */
+export function ShieldExclamation(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path fillRule="evenodd" clipRule="evenodd" d={SHIELD} />
+      <path d="M12 7.5a1 1 0 0 1 1 1V13a1 1 0 1 1-2 0V8.5a1 1 0 0 1 1-1ZM12 14.75a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 1 1 0-2.5Z" />
+    </svg>
+  );
+}

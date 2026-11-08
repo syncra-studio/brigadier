@@ -1,0 +1,335 @@
+import { type KeyboardEvent, useState } from "react";
+
+import { Check, ChevronDown, Dock, Folder, Globe, HandRaised, ShieldExclamation, ShieldTerminal, Terminal, Warning } from "../../icons";
+import { Button } from "../button";
+import { cx } from "../cx";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
+import { Popover, PopoverContent, PopoverTrigger } from "../popover";
+import { ComposerPill } from "./composer";
+
+/** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
+export type Model = { id: string; name: string; efforts: string[]; defaultEffort?: string };
+
+/** An agent's models, under its name and mark (one SVG from its adapter, as onboarding draws it). PROPOSED. */
+export type ModelGroup = { provider: string; label: string; mark: string | null; models: Model[] };
+
+/** What the session runs on. */
+export type ModelChoice = { provider: string; model: string; effort: string | null };
+
+/** "xhigh" → "Extra high", "medium" → "Medium". */
+export function effortLabel(effort: string): string {
+  const known: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+  return known[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+/** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */
+export function ProviderMark({ mark, className }: { mark: string | null; className?: string }) {
+  if (!mark) return <Terminal aria-hidden className={className} />;
+  return <span aria-hidden className={cx("inline-grid shrink-0 place-items-center svg:size-full", className)} dangerouslySetInnerHTML={{ __html: mark }} />;
+}
+
+const SIDEBAR_ROW = cx(
+  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-icon-button px-2.5 text-start text-label text-toolbar-foreground outline-none",
+  "hover:bg-fill focus-visible:bg-fill aria-selected:bg-fill aria-selected:text-foreground",
+);
+const MODEL_ROW = cx(
+  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-surface ps-2.5 pe-8 text-start text-sm outline-none",
+  "hover:bg-fill focus-visible:bg-fill",
+);
+// One level in the footer: the fill is the chosen one, the ring the keyboard.
+const SEGMENT = cx(
+  "flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-capsule px-2 text-label whitespace-nowrap text-faint-foreground outline-none",
+  "transition-colors hover:text-foreground focus-visible:focus-ring aria-checked:bg-fill-hover aria-checked:text-foreground motion-reduce:transition-none",
+);
+
+/** ↑ ↓ move through a list's rows, ← → between the agents and the models. */
+function moveKeys(event: KeyboardEvent<HTMLDivElement>) {
+  const here = (event.target as HTMLElement).closest<HTMLElement>("[role=listbox]");
+  if (!here) return;
+  const rows = (list: Element | null) => [...(list?.querySelectorAll<HTMLElement>("[role=option]") ?? [])];
+  const all = rows(here);
+  const at = all.indexOf(event.target as HTMLElement);
+  let next: HTMLElement | undefined;
+  if (event.key === "ArrowDown") next = all[Math.min(at + 1, all.length - 1)];
+  else if (event.key === "ArrowUp") next = all[Math.max(at - 1, 0)];
+  else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+    const other = event.currentTarget.querySelector(`[data-picker-part=${here.dataset["pickerPart"] === "agents" ? "models" : "agents"}]`);
+    const list = rows(other);
+    next = list.find((row) => row.getAttribute("aria-selected") === "true") ?? list[0];
+  } else return;
+  event.preventDefault();
+  next?.focus();
+}
+
+/**
+ * The model pill and its picker, opening upward: the agents beside the browsed one's models, a check on the
+ * one in use, and a footer with its effort levels. It opens on the agent in use; a pick keeps it open.
+ */
+export function ModelPicker({
+  groups,
+  value,
+  onChange,
+  disabled,
+}: {
+  groups: ModelGroup[];
+  value: ModelChoice;
+  onChange: (choice: ModelChoice) => void;
+  disabled?: boolean;
+}) {
+  const [browsing, setBrowsing] = useState(value.provider);
+  const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
+  const current = groups.find((entry) => entry.provider === value.provider);
+  const model = current?.models.find((entry) => entry.id === value.model);
+  // A new model keeps the effort when it has that level, else takes its own default.
+  const pick = (provider: string, next: Model) =>
+    onChange({
+      provider,
+      model: next.id,
+      effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
+    });
+  return (
+    <Popover onOpenChange={(open) => open && setBrowsing(value.provider)}>
+      <PopoverTrigger
+        disabled={disabled}
+        render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" className="gap-1" />}
+      >
+        <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
+        <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+        {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
+        <ChevronDown className="size-icon-xs" />
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" padded={false} aria-label="Model" className="max-w-full overflow-hidden">
+        {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the lists' arrow keys */}
+        <div data-slot="model-picker" onKeyDown={moveKeys} className="flex h-model-picker-height max-h-available w-model-picker max-w-full flex-col">
+          <div className="flex min-h-0 flex-1">
+            <div role="listbox" aria-label="Agents" data-picker-part="agents" className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5">
+              {groups.map((entry) => (
+                <button
+                  key={entry.provider}
+                  type="button"
+                  role="option"
+                  aria-selected={entry.provider === group?.provider}
+                  onClick={() => setBrowsing(entry.provider)}
+                  className={SIDEBAR_ROW}
+                >
+                  <ProviderMark mark={entry.mark} className="size-icon-md" />
+                  <span className="min-w-0 truncate">{entry.label}</span>
+                  <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.length}</span>
+                </button>
+              ))}
+            </div>
+            <div aria-hidden className="w-px shrink-0 bg-divider" />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5">
+              <div role="listbox" aria-label={`${group?.label ?? ""} models`} data-picker-part="models" className="flex flex-col gap-0.5">
+                {group?.models.map((entry) => {
+                  const checked = group.provider === value.provider && entry.id === value.model;
+                  return (
+                    <button key={entry.id} type="button" role="option" aria-selected={checked} onClick={() => pick(group.provider, entry)} className={MODEL_ROW}>
+                      <span className="min-w-0 truncate">{entry.name}</span>
+                      {checked && <Check aria-hidden className="size-icon-sm shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+              {group?.models.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models listed yet</p>}
+            </div>
+          </div>
+          <div className="flex h-11 shrink-0 items-center gap-3 border-t border-divider ps-4 pe-2.25">
+            <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              Effort
+              {model && <span className="opacity-75"> · {model.name}</span>}
+            </div>
+            <div role="radiogroup" aria-label="Effort" className="flex shrink-0 items-center gap-0.5">
+              {!model || model.efforts.length === 0 ? (
+                <div className="pe-1.75 text-xs text-muted-foreground">{model ? "No effort levels" : "Pick a model"}</div>
+              ) : (
+                model.efforts.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    role="radio"
+                    aria-checked={value.effort === level}
+                    title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined}
+                    onClick={() => onChange({ ...value, effort: level })}
+                    className={SEGMENT}
+                  >
+                    {effortLabel(level)}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** How the agent's actions are approved. The words are the UI's; the level is Rust's. */
+export type PermissionLevel = "ask" | "acceptEdits" | "full";
+
+const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
+  { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
+  { level: "acceptEdits", label: "Accept edits", detail: "Edits files freely, asks before other commands", Icon: ShieldTerminal },
+  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
+];
+
+/**
+ * The permission pill and menu, opening upward: "How should the agent's actions be approved?", each level with
+ * its icon and one line, a check on the one in use, Full access in orange and confirmed before it turns on. In
+ * a folder the user doesn't trust it shows Ask, the only level there, and the others can't be picked.
+ */
+export function PermissionPicker({
+  value: chosen,
+  onChange,
+  untrusted = false,
+  onLearnMore,
+}: {
+  value: PermissionLevel;
+  onChange: (level: PermissionLevel) => void;
+  untrusted?: boolean;
+  /** Opens the permission levels' help; without it there is no "Learn more". */
+  onLearnMore?: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const value = untrusted ? "ask" : chosen;
+  const { label, Icon } = LEVELS.find((each) => each.level === value)!;
+  return (
+    <>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger
+          render={
+            <ComposerPill
+              aria-label={`Permission level: ${label}`}
+              data-slot="permission-picker"
+              className={cx("max-w-xs", value === "full" && "text-full-access")}
+            />
+          }
+        >
+          <Icon />
+          <span className="truncate">{label}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" data-slot="permission-menu" className="w-125 max-w-full p-1.5">
+          <div className="flex items-end justify-between gap-6 px-2 pt-1 pb-1.5 text-sm">
+            <p className="text-muted-foreground">How should the agent’s actions be approved?</p>
+            {onLearnMore && (
+              <button type="button" className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:focus-ring" onClick={onLearnMore}>
+                Learn more
+              </button>
+            )}
+          </div>
+          {untrusted && (
+            // As wide as the menu, never widening it.
+            <p className="w-0 min-w-full px-2 pb-1.5 text-xs text-muted-foreground">
+              This folder isn't trusted, so sessions here ask first. Change it in the project's settings.
+            </p>
+          )}
+          <DropdownMenuRadioGroup
+            value={value}
+            onValueChange={(next: PermissionLevel) => {
+              if (next === "full" && value !== "full") setConfirming(true);
+              else onChange(next);
+            }}
+          >
+            {LEVELS.map(({ level, label: name, detail, Icon: LevelIcon }) => {
+              const orange = level === "full";
+              return (
+                <DropdownMenuRadioItem
+                  key={level}
+                  value={level}
+                  disabled={untrusted && level !== "ask"}
+                  indicator={<Check className="size-icon-md" />}
+                  className={cx("gap-3 rounded-surface py-1.5", orange && "text-full-access")}
+                >
+                  <LevelIcon className="size-icon-md" />
+                  <span className="flex min-w-0 flex-col">
+                    <span>{name}</span>
+                    <span className={cx("whitespace-nowrap", orange ? "text-full-access" : "text-muted-foreground")}>{detail}</span>
+                  </span>
+                </DropdownMenuRadioItem>
+              );
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <FullAccessDialog
+        open={confirming}
+        onLearnMore={onLearnMore}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          onChange("full");
+        }}
+      />
+    </>
+  );
+}
+
+/** What Full access lets the agent do, in the confirmation's card. */
+const POWERS = [
+  { Icon: Folder, tone: "text-link", title: "Files and folders", line: "Read, create, modify, or delete files anywhere on this computer" },
+  { Icon: Dock, tone: "text-muted-foreground", title: "Terminal commands", line: "Run commands, install software, and change system settings" },
+  { Icon: Globe, tone: "text-link", title: "Internet", line: "Access websites and send data" },
+];
+
+/** "Turn on Full Access?": what the agent could do without asking, and the risks. Only Confirm changes the level. */
+export function FullAccessDialog({
+  open,
+  onCancel,
+  onConfirm,
+  onLearnMore,
+  container,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onLearnMore?: () => void;
+  container?: HTMLElement | null;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent showCloseButton={false} container={container}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <Warning className="size-icon-md" />
+            Turn on Full Access?
+          </DialogTitle>
+          <DialogDescription>
+            Brigadier’s agents will be able to run commands, use the internet, and create and edit files anywhere on this computer without your
+            permission. This includes but is not limited to:
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="divide-y divide-border rounded-surface bg-fill-subtle px-3">
+          {POWERS.map(({ Icon, tone, title, line }) => (
+            <li key={title} className="flex items-center gap-3 py-2.5">
+              <Icon className={cx("size-icon-lg shrink-0", tone)} />
+              <span className="flex min-w-0 flex-col">
+                <span className="font-medium">{title}</span>
+                <span className="text-xs text-muted-foreground">{line}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-muted-foreground">
+          Agents run commands like your own terminal, without asking. This comes with risks like loss or exposure of sensitive data and prompt
+          injection. You can turn this off.{" "}
+          {onLearnMore && (
+            <button type="button" className="cursor-pointer text-link hover:underline focus-visible:focus-ring" onClick={onLearnMore}>
+              Learn more
+            </button>
+          )}
+        </p>
+        <DialogFooter>
+          <Button variant="secondary" autoFocus onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="soft-destructive" onClick={onConfirm}>
+            <Warning />
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

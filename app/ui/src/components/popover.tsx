@@ -11,6 +11,8 @@ type PopoverContentProps = Omit<BasePopover.Popup.Props, "className"> &
     className?: string;
     /** Where the popover is placed in the page; the body by default. */
     container?: BasePopover.Portal.Props["container"];
+    /** `false`: no padding, for a panel that lays out its own edges (the model picker). */
+    padded?: boolean;
   };
 
 /** A floating card by its trigger, or by `anchor` when something else places it. */
@@ -24,6 +26,7 @@ export function PopoverContent({
   alignOffset,
   collisionAvoidance,
   anchor,
+  padded = true,
   ...props
 }: PopoverContentProps) {
   return (
@@ -40,7 +43,8 @@ export function PopoverContent({
         <BasePopover.Popup
           data-slot="popover-content"
           className={cx(
-            "rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-border outline-none menu-motion",
+            "rounded-overlay bg-popover text-foreground shadow-overlay ring ring-border outline-none menu-motion",
+            padded && "p-1",
             className,
           )}
           {...props}
