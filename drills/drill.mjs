@@ -121,7 +121,7 @@ function daemonHello(ms = 2000) {
     const done = (v) => { clearTimeout(timer); s.destroy(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
     s.on('error', () => done(null))
-    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(2); s.write(v) })
+    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(4); s.write(v) })
     let buf = Buffer.alloc(0)
     s.on('data', (c) => {
       buf = Buffer.concat([buf, c])
@@ -139,7 +139,7 @@ function daemonCall(request, ms = 3000) {
     const timer = setTimeout(() => done(null), ms)
     const frame = (o) => { const b = Buffer.from(JSON.stringify(o)); const h = Buffer.alloc(4); h.writeUInt32BE(b.length); return Buffer.concat([h, b]) }
     s.on('error', () => done(null))
-    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(2); s.write(v) })
+    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(4); s.write(v) })
     s.on('data', (c) => {
       buf = Buffer.concat([buf, c])
       while (buf.length >= 4 && buf.length >= 4 + buf.readUInt32BE(0)) {
@@ -236,15 +236,13 @@ async function killloop(minutes) {
   for (const id of idles) idleTurn(id)
   const viaDaemon = await daemonCall({ op: 'run', args: ['start', 'd01', '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()] }, 10000)
   if (!viaDaemon?.ok) throw new Error(`start through the daemon failed: ${JSON.stringify(viaDaemon)}`)
-  startFake('t01', ['--mode', 'pty'])
   startFake('chat')
   for (const id of fakes) send(id, work(id))
-  send('t01', 'tree:600')
   // The real CLIs start in the same second.
   const real = REAL
   const starts = real.map(([id, b]) => spawn(`${BIN}/brigadier`, ['start', id, '--backend', b, '--cwd', gitRepo(id), '--level', 'full', '--text', realPrompt(cid('r'))], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' }))
   await Promise.all(starts.map((c) => new Promise((r) => c.on('exit', r))))
-  const followed = ['f01', 't01', 'chat', ...real.map(([id]) => id)]
+  const followed = ['f01', 'chat', ...real.map(([id]) => id)]
   let followers = followed.map((id) => ({ id, ...follow(id, 0) }))
   const builds = [BIN + '.orig', ...BUILDS]
   fs.cpSync(BIN, BIN + '.orig', { recursive: true })
@@ -682,7 +680,7 @@ function sleepDrill() {
   log({
     drill: 'sleep', run_by: 'the owner, at an agreed moment',
     steps: [
-      `BIN=${BIN} KEEP=1 node drills/drill.mjs sleepprep   # 5 piped fake sessions and 1 PTY one, each on a 15-minute process tree`,
+      `BIN=${BIN} KEEP=1 node drills/drill.mjs sleepprep   # 5 piped fake sessions, each on a 15-minute process tree`,
       // With `pmset disablesleep 1` the kernel refuses every sleep request, so lift it for the drill only.
       'pmset -g | grep SleepDisabled   # note the value; if it is 1: sudo pmset -a disablesleep 0',
       'Apple menu > Sleep for 5 minutes, then wake. Afterwards restore it: sudo pmset -a disablesleep 1',
@@ -694,9 +692,7 @@ function sleepDrill() {
 async function sleepPrep() {
   freshData('sleep')
   for (let i = 1; i <= 5; i++) { startFake(`z${i}`); cli(['send', `z${i}`, `${cid()} tree:900`]) }
-  startFake('zp', ['--mode', 'pty'])
-  cli(['send', 'zp', `${cid()} tree:900`])
-  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5', 'zp'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
+  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
   log({ drill: 'sleepprep', data: DATA, status: Object.values(statusAll()).map((s) => [s.id, s.state]) })
 }
 
