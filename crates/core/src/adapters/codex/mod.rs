@@ -345,38 +345,14 @@ impl Adapter for Codex {
     }
 }
 
-/// Its own delete: the thread's rows in its databases, its subagents' threads and its rollout
-/// [D35, D244]. A thread it no longer knows is already gone; any other failure keeps the session,
-/// to try again.
+/// Its own delete: the thread's rows in its databases, its subagents' threads and its rollout. With
+/// no Codex to ask, only a home that's gone proves nothing is left [D35, D244].
 fn delete_thread(codex: &Codex, spec: &Spec, resume: &str) -> Result<(), String> {
-    let Some(exe) = codex.exe() else {
-        return match rollouts(&cli_home(spec, ".codex", ""), &[format!("-{resume}.jsonl")])
-            .is_empty()
-        {
-            true => Ok(()),
-            false => {
-                Err("Codex isn't installed, so its record of this thread can't be removed.".into())
-            }
-        };
-    };
-    let out = probe_as(
-        spec,
-        &exe,
-        &home_path(""),
-        &[],
-        &["delete", resume, "--force"],
-        30,
-    )?;
-    let said = String::from_utf8_lossy(&out.stderr).to_string();
-    // shortcut: its CLI words "already gone" like any failure, and it removes the rollout before
-    // the rows, so a database failure in that gap reads as done; use `thread/delete` if that shows.
-    if out.status.success()
-        || rollouts(&cli_home(spec, ".codex", ""), &[format!("-{resume}.jsonl")]).is_empty()
-    {
-        return Ok(());
+    match codex.exe() {
+        Some(exe) => models::delete(spec, &exe, &home_path(""), resume),
+        None if cli_home(spec, ".codex", "").exists() => {
+            Err("Codex isn't installed, so its record of this thread can't be removed.".into())
+        }
+        None => Ok(()),
     }
-    Err(format!(
-        "Codex couldn't delete thread {resume}: {}",
-        said.trim()
-    ))
 }
