@@ -107,18 +107,16 @@ fn main() -> io::Result<()> {
     }
     loop {
         match index.sync() {
-            Ok((rows, gone)) => {
-                publish(&state, rows, gone);
-                // Off, while a session works, or always [D30, D36].
-                let on = match awake_mode(&data) {
-                    "off" => false,
-                    "always" => true,
-                    _ => index.rows.values().any(|r| r["works"] == true),
-                };
-                awake.set(on);
-            }
+            Ok((rows, gone)) => publish(&state, rows, gone),
             Err(e) => eprintln!("brigadierd: {e}"),
         }
+        // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
+        let on = match awake_mode(&data) {
+            "off" => false,
+            "always" => true,
+            _ => index.rows.values().any(|r| r["works"] == true),
+        };
+        awake.set(on);
         thread::sleep(TICK);
     }
 }

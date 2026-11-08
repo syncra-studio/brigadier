@@ -37,6 +37,9 @@ pub struct Child {
     /// A mirror copies its CLI's record into the log, so its turns come and go like piped ones.
     #[serde(default)]
     pub mirror: bool,
+    /// The mirror's own process group, which lives beside the CLI for the terminal's life.
+    #[serde(default)]
+    pub mirror_group: Option<(i32, u64)>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -159,19 +162,20 @@ impl Fold {
                     item["pid"].as_i64().unwrap_or(0) as i32,
                     item["start_us"].as_u64().unwrap_or(0),
                 );
+                let m = &item["mirror"];
+                let mirror_group =
+                    (m["pgid"].as_i64().zip(m["start_us"].as_u64())).map(|(g, s)| (g as i32, s));
                 self.child = Some(Child {
                     pid,
                     start_us,
                     backend: str_of("backend"),
                     exited: false,
                     pty: item["mode"] == "pty",
-                    mirror: item["mirror"].is_object(),
+                    mirror: m.is_object(),
+                    mirror_group,
                 });
                 self.groups.push((pid, start_us));
-                let m = &item["mirror"];
-                if let (Some(g), Some(s)) = (m["pgid"].as_i64(), m["start_us"].as_u64()) {
-                    self.groups.push((g as i32, s));
-                }
+                self.groups.extend(mirror_group);
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -334,7 +338,12 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
         .iter()
         .map(|&(g, s)| procs::group(all, g, s).len())
         .sum();
-    let jobs = members.saturating_sub(child.is_some() as usize + running_below);
+    // A live terminal's mirror isn't a job: it ends with the terminal.
+    let mirror = (fold.child.as_ref())
+        .filter(|_| child.is_some())
+        .and_then(|c| c.mirror_group)
+        .map_or(0, |(g, s)| procs::group(all, g, s).len());
+    let jobs = members.saturating_sub(child.is_some() as usize + running_below + mirror);
     let orphans = if owner == Owner::Dead { members } else { 0 };
     Live {
         owner,
@@ -389,20 +398,12 @@ pub fn works(fold: &Fold, live: &Live) -> bool {
     let (Some(turn), Some(child)) = (fold.turns.first(), live.child) else {
         return false;
     };
-    let Some(delivered) = turn.delivered else {
+    let waiting = child.stopped || turn.question.is_some();
+    let Some(delivered) = turn.delivered.filter(|_| !waiting) else {
         return false;
     };
-    if child.stopped || turn.question.is_some() {
-        return false;
-    }
-    let quiet_ms = adapters::get(&turn.backend).map_or(30_000, |a| {
-        let t = a.timing();
-        if turn.began {
-            t.stall_ms
-        } else {
-            t.no_start_ms
-        }
-    });
+    let t = adapters::get(&turn.backend).map(|a| a.timing());
+    let quiet_ms = t.map_or(30_000, |t| [t.no_start_ms, t.stall_ms][turn.began as usize]);
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     silence < quiet_ms || (!turn.tools.is_empty() && live.running_below > 0)
 }
