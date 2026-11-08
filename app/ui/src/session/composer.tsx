@@ -98,7 +98,8 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
  * wave 3, D191); ⌘⏎ or ⌥⏎ does the other, steering only where the agent can; ⌘⏎ in an empty field steers the first
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159].
  */
-export function SessionComposer({ id, row, offline, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; run?: Runner; source?: Source }) {
+export function SessionComposer({ id, row, offline, blocked, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; run?: Runner; source?: Source }) {
+  const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
   // An approval takes the composer's place until Reply… moves it to the rail [D199].
   const approval = useApprovalWaiting(id, source);
@@ -177,7 +178,7 @@ export function SessionComposer({ id, row, offline, run = daemonRun, source = an
 
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
-    if (offline) return;
+    if (held) return;
     if (isEmpty({ parts, attachmentIds: [] })) {
       // ⌘⏎ with nothing typed steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued") steerQueued(items[0].id);
@@ -253,7 +254,7 @@ export function SessionComposer({ id, row, offline, run = daemonRun, source = an
           <ComposerTools />
           <ErrorLine error={stopError} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton empty={empty} running={running} canStop={running && !offline} blocked={offline ? "Reconnecting…" : undefined} onSend={() => submit(false)} onStop={stop} />
+          <SendButton empty={empty} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onStop={stop} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog

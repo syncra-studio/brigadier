@@ -188,7 +188,8 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 </SessionOfThread>
                 )}
               </div>
-              <SessionComposer id={id} row={row} offline={offline} />
+              {/* A follow-up waits for the start to land, never sent to a session Rust hasn't made [D30]. */}
+              <SessionComposer id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />
             </div>
           )}
           {(starting ? state?.status === "ready" : !missing) && <TerminalPane id={id} />}
