@@ -1,9 +1,10 @@
 // The composer (slice 1) in every state, frozen, plus one live copy.
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ComposerCard, ComposerFooter, ComposerPill, ComposerTools, ContextRing, EditComposer, PillDivider, PlusButton } from "../src/components/composer/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
+import { ComposerRail } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { Button } from "../src/components/button";
 import { ChevronDown } from "../src/icons";
@@ -14,7 +15,7 @@ const noop = () => {};
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
 const LONG = Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of a long message that scrolls inside the field.`).join("\n");
 
-function ModelPill() {
+export function ModelPill() {
   return (
     <ComposerPill className="gap-1">
       <span className="truncate text-foreground">Model name</span>
@@ -35,16 +36,19 @@ type CardProps = {
   ring?: boolean;
   /** Scrolled to its end, so the top line fades. */
   scrolled?: boolean;
+  /** What the rail over the card holds. */
+  rail?: ReactNode;
 };
 
 /** A frozen composer card in one state. */
-function Card({ initial = EMPTY_DRAFT, placeholder = "Do anything", running = false, canStop = false, canResume, armed, blocked, ring, scrolled }: CardProps) {
+export function Card({ initial = EMPTY_DRAFT, placeholder = "Do anything", running = false, canStop = false, canResume, armed, blocked, ring, scrolled, rail }: CardProps) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scrolled) box.current!.querySelector("[data-slot=composer-field]")!.scrollTop = 1e6;
   }, [scrolled]);
   return (
     <div ref={box} className="w-reading">
+      {rail && <ComposerRail>{rail}</ComposerRail>}
       <ComposerCard>
         <ComposerField initial={initial} placeholder={placeholder} />
         <ComposerFooter>

@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useRef } from "react";
 
 import { Choices } from "./choices";
 import { ComposerGallery } from "./composer";
+import { RailGallery } from "./rail";
 import { Kit } from "./kit";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
@@ -96,6 +97,7 @@ function GalleryPage() {
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
         <ComposerGallery />
+        <RailGallery />
         <Thread />
         <Choices />
         <Panes />
