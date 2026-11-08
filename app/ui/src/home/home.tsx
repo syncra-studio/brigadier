@@ -5,9 +5,7 @@ import type { PermissionLevel } from "../components/composer/pickers";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
-import { OpeningRow, ROW, Words } from "../components/thread/activity-row";
 import { threadSource, useDaemon } from "../daemon";
-import { Branch } from "../icons";
 import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
@@ -184,36 +182,5 @@ export function StartingThread({ id }: { id: string }) {
         <StartingBubble id={id} />
       </div>
     </div>
-  );
-}
-
-/** How the project's setup script went in this session's new worktree (1l), as Rust's row says [D229]. */
-export type Setup = { state: "running" | "done" | "failed" | "interrupted"; code: number | null; tail: string } | null | undefined;
-
-const SETUP_WORDS = {
-  running: "Running the setup script",
-  done: "Ran the setup script",
-  failed: "The setup script failed",
-  interrupted: "The setup script was interrupted",
-} as const;
-
-/** The setup line at Rust's place in the thread, opening to the script's last output [D290]. */
-export function SetupLine({ id, setup }: { id: string; setup: Setup }) {
-  if (!setup) return null;
-  const words = <Words verb={SETUP_WORDS[setup.state]} live={setup.state === "running"} />;
-  const icon = <Branch className="size-4 shrink-0" />;
-  if (!setup.tail.trim()) {
-    return (
-      <div className={ROW}>
-        {icon}
-        {words}
-      </div>
-    );
-  }
-  return (
-    <OpeningRow keep={`${id}:setup`} detail={<pre className="font-mono text-xs break-words whitespace-pre-wrap">{setup.tail}</pre>}>
-      {icon}
-      {words}
-    </OpeningRow>
   );
 }

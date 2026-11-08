@@ -2,9 +2,13 @@
 //! project only, and its state for the thread.
 
 use crate::{Spec, projects, write_atomic};
+
+#[path = "worktree_steps.rs"]
+mod steps;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
+pub use steps::{Startup, begin, finish};
 
 /// The recorded wrapper launch anchors setup to its input, including after restore [D290].
 pub fn setup_launch(item: &serde_json::Value) -> bool {
@@ -69,7 +73,7 @@ shift 5; exec "$@""#;
 
 /// How the session's setup script went, for its thread: null when none ran; else running, done,
 /// failed (with its code) or interrupted. `alive` says whether its host's child still runs.
-pub fn setup_state(dir: &Path, alive: bool) -> serde_json::Value {
+fn script_state(dir: &Path, alive: bool) -> serde_json::Value {
     if !dir.join("setup.started").exists() {
         return serde_json::Value::Null;
     }
@@ -90,4 +94,21 @@ pub fn setup_state(dir: &Path, alive: bool) -> serde_json::Value {
     })()
     .unwrap_or_default();
     serde_json::json!({"state": state, "code": code, "tail": tail})
+}
+
+/// The ordered worktree steps reached so far; Local checkout sessions have no record.
+pub fn setup_state(dir: &Path, alive: bool) -> serde_json::Value {
+    let Some(mut setup) = steps::read(dir) else {
+        return serde_json::Value::Null;
+    };
+    let script = script_state(dir, alive);
+    if script.is_object() {
+        let failed = script["state"] == "failed" || script["state"] == "interrupted";
+        setup["steps"].as_array_mut().unwrap().push(serde_json::json!({
+            "kind": "setupScript", "state": if failed { "failed" } else { script["state"].as_str().unwrap() },
+            "error": if failed { script["tail"].clone() } else { serde_json::Value::Null },
+            "code": script["code"], "interrupted": script["state"] == "interrupted"
+        }));
+    }
+    setup
 }
