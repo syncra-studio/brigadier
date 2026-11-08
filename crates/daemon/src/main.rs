@@ -7,11 +7,18 @@
 //! `{"n": N+1, "rows", "gone"}`, `{"n": N+2, …}` in order [D40, D71]. A client that sees a gap
 //! subscribes again for a fresh snapshot; a new connection always starts with one.
 //!
+//! `{"id", "op": "thread", "session"}` answers `{"re", "ok", "n", "session"}`, the session's thread
+//! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
+//! what it names by id [D40, D64, D65]. One thread per connection: a new request ends the last.
+//!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
 //! replaces an older one (`replace_older`).
 
 use brigadier::index::{self, Index};
-use brigadier_core::data_dir;
+use brigadier_core::norm::Norm;
+use brigadier_core::thread::Thread;
+use brigadier_core::{check_id, data_dir, session_dir};
+use brigadier_frames::log::Reader;
 use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -22,6 +29,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -35,6 +43,8 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const TICK: Duration = Duration::from_millis(500);
 /// The commands that reach a host. The rest of the CLI prints to stdout or never returns.
 const ROUTED: [&str; 5] = ["start", "send", "stop", "recover", "delete"];
+/// How often an open thread checks its log for new frames.
+const FOLLOW: Duration = Duration::from_millis(100);
 
 struct Sub {
     out: Sender<String>,
@@ -199,6 +209,8 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
         }
         let _ = writer.shutdown(std::net::Shutdown::Both);
     });
+    // Bumped to end this connection's thread watch: a new request, or the connection closing.
+    let watching = Arc::new(AtomicU64::new(0));
     let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
     let _ = out.send(hello.to_string());
     while let Ok(text) = wire::read_frame(&mut stream) {
@@ -219,6 +231,18 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
                         waiting,
                     },
                 );
+            }
+            "thread" => {
+                let id = req["session"].as_str().unwrap_or("").to_string();
+                let title = state
+                    .lock()
+                    .unwrap()
+                    .rows
+                    .get(&id)
+                    .map_or(Value::Null, |r| r["title"].clone());
+                let mine = watching.fetch_add(1, Ordering::SeqCst) + 1;
+                let (out, data, watching) = (out.clone(), PathBuf::from(data), watching.clone());
+                thread::spawn(move || watch(&data, &id, title, re, &out, mine, &watching));
             }
             "search" => {
                 let q = req["q"].as_str().unwrap_or("");
@@ -254,6 +278,68 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
             }
         }
     }
+    watching.fetch_add(1, Ordering::SeqCst);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
+}
+
+/// Folds a session's log into its thread, sends it, then follows the log and sends what changed,
+/// numbered on from the snapshot, until `watching` moves past `mine`.
+// shortcut: every open folds the whole log and sends the whole thread; add a thread checkpoint and
+// paging once long sessions make opening slow.
+fn watch(
+    data: &Path,
+    id: &str,
+    title: Value,
+    re: Value,
+    out: &Sender<String>,
+    mine: u64,
+    watching: &AtomicU64,
+) {
+    let dir = session_dir(data, id);
+    if check_id(id).is_err() || !dir.join("session.json").exists() {
+        let _ = out.send(json!({"re": re, "ok": false, "error": "not_found"}).to_string());
+        return;
+    }
+    let (mut thread, mut norm, mut items) = (Thread::default(), Norm::default(), vec![]);
+    let mut reader = None;
+    let mut drain = |thread: &mut Thread| -> io::Result<()> {
+        // A session just created may have no log yet.
+        if reader.is_none() && dir.join("log").exists() {
+            reader = Some(Reader::open(&dir.join("log"), 0, 0)?);
+        }
+        while let Some(frame) = reader.as_mut().map(Reader::frame).transpose()?.flatten() {
+            norm.push(&frame, &mut items);
+            for item in items.drain(..) {
+                thread.push(&item);
+            }
+        }
+        Ok(())
+    };
+    if let Err(e) = drain(&mut thread) {
+        let _ = out.send(json!({"re": re, "ok": false, "error": e.to_string()}).to_string());
+        return;
+    }
+    let title = title.as_str().unwrap_or("");
+    let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
+    if out.send(snapshot.to_string()).is_err() {
+        return;
+    }
+    let mut n = 0u64;
+    while watching.load(Ordering::SeqCst) == mine {
+        thread::sleep(FOLLOW);
+        // A damaged frame stays damaged: say so once and stop following.
+        if let Err(e) = drain(&mut thread) {
+            let _ = out.send(json!({"thread": id, "error": e.to_string()}).to_string());
+            return;
+        }
+        if let Some((items, turns, work)) = thread.take() {
+            n += 1;
+            let update =
+                json!({"thread": id, "n": n, "items": items, "turns": turns, "work": work});
+            if out.send(update.to_string()).is_err() {
+                return;
+            }
+        }
+    }
 }

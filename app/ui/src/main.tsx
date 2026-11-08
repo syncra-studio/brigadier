@@ -1,10 +1,11 @@
-import { lazy, Suspense, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Input } from "./components/input";
 import { TooltipProvider } from "./components/tooltip";
-import { search, useDaemon, type View } from "./daemon";
+import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
 import { Demo } from "./session/Demo";
+import { Thread } from "./thread/thread";
 import "./theme.css";
 
 // A hash change is in-page, so Electron's will-navigate guard lets it through.
@@ -18,6 +19,10 @@ function App() {
   const { daemon, refused, rows, search: found } = useDaemon();
   const hash = useHash();
   if (hash === "#states") return <Demo />;
+  if (hash.startsWith("#thread/")) {
+    const id = decodeURIComponent(hash.slice("#thread/".length));
+    return <SessionThread id={id} title={rows?.find((row) => row.id === id)?.title} offline={daemon === null} />;
+  }
   return (
     <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
       <div className="app-drag fixed inset-x-0 top-0 h-titlebar" />
@@ -51,7 +56,9 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
       <ul className={offline ? "text-sm text-muted-foreground" : "text-sm"}>
         {list?.map((row) => (
           <li key={row.id} className="flex gap-2 py-1">
-            <span className="min-w-0 flex-1 truncate">{row.title || row.id}</span>
+            <a href={`#thread/${encodeURIComponent(row.id)}`} className="min-w-0 flex-1 truncate hover:underline">
+              {row.title || row.id}
+            </a>
             <span className={row.error ? "text-destructive" : "text-muted-foreground"}>{row.error ?? row.state}</span>
             <span className="text-muted-foreground">
               {row.backend} · {row.id}
@@ -60,6 +67,33 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
         ))}
       </ul>
     </section>
+  );
+}
+
+// One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
+function SessionThread({ id, title, offline }: { id: string; title: string | undefined; offline: boolean }) {
+  useEffect(() => openThread(id), [id]);
+  const state = useThread();
+  return (
+    <main className="fixed inset-0 flex flex-col">
+      <header className="flex h-titlebar shrink-0 items-center gap-3 text-sm">
+        <div className="app-drag h-full w-traffic-lights shrink-0" />
+        <a href="#" className="text-muted-foreground hover:text-foreground">
+          Sessions
+        </a>
+        <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{title || id}</span>
+      </header>
+      {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
+      {state?.status === "missing" ? (
+        <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
+      ) : state?.status === "error" ? (
+        <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
+      ) : (
+        <div className={`min-h-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
+          <Thread source={threadSource} />
+        </div>
+      )}
+    </main>
   );
 }
 
