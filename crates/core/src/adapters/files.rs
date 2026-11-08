@@ -6,11 +6,16 @@ use std::path::Path;
 /// Whole lines of a file after byte `from`, and the offset after the last one. A file not there
 /// yet reads as empty, and one that shrank starts over.
 pub fn file_lines(path: &Path, from: u64) -> (Vec<String>, u64) {
-    let Ok(bytes) = std::fs::read(path) else {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
         return (vec![], from);
     };
-    let from = if (bytes.len() as u64) < from { 0 } else { from };
-    let rest = &bytes[from as usize..];
+    let len = file.metadata().map_or(0, |m| m.len());
+    let from = if len < from { 0 } else { from };
+    let mut rest = Vec::new();
+    if file.seek(SeekFrom::Start(from)).is_err() || file.read_to_end(&mut rest).is_err() {
+        return (vec![], from);
+    }
     let end = rest.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     let lines = String::from_utf8_lossy(&rest[..end])
         .lines()
@@ -60,7 +65,8 @@ pub fn drop_lines(path: &Path, key: &str, id: &str) -> std::io::Result<usize> {
             .flatten()
             .copied()
             .collect();
-        let tmp = path.with_extension("brigadier-tmp");
+        // Its own name per call, so two deletes at once never write the same temp file.
+        let tmp = path.with_extension(format!("brigadier-{}", uuid()));
         std::fs::write(&tmp, kept)?;
         std::fs::set_permissions(&tmp, perms)?;
         let now = std::fs::metadata(path)?;

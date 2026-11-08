@@ -93,9 +93,9 @@ impl Adapter for Claude {
         // messages as stream-json, plus the typed prompt, the turn's end and bookkeeping.
         let record = v.get("sessionId").is_some()
             || matches!(s(&v, &["type"]), "file-history-snapshot" | "summary");
-        let typed = v["message"]["content"].as_str().filter(|t| {
-            record && v["isMeta"] != true && v["isSidechain"] != true && !t.starts_with('<')
-        });
+        let typed = v["message"]["content"]
+            .as_str()
+            .filter(|t| record && v["isMeta"] != true && v["isSidechain"] != true && !synthetic(t));
         match (s(&v, &["type"]), s(&v, &["subtype"])) {
             ("user", _) if typed.is_some() => vec![
                 Event::Resume(s(&v, &["sessionId"]).into()),
@@ -224,6 +224,19 @@ impl Adapter for Claude {
         }
         Some((texts, tools))
     }
+}
+
+/// A user line the CLI writes itself (slash commands, `!` shell runs, reminders), not a prompt.
+fn synthetic(text: &str) -> bool {
+    const TAGS: [&str; 6] = [
+        "<command-",
+        "<local-command-",
+        "<bash-",
+        "<system-reminder>",
+        "<task-notification>",
+        "<cross-session-message",
+    ];
+    TAGS.iter().any(|t| text.starts_with(t))
 }
 
 /// Where the CLI keeps transcripts for a working folder: its real path with every

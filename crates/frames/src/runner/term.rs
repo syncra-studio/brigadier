@@ -69,6 +69,14 @@ pub(super) fn size(v: &Value, default: u16) -> u16 {
 
 pub(super) type Mirror = (std::process::Child, File, File);
 
+/// Kills and reaps a mirror whose terminal never got going.
+pub(super) fn end_mirror(mirror: Option<Mirror>) {
+    if let Some((mut child, ..)) = mirror {
+        unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+        let _ = child.wait();
+    }
+}
+
 /// Starts a mirror in its own group, on pipes: it reads nothing, and its stdin closing ends it.
 pub(super) fn start_mirror(m: &Value, cwd: &str) -> io::Result<Mirror> {
     let argv: Vec<&str> = m["argv"]

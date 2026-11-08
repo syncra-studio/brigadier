@@ -4,7 +4,7 @@
 
 use crate::log::{self, Reader, Writer};
 use crate::spawn::{spawn_pipes, spawn_pty};
-use term::{size, start_mirror};
+use term::{end_mirror, size, start_mirror};
 
 mod stop;
 mod term;
@@ -235,13 +235,13 @@ impl Runner {
             && (self.child.lock().unwrap())
                 .as_ref()
                 .is_some_and(|c| !c.pty && !c.exited);
+        let stops = self.stops.load(Ordering::SeqCst) + replace as u64; // a Stop meanwhile counts
         if replace {
             self.stop("handoff", 2000);
         }
         if !self.wait_free(replace) {
             return fail("busy");
         }
-        let stops = self.stops.load(Ordering::SeqCst);
         if let Some(reply) = self.intent(req) {
             return reply;
         }
@@ -339,11 +339,11 @@ impl Runner {
             Err(e) => {
                 unsafe { libc::killpg(pid, libc::SIGKILL) };
                 let _ = child.wait();
+                end_mirror(mirror);
                 return json!({"ok": false, "cid": cid, "result": "logged", "error": e.to_string()});
             }
         };
-        self.groups.lock().unwrap().push((pid, start_us));
-        self.groups.lock().unwrap().extend(mirror_group);
+        (self.groups.lock().unwrap()).extend(mirror_group.into_iter().chain([(pid, start_us)]));
         (self.watch)(&self.groups.lock().unwrap());
         // A stop that ran while this spawn was under way couldn't see this group: honour it now.
         if self.stops.load(Ordering::SeqCst) != stops {
@@ -351,6 +351,7 @@ impl Runner {
                 procs::signal_group(g, s, libc::SIGKILL);
             }
             let status = child.wait().ok();
+            end_mirror(mirror);
             let exited = json!({"pid": pid, "code": status.and_then(|s| s.code()), "signal": status.and_then(|s| s.signal())});
             let _ = self.append(log::EXITED, exited.to_string().as_bytes(), false);
             return json!({"ok": false, "cid": cid, "result": "logged", "error": "stopped while starting"});

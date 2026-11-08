@@ -24,7 +24,7 @@ function App() {
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
     const row = rows?.find((each) => each.id === id);
-    return <SessionThread id={id} title={row?.title} state={row?.state} offline={daemon === null} />;
+    return <SessionThread id={id} title={row?.title} stalled={row?.state === "stalled"} offline={daemon === null} />;
   }
   return (
     <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
@@ -75,7 +75,7 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 // Its terminal sits beside it, on the same conversation [D47].
-function SessionThread({ id, title, state: rowState, offline }: { id: string; title: string | undefined; state: string | undefined; offline: boolean }) {
+function SessionThread({ id, title, stalled, offline }: { id: string; title: string | undefined; stalled: boolean; offline: boolean }) {
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   return (
@@ -95,10 +95,10 @@ function SessionThread({ id, title, state: rowState, offline }: { id: string; ti
           <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
         ) : (
           <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-            <Thread source={threadSource} footer={rowState === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
+            <Thread source={threadSource} footer={stalled && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
           </div>
         )}
-        {state?.status !== "missing" && <TerminalPane id={id} state={rowState} />}
+        {state?.status !== "missing" && <TerminalPane id={id} />}
       </div>
     </main>
   );

@@ -35,10 +35,9 @@ const bytesOf = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charC
  * A session's real terminal, beside its chat [D47]: the CLI's own interactive mode on the same
  * conversation, run by the session's host. The screen is the host's log replayed, so it comes back
  * the same after the app or daemon restarts [D60]. Keys and sizes go to the host, named by the
- * terminal's spawn id, so a stale one is refused. `state` is the session row's, to retry an open
- * that waited for a turn to end.
+ * terminal's spawn id, so a stale one is refused.
  */
-export function TerminalPane({ id, state: rowState }: { id: string; state: string | undefined }) {
+export function TerminalPane({ id }: { id: string }) {
   const { daemon } = useDaemon();
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<{ xterm: Terminal; fit: FitAddon; spawn?: number }>(null);
@@ -88,22 +87,32 @@ export function TerminalPane({ id, state: rowState }: { id: string; state: strin
         ask({ op: "resize", session: id, spawn: t.spawn, cols: size.cols, rows: size.rows });
       }, 150);
     };
+    // Sizes, starts and ends apply after the bytes before them are drawn: xterm writes later.
+    const inOrder = (apply: () => void) => t.xterm.write("", apply);
     setTermHandler((frame) => {
       if (frame.watch !== mine) return;
       if (frame.reset) return void (mine = ask({ op: "terminal", session: id }, opened));
       if (frame.error) return setState({ is: "error", message: frame.error === "not_found" ? "Session not found" : frame.error });
       if (frame.start) {
-        t.spawn = frame.start.spawn;
-        t.xterm.reset();
-        t.xterm.resize(frame.start.cols, frame.start.rows);
-        setState({ is: "live" });
-        offerSize();
+        const { spawn, cols, rows } = frame.start;
+        inOrder(() => {
+          t.spawn = spawn;
+          t.xterm.reset();
+          t.xterm.resize(cols, rows);
+          setState({ is: "live" });
+          offerSize();
+        });
       } else if (frame.resize) {
-        t.xterm.resize(frame.resize.cols, frame.resize.rows);
-        offerSize();
+        const { cols, rows } = frame.resize;
+        inOrder(() => {
+          t.xterm.resize(cols, rows);
+          offerSize();
+        });
       } else if (frame.exited) {
-        t.spawn = undefined;
-        setState({ is: "exited" });
+        inOrder(() => {
+          t.spawn = undefined;
+          setState({ is: "exited" });
+        });
       } else if (frame.data) {
         const bytes = bytesOf(frame.data);
         // Acked once drawn, so the daemon sends no faster than xterm draws.
@@ -124,13 +133,14 @@ export function TerminalPane({ id, state: rowState }: { id: string; state: strin
     };
   }, [id, daemon]);
 
-  const open = () => {
-    setState({ is: "opening" });
+  // `quiet`: a retry while a turn runs, which changes nothing on screen until it opens.
+  const open = (quiet = false) => {
+    if (!quiet) setState({ is: "opening" });
     const size = term.current?.fit.proposeDimensions();
     const args = ["terminal", id, "--cols", String(size?.cols ?? 120), "--rows", String(size?.rows ?? 40)];
     ask({ op: "run", args }, (reply) => {
       // Opened: the stream's start frame makes it live.
-      if (reply.ok) return;
+      if (reply.ok || (quiet && reply.error === "turn_running")) return;
       setState(reply.error === "turn_running" || reply.error === "old_host" || reply.error === "unsupported" || reply.error === "changed"
         ? { is: "refused", error: reply.error, message: reply.message ?? reply.error }
         : { is: "error", message: reply.message ?? reply.error });
@@ -138,13 +148,13 @@ export function TerminalPane({ id, state: rowState }: { id: string; state: strin
   };
   const stop = () => ask({ op: "run", args: ["stop", id] });
 
-  // Waiting for a turn to end: open once the session's state moves on.
-  const waiting = state.is === "refused" && state.error === "turn_running";
-  const lastRow = useRef(rowState);
+  // Waiting for a turn to end: try again every 2 s until it opens.
+  const waiting = state.is === "refused" && state.error === "turn_running" && Boolean(daemon);
   useEffect(() => {
-    if (waiting && rowState !== lastRow.current && rowState !== "working") open();
-    lastRow.current = rowState;
-  }, [waiting, rowState]);
+    if (!waiting) return;
+    const retry = window.setInterval(() => open(true), 2000);
+    return () => clearInterval(retry);
+  }, [waiting]);
 
   useEffect(() => {
     if (term.current) term.current.xterm.options.disableStdin = !live;
@@ -170,7 +180,7 @@ export function TerminalPane({ id, state: rowState }: { id: string; state: strin
             {state.is === "refused" && <p className="text-muted-foreground">{state.message}</p>}
             {state.is === "error" && <p className="text-destructive">{state.message}</p>}
             {(state.is === "closed" || state.is === "error" || (state.is === "refused" && !waiting)) && (
-              <Button size="sm" disabled={!daemon} onClick={open}>
+              <Button size="sm" disabled={!daemon} onClick={() => open()}>
                 Open terminal
               </Button>
             )}
@@ -184,7 +194,7 @@ export function TerminalPane({ id, state: rowState }: { id: string; state: strin
         {state.is === "exited" && (
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 border-t border-divider bg-terminal-background py-2 text-sm">
             <span className="text-muted-foreground">The terminal ended</span>
-            <Button size="sm" disabled={!daemon} onClick={open}>
+            <Button size="sm" disabled={!daemon} onClick={() => open()}>
               Open again
             </Button>
           </div>
