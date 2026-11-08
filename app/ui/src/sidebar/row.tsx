@@ -105,7 +105,7 @@ export function SessionRowItem({
           >
             {badged && project && <ProjectBadge name={project.name} />}
             <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{title}</span>
-            <span className={cx("flex shrink-0 empty:hidden group-has-focus-visible/row:opacity-0 group-hover/row:opacity-0 group-has-aria-expanded/row:opacity-0", offline && "opacity-disabled")}>
+            <span className={cx("flex shrink-0 empty:hidden group-has-focus-visible/row:invisible group-hover/row:invisible group-has-aria-expanded/row:invisible", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>
           </TooltipTrigger>
