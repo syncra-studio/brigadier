@@ -93,7 +93,7 @@ export function QuestionRow({ keep, question, answer, waiting }: { keep: string;
     <OpeningRow
       keep={keep}
       detail={
-        <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm">
+        <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm select-text">
           <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{question}</dt>
           <dd className="whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{answer}</dd>
         </dl>

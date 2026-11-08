@@ -119,7 +119,7 @@ export function ShellBox({
         type="button"
         disabled={whole}
         onClick={() => setWhole(true)}
-        className={cx("px-3 pt-2 text-start font-mono text-code whitespace-pre-wrap wrap-anywhere text-foreground", !whole && "line-clamp-2 cursor-pointer")}
+        className={cx("px-3 pt-2 text-start font-mono text-code whitespace-pre-wrap wrap-anywhere select-text text-foreground", !whole && "line-clamp-2 cursor-pointer")}
       >
         <span className="text-muted-foreground">$ </span>
         {command}
@@ -161,7 +161,7 @@ export function ToolBox({ title, children }: { title?: string; children: ReactNo
   return (
     <div className="flex flex-col rounded-control bg-code-surface text-action-hover">
       {title && <p className="px-3 pt-2 text-xs text-muted-foreground">{title}</p>}
-      <div className={cx("max-h-60 overflow-auto px-3 pb-2 font-mono text-code whitespace-pre-wrap wrap-anywhere", !title && "pt-2")}>{children}</div>
+      <div className={cx("max-h-60 overflow-auto px-3 pb-2 font-mono text-code whitespace-pre-wrap wrap-anywhere select-text", !title && "pt-2")}>{children}</div>
     </div>
   );
 }
