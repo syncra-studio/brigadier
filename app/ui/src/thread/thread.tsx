@@ -9,7 +9,7 @@ import { JumpSign, messageMarks } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
-/** `sent(id)`: this window sent the message drawn under `id` (the client id it keeps once the backend has it), so it pins. */
+/** `sent(id)`: this window sent the message under this row or command id, so it pins. */
 export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void; sent(id: string): void };
 
 /** How close to the end, in px, still counts as at the bottom. */
@@ -137,7 +137,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const newest = useMemo(() => {
     for (let at = all.length - 1; at >= 0; at--) {
       const line = all[at]!;
-      if (line.type === "item" && line.item.kind === "message" && line.item.role === "user") return line.id;
+      if (line.type === "item" && line.item.kind === "message" && line.item.role === "user") return line.item;
     }
     return undefined;
   }, [all]);
@@ -202,14 +202,14 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   useLayoutEffect(() => {
     const before = seen.current;
     seen.current = newest;
-    if (newest === before || before === undefined || newest === undefined) return;
-    // One from elsewhere (another window, the terminal) while the user reads further up moves nothing: ↓ shows.
-    if (away && newest !== mine.current) return;
-    pin.current = { id: newest, released: false };
+    if (newest?.id === before?.id || before === undefined || newest === undefined) return;
+    // Only this window's send pins a message; inputs from elsewhere keep the current follow state.
+    if (mine.current !== newest.id && mine.current !== (newest.cid ?? newest.turnId)) return;
+    pin.current = { id: newest.id, released: false };
     stuck.current = false;
     setAway(false);
     fit();
-  }, [newest, fit, away]);
+  }, [newest, fit]);
 
   // Rows too few to scroll give no scroll to ask for older ones on: ask once they are drawn and measured.
   const fill = () => {
@@ -296,14 +296,16 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           const handle = list.current;
           if (!handle) return;
           const end = handle.scrollSize - offset - handle.viewportSize <= NEAR_END;
+          const byUser = performance.now() - byHand.current < BY_HAND_MS;
           // Scrolled up past a pinned message: its space is given up.
-          if (pin.current && offset < scrolledTo.current - 1 && performance.now() - byHand.current < BY_HAND_MS) pin.current.released = true;
+          if (pin.current && offset < scrolledTo.current - 1 && byUser) pin.current.released = true;
           scrolledTo.current = offset;
           if (pin.current) fit();
           // The blank space under a pinned message isn't a bottom to follow.
-          stuck.current = end && space.get() === 0;
+          // Measurements and viewport resizes can move the offset before the end is followed again.
+          if (end || byUser) stuck.current = end && space.get() === 0;
           // A pinned message's space is the latest, wherever our own moves pass on the way.
-          setAway(!end && pin.current?.released !== false);
+          setAway(!stuck.current && !end && pin.current?.released !== false);
           // Near the top, the source brings older rows, if it has any.
           if (offset < handle.viewportSize) source.older?.();
         }}

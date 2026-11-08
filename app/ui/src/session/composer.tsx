@@ -99,7 +99,7 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
  * wave 3, D191); ⌘⏎ or ⌥⏎ does the other, steering only where the agent can; ⌘⏎ in an empty field steers the first
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159].
  */
-export function SessionComposer({ id, row, offline, blocked, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; run?: Runner; source?: Source }) {
+export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source }) {
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
   // An approval takes the composer's place until Reply… moves it to the rail [D199].
@@ -161,6 +161,7 @@ export function SessionComposer({ id, row, offline, blocked, run = daemonRun, so
     act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]);
   const now = (message: string, steer = false) => {
     const entry: Sent = { cid: newId(), text: message, steer };
+    onSent?.(entry.cid);
     setSent(id, (list) => [...list, entry]);
     deliver(run, id, entry);
   };
