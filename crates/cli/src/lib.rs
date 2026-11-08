@@ -31,7 +31,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--trusted true|false|none] [--setup S] | remove I]
+       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] | ignored I [--in D] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
        brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -140,7 +140,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 let spec = core::create(data, &spec)?;
                 if let Some(project) = project.filter(|_| worktree)
-                    && let Err(e) = core::worktrees::create(&spec, Path::new(&project.folder))
+                    && let Err(e) = core::worktrees::create(&spec, &project)
                 {
                     if !spec.dir.join("worktree.json").exists() {
                         std::fs::remove_dir_all(&spec.dir)?;

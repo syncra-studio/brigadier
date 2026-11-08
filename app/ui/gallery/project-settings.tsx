@@ -1,22 +1,47 @@
-// Trust this folder? on Fake data [D166, D167, D201]: each state frozen.
+// Trust this folder?, Project settings and the project menu on Fake data [D166, D167, D171, D178, D201, D202, D212].
 import type { ReactNode } from "react";
 
+import { Button } from "../src/components/button";
 import { Dialog, DialogContent } from "../src/components/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../src/components/menu";
+import { DotsHorizontal } from "../src/icons";
+import { DiscoveredFiles } from "../src/projects/files";
+import { ProjectMenuItems } from "../src/projects/menu";
 import type { Project } from "../src/projects/projects";
+import { type FilesProps, PathRows, ProjectSettings, type SettingsSource } from "../src/projects/settings";
 import { TrustForm } from "../src/projects/trust";
 import { Held, Row, Section, State } from "./parts";
 
-const PROJECT: Project = { id: "p-1", name: "invoice-service", folder: "/Users/you/code/invoice-service", trusted: null, added: 0 };
+const PROJECT: Project = { id: "p-1", name: "invoice-service", folder: "/Users/you/code/invoice-service", trusted: null, setup: "", include: [], added: 0 };
 const LONG: Project = { ...PROJECT, folder: "/Users/you/Development/clients/acme-corporation/platform/services/billing/invoice-service" };
+const SET: Project = { ...PROJECT, trusted: true, include: [".env", "config/local.json"], setup: "pnpm install" };
+
+const LISTED: Record<string, string[]> = {
+  "": [".env", ".env.local", "certs/", "node_modules/", "tmp/"],
+  "certs/": ["certs/dev.pem", "certs/dev.key"],
+  "node_modules/": ["node_modules/.pnpm/", "node_modules/react/"],
+};
+const after = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+
+function fake(with_: Partial<SettingsSource> = {}): SettingsSource {
+  return {
+    pick: () => after(0, "/Users/you/code/invoice-service-v2"),
+    check: (path) => after(100, { kind: "repo", repo: path, name: path.split("/").at(-1)!, project_id: null }),
+    save: () => after(400, undefined),
+    ignored: (_, dir) => after(300, { entries: LISTED[dir] ?? [], copied: dir ? [] : [".env.local"] }),
+    ...with_,
+  };
+}
+const FAKE = fake();
 
 /** A dialog held open in its own box, as the app shows it. */
-export function Frozen({ label, frame, children }: { label: string; frame: string; children: ReactNode }) {
+function Frozen({ label, frame, tall, children }: { label: string; frame: string; tall?: boolean; children: ReactNode }) {
   return (
     <State label={label}>
-      <Held className="h-80 w-152 overflow-hidden rounded-surface">
+      <Held className={`${tall ? "h-232" : "h-80"} w-160 overflow-hidden rounded-surface`}>
         {(box) => (
           <Dialog open modal={false}>
-            <DialogContent container={box} initialFocus={false} frame={frame} showCloseButton={false}>
+            <DialogContent container={box} initialFocus={false} frame={frame} showCloseButton={!!tall}>
               {children}
             </DialogContent>
           </Dialog>
@@ -25,6 +50,12 @@ export function Frozen({ label, frame, children }: { label: string; frame: strin
     </State>
   );
 }
+
+const Settings = ({ label, project = SET, source = FAKE, Files }: { label: string; project?: Project; source?: SettingsSource; Files?: (props: FilesProps) => ReactNode }) => (
+  <Frozen label={label} frame="max-w-project-dialog gap-7 p-6" tall>
+    <ProjectSettings project={project} source={source} onClose={() => {}} Files={Files} />
+  </Frozen>
+);
 
 export function ProjectSettingsGallery() {
   return (
@@ -39,6 +70,31 @@ export function ProjectSettingsGallery() {
         <Frozen label="refused" frame="max-w-trust gap-0 p-0">
           <TrustForm project={PROJECT} error="Brigadier isn't running" onAnswer={() => {}} />
         </Frozen>
+      </Row>
+      <Row name="project menu (on the sidebar's project row)">
+        <State label="open">
+          <Held className="h-40 w-64">
+            {(box) => (
+              <DropdownMenu open modal={false}>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Project actions" />}>
+                  <DotsHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent container={box} align="start" collisionAvoidance={{ side: "none", align: "none" }}>
+                  <ProjectMenuItems project={SET} />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </Held>
+        </State>
+      </Row>
+      <Row name="Files to copy, O20: (a) the old app's path rows (wired) · (b) the repo's ignored files to tick">
+        <Settings label="(a) path rows" Files={PathRows} />
+        <Settings label="(b) ignored files, a folder opens by its arrow" Files={DiscoveredFiles} />
+      </Row>
+      <Row name="Project settings: unanswered with a long path · nothing to copy yet · listing failed">
+        <Settings label="unanswered, long path, empty" project={LONG} />
+        <Settings label="(b) nothing ignored" project={PROJECT} source={fake({ ignored: () => after(100, { entries: [], copied: [] }) })} Files={DiscoveredFiles} />
+        <Settings label="(b) disconnected" project={PROJECT} source={fake({ ignored: () => Promise.reject(new Error("disconnected")) })} Files={DiscoveredFiles} />
       </Row>
     </Section>
   );

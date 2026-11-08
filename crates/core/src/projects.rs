@@ -28,6 +28,9 @@ pub struct Project {
     pub trusted: Option<bool>,
     /// Runs before the first turn in a new worktree, only while trusted [D202, D211].
     pub setup: String,
+    /// Ignored files copied into each new worktree, beside the repo's own `.worktreeinclude`:
+    /// paths from the repository's top [D178, D211].
+    pub include: Vec<String>,
     pub added: u64,
 }
 
@@ -114,6 +117,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         folder: folder.into(),
         trusted: None,
         setup: String::new(),
+        include: vec![],
         added,
     }
 }
@@ -176,6 +180,13 @@ pub fn plain(data: &Path, dir: &Path) -> io::Result<()> {
 /// What adding `path` would add: its repository's main checkout, after every guard. Writes
 /// nothing, so a step can ask before it touches the disk.
 pub fn check(data: &Path, path: &str) -> io::Result<PathBuf> {
+    let folder = repo(data, path)?;
+    taken(&list(data)?, &folder)?;
+    Ok(folder)
+}
+
+/// The main checkout `path` is in, after every guard but "already a project".
+fn repo(data: &Path, path: &str) -> io::Result<PathBuf> {
     match fs::metadata(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             return err(format!("{path} does not exist"));
@@ -189,7 +200,6 @@ pub fn check(data: &Path, path: &str) -> io::Result<PathBuf> {
         return err(format!("{path} is not in a git repository"));
     };
     own(data, &folder)?;
-    taken(&list(data)?, &folder)?;
     Ok(folder)
 }
 
@@ -230,6 +240,11 @@ fn find<'a>(list: &'a mut [Project], id: &str) -> io::Result<&'a mut Project> {
     }
 }
 
+pub fn get(data: &Path, id: &str) -> io::Result<Project> {
+    let mut list = list(data)?;
+    find(&mut list, id).cloned()
+}
+
 pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
     let name = clean(name)?;
     let (_, project) = change(data, |list| {
@@ -240,37 +255,98 @@ pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
     Ok(project)
 }
 
-/// Changes only trust and setup; folder changes must reset trust when 1r adds them [D166]. Every
-/// trust change goes through here: 1i writes the CLIs' own trust entries from here.
-pub fn set(
-    data: &Path,
-    id: &str,
-    trusted: Option<Option<bool>>,
-    setup: Option<String>,
-) -> io::Result<Project> {
+/// What `set` changes; None leaves a field as it is.
+#[derive(Default)]
+pub struct Change {
+    pub name: Option<String>,
+    pub folder: Option<String>,
+    pub trusted: Option<Option<bool>>,
+    pub setup: Option<String>,
+    pub include: Option<Vec<String>>,
+}
+
+/// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
+/// refused while the project has sessions (proposed), so trust never moves under them [D166].
+/// Every trust change goes through here: 1i writes the CLIs' own trust entries from here.
+pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
+    let name = new.name.as_deref().map(clean).transpose()?;
+    let folder = new.folder.map(|f| repo(data, &f)).transpose()?;
+    let include = new
+        .include
+        .map(|paths| {
+            paths
+                .iter()
+                .map(|p| path(p))
+                .collect::<io::Result<Vec<_>>>()
+        })
+        .transpose()?;
+    let count = if folder.is_some() {
+        sessions(data, id)?
+    } else {
+        0
+    };
     let (_, project) = change(data, |list| {
+        let now = find(list, id)?.folder.clone();
+        if let Some(folder) = folder.filter(|f| Path::new(&now) != f) {
+            taken(list, &folder)?;
+            let p = find(list, id)?;
+            if count > 0 {
+                return err(format!(
+                    "\"{}\" has {count} session(s), so its folder can't change.",
+                    p.name
+                ));
+            }
+            p.folder = folder.display().to_string();
+            p.trusted = None;
+        }
         let p = find(list, id)?;
-        if let Some(trusted) = trusted {
+        if let Some(name) = name {
+            p.name = name;
+        }
+        if let Some(trusted) = new.trusted {
             p.trusted = trusted;
         }
-        if let Some(setup) = setup {
+        if let Some(setup) = new.setup {
             p.setup = setup;
+        }
+        if let Some(include) = include {
+            p.include = include;
         }
         Ok(p.clone())
     })?;
     Ok(project)
 }
 
-/// Removes a project with no sessions. Removing one with sessions deletes them, under its own
-/// dialog, which 1w builds [D172, D179]; until then it's refused.
-pub fn remove(data: &Path, id: &str) -> io::Result<()> {
+/// One path to copy into worktrees, from the repository's top; never out of it.
+fn path(p: &str) -> io::Result<String> {
+    let p = p.trim().trim_end_matches('/');
+    if p.is_empty() {
+        return err("A file to copy can't be empty.".into());
+    }
+    if p.starts_with('/') || p.starts_with('~') {
+        return err(format!("\"{p}\" must be relative to the repository root."));
+    }
+    if p.split('/').any(|part| part == "..") {
+        return err(format!("\"{p}\" must stay inside the repository."));
+    }
+    Ok(p.into())
+}
+
+/// How many sessions are in the project.
+fn sessions(data: &Path, id: &str) -> io::Result<usize> {
     let projects = list(data)?;
     let mut roots = Roots::default();
-    let sessions = ids(data)
+    Ok(ids(data)
         .iter()
         .filter_map(|s| load(data, s).ok())
         .filter(|spec| of(spec, &projects, &mut roots).as_deref() == Some(id))
-        .count();
+        .count())
+}
+
+/// Removes a project with no sessions. Removing one with sessions deletes them, under its own
+/// dialog, which 1w builds [D172, D179]; until then it's refused.
+pub fn remove(data: &Path, id: &str) -> io::Result<()> {
+    let sessions = sessions(data, id)?;
     change(data, |list| {
         let name = find(list, id)?.name.clone();
         if sessions > 0 {

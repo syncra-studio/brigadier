@@ -36,11 +36,14 @@ export function TrustHost({ active }: { active: string | null }) {
     setFailed(null);
     setProject(project, { trusted }, ["--trusted", String(trusted)]).catch((cause) => setFailed({ id: project.id, error: errorText(cause) }));
   };
+  const card = useRef<HTMLDivElement>(null);
   return (
     <Dialog open={open} disablePointerDismissal onOpenChange={() => {}}>
-      {/* Focus lands on the path, not an answer: Enter never trusts a folder by accident. */}
-      <DialogContent frame="max-w-trust gap-0 p-0" showCloseButton={false}>
-        {project && <TrustForm project={project} error={failed?.id === project.id ? failed.error : null} onAnswer={answer} />}
+      {/* Focus lands on the card, not an answer or the path's tip: Enter never trusts a folder by accident. */}
+      <DialogContent frame="max-w-trust gap-0 p-0" showCloseButton={false} initialFocus={card}>
+        <div ref={card} tabIndex={-1} className="outline-none">
+          {project && <TrustForm project={project} error={failed?.id === project.id ? failed.error : null} onAnswer={answer} />}
+        </div>
       </DialogContent>
     </Dialog>
   );

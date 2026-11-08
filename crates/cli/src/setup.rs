@@ -115,13 +115,33 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                             _ => Err(io::Error::other("--trusted must be true, false or none")),
                         })
                         .transpose()?;
-                    let project = projects::set(
-                        data,
-                        arg(2),
+                    // `--include` is one path a line; empty copies none [D178].
+                    let include =
+                        flag(args, "--include").map(|v| v.lines().map(String::from).collect());
+                    let change = projects::Change {
+                        name: flag(args, "--name").map(String::from),
+                        folder: flag(args, "--folder").map(String::from),
                         trusted,
-                        flag(args, "--setup").map(String::from),
-                    )?;
+                        setup: flag(args, "--setup").map(String::from),
+                        include,
+                    };
+                    let project = projects::set(data, arg(2), change)?;
                     return Ok(json!({"ok": true, "project": project}));
+                }
+                // Project settings' files to copy: the ignored entries in a folder [D178].
+                "ignored" => {
+                    let folder = projects::get(data, arg(2))?.folder;
+                    let dir = flag(args, "--in").unwrap_or("");
+                    let (entries, copied) = core::worktrees::ignored(Path::new(&folder), dir)?;
+                    return Ok(json!({"ok": true, "entries": entries, "copied": copied}));
+                }
+                "reveal" => {
+                    let folder = projects::get(data, arg(2))?.folder;
+                    let status = std::process::Command::new("open").arg(&folder).status()?;
+                    if !status.success() {
+                        return Err(io::Error::other(format!("Couldn't open {folder}")));
+                    }
+                    return Ok(json!({"ok": true}));
                 }
                 "remove" => {
                     projects::remove(data, arg(2))?;
