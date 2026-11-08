@@ -1,5 +1,5 @@
 /* The only file allowed raw colours and lengths. Values picked from the old app's tokens.css. */
-@layer theme, base, utilities;
+@layer dnd-kit, theme, base, utilities;
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source("./");
 @source "../index.html";
@@ -448,6 +448,66 @@
   @media (prefers-reduced-motion: no-preference) {
     transition: height var(--duration-fold) var(--ease-enter);
   }
+}
+
+/* dnd-kit's drag styles (the queue, queue.tsx). It injects them as a <style> element, which our CSP (default-src
+   'self') blocks, so they live here instead: copied from @dnd-kit/dom 0.5.3, pinned; compare them on any upgrade. */
+:is(:root, :host) [data-dnd-dragging] {
+  position: fixed !important;
+  pointer-events: none !important;
+  touch-action: none;
+  z-index: calc(infinity);
+  will-change: translate;
+  top: var(--dnd-top, 0px) !important;
+  left: var(--dnd-left, 0px) !important;
+  right: unset !important;
+  bottom: unset !important;
+  width: var(--dnd-width, auto);
+  max-width: var(--dnd-width, auto);
+  height: var(--dnd-height, auto);
+  max-height: var(--dnd-height, auto);
+  transform: var(--dnd-transform, none) !important;
+  transition: var(--dnd-transition) !important;
+}
+:is(:root, :host) [data-dnd-placeholder] {
+  transition: none;
+}
+:is(:root, :host) [data-dnd-placeholder="hidden"] {
+  visibility: hidden;
+}
+[data-dnd-dragging] * {
+  pointer-events: none !important;
+}
+[data-dnd-dragging]:not([data-dnd-dropping]) {
+  translate: var(--dnd-translate) !important;
+}
+[data-dnd-dragging][style*="--dnd-scale"] {
+  scale: var(--dnd-scale) !important;
+  transform-origin: var(--dnd-transform-origin) !important;
+}
+@layer dnd-kit {
+  :where([data-dnd-dragging][popover]) {
+    overflow: visible;
+    background: unset;
+    border: unset;
+    margin: unset;
+    padding: unset;
+    color: inherit;
+    &:is(input, button) {
+      border: revert;
+      background: revert;
+    }
+  }
+}
+[data-dnd-dragging]::backdrop,
+[data-dnd-overlay]:not([data-dnd-dragging]) {
+  display: none;
+  visibility: hidden;
+}
+/* Its Cursor and PreventSelection plugins' rules, which it applies only while a drag is on. */
+:root:has([data-dnd-dragging]) * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 @utility app-no-drag {
