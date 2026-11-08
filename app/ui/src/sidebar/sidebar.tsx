@@ -11,7 +11,8 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openAddProject, setShowProject } from "../projects/store";
+import { SearchPalette, searchText, type TextSearch } from "../palette/palette";
+import { openAddProject, setShowProject, showProject } from "../projects/store";
 import { markUnread, pin, rename, useShown } from "./actions";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
@@ -56,6 +57,7 @@ export function AppSidebar({
   onNewSession,
   foot,
   storeKey = "sidebar",
+  search = searchText,
 }: {
   /** undefined until the first list arrives. */
   rows: SessionRow[] | undefined;
@@ -70,10 +72,13 @@ export function AppSidebar({
   foot?: ReactNode;
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
+  /** ⌘K's search over message text; the gallery's demos answer from fake data. */
+  search?: TextSearch;
 }) {
   const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "none");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
+  const [searching, setSearching] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
@@ -122,6 +127,7 @@ export function AppSidebar({
         "⌥KeyP": activeRow && (() => pin(activeRow, !activeRow.pinned)),
         "⌥KeyR": activeRow && (() => setRenaming(activeRow)),
         "⇧KeyU": activeRow && (() => markUnread(activeRow, true)),
+        KeyK: () => setSearching(true),
       }[key];
       if (!action) return;
       event.preventDefault();
@@ -248,6 +254,22 @@ export function AppSidebar({
         <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
       </div>
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />
+      <SearchPalette
+        open={searching}
+        onOpenChange={setSearching}
+        rows={shown}
+        projects={projects}
+        offline={offline}
+        search={search}
+        onOpenSession={(id) => {
+          onOpen(id);
+          reveal(id);
+        }}
+        onOpenProject={(id) => {
+          onNewSession();
+          showProject(id);
+        }}
+      />
     </SidebarPanel>
   );
 }

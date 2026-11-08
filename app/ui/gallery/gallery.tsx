@@ -9,6 +9,7 @@ import { DecisionsGallery } from "./decisions";
 import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
+import { PaletteGallery } from "./palette";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
 import { ProjectsGallery } from "./projects";
@@ -104,6 +105,7 @@ function GalleryPage() {
       <main className="isolate flex flex-col gap-10 px-8 py-8">
         <ProjectsGallery />
         <SidebarGallery />
+        <PaletteGallery />
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />

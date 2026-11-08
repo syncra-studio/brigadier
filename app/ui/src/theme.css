@@ -216,6 +216,8 @@
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
+  /* The ⌘K search palette's card (the old app's). */
+  --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
   --spacing-nav-header: 3.25rem;
