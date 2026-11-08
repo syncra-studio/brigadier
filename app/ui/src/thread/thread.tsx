@@ -129,14 +129,14 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     let at = lines.length - 1;
     while (at >= 0 && lines[at]!.id !== pinned.id) at--;
     const end = viewport.querySelector<HTMLElement>("[data-footer]");
-    if (at < 0 || !end) {
-      if (pinned.released || at < 0) (pin.current = null), space.set(0);
+    if (at < 0 || (pinned.released && !end)) {
+      pin.current = null;
+      space.set(0);
       return;
     }
-    const base = end.offsetHeight - space.get();
     if (pinned.released) {
       // Where the rows end without the space: the footer's place plus its own content.
-      const bottom = handle.getItemOffset(lines.length - 1) + base;
+      const bottom = handle.getItemOffset(lines.length - 1) + end!.offsetHeight - space.get();
       // Given up: it only shrinks, to what is still on screen, so nothing moves.
       const next = Math.min(space.get(), Math.max(0, Math.ceil(handle.scrollOffset + handle.viewportSize - bottom)));
       space.set(next);
@@ -147,27 +147,31 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     const row = viewport.querySelector<HTMLElement>(`[data-item="${CSS.escape(pinned.id)}"]`);
     const fade = viewport.querySelector<HTMLElement>('[data-slot="scroll-fade"]')?.offsetHeight ?? 0;
     const lift = Math.max(0, fade - (row ? parseFloat(getComputedStyle(row).paddingTop) : 0));
+    // How far it is from its place, as drawn (a row above may have grown), else as Virtua places it.
+    const drift = row ? row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - lift : handle.getItemOffset(at) - lift - handle.scrollOffset;
+    const filled = () => {
+      // The bottom works as before, and what grows below is away.
+      pin.current = null;
+      space.set(0);
+      setAway(true);
+    };
+    // Our own move isn't the user scrolling up.
+    const move = () => {
+      scrolledTo.current = handle.scrollOffset + drift;
+      handle.scrollBy(drift);
+    };
+    // What follows it runs past what is drawn: bring it up first (it came while the view was elsewhere); in place, it's filled.
+    if (!end) return Math.abs(drift) > 1 ? move() : filled();
     // The message and what follows it, as drawn: Virtua's sizes for rows just added are only estimates.
-    let below = base;
+    let below = end.offsetHeight - space.get();
     for (let line = at; line < lines.length - 1; line++) {
       const drawn = viewport.querySelector<HTMLElement>(`[data-item="${CSS.escape(lines[line]!.id)}"]`);
       below += drawn ? drawn.offsetHeight : handle.getItemSize(line);
     }
     const need = Math.max(0, Math.round(handle.viewportSize - lift - below));
-    const top = handle.getItemOffset(at) - lift;
+    if (need === 0) return filled();
     space.set(need);
-    if (need === 0) {
-      // Filled: the bottom works as before, and what grows below is away.
-      pin.current = null;
-      setAway(true);
-    } else {
-      // Keep it there from where it is drawn (a row above may have grown); our own move isn't the user scrolling up.
-      const drift = row ? row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - lift : top - handle.scrollOffset;
-      if (Math.abs(drift) > 1) {
-        scrolledTo.current = handle.scrollOffset + drift;
-        handle.scrollBy(drift);
-      }
-    }
+    if (Math.abs(drift) > 1) move();
   }, [space]);
   const seen = useRef(newest);
   useLayoutEffect(() => {
@@ -259,7 +263,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           if (pin.current) fit();
           // The blank space under a pinned message isn't a bottom to follow.
           stuck.current = end && space.get() === 0;
-          setAway(!end);
+          // A pinned message's space is the latest, wherever our own moves pass on the way.
+          setAway(!end && pin.current?.released !== false);
         }}
       >
         {(line: Line | typeof FOOTER) =>
