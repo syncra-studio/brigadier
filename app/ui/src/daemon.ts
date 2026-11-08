@@ -26,9 +26,9 @@ export type Row = {
   updated: number;
   items: number;
   error: string | null;
+  /** Set once archive exists (1v): ⌘K lists it last, tagged [D197]. */
+  archived?: boolean;
 };
-/** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
-export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */
@@ -38,16 +38,13 @@ export type View = {
   rows?: Row[];
   /** The same for the projects, which come with the rows [D40, D71]. */
   projects?: Project[];
-  search: Search;
 };
 
-let view: View = { daemon: undefined, search: { q: "", pending: false } };
+let view: View = { daemon: undefined };
 let port: MessagePort | undefined;
 let bytes = new Uint8Array();
 let nextId = 0;
 let listId = 0;
-let searchId = 0;
-const SLOW_MS = 200;
 // The list at N, then each update N+1, N+2… in order [D40]. A gap asks for a fresh list.
 let rows = new Map<string, Row>();
 let projects = new Map<string, Project>();
@@ -160,7 +157,6 @@ function onFrame(frame: Record<string, any>): void {
     set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
     subscribe();
     watch();
-    if (view.search.q.trim()) search(view.search.q);
   } else if (frame.status === "refused") {
     set({ daemon: null, refused: frame.error });
   } else if (frame.re === listId) {
@@ -168,10 +164,6 @@ function onFrame(frame: Record<string, any>): void {
     projects = new Map(frame.projects.map((project: Project) => [project.id, project]));
     n = frame.n;
     set({ rows: [...rows.values()], projects: [...projects.values()] });
-  } else if (frame.re === searchId) {
-    // Only the latest query's reply lands; it swaps the results in place, never backwards.
-    const { q, ids } = view.search;
-    set({ search: { q, pending: false, ids: frame.ok ? frame.ids : ids, error: frame.ok ? undefined : frame.error } });
   } else if (thread && frame.re === threadRe) {
     if (!frame.ok) return setThread({ id: thread.id, status: frame.error === "not_found" ? "missing" : "error", error: frame.error });
     const next: Session = frame.session;
@@ -214,19 +206,6 @@ function receive(chunk: Uint8Array): void {
     onFrame(JSON.parse(new TextDecoder().decode(bytes.subarray(4, end))));
     bytes = bytes.slice(end);
   }
-}
-
-/** Searches the daemon's index; an empty query shows every session. */
-export function search(q: string): void {
-  if (!q.trim()) {
-    searchId = 0;
-    return set({ search: { q, pending: false } });
-  }
-  if (!view.daemon) return set({ search: { q, pending: false, error: "Daemon not reachable" } });
-  // The current results stay on screen until the reply swaps them.
-  set({ search: { ...view.search, q, pending: true, slow: false, error: undefined } });
-  const id = (searchId = send({ op: "search", q }));
-  setTimeout(() => searchId === id && view.search.pending && set({ search: { ...view.search, slow: true } }), SLOW_MS);
 }
 
 // At module level, not in an effect: main posts the port once the page has loaded, maybe before React's first effect.

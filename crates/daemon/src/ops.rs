@@ -160,7 +160,7 @@ pub(super) fn serve(
             "search" => {
                 let q = req["q"].as_str().unwrap_or("");
                 let reply = match index::search(data, q) {
-                    Ok(ids) => json!({"re": re, "ok": true, "ids": ids}),
+                    Ok(hits) => json!({"re": re, "ok": true, "hits": hits}),
                     Err(e) => json!({"re": re, "ok": false, "error": e.to_string()}),
                 };
                 let _ = out.send(reply.to_string());
