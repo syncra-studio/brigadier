@@ -67,10 +67,9 @@ export type Agent = {
   how?: string | null;
   models?: { id: string; local: boolean }[];
   error?: string;
-  busy?: boolean;
 };
 
-/** The agents, undefined until the first check answers; `error` when that check failed. */
+/** Static or saved cards arrive with the profile; live checks replace them by name. */
 type Agents = { list?: Agent[]; checking: ReadonlySet<string>; error?: string };
 const agents = store<Agents>({ checking: new Set() });
 export const useAgents = agents.use;
@@ -91,19 +90,18 @@ function check(args: string[], name = "*"): Promise<void> {
   };
   return run(args).then(
     (reply) => {
-      // A check still running for an agent answers busy: the card keeps what it showed.
-      const fresh = (reply.agents as Agent[]).filter((agent) => !agent.busy && mine > (shown.get(agent.name) ?? 0));
+      const fresh = (reply.agents as Agent[]).filter((agent) => mine > (shown.get(agent.name) ?? 0));
       for (const agent of fresh) shown.set(agent.name, mine);
       const list = agents.get().list;
       if (name === "*") {
-        // A full check keeps Rust's order; an agent it couldn't answer afresh keeps its last card.
+        // A full check keeps Rust's order; a newer reply keeps its last card.
         const next = (reply.agents as Agent[]).flatMap((agent) => (fresh.includes(agent) ? [agent] : (list?.filter((each) => each.name === agent.name) ?? [])));
         return done({ list: next, error: undefined });
       }
       if (!list) return done({});
       done({ list: list.map((agent) => fresh.find((each) => each.name === agent.name) ?? agent), error: undefined });
     },
-    (cause) => done(agents.get().list ? {} : { error: errorText(cause) }),
+    (cause) => done({ error: errorText(cause) }),
   );
 }
 
@@ -123,7 +121,11 @@ export const useProfile = profile.use;
 
 export function loadProfile(): void {
   run(["profile"]).then(
-    (reply) => profile.set({ value: reply as Profile }),
+    (reply) => {
+      agents.set({ ...agents.get(), list: reply.agents as Agent[] });
+      profile.set({ value: reply as Profile });
+      void checkAll();
+    },
     (cause) => profile.get().value || profile.set({ error: errorText(cause) }),
   );
 }
