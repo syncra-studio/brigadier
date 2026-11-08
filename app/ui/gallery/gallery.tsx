@@ -2,6 +2,7 @@
 import { type RefObject, useEffect, useRef } from "react";
 
 import { Choices } from "./choices";
+import { ComposerGallery } from "./composer";
 import { Kit } from "./kit";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
@@ -94,6 +95,7 @@ function GalleryPage() {
         <h1 className="ps-2 text-sm font-medium">Components</h1>
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
+        <ComposerGallery />
         <Thread />
         <Choices />
         <Panes />
