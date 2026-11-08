@@ -259,7 +259,9 @@ impl Index {
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
                              "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
-                             "queue": e.marks.queue, "steer": steer, "running": !f.fold.turns.is_empty(),
+                             "queue": e.marks.queue, "steer": steer,
+                             // A turn whose host is gone has nothing left to stop or queue behind [D60].
+                             "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
                              "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref())});
             if self.rows.get(id) != Some(&row) {
