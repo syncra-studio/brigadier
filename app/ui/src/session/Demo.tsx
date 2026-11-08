@@ -135,49 +135,33 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
   if (item.role === "assistant") return <p className="text-base font-prose">{item.text}</p>;
   const failed = pending?.status === "unsent" ? "it never reached the agent" : pending?.status === "failed" ? (pending.error ?? "the backend refused it") : undefined;
   return (
-    <div className="flex flex-col gap-1">
-      <UserBubble
-        keep={entryKey}
-        text={item.text}
-        time={item.sentAt}
-        sending={state === "pending" && slow}
-        failed={failed}
-        dimmed={state === "error" || state === "unknown"}
-      />
-      {/* Its own line, not the kit's: there the actions wrap one by one, leaving Discard alone. */}
-      {failed && (
-        <p className="flex gap-x-2 self-end text-xs text-muted-foreground">
-          <button
-            type="button"
-            onClick={() => {
-              // A retry is timed from its own press.
-              pressedAt.set(entryKey, performance.now());
-              session.retry(entryKey);
-            }}
-            className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring"
-          >
-            Try again
-          </button>
-          <button type="button" onClick={() => session.discard(entryKey)} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
-            Discard
-          </button>
-        </p>
-      )}
-      {state === "unknown" && (
-        <Note role="status">Not confirmed · it's checked once the link is back</Note>
-      )}
+    <UserBubble
+      keep={entryKey}
+      text={item.text}
+      time={item.sentAt}
+      sending={state === "pending" && slow}
+      failed={failed}
+      onRetry={() => {
+        // A retry is timed from its own press.
+        pressedAt.set(entryKey, performance.now());
+        session.retry(entryKey);
+      }}
+      onDiscard={() => session.discard(entryKey)}
+      unconfirmed={state === "unknown"}
+      dimmed={state === "error"}
+    >
       {shownMs !== null && (
         <Note>
           on screen in {Math.round(shownMs)} ms{confirmedMs !== null && ` · confirmed in ${Math.round(confirmedMs)} ms`}
         </Note>
       )}
-    </div>
+    </UserBubble>
   );
 }
 
-function Note({ role, children }: { role?: "status"; children: ReactNode }) {
+function Note({ children }: { children: ReactNode }) {
   return (
-    <p role={role} className="self-end text-xs text-muted-foreground tabular-nums">
+    <p className="self-end text-xs text-muted-foreground tabular-nums">
       {children}
     </p>
   );
@@ -191,7 +175,7 @@ function RunLine({ session }: { session: DemoSession }) {
   if (state === null) return null;
   const run = head.run;
   const ago = Math.max(0, Math.round((now - (head.downSince ?? now)) / 1000));
-  if (run.state === "error") return <ErrorLine error={`The run failed · ${run.error}`} />;
+  if (run.state === "error") return <ErrorLine size="sm" error={`The run failed · ${run.error}`} />;
   if (state === "working") return <WorkingLine state="live">Working</WorkingLine>;
   if (state === "stalled") return <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>;
   if (state === "interrupted") return <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine>;
