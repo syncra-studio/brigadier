@@ -39,7 +39,7 @@ export const newProjectId = () => `p-${Date.now().toString(36)}-${Math.random().
  * still thrown) and settles when the list holds `id`.
  */
 export async function addProject(folder: string, args = ["add", folder], id = newProjectId()): Promise<Project> {
-  hold(id, { id, name: baseName(folder), folder, trusted: null, added: Date.now(), pending: true });
+  hold(id, { id, name: baseName(folder), folder, trusted: null, setup: "", include: [], added: Date.now(), pending: true });
   try {
     const reply = await run(["projects", ...args, "--id", id]);
     hold(id);

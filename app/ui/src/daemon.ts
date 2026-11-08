@@ -5,8 +5,8 @@ import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
-/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers. */
-export type Project = { id: string; name: string; folder: string; trusted: boolean | null; added: number };
+/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]. */
+export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number };
 /** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
 export type Row = {
   id: string;
