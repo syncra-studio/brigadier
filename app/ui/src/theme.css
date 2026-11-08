@@ -719,6 +719,13 @@
   top: attr(data-top px, 0px);
 }
 
+/* The old Add project's 1rem window margin (tokens.css's add-project-top). */
+@utility project-dialog {
+  max-height: calc(100% - --spacing(8));
+  scroll-margin-top: --spacing(4);
+  overflow-y: auto;
+}
+
 /* A toast's way in (faded, from above) and out (faded). */
 @utility toast-motion {
   transition-property: opacity, translate;

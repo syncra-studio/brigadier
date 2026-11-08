@@ -98,6 +98,10 @@ export function CloneView({
   const error = clone.error ?? start.error ?? null;
   const busy = clone.running !== null;
   const folder = folderFromUrl(url);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (clone.error && !busy) field.current?.focus();
+  }, [clone.error, busy]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -109,14 +113,15 @@ export function CloneView({
   };
 
   return (
-    <form onSubmit={submit} className="flex min-w-0 flex-col">
+    <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col">
       <Header title="Clone from URL" line="Paste a link to a git repository. We'll copy it to your Mac and add it." onBack={busy ? undefined : onBack} />
-      <div className="flex flex-col gap-5.5 px-7 pt-1 pb-7">
+      <div className="flex min-h-0 flex-col gap-5.5 overflow-y-auto px-7 pt-1 pb-7">
         <div className="flex flex-col gap-2">
           <FieldLabel htmlFor={`${id}-url`} label="Repository URL" />
           <div className={BOX}>
             <Link />
             <input
+              ref={field}
               id={`${id}-url`}
               value={url}
               autoFocus
@@ -260,8 +265,9 @@ export function GitHubRepos({
     };
   }, [source]);
 
-  const line = (text: string) => <p className="px-3 text-sm text-muted-foreground">{text}</p>;
-  if (error) return <ErrorLine error={error} className="px-3" />;
+  const height = short ? "max-h-32" : "h-add-project-list";
+  const line = (text: string) => <p className={cx("shrink-0 overflow-y-auto px-3 text-sm text-muted-foreground", height)}>{text}</p>;
+  if (error) return <div className={cx("shrink-0 overflow-y-auto px-3", height)}><ErrorLine error={error} /></div>;
   if (!list) return line("Looking for your repositories…");
   if ("gh" in list)
     return line(list.gh === "missing" ? "Install the GitHub CLI (gh) to see your repositories here." : "Sign in with gh auth login to see your repositories here.");
@@ -270,7 +276,7 @@ export function GitHubRepos({
   if (list.repos.length === 0) return line("No repositories on GitHub yet.");
   if (shown.length === 0) return line("No repository matches.");
   return (
-    <div className={cx("flex flex-col gap-0.5 overflow-y-auto", short ? "max-h-32" : "max-h-add-project-list")}>
+    <div className={cx("flex shrink-0 flex-col gap-0.5 overflow-y-auto", height)}>
       {shown.map((repo) => {
         const folder = repo.name.split("/")[1]!;
         const mine = clone.running === repo.name;

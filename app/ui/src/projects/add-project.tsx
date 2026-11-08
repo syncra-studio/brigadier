@@ -20,7 +20,7 @@ import { closeAddProject, daemonSource, DEFAULT_PARENT, type FolderCheck, type R
  */
 
 /** The card's own width and layout: the views pad themselves. */
-export const ADD_PROJECT_FRAME = "max-w-add-project gap-0 p-0";
+export const ADD_PROJECT_FRAME = "project-dialog max-w-add-project gap-0 p-0";
 
 /** Where your GitHub repositories show: under Clone from URL's field, or as On GitHub in the list (O17). */
 export type GitHubIn = "clone" | "pick";
@@ -98,7 +98,7 @@ function splitPath(path: string): { parent: string; name: string } {
 /** The title and its line; with `onBack`, a back arrow before them. The kit's ✕ sits in the corner. */
 export function Header({ title, line, onBack }: { title: string; line: string; onBack?: () => void }) {
   return (
-    <div className={cx("flex gap-3.5 pt-6 pe-12 pb-5", onBack ? "ps-6" : "ps-7")}>
+    <div className={cx("flex shrink-0 gap-3.5 pt-6 pe-12 pb-5", onBack ? "ps-6" : "ps-7")}>
       {onBack && (
         <Button variant="ghost" size="icon-sm" aria-label="Back" onClick={onBack}>
           <ArrowLeft />
@@ -115,7 +115,7 @@ export function Header({ title, line, onBack }: { title: string; line: string; o
 /** The bar along the bottom: `start` on the left, Cancel and the main button on the right. */
 export function Footer({ start, children }: { start?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 border-t border-divider pt-3.75 pe-6 pb-4 ps-5">
+    <div className="flex shrink-0 items-center gap-2 border-t border-divider pt-3.75 pe-6 pb-4 ps-5">
       <div className="flex min-w-0 flex-1 items-center gap-1">{start}</div>
       {children}
     </div>

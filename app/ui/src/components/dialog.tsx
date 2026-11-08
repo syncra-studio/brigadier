@@ -20,13 +20,14 @@ function usePinnedTop(area: HTMLElement | null | undefined) {
   return useCallback(
     (card: HTMLDivElement | null) => {
       if (!card) return;
-      const room = () => (area ?? document.documentElement).clientHeight - card.offsetHeight;
+      const margin = () => parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
+      const room = () => (area ?? document.documentElement).clientHeight - card.offsetHeight - margin();
       let top = 0;
       const place = () => {
-        card.dataset.top = String(Math.max(0, Math.min(top, room())));
+        card.dataset.top = String(Math.max(margin(), Math.min(top, room())));
       };
       const centre = () => {
-        top = Math.round(Math.max(0, room() / 2));
+        top = Math.round(Math.max(margin(), (room() + margin()) / 2));
         place();
       };
       centre();

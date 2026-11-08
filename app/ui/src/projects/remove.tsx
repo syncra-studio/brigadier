@@ -48,7 +48,7 @@ export function RemoveProjectHost() {
   const close = () => opened.set(null);
   return (
     <Dialog open={project !== null} onOpenChange={(open) => !open && close()}>
-      <DialogContent showCloseButton={false} frame="max-w-project-dialog gap-5 p-6">
+      <DialogContent showCloseButton={false} frame="project-dialog max-w-project-dialog gap-5 p-6">
         {project && <RemoveFlow key={project.id} project={project} onClose={close} />}
       </DialogContent>
     </Dialog>
