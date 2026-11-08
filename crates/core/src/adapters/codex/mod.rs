@@ -151,6 +151,9 @@ impl Adapter for Codex {
         let exe = self.exe().unwrap_or_default();
         if spec.mode != "pty" {
             let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+            // A thread that never took a turn has no record, and Codex refuses to resume it.
+            let home = cli_home(spec, ".codex", "");
+            let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());
             let open =
                 json!({"open": control::open(spec, resume), "grants": spec.grants, "id": spec.cid});
             let lines = [Some(open), text.map(|t| control::turn(spec, t))];
@@ -277,6 +280,18 @@ impl Adapter for Codex {
         let (from, path) = cursor.split_once('\t').unwrap_or(("0", ""));
         let (lines, end) = file_lines(std::path::Path::new(path), from.parse().unwrap_or(0));
         (lines, format!("{end}\t{path}"))
+    }
+
+    /// Its record keeps each message with the id `turn/start` gave it.
+    fn accepted(&self, spec: &Spec, resume: &str, cid: &str) -> bool {
+        let found = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{resume}.jsonl")]);
+        found.iter().any(|path| {
+            std::fs::read_to_string(path).is_ok_and(|all| {
+                all.lines()
+                    .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                    .any(|v| v["payload"]["item"]["client_id"] == cid)
+            })
+        })
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

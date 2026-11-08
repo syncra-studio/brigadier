@@ -135,6 +135,18 @@ pub fn send(
     } else if running {
         return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
     }
+    // A message nobody can say arrived stays in the record: the new one starts after it, never as it.
+    if let Some(old) = (f.turns.first())
+        .filter(|t| !running && retry_of.is_none() && t.delivered.is_none())
+        .and_then(|t| t.cid.as_ref())
+        .filter(|old| f.acking.contains(*old))
+    {
+        let closed =
+            json!({"op": "note", "data": {"event": "interrupted", "reason": {"undelivered": old}}});
+        if let Err(e) = call(closed) {
+            return json!({"ok": false, "error": e.to_string()});
+        }
+    }
     let resume = f.resume.get(&b).map(String::as_str);
     let run = Spec {
         cid: Some(cid.into()),
@@ -173,7 +185,7 @@ pub fn send(
 }
 
 /// How long an agent that acks may take to confirm an input (proposed).
-const CONFIRM_WAIT: Duration = Duration::from_secs(10);
+pub(crate) const CONFIRM_WAIT: Duration = Duration::from_secs(10);
 
 /// An input written to an agent that acks is applied only once its reply names the command id
 /// [D222]: delivered on success, refused with the agent's reason on an error, and with no reply in
@@ -232,14 +244,40 @@ pub fn level(spec: &Spec, a: &dyn adapters::Adapter) -> Result<Option<&'static s
     }
 }
 
-/// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself);
-/// an interrupted turn continues through the backend's resume id.
+/// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
+/// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
+/// turn continues through the backend's resume id.
 pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -> Value {
     let status = fold::status(f, live);
     let state = status["state"].as_str().unwrap_or("");
     let now = log::now_ms();
     let note = |data: Value| call(json!({"op": "note", "data": data}));
     match state {
+        "uncertain" => {
+            let (Some(turn), true) = (f.turns.first(), child.is_none()) else {
+                return json!({"ok": false, "recovered": "uncertain", "error": "The agent is still running and hasn't confirmed this message. Stop it to move on."});
+            };
+            let Some(a) = adapters::get(&turn.backend) else {
+                return json!({"ok": false, "error": format!("unknown backend {}", turn.backend)});
+            };
+            let cid = turn.cid.as_deref().unwrap_or("");
+            let run = as_run(spec, f, &turn.backend, None);
+            if !(f.resume.get(&turn.backend)).is_some_and(|id| a.accepted(&run, id, cid)) {
+                let e = format!(
+                    "{} didn't confirm this message, and there's no proof it wasn't received, so it wasn't sent again. If it's missing from the conversation, send it again.",
+                    a.label()
+                );
+                return json!({"ok": false, "recovered": "uncertain", "error": e});
+            }
+            if let Err(e) = note(json!({"event": "interrupted", "reason": {"accepted": cid}})) {
+                return json!({"ok": false, "error": e.to_string()});
+            }
+            let said = format!(
+                "{} took this message before it was cut off. Recover again to continue it.",
+                a.label()
+            );
+            json!({"ok": true, "recovered": "accepted", "message": said})
+        }
         "undelivered" => {
             let Some(turn) = f.turns.iter().find(|t| t.delivered.is_none()) else {
                 return json!({"ok": false});

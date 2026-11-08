@@ -90,8 +90,8 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         "limited" | "unresumable" if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS => {
             Some("working")
         }
-        "failed" | "interrupted" | "undelivered" | "unresumable" | "limited" | "stalled"
-        | "unresponsive" | "no_turn_started" => Some("amber"),
+        "failed" | "interrupted" | "undelivered" | "uncertain" | "unresumable" | "limited"
+        | "stalled" | "unresponsive" | "no_turn_started" => Some("amber"),
         // The user's own stop: nothing to tell them, as in the old app.
         "stopped" => None,
         _ if fold.finished > seen => Some("unread"),
@@ -134,13 +134,22 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             no_start_ms: 30_000,
         });
     let Some(delivered) = turn.delivered else {
-        let young = live.now.saturating_sub(turn.ts) < 2_000
-            && live.owner == Owner::Alive
-            && !turn.orphaned;
-        return if young {
-            ("logged", Value::Null)
+        let acks = turn.cid.as_ref().is_some_and(|c| fold.acking.contains(c));
+        let wait = if acks {
+            crate::send::CONFIRM_WAIT.as_millis() as u64
         } else {
-            ("undelivered", turn.cid.clone().into())
+            2_000
+        };
+        let young =
+            live.now.saturating_sub(turn.ts) < wait && live.owner == Owner::Alive && !turn.orphaned;
+        // A child's gate opens, and its input is written, only after its `spawned` record: with the
+        // owner gone and no such record, the log proves no child read this [D60, D82].
+        let never_ran = turn.spawning && (turn.orphaned || live.owner == Owner::Dead);
+        return match () {
+            _ if young => ("logged", Value::Null),
+            // Written to an agent whose own reply never came: it may have taken it [D82, D222].
+            _ if acks && !never_ran => ("uncertain", turn.cid.clone().into()),
+            _ => ("undelivered", turn.cid.clone().into()),
         };
     };
     if live.owner == Owner::Dead {

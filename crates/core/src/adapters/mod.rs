@@ -296,6 +296,11 @@ pub trait Adapter: Sync {
     fn forget(&self, _spec: &Spec, _resume: &str) -> Result<(), String> {
         Ok(())
     }
+    /// Whether the backend's own record names input `cid`, by id: proof it took it. False proves
+    /// nothing: the backend may not have written it down yet.
+    fn accepted(&self, _spec: &Spec, _resume: &str, _cid: &str) -> bool {
+        false
+    }
     /// Assistant texts and tool calls counted from the backend's own transcript.
     fn transcript(&self, _spec: &Spec, _resume: &str) -> Option<(u64, u64)> {
         None

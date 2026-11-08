@@ -5,6 +5,18 @@ use super::Fold;
 use serde_json::Value;
 
 impl Fold {
+    /// The child an input asked for: started (`spawned`) or never started (`failed`).
+    pub(super) fn spawn_settled(&mut self, cid: &str, failed: bool) {
+        if let Some(t) = self
+            .turns
+            .iter_mut()
+            .find(|t| t.cid.as_deref() == Some(cid))
+        {
+            t.spawning = failed;
+            t.orphaned |= failed;
+        }
+    }
+
     /// A request the agent made: pending in its turn until answered, withdrawn or ended.
     pub(super) fn ask(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("");

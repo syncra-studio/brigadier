@@ -36,7 +36,7 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
 pub fn turn(spec: &Spec, text: &str) -> Value {
     let (policy, reviewer, _, sandbox) = level(spec);
     let mut turn = json!({"input": [{"type": "text", "text": text}], "approvalPolicy": policy,
-        "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}});
+        "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     if let Some(model) = &spec.model {
         turn["model"] = model.as_str().into();
     }
