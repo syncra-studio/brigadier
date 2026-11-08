@@ -133,7 +133,8 @@ impl Runner {
             )
         });
         let mut record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": argv, "backend": req["backend"], "cli_version": req["cli_version"],
-                            "mode": if pty { "pty" } else { "pipe" }, "cid": cid, "owner_build": wire::build()});
+                            "mode": if pty { "pty" } else { "pipe" }, "cid": cid, "owner_build": wire::build(),
+                            "cwd": std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.into()), "temp_dir": req["env"]["TMPDIR"]});
         if pty {
             record["cols"] = size(&req["cols"], 120).into();
             record["rows"] = size(&req["rows"], 40).into();

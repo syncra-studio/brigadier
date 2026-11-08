@@ -2,14 +2,14 @@
 //! control channel beside the messages [D159], or the interactive CLI on a PTY. Frame names per
 //! its public CLI docs and observed output.
 
+mod cleanup;
 mod control;
 mod tools;
 
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing,
-    base_env, classify, cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s,
-    uuid, version,
+    base_env, classify, file_lines, home_path, in_pty, paste, probe_as, s, uuid, version,
 };
 use crate::Spec;
 use crate::terminal::HOOKS;
@@ -308,19 +308,11 @@ impl Adapter for Claude {
     }
 
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
-        let dir = project_dir(spec);
-        vec![dir.join(format!("{resume}.jsonl")), dir.join(resume)]
+        cleanup::external(spec, resume)
     }
 
-    /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
-        drop_lines(
-            &cli_home(spec, ".claude", "history.jsonl"),
-            "sessionId",
-            resume,
-        )
-        .map_err(|e| e.to_string())?;
-        purge(self, spec)
+        cleanup::forget(spec, resume).map_err(|e| e.to_string())
     }
 
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
@@ -385,7 +377,7 @@ impl Adapter for Claude {
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
         let dir = project_dir(spec);
-        vec![dir.join("memory"), dir]
+        vec![dir]
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -414,33 +406,6 @@ fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
-/// A working folder inside the session's own (its worktree) is the session's alone, so Claude's
-/// own purge takes what it keeps for that folder, its entry in `.claude.json` among it [D35]. Run
-/// only when that entry is there, so a delete never fails on nothing to purge.
-fn purge(a: &Claude, spec: &Spec) -> Result<(), String> {
-    let Ok(inside) = Path::new(&spec.cwd).strip_prefix(&spec.dir) else {
-        return Ok(());
-    };
-    let dir = std::fs::canonicalize(&spec.dir).unwrap_or_else(|_| spec.dir.clone());
-    let folder = dir.join(inside).display().to_string();
-    let config = std::fs::read(cli_home(spec, "", ".claude.json")).unwrap_or_default();
-    let config: Value = serde_json::from_slice(&config).unwrap_or_default();
-    if config["projects"].get(&folder).is_none() {
-        return Ok(());
-    }
-    let exe = a
-        .exe()
-        .ok_or("Claude Code isn't installed, so its record of the worktree stays")?;
-    let out = probe_as(spec, &exe, &dir, &[], &["purge", &folder, "--yes"], 30)?;
-    if !out.status.success() {
-        return Err(format!(
-            "claude purge: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(())
-}
-
 /// A user line the CLI writes itself (slash commands, `!` shell runs, reminders), not a prompt.
 fn synthetic(text: &str) -> bool {
     const TAGS: [&str; 6] = [
@@ -457,12 +422,14 @@ fn synthetic(text: &str) -> bool {
 /// Where the CLI keeps transcripts for a working folder: its real path with every
 /// non-alphanumeric character turned into '-'.
 fn project_dir(spec: &Spec) -> PathBuf {
-    let real = std::fs::canonicalize(&spec.cwd).unwrap_or_else(|_| PathBuf::from(&spec.cwd));
-    let slug: String = real
-        .display()
+    home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
+}
+
+fn project_slug(cwd: &Path) -> String {
+    let real = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    real.display()
         .to_string()
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    home_path(".claude/projects").join(slug)
+        .collect()
 }
