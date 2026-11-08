@@ -71,8 +71,10 @@ export type Item = Base &
         role: "user" | "assistant";
         text: string;
         streaming: boolean;
-        /** True only on an ended turn's last assistant message; absent or false means no answer actions. */
+        /** True only on an ended turn's last assistant message. */
         final?: boolean;
+        /** True on the last assistant message before a user input joined its running turn. */
+        joined?: boolean;
         /** Who sent an input item: the user, or the app on their behalf. */
         origin?: "user" | "system";
         /** When it was sent, ms since the epoch. */

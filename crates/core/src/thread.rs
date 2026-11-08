@@ -86,7 +86,21 @@ impl Thread {
                 self.changed_items.insert(at);
             }
             self.end_wait(ts);
-        } else if kind != "input" {
+        } else if kind == "input" {
+            // A joined input keeps the running turn and adds no queued turn; steer will land here.
+            if item["origin"] == "user"
+                && before.len() == self.fold.turns.len()
+                && before
+                    .first()
+                    .zip(self.fold.turns.first())
+                    .is_some_and(|(before, after)| before.id == after.id)
+                && let Some(answer) = self.open.as_ref().and_then(|o| o.answer)
+            {
+                let at = answer as usize - 1;
+                self.items[at]["joined"] = true.into();
+                self.changed_items.insert(at);
+            }
+        } else {
             self.content(item, kind, ts);
         }
         let after: HashSet<String> = self.fold.turns.iter().map(|t| t.id.clone()).collect();
