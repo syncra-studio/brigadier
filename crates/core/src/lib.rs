@@ -65,6 +65,18 @@ pub fn ids(data: &Path) -> Vec<String> {
     ids
 }
 
+/// How the daemon keeps the Mac awake [D30, D36]: never, while a session works (the default, as in
+/// the old app), or always while it runs. Set by `brigadier awake`, kept in the data folder.
+pub const AWAKE_MODES: [&str; 3] = ["off", "work", "always"];
+
+pub fn awake_mode(data: &Path) -> &'static str {
+    let set = fs::read_to_string(data.join("awake")).unwrap_or_default();
+    AWAKE_MODES
+        .into_iter()
+        .find(|m| *m == set.trim())
+        .unwrap_or("work")
+}
+
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes)?;

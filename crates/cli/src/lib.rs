@@ -21,7 +21,8 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
-       brigadier index [--cold] | transcript <id> | thread <id>";
+       brigadier index [--cold] | transcript <id> | thread <id>
+       brigadier awake [off|work|always]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -65,7 +66,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // Every session id this command names, checked before any path is built from it.
     let ids = match cmd {
         "status" | "up" => &args[1..],
-        "index" => &[][..],
+        "index" | "awake" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -240,6 +241,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),
+        "awake" => {
+            if let Some(mode) = args.get(1) {
+                if !core::AWAKE_MODES.contains(&mode.as_str()) {
+                    return Err(io::Error::other(USAGE));
+                }
+                core::write_atomic(&data.join("awake"), mode.as_bytes())?;
+            }
+            Ok(json!({"ok": true, "awake": core::awake_mode(data)}))
+        }
         "transcript" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;

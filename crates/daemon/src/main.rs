@@ -16,12 +16,14 @@
 //!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
 //! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`).
+//! While it runs it keeps the Mac awake as `brigadier awake` says: off, while a session works, or
+//! always (`awake`) [D30, D36].
 
 use brigadier::index::{self, Index};
 use brigadier_core::fold;
 use brigadier_core::norm::Norm;
 use brigadier_core::thread::Thread;
-use brigadier_core::{check_id, data_dir, session_dir};
+use brigadier_core::{awake_mode, check_id, data_dir, session_dir};
 use brigadier_frames::log::{Reader, now_ms};
 use brigadier_frames::procs;
 use brigadier_frames::{lock_held, take_lock, wire};
@@ -40,6 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{process, thread};
 
+mod awake;
 mod install;
 mod term;
 
@@ -80,9 +83,10 @@ fn main() -> io::Result<()> {
     // The kernel frees this lock however a daemon dies, so whoever holds it owns the socket and the
     // index, and two daemons starting together can't replace each other's.
     let lock = data.join("daemon.lock");
+    let mut awake = awake::Awake::default();
     let _lock = match take_lock(&lock)? {
         Some(held) => held,
-        None if replace_older(&data)? => match take_lock(&lock)? {
+        None if replace_older(&data, &mut awake)? => match take_lock(&lock)? {
             Some(held) => held,
             None => return Ok(()),
         },
@@ -103,7 +107,16 @@ fn main() -> io::Result<()> {
     }
     loop {
         match index.sync() {
-            Ok((rows, gone)) => publish(&state, rows, gone),
+            Ok((rows, gone)) => {
+                publish(&state, rows, gone);
+                // Off, while a session works, or always [D30, D36].
+                let on = match awake_mode(&data) {
+                    "off" => false,
+                    "always" => true,
+                    _ => index.rows.values().any(|r| r["works"] == true),
+                };
+                awake.set(on);
+            }
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         thread::sleep(TICK);
@@ -114,7 +127,7 @@ fn main() -> io::Result<()> {
 /// number is lower, and says whether it did. A daemon from before build numbers (no `build` in its
 /// hello or refusal) counts as older. A refusal alone is never a reason, and a daemon that doesn't
 /// answer or is the same build or newer stays, so two app copies never replace each other's.
-fn replace_older(data: &Path) -> io::Result<bool> {
+fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
     // Nothing answering means a daemon still starting up: leave it be.
     let Ok(mut stream) = UnixStream::connect(data.join("daemon.sock")) else {
         return Ok(false);
@@ -152,6 +165,10 @@ fn replace_older(data: &Path) -> io::Result<bool> {
         return Ok(false);
     }
     drop(stream);
+    // The old one may hold the Mac awake: hold first, until this one's first pass decides.
+    if awake_mode(data) != "off" {
+        awake.hold_confirmed();
+    }
     let lock = data.join("daemon.lock");
     for sig in [libc::SIGTERM, libc::SIGKILL] {
         unsafe { libc::kill(pid, sig) };

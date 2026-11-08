@@ -375,6 +375,38 @@ pub fn status(fold: &Fold, live: &Live) -> Value {
            "items": fold.items, "backend": fold.backend, "resume": fold.resume, "versions": fold.versions})
 }
 
+/// Whether this session keeps the Mac awake [D30, D36]: background jobs its live agent left running,
+/// or a delivered turn whose live agent is starting, has fresh output or runs a tool, in chat or in a
+/// terminal alike. A turn waiting on the user, or quiet past its stall time, doesn't, so a hung CLI
+/// can't keep a Mac awake in a bag.
+pub fn works(fold: &Fold, live: &Live) -> bool {
+    if live.owner != Owner::Alive {
+        return false;
+    }
+    if live.jobs > 0 {
+        return true;
+    }
+    let (Some(turn), Some(child)) = (fold.turns.first(), live.child) else {
+        return false;
+    };
+    let Some(delivered) = turn.delivered else {
+        return false;
+    };
+    if child.stopped || turn.question.is_some() {
+        return false;
+    }
+    let quiet_ms = adapters::get(&turn.backend).map_or(30_000, |a| {
+        let t = a.timing();
+        if turn.began {
+            t.stall_ms
+        } else {
+            t.no_start_ms
+        }
+    });
+    let silence = live.now.saturating_sub(fold.last_out.max(delivered));
+    silence < quiet_ms || (!turn.tools.is_empty() && live.running_below > 0)
+}
+
 fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     let Some(turn) = fold.turns.first() else {
         let outcome = fold
