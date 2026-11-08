@@ -41,12 +41,7 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
         .iter()
         .map(|&(g, s)| procs::group(all, g, s).len())
         .sum();
-    // A live terminal's mirror isn't a job: it ends with the terminal.
-    let mirror = (fold.child.as_ref())
-        .filter(|_| child.is_some())
-        .and_then(|c| c.mirror_group)
-        .map_or(0, |(g, s)| procs::group(all, g, s).len());
-    let jobs = members.saturating_sub(child.is_some() as usize + running_below + mirror);
+    let jobs = members.saturating_sub(child.is_some() as usize + running_below);
     let orphans = if owner == Owner::Dead { members } else { 0 };
     Live {
         owner,

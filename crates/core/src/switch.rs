@@ -1,5 +1,5 @@
 //! Moving a session that hit its limit to another account or agent [D51]. One transition,
-//! serialised by the host like the terminal handoff [D47, D86]: a single spawn that replaces the
+//! serialised by the host: a single spawn that replaces the
 //! idle child and logs one input frame carrying the switch. The host refuses it if the log moved
 //! since the caller judged the session, and its cid is fixed by the limit, so a repeat, a racing
 //! caller or a retry after a crash does it at most once [D54, D82].
@@ -103,7 +103,7 @@ pub fn switch(
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
         "backend": to.backend, "retry_of": last["cid"], "switch": switch, "argv": launch.argv, "env": env,
-        "cwd": spec.cwd, "pty": spec.mode == "pty", "keep_stdin": launch.keep_stdin, "input": launch.input,
+        "cwd": spec.cwd, "keep_stdin": launch.keep_stdin, "input": launch.input,
         "cli_version": cli_version(spec, a), "replace": true, "if_len": ping["len"]});
     if !still() {
         return json!({"ok": false, "error": "off", "message": "Automatic switching was turned off."});
@@ -157,7 +157,7 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
         match item["kind"].as_str().unwrap_or("") {
             // A message a switch sent again is the same message: counted once. A picked agent's
             // first message is the user's own, sent once.
-            "input" | "prompt"
+            "input"
                 if item["origin"] != "system"
                     && (item["switch"].is_null() || item["switch"]["why"] == "picked") =>
             {

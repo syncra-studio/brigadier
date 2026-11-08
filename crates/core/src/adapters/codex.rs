@@ -3,8 +3,7 @@
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
-    classify, cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
-    version,
+    classify, cli_home, drop_lines, home_path, probe_as, s, shell_step, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -115,22 +114,16 @@ impl Adapter for Codex {
         let exe = self.exe().unwrap_or_default();
         let model = spec.model.clone().unwrap_or_else(|| MODEL.into());
         let mut argv = vec![exe.display().to_string()];
-        if spec.mode != "pty" {
-            argv.extend(
-                [
-                    "exec",
-                    "--json",
-                    "--skip-git-repo-check",
-                    "--sandbox",
-                    "workspace-write",
-                ]
-                .map(String::from),
-            );
-        } else {
-            // Its TUI would otherwise join a shared background server, outside this session's
-            // process group [D60]; the sandbox flag also skips its trust screen.
-            argv.extend(["--no-daemon", "--sandbox", "workspace-write"].map(String::from));
-        }
+        argv.extend(
+            [
+                "exec",
+                "--json",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "workspace-write",
+            ]
+            .map(String::from),
+        );
         argv.extend([
             "-m".into(),
             model,
@@ -144,22 +137,19 @@ impl Adapter for Codex {
         Launch {
             argv,
             env: base_env(spec, &exe, self.keys()),
-            keep_stdin: spec.mode == "pty",
+            keep_stdin: false,
             input: None,
         }
     }
 
     fn encode(&self, _spec: &Spec, text: &str) -> String {
-        paste(text)
+        format!("{text}\n")
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
         };
-        if v.get("payload").is_some() {
-            return rollout(&v);
-        }
         let item = &v["item"];
         let kind = s(item, &["type"]);
         let done = s(&v, &["type"]) == "item.completed";
@@ -229,8 +219,8 @@ impl Adapter for Codex {
         paths
     }
 
-    /// Its prompt history keeps the terminal's prompts by thread id, and a TUI that was killed
-    /// leaves its writer lock; one a live writer holds stays, by Codex's own rule [D35].
+    /// Its prompt history by thread id, and a writer lock a killed process left; one a live
+    /// writer holds stays, by Codex's own rule [D35].
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         drop_lines(
             &cli_home(spec, ".codex", "history.jsonl"),
@@ -252,25 +242,6 @@ impl Adapter for Codex {
             let _ = std::fs::remove_file(&lock);
         }
         Ok(())
-    }
-
-    /// Its TUI resumes a thread by id; a new thread's id can't be picked, so the first message of
-    /// a session goes through chat (proposed).
-    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
-        Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
-    }
-
-    fn mirror_from(&self, _spec: &Spec, conv: &str) -> Option<String> {
-        let path = rollouts(&[format!("-{conv}.jsonl")]).pop()?;
-        let len = std::fs::metadata(&path).ok()?.len();
-        Some(format!("{len}\t{}", path.display()))
-    }
-
-    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let (from, path) = cursor.split_once('\t').unwrap_or(("0", ""));
-        let (lines, end) = file_lines(std::path::Path::new(path), from.parse().unwrap_or(0));
-        (lines, format!("{end}\t{path}"))
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -418,70 +389,6 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
         }
     }
     events
-}
-
-/// A line of the CLI's rollout, which a terminal's mirror copies [D47]: only its events count,
-/// in the same shapes as `exec --json` once named alike.
-fn rollout(v: &Value) -> Vec<Event> {
-    let p = &v["payload"];
-    if s(v, &["type"]) != "event_msg" {
-        return vec![];
-    }
-    match s(p, &["type"]) {
-        "task_complete" => vec![Event::TurnEnd(true)],
-        "turn_aborted" => vec![Event::TurnEnd(false)],
-        "item_completed" => rollout_item(&p["item"]),
-        _ => vec![],
-    }
-}
-
-fn rollout_item(item: &Value) -> Vec<Event> {
-    let joined = |v: &Value| {
-        let parts = v.as_array().into_iter().flatten();
-        let texts: Vec<&str> = parts
-            .filter_map(|p| p.as_str().or(p["text"].as_str()))
-            .collect();
-        texts.join("\n")
-    };
-    let kind = s(item, &["type"]);
-    match kind {
-        "UserMessage" => vec![Event::Prompt(
-            s(item, &["id"]).into(),
-            joined(&item["content"]),
-        )],
-        "AgentMessage" => vec![Event::Text(joined(&item["content"]))],
-        "Reasoning" => {
-            let text = joined(&item["summary_text"]);
-            if text.is_empty() {
-                vec![]
-            } else {
-                vec![Event::Reasoning(text)]
-            }
-        }
-        _ => {
-            // CommandExecution → command_execution, with its command as one line.
-            let mut e = item.clone();
-            let snake: String = kind
-                .chars()
-                .enumerate()
-                .flat_map(|(i, c)| {
-                    let sep = (i > 0 && c.is_ascii_uppercase()).then_some('_');
-                    sep.into_iter().chain([c.to_ascii_lowercase()])
-                })
-                .collect();
-            e["type"] = snake.clone().into();
-            if let Some(last) = item["command"].as_array().and_then(|c| c.last()) {
-                e["command"] = last.clone();
-            }
-            match snake.as_str() {
-                "collab_agent_tool_call" | "collab_tool_call" => agents(&e, true),
-                k if TOOLS.contains(&k) => {
-                    vec![Event::ToolStart(tool(&e)), Event::ToolEnd(end(&e))]
-                }
-                _ => vec![],
-            }
-        }
-    }
 }
 
 /// A limit or sign-in, or a thread Codex won't resume on this account: its saved reasoning is

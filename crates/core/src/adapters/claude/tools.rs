@@ -4,24 +4,11 @@ use super::super::{Done, Event, Tool, change, counts, s, shell_step};
 use serde_json::Value;
 
 /// A `tool_use` block as a step, by Claude Code's tool names [D48, D65].
-pub fn tool_start(b: &Value, parent: Option<String>, record: bool) -> Vec<Event> {
+pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
     let (id, name, input) = (s(b, &["id"]), s(b, &["name"]), &b["input"]);
-    // Asked on the control channel, where it is answered; only a terminal's record shows it here.
-    if name == "AskUserQuestion" && !record {
-        return vec![];
-    }
+    // Asked on the control channel, where it is answered.
     if name == "AskUserQuestion" {
-        // Per its docs: questions, each with options by label. Only an interactive CLI shows it.
-        let questions = input["questions"].as_array().cloned().unwrap_or_default();
-        return questions
-            .iter()
-            .enumerate()
-            .map(|(k, q)| {
-                let options = q["options"].as_array().into_iter().flatten();
-                let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
-                super::super::question(&format!("{id}:{k}"), s(q, &["question"]), &options)
-            })
-            .collect();
+        return vec![];
     }
     let field = |k: &str| s(input, &[k]).to_string();
     let (step, what) = match name {
@@ -55,7 +42,7 @@ pub fn tool_start(b: &Value, parent: Option<String>, record: bool) -> Vec<Event>
 }
 
 /// A `tool_result` block, with the structured result the CLI puts beside it.
-pub fn tool_end(b: &Value, result: &Value, parent: Option<String>, record: bool) -> Vec<Event> {
+pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event> {
     let id = s(b, &["tool_use_id"]);
     let text = |content: &Value| match content {
         Value::String(t) => t.clone(),
@@ -66,7 +53,7 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>, record: bool)
             .join("\n"),
         _ => String::new(),
     };
-    if result["questions"].is_array() && !record {
+    if result["questions"].is_array() {
         return vec![];
     }
     if let Some(answers) = result["answers"].as_object() {

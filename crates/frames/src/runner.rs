@@ -30,13 +30,13 @@ struct Child {
     /// Its SPAWNED frame's seq: keys, resizes and inputs name the child they were meant for.
     spawn: u64,
     pty: bool,
-    /// It exited, and its output (and its mirror's) is still being drained into the log.
+    /// It exited, and its output is still being drained into the log.
     exited: bool,
 }
 
 /// What this host can do beyond the first frozen ops, so a client asks before it relies on any.
-pub const CAPS: [&str; 3] = ["terminal", "switch", "control"];
-/// How long a final drain may take: a child's pipes, then its mirror's last read.
+pub const CAPS: [&str; 2] = ["switch", "control"];
+/// How long a final drain may take.
 const DRAIN: Duration = Duration::from_secs(10);
 
 pub struct Runner {
@@ -78,12 +78,10 @@ impl Runner {
                 log::INTENT => drop(v["cid"].as_str().map(|c| cids.insert(c.to_string(), false))),
                 log::DELIVERED => drop(v["cid"].as_str().map(|c| cids.insert(c.to_string(), true))),
                 log::SPAWNED => {
-                    for g in [&v, &v["mirror"]] {
-                        groups.push((
-                            g["pgid"].as_i64().unwrap_or(0) as i32,
-                            g["start_us"].as_u64().unwrap_or(0),
-                        ));
-                    }
+                    groups.push((
+                        v["pgid"].as_i64().unwrap_or(0) as i32,
+                        v["start_us"].as_u64().unwrap_or(0),
+                    ));
                 }
                 _ => {}
             }
@@ -171,10 +169,8 @@ impl Runner {
         };
         let slot = self.child.lock().unwrap();
         let child = slot.as_ref().map(|c| c.pid);
-        let (spawn, pty) = slot
-            .as_ref()
-            .map_or((None, false), |c| (Some(c.spawn), c.pty));
-        json!({"ok": true, "pid": std::process::id(), "build": wire::build(), "child": child, "spawn": spawn, "pty": pty,
+        let spawn = slot.as_ref().map(|c| c.spawn);
+        json!({"ok": true, "pid": std::process::id(), "build": wire::build(), "child": child, "spawn": spawn,
                "caps": CAPS, "frames": frames, "len": len, "disk_full": self.disk_full.load(Ordering::Relaxed)})
     }
 }

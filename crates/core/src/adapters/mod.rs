@@ -10,7 +10,7 @@ mod shell;
 
 pub use shell::shell_step;
 
-pub use files::{change, counts, drop_lines, file_lines, sha1, uuid};
+pub use files::{change, counts, drop_lines, sha1, uuid};
 
 use crate::Spec;
 use serde_json::Value;
@@ -49,9 +49,6 @@ pub enum Event {
     Resolved(String),
     /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
     Decided(String, bool),
-    /// The user allowed a pending request in the CLI's own screen for the rest of the session: it
-    /// becomes a session grant held by the host, never a rule the CLI saves [D193, D247].
-    Granted(String),
     /// A file the CLI wrote outside the session folder for this session alone, by exact path:
     /// recorded so delete removes it [D35].
     External(String),
@@ -68,8 +65,6 @@ pub enum Event {
     Answer(String, Option<String>),
     /// "running" or "done".
     Compaction(&'static str),
-    /// A prompt the CLI took in its own terminal: its id in the CLI's record, and its text [D47].
-    Prompt(String, String),
     Usage(Value),
     Unknown(String),
 }
@@ -319,27 +314,6 @@ pub trait Adapter: Sync {
     fn diffs(&self, _resume: &str, _turn: u64) -> Option<Vec<Vec<(String, String)>>> {
         None
     }
-    /// The CLI's interactive mode on this conversation, and the conversation id it will write
-    /// (a new one when `resume` is None and the CLI lets us pick it). None: no terminal [D47].
-    /// It runs at `spec.level`, or refuses a level it can't hold [D243].
-    fn terminal(&self, _spec: &Spec, _resume: Option<&str>) -> Result<(Launch, String), String> {
-        Err("This CLI has no terminal.".into())
-    }
-    /// What the CLI's hook prints to refuse the step a held session's terminal is about to take
-    /// above Ask (trust taken back while it's open), or None to let it go [D166, D243].
-    fn hold(&self, _hook: &Value) -> Option<String> {
-        None
-    }
-    /// Where the CLI's record of `conv` ends now: the mirror starts reading there. None: the
-    /// backend keeps no record a mirror can read, so its terminal's work stays in the terminal.
-    fn mirror_from(&self, _spec: &Spec, _conv: &str) -> Option<String> {
-        None
-    }
-    /// New lines of the CLI's record after `cursor`, for `parse`, and the cursor after them. Only
-    /// whole entries, oldest first; read-only.
-    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
-        (vec![], cursor.into())
-    }
 }
 
 pub fn all() -> [&'static dyn Adapter; 4] {
@@ -428,19 +402,6 @@ pub fn question(id: &str, text: &str, options: &[String]) -> Event {
         .collect();
     Event::Question(serde_json::json!({"id": id, "title": null, "items": [
         {"text": text, "options": options, "recommended": null, "multiSelect": false}]}))
-}
-
-/// The session's spec, run in a terminal: what each adapter's PTY launch reads.
-pub fn in_pty(spec: &Spec) -> Spec {
-    Spec {
-        mode: "pty".into(),
-        ..spec.clone()
-    }
-}
-
-/// A message typed into a TUI: a bracketed paste, so its newlines stay text, then Enter.
-pub fn paste(text: &str) -> String {
-    format!("\x1b[200~{}\x1b[201~\r", text.replace('\x1b', ""))
 }
 
 pub fn home_path(rest: &str) -> PathBuf {

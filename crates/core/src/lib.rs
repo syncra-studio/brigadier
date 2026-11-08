@@ -10,7 +10,6 @@ pub mod repos;
 mod send;
 pub mod session;
 pub mod switch;
-pub mod terminal;
 pub mod thread;
 pub mod trust;
 mod worktree_setup;
@@ -35,7 +34,7 @@ pub use send::{Call, Running, applied, level, recover, send};
 pub struct Spec {
     pub id: String,
     pub backend: String,
-    /// "pipe" for the chat view, "pty" for a real terminal.
+    /// "pty" for a setup or sign-in run; a conversation always launches on pipes [D293, D295].
     pub mode: String,
     pub cwd: String,
     /// The project it was started in [D165]; None before 1a, or when started with only a folder.
@@ -85,7 +84,7 @@ pub fn check_id(id: &str) -> io::Result<()> {
 }
 
 /// A setup run (an install or sign-in in a terminal [D45]) is a session folder of its own under
-/// `setup/`, off the session list, so the host, log and terminal serve it unchanged [D47, D60].
+/// `setup/`, off the session list, so the host, log and terminal serve it unchanged [D45, D60].
 pub const SETUP: &str = "setup-";
 
 pub fn session_dir(data: &Path, id: &str) -> PathBuf {
@@ -203,7 +202,7 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
                 f.fold.push(&item);
             }
             // Any output is a sign of life, even bytes that make no item (heartbeats).
-            if matches!(frame.kind, log::OUT | log::ERR | log::PTY) {
+            if matches!(frame.kind, log::OUT | log::ERR) {
                 f.fold.last_out = frame.ts;
             }
             if f.norm.clean() {

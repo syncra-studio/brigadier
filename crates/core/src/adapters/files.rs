@@ -3,27 +3,6 @@
 use serde_json::Value;
 use std::path::Path;
 
-/// Whole lines of a file after byte `from`, and the offset after the last one. A file not there
-/// yet reads as empty, and one that shrank starts over.
-pub fn file_lines(path: &Path, from: u64) -> (Vec<String>, u64) {
-    use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return (vec![], from);
-    };
-    let len = file.metadata().map_or(0, |m| m.len());
-    let from = if len < from { 0 } else { from };
-    let mut rest = Vec::new();
-    if file.seek(SeekFrom::Start(from)).is_err() || file.read_to_end(&mut rest).is_err() {
-        return (vec![], from);
-    }
-    let end = rest.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
-    let lines = String::from_utf8_lossy(&rest[..end])
-        .lines()
-        .map(String::from)
-        .collect();
-    (lines, from + end as u64)
-}
-
 /// A random UUID (v4), for a conversation id the CLI lets us pick.
 pub fn uuid() -> String {
     let mut b = [0u8; 16];

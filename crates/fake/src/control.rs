@@ -10,17 +10,18 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Each stdin line as JSON; a plain line (typed in its terminal) as `{"text"}`.
+/// Each stdin line as JSON.
 pub fn reader() -> Receiver<Value> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         for line in io::stdin().lock().lines() {
             let Ok(line) = line else { break };
-            let line = line.trim_end_matches('\r');
-            let v = serde_json::from_str::<Value>(line)
+            let Some(v) = serde_json::from_str::<Value>(&line)
                 .ok()
                 .filter(Value::is_object)
-                .unwrap_or_else(|| json!({"text": line}));
+            else {
+                continue;
+            };
             if tx.send(v).is_err() {
                 break;
             }

@@ -22,6 +22,8 @@ pub fn data_of(spec: &Spec) -> PathBuf {
 /// overrides the current one (a recorded conversation's, for delete); "" is the computer's login.
 pub fn as_run(spec: &Spec, f: &Fold, backend: &str, account: Option<&str>) -> Spec {
     let mut run = spec.clone();
+    // A session saved as "pty" launches as chat like any other [D293, D295].
+    run.mode = "pipe".into();
     let id = account.or_else(|| f.accounts.get(backend).map(String::as_str));
     let var = adapters::get(backend)
         .and_then(|a| a.accounts())

@@ -230,7 +230,7 @@ fn keep(records: &mut Records, id: &str, entries: Vec<Entry>) {
     }
 }
 
-/// Before a turn or a terminal: the run's CLI gets the project's answer in its own home first.
+/// Before a turn: the run's CLI gets the project's answer in its own home first.
 /// Err only when an untrusted answer couldn't be written, so the CLI could trust the folder on
 /// its own (D182, proposed: the turn is refused).
 pub fn ensure(spec: &Spec, a: &dyn Adapter) -> Result<(), String> {

@@ -1,7 +1,7 @@
 //! Starting the agent child behind its gate, logging its group, and pumping its output into the log.
 
-use super::term::{end_mirror, size, start_mirror};
-use super::{Child, DRAIN, GATE, GATE_FD, Runner, crash_at, fail};
+use super::term::size;
+use super::{Child, GATE, GATE_FD, Runner, crash_at, fail};
 use crate::spawn::{spawn_pipes, spawn_pty};
 use crate::{log, procs, wire};
 use serde_json::{Value, json};
@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 impl Runner {
     pub(super) fn spawn(self: &Arc<Self>, req: &Value) -> Value {
         let _op = self.op.lock().unwrap();
-        // A handoff [D47] or a switch [D51]: only if nothing reached the log since the caller judged
-        // it idle. The idle child goes first (a switch's terminal too), its exit and output logged.
+        // A switch [D51] or a restart: only if nothing reached the log since the caller judged it
+        // idle. The idle child goes first, its exit and output logged.
         if let Some(len) = req["if_len"].as_u64()
             && self.log.lock().unwrap().len != len
         {
@@ -28,9 +28,7 @@ impl Runner {
         }
         let replace = (self.child.lock().unwrap())
             .as_ref()
-            .filter(|c| {
-                req["replace"] == true && (!c.pty || req["switch"].is_object()) && !c.exited
-            })
+            .filter(|c| req["replace"] == true && !c.exited)
             .map(|c| c.pid);
         let stops = self.stops.load(Ordering::SeqCst) + replace.is_some() as u64;
         if replace.is_some() {
@@ -112,26 +110,6 @@ impl Runner {
         crash_at("after_fork:", cid.unwrap_or(""));
         let pid = child.id() as i32;
         let start_us = procs::info(pid).map_or(0, |p| p.start_us);
-        // The mirror copies the CLI's own record of a terminal's work into this log, so the chat
-        // shows it [D47]. It ends by itself when its stdin closes, so it never outlives this host.
-        let mirror = match req["mirror"]["argv"]
-            .is_array()
-            .then(|| start_mirror(&req["mirror"], cwd))
-        {
-            Some(Err(e)) => {
-                unsafe { libc::killpg(pid, libc::SIGKILL) };
-                let _ = child.wait();
-                return json!({"ok": false, "cid": cid, "result": "logged", "error": format!("mirror failed: {e}")});
-            }
-            Some(Ok(m)) => Some(m),
-            None => None,
-        };
-        let mirror_group = mirror.as_ref().map(|m| {
-            (
-                m.0.id() as i32,
-                procs::info(m.0.id() as i32).map_or(0, |p| p.start_us),
-            )
-        });
         let mut record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": argv, "backend": req["backend"], "cli_version": req["cli_version"],
                             "mode": if pty { "pty" } else { "pipe" }, "cid": cid, "owner_build": wire::build(),
                             "cwd": std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.into()), "temp_dir": req["env"]["TMPDIR"]});
@@ -139,27 +117,20 @@ impl Runner {
             record["cols"] = size(&req["cols"], 120).into();
             record["rows"] = size(&req["rows"], 40).into();
         }
-        if let Some((g, s)) = mirror_group {
-            record["mirror"] = json!({"pgid": g, "start_us": s});
-        }
         let spawn = match self.append(log::SPAWNED, record.to_string().as_bytes(), true) {
             Ok(seq) => seq,
             Err(e) => {
                 unsafe { libc::killpg(pid, libc::SIGKILL) };
                 let _ = child.wait();
-                end_mirror(mirror);
                 return json!({"ok": false, "cid": cid, "result": "logged", "error": e.to_string()});
             }
         };
-        (self.groups.lock().unwrap()).extend(mirror_group.into_iter().chain([(pid, start_us)]));
+        (self.groups.lock().unwrap()).push((pid, start_us));
         (self.watch)(&self.groups.lock().unwrap());
         // A stop that ran while this spawn was under way couldn't see this group: honour it now.
         if self.stops.load(Ordering::SeqCst) != stops {
-            for (g, s) in mirror_group.into_iter().chain([(pid, start_us)]) {
-                procs::signal_group(g, s, libc::SIGKILL);
-            }
+            procs::signal_group(pid, start_us, libc::SIGKILL);
             let status = child.wait().ok();
-            end_mirror(mirror);
             let exited = json!({"pid": pid, "code": status.and_then(|s| s.code()), "signal": status.and_then(|s| s.signal())});
             let _ = self.append(log::EXITED, exited.to_string().as_bytes(), false);
             return json!({"ok": false, "cid": cid, "result": "logged", "error": "stopped while starting"});
@@ -168,18 +139,9 @@ impl Runner {
         let _ = go.write_all(b"\n");
         let (done, pumped) = mpsc::channel();
         let pumps = outputs.len();
-        let (mut mirror_child, mirror_in, mirror_out) = match mirror {
-            Some((c, i, o)) => (Some(c), Some(i), Some(o)),
-            None => (None, None, None),
-        };
-        let (mirror_done, mirror_pumped) = mpsc::channel();
-        self.pumping
-            .fetch_add(pumps + mirror_out.is_some() as usize, Ordering::SeqCst);
-        let streams = outputs.into_iter().map(|o| (o, done.clone()));
-        for ((kind, stream), done) in
-            streams.chain(mirror_out.map(|o| ((log::OUT, o), mirror_done)))
-        {
-            let me = self.clone();
+        self.pumping.fetch_add(pumps, Ordering::SeqCst);
+        for (kind, stream) in outputs {
+            let (me, done) = (self.clone(), done.clone());
             thread::spawn(move || {
                 me.pump(kind, stream);
                 me.pumping.fetch_sub(1, Ordering::SeqCst);
@@ -204,8 +166,6 @@ impl Runner {
             if let Some(c) = me.child.lock().unwrap().as_mut().filter(|c| c.pid == pid) {
                 c.exited = true;
             }
-            // The mirror makes its last read once its stdin closes, then ends.
-            drop(mirror_in);
             // Log the exit after the output it produced: wait for the pipes to end, but not for long,
             // since a background job may hold them open.
             let deadline = Instant::now() + Duration::from_secs(2);
@@ -216,12 +176,6 @@ impl Runner {
                 {
                     break;
                 }
-            }
-            // The mirror's last read can take a moment (a CLI call); one that hangs is cut off.
-            if let Some((g, s)) = mirror_group
-                && mirror_pumped.recv_timeout(DRAIN).is_err()
-            {
-                procs::signal_group(g, s, libc::SIGKILL);
             }
             let code = status.and_then(|s| s.code());
             let signal = status.and_then(|s| s.signal());
@@ -234,9 +188,6 @@ impl Runner {
                 *slot = None;
             }
             drop(slot);
-            if let Some(m) = mirror_child.as_mut() {
-                let _ = m.wait();
-            }
         });
         // A first message the child never took stays logged, not delivered, like a later one.
         if let Err(e) = wrote {

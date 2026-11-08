@@ -23,12 +23,6 @@ impl Thread {
             "text" | "reasoning" | "tool" | "tool_done" | "compaction" | "unknown"
         ) {
             self.end_wait(ts);
-            // In a terminal, approvals are answered by keys that aren't logged: the agent's next
-            // step closes them, as withdrawn [D77].
-            let pty = self.fold.child.as_ref().is_some_and(|c| c.pty);
-            if pty && matches!(kind, "text" | "reasoning" | "tool" | "tool_done") {
-                self.withdraw_all();
-            }
         }
         match kind {
             "text" => {

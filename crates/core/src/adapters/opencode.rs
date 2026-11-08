@@ -7,16 +7,15 @@ mod events;
 mod grants;
 mod http;
 mod server;
-mod terminal;
 
 use super::setup::run as bounded;
 use super::{
     Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, classify,
-    file_lines, home_path, in_pty, paste, probe, s, sha1, uuid, version,
+    home_path, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
 use control::{answers, denied, model, model_ref, rules};
-use events::{mirrored, tool_use};
+use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -173,15 +172,14 @@ impl Adapter for OpenCode {
     }
 
     /// Its server runs in Brigadier's helper, on the session's level and model, with the
-    /// session's grants [D159, D193]. Chat talks to it through the helper's stdin; a terminal is
-    /// its TUI attached to that same server, at the level the helper sets [D47, D243].
+    /// session's grants [D159, D193]. Chat talks to it through the helper's stdin.
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default().display().to_string();
-        let mut env = self.env(spec);
+        let env = self.env(spec);
         let helper = std::env::current_exe()
             .unwrap_or_default()
             .with_file_name("brigadier");
-        let mut argv = vec![
+        let argv = vec![
             helper.display().to_string(),
             "helper".into(),
             "opencode".into(),
@@ -198,27 +196,6 @@ impl Adapter for OpenCode {
             json!({"open": open, "grants": grants, "must": true}),
             json!({"model": model_ref(spec), "must": true}),
         ];
-        if spec.mode == "pty" {
-            // Its TUI takes no -m: the model comes from its documented inline config instead.
-            env.push((
-                "OPENCODE_CONFIG_CONTENT".into(),
-                json!({ "model": model(spec) }).to_string(),
-            ));
-            let data = crate::data_of(spec).display().to_string();
-            let setup = json!({"lines": lines, "prompt": text});
-            argv.extend([
-                "--terminal".into(),
-                data,
-                spec.id.clone(),
-                setup.to_string(),
-            ]);
-            return Launch {
-                argv,
-                env,
-                keep_stdin: true,
-                input: None,
-            };
-        }
         lines.push(json!({"permissions": rules(spec), "must": true}));
         lines.extend(text.map(|t| json!({"prompt": {"text": t}, "id": spec.cid})));
         Launch {
@@ -230,9 +207,6 @@ impl Adapter for OpenCode {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        if spec.mode == "pty" {
-            return paste(text);
-        }
         format!("{}\n", json!({"prompt": {"text": text}, "id": spec.cid}))
     }
 
@@ -320,7 +294,6 @@ impl Adapter for OpenCode {
             .into_iter()
             .collect();
         match s(&v, &["type"]) {
-            "mirror" => return mirrored(&v["message"]),
             "step_start" => events.push(Event::TurnStart),
             "step_finish" => {}
             "text" => events.push(Event::Text(s(part, &["text"]).into())),
@@ -383,25 +356,6 @@ impl Adapter for OpenCode {
             Err(e) if !e.contains("Session not found") => Err(format!("OpenCode: {}", e.trim())),
             _ => Ok(()),
         }
-    }
-
-    /// Its TUI on the session's own server, by the session's id (proposed: the first message goes
-    /// through chat, so the id exists).
-    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
-        Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
-    }
-
-    /// What the terminal's helper wrote to the session's hooks file: its server's events.
-    fn mirror_from(&self, spec: &Spec, _conv: &str) -> Option<String> {
-        let len = std::fs::metadata(spec.dir.join(crate::terminal::HOOKS)).map_or(0, |m| m.len());
-        Some(len.to_string())
-    }
-
-    fn mirror(&self, spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let path = spec.dir.join(crate::terminal::HOOKS);
-        let (lines, end) = file_lines(&path, cursor.parse().unwrap_or(0));
-        (lines, end.to_string())
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

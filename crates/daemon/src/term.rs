@@ -1,5 +1,5 @@
-//! A session's terminal for the app [D47]. `{"id", "op": "terminal", "session"}` answers
-//! `{"re", "ok", "found"}`, then pushes the session's last terminal from its spawn frame, and follows on:
+//! A sign-in's terminal for the app [D45]. `{"id", "op": "terminal", "session"}` answers
+//! `{"re", "ok", "found"}`, then pushes the run's last terminal from its spawn frame, and follows on:
 //! `{"term", "watch", "start": {spawn, cols, rows}}` when a terminal starts, `{…, "data"}` (its
 //! bytes, base64), `{…, "resize": {cols, rows}}` and `{…, "exited": true}`. Replayed whole, every
 //! resize in its place, so the screen comes back the same [D60].

@@ -1,11 +1,11 @@
 //! OpenCode's lines as events: its server's events through the helper [D159], and the shapes its
-//! `run` and its record give a turn [D47].
+//! `run` gives a turn.
 
 use super::super::{Done, Event, Tool, change, classify, counts, question, s, shell_step};
 use serde_json::{Value, json};
 
 /// A line from the helper: the server's event, or the result of a request it sent. None: a line
-/// of `run` or the mirror.
+/// of `run`.
 pub fn server(v: &Value) -> Option<Vec<Event>> {
     let (kind, d) = (s(v, &["type"]), &v["data"]);
     let id = |k: &str| s(d, &[k]).to_string();
@@ -19,14 +19,10 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         // A command's output file: the server is this session's alone, so its shells are too.
         "shell.created" => vec![Event::External(s(d, &["info", "file"]).into())],
         "permission.asked" => vec![approval(d)],
-        "permission.replied" if d["grant"] == true => vec![Event::Granted(id("requestID"))],
         "permission.replied" => vec![Event::Decided(
             id("requestID"),
             s(d, &["reply"]) != "reject",
         )],
-        // The terminal's own: the level its server now runs at, and a prompt typed in it [D47].
-        "brigadier.level" => vec![Event::Level(id("level"))],
-        "brigadier.prompt" => vec![Event::Prompt(id("id"), id("text"))],
         "form.created" => vec![form(&d["form"])],
         "form.replied" => {
             let answer = d["answer"]
@@ -275,35 +271,4 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         }));
     }
     events
-}
-
-/// A message the mirror read from OpenCode's API [D47]: a typed prompt, an answer's parts, or the
-/// idle mark that ends a turn.
-pub fn mirrored(m: &Value) -> Vec<Event> {
-    match s(m, &["type"]) {
-        "user" => vec![Event::Prompt(s(m, &["id"]).into(), s(m, &["text"]).into())],
-        "idle" => vec![Event::TurnEnd(s(m, &["outcome"]) == "succeeded")],
-        "assistant" => m["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .flat_map(|c| match s(c, &["type"]) {
-                "text" => vec![Event::Text(s(c, &["text"]).into())],
-                "reasoning" if !s(c, &["text"]).is_empty() => vec![Event::Reasoning(s(c, &["text"]).into())],
-                // In the shape `run` gives a tool part, so the same reading applies.
-                "tool" => {
-                    let state = &c["state"];
-                    let parts = state["content"].as_array().into_iter().flatten();
-                    let output: Vec<&str> = parts.filter_map(|p| p["text"].as_str()).collect();
-                    let part = serde_json::json!({"callID": c["id"], "tool": c["name"], "state": {
-                        "status": state["status"], "input": state["input"], "output": output.join("\n"),
-                        "error": state["error"], "metadata": state["metadata"],
-                        "time": {"start": c["time"]["ran"], "end": c["time"]["completed"]}}});
-                    tool_use(&part)
-                }
-                _ => vec![],
-            })
-            .collect(),
-        _ => vec![],
-    }
 }

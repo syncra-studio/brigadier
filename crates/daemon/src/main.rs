@@ -15,8 +15,8 @@
 //! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
 //! answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that [D97, D98].
 //!
-//! `{"id", "op": "terminal", "session"}` streams the session's terminal (see `term`); `keys` and
-//! `resize` go to its host, named by the terminal's spawn id [D47].
+//! `{"id", "op": "terminal", "session"}` streams a sign-in's terminal (see `term`); `keys` and
+//! `resize` go to its host, named by the terminal's spawn id [D45].
 //!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
 //! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`).
@@ -47,7 +47,7 @@ mod switch;
 mod term;
 mod watch;
 
-const PROTOCOL_VERSION: u32 = 3;
+const PROTOCOL_VERSION: u32 = 4;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // shortcut: polls every log's size each tick (about 10k stats a second at 10k sessions); move to

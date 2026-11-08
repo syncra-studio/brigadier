@@ -234,7 +234,7 @@ fn add(
     sign_in(data, a, &id, cols, rows)
 }
 
-/// The CLI's own sign-in, with its home variable on the account, in a terminal [D45, D47].
+/// The CLI's own sign-in, with its home variable on the account, in a terminal [D45].
 fn sign_in(
     data: &Path,
     a: &dyn Adapter,

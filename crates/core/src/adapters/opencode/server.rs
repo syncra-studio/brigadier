@@ -7,10 +7,9 @@ use super::http::Server;
 use brigadier_frames::base64;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{self, Child, Command, Stdio};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{mem, thread};
 
@@ -29,25 +28,16 @@ pub(super) struct State {
     seen: HashSet<String>,
     newest: String,
     busy: bool,
-    /// Permission ids the terminal's "Allow always" was turned into a session grant for [D193].
-    pub(super) always: HashSet<String>,
     /// The session's permission rules as its server last took them.
     pub(super) rules: Value,
 }
 
 pub(super) type Shared = Arc<Mutex<State>>;
 
-/// Where the helper's lines go: its stdout, or the session's hooks file when its stdout is a
-/// terminal's screen [D47].
-pub(super) static SINK: OnceLock<Mutex<File>> = OnceLock::new();
-
 pub fn run(args: &[String]) -> Result<(), String> {
     let exe = args
         .first()
         .ok_or("usage: brigadier helper opencode <opencode>")?;
-    if args.get(1).is_some_and(|a| a == "--terminal") {
-        return super::terminal::run(exe, &args[2..]);
-    }
     let password = super::super::uuid();
     let (server, state, _lease) = start(exe, &password)?;
     for line in io::stdin().lock().lines() {
@@ -60,13 +50,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
 }
 
 /// Starts its server and follows its events. The returned lease keeps the server alive: it stops
-/// once the lease is dropped or this helper is gone. A terminal's server keeps its output off the
-/// screen.
+/// once the lease is dropped or this helper is gone.
 pub(super) fn start(
     exe: &str,
     password: &str,
 ) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
-    let quiet = SINK.get().is_some();
     std::fs::create_dir_all(super::super::home_path(".local/share/opencode"))
         .map_err(|e| e.to_string())?;
     let mut child = Command::new(exe)
@@ -74,11 +62,7 @@ pub(super) fn start(
         .env("OPENCODE_PASSWORD", password)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(if quiet {
-            Stdio::null()
-        } else {
-            Stdio::inherit()
-        })
+        .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("OpenCode didn't start: {e}"))?;
     let lease = child.stdin.take();
@@ -88,10 +72,7 @@ pub(super) fn start(
     let url: Value =
         serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
     let addr = super::super::s(&url, &["url"]).trim_start_matches("http://");
-    thread::spawn(move || match quiet {
-        true => io::copy(&mut out, &mut io::sink()),
-        false => io::copy(&mut out, &mut io::stderr()),
-    });
+    thread::spawn(move || io::copy(&mut out, &mut io::stderr()));
     let server = Arc::new(Server {
         addr: addr.into(),
         auth: base64(format!("opencode:{password}").as_bytes()),
@@ -214,11 +195,6 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
 }
 
 pub(super) fn say(v: Value) {
-    if let Some(sink) = SINK.get() {
-        // One write a line, so the mirror never reads half of one.
-        let _ = sink.lock().unwrap().write_all(format!("{v}\n").as_bytes());
-        return;
-    }
     let mut out = io::stdout().lock();
     let _ = writeln!(out, "{v}").and_then(|_| out.flush());
 }
@@ -268,20 +244,7 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         ),
         "permission.replied" => {
             let id = d["requestID"].as_str().unwrap_or("");
-            let ask = st.asked.remove(id);
-            if st.always.remove(id) && d["reply"] != "reject" {
-                v["data"]["grant"] = true.into();
-                drop(st);
-                say(v);
-                if let Some(ask) = ask {
-                    grant(
-                        server,
-                        state,
-                        json!({"action": ask["action"], "save": ask["save"]}),
-                    );
-                }
-                return;
-            }
+            st.asked.remove(id);
         }
         "form.created" if d["form"]["metadata"]["kind"] == "question" => {
             st.forms
@@ -310,17 +273,6 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                 "session.tool.success" | "session.tool.failed" => format!("{key}:ended"),
                 "session.text.ended" | "session.reasoning.ended" => {
                     format!("{k}:{msg}:{}", d["ordinal"])
-                }
-                // A prompt typed in the terminal, by its message id [D47].
-                "session.inbox.enqueued" if SINK.get().is_some() => {
-                    let item = &d["item"];
-                    let id = d["inboxID"].as_str().unwrap_or("").to_string();
-                    if item["type"] == "user" && st.seen.insert(format!("prompt:{id}")) {
-                        let text = item["payload"]["text"].clone();
-                        drop(st);
-                        say(json!({"type": "brigadier.prompt", "data": {"id": id, "text": text}}));
-                    }
-                    return;
                 }
                 "session.execution.started" => return busy(&mut st, true, v),
                 "session.execution.succeeded"
@@ -376,18 +328,8 @@ fn catch_up(server: &Server, state: &Shared) {
         let msg = m["id"].as_str().unwrap_or("");
         let base = json!({"sessionID": session, "assistantMessageID": msg});
         match m["type"].as_str() {
-            // A message sent while away began a turn; one typed in the terminal shows in chat by
-            // its id, once [D5, D47, D251].
-            Some("user") => {
-                let mut st = state.lock().unwrap();
-                st.busy = true;
-                if SINK.get().is_some() && st.seen.insert(format!("prompt:{msg}")) {
-                    drop(st);
-                    say(
-                        json!({"type": "brigadier.prompt", "data": {"id": msg, "text": m["text"]}}),
-                    );
-                }
-            }
+            // A message sent while away began a turn [D5, D251].
+            Some("user") => state.lock().unwrap().busy = true,
             Some("assistant") => {
                 for (i, part) in m["content"].as_array().into_iter().flatten().enumerate() {
                     let mut d = base.clone();

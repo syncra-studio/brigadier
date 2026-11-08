@@ -311,7 +311,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         }
         let child = ping["child"]
             .as_i64()
-            .map(|_| (ping["spawn"].as_u64().unwrap_or(0), ping["pty"] == true));
+            .map(|_| ping["spawn"].as_u64().unwrap_or(0));
         let call = |mut req: Value| {
             // A replace judges idleness itself, later: its own guard stands.
             if req["if_len"].is_null() && matches!(req["op"].as_str(), Some("input" | "spawn")) {

@@ -50,7 +50,8 @@ impl Norm {
                     }
                 }
             }
-            log::PTY => emit(self, json!({"kind": "terminal", "bytes": frame.data.len()})),
+            // A sign-in's screen: nothing to fold.
+            log::PTY => {}
             log::INTENT => {
                 let v = control();
                 if let Some(b) = v["backend"].as_str() {
@@ -210,9 +211,6 @@ impl Norm {
                     let decision = if allowed { "approved" } else { "denied" };
                     json!({"kind": "resolved", "id": id, "decision": decision})
                 }
-                Event::Granted(id) => {
-                    json!({"kind": "resolved", "id": id, "decision": "approved", "grant": true})
-                }
                 Event::Reply { id, error, level } => {
                     json!({"kind": "reply", "id": id, "error": error, "level": level})
                 }
@@ -220,7 +218,6 @@ impl Norm {
                 Event::Answer(id, t) => json!({"kind": "answer", "id": id, "text": t}),
                 Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
-                Event::Prompt(id, t) => json!({"kind": "prompt", "id": id, "text": t}),
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
             };
             items.push(item);

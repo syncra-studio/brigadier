@@ -1,12 +1,10 @@
-//! The terminal side of the runner: waiting out a handoff, keys and resizes for the live PTY, and
-//! the mirror that copies a terminal's work into the log [D47].
+//! The terminal side of the runner: waiting out a handoff, and keys and resizes for the live PTY.
 
 use super::{DRAIN, Runner, fail};
-use crate::spawn::{resize, spawn_pipes};
+use crate::spawn::resize;
 use serde_json::{Value, json};
 use std::fs::File;
-use std::io::{self, Write};
-use std::process::Command;
+use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -65,46 +63,4 @@ impl Runner {
 /// A terminal dimension, kept to what a PTY can take.
 pub(super) fn size(v: &Value, default: u16) -> u16 {
     v.as_u64().map_or(default, |n| n.clamp(1, 1000) as u16)
-}
-
-pub(super) type Mirror = (std::process::Child, File, File);
-
-/// Kills and reaps a mirror whose terminal never got going.
-pub(super) fn end_mirror(mirror: Option<Mirror>) {
-    if let Some((mut child, ..)) = mirror {
-        unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
-        let _ = child.wait();
-    }
-}
-
-/// Starts a mirror in its own group, on pipes: it reads nothing, and its stdin closing ends it.
-pub(super) fn start_mirror(m: &Value, cwd: &str) -> io::Result<Mirror> {
-    let argv: Vec<&str> = m["argv"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect();
-    let (program, args) = argv
-        .split_first()
-        .ok_or_else(|| io::Error::other("empty mirror argv"))?;
-    let mut command = Command::new(program);
-    command.args(args).env_clear().current_dir(cwd);
-    for (k, v) in m["env"].as_object().into_iter().flatten() {
-        command.env(k, v.as_str().unwrap_or(""));
-    }
-    let (child, input, outputs) = spawn_pipes(&mut command, true)?;
-    let mut outputs = outputs.into_iter();
-    let (_, out) = outputs
-        .next()
-        .ok_or_else(|| io::Error::other("no stdout"))?;
-    // Its stderr is read and dropped, so a chatty mirror never blocks.
-    if let Some((_, mut err)) = outputs.next() {
-        thread::spawn(move || io::copy(&mut err, &mut io::sink()));
-    }
-    Ok((
-        child,
-        input.ok_or_else(|| io::Error::other("no stdin"))?,
-        out,
-    ))
 }

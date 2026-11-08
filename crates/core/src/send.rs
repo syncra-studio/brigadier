@@ -11,13 +11,11 @@ use std::time::{Duration, Instant};
 
 pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
 
-/// The child a host holds, from its ping: its spawn id (0 from a host too old to say) and
-/// whether it runs in a terminal.
-pub type Running = Option<(u64, bool)>;
+/// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
+pub type Running = Option<u64>;
 
 /// Sends one message: the owner logs it with its command id before writing it anywhere. Prints
-/// back exactly what happened: delivered, logged (not proven delivered) or refused. While the
-/// terminal is open the message is typed into it, made for that one child [D47].
+/// back exactly what happened: delivered, logged (not proven delivered) or refused.
 #[allow(clippy::too_many_arguments)]
 pub fn send(
     spec: &Spec,
@@ -109,8 +107,7 @@ pub fn send(
         base["switch"] = change;
     }
     let running = child.is_some() && !picking;
-    let pty = child.is_some_and(|(_, pty)| pty);
-    if a.acks() && spec.mode != "pty" && !pty {
+    if a.acks() {
         base["ack"] = true.into();
     }
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
@@ -119,12 +116,12 @@ pub fn send(
     let refolded;
     let mut f = f;
     // An agent that doesn't queue takes a message mid-turn only as a steer.
-    if running && (!a.per_turn() || pty) && (pty || a.queues() || f.turns.is_empty()) {
+    if running && !a.per_turn() && (a.queues() || f.turns.is_empty()) {
         let mut bytes = String::new();
         if !f.turns.is_empty() {
             // A working child keeps its setup: the change waits for the next turn start.
             base["setup"] = f.given.clone().into();
-        } else if !pty && f.given.as_ref().map(unheld) != Some(setup.clone()) {
+        } else if f.given.as_ref().map(unheld) != Some(setup.clone()) {
             let g = f.given.clone().unwrap_or_default();
             let text = |k: &str| g[k].as_str().map(String::from);
             let last = Spec {
@@ -156,15 +153,13 @@ pub fn send(
         if replace.is_none() {
             let mut req = base.clone();
             req["op"] = "input".into();
-            let mut as_typed = if pty {
-                adapters::in_pty(spec)
-            } else {
-                spec.clone()
+            let run = Spec {
+                cid: Some(cid.into()),
+                ..spec.clone()
             };
-            as_typed.cid = Some(cid.into());
-            bytes += &a.encode(&as_typed, text);
+            bytes += &a.encode(&run, text);
             req["bytes"] = bytes.into();
-            if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
+            if let Some(spawn) = child.filter(|spawn| *spawn > 0) {
                 req["spawn"] = spawn.into();
             }
             let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
@@ -204,7 +199,6 @@ pub fn send(
         ),
         ("env", Value::Object(env)),
         ("cwd", json!(spec.cwd)),
-        ("pty", json!(spec.mode == "pty")),
         ("keep_stdin", json!(launch.keep_stdin)),
         ("input", json!(launch.input)),
         ("cli_version", json!(cli_version(spec, a))),
@@ -268,7 +262,7 @@ fn confirm(
     let cid = format!("{}.setup", base["cid"].as_str().unwrap_or(""));
     let mut req = json!({"op": "input", "cid": cid, "origin": base["origin"], "backend": base["backend"],
                          "bytes": bytes, "control": {"kind": "retune"}});
-    if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
+    if let Some(spawn) = child.filter(|spawn| *spawn > 0) {
         req["spawn"] = spawn.into();
     }
     let reply = call(req).map_err(|e| refused(e.to_string()))?;

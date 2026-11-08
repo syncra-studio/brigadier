@@ -32,8 +32,7 @@ impl Fold {
         }
     }
 
-    /// Every pending request of the first turn leaves: the turn ended, or (in a terminal) the
-    /// agent moved on, its answer given by keys that aren't logged [D77].
+    /// Every pending request of the first turn leaves: the turn ended [D77].
     pub(super) fn end_asks(&mut self, why: &str) {
         let ids: Vec<String> = (self.turns.first())
             .map(|t| t.asks.keys().cloned().collect())

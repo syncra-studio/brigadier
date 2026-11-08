@@ -99,6 +99,7 @@ const CLOSES: [&str; 8] = [
 impl Thread {
     pub fn push(&mut self, item: &Value) {
         if crate::worktrees::setup_launch(item) {
+            // An earlier undelivered turn can hold this input's row back until after its launch.
             self.setup_at = Some(
                 self.items
                     .iter()
@@ -245,8 +246,7 @@ impl Thread {
         } else {
             self.end_limit();
         }
-        // An input, or a prompt typed in the terminal (the user's, with no command id).
-        if t.cid.is_some() || t.origin == "user" {
+        if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(
                 json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,

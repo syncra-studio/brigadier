@@ -43,7 +43,7 @@ pub fn lifecycle(dir: &Path) -> (Option<u64>, Value) {
     (archived, intent(dir).unwrap_or(Value::Null))
 }
 
-/// Why the session takes no new work now (a start, send, recover or terminal), if it doesn't.
+/// Why the session takes no new work now (a start, send or recover), if it doesn't.
 pub fn closed(dir: &Path) -> Option<&'static str> {
     match intent(dir).as_ref().and_then(|i| i["op"].as_str()) {
         Some("archive") => Some("This session is being archived."),

@@ -47,13 +47,6 @@ pub struct Child {
     pub start_us: u64,
     pub backend: String,
     pub exited: bool,
-    pub pty: bool,
-    /// A mirror copies its CLI's record into the log, so its turns come and go like piped ones.
-    #[serde(default)]
-    pub mirror: bool,
-    /// The mirror's own process group, which lives beside the CLI for the terminal's life.
-    #[serde(default)]
-    pub mirror_group: Option<(i32, u64)>,
 }
 
 /// Another agent's model and effort, picked for the next message.
@@ -93,7 +86,7 @@ pub struct Fold {
     #[serde(default)]
     pub models: BTreeMap<String, String>,
     /// The newest setup (model, effort, level) given to the running child, from its inputs: what a
-    /// turn start compares to. None for a child no input set up (a terminal).
+    /// turn start compares to. None for a child no input set up.
     #[serde(default)]
     pub given: Option<Value>,
     /// The effort each backend runs at, as the app last set it; none is the CLI's default [D129].
@@ -115,9 +108,6 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
-    /// Prompts in the CLI's record already bound to the chat input that typed them, by prompt id.
-    #[serde(default)]
-    pub bound: BTreeMap<String, String>,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
     /// delivered), withdrawn, or the outcome of the turn they ended with.
     #[serde(default)]
@@ -201,7 +191,6 @@ impl Fold {
                 | "tool_done"
                 | "turn_start"
                 | "turn_end"
-                | "terminal"
                 | "stderr"
                 | "unknown"
                 | "usage"
@@ -213,16 +202,8 @@ impl Fold {
                 | "compaction"
         ) {
             self.last_out = ts;
-            let pty = self.child.as_ref().is_some_and(|c| c.pty);
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
-                // A question in a terminal is answered by keys, which aren't logged: the agent's
-                // next step in its record ends the wait. Raw screen bytes don't, nor a tool's start,
-                // which the CLI records before it asks to run it [D77].
-                if pty && matches!(kind, "text" | "tool_done" | "reasoning" | "turn_start") {
-                    t.question = None;
-                    self.end_asks("withdrawn");
-                }
             }
         }
         match kind {
@@ -280,14 +261,6 @@ impl Fold {
                 if item["origin"] == "user" {
                     self.sent = ts;
                 }
-                // A terminal with no mirror has no turn boundaries: each input replaces the last.
-                if self
-                    .child
-                    .as_ref()
-                    .is_some_and(|c| c.pty && !c.exited && !c.mirror)
-                {
-                    self.turns.clear();
-                }
                 let retry_of = item["retry_of"].as_str().map(String::from);
                 self.turns.push(Turn {
                     id: cid.clone(),
@@ -309,9 +282,6 @@ impl Fold {
                     item["pid"].as_i64().unwrap_or(0) as i32,
                     item["start_us"].as_u64().unwrap_or(0),
                 );
-                let m = &item["mirror"];
-                let mirror_group =
-                    (m["pgid"].as_i64().zip(m["start_us"].as_u64())).map(|(g, s)| (g as i32, s));
                 // A spawn's own input came first and set it up; one with no input knows nothing.
                 if item["cid"].is_null() {
                     self.given = None;
@@ -321,12 +291,8 @@ impl Fold {
                     start_us,
                     backend: str_of("backend"),
                     exited: false,
-                    pty: item["mode"] == "pty",
-                    mirror: m.is_object(),
-                    mirror_group,
                 });
                 self.groups.push((pid, start_us));
-                self.groups.extend(mirror_group);
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -388,10 +354,6 @@ impl Fold {
             "approval" => self.ask(item),
             "resolved" => {
                 let id = str_of("id");
-                // Allowed for the session in the CLI's screen: held like a chat grant [D193].
-                let asked = self.turns.iter().find_map(|t| t.asks.get(&id));
-                self.grants
-                    .extend(asked.filter(|_| item["grant"] == true).cloned());
                 self.end_ask(&id, item["decision"].as_str().unwrap_or("withdrawn"));
             }
             "reply" => {
@@ -409,45 +371,6 @@ impl Fold {
                     t.question = None;
                 }
                 self.end_ask(&str_of("id"), "answered");
-            }
-            // A prompt the CLI took in its terminal. One a chat input typed starts that input's
-            // turn, by the binding the mirror logged before it; any other is the user's own [D47].
-            "prompt" => {
-                self.last_out = ts;
-                let cid = self.bound.remove(&str_of("id"));
-                // The CLI takes a prompt only once the turn before it is over, ended or not (Esc
-                // ends one with no turn end in its record).
-                while self
-                    .turns
-                    .first()
-                    .is_some_and(|t| t.began && (cid.is_none() || t.cid != cid))
-                {
-                    self.close("stopped", json!("terminal"), ts);
-                }
-                let typed =
-                    cid.and_then(|c| self.turns.iter_mut().find(|t| t.cid.as_deref() == Some(&c)));
-                if let Some(t) = typed {
-                    t.began = true;
-                    return;
-                }
-                // Ahead of inputs still queued: the CLI runs it now.
-                let at = self
-                    .turns
-                    .iter()
-                    .position(|t| !t.began)
-                    .unwrap_or(self.turns.len());
-                self.sent = ts;
-                let turn = Turn {
-                    id: format!("p{}", self.items),
-                    origin: "user".into(),
-                    backend: self.backend.clone(),
-                    text: str_of("text"),
-                    ts,
-                    delivered: Some(ts),
-                    began: true,
-                    ..Default::default()
-                };
-                self.turns.insert(at, turn);
             }
             "resume_id" => {
                 let (backend, id) = (str_of("backend"), str_of("id"));
@@ -470,7 +393,7 @@ impl Fold {
                 self.close("unresumable", item["message"].clone(), ts);
             }
             "stopped" => {
-                // The user's Stop ends the limit; a terminal's handoff stop keeps it [D51, D47].
+                // The user's Stop ends the limit; a handoff's stop keeps it [D51].
                 if item["by"] == "user" {
                     (self.limit, self.resets, self.refused) = (None, None, None);
                 }
@@ -479,7 +402,6 @@ impl Fold {
             "compaction" if item["progress"] != "running" => self.compactions += 1,
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {
-                Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
                 Some("owner_started") => {

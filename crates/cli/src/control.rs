@@ -40,9 +40,6 @@ fn deliver(
         if !ping["child"].is_number() {
             return Ok(refused("not_running", "interrupted".into()));
         }
-        if ping["pty"] == true {
-            return Ok(refused("terminal", Value::Null));
-        }
         let f = core::fold(&spec.dir, true)?;
         let msg = match judge(&f.fold) {
             Ok(msg) => msg,

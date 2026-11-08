@@ -81,8 +81,7 @@ impl Thread {
         self.changed_items.insert(at);
     }
 
-    /// The CLI cleared a request, or (in a terminal) the agent moved on past it [D77]; or another
-    /// client, or the CLI's own rule, decided it.
+    /// The CLI cleared a request [D77]; or another client, or the CLI's own rule, decided it.
     pub(super) fn withdraw(&mut self, id: &str, decision: Option<&str>) {
         if let Some(at) = self.unwait(id) {
             self.withdraw_row(at);

@@ -125,20 +125,8 @@ impl Adapter for Fake {
         Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
-    fn encode(&self, spec: &Spec, text: &str) -> String {
-        if spec.mode == "pty" {
-            format!("{text}\r")
-        } else {
-            format!("{}\n", json!({"text": text}))
-        }
-    }
-
-    /// Its terminal is its own PTY mode, with no record to mirror: for drills and demos.
-    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        Ok((
-            self.launch(&super::in_pty(spec), resume, None),
-            resume.unwrap_or("").into(),
-        ))
+    fn encode(&self, _spec: &Spec, text: &str) -> String {
+        format!("{}\n", json!({"text": text}))
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {

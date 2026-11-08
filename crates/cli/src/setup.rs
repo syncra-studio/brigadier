@@ -366,7 +366,7 @@ fn send_code(data: &Path, a: &dyn Adapter, id: &str, code: &str) -> io::Result<V
     Ok(json!({"ok": true}))
 }
 
-/// Runs the vendor's installer, or the CLI's own sign-in, in a terminal on a host [D45, D47, D60].
+/// Runs the vendor's installer, or the CLI's own sign-in, in a terminal on a host [D45, D60].
 /// A run still going is shown again; an ended one is replaced.
 fn start(
     data: &Path,
@@ -427,7 +427,7 @@ pub fn setup_spec(a: &dyn Adapter, id: &str, action: &str) -> Spec {
     }
 }
 
-/// Starts `argv` in a terminal on the setup run's own host [D47, D60].
+/// Starts `argv` in a terminal on the setup run's own host [D45, D60].
 pub fn in_terminal(
     data: &Path,
     spec: &Spec,

@@ -36,8 +36,8 @@ pub fn status(fold: &Fold, live: &Live) -> Value {
            "account": fold.accounts.get(&fold.backend), "switchable": switchable(fold)})
 }
 
-/// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on, even with
-/// the terminal open, which the state would show first [D47]. Only while no turn is open.
+/// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on. Only
+/// while no turn is open.
 pub fn switchable(fold: &Fold) -> Option<&'static str> {
     if !fold.turns.is_empty() {
         return None;
@@ -50,8 +50,7 @@ pub fn switchable(fold: &Fold) -> Option<&'static str> {
 }
 
 /// Whether this session keeps the Mac awake [D30, D36]: background jobs its live agent left running,
-/// or a delivered turn whose live agent is starting, has fresh output or runs a tool, in chat or in a
-/// terminal alike. A turn waiting on the user, or quiet past its stall time, doesn't, so a hung CLI
+/// or a delivered turn whose live agent is starting, has fresh output or runs a tool. A turn waiting on the user, or quiet past its stall time, doesn't, so a hung CLI
 /// can't keep a Mac awake in a bag.
 pub fn works(fold: &Fold, live: &Live) -> bool {
     if live.owner != Owner::Alive {
@@ -91,8 +90,6 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
         "logged" | "starting" | "working" | "silent" | "idle_jobs" => Some("working"),
-        // Mid-turn in the terminal it works; between turns the terminal is only open [D47].
-        "terminal" if !fold.turns.is_empty() => Some("working"),
         "limited" | "unresumable" if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS => {
             Some("working")
         }
@@ -114,10 +111,6 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             .unwrap_or("");
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
-            // An open terminal between turns, whatever the last chat turn's outcome was [D47].
-            _ if live.child.is_some() && fold.child.as_ref().is_some_and(|c| c.pty) => {
-                ("terminal", Value::Null)
-            }
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
             _ if fold.limit.is_some() => ("limited", fold.limit.clone().into()),
             _ if fold.refused.is_some() => ("unresumable", fold.refused.clone().into()),
@@ -164,7 +157,6 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     if child.stopped {
         return ("stalled", json!({"stopped": child.pid}));
     }
-    // Also in a terminal: the CLI waits on the user either way [D77].
     if let Some(q) = &turn.question {
         return ("waiting_answer", q.clone().into());
     }
@@ -172,9 +164,6 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
         return ("waiting_answer", serde_json::json!({"approval": id}));
     }
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
-    if fold.child.as_ref().is_some_and(|c| c.pty) {
-        return ("terminal", json!({"quiet_ms": silence}));
-    }
     if !turn.began {
         return if silence > timing.no_start_ms {
             ("no_turn_started", silence.into())

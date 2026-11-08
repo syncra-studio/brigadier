@@ -1,5 +1,5 @@
 //! Claude Code: one long-lived `claude -p` per session reading stream-json from stdin, with its
-//! control channel beside the messages [D159], or the interactive CLI on a PTY. Frame names per
+//! control channel beside the messages [D159]. Frame names per
 //! its public CLI docs and observed output.
 
 mod cleanup;
@@ -9,10 +9,9 @@ mod tools;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing,
-    base_env, classify, file_lines, home_path, in_pty, paste, probe_as, s, uuid, version,
+    base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
-use crate::terminal::HOOKS;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
@@ -124,36 +123,31 @@ impl Adapter for Claude {
         let exe = self.exe().unwrap_or_default();
         let model = control::model(spec);
         let mut argv = vec![exe.display().to_string()];
-        if spec.mode != "pty" {
-            argv.extend(
-                [
-                    "-p",
-                    "--output-format",
-                    "stream-json",
-                    "--input-format",
-                    "stream-json",
-                    "--verbose",
-                ]
-                .map(String::from),
-            );
-        }
+        argv.extend(
+            [
+                "-p",
+                "--output-format",
+                "stream-json",
+                "--input-format",
+                "stream-json",
+                "--verbose",
+            ]
+            .map(String::from),
+        );
         argv.extend(["--model".into(), model]);
         if let Some(effort) = &spec.effort {
             argv.extend(["--effort".into(), effort.clone()]);
         }
         // Its prompts and questions come on the control channel, at the session's level; Full
-        // can be taken later without a restart. A terminal asks in its own screen, at the same
-        // level [D243].
-        if spec.mode != "pty" {
-            argv.extend(
-                [
-                    "--permission-prompt-tool",
-                    "stdio",
-                    "--allow-dangerously-skip-permissions",
-                ]
-                .map(String::from),
-            );
-        }
+        // can be taken later without a restart.
+        argv.extend(
+            [
+                "--permission-prompt-tool",
+                "stdio",
+                "--allow-dangerously-skip-permissions",
+            ]
+            .map(String::from),
+        );
         let level = spec.level.as_deref().unwrap_or("ask");
         argv.extend(["--permission-mode".into(), control::mode(level).into()]);
         // The session's grants, given again to a child its host starts anew [D193, D238].
@@ -165,15 +159,7 @@ impl Adapter for Claude {
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
         }
-        let pty = spec.mode == "pty";
-        if pty && let Some(t) = text {
-            argv.push(t.into());
-        }
-        let input = if pty {
-            None
-        } else {
-            text.map(|t| self.encode(spec, t))
-        };
+        let input = text.map(|t| self.encode(spec, t));
         Launch {
             argv,
             env: base_env(spec, &exe, self.keys()),
@@ -182,10 +168,7 @@ impl Adapter for Claude {
         }
     }
 
-    fn encode(&self, spec: &Spec, text: &str) -> String {
-        if spec.mode == "pty" {
-            return paste(text);
-        }
+    fn encode(&self, _spec: &Spec, text: &str) -> String {
         control::user(text)
     }
 
@@ -213,9 +196,6 @@ impl Adapter for Claude {
         if let Some(events) = control::parse(&v) {
             return events;
         }
-        if v["hook"].is_object() {
-            return control::hook(&v["hook"], s(&v, &["id"]));
-        }
         let blocks = || {
             v["message"]["content"]
                 .as_array()
@@ -224,20 +204,7 @@ impl Adapter for Claude {
         };
         // A subagent's own steps stream here too, under the Agent call that runs it [D78].
         let parent = v["parent_tool_use_id"].as_str().map(String::from);
-        // A line of the CLI's own record, which a terminal's mirror copies [D47]: the same
-        // messages as stream-json, plus the typed prompt, the turn's end and bookkeeping.
-        let record = v.get("sessionId").is_some()
-            || matches!(s(&v, &["type"]), "file-history-snapshot" | "summary");
-        let typed = v["message"]["content"]
-            .as_str()
-            .filter(|t| record && v["isMeta"] != true && v["isSidechain"] != true && !synthetic(t));
         match (s(&v, &["type"]), s(&v, &["subtype"])) {
-            ("user", _) if typed.is_some() => vec![
-                Event::Resume(s(&v, &["sessionId"]).into()),
-                Event::Prompt(s(&v, &["uuid"]).into(), typed.unwrap_or("").into()),
-            ],
-            ("system", "turn_duration") if record => vec![Event::TurnEnd(true)],
-            _ if record && v["isSidechain"] == true => vec![],
             ("system", "init") => [
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
                 Some(Event::TurnStart),
@@ -266,7 +233,7 @@ impl Adapter for Claude {
                     "thinking" if parent.is_none() && !s(b, &["thinking"]).is_empty() => {
                         vec![Event::Reasoning(s(b, &["thinking"]).into())]
                     }
-                    "tool_use" => tool_start(b, parent.clone(), record),
+                    "tool_use" => tool_start(b, parent.clone()),
                     _ => vec![],
                 })
                 .collect(),
@@ -278,7 +245,7 @@ impl Adapter for Claude {
                         Value::Null => &v["toolUseResult"],
                         r => r,
                     };
-                    tool_end(b, result, parent.clone(), record)
+                    tool_end(b, result, parent.clone())
                 })
                 .collect(),
             // Its reset time is in seconds [D74, D220].
@@ -297,7 +264,6 @@ impl Adapter for Claude {
                 events.push(Event::TurnEnd(v["is_error"].as_bool() != Some(true)));
                 events
             }
-            _ if record => vec![],
             _ => vec![Event::Unknown(line.into())],
         }
     }
@@ -316,66 +282,6 @@ impl Adapter for Claude {
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         cleanup::forget(spec, resume).map_err(|e| e.to_string())
-    }
-
-    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        let mut launch = self.launch(&in_pty(spec), resume, None);
-        // Its hooks tell Brigadier the level it runs at and what it asks in its screen, and let a
-        // held session refuse a turn above Ask [D47, D238, D243]. They only add to the user's own.
-        let exe = std::env::current_exe()
-            .unwrap_or_default()
-            .with_file_name("brigadier");
-        let data = crate::data_of(spec);
-        let command = [data.as_path(), &exe].map(|p| quote(&p.display().to_string()));
-        let command = format!(
-            "BRIGADIER_DATA={} {} hook {} claude",
-            command[0],
-            command[1],
-            quote(&spec.id)
-        );
-        let hook = serde_json::json!([{"matcher": "*", "hooks": [{"type": "command", "command": command}]}]);
-        let settings =
-            serde_json::json!({"hooks": {"UserPromptSubmit": hook, "PermissionRequest": hook}});
-        launch
-            .argv
-            .extend(["--settings".into(), settings.to_string()]);
-        let conv = match resume {
-            Some(id) => id.to_string(),
-            None => {
-                let id = uuid();
-                launch.argv.extend(["--session-id".into(), id.clone()]);
-                id
-            }
-        };
-        Ok((launch, conv))
-    }
-
-    /// Its record, then what its hooks kept in the session folder: `<record end>:<hooks end>`.
-    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
-        let len = |p: PathBuf| std::fs::metadata(p).map_or(0, |m| m.len());
-        let record = len(project_dir(spec).join(format!("{conv}.jsonl")));
-        Some(format!("{record}:{}", len(spec.dir.join(HOOKS))))
-    }
-
-    fn mirror(&self, spec: &Spec, conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let (record, hooks) = cursor.split_once(':').unwrap_or((cursor, "0"));
-        let path = project_dir(spec).join(format!("{conv}.jsonl"));
-        let (mut lines, end) = file_lines(&path, record.parse().unwrap_or(0));
-        let (more, hooks) = file_lines(&spec.dir.join(HOOKS), hooks.parse().unwrap_or(0));
-        lines.extend(more);
-        (lines, format!("{end}:{hooks}"))
-    }
-
-    /// A held session's terminal starts no turn above Ask: trust taken back while it's open, or
-    /// its mode changed there, refuses the next prompt until it's opened again [D166, D243].
-    fn hold(&self, hook: &Value) -> Option<String> {
-        let above = matches!(
-            s(hook, &["permission_mode"]),
-            "auto" | "bypassPermissions" | "acceptEdits"
-        );
-        (s(hook, &["hook_event_name"]) == "UserPromptSubmit" && above).then(|| {
-            serde_json::json!({"decision": "block", "reason": "This folder isn't trusted, so its sessions run under Ask. Close this terminal and open it again to go on under Ask."}).to_string()
-        })
     }
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
@@ -404,24 +310,6 @@ impl Adapter for Claude {
         }
         Some((texts, tools))
     }
-}
-
-/// A shell word for a hook's command line.
-fn quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
-}
-
-/// A user line the CLI writes itself (slash commands, `!` shell runs, reminders), not a prompt.
-fn synthetic(text: &str) -> bool {
-    const TAGS: [&str; 6] = [
-        "<command-",
-        "<local-command-",
-        "<bash-",
-        "<system-reminder>",
-        "<task-notification>",
-        "<cross-session-message",
-    ];
-    TAGS.iter().any(|t| text.starts_with(t))
 }
 
 /// Where the CLI keeps transcripts for a working folder: its real path with every
