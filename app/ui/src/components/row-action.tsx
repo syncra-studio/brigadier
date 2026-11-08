@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cx } from "./cx";
 
-/** An icon button on a row's end, shown while the row (marked `group/row`) is hovered or focused. Name it with `aria-label`. */
+/** An icon button on a row's end, shown while the row (marked `group/row`) is hovered or keyboard-focused. Name it with `aria-label`. */
 export function RowAction({ className, ...props }: ComponentProps<"button">) {
   return (
     <button
@@ -26,7 +26,7 @@ export function RowActionsSlot({ className, children }: { className?: string; ch
     <div
       className={cx(
         "pointer-events-none absolute inset-y-0 end-1.5 flex items-center gap-2 opacity-0",
-        "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+        "group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
         "has-aria-expanded:pointer-events-auto has-aria-expanded:opacity-100",
         className,
       )}

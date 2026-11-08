@@ -10,8 +10,10 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
+import { useStartingRows } from "../onboarding/start";
+import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
@@ -47,7 +49,7 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 }
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
-const LIST = "scroll-edge-fade flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
+const LIST = "scroll-edge-fade edge-fade-sidebar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
 const MENU_ROW = "flex h-control-sm cursor-pointer items-center gap-2 rounded-menu-item px-2 text-sm hover:bg-fill has-focus-visible:bg-fill";
 
 export function AppSidebar({
@@ -79,10 +81,16 @@ export function AppSidebar({
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const previousRows = useRef(rows);
+  useEffect(() => {
+    // Deleting the open conversation returned Home in the old app.
+    if (active && rows && previousRows.current?.some((row) => row.id === active) && !rows.some((row) => row.id === active)) onNewSession();
+    previousRows.current = rows;
+  }, [rows, active, onNewSession]);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  const { live: shown, archived } = useArchiveSplit(useShown(rows));
+  const { live: shown, archived } = useArchiveSplit(useShown(useStartingRows(rows)));
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
@@ -169,7 +177,14 @@ export function AppSidebar({
 
   return (
     <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot}>
-      <NavHeader title="Brigadier" />
+      <NavHeader
+        title="Brigadier"
+        actions={
+          <TooltipIconButton tooltip="Search" shortcut="⌘K" look="toolbar" side="bottom" onClick={openSearch}>
+            <MagnifyingGlassSmSearch />
+          </TooltipIconButton>
+        }
+      />
       <NavList className="mb-2 px-2">
         <li>
           <NavRow data-active={home || undefined} onClick={onNewSession}>
@@ -367,7 +382,7 @@ function ViewMenu({ grouping, onGrouping }: { grouping: Grouping; onGrouping: (n
   );
 }
 
-/** The collapsed strip: the mark, which peeks the panel and opens it, and New session. */
+/** The collapsed strip: the mark, which peeks the panel and opens it, New session and Search. */
 function Strip({ onNewSession }: { onNewSession: () => void }) {
   const { setOpen } = useSidebar();
   return (
@@ -377,6 +392,9 @@ function Strip({ onNewSession }: { onNewSession: () => void }) {
       </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>
         <ComposeEditSquare />
+      </TooltipIconButton>
+      <TooltipIconButton tooltip="Search" shortcut="⌘K" look="strip" side="right" onClick={openSearch}>
+        <MagnifyingGlassSmSearch />
       </TooltipIconButton>
     </div>
   );

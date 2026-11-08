@@ -8,7 +8,7 @@ import { AppSidebar } from "../src/sidebar/sidebar";
 import { type Project, type SessionRow, statusWords } from "../src/sidebar/words";
 import { Held, Row, Section, State } from "./parts";
 
-const PROJECTS: Project[] = [
+export const PROJECTS: Project[] = [
   { id: "p1", name: "brigadier" },
   { id: "p2", name: "landing-site" },
   { id: "p3", name: "Old prototypes" },
@@ -27,7 +27,7 @@ const row = (id: string, title: string, state: string, mark: SessionRow["mark"],
   ...extra,
 });
 
-const ROWS: SessionRow[] = [
+export const ROWS: SessionRow[] = [
   row("1", "Fix brigadier-core tests", "working", "working", "p1"),
   row("2", "Rate limit the exports", "waiting_answer", "needs", "p1"),
   row("3", "Deploy the preview", "sign_in", "needs", "p2"),

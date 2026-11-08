@@ -11,6 +11,7 @@ import { openThread, type Row, threadSource, useDaemon, useThread } from "./daem
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
+import { GlobalSearch } from "./palette/palette";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { ProjectSettingsHost } from "./projects/settings";
@@ -197,6 +198,7 @@ createRoot(document.getElementById("root")!).render(
       <>
         <App />
         <AddProjectHost />
+        <GlobalSearch />
         <Toaster className="top-titlebar" />
       </>
     )}

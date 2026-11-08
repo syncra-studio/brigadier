@@ -3,12 +3,13 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "../components/button";
 import { Input } from "../components/input";
 import { Select } from "../components/select";
-import { useDaemon } from "../daemon";
+import { type Row, useDaemon } from "../daemon";
 import { Spinner } from "../icons";
 import { addProject, useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
 import { enterProject, useDraftedProject } from "../projects/trust";
-import { type Agent, checkAll, errorText, run, useAgents } from "./api";
+import type { SessionRow } from "../sidebar/words";
+import { type Agent, checkAll, errorText, run, store, useAgents } from "./api";
 
 /**
  * Start a session (proposed, until wave 1's composer replaces it): an agent with a model, one of
@@ -21,6 +22,18 @@ async function addPicked(): Promise<void> {
   if (picked) await addProject(picked);
 }
 
+const starting = store<Row | null>(null);
+
+/** A start shows at once; Rust's row replaces it under the same id [D30]. */
+export function useStartingRows(rows: SessionRow[] | undefined): SessionRow[] | undefined {
+  const pending = starting.use();
+  const known = pending && rows?.some((row) => row.id === pending.id);
+  useEffect(() => {
+    if (known) starting.set(null);
+  }, [known]);
+  return pending && !known ? [...(rows ?? []), pending] : rows;
+}
+
 export function StartForm() {
   const { daemon } = useDaemon();
   const loaded = useProjects();
@@ -29,7 +42,7 @@ export function StartForm() {
   const { list, checking } = useAgents();
   const usable = (list ?? []).filter((agent) => agent.models?.length);
   const [agent, setAgent] = useState("");
-  // The project drafted in is the one Trust this folder? asks about [D167].
+  // The project drafted in is the one Trust this folder? asks about [D167]; ⌘K sets it too [D196].
   const project = useDraftedProject();
   const [models, setModels] = useState<NonNullable<Agent["models"]> | "loading" | { error: string }>("loading");
   const [model, setModel] = useState("");
@@ -79,10 +92,13 @@ export function StartForm() {
     setPending(true);
     setError(null);
     const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const sent = Date.now();
+    starting.set({ id, title: text.trim().split(/\r?\n/, 1)[0], state: "starting", reason: null, mark: "working", resets: null, sent, finished: 0, project: chosenProject, backend: "", updated: sent, items: 0, error: null });
     try {
       await run(["start", id, "--backend", chosenAgent, "--project", chosenProject, "--model", chosenModel, "--text", text.trim()]);
       window.location.hash = `#thread/${encodeURIComponent(id)}`;
     } catch (cause) {
+      starting.set(null);
       setError(errorText(cause));
       setPending(false);
     }

@@ -50,10 +50,12 @@ type DialogContentProps = Omit<BaseDialog.Popup.Props, "className"> & {
   container?: HTMLElement | null;
   /** Its width, padding and gap, for a card laid out its own way (cx doesn't merge a caller's). */
   frame?: string;
+  /** Where its top edge sits (a `top-*` class) instead of centred, for a card that grows as results come (a palette). */
+  top?: string;
 };
 
 /** A centred see-through card over the dimmed page. */
-export function DialogContent({ className, children, showCloseButton = true, container, frame = "max-w-dialog gap-4 p-5", ...props }: DialogContentProps) {
+export function DialogContent({ className, children, showCloseButton = true, container, frame = "max-w-dialog gap-4 p-5", top, ...props }: DialogContentProps) {
   const pin = usePinnedTop(container);
   return (
     <BaseDialog.Portal container={container}>
@@ -62,12 +64,13 @@ export function DialogContent({ className, children, showCloseButton = true, con
         className="fixed inset-0 isolate z-popup bg-dialog-backdrop backdrop-motion"
       />
       <BaseDialog.Popup
-        ref={pin}
+        ref={top ? undefined : pin}
         data-slot="dialog-content"
         className={cx(
           "fixed start-1/2 z-popup grid w-full -translate-x-1/2 bg-material text-sm text-foreground shadow-material dialog-card",
           frame,
-          "outline-none backdrop-blur-material dialog-top dialog-motion rtl:translate-x-1/2",
+          top ?? "dialog-top",
+          "outline-none backdrop-blur-material dialog-motion rtl:translate-x-1/2",
           className,
         )}
         {...props}

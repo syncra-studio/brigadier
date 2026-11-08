@@ -9,6 +9,7 @@ import { DecisionsGallery } from "./decisions";
 import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
+import { PaletteGallery } from "./palette";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
 import { ArchiveGallery } from "./archive";
@@ -108,6 +109,7 @@ function GalleryPage() {
         <ProjectSettingsGallery />
         <ArchiveGallery />
         <SidebarGallery />
+        <PaletteGallery />
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />
