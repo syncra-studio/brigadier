@@ -1,0 +1,196 @@
+import { createContext, type MouseEventHandler, type ReactNode, useContext } from "react";
+
+import { Chat, File, FileCode, FileDocument, FileImage, Folder, Paperclip, Spinner, Warning, X } from "../../icons";
+import { cx } from "../cx";
+
+/**
+ * A file going with a message: an image or a long paste in the text (a chip), any other file as a tile beside
+ * it. Rust stores it under the session's folder and says how it went; the composer adds it at once, by the id
+ * it made, and settles by that id. PROPOSED to the owning runs (msgs/w15-fields-3.md).
+ */
+export type Attachment = {
+  id: string;
+  name: string;
+  mime: string;
+  state: "uploading" | "ready" | "failed";
+  /** Why it failed, in plain words. */
+  error?: string;
+  /** Where its bytes show (an image's thumbnail); none yet, the box pulses. */
+  url?: string;
+};
+
+/** The composer's attachments by id, for its chips and tiles. */
+export const AttachmentsContext = createContext<ReadonlyMap<string, Attachment>>(new Map());
+
+/** The number an image or pasted text has in the text ("Image #2"), by attachment id; the field counts them. */
+export const ChipNumbers = createContext<ReadonlyMap<string, number>>(new Map());
+
+/** A file's icon by its extension. */
+export function FileTypeIcon({ name, className }: { name: string; className?: string }) {
+  const extension = name.includes(".") ? (name.split(".").pop()?.toLowerCase() ?? "") : "";
+  const Icon = /^(png|jpe?g|gif|webp|svg|heic|bmp|ico)$/.test(extension)
+    ? FileImage
+    : /^(md|mdx|txt|rst|pdf|docx?|rtf)$/.test(extension)
+      ? FileDocument
+      : !extension || /^(json|ya?ml|toml|lock|ini|env|csv|xml|plist|cfg|conf)$/.test(extension)
+        ? File
+        : FileCode;
+  return <Icon aria-hidden className={className} />;
+}
+
+/** A mention's icon: a chat's, a folder's, or a file's by its type. */
+export function MentionIcon({ type, label, className }: { type: "file" | "folder" | "chat"; label: string; className?: string }) {
+  if (type === "chat") return <Chat aria-hidden className={className} />;
+  if (type === "folder") return <Folder aria-hidden className={className} />;
+  return <FileTypeIcon name={label} className={className} />;
+}
+
+/** "PDF", "PNG image", "Text": what a file's tile says under its name. */
+function kindOf(name: string, mime: string): string {
+  if (mime === "application/pdf") return "PDF";
+  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
+  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
+  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
+  return extension ? `${extension} file` : "File";
+}
+
+const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
+
+/**
+ * The ✕ that takes an attachment out: a dark dot at a tile's corner (on an image only while hovered or
+ * focused), or `small` inside a chip, its reach a little larger than it looks.
+ */
+export function TileRemove({
+  label,
+  onClick,
+  onHover = false,
+  small = false,
+}: {
+  label: string;
+  onClick: MouseEventHandler<HTMLButtonElement>;
+  onHover?: boolean;
+  small?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cx(
+        "flex shrink-0 cursor-pointer items-center justify-center rounded-capsule bg-foreground text-background focus-visible:focus-ring",
+        "transition-all motion-safe:active:scale-press",
+        small ? "relative size-icon-xs after:absolute after:-inset-1" : "absolute end-1.5 top-1.5 z-10 size-icon-md",
+        onHover && "opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100",
+      )}
+    >
+      <X aria-hidden className={small ? "size-2" : "size-icon-xs"} />
+    </button>
+  );
+}
+
+/** An image or a pasted text where it sits in the text: its thumbnail or icon, "Image #n", and in the field a ✕. */
+export function InlineAttachment({ id, paste = false, onRemove }: { id: string; paste?: boolean; onRemove?: MouseEventHandler<HTMLButtonElement> }) {
+  const attachment = useContext(AttachmentsContext).get(id);
+  const n = useContext(ChipNumbers).get(id);
+  const label = `${paste ? "Pasted text" : "Image"}${n ? ` #${n}` : ""}`;
+  const busy = attachment?.state === "uploading";
+  return (
+    <span
+      data-slot={paste ? "inline-paste" : "inline-image"}
+      title={label}
+      className="inline-flex items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-xs text-foreground"
+    >
+      <span className={cx("inline-flex items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
+        {paste ? (
+          <FileDocument aria-hidden className="size-icon-xs" />
+        ) : attachment?.url ? (
+          <img src={attachment.url} alt="" draggable={false} className="size-icon-sm rounded-xs object-cover" />
+        ) : (
+          <FileImage aria-hidden className="size-icon-xs" />
+        )}
+        {label}
+      </span>
+      {onRemove && <TileRemove small label={`Remove ${label}`} onClick={onRemove} />}
+    </span>
+  );
+}
+
+/** A file's tile: its kind's icon (or a spinner, or the failure's sign), its name and a second line. */
+function FileTile({ attachment, remove }: { attachment: Attachment; remove: ReactNode }) {
+  const { name, mime, state } = attachment;
+  const failed = state === "failed";
+  const Icon = mime.startsWith("image/") ? FileImage : mime.startsWith("text/") || mime === "application/pdf" ? FileDocument : Paperclip;
+  return (
+    <div
+      data-slot="attachment-file"
+      title={baseName(name)}
+      className={cx(
+        "group/tile relative flex w-attachment-card shrink-0 items-center gap-2 rounded-surface border p-1.5 pe-7",
+        failed ? "border-invalid" : "border-border",
+      )}
+    >
+      <span className="flex size-control-lg shrink-0 items-center justify-center rounded-icon-button bg-background text-muted-foreground">
+        {failed ? (
+          <Warning aria-label="Upload failed" className="size-icon-md text-destructive" />
+        ) : state === "uploading" ? (
+          <Spinner aria-label="Uploading" className="size-icon-md motion-safe:animate-spin" />
+        ) : (
+          <Icon aria-hidden className="size-icon-md" />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col text-start">
+        <span className="truncate text-sm">{baseName(name)}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {failed ? (attachment.error ?? "Couldn't attach this file") : state === "uploading" ? "Attaching…" : kindOf(name, mime)}
+        </span>
+      </span>
+      {remove}
+    </div>
+  );
+}
+
+/** An image's tile: a rounded thumbnail (pulsing until its bytes show), a spinner over it while stored. */
+function ImageTile({ attachment, remove }: { attachment: Attachment; remove: ReactNode }) {
+  const { url, name } = attachment;
+  return (
+    <div data-slot="attachment-image" title={name} className="group/tile relative size-attachment-thumb shrink-0">
+      <div className={cx("size-full overflow-hidden rounded-attachment bg-muted", !url && "animate-pulse motion-reduce:animate-none")}>
+        {url && (
+          <img src={url} alt={name} draggable={false} className={cx("size-full object-cover", attachment.state === "uploading" && "opacity-disabled")} />
+        )}
+      </div>
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-attachment ring-1 ring-border ring-inset" />
+      {attachment.state === "uploading" && (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <Spinner aria-label="Uploading" className="size-icon-md motion-safe:animate-spin" />
+        </span>
+      )}
+      {remove}
+    </div>
+  );
+}
+
+/**
+ * The files attached beside the text, over the field: images as thumbnails, other files as tiles, each with
+ * its ✕. One that failed shows as a tile saying why, so pass an image or paste in the text that failed too
+ * (its chip stays in the text). Ids with no attachment yet show nothing.
+ */
+export function AttachmentTiles({ ids, onRemove }: { ids: readonly string[]; onRemove: (id: string) => void }) {
+  const all = useContext(AttachmentsContext);
+  return (
+    <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5 empty:hidden">
+      {ids.map((id) => {
+        const attachment = all.get(id);
+        if (!attachment) return null;
+        const image = attachment.mime.startsWith("image/") && attachment.state !== "failed";
+        const remove = <TileRemove label={`Remove ${baseName(attachment.name)}`} onHover={image} onClick={() => onRemove(id)} />;
+        return (
+          <div key={id} data-slot="composer-attachment" data-state={attachment.state} className="motion-safe:animate-fade-in">
+            {image ? <ImageTile attachment={attachment} remove={remove} /> : <FileTile attachment={attachment} remove={remove} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

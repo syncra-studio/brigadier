@@ -1,20 +1,25 @@
-import { DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from "lexical";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from "lexical";
 import type { ReactNode } from "react";
 
-import { Chat, File } from "../../icons";
+import { InlineAttachment, MentionIcon } from "./attachments";
 import type { Chip } from "./draft";
 
-const ICON = "mr-0.5 inline-block size-icon-sm align-text-bottom";
-
-/** A chip as the text shows it: a mention's icon and blue name. */
-export function ComposerChip({ chip }: { chip: Chip }) {
-  // shortcut: image and pasted-text chips show a plain word until slice 3 draws their thumbnail and ✕.
-  if (chip.kind !== "mention") return <span className="text-muted-foreground">{chip.kind === "image" ? "Image" : "Pasted text"}</span>;
+/** A chip as the text shows it: a mention's icon and blue name; an image's thumbnail or a pasted text, with ✕. */
+export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }) {
+  const [editor] = useLexicalComposerContext();
+  if (chip.kind !== "mention") {
+    // As Backspace would: out of the text, its attachment kept for undo.
+    const remove = () => {
+      editor.update(() => $getNodeByKey(nodeKey)?.remove());
+      editor.focus();
+    };
+    return <InlineAttachment id={chip.attachmentId} paste={chip.kind === "paste"} onRemove={editor.isEditable() ? remove : undefined} />;
+  }
   const name = chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1);
   return (
-    <span className="text-link">
-      {/* shortcut: folders take the file icon until slice 3 adds the old app's Folder. */}
-      {chip.type === "chat" ? <Chat className={ICON} /> : <File className={ICON} />}
+    <span data-slot="composer-chip" className="text-link">
+      <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-text-bottom" />
       {name}
     </span>
   );
@@ -59,7 +64,7 @@ export class ChipNode extends DecoratorNode<ReactNode> {
     return this.__chip.kind === "mention" ? `@${this.__chip.label}` : "";
   }
   decorate(): ReactNode {
-    return <ComposerChip chip={this.__chip} />;
+    return <ComposerChip chip={this.__chip} nodeKey={this.__key} />;
   }
 }
 

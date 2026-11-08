@@ -20,6 +20,7 @@ import {
   CUT_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   type LexicalEditor,
@@ -28,8 +29,10 @@ import {
 import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 
 import { cx } from "../cx";
+import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
 import { $isChipNode, ChipNode } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
+import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
 type Parts = Draft["parts"];
 
@@ -127,7 +130,51 @@ function pasteChips(editor: LexicalEditor, event: ClipboardEvent | InputEvent | 
   return true;
 }
 
+/** Plain text this long, pasted, goes in as a "Pasted text" chip instead of as text. */
+const PASTE_CHIP_CHARS = 2000;
+
+/**
+ * A paste of files or of long text: an image goes in at the caret as a chip, any other file beside the text
+ * (`onAttach` with `inText` false), long text as a "Pasted text" chip. Each gets its id here, at once.
+ */
+function pasteAttachments(event: ClipboardEvent | InputEvent | KeyboardEvent, onAttach: AttachFn | undefined): boolean {
+  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
+  const selection = $getSelection();
+  if (!onAttach || !data || !$isRangeSelection(selection)) return false;
+  const files = [...data.files];
+  const text = data.getData("text/plain");
+  if (files.length === 0 && text.length < PASTE_CHIP_CHARS) return false;
+  event.preventDefault();
+  const added: [string, File, boolean][] = [];
+  const chips: ChipNode[] = [];
+  const add = (file: File, kind: "image" | "paste" | null) => {
+    const id = crypto.randomUUID();
+    added.push([id, file, kind !== null]);
+    if (kind) chips.push(new ChipNode({ kind, attachmentId: id }));
+  };
+  if (files.length > 0) for (const file of files) add(file, file.type.startsWith("image/") ? "image" : null);
+  else add(new File([text], "Pasted text.txt", { type: "text/plain" }), "paste");
+  if (chips.length > 0) selection.insertNodes(chips);
+  // Out of the editor's update: the caller's state changes there.
+  queueMicrotask(() => added.forEach((each) => onAttach(...each)));
+  return true;
+}
+
+/** Each image's and pasted text's number in the text ("Image #2"), in order. */
+function numbersOf(parts: Parts): Map<string, number> {
+  const numbers = new Map<string, number>();
+  const count = { image: 0, paste: 0 };
+  for (const part of parts) if (typeof part !== "string" && part.kind !== "mention") numbers.set(part.attachmentId, ++count[part.kind]);
+  return numbers;
+}
+const sameNumbers = (a: Map<string, number>, b: Map<string, number>) => a.size === b.size && [...a].every(([id, n]) => b.get(id) === n);
+
+const NO_ATTACHMENTS: ReadonlyMap<string, Attachment> = new Map();
+
 const blank = (parts: Parts) => isEmpty({ parts, attachmentIds: [] });
+
+/** A file added to the message: `inText`, its chip is in the text (an image, a long paste); otherwise a tile. */
+type AttachFn = (id: string, file: File, inText: boolean) => void;
 
 type FieldProps = {
   ref?: Ref<ComposerFieldHandle>;
@@ -147,16 +194,41 @@ type FieldProps = {
   onEscape?: () => void;
   /** ↑ in an empty field, before the prompts: pulls the last queued message back; true when it did. */
   onPullQueued?: () => boolean;
+  /** The `@` menu's results; without it `@` is plain text. */
+  mentions?: Mentions;
+  /** The `/` menu's commands; without it `/` is plain text. */
+  commands?: Commands;
+  /** Pasted files and long text; without it a paste is text only. */
+  onAttach?: AttachFn;
+  /** What the chips' images and pasted texts show (their thumbnails, names, states), by id. */
+  attachments?: ReadonlyMap<string, Attachment>;
 };
 
 /**
  * The composer's text field (Lexical, plain text): grows with its text, then scrolls, the top line fading
  * under the edge once scrolled. Mentions, images and long pastes sit in the text as chips (`Draft`).
  */
-export function ComposerField({ initial = EMPTY_DRAFT, placeholder, label = "Message input", size = "composer", ...props }: FieldProps) {
+export function ComposerField({
+  initial = EMPTY_DRAFT,
+  placeholder,
+  label = "Message input",
+  size = "composer",
+  mentions,
+  commands,
+  attachments = NO_ATTACHMENTS,
+  ...props
+}: FieldProps) {
   const [scrolled, setScrolled] = useState(false);
+  const [numbers, setNumbers] = useState(() => numbersOf(initial.parts));
   const { box, pad } = SIZES[size];
+  const onChange = (parts: Parts) => {
+    const next = numbersOf(parts);
+    setNumbers((now) => (sameNumbers(now, next) ? now : next));
+    props.onChange?.(parts);
+  };
   return (
+    <AttachmentsContext value={attachments}>
+    <ChipNumbers value={numbers}>
     <LexicalComposer
       initialConfig={{
         namespace: NAMESPACE,
@@ -184,16 +256,30 @@ export function ComposerField({ initial = EMPTY_DRAFT, placeholder, label = "Mes
         />
       </div>
       <HistoryPlugin />
-      <Keys {...props} />
+      <Keys {...props} onChange={onChange} />
+      {mentions && <MentionPlugin {...mentions} />}
+      {commands && <SlashPlugin {...commands} />}
     </LexicalComposer>
+    </ChipNumbers>
+    </AttachmentsContext>
   );
 }
 
-function Keys({ ref, autoFocus, prompts = [], onChange, onSubmit, onEscape, onPullQueued }: Omit<FieldProps, "initial" | "placeholder" | "label" | "size">) {
+function Keys({
+  ref,
+  autoFocus,
+  prompts = [],
+  onChange,
+  onSubmit,
+  onEscape,
+  onPullQueued,
+  onAttach,
+}: Omit<FieldProps, "initial" | "placeholder" | "label" | "size" | "mentions" | "commands" | "attachments">) {
   const [editor] = useLexicalComposerContext();
   // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
   const walk = useRef<{ back: number; shown: string } | null>(null);
   const changed = useEffectEvent((parts: Parts) => onChange?.(parts));
+  const paste = useEffectEvent((event: ClipboardEvent | InputEvent | KeyboardEvent) => pasteChips(editor, event) || pasteAttachments(event, onAttach));
   const submit = useEffectEvent((event: KeyboardEvent | null) => {
     if (!event || event.isComposing || !onSubmit) return false;
     const action = enterAction(event);
@@ -252,7 +338,9 @@ function Keys({ ref, autoFocus, prompts = [], onChange, onSubmit, onEscape, onPu
         }),
         editor.registerCommand(COPY_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(CUT_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
-        editor.registerCommand(PASTE_COMMAND, (event) => pasteChips(editor, event), COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(PASTE_COMMAND, paste, COMMAND_PRIORITY_NORMAL),
+        // Enter and Space on a chip's own button (its ✕, reached by Tab) press it rather than send.
+        editor.registerCommand(KEY_DOWN_COMMAND, (event) => (event.key === "Enter" || event.key === " ") && event.target instanceof HTMLButtonElement, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ENTER_COMMAND, submit, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ESCAPE_COMMAND, escape, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ARROW_UP_COMMAND, (event) => recall(event, true), COMMAND_PRIORITY_NORMAL),

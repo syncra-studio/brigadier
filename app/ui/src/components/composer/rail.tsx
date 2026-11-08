@@ -28,7 +28,7 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
     <RailShown value={shown}>
       <div
         data-slot="composer-rail"
-        className={cx("relative mx-rail-inset -mb-rail-tuck flex flex-col overflow-clip rounded-t-overlay empty:hidden", className)}
+        className={cx("relative mx-rail-inset -mb-rail-tuck flex flex-col overflow-clip rounded-t-overlay empty:hidden menu-over:hidden", className)}
         {...props}
       />
     </RailShown>
