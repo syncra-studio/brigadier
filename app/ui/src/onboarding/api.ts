@@ -35,7 +35,7 @@ export const intro = {
 export const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 type Store<T> = { get: () => T; set: (next: T) => void; use: () => T };
-function store<T>(initial: T): Store<T> {
+export function store<T>(initial: T): Store<T> {
   let value = initial;
   const listeners = new Set<() => void>();
   const subscribe = (listener: () => void) => {
@@ -117,7 +117,7 @@ export const checkAll = (cached = false) =>
 export const checkOne = (name: string) => check(["agents", name], name);
 
 /** What onboarding keeps [D45]: undefined until loaded. */
-export type Profile = { name: string; intro_seen: boolean; onboarded: boolean; projects: string[] };
+export type Profile = { name: string; intro_seen: boolean; onboarded: boolean };
 const profile = store<{ value?: Profile; error?: string }>({});
 export const useProfile = profile.use;
 
@@ -128,13 +128,7 @@ export function loadProfile(): void {
   );
 }
 
-/** The native folder picker, then the profile adds the picked folder (Rust checks it is a repository). */
-export async function addPicked(): Promise<void> {
-  const picked = await window.brigadier?.pickFolder();
-  if (picked) await setProfile(["--add", picked], {});
-}
-
-/** The native folder picker, then the picked folder's repository, or null; nothing is added yet. */
+/** The native folder picker, then the picked folder's repository as a project would take it, or null; nothing is added yet. */
 export async function pickRepo(): Promise<string | null> {
   const picked = await window.brigadier?.pickFolder();
   return picked ? ((await run(["projects", "--check", picked])).repo as string) : null;

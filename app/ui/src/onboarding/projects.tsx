@@ -6,7 +6,8 @@ import { cx } from "../components/cx";
 import { useDaemon } from "../daemon";
 import { ErrorLine } from "../components/error-line";
 import { FolderOpen, Spinner } from "../icons";
-import { errorText, pickRepo, run, setProfile, useProfile } from "./api";
+import { addProject, useProjects } from "../projects/projects";
+import { errorText, pickRepo, run, setProfile } from "./api";
 import { PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
 const baseName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
@@ -21,7 +22,7 @@ const shortPath = (path: string) => path.replace(/^(\/Users|\/home)\/[^/]+(?=\/|
  */
 export function ProjectsStep({ onBack }: { onBack: () => void }) {
   const { daemon } = useDaemon();
-  const added = useProfile().value?.projects ?? [];
+  const added = (useProjects() ?? []).map((project) => project.folder);
   const [found, setFound] = useState<string[] | null>(null);
   // Folders picked with Add folder…, which the history count leaves out.
   const [byHand, setByHand] = useState<readonly string[]>([]);
@@ -78,7 +79,7 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     setError(null);
     const failed: string[] = [];
     for (const path of chosen) {
-      await setProfile(["--add", path], { projects: [...added, path] }).catch((cause) => failed.push(`${baseName(path)}: ${errorText(cause)}`));
+      await addProject(path).catch((cause) => failed.push(`${baseName(path)}: ${errorText(cause)}`));
     }
     if (failed.length) setError(`Some projects could not be added.\n${failed.join("\n")}`);
     // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.
