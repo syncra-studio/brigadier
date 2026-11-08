@@ -163,3 +163,45 @@ export function FolderOpen(props: IconProps) {
     </svg>
   );
 }
+
+export function Play(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M9.5 9.33165V14.6683C9.5 15.4595 10.3752 15.9373 11.0408 15.5095L15.1915 12.8412C15.8038 12.4475 15.8038 11.5524 15.1915 11.1588L11.0408 8.49047C10.3752 8.06265 9.5 8.54049 9.5 9.33165Z" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12Z" />
+    </svg>
+  );
+}
+
+export function Hamburger(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M3 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Z" />
+    </svg>
+  );
+}
+
+export function ArrowCurvedRight(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M5 6C5.55228 6 6 6.44772 6 7V11C6 11.5523 6.44772 12 7 12H16.5858L14.2929 9.70711C13.9024 9.31658 13.9024 8.68342 14.2929 8.29289C14.6834 7.90237 15.3166 7.90237 15.7071 8.29289L19.7071 12.2929C20.0976 12.6834 20.0976 13.3166 19.7071 13.7071L15.7071 17.7071C15.3166 18.0976 14.6834 18.0976 14.2929 17.7071C13.9024 17.3166 13.9024 16.6834 14.2929 16.2929L16.5858 14H7C5.34315 14 4 12.6569 4 11V7C4 6.44772 4.44772 6 5 6Z" />
+    </svg>
+  );
+}
+
+export function DotsHorizontal(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M3 12a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z" />
+    </svg>
+  );
+}
+
+/** The old app's own queue glyph: lines of a list with an arrow into them. */
+export function QueueGlyph(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" aria-hidden {...props}>
+      <path d="M9.75 4.25h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5Zm0 5h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5Zm0 5h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5ZM3.5 6.6a.5.5 0 0 1 .8-.4l3.9 3.4a.5.5 0 0 1 0 .8l-3.9 3.4a.5.5 0 0 1-.8-.4Z" />
+    </svg>
+  );
+}
