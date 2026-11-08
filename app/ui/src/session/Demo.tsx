@@ -149,7 +149,11 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
         <p className="flex gap-x-2 self-end text-xs text-muted-foreground">
           <button
             type="button"
-            onClick={() => session.retry(entryKey)}
+            onClick={() => {
+              // A retry is timed from its own press.
+              pressedAt.set(entryKey, performance.now());
+              session.retry(entryKey);
+            }}
             className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring"
           >
             Try again
