@@ -47,10 +47,13 @@ impl Fold {
                 let Some(t) = self.turns.first_mut() else {
                     return true;
                 };
-                if t.asks.remove(id).is_some() {
+                if let Some(request) = t.asks.remove(id) {
                     // The turn's question line goes with its last question.
                     if !t.asks.values().any(|r| r["items"].is_array()) {
                         t.question = None;
+                    }
+                    if c["decision"] == "allowSession" {
+                        self.granting.insert(cid.into(), request);
                     }
                     self.claims.insert(cid.into(), id.into());
                     self.closed.insert(id.into(), "uncertain".into());
@@ -63,15 +66,20 @@ impl Fold {
                 }
                 true
             }
+            // A setup the agent confirms before a turn's message: no turn of its own [D222].
+            Some("retune") => true,
             // A steer joins the turn that runs; with none running it is a message like any other.
             _ => item["steer"] == true && self.turns.first().is_some_and(|t| t.began),
         }
     }
 
-    /// A control input's delivery: its answer is now answered.
+    /// A control input's delivery: its answer is now answered, and a session grant held.
     pub(super) fn delivered_control(&mut self, cid: &str) {
         if let Some(id) = self.claims.remove(cid) {
             self.closed.insert(id, "answered".into());
+        }
+        if let Some(request) = self.granting.remove(cid) {
+            self.grants.push(request);
         }
     }
 }

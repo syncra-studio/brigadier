@@ -125,6 +125,16 @@ pub struct Fold {
     /// Answers logged and not yet delivered: command id → request id.
     #[serde(default)]
     pub claims: BTreeMap<String, String>,
+    /// "Allow … for this session" answers logged and not yet delivered: command id → request.
+    #[serde(default)]
+    pub granting: BTreeMap<String, Value>,
+    /// The session's grants, as the requests they answered: held for the whole session, and given
+    /// again to a child started anew, never written to a CLI's settings [D193].
+    #[serde(default)]
+    pub grants: Vec<Value>,
+    /// The agent's replies to requests Brigadier sent it, by request id: `{error, level}`.
+    #[serde(default)]
+    pub replies: BTreeMap<String, Value>,
 }
 
 impl Fold {
@@ -375,6 +385,13 @@ impl Fold {
             }
             "approval" => self.ask(item),
             "resolved" => self.end_ask(&str_of("id"), "withdrawn"),
+            "reply" => drop(self.replies.insert(str_of("id"), item.clone())),
+            // The level the agent says it runs at is the one recorded, never the one asked [D175].
+            "level" => {
+                if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
+                    g["level"] = item["level"].clone();
+                }
+            }
             "answer" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.question = None;
@@ -428,7 +445,8 @@ impl Fold {
             }
             "limited" => {
                 self.limit = Some(str_of("message"));
-                self.resets = item["resets"].as_u64();
+                // A second limit line that gives no time keeps the one the first gave [D74].
+                self.resets = item["resets"].as_u64().or(self.resets);
                 self.close("limited", item["message"].clone(), ts);
             }
             "sign_in" => {

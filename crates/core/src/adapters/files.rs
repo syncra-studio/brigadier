@@ -84,3 +84,51 @@ pub fn drop_lines(path: &Path, key: &str, id: &str) -> std::io::Result<usize> {
         path.display()
     )))
 }
+
+/// One changed file in the thread's FileChange shape [D74, D83]: what the CLI didn't report is null.
+pub fn change(
+    path: &str,
+    change: &str,
+    diff: Option<String>,
+    added: Option<u64>,
+    removed: Option<u64>,
+) -> Value {
+    let diff = diff.map(|d| hunks(&d)).filter(|d| !d.is_empty());
+    serde_json::json!({"path": path, "change": change, "from": null, "diff": diff, "added": added, "removed": removed})
+}
+
+/// A unified diff's hunks alone: the file headers (`Index:`, `===`, `---`, `+++`) dropped.
+fn hunks(diff: &str) -> String {
+    let mut hunk = false;
+    let mut out = String::new();
+    for line in diff.lines() {
+        if line.starts_with("@@") {
+            hunk = true;
+        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
+            hunk = false;
+        }
+        if hunk {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Lines added and removed in a unified diff: only lines inside hunks, so file headers don't count
+/// and a `+++counter` line does.
+pub fn counts(diff: &str) -> (u64, u64) {
+    let (mut added, mut removed, mut hunk) = (0, 0, false);
+    for line in diff.lines() {
+        if line.starts_with("@@") {
+            hunk = true;
+        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
+            hunk = false;
+        } else if hunk && line.starts_with('+') {
+            added += 1;
+        } else if hunk && line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added, removed)
+}

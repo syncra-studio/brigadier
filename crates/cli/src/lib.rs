@@ -160,6 +160,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if has(args, "--steer") {
                 return control::steer(data, id, text, flag(args, "--cid"));
             }
+            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"))? {
+                return Ok(reply);
+            }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             send(
@@ -391,19 +394,15 @@ fn send(
     backend: Option<&str>,
 ) -> io::Result<Value> {
     let cid = cid.map_or_else(control::new_cid, String::from);
-    let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);
-    let mut reply = core::send(
-        spec,
-        &f.fold,
-        child(data, &spec.id),
-        &call,
-        &cid,
-        "user",
-        text,
-        backend,
-        None,
-    );
+    let go = || -> io::Result<Value> {
+        let f = core::fold(&spec.dir, true)?;
+        let running = child(data, &spec.id);
+        Ok(core::send(
+            spec, &f.fold, running, &call, &cid, "user", text, backend, None,
+        ))
+    };
+    let mut reply = go()?;
     let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
     // No result means a refusal before logging (a busy race with a turn that just ended) or no reply
     // at all (a host moving to a new build). One retry, and only when the log proves the command
@@ -412,18 +411,7 @@ fn send(
         thread::sleep(Duration::from_millis(200));
         // If no host answers, the resend fails too and the log decides the result below.
         let _ = owner::ensure(data, spec);
-        let f = core::fold(&spec.dir, true)?;
-        reply = core::send(
-            spec,
-            &f.fold,
-            child(data, &spec.id),
-            &call,
-            &cid,
-            "user",
-            text,
-            backend,
-            None,
-        );
+        reply = go()?;
     }
     // A dropped connection says nothing about the log: the log itself does.
     if reply["result"].is_null() {

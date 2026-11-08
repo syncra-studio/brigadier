@@ -200,6 +200,7 @@ const follow = (id, n) => {
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s.length ? +s[Math.min(s.length - 1, Math.floor(p * s.length))].toFixed(1) : null }
 
 // Real CLI sessions to run alongside the fakes, by backend id: REAL=<backend>,<backend>,...
+// They run at Full, so their shell command never waits on an approval.
 const REAL = (process.env.REAL ?? '').split(',').filter(Boolean).map((b) => [`r-${b}`, b])
 const realPrompt = (c) => `${c}: run the shell command \`sleep 30\` and then reply with only the word done.`
 const BUSY = new Set(['working', 'silent', 'starting', 'logged'])
@@ -241,7 +242,7 @@ async function killloop(minutes) {
   send('t01', 'tree:600')
   // The real CLIs start in the same second.
   const real = REAL
-  const starts = real.map(([id, b]) => spawn(`${BIN}/brigadier`, ['start', id, '--backend', b, '--cwd', gitRepo(id), '--text', realPrompt(cid('r'))], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' }))
+  const starts = real.map(([id, b]) => spawn(`${BIN}/brigadier`, ['start', id, '--backend', b, '--cwd', gitRepo(id), '--level', 'full', '--text', realPrompt(cid('r'))], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' }))
   await Promise.all(starts.map((c) => new Promise((r) => c.on('exit', r))))
   const followed = ['f01', 't01', 'chat', ...real.map(([id]) => id)]
   let followers = followed.map((id) => ({ id, ...follow(id, 0) }))

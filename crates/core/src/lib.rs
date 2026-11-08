@@ -56,6 +56,9 @@ pub struct Spec {
     /// the computer's own login [D51].
     #[serde(skip)]
     pub account: Option<(String, PathBuf)>,
+    /// The session's grants from its log, for a child started anew [D193].
+    #[serde(skip)]
+    pub grants: Vec<Value>,
 }
 
 pub fn data_dir() -> PathBuf {

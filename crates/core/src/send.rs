@@ -6,6 +6,8 @@ use crate::{Spec, adapters, as_run, cli_version, sweep};
 use brigadier_frames::log;
 use serde_json::{Value, json};
 use std::io;
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
 
@@ -76,6 +78,13 @@ pub fn send(
             match a.retune(&last, &run) {
                 Retune::InMessage => {}
                 Retune::Send(Delivery::Stdin(pre)) => bytes = pre,
+                Retune::Confirm(Delivery::Stdin(pre), ids) => {
+                    match confirm(spec, call, &base, child, pre, &ids) {
+                        Ok(Some(level)) => base["setup"]["level"] = level.into(),
+                        Ok(None) => {}
+                        Err(reply) => return reply,
+                    }
+                }
                 Retune::Restart => match restart(spec, call) {
                     Ok((len, again)) => {
                         refolded = again;
@@ -137,6 +146,53 @@ pub fn send(
         req["if_len"] = len.into();
     }
     call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+}
+
+/// How long an idle child may take to confirm a new setup before the turn is refused (proposed).
+const CONFIRM_WAIT: Duration = Duration::from_secs(10);
+
+/// Hands a setup to the idle child on its own, then waits for its reply to each request: the turn
+/// goes on only once every one succeeded, at the level the child says it took. An error or no
+/// reply refuses the turn, and nothing is recorded as applied [D175, D222].
+fn confirm(
+    spec: &Spec,
+    call: Call,
+    base: &Value,
+    child: Running,
+    bytes: String,
+    ids: &[String],
+) -> Result<Option<String>, Value> {
+    let refused =
+        |why: String| json!({"ok": false, "result": "refused", "error": "setup", "why": why});
+    let cid = format!("{}.setup", base["cid"].as_str().unwrap_or(""));
+    let mut req = json!({"op": "input", "cid": cid, "origin": base["origin"], "backend": base["backend"],
+                         "bytes": bytes, "control": {"kind": "retune"}});
+    if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
+        req["spawn"] = spawn.into();
+    }
+    let reply = call(req).map_err(|e| refused(e.to_string()))?;
+    if reply["result"] != "delivered" {
+        return Err(refused(format!("the new setup wasn't delivered: {reply}")));
+    }
+    let started = Instant::now();
+    loop {
+        let f = crate::fold(&spec.dir, true).map_err(|e| refused(e.to_string()))?;
+        let got: Vec<Value> = (ids.iter())
+            .filter_map(|id| f.fold.replies.get(id).cloned())
+            .collect();
+        if let Some(e) = got.iter().find_map(|r| r["error"].as_str()) {
+            return Err(refused(e.into()));
+        }
+        if got.len() == ids.len() {
+            return Ok(got
+                .iter()
+                .find_map(|r| r["level"].as_str().map(String::from)));
+        }
+        if started.elapsed() > CONFIRM_WAIT {
+            return Err(refused("the agent didn't confirm its new setup".into()));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// For a child that takes a new setup only by starting again: the log's length from its host, then

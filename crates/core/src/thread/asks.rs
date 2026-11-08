@@ -63,7 +63,11 @@ impl Thread {
         } else {
             let answers = c["answers"].as_array().cloned().unwrap_or_default();
             let given: Vec<&str> = answers.iter().filter_map(Value::as_str).collect();
-            row["answer"] = given.join("\n").into();
+            // A plain message that answered the round shows as its answer.
+            row["answer"] = c["reply"]
+                .as_str()
+                .map_or(given.join("\n"), String::from)
+                .into();
             row["answers"] = answers.into();
             row["withdrawn"] = false.into();
             if let Some(o) = self.open.as_mut().filter(|o| o.asked == Some(at)) {
