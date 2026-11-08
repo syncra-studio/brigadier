@@ -1,5 +1,5 @@
 /* The only file allowed raw colours and lengths. Values picked from the old app's tokens.css. */
-@layer dnd-kit, theme, base, utilities;
+@layer dnd-kit, theme, base, components, utilities;
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source("./");
 @source "../index.html";
@@ -426,6 +426,30 @@
   --z-index-popup: 50;
   --text-underline-offset-link: 4px;
   --focus-ring-width: 1px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+/* Thin overlay-style scrollbars that appear on hover, carried by the standard properties. */
+@layer components {
+  * {
+    scrollbar-width: thin;
+  }
+  @media (hover: hover) {
+    * {
+      scrollbar-color: transparent transparent;
+    }
+    *:hover {
+      scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 35%, transparent) transparent;
+    }
+  }
+}
+
+/* The old terminal's thumb color in every state, overriding xterm's injected defaults. */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  background: var(--color-border) !important;
 }
 
 /* The hidden title bar has to be draggable by hand. */
