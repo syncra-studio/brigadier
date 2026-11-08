@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Input } from "./components/input";
+import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
 import { Demo } from "./session/Demo";
@@ -21,7 +22,8 @@ function App() {
   if (hash === "#states") return <Demo />;
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
-    return <SessionThread id={id} title={rows?.find((row) => row.id === id)?.title} offline={daemon === null} />;
+    const row = rows?.find((each) => each.id === id);
+    return <SessionThread id={id} title={row?.title} stalled={row?.state === "stalled"} offline={daemon === null} />;
   }
   return (
     <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
@@ -71,7 +73,7 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
 }
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
-function SessionThread({ id, title, offline }: { id: string; title: string | undefined; offline: boolean }) {
+function SessionThread({ id, title, stalled, offline }: { id: string; title: string | undefined; stalled: boolean; offline: boolean }) {
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   return (
@@ -90,7 +92,7 @@ function SessionThread({ id, title, offline }: { id: string; title: string | und
         <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
       ) : (
         <div className={`min-h-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-          <Thread source={threadSource} />
+          <Thread source={threadSource} footer={stalled && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
         </div>
       )}
     </main>

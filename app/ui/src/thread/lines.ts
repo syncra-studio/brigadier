@@ -66,17 +66,24 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     return step ? "step" : "part";
   };
 
+  // A turn stopped or failed before any output still says so under its input.
+  const bare = () => {
+    const turn = before?.kind === "message" && before.role === "user" ? turns.get(before.turnId) : undefined;
+    if (turn && turn.status !== "running" && turn.status !== "done") push({ type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null });
+  };
+
   for (let at = from; at < items.length; at++) {
     const item = items[at]!;
     if (item.kind === "message" && item.role === "user") {
+      bare();
       starts.push(at);
       counts.push(out.length);
     }
     const turn = turns.get(item.turnId);
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
-    // first step is work too, so a running turn or one Rust gave work always has the header.
-    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && (item.kind !== "message" || turn.status === "running" || done)) {
+    // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
+    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;
@@ -105,4 +112,5 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
   }
+  bare();
 }
