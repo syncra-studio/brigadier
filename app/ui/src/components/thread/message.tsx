@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 
-import { ChevronRightAlt } from "../../icons";
+import { ChevronRightAlt, Trash } from "../../icons";
 import { useKept } from "../../thread/kept";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
+import { ErrorLine } from "../error-line";
+import { TooltipIconButton } from "../icon-button";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -32,9 +33,9 @@ const LONG_CHARS = 1200;
 
 /**
  * The user's message, on the right. Hovered or focused, its time and a copy button show under it; past 20
- * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why on one
- * line (the whole reason in a tooltip) with Try again; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a message the
- * turn hasn't reached).
+ * lines it folds with "Show more". A message on its way shows "Sending…"; one whose delivery can't be
+ * proven yet is `unconfirmed`. One that failed keeps its actions in view, with Discard, and says why on an
+ * ErrorLine with Try again. `dimmed` greys it (a message the turn hasn't reached).
  */
 export function UserBubble({
   keep,
@@ -43,6 +44,7 @@ export function UserBubble({
   sending,
   failed,
   onRetry,
+  onDiscard,
   unconfirmed = false,
   dimmed = false,
 }: {
@@ -55,6 +57,7 @@ export function UserBubble({
   /** Why it wasn't sent. */
   failed?: string;
   onRetry?: () => void;
+  onDiscard?: () => void;
   /** Sent, but its delivery can't be proven while the link is down. */
   unconfirmed?: boolean;
   dimmed?: boolean;
@@ -80,34 +83,40 @@ export function UserBubble({
         </div>
         {sending ? (
           <p className="text-xs text-muted-foreground">Sending…</p>
-        ) : failed ? (
-          // One line: a long reason truncates, its whole text in the tooltip, and Try again stays at the end.
-          <p className="flex max-w-full min-w-0 items-center justify-end gap-x-2 text-xs text-muted-foreground">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span role="alert" tabIndex={0} className="min-w-0 truncate rounded-control text-destructive focus-visible:focus-ring">
-                    Not sent · {failed}
-                  </span>
-                }
-              />
-              <TooltipContent>{failed}</TooltipContent>
-            </Tooltip>
-            {onRetry && (
-              <button type="button" onClick={onRetry} className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-                Try again
-              </button>
-            )}
-          </p>
         ) : unconfirmed ? (
           <p role="status" className="text-xs text-muted-foreground">
             Not confirmed · it's checked once the link is back
           </p>
         ) : (
-          <div className="-mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100">
+          // Hover-only, its space kept so nothing shifts; a failed message's stay in view.
+          <div
+            className={cx(
+              "-mt-1 flex items-center gap-1 text-muted-foreground",
+              !failed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
+            )}
+          >
             {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
+            {failed && onDiscard && (
+              <TooltipIconButton tooltip="Discard message" onClick={onDiscard}>
+                <Trash />
+              </TooltipIconButton>
+            )}
           </div>
+        )}
+        {!sending && !unconfirmed && (
+          <ErrorLine
+            size="sm"
+            error={failed && `Not sent · ${failed}`}
+            className="items-end text-end"
+            actions={
+              onRetry ? (
+                <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                  Try again
+                </button>
+              ) : null
+            }
+          />
         )}
       </div>
     </div>

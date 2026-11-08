@@ -121,6 +121,7 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
       sending={state === "pending" && slow}
       failed={failed}
       onRetry={() => session.retry(entryKey)}
+      onDiscard={() => session.discard(entryKey)}
       unconfirmed={state === "unknown"}
       dimmed={state === "error"}
     />

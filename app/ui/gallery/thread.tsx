@@ -383,13 +383,15 @@ function Bubbles() {
   return (
     <div className="flex flex-col gap-4">
       <UserBubble keep="look-sending" text="Ship the thread rows." sending />
-      <UserBubble keep="look-failed" text="Ship the thread rows." failed="the daemon isn't reachable" onRetry={noop} />
+      <UserBubble keep="look-failed" text="Ship the thread rows." time={NOW} failed="the daemon isn't reachable" onRetry={noop} onDiscard={noop} />
       <div className="w-72 self-end">
         <UserBubble
           keep="look-failed-long"
           text="Ship the thread rows."
+          time={NOW}
           failed="the agent refused it: its provider answered 529, overloaded"
           onRetry={noop}
+          onDiscard={noop}
         />
       </div>
       <UserBubble keep="look-unconfirmed" text="Ship the thread rows." unconfirmed />
