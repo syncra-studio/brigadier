@@ -165,6 +165,9 @@
   /* The sidebar panel's title. */
   --text-nav-title: 1.125rem;
   --text-nav-title--line-height: 1.5rem;
+  /* A project's initials in its badge. */
+  --text-badge: 0.5625rem;
+  --text-badge--line-height: 1rem;
   --text-diff: 0.75rem;
   --text-diff--line-height: 1.35rem;
   /* Inline code, a little smaller than the words around it. */
@@ -398,6 +401,8 @@
     }
   }
   --animate-spin: spin 1s linear infinite;
+  /* A sidebar row's working mark: the old app's stepped two-second turn. */
+  --animate-row-spin: spin 2s steps(60, end) infinite;
   @keyframes spin {
     to {
       transform: rotate(360deg);
@@ -759,6 +764,11 @@
 /* Text scrolled under the top edge of a field fades out (the composer once it scrolls). */
 @utility mask-fade-top {
   mask-image: linear-gradient(to bottom, transparent, black var(--spacing-control-sm));
+}
+
+/* A line too long for its row fades out at its end (a sidebar row's title). */
+@utility mask-fade-end {
+  mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);
 }
 
 /* A scroll view's edges: what scrolls under them fades into the background. Raised, the bottom one

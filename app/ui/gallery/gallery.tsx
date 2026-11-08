@@ -12,6 +12,7 @@ import { Notices } from "./notices";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
 import { ProjectsGallery } from "./projects";
+import { SidebarGallery } from "./sidebar";
 import { Thread } from "./thread";
 import "./gallery.css";
 
@@ -102,6 +103,7 @@ function GalleryPage() {
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
         <ProjectsGallery />
+        <SidebarGallery />
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />

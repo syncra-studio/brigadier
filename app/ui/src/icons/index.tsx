@@ -368,3 +368,4 @@ export function Pencil(props: IconProps) {
     </svg>
   );
 }
+export * from "./sidebar";
