@@ -31,14 +31,19 @@ fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = adapters::home_path("");
     match args.first().map(String::as_str).unwrap_or("") {
-        // `agents [<name>] [--cwd D]`: every agent (reading the login shell again first, since an
-        // install may have changed it), or one, checked in the folder a session would run in.
+        // `agents [<name>] [--cwd D] [--cached]`: every agent (reading the login shell again first,
+        // since an install may have changed it), or one, checked in the folder a session would run
+        // in. `--cached` answers at once with each agent's last check there, checking only one never
+        // checked; the page asks again without it to refresh [D30].
         "agents" => {
             let cwd = flag(args, "--cwd").map_or(home, PathBuf::from);
+            let cached = args.iter().any(|a| a == "--cached");
             let names: Vec<&str> = match args.get(1).filter(|a| !a.starts_with("--")) {
                 Some(name) => vec![agent(name)?.name()],
                 None => {
-                    setup::refresh();
+                    if !cached {
+                        setup::refresh();
+                    }
                     let all = adapters::all().into_iter();
                     all.filter(|a| agent(a.name()).is_ok())
                         .map(|a| a.name())
@@ -49,7 +54,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .into_iter()
                 .map(|name| {
                     let (data, cwd) = (data.to_path_buf(), cwd.clone());
-                    thread::spawn(move || check(&data, agent(name).unwrap(), &cwd))
+                    thread::spawn(move || {
+                        let a = agent(name).unwrap();
+                        match last_check(&data, a, &cwd).filter(|_| cached) {
+                            Some(mut last) => {
+                                last["setup"] = setup_state(&data, a);
+                                last
+                            }
+                            None => check(&data, a, &cwd),
+                        }
+                    })
                 })
                 .collect();
             let agents: Vec<Value> = checks.into_iter().filter_map(|t| t.join().ok()).collect();
@@ -127,7 +141,32 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
         }
     }
     BUSY.lock().unwrap().remove(a.name());
+    keep_check(data, a, cwd, &out);
     out
+}
+
+/// Each agent's last check per folder: `agents/<name>.json`, `{cwd: check}`.
+fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
+    data.join("agents").join(format!("{}.json", a.name()))
+}
+
+fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
+    let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
+    all.get(cwd.to_str()?).cloned()
+}
+
+/// Keeps the check for the next `--cached` ask. Best effort: losing it costs one slow open.
+fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) {
+    let path = checks_path(data, a);
+    let mut all: Value = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_else(|| json!({}));
+    if let (Some(map), Some(cwd)) = (all.as_object_mut(), cwd.to_str()) {
+        map.insert(cwd.into(), out.clone());
+        let _ = fs::create_dir_all(path.parent().unwrap());
+        let _ = core::write_atomic(&path, all.to_string().as_bytes());
+    }
 }
 
 /// The agent's setup run: which, whether it still runs, and how it ended.

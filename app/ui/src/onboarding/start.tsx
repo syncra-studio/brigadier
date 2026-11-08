@@ -17,7 +17,7 @@ const baseName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? pat
 export function StartForm() {
   const { daemon } = useDaemon();
   const projects = useProfile().value?.projects ?? [];
-  const { list } = useAgents();
+  const { list, checking } = useAgents();
   const usable = (list ?? []).filter((agent) => agent.models?.length);
   const [agent, setAgent] = useState("");
   const [project, setProject] = useState("");
@@ -30,25 +30,28 @@ export function StartForm() {
   const [again, setAgain] = useState(0);
 
   useEffect(() => {
-    if (daemon && list === undefined) void checkAll();
+    if (daemon && list === undefined) void checkAll(true);
   }, [daemon, list]);
   const chosenAgent = usable.some((each) => each.name === agent) ? agent : (usable[0]?.name ?? "");
   const chosenProject = projects.includes(project) ? project : (projects[0] ?? "");
 
+  // The last list Rust kept lands at once, then a fresh check over it; only an agent never checked
+  // in this project waits for the models [D30, D45].
   useEffect(() => {
     if (!daemon || !chosenAgent || !chosenProject) return;
     const mine = ++asked.current;
-    setModels("loading");
-    run(["agents", chosenAgent, "--cwd", chosenProject]).then(
-      (reply) => {
-        if (mine !== asked.current) return;
-        const found: Agent | undefined = reply.agents[0];
-        // A check already running answers busy: ask again shortly rather than show no models.
-        if (found?.busy) return void setTimeout(() => mine === asked.current && setAgain((n) => n + 1), 1000);
-        setModels(found?.error ? { error: found.error } : (found?.models ?? []));
-      },
-      (cause) => mine === asked.current && setModels({ error: errorText(cause) }),
-    );
+    const args = ["agents", chosenAgent, "--cwd", chosenProject];
+    let fresh = false;
+    const land = (last: boolean) => (reply: Record<string, any>) => {
+      if (mine !== asked.current || fresh) return;
+      const found: Agent | undefined = reply.agents[0];
+      // A check already running answers busy: ask again shortly rather than show no models.
+      if (found?.busy) return void (last && setTimeout(() => mine === asked.current && setAgain((n) => n + 1), 1000));
+      fresh = last;
+      setModels(found?.error ? { error: found.error } : (found?.models ?? []));
+    };
+    run([...args, "--cached"]).then(land(false), () => {});
+    run(args).then(land(true), (cause) => mine === asked.current && setModels({ error: errorText(cause) }));
   }, [daemon, chosenAgent, chosenProject, again]);
 
   // Local models first: they need no account and cost nothing [D45].
@@ -72,7 +75,7 @@ export function StartForm() {
   };
 
   const note =
-    list === undefined
+    list === undefined || (usable.length === 0 && checking.has("*"))
       ? "Checking the agents…"
       : usable.length === 0
         ? "No agent is connected yet."

@@ -107,8 +107,12 @@ function check(args: string[], name = "*"): Promise<void> {
   );
 }
 
-/** Checks every agent, reading the login shell again first (an install may have changed it). */
-export const checkAll = () => check(["agents"]);
+/**
+ * Checks every agent, reading the login shell again first (an install may have changed it). With
+ * `cached`, the last checks Rust kept land first, at once [D30].
+ */
+export const checkAll = (cached = false) =>
+  cached ? Promise.all([check(["agents", "--cached"]), check(["agents"])]).then(() => {}) : check(["agents"]);
 /** Checks one agent again: after its setup run moves, or Retry. */
 export const checkOne = (name: string) => check(["agents", name], name);
 
