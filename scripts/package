@@ -13,6 +13,8 @@ mkdir target/bin
 cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake} target/bin/
 node --input-type=module <<'EOF'
 import { packager } from "@electron/packager";
+// Electron's own checksums, as its installer uses: a cached zip needs no network.
+import checksums from "electron/checksums.json" with { type: "json" };
 // osx-sign's own defaults for an Electron app, plus Apple Events for agents that script other apps.
 const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "device.camera", "device.print", "device.usb",
   "personal-information.location", "personal-information.photos-library", "automation.apple-events"]
@@ -23,6 +25,7 @@ await packager({
   appBundleId: process.env.APP_ID ?? "sh.brigadier.app",
   out: "out",
   overwrite: true,
+  download: { checksums },
   extraResource: ["target/bin", "THIRD_PARTY_NOTICES.md"],
   extendInfo: { NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task." },
   // Only what the app reads at run time: the UI is bundled, so no node_modules.
