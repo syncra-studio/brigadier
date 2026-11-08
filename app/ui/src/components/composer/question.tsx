@@ -280,15 +280,20 @@ function QuestionPage({
     if (!idle || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     const digit = Number(event.key);
     const lastOption = options.length - 1;
-    if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, options.length)) setHighlight(digit - 1);
+    // With an answer focused, focus follows the light, so Enter (which clicks the focused answer) picks the lit one.
+    const move = (index: number) => {
+      setHighlight(index);
+      if (event.target instanceof Element && event.target.matches("[data-slot=action-option]")) card.current?.querySelectorAll<HTMLElement>("[data-slot=action-option]")[index]?.focus();
+    };
+    if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, options.length)) move(digit - 1);
     else if (digit === options.length + 1 && digit <= 9) field.current?.focus();
     else if (event.key === "ArrowDown") {
-      if (highlight === null) setHighlight(0);
+      if (highlight === null) move(0);
       else if (highlight >= lastOption) field.current?.focus();
-      else setHighlight(highlight + 1);
+      else move(highlight + 1);
     } else if (event.key === "ArrowUp") {
-      if (highlight === null || highlight === -1) setHighlight(lastOption);
-      else if (highlight > 0) setHighlight(highlight - 1);
+      if (highlight === null || highlight === -1) move(lastOption);
+      else if (highlight > 0) move(highlight - 1);
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") onPage(event.key === "ArrowLeft" ? -1 : 1);
     else return;
     event.preventDefault();

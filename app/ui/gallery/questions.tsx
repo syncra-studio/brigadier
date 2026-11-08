@@ -139,7 +139,8 @@ export function QuestionRows() {
           <Act
             run={(card) => {
               click(card, "[data-slot=action-option]", 0);
-              click(card, "[data-slot=action-option]", 2);
+              // After the first mark has rendered.
+              setTimeout(() => click(card, "[data-slot=action-option]", 2));
             }}
           >
             <Card question={ask("q5", [CHECKS])} />
