@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/dialog";
 import { useDaemon } from "../daemon";
 import { AgentCard, stateOf, useAgentSetup } from "../onboarding/agents";
-import { checkOne, useAgents } from "../onboarding/api";
+import { checkAll, checkOne, useAgents } from "../onboarding/api";
 
 /**
  * "Set up {Agent}" from the model picker [D219]: onboarding's card for that one agent, in a kit dialog, running its
@@ -17,7 +17,7 @@ export function SetUpAgentDialog({ name, onClose }: { name: string | null; onClo
   const agent = list?.find((each) => each.name === name);
   // Asked afresh as it opens: it may have been set up some other way meanwhile.
   useEffect(() => {
-    if (name && online) void checkOne(name);
+    if (name && online) void (list ? checkOne(name) : checkAll());
   }, [name, online]);
   const ready = name !== null && stateOf(agent) === "ready";
   useEffect(() => {
