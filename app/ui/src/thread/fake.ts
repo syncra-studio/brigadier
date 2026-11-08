@@ -385,6 +385,8 @@ export class FakeThread {
           turns: this.session.turns.map((each) => (each.id === turn.id ? ended : each)),
           work: [...(this.session.work ?? []), { turnId: turn.id, ms: ended.endedAt - turn.startedAt, folded }],
         });
+        // The user reads the answer before sending the next message.
+        await wait(between(this.fake, 5, 8) * 1000);
       }
     };
     void run();

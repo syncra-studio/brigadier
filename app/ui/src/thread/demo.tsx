@@ -66,18 +66,15 @@ export function Demo() {
   );
 }
 
-/** The running turn's working line: its newest thought's heading, else "Thinking". */
+/** The running turn's working line, only while no row above is live (one live sign at a time, as the old app). */
 function Working({ store }: { store: FakeThread }) {
-  const words = useSyncExternalStore(store.subscribe, () => {
-    const { items } = store.get();
-    const turnId = items.at(-1)?.turnId;
-    for (let at = items.length - 1; at >= 0 && items[at]!.turnId === turnId; at--) {
-      const item = items[at]!;
-      if (item.kind === "reasoning" && item.heading) return item.heading;
-    }
-    return "Thinking";
+  const quiet = useSyncExternalStore(store.subscribe, () => {
+    const item = store.get().items.at(-1);
+    if (item?.kind === "message" || item?.kind === "reasoning") return !item.streaming;
+    if (item?.kind === "tool") return item.progress !== "running";
+    return true;
   });
-  return <WorkingLine state="live">{words}</WorkingLine>;
+  return quiet ? <WorkingLine state="live">Thinking</WorkingLine> : null;
 }
 
 function Toggle({ on, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
