@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 import { holdForIntro } from "./intro";
 
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
 
 const APP_NAME = "Brigadier";
 const APP_ID = "sh.brigadier.app";
@@ -129,7 +129,59 @@ ipcMain.handle("pick-folder", async (event) => {
   const picked = await (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options));
   return picked.canceled ? null : (picked.filePaths[0] ?? null);
 });
+// Folders the user picks, several with `multi`, starting at `at` (`~/` is home); what they're for is checked in Rust.
+async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: string; multi?: boolean } = {}): Promise<string[]> {
+  const home = app.getPath("home");
+  const defaultPath = at ? at.replace(/^~(?=\/|$)/, home) : home;
+  const properties = ["openDirectory" as const, "createDirectory" as const, ...(multi ? ["multiSelections" as const] : [])];
+  const picked = await (window ? dialog.showOpenDialog(window, { defaultPath, properties }) : dialog.showOpenDialog({ defaultPath, properties }));
+  return picked.canceled ? [] : picked.filePaths;
+}
+ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
+
+// The standard menus plus Add project's: File › Open Folder… (⌘O, the picker, several at once) and
+// View › Add project…, each told to the page, which does the rest [D165].
+function setMenu(): void {
+  const tell = (window: BrowserWindow | undefined, command: string, paths?: string[]) => window?.webContents.send("menu", command, paths);
+  const openFolder = async (window: BrowserWindow | undefined) => {
+    const paths = await pickFolders(window ?? null, { multi: true });
+    if (paths.length > 0) tell(window, "open-folders", paths);
+  };
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      {
+        label: "File",
+        submenu: [
+          { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
+          { type: "separator" },
+          { role: process.platform === "darwin" ? "close" : "quit" },
+        ],
+      },
+      { role: "editMenu" },
+      {
+        label: "View",
+        submenu: [
+          { label: "Add project…", click: (_item, window) => tell(window as BrowserWindow | undefined, "add-project") },
+          { type: "separator" },
+          { role: "reload" },
+          { role: "forceReload" },
+          { role: "toggleDevTools" },
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      { role: "windowMenu" },
+    ]),
+  );
+}
+
 void app.whenReady().then(() => {
+  setMenu();
   startDaemon();
   serveUi();
   openWindow();

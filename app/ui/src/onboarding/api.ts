@@ -14,6 +14,10 @@ declare global {
     /** What main does for the page beyond supervising (preload.ts): the folder picker and the intro's staging. */
     brigadier?: {
       pickFolder(): Promise<string | null>;
+      /** Folders picked, several with `multi`, starting at `at` (`~/` is home); none when cancelled. */
+      pickFolders(options?: { at?: string; multi?: boolean }): Promise<string[]>;
+      /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project". */
+      onMenu(listener: (command: string, paths?: string[]) => void): () => void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;
