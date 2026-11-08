@@ -265,7 +265,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
         {(line: Line | typeof FOOTER) =>
           line.type === "footer" ? (
             <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pb-12">
-              {hasFooter && <div className="pt-4">{footer}</div>}
+              {hasFooter && <div className="pt-4 empty:hidden">{footer}</div>}
               <Spacer space={space} />
             </div>
           ) : (
