@@ -32,7 +32,8 @@ const LONG_CHARS = 1200;
 /**
  * The user's message, on the right. Hovered or focused, its time and a copy button show under it; past 20
  * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why with
- * Try again and Discard. `dimmed` greys it (a message the turn hasn't reached).
+ * Try again and Discard; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a
+ * message the turn hasn't reached). `children` are extra lines under it, above the hover row.
  */
 export function UserBubble({
   keep,
@@ -42,7 +43,9 @@ export function UserBubble({
   failed,
   onRetry,
   onDiscard,
+  unconfirmed = false,
   dimmed = false,
+  children,
 }: {
   /** Keeps its fold while it scrolls out of view. */
   keep: string;
@@ -54,14 +57,17 @@ export function UserBubble({
   failed?: string;
   onRetry?: () => void;
   onDiscard?: () => void;
+  /** Sent, but its delivery can't be proven while the link is down. */
+  unconfirmed?: boolean;
   dimmed?: boolean;
+  children?: ReactNode;
 }) {
   const [more, setMore] = useKept(`${keep}:more`);
   const long = text.length > LONG_CHARS || text.split("\n", LONG_LINES + 1).length > LONG_LINES;
   return (
     <div className="group/user flex flex-col items-end gap-y-1">
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
-        <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", (dimmed || sending) && "opacity-row-disabled")}>
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", (dimmed || sending || unconfirmed) && "opacity-row-disabled")}>
           <p className={cx("whitespace-pre-wrap wrap-anywhere", long && !more && "max-h-user-message overflow-y-clip")}>{text}</p>
           {long && (
             <button
@@ -79,19 +85,31 @@ export function UserBubble({
           <p className="text-xs text-muted-foreground">Sending…</p>
         ) : failed ? (
           <p className="flex flex-wrap items-center justify-end gap-x-2 text-xs text-muted-foreground">
-            <span className="wrap-anywhere">Not sent · {failed}</span>
-            {onRetry && (
-              <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-                Try again
-              </button>
-            )}
-            {onDiscard && (
-              <button type="button" onClick={onDiscard} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
-                Discard
-              </button>
-            )}
+            <span role="alert" className="wrap-anywhere text-destructive">
+              Not sent · {failed}
+            </span>
+            {/* Together: Discard never wraps onto a line alone. */}
+            <span className="flex shrink-0 gap-x-2">
+              {onRetry && (
+                <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                  Try again
+                </button>
+              )}
+              {onDiscard && (
+                <button type="button" onClick={onDiscard} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
+                  Discard
+                </button>
+              )}
+            </span>
           </p>
-        ) : (
+        ) : unconfirmed ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            Not confirmed · it's checked once the link is back
+          </p>
+        ) : null}
+        {children}
+        {/* Space kept even when hidden, so hovering shifts nothing; drawn last, so it leaves no gap above `children`. */}
+        {!sending && !failed && !unconfirmed && (
           <div className="-mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100">
             {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
