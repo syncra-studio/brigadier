@@ -5,7 +5,7 @@ import { Body } from "../components/thread/body";
 import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
-import { SetupLine } from "../home/home";
+import { SetupRow } from "../components/thread/setup";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -21,7 +21,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
   return (
     <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]}`} data-item={props.id}>
       {props.type === "setup" ? (
-        <SetupLine id={props.id} setup={props.setup} />
+        <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
         <AnswerMarks text={props.item.text} time={props.item.sentAt} latest={props.latest} />
       ) : props.type === "work" ? (

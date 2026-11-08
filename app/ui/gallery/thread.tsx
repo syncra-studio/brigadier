@@ -9,6 +9,7 @@ import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/i
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
 import { Row, Section, State } from "./parts";
+import { SetupGallery } from "./setup";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -166,6 +167,7 @@ export function Thread() {
     .join("\n");
   return (
     <>
+      <SetupGallery tick={tick} />
       <Section title="Thread · work header · group · working line">
         <Row name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
           <Wide label="running">

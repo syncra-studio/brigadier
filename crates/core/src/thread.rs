@@ -65,8 +65,7 @@ pub struct Thread {
     level: Option<Value>,
     /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
     acking: HashSet<String>,
-    /// Where the latest setup ran; its files retain only that run's output.
-    setup_at: Option<usize>,
+    startup: crate::worktrees::Startup,
     setup: Value,
     setup_changed: bool,
 }
@@ -98,14 +97,7 @@ const CLOSES: [&str; 8] = [
 
 impl Thread {
     pub fn push(&mut self, item: &Value) {
-        if crate::worktrees::setup_launch(item) {
-            self.setup_at = Some(
-                self.items
-                    .iter()
-                    .position(|row| row["turnId"] == item["cid"])
-                    .unwrap_or(self.items.len()),
-            );
-        }
+        self.startup.push(item);
         let ts = item["ts"].as_u64().unwrap_or(0);
         let kind = item["kind"].as_str().unwrap_or("");
         let before: Vec<Turn> = if CLOSES.contains(&kind) {
@@ -385,15 +377,17 @@ impl Thread {
         }
     }
 
+    /// Only unfinished script or CLI startup needs the host's live state.
+    pub fn setup_running(&self, setup: &Value) -> bool {
+        self.startup.running(setup)
+    }
+
     /// Setup sits before its launch's input.
-    pub fn sync_setup(&mut self, mut setup: Value, alive: bool) {
-        if !alive && setup["state"] == "running" {
-            setup["state"] = "interrupted".into();
-        }
+    pub fn sync_setup(&mut self, setup: Value, alive: bool) {
+        let (mut setup, cid) = self.startup.sync(setup, alive);
         if setup.is_object() {
-            setup["before"] = self
-                .items
-                .get(self.setup_at.unwrap_or(0))
+            setup["before"] = cid
+                .and_then(|cid| self.items.iter().find(|row| row["turnId"] == cid))
                 .map_or(Value::Null, |row| row["id"].clone());
         }
         self.setup_changed |= setup != self.setup;

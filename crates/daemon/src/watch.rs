@@ -47,11 +47,16 @@ pub(super) fn watch(
     let (shared, mut norm, mut items) = (Arc::<Mutex<Thread>>::default(), Norm::default(), vec![]);
     let mut thread = shared.lock().unwrap();
     let mut reader: Option<Reader> = None;
+    let (mut setup_at, mut setup) = (None, Value::Null);
     let log = dir.join("log");
     let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
     let mut drain = |thread: &mut Thread| -> io::Result<()> {
-        // A visible setup marker guarantees SPAWNED is logged before this drain starts.
-        let setup = brigadier_core::worktrees::setup_state(&dir, true);
+        // Setup writes rename files in the session directory, so unchanged ticks need only a stat.
+        let at = fs::metadata(&dir).and_then(|m| m.modified()).ok();
+        if at != setup_at {
+            setup = brigadier_core::worktrees::setup_state(&dir, true);
+            setup_at = at;
+        }
         // A session just created may have no log yet.
         if reader.is_none() && log.exists() {
             reader = Some(Reader::open(&log, 0, 0)?);
@@ -62,14 +67,14 @@ pub(super) fn watch(
                 thread.push(&item);
             }
         }
-        let alive = setup["state"] != "running"
+        let alive = !thread.setup_running(&setup)
             || (thread
                 .status_fold()
                 .child
                 .as_ref()
                 .is_some_and(|c| !c.exited)
                 && brigadier::owner::state(data, id) != fold::Owner::Dead);
-        thread.sync_setup(setup, alive);
+        thread.sync_setup(setup.clone(), alive);
         Ok(())
     };
     let interrupted = |thread: &mut Thread| {

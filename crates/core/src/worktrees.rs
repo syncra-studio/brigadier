@@ -5,7 +5,7 @@
 //! made, so a failed create and a delete remove only what the session owns [D35, D181].
 
 use crate::adapters::setup;
-pub use crate::worktree_setup::{setup_launch, setup_state, wrap};
+pub use crate::worktree_setup::{Startup, setup_state, wrap};
 use crate::{Spec, ids, projects, session_dir, write_atomic};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
@@ -170,6 +170,7 @@ pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> i
     {
         return err(format!("A branch {branch} already exists."));
     }
+    crate::worktree_setup::begin(&spec.dir, &branch, &base)?;
     let mut owned = Owned {
         repo: repo.display().to_string(),
         base,
@@ -183,6 +184,7 @@ pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> i
         write(&spec.dir, &owned)
     });
     if let Err(e) = made {
+        let step = crate::worktree_setup::finish(&spec.dir, Some(e.to_string()));
         owned.failed = true;
         let recorded = write(&spec.dir, &owned);
         match undo(&owned) {
@@ -192,9 +194,10 @@ pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> i
                 return err(format!("{e}; rollback failed: {rollback}"));
             }
         }
+        step?;
         return Err(e);
     }
-    Ok(())
+    crate::worktree_setup::finish(&spec.dir, None)
 }
 
 fn make(
@@ -387,6 +390,7 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
             "Its branch {branch} is gone, so its work can't come back."
         ));
     }
+    crate::worktree_setup::begin(dir, &branch, &owned.base)?;
     let added = git(&repo, &["worktree", "add", "--quiet", &path, &branch]);
     owned.admin = git(
         Path::new(&path),
@@ -397,10 +401,12 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
         .and_then(|_| write(dir, &owned))
         .and_then(|()| include(&repo, Path::new(&path), picks));
     if let Err(e) = made {
+        let step = crate::worktree_setup::finish(dir, Some(e.to_string()));
         unregister(&owned).map_err(|r| io::Error::other(format!("{e}; rollback failed: {r}")))?;
+        step?;
         return Err(e);
     }
-    Ok(())
+    crate::worktree_setup::finish(dir, None)
 }
 
 /// At the daemon's start: undoes each create that failed and couldn't undo itself, and removes
