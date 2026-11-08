@@ -25,8 +25,7 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
   const { onOpen, commands } = useContext(ChipContext);
   if (chip.kind === "image" || chip.kind === "paste") {
     // As Backspace would: out of the text, its attachment kept for undo.
-    const remove = (event: { stopPropagation(): void }) => {
-      event.stopPropagation();
+    const remove = () => {
       editor.update(() => $getNodeByKey(nodeKey)?.remove());
       editor.focus();
     };
@@ -41,19 +40,27 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
     );
   }
   const open = onOpen && (() => onOpen(chip.type, chip.id));
-  if (chip.kind === "command") {
-    return (
-      <span data-slot="composer-chip" onClick={open} className={cx("cursor-pointer", COMMAND_TONES[chip.type])}>
-        <CommandKindIcon kind={chip.type} icon={commands.get(chip.id)?.icon} className="mr-0.5 inline-block size-icon-sm align-icon" />
-        {chip.label}
-      </span>
-    );
-  }
-  const name = chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1);
-  return (
-    <span data-slot="composer-chip" onClick={open} className="cursor-pointer text-link">
+  const command = chip.kind === "command";
+  const content = command ? (
+    <>
+      <CommandKindIcon kind={chip.type} icon={commands.get(chip.id)?.icon} className="mr-0.5 inline-block size-icon-sm align-icon" />
+      {chip.label}
+    </>
+  ) : (
+    <>
       <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
-      {name}
+      {chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
+    </>
+  );
+  const tone = command ? COMMAND_TONES[chip.type] : "text-link";
+  // A button where it opens, so Tab reaches it and Enter or Space opens it (the field leaves those to buttons).
+  return open ? (
+    <button type="button" data-slot="composer-chip" onClick={open} className={cx("inline cursor-pointer rounded-xs focus-visible:focus-ring", tone)}>
+      {content}
+    </button>
+  ) : (
+    <span data-slot="composer-chip" className={tone}>
+      {content}
     </span>
   );
 }

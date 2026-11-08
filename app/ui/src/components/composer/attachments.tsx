@@ -111,13 +111,8 @@ export function InlineAttachment({
   const n = useContext(ChipNumbers).get(id);
   const label = paste ? (preview ? `Pasted text: ${preview}…` : `Pasted text${n ? ` #${n}` : ""}`) : `Image${n ? ` #${n}` : ""}`;
   const busy = attachment?.state === "uploading";
-  return (
-    <span
-      data-slot={paste ? "inline-paste" : "inline-image"}
-      title={label}
-      onClick={onOpen}
-      className="inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-label text-foreground"
-    >
+  const face = (
+    <>
       <span aria-hidden className={cx("inline-flex min-w-0 items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
         {paste ? (
           <FileDocument className="size-icon-sm shrink-0" />
@@ -131,6 +126,22 @@ export function InlineAttachment({
       </span>
       {/* Screen readers hear the whole label, not the cut words. */}
       <span className="sr-only">{label}</span>
+    </>
+  );
+  return (
+    <span
+      data-slot={paste ? "inline-paste" : "inline-image"}
+      title={label}
+      className="inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-label text-foreground"
+    >
+      {onOpen ? (
+        // A button where it opens, so Tab reaches it and Enter or Space opens it.
+        <button type="button" onClick={onOpen} className="inline-flex min-w-0 cursor-pointer items-center rounded-sm focus-visible:focus-ring">
+          {face}
+        </button>
+      ) : (
+        face
+      )}
       {onRemove && <TileRemove small label={`Remove ${paste ? "pasted text" : label}`} onClick={onRemove} />}
     </span>
   );
