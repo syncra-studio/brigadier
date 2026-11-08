@@ -2,10 +2,8 @@ import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
-import { Kbd } from "../components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Spinner } from "../icons";
-import { ArrowLeft } from "./icons";
+import { ArrowLeft, Spinner } from "../icons";
 
 /*
  * What the setup's steps share, as the old app drew them [D48]: the strip of step marks along the
@@ -29,12 +27,27 @@ export function useFocusOnMount<T extends HTMLElement>(): RefObject<T | null> {
   return ref;
 }
 
-/** The setup's buttons: 30 high, round-ended, the label's type. */
-export const PILL_BUTTON = "h-7.5 rounded-full text-label";
-/** Each step's main button: 36 high, its key in a chip. */
-const PRIMARY_BUTTON = "text-label h-9 gap-2.5 rounded-full ps-4 pe-2";
-/** Its quieter ones (Sign in, Install, Add folder…) on `variant="outline"`. */
-export const RAISED_BUTTON = cx(PILL_BUTTON, "border border-input px-3 gap-1.5");
+/*
+ * The setup's buttons are the kit's Button with no size (`size={null}`): it gives the cursor, focus
+ * ring and disabled look; these give the old app's sizes and type, which the kit's sizes don't have.
+ * Continue keeps the kit's default colours; the pills bring their own (`variant={null}`).
+ */
+/** Pressed, a button shrinks a little and springs back, as the kit's do. */
+const PRESS = "inline-flex transition-all motion-safe:active:scale-press-button";
+/** Each step's main button: 36 high, 16 before the words, 8 after its key, which sits in a chip. */
+const PRIMARY_BUTTON = cx(PRESS, "h-9 gap-2.5 rounded-full ps-4 pe-2 text-label font-medium");
+/** The intro's: the steps' own at the large control size, its key's chip grown with it. */
+const INTRO_BUTTON = cx(PRESS, "h-control-lg gap-3 rounded-full ps-5 pe-2.5 text-sm font-medium");
+/** The key in a button: a capsule tinted with the button's own text colour, as the old app drew it. */
+const KEY = "pointer-events-none inline-flex items-center justify-center rounded-capsule border border-transparent bg-current-wash font-sans leading-none select-none";
+const PRIMARY_KEY = cx(KEY, "h-4.5 min-w-4.5 px-1.5 text-2xs");
+const INTRO_KEY = cx(KEY, "h-5.5 min-w-5.5 px-2 text-xs");
+/** The setup's pill: 30 high, round-ended, the label's type. */
+export const PILL = cx(PRESS, "h-7.5 rounded-full text-label font-medium");
+/** Its quieter ones (Sign in, Install, Add folder…): a raised fill in a hairline, 12 to a side. */
+export const RAISED_BUTTON = cx(PILL, "gap-1.75 border border-input bg-setup-raised px-3 text-foreground hover:bg-muted");
+/** Back, at the footer's start. */
+const BACK_BUTTON = cx(PILL, "gap-1.75 ps-2.5 pe-3 text-muted-foreground hover:bg-fill hover:text-foreground");
 
 /** The strip along the top: the window drags by it, a mark per step; steps already reached can be revisited. */
 export function TopBar({ step, reached, onStep }: { step: Step; reached: number; onStep: (step: Step) => void }) {
@@ -51,7 +64,7 @@ export function TopBar({ step, reached, onStep }: { step: Step; reached: number;
               disabled={index > reached}
               onClick={() => onStep(entry)}
               className={cx(
-                "relative h-0.75 rounded-capsule transition-all before:absolute before:-inset-x-0.5 before:-inset-y-2",
+                "relative h-0.75 cursor-pointer rounded-capsule transition-all disabled:cursor-not-allowed before:absolute before:-inset-x-0.5 before:-inset-y-2",
                 index === current ? "w-7.5 bg-foreground" : "w-3.75 bg-muted enabled:hover:bg-faint-foreground",
               )}
             />
@@ -97,13 +110,14 @@ export function ContinueButton({ ready, busy = false, intro = false, onClick, fo
       ref={button}
       type={form ? "submit" : "button"}
       form={form}
+      size={null}
       disabled={intro ? busy : !ready || busy}
       onClick={onClick}
-      className={intro ? "h-control-lg gap-3 rounded-full ps-5 pe-2.5 text-base" : PRIMARY_BUTTON}
+      className={intro ? INTRO_BUTTON : PRIMARY_BUTTON}
     >
       {busy && <Spinner className="animate-spin" />}
       {label}
-      <Kbd className={intro ? "h-5.5 px-2" : "px-1.5"}>↩</Kbd>
+      <kbd className={intro ? INTRO_KEY : PRIMARY_KEY}>↩</kbd>
     </Button>
   );
 }
@@ -149,12 +163,12 @@ export function StepFooter({ onBack, count, primary }: {
       <div className="mx-auto flex w-full max-w-onboarding items-center gap-2">
         {onBack && (
           <Button
-            size="sm"
-            variant="ghost"
+            variant={null}
+            size={null}
             aria-keyshortcuts={MAC ? "Meta+BracketLeft" : "Alt+ArrowLeft"}
             disabled={busy}
             onClick={onBack}
-            className={cx(PILL_BUTTON, "gap-1.75 ps-2.5 pe-3 text-muted-foreground")}
+            className={BACK_BUTTON}
           >
             <ArrowLeft className="size-3.25" />
             Back
@@ -162,7 +176,7 @@ export function StepFooter({ onBack, count, primary }: {
         )}
         <span className="flex-1" />
         {count !== undefined && (
-          <span role="status" className="truncate text-xs text-quiet-foreground tabular-nums">
+          <span role="status" className="truncate text-xs text-setup-hint tabular-nums">
             {count}
           </span>
         )}

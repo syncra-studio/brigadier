@@ -21,6 +21,13 @@
   transition: opacity var(--intro-to-name) var(--intro-ease);
 }
 
+/* Without WebGL there's nothing to draw: the shell's dark shows, and the title on it. */
+.welcome-canvas[data-unavailable] {
+  display: none;
+}
+
+/* Continuing, then behind the name, the waves fade out (then go), leaving the same dark; the
+   title and its button fade out first. */
 .welcome:is([data-leaving], [data-step="name"]) .welcome-canvas {
   opacity: 0;
 }
@@ -57,14 +64,16 @@
   pointer-events: none;
 }
 
-/* The intro's mark at the window's centre, with a soft glow (only while the intro plays). */
+/* The intro's mark at the window's centre, a crisp white with a soft glow: it comes up quickly,
+   to be read just as the music drops, is held, then glides to the title's centre, shrinking, and
+   fades out there (only while the intro plays). */
 .welcome-intro-mark {
   position: absolute;
   inset: 0;
   margin: auto;
   width: var(--intro-held-mark-size);
   height: var(--intro-held-mark-size);
-  color: var(--color-foreground);
+  color: var(--color-intro-white);
   filter: var(--intro-held-mark-glow);
   opacity: 0;
   pointer-events: none;
@@ -92,7 +101,7 @@
   line-height: 1.04;
   letter-spacing: var(--welcome-title-tracking);
   font-weight: 700;
-  color: var(--color-foreground);
+  color: var(--color-intro-white);
 }
 
 .welcome-title-line {
@@ -168,6 +177,12 @@
   line-height: 1.2;
   letter-spacing: var(--onboarding-heading-tracking);
   font-weight: 600;
+}
+
+/* While the window is staged (main's intro.ts), the page is clear but for the orb. */
+html[data-intro="staged"],
+html[data-intro="staged"] body {
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

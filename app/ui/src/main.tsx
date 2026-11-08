@@ -5,7 +5,7 @@ import { Input } from "./components/input";
 import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
-import { loadProfile, useProfile } from "./onboarding/api";
+import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
 import { Demo } from "./session/Demo";
@@ -32,6 +32,12 @@ function App() {
   useEffect(() => {
     if (daemon && !profile.value) loadProfile();
   }, [daemon, profile.value]);
+  // A window held clear for the first launch's intro (main's intro.ts) shows at once when there's none.
+  const playsIntro = profile.value && !profile.value.onboarded && !profile.value.intro_seen && hash !== "#states";
+  const knownNot = playsIntro === false || hash === "#states" || Boolean(refused || profile.error);
+  useEffect(() => {
+    if (knownNot) void intro.release()?.catch((error: unknown) => console.error(error));
+  }, [knownNot]);
   if (hash === "#states") return <Demo />;
   if (!profile.value) return <FirstLoad error={daemon === null ? (refused ?? "Daemon not reachable · reconnecting…") : profile.error} />;
   if (!profile.value.onboarded) return <Onboarding profile={profile.value} />;

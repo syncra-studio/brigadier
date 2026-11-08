@@ -35,10 +35,9 @@ const bytesOf = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charC
  * A session's real terminal, beside its chat [D47]: the CLI's own interactive mode on the same
  * conversation, run by the session's host. The screen is the host's log replayed, so it comes back
  * the same after the app or daemon restarts [D60]. Keys and sizes go to the host, named by the
- * terminal's spawn id, so a stale one is refused. A `setup` pane shows an install or sign-in run
- * (core::SETUP): it is never opened from here, and Close ends the run.
+ * terminal's spawn id, so a stale one is refused.
  */
-export function TerminalPane({ id, setup }: { id: string; setup?: { title: string; onClose: () => void } }) {
+export function TerminalPane({ id }: { id: string }) {
   const { daemon } = useDaemon();
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<{ xterm: Terminal; fit: FitAddon; spawn?: number }>(null);
@@ -163,14 +162,10 @@ export function TerminalPane({ id, setup }: { id: string; setup?: { title: strin
   }, [live]);
 
   return (
-    <section className={`flex min-h-0 min-w-0 flex-1 flex-col bg-terminal-background ${setup ? "" : "border-l border-divider"}`}>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-divider bg-terminal-background">
       <header className="flex h-control-md shrink-0 items-center gap-2 px-3 text-sm text-muted-foreground">
-        <span className="flex-1 truncate">{setup?.title ?? "Terminal"}</span>
-        {setup ? (
-          <Button size="xs" variant="ghost" onClick={setup.onClose}>
-            Close
-          </Button>
-        ) : state.is === "live" && (
+        <span className="flex-1">Terminal</span>
+        {state.is === "live" && (
           <Button size="xs" variant="ghost" disabled={!daemon} onClick={stop}>
             Close
           </Button>
@@ -178,16 +173,15 @@ export function TerminalPane({ id, setup }: { id: string; setup?: { title: strin
       </header>
       <div className={`relative min-h-0 flex-1 ${daemon ? "" : "opacity-disabled"}`}>
         <div ref={host} className="absolute inset-0 px-3 font-mono text-xs" />
-        {/* A session's ended terminal is covered too: its last screen is the CLI's goodbye. A setup
-            terminal keeps its last screen: that is the install's or sign-in's result. */}
-        {state.is !== "live" && state.is !== "loading" && !(setup && state.is === "exited") && (
+        {/* An ended terminal is covered too: its last screen is the CLI's goodbye, not the session's. */}
+        {state.is !== "live" && state.is !== "loading" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-terminal-background text-sm">
-            {state.is === "closed" && <p className="text-muted-foreground">{setup ? "Starting…" : "This session's CLI, in its own terminal"}</p>}
+            {state.is === "closed" && <p className="text-muted-foreground">This session's CLI, in its own terminal</p>}
             {state.is === "exited" && <p className="text-muted-foreground">The terminal ended</p>}
             {state.is === "opening" && <p className="text-muted-foreground">Opening…</p>}
             {state.is === "refused" && <p className="text-muted-foreground">{state.message}</p>}
             {state.is === "error" && <p className="text-destructive">{state.message}</p>}
-            {!setup && (state.is === "closed" || state.is === "error" || (state.is === "refused" && !waiting)) && (
+            {(state.is === "closed" || state.is === "error" || (state.is === "refused" && !waiting)) && (
               <Button size="sm" disabled={!daemon} onClick={() => open()}>
                 Open terminal
               </Button>
@@ -202,11 +196,6 @@ export function TerminalPane({ id, setup }: { id: string; setup?: { title: strin
                 Stop the turn
               </Button>
             )}
-          </div>
-        )}
-        {setup && state.is === "exited" && (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 border-t border-divider bg-terminal-background py-2 text-sm">
-            <span className="text-muted-foreground">The terminal ended</span>
           </div>
         )}
       </div>

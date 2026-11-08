@@ -1,11 +1,14 @@
 // Only supervises: opens the window, starts the daemon, wires the page to the utility process. The
-// one exception is the native folder picker, which only a main process can show (D19, D40, D71).
+// exceptions are what only a main process can do: the native folder picker, and staging the window
+// for the first launch's intro (intro.ts) (D19, D40, D71).
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, net, protocol, utilityProcess, type UtilityProcess } from "electron";
+import { holdForIntro } from "./intro";
+
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
 
 const APP_NAME = "Brigadier";
 const APP_ID = "sh.brigadier.app";
@@ -21,7 +24,10 @@ const [daemonPath, daemonArgs] = app.isPackaged
   ? [path.join(process.resourcesPath, "bin/brigadierd"), ["--install"]]
   : [path.join(__dirname, "../../../target/debug/brigadierd"), []];
 
-const themeBackground = /--color-background:\s*([^;]+);/.exec(readFileSync(path.join(uiDir, "src/theme.css"), "utf8"))![1];
+const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
+const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
+// The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
+const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
 
 app.setName(APP_NAME);
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -45,14 +51,26 @@ function serveUi(): void {
   });
 }
 
+// The intro plays until it has been seen once (profile.json, kept by the CLI): read only to hold the window.
+function introSeen(): boolean {
+  try {
+    return JSON.parse(readFileSync(path.join(dataDir, "profile.json"), "utf8")).intro_seen === true;
+  } catch {
+    return false;
+  }
+}
+
 function openWindow(): void {
+  // On macOS a first launch holds the window clear for the intro, which needs it transparent from birth.
+  const hold = process.platform === "darwin" && !introSeen();
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 900,
     minHeight: 560,
     title: APP_NAME,
-    backgroundColor: themeBackground,
+    backgroundColor: hold ? introColours.clear : themeBackground,
+    ...(hold ? { transparent: true, show: false } : {}),
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 16, y: 15 },
     webPreferences: {
@@ -62,7 +80,11 @@ function openWindow(): void {
       nodeIntegration: false,
     },
   });
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // A web link (a sign-in's code page) opens in the browser; nothing opens in the app.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:/.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
   window.webContents.on("will-navigate", (event) => event.preventDefault());
 
   let utility: UtilityProcess;
@@ -95,6 +117,7 @@ function openWindow(): void {
     console.error("The page's renderer is gone:", details.reason);
     if (!window.isDestroyed()) window.webContents.reload();
   });
+  if (hold) holdForIntro(window, themeBackground, introColours);
   void window.loadURL(`${ORIGIN}/`);
 }
 

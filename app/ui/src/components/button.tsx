@@ -34,8 +34,10 @@ const SIZES = {
   "icon-answer": "rounded-control size-6.5 svg:size-icon-sm motion-safe:active:scale-press",
 };
 
-// Each property is set once (cx doesn't merge): small sizes take the small type, soft looks the label's regular type.
+// Each property is set once (cx doesn't merge): small sizes take the small type, soft looks the label's regular type;
+// no size leaves the type to the caller with the rest of the look.
 function typeClasses(variant: ButtonProps["variant"], size: ButtonProps["size"]): string {
+  if (size === null) return "";
   if (size === "xs" || size === "inline") return "text-xs font-medium";
   if (variant === "soft" || variant === "soft-destructive") return "text-label font-normal";
   return "text-sm font-medium";
@@ -43,7 +45,7 @@ function typeClasses(variant: ButtonProps["variant"], size: ButtonProps["size"])
 
 export type ButtonProps = Omit<BaseButton.Props, "className"> & {
   className?: string;
-  /** `null` leaves the look to the caller (an icon button's strip look). */
+  /** `null` leaves the look, type included, to the caller (an icon button's strip look). */
   variant?: keyof typeof VARIANTS | null;
   size?: keyof typeof SIZES | null;
 };

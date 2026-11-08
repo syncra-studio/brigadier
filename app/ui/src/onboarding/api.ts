@@ -9,6 +9,29 @@ export function run(args: string[]): Promise<Record<string, any>> {
   );
 }
 
+declare global {
+  interface Window {
+    /** What main does for the page beyond supervising (preload.ts): the folder picker and the intro's staging. */
+    brigadier?: {
+      pickFolder(): Promise<string | null>;
+      introBegin(): Promise<boolean>;
+      introShaped(): Promise<void>;
+      introFinish(fadeMs: number): Promise<void>;
+      introRelease(): Promise<void>;
+      onIntroEnded(listener: () => void): () => void;
+    };
+  }
+}
+
+/** The first launch's window staging (main's intro.ts); outside the app's window, nothing happens. */
+export const intro = {
+  begin: async () => (await window.brigadier?.introBegin()) ?? false,
+  shaped: () => window.brigadier?.introShaped(),
+  finish: (fadeMs: number) => window.brigadier?.introFinish(fadeMs),
+  release: () => window.brigadier?.introRelease(),
+  onEnded: (listener: () => void) => window.brigadier?.onIntroEnded(listener) ?? (() => {}),
+};
+
 export const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 type Store<T> = { get: () => T; set: (next: T) => void; use: () => T };
@@ -35,7 +58,9 @@ export type Agent = {
   label: string;
   install: boolean;
   sign_in: string | null;
-  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null } | null;
+  /** Its mark, one SVG from its adapter [D118, D123]; none: a generic terminal. */
+  mark: string | null;
+  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null } | null;
   path?: string | null;
   version?: string | null;
   signed_in?: boolean;
@@ -103,6 +128,12 @@ export function loadProfile(): void {
 export async function addPicked(): Promise<void> {
   const picked = await window.brigadier?.pickFolder();
   if (picked) await setProfile(["--add", picked], {});
+}
+
+/** The native folder picker, then the picked folder's repository, or null; nothing is added yet. */
+export async function pickRepo(): Promise<string | null> {
+  const picked = await window.brigadier?.pickFolder();
+  return picked ? ((await run(["projects", "--check", picked])).repo as string) : null;
 }
 
 /**
