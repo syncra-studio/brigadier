@@ -22,6 +22,7 @@ const row = (id: string, title: string, state: string, mark: SessionRow["mark"],
   mark,
   resets: null,
   sent: at(12, 60 - Number(id)),
+  finished: 0,
   project,
   ...extra,
 });
