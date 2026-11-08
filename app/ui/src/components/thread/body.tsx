@@ -78,6 +78,7 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;
     case "notice":
+      if ("reason" in item) return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
       return <NoticeRow level={item.level} text={item.text} />;
     case "unknown":
       return <UnknownRow keep={item.id} raw={item.raw} />;

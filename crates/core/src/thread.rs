@@ -61,6 +61,8 @@ pub struct Thread {
     pending_changed: bool,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
+    /// The level the last input set up, to tell when trust taken back holds the next to Ask.
+    level: Option<Value>,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
@@ -106,6 +108,16 @@ impl Thread {
                 .first()
                 .is_some_and(|t| t.question.is_some());
         self.fold.push(item);
+        // Trust taken back holds the next turn to Ask, said once by a notice (proposed); a
+        // session held from its start says nothing, its picker shows Ask [D166].
+        let setup = &item["setup"];
+        if kind == "input" && setup.is_object() {
+            let was = self.level.replace(setup["level"].clone());
+            if setup["held"] == true && was.is_some_and(|l| l.is_string() && l != "ask") {
+                self.break_group();
+                self.add(json!({"kind": "notice", "reason": "untrusted"}));
+            }
+        }
         if answering {
             if let Some(at) = self.open.as_mut().and_then(|o| o.asked.take()) {
                 self.items[at]["answer"] = item["text"].clone();

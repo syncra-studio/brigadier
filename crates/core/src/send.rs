@@ -40,8 +40,22 @@ pub fn send(
     };
     // Each turn runs with the level its spec says now, re-checked here [D129, D170], and the model
     // and effort it names: a turn start hands any change to a child already running.
-    let level = match level(spec, a) {
+    // An untrusted or unanswered project holds every turn to Ask; an agent that can't enforce it
+    // is refused, never run unheld [D129, D166].
+    let held = crate::projects::held(&crate::data_of(spec), spec);
+    let asked = Spec {
+        level: Some("ask".into()),
+        ..spec.clone()
+    };
+    let level = match level(if held { &asked } else { spec }, a) {
         Ok(level) => level,
+        Err(_) if held => {
+            let e = format!(
+                "This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.",
+                a.label()
+            );
+            return json!({"ok": false, "result": "refused", "error": e});
+        }
         Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
     };
     let spec = &Spec {
@@ -51,6 +65,9 @@ pub fn send(
     let run = as_run(spec, f, &b, None);
     let setup = adapters::setup(&run);
     let mut base = json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of, "setup": setup});
+    if held {
+        base["setup"]["held"] = true.into();
+    }
     let running = child.is_some();
     let pty = child.is_some_and(|(_, pty)| pty);
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
@@ -64,7 +81,7 @@ pub fn send(
         if !f.turns.is_empty() {
             // A working child keeps its setup: the change waits for the next turn start.
             base["setup"] = f.given.clone().into();
-        } else if !pty && f.given.as_ref() != Some(&setup) {
+        } else if !pty && f.given.as_ref().map(unheld) != Some(setup.clone()) {
             let g = f.given.clone().unwrap_or_default();
             let text = |k: &str| g[k].as_str().map(String::from);
             let last = Spec {
@@ -242,4 +259,13 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
         }
         _ => json!({"ok": false, "error": format!("nothing to recover: {state}")}),
     }
+}
+
+/// A given setup without `held`: being held changes no model, effort or level by itself, so it never retunes.
+fn unheld(given: &Value) -> Value {
+    let mut given = given.clone();
+    if let Some(o) = given.as_object_mut() {
+        o.remove("held");
+    }
+    given
 }

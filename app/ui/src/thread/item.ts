@@ -132,6 +132,8 @@ export type Item = Base &
       }
     | { kind: "compaction"; summary: string | null; progress?: Progress }
     | { kind: "notice"; level: "info" | "warning" | "error"; text: string }
+    /** A notice Rust sends as structure, its words written here: `untrusted`, trust taken back holds this turn to Ask [D166]. */
+    | { kind: "notice"; reason: "untrusted" }
     /**
      * A usage limit (or a refused resume) and the switch past it: one row Rust changes in place [D51, D132], in the
      * kit's switch shape (D133). Rust sends `limit`, `switched`, and `over` for a limit no switch took (a Stop, a new
