@@ -22,7 +22,8 @@ pub const PROTOCOL_VERSION: u32 = 1;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_MESSAGE: u32 = 64 << 20;
 
-/// The build number baked in at compile time, so the drills can tell versions apart.
+/// The ordered build number baked in at compile time: `pnpm start` uses the commit count, and a
+/// release sets its own (proposed). A newer daemon replaces an older one by it; 0 means unset.
 pub fn build() -> u32 {
     option_env!("BRIGADIER_BUILD")
         .and_then(|b| b.parse().ok())

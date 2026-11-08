@@ -12,7 +12,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -36,10 +36,11 @@ pub struct Runner {
     cids: Mutex<HashMap<String, bool>>,
     child: Mutex<Option<Child>>,
     groups: Mutex<Groups>,
-    /// Held by spawn and input, and by `retire` while the host leaves.
     op: Mutex<()>,
     /// Counts stops, so a spawn that was under way during one can tell and honour it.
     stops: AtomicU64,
+    /// Output pumps still copying, which may hold bytes not yet in the log.
+    pumping: AtomicUsize,
     disk_full: AtomicBool,
     watch: Box<dyn Fn(&Groups) + Send + Sync>,
 }
@@ -83,6 +84,7 @@ impl Runner {
             groups: Mutex::new(groups),
             op: Mutex::new(()),
             stops: AtomicU64::new(0),
+            pumping: AtomicUsize::new(0),
             disk_full: AtomicBool::new(false),
             watch,
         });
@@ -120,7 +122,7 @@ impl Runner {
     /// so the caller can exit or exec without leaving work unsupervised.
     pub fn retire(&self) -> Option<MutexGuard<'_, ()>> {
         let op = self.op.lock().unwrap();
-        if self.busy() {
+        if self.busy() || self.pumping.load(Ordering::SeqCst) > 0 {
             return None;
         }
         let all = procs::all();
@@ -177,13 +179,7 @@ impl Runner {
         }
         cids.insert(cid.to_string(), false);
         // Drill hook: die between logging and writing to the agent.
-        if let Ok(at) = std::env::var("BRIGADIER_CRASH_AT")
-            && at
-                .strip_prefix("after_intent:")
-                .is_some_and(|p| cid.starts_with(p))
-        {
-            std::process::abort();
-        }
+        crash_at("after_intent:", cid);
         None
     }
 
@@ -246,11 +242,14 @@ impl Runner {
         for (k, v) in req["env"].as_object().into_iter().flatten() {
             command.env(k, v.as_str().unwrap_or(""));
         }
-        let spawned = if pty {
-            spawn_pty(&mut command)
-        } else {
-            spawn_pipes(&mut command, req["keep_stdin"].as_bool().unwrap_or(false))
-        };
+        let cwd = req["cwd"].as_str().unwrap_or("/");
+        let spawned = procs::runnable(program, req["env"]["PATH"].as_str(), cwd).and_then(|()| {
+            if pty {
+                spawn_pty(&mut command)
+            } else {
+                spawn_pipes(&mut command, req["keep_stdin"].as_bool().unwrap_or(false))
+            }
+        });
         let (mut child, input, outputs) = match spawned {
             Ok(s) => s,
             Err(e) => {
@@ -260,14 +259,7 @@ impl Runner {
             }
         };
         // Drill hook: die between starting the child and logging its group.
-        if std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| {
-            cid.is_some_and(|c| {
-                at.strip_prefix("after_fork:")
-                    .is_some_and(|p| c.starts_with(p))
-            })
-        }) {
-            std::process::abort();
-        }
+        crash_at("after_fork:", cid.unwrap_or(""));
         let pid = child.id() as i32;
         let start_us = procs::info(pid).map_or(0, |p| p.start_us);
         let record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": argv, "backend": req["backend"], "cli_version": req["cli_version"],
@@ -291,11 +283,13 @@ impl Runner {
         let _ = go.write_all(b"\n");
         let (done, pumped) = mpsc::channel();
         let pumps = outputs.len();
+        self.pumping.fetch_add(pumps, Ordering::SeqCst);
         for (kind, stream) in outputs {
             let me = self.clone();
             let done = done.clone();
             thread::spawn(move || {
                 me.pump(kind, stream);
+                me.pumping.fetch_sub(1, Ordering::SeqCst);
                 let _ = done.send(());
             });
         }
@@ -430,6 +424,14 @@ impl Runner {
             .retain(|&(g, s)| !procs::group(&all, g, s).is_empty());
         (self.watch)(&self.groups.lock().unwrap());
         json!({"ok": left == 0, "left": left, "ms": started.elapsed().as_millis() as u64})
+    }
+}
+
+/// Drill hook: dies at `point` when the command id starts with the prefix BRIGADIER_CRASH_AT names.
+fn crash_at(point: &str, cid: &str) {
+    let at = std::env::var("BRIGADIER_CRASH_AT").unwrap_or_default();
+    if at.strip_prefix(point).is_some_and(|p| cid.starts_with(p)) {
+        std::process::abort();
     }
 }
 

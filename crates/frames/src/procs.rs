@@ -1,7 +1,11 @@
 //! Process facts from the kernel. A pid is only trusted together with its start time, so a reused
 //! pid is never mistaken for our child.
 
+use std::ffi::CString;
+use std::io;
 use std::mem::{MaybeUninit, size_of};
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Proc {
@@ -102,4 +106,23 @@ pub fn footprint(pid: i32) -> Option<u64> {
     let mut info = MaybeUninit::<libc::rusage_info_v4>::zeroed();
     let r = unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V4, info.as_mut_ptr().cast()) };
     (r == 0).then(|| unsafe { info.assume_init() }.ri_phys_footprint)
+}
+
+/// Fails as exec would for a program that isn't there or can't run. The spawn gate's own exec
+/// can't report that, so it's checked first: a path against `cwd`, a bare name along `path`.
+pub fn runnable(program: &str, path: Option<&str>, cwd: &str) -> io::Result<()> {
+    let ok = |p: &Path| {
+        p.is_file()
+            && CString::new(p.as_os_str().as_bytes())
+                .is_ok_and(|c| unsafe { libc::access(c.as_ptr(), libc::X_OK) } == 0)
+    };
+    let found = if program.contains('/') {
+        ok(&Path::new(cwd).join(program))
+    } else {
+        let dirs = path.unwrap_or("/usr/bin:/bin:/usr/sbin:/sbin");
+        dirs.split(':').any(|d| ok(&Path::new(d).join(program)))
+    };
+    found
+        .then_some(())
+        .ok_or_else(|| io::Error::from_raw_os_error(libc::ENOENT))
 }
