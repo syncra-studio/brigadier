@@ -931,7 +931,7 @@
 }
 /* The old sidebar's fade lengths, only while there is more to scroll that way. */
 @utility edge-fade-sidebar {
-  --edge-size-top: 0.5rem;
+  --edge-size-top: 2.5rem;
   --edge-size-bottom: 2.5rem;
 }
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
