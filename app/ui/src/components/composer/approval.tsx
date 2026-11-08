@@ -38,7 +38,7 @@ export type PendingApproval = {
 
 export type ApprovalDecision = "allow" | "allowSession" | "deny";
 
-type Shown = { icon: ReactNode; kind: string; title: string; body?: ReactNode; allow?: string; deny?: string; noDeny?: boolean };
+type Shown = { icon: ReactNode; kind: string; title: string; detail?: string; body?: ReactNode; allow?: string; deny?: string; noDeny?: boolean };
 
 /** What the card asks, compactly: its kind, the reason (or the plain question) as the title, the exact thing asked about. */
 function describe(approval: PendingApproval): Shown {
@@ -81,7 +81,9 @@ function describe(approval: PendingApproval): Shown {
       return {
         icon: <Commit />,
         kind: "Land a change",
-        title: reason || `Land this change on ${approval.branch ?? "the branch"}?`,
+        // Where it lands always shows; the agent's reason goes under it.
+        title: `Land this change on ${approval.branch ?? "the branch"}?`,
+        detail: reason ?? undefined,
         body: approval.files && (
           <ActionFileList
             files={approval.files.map((file) => ({
@@ -106,7 +108,16 @@ function describe(approval: PendingApproval): Shown {
     case "plan":
       return { icon: <Sparkle />, kind: "Plan", title: reason || "Build this plan?", body: prose, allow: "Build it", noDeny: true };
     case "message":
-      return { icon: <Sparkle />, kind: "Message", title: reason || `Send a message to ${approval.to ?? "another session"}?`, body: prose, allow: "Send", deny: "Don't send" };
+      return {
+        icon: <Sparkle />,
+        kind: "Message",
+        // Who it goes to always shows; the agent's reason goes under it.
+        title: `Send a message to ${approval.to ?? "another session"}?`,
+        detail: reason ?? undefined,
+        body: prose,
+        allow: "Send",
+        deny: "Don't send",
+      };
     case "browser":
       return { icon: <Globe />, kind: "Browser", title: reason || "Go ahead in the browser?", body: prose, allow: "Go ahead", deny: "Don't" };
     default:
@@ -140,32 +151,29 @@ export type ApprovalStep = { index: number; total: number; onStep: (index: numbe
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
  * session] [Allow once]. Esc denies from anywhere in the view; allowing takes a click, or Enter on an Allow the
  * user moved to: a stray Enter never allows. A message to another session is the exception: the card takes
- * focus, and Enter on it sends (its ⏎ shows while it has focus). `onAnswer` sends the decision; while it runs the
- * buttons wait, and a refusal shows its error on the card.
+ * focus, and Enter on it sends (its ⏎ shows while it has focus). While an answer goes (`busy`) the buttons wait,
+ * and a refusal shows its `error` on the card.
  */
 export function ApprovalCard({
   approval,
   onAnswer,
+  busy,
+  error,
   step,
   onReply,
   footer,
 }: {
   approval: PendingApproval;
-  onAnswer: (decision: ApprovalDecision) => Promise<void>;
+  onAnswer: (decision: ApprovalDecision) => void;
+  busy: boolean;
+  error: string | null;
   step?: ApprovalStep;
   /** In the composer's place: brings the message field back. */
   onReply?: () => void;
   footer?: ReactNode;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const answer = (decision: ApprovalDecision) => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    onAnswer(decision)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setBusy(false));
+    if (!busy) onAnswer(decision);
   };
   const deny = () => answer("deny");
   const message = approval.action === "message";
@@ -197,7 +205,7 @@ export function ApprovalCard({
           )}
         </div>
         <div role="alert" aria-atomic="true">
-          <ActionCardTitle>
+          <ActionCardTitle detail={shown.detail && <CodeSpans text={shown.detail} />}>
             <CodeSpans text={shown.title} />
           </ActionCardTitle>
         </div>
@@ -278,18 +286,34 @@ export function ApprovalSlot({
   onAnswer: (id: string, decision: ApprovalDecision) => Promise<void>;
   onReply?: () => void;
 }) {
-  const [index, setIndex] = useState(0);
+  // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
+  const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
+  // Answers on their way and refusals, by id: paging away and back keeps them.
+  const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
+  const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
   // One that came while nobody could see the window is simply there when it shows again.
   const [opens] = useState(() => document.visibilityState === "visible");
-  const at = Math.min(index, approvals.length - 1);
+  const found = approvals.findIndex((each) => each.id === shown.id);
+  const at = found >= 0 ? found : Math.min(shown.index, approvals.length - 1);
   const approval = approvals[at];
   if (!approval) return null;
+  const { id } = approval;
+  const answer = (decision: ApprovalDecision) => {
+    if (sending.has(id)) return;
+    setSending((ids) => new Set(ids).add(id));
+    setErrors((map) => new Map([...map].filter(([key]) => key !== id)));
+    onAnswer(id, decision)
+      .catch((cause: unknown) => setErrors((map) => new Map(map).set(id, cause instanceof Error ? cause.message : String(cause))))
+      .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
+  };
   const card = (
     <ApprovalCard
-      key={approval.id}
+      key={id}
       approval={approval}
-      onAnswer={(decision) => onAnswer(approval.id, decision)}
-      step={{ index: at, total: approvals.length, onStep: setIndex }}
+      onAnswer={answer}
+      busy={sending.has(id)}
+      error={errors.get(id) ?? null}
+      step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
       onReply={placement === "composer" ? onReply : undefined}
       footer={placement === "rail" && <MoreWaiting more={approvals.length - 1} />}
     />
