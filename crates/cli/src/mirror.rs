@@ -34,7 +34,9 @@ pub fn run(
     for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
         unsafe { libc::signal(sig, libc::SIG_IGN) };
     }
+    // It reads the record where the terminal's account keeps it [D51].
     let spec = core::load(data, id)?;
+    let spec = core::as_run(&spec, &core::fold(&spec.dir, true)?.fold, backend, None);
     let a = adapters::get(backend).ok_or_else(|| io::Error::other("unknown backend"))?;
     let closed = Arc::new(AtomicBool::new(false));
     {

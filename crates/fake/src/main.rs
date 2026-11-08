@@ -145,6 +145,11 @@ impl Agent {
             if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
                 thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
             }
+            // Refused outright, before any turn: what a CLI at its limit answers to a new message.
+            if words.contains(&"refuse") && limited() {
+                emit(json!({"t": "error", "code": 429, "message": "usage limit reached"}));
+                return emit(json!({"t": "done", "ok": false}));
+            }
             emit(json!({"t": "turn"}));
         }
         for word in words {
@@ -191,6 +196,7 @@ impl Agent {
                 emit(json!({"t": "ask", "text": "Proceed with the change?"}));
                 return false;
             }
+            "limit" if !limited() => {}
             "limit" => {
                 emit(
                     json!({"t": "error", "code": 429, "message": "rate limited, try again in 60s"}),
@@ -329,9 +335,42 @@ fn generate(dir: &Path, id: &str, bytes: u64) -> io::Result<()> {
     Ok(())
 }
 
+/// The limit directives hit only the computer's login, or an account whose home holds `limited`,
+/// so a session switched to another account goes on [D51].
+fn limited() -> bool {
+    env::var_os("FAKE_ACCOUNT").is_none_or(|home| Path::new(&home).join("limited").exists())
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        // A stand-in sign-in for drills and demos: a mark in the account's home, never a secret.
+        Some(cmd @ ("login" | "logout")) => {
+            let Some(home) = env::var_os("FAKE_ACCOUNT") else {
+                eprintln!("{cmd}: only an account (FAKE_ACCOUNT) signs in or out");
+                process::exit(1);
+            };
+            let mark = Path::new(&home).join("login");
+            let done = if cmd == "login" {
+                fs::write(&mark, "fake\n")
+            } else {
+                fs::remove_file(&mark)
+            };
+            match done {
+                Ok(()) => println!(
+                    "{}",
+                    if cmd == "login" {
+                        "Signed in."
+                    } else {
+                        "Signed out."
+                    }
+                ),
+                Err(e) => {
+                    eprintln!("{cmd}: {e}");
+                    process::exit(1);
+                }
+            }
+        }
         Some("agent") => agent(&args),
         Some("--version") => println!("fake 1"),
         Some("gen") => {

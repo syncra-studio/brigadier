@@ -1,0 +1,216 @@
+//! Switching a session at its limit [D51]: the settings, the pick (proposed: adapter order, the
+//! first usable model, and a fixed window before a limited account is tried again), and the one
+//! transition `core::switch` makes through the host.
+
+use crate::accounts::{STORE, accounts_of, agent, agents, check, listed, load, save};
+use crate::owner;
+use brigadier_core::adapters::Adapter;
+use brigadier_core::switch::{self, Target};
+use brigadier_core::{self as core, fold};
+use brigadier_frames::log;
+use serde_json::{Value, json};
+use std::io;
+use std::path::Path;
+
+fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    let i = args.iter().position(|a| a == name)?;
+    args.get(i + 1).map(String::as_str)
+}
+
+/// How long an account that hit its limit is skipped by an automatic pick (proposed: no reset
+/// time is read yet). shortcut: a fixed 5 hours, the shortest plan window; read each CLI's reset
+/// time when one is reliable.
+const SKIP_MS: u64 = 5 * 3600 * 1000;
+
+/// `switching [--agent A (--auto on|off | --release on|off)] [--agents on|off]`. The confirmation
+/// before turning one on is the app's; this only stores what was confirmed.
+pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
+    let _one = STORE.lock().unwrap();
+    let mut v = load(data);
+    let on = |name: &str| -> io::Result<Option<bool>> {
+        match flag(args, name) {
+            None => Ok(None),
+            Some("on") => Ok(Some(true)),
+            Some("off") => Ok(Some(false)),
+            Some(x) => Err(io::Error::other(format!("{name} takes on or off, not {x}"))),
+        }
+    };
+    if let Some(name) = flag(args, "--agent") {
+        let a = agent(name)?;
+        for (key, value) in [("auto", on("--auto")?), ("released", on("--release")?)] {
+            let Some(value) = value else { continue };
+            if key == "auto" && a.accounts().is_none() {
+                return Err(io::Error::other(format!(
+                    "{} keeps one login only",
+                    a.label()
+                )));
+            }
+            let list = v[key].as_array_mut().unwrap();
+            list.retain(|x| x != a.name());
+            if value {
+                list.push(a.name().into());
+            }
+        }
+    }
+    if let Some(value) = on("--agents")? {
+        v["agents"] = value.into();
+    }
+    save(data, &v)?;
+    Ok(json!({"ok": true, "auto": v["auto"], "released": v["released"], "agents": v["agents"]}))
+}
+
+/// "Work (Claude Code)", "this computer's login (Claude Code)", or just the agent for one that
+/// keeps one login.
+fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
+    if a.accounts().is_none() {
+        return a.label().into();
+    }
+    let name = accounts_of(v, a.name())
+        .into_iter()
+        .find(|(x, _)| x == id)
+        .map_or_else(|| id.to_string(), |(_, n)| n);
+    format!("{name} ({})", a.label())
+}
+
+/// Switches a session at its limit [D51]: to the account the user picked (`--account`, "" for the
+/// computer's login), or, with `--auto`, to the one the settings allow, if any. A refused resume
+/// starts a new conversation with a hand-off on the same account (D90 Q4).
+pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
+    let spec = core::load(data, id)?;
+    owner::ensure(data, &spec)?;
+    // The host's state first, then the fold: the host refuses if the log moved in between.
+    let ping = owner::call(data, id, json!({"op": "ping"}))?;
+    let f = core::fold(&spec.dir, true)?.fold;
+    let Some(why) = fold::switchable(&f) else {
+        return Ok(
+            json!({"ok": false, "error": "not_limited", "message": "This session isn't at a limit."}),
+        );
+    };
+    let b = if f.backend.is_empty() {
+        &spec.backend
+    } else {
+        &f.backend
+    };
+    let a = agent(b)?;
+    let cur = f.accounts.get(b).cloned().unwrap_or_default();
+    let v = {
+        let _one = STORE.lock().unwrap();
+        let mut v = load(data);
+        if why == "limited" {
+            v["limited"][format!("{b}/{cur}")] = log::now_ms().into();
+            save(data, &v)?;
+        }
+        v
+    };
+    let from = label(&v, a, &cur);
+    let mut target: Option<(&dyn Adapter, String, Option<String>)> = None;
+    let mut kind = "accounts";
+    if let Some(pick) = pick {
+        if pick == cur || !accounts_of(&v, b).iter().any(|(x, _)| x == pick) {
+            return Ok(
+                json!({"ok": false, "error": "bad_account", "message": "Pick another account of this agent."}),
+            );
+        }
+        target = Some((a, pick.to_string(), None));
+    } else if why == "unresumable" && (!auto || listed(&v, "auto", b)) {
+        target = Some((a, cur.clone(), None));
+    } else if !auto {
+        return Ok(
+            json!({"ok": false, "error": "pick", "message": "Pick an account to switch to."}),
+        );
+    } else if listed(&v, "released", b) {
+        return Ok(json!({"ok": false, "error": "released"}));
+    } else {
+        if listed(&v, "auto", b) {
+            target = pick_account(data, &v, a, &cur, &spec.cwd).map(|id| (a, id, None));
+        }
+        if target.is_none() && v["agents"] == true {
+            kind = "agents";
+            target = pick_agent(data, &v, b, &spec.cwd).map(|(a, id, m)| (a, id, Some(m)));
+        }
+    }
+    let Some((to, account, model)) = target else {
+        return Ok(
+            json!({"ok": false, "error": "no_target", "message": "No other account or agent has room."}),
+        );
+    };
+    let mut to_label = label(&v, to, &account);
+    if let Some(m) = &model {
+        to_label += &format!(" · {m}");
+    }
+    // Asked again last: a setting turned off meanwhile stops an automatic switch [D51].
+    let still = || {
+        let v = load(data);
+        !auto
+            || (!listed(&v, "released", b)
+                && match kind {
+                    "agents" => v["agents"] == true && !listed(&v, "released", to.name()),
+                    _ => listed(&v, "auto", b) || why == "unresumable",
+                })
+    };
+    let call = |req| owner::call(data, id, req);
+    let target = Target {
+        backend: to.name(),
+        account: &account,
+        model: model.as_deref(),
+        label: &to_label,
+        from: &from,
+    };
+    Ok(switch::switch(
+        &spec, &f, &ping, &call, &target, auto, &still,
+    ))
+}
+
+fn recent(v: &Value, key: &str) -> bool {
+    v["limited"][key]
+        .as_u64()
+        .is_some_and(|t| log::now_ms().saturating_sub(t) < SKIP_MS)
+}
+
+/// The next account of the same agent, in order, that isn't the current one, hit no limit lately,
+/// and is signed in with a kind its home keeps apart (proposed).
+fn pick_account(data: &Path, v: &Value, a: &dyn Adapter, cur: &str, cwd: &str) -> Option<String> {
+    accounts_of(v, a.name())
+        .into_iter()
+        .map(|(id, _)| id)
+        .filter(|id| id != cur && !recent(v, &format!("{}/{id}", a.name())))
+        .find(|id| {
+            let c = check(a, data, id, cwd);
+            c["signed_in"] == true && c["kept_apart"] == true
+        })
+}
+
+/// The next agent in adapter order (proposed), not released, with a model usable in this project
+/// on its login (or, when it switches accounts automatically, on one of its accounts with room),
+/// and that model: the first it lists (proposed). Sign-in counts only where the model needs it,
+/// which the agent's own model list already says [D43, D89].
+fn pick_agent(
+    data: &Path,
+    v: &Value,
+    from: &str,
+    cwd: &str,
+) -> Option<(&'static dyn Adapter, String, String)> {
+    agents()
+        .filter(|a| a.name() != from && !listed(v, "released", a.name()) && a.exe().is_some())
+        .find_map(|a| {
+            let ids: Vec<String> = accounts_of(v, a.name())
+                .into_iter()
+                .map(|(id, _)| id)
+                .filter(|id| id.is_empty() || listed(v, "auto", a.name()))
+                .filter(|id| !recent(v, &format!("{}/{id}", a.name())))
+                .collect();
+            ids.into_iter().find_map(|id| {
+                let c = check(a, data, &id, cwd);
+                let model = c["models"][0].as_str()?.to_string();
+                (c["kept_apart"] == true).then_some((a, id, model))
+            })
+        })
+}
+
+/// Whether the settings let the daemon act on a limit of `backend`: read once per limit, so off
+/// costs nothing [D51].
+pub fn wants(data: &Path, backend: &str, why: &str) -> bool {
+    let v = load(data);
+    !listed(&v, "released", backend)
+        && (listed(&v, "auto", backend) || (why == "limited" && v["agents"] == true))
+}

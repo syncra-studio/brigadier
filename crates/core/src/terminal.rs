@@ -38,6 +38,8 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
     if running && (a.per_turn() || f.turns.iter().any(|t| t.delivered.is_some())) {
         return json!({"ok": false, "error": "turn_running", "message": "A turn is running. The terminal opens when it ends."});
     }
+    // On the account the session runs on now [D51].
+    let spec = &crate::as_run(spec, f, b, None);
     let (launch, conv) = match a.terminal(spec, f.resume.get(b).map(String::as_str)) {
         Ok(l) => l,
         Err(e) => return json!({"ok": false, "error": "unsupported", "message": e}),

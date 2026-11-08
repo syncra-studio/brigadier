@@ -1,10 +1,12 @@
 //! The commands every client shares: the `brigadier` CLI and drills, and the daemon that is the
 //! app's one way to every host. Each command answers one JSON value.
 
+mod accounts;
 pub mod index;
 mod mirror;
 pub mod owner;
 mod setup;
+mod switching;
 
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Spec, adapters};
@@ -25,7 +27,10 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects [--check P]";
+       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects [--check P]
+       brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
+       brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
+       brigadier switch <id> [--account A] [--auto]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -64,12 +69,15 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     Ok(s)
 }
 
+pub use switching::wants;
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     // Every session id this command names, checked before any path is built from it.
     let ids = match cmd {
         "status" | "up" => &args[1..],
-        "index" | "awake" | "agents" | "setup" | "profile" | "projects" => &[][..],
+        "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
+        | "switching" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -105,7 +113,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 model: flag(args, "--model").map(String::from),
                 opts,
                 created: log::now_ms(),
-                dir: Default::default(),
+                ..Default::default()
             };
             let spec = if core::session_dir(data, id).join("session.json").exists() {
                 core::load(data, id)?
@@ -251,6 +259,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "index" => index(data, has(args, "--cold")),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
+        "accounts" | "switching" | "switch" => accounts::run(data, args),
         "awake" => {
             if let Some(mode) = args.get(1) {
                 if !core::AWAKE_MODES.contains(&mode.as_str()) {

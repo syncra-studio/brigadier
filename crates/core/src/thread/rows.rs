@@ -165,9 +165,9 @@ impl Thread {
             // A process gone ends its background subagents with it.
             "exited" => self.end_children("failed"),
             "stopped" => self.end_children("cancelled"),
-            "limited" | "sign_in" => {
+            "limited" | "sign_in" | "unresumable" => {
                 self.break_group();
-                let level = if kind == "limited" {
+                let level = if kind != "sign_in" {
                     "warning"
                 } else {
                     "error"

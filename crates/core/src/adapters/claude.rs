@@ -3,8 +3,9 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts,
-    drop_lines, file_lines, home_path, in_pty, paste, probe, s, shell_step, uuid, version,
+    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
+    cli_home, counts, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
+    uuid, version,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -63,8 +64,8 @@ impl Adapter for Claude {
 
     /// `claude auth status` exits 0 when signed in and says how in its JSON. No key variable is
     /// passed on: in print mode one would bill it in place of the user's subscription.
-    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
-        let out = probe(exe, cwd, &[], &["auth", "status"], 15)?;
+    fn check(&self, spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let out = probe_as(spec, exe, cwd, &[], &["auth", "status"], 15)?;
         let status: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
         let signed_in = out.status.success();
         let how = match s(&status, &["authMethod"]) {
@@ -85,6 +86,21 @@ impl Adapter for Claude {
             } else {
                 vec![]
             },
+        })
+    }
+
+    /// `CLAUDE_CONFIG_DIR` keeps a Claude account's login apart, its Keychain entry included. A
+    /// Console sign-in without an API key isn't kept apart, so only subscription sign-ins are
+    /// allowed (code.claude.com/docs/en/authentication) [D51].
+    fn accounts(&self) -> Option<Accounts> {
+        Some(Accounts {
+            var: "CLAUDE_CONFIG_DIR",
+            home: ".claude",
+            links: &["projects", "CLAUDE.md"],
+            vendor: "Anthropic",
+            sign_in: &["auth", "login", "--claudeai"],
+            sign_out: &["auth", "logout"],
+            kinds: &["Claude account"],
         })
     }
 
@@ -247,10 +263,14 @@ impl Adapter for Claude {
     }
 
     /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
-    fn forget(&self, _spec: &Spec, resume: &str) -> Result<(), String> {
-        drop_lines(&home_path(".claude/history.jsonl"), "sessionId", resume)
-            .map(drop)
-            .map_err(|e| e.to_string())
+    fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
+        drop_lines(
+            &cli_home(spec, ".claude", "history.jsonl"),
+            "sessionId",
+            resume,
+        )
+        .map(drop)
+        .map_err(|e| e.to_string())
     }
 
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {

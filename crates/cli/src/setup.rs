@@ -112,7 +112,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
     let exe = a.exe();
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
-        match a.check(&exe, cwd) {
+        match a.check(&Spec::default(), &exe, cwd) {
             Ok(c) => {
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();
@@ -132,15 +132,20 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
 
 /// The agent's setup run: which, whether it still runs, and how it ended.
 fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
-    let id = format!("{SETUP}{}", a.name());
-    let Ok(spec) = core::load(data, &id) else {
+    run_state(data, &format!("{SETUP}{}", a.name()), a.code_page())
+}
+
+/// A setup run's state: which, whether it still runs, and how it ended; with `code_pages`, the
+/// code page a running sign-in printed.
+pub fn run_state(data: &Path, id: &str, code_pages: bool) -> Value {
+    let Ok(spec) = core::load(data, id) else {
         return Value::Null;
     };
-    let ping = owner::call(data, &id, json!({"op": "ping"})).unwrap_or_default();
+    let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
     let running = !ping["child"].is_null();
     let action = spec.opts.get("setup").map(String::as_str);
     // Its output is read only while a sign-in that offers a code page runs.
-    let page = running && action == Some("sign-in") && a.code_page();
+    let page = running && action == Some("sign-in") && code_pages;
     let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
         let wanted = |k| k == log::EXITED || (page && k == log::PTY);
@@ -203,23 +208,10 @@ fn start(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> io::Result<Value> {
-    if session_dir(data, id).join("session.json").exists() {
-        let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
-        if !ping["child"].is_null() {
-            return Ok(json!({"ok": true, "id": id, "running": true}));
-        }
-        close(data, id)?;
+    if let Some(running) = still_running(data, id)? {
+        return Ok(running);
     }
-    let home = adapters::home_path("").display().to_string();
-    let spec = Spec {
-        id: id.into(),
-        backend: a.name().into(),
-        mode: "pty".into(),
-        cwd: home.clone(),
-        opts: [("setup".to_string(), action.to_string())].into(),
-        created: log::now_ms(),
-        ..Default::default()
-    };
+    let spec = setup_spec(a, id, action);
     let (argv, env) = if action == "install" {
         let line = a
             .install()
@@ -240,19 +232,55 @@ fn start(
             std::iter::once(exe.display().to_string()).chain(words.iter().map(|w| w.to_string()));
         (argv.collect(), adapters::base_env(&spec, &exe, a.keys()))
     };
-    let spec = core::create(data, &spec)?;
+    in_terminal(data, &spec, argv, env, cols, rows)
+}
+
+/// A run still going is shown again; an ended one is replaced.
+pub fn still_running(data: &Path, id: &str) -> io::Result<Option<Value>> {
+    if session_dir(data, id).join("session.json").exists() {
+        let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
+        if !ping["child"].is_null() {
+            return Ok(Some(json!({"ok": true, "id": id, "running": true})));
+        }
+        close(data, id)?;
+    }
+    Ok(None)
+}
+
+pub fn setup_spec(a: &dyn Adapter, id: &str, action: &str) -> Spec {
+    Spec {
+        id: id.into(),
+        backend: a.name().into(),
+        mode: "pty".into(),
+        cwd: adapters::home_path("").display().to_string(),
+        opts: [("setup".to_string(), action.to_string())].into(),
+        created: log::now_ms(),
+        ..Default::default()
+    }
+}
+
+/// Starts `argv` in a terminal on the setup run's own host [D47, D60].
+pub fn in_terminal(
+    data: &Path,
+    spec: &Spec,
+    argv: Vec<String>,
+    env: Vec<(String, String)>,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> io::Result<Value> {
+    let spec = core::create(data, spec)?;
     owner::ensure(data, &spec)?;
     let env: serde_json::Map<String, Value> = env.into_iter().map(|(k, v)| (k, v.into())).collect();
     // The environment reaches the host over its socket only: the log records the argv, never it.
-    let req = json!({"op": "spawn", "argv": argv, "env": env, "cwd": home, "pty": true, "keep_stdin": true,
-        "cols": cols.unwrap_or(100), "rows": rows.unwrap_or(30), "backend": a.name()});
-    let mut reply = owner::call(data, id, req)?;
-    reply["id"] = id.into();
+    let req = json!({"op": "spawn", "argv": argv, "env": env, "cwd": spec.cwd, "pty": true, "keep_stdin": true,
+        "cols": cols.unwrap_or(100), "rows": rows.unwrap_or(30), "backend": spec.backend});
+    let mut reply = owner::call(data, &spec.id, req)?;
+    reply["id"] = spec.id.clone().into();
     Ok(reply)
 }
 
 /// Stops a setup run and removes its folder: nothing of it stays [D35].
-fn close(data: &Path, id: &str) -> io::Result<()> {
+pub fn close(data: &Path, id: &str) -> io::Result<()> {
     let _ = owner::call(data, id, json!({"op": "stop", "by": "user"}));
     owner::release(data, id)?;
     match fs::remove_dir_all(session_dir(data, id)) {

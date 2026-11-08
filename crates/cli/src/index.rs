@@ -164,7 +164,8 @@ impl Index {
             }
             let works = e.error.is_none() && fold::works(&f.fold, &live);
             let row = json!({"id": id, "title": e.title, "state": state, "backend": f.fold.backend,
-                             "updated": updated, "items": f.fold.items, "error": e.error, "works": works});
+                             "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
+                             "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend)});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

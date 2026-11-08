@@ -36,6 +36,8 @@ pub enum Event {
     Resume(String),
     Limited(String),
     SignIn(String),
+    /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
+    Unresumable(String),
     /// A question to the user: its id (the asking tool call's), the question and its options.
     Question(String, String, Vec<String>),
     /// What the user answered, matched to the question by id; None when the CLI gave up asking.
@@ -98,6 +100,25 @@ pub struct Check {
     pub models: Vec<(String, bool)>,
 }
 
+/// How a CLI keeps more than one account apart [D51]: one home folder per extra account, named by
+/// its own variable, so each login stays in its own home and nothing is copied or shared.
+pub struct Accounts {
+    /// The variable that points the CLI at a home folder.
+    pub var: &'static str,
+    /// Its default home under HOME, the computer's own login, which Brigadier never touches.
+    pub home: &'static str,
+    /// Entries of the default home linked into each account's home, so a conversation resumes on
+    /// any account: history and instructions, never a credential.
+    pub links: &'static [&'static str],
+    /// The company whose terms the warning names.
+    pub vendor: &'static str,
+    /// Its own sign-in and sign-out, as arguments to its binary, run with `var` set.
+    pub sign_in: &'static [&'static str],
+    pub sign_out: &'static [&'static str],
+    /// Sign-in kinds (`Check::how`) the home keeps apart; any other is refused [D51].
+    pub kinds: &'static [&'static str],
+}
+
 pub trait Adapter: Sync {
     fn name(&self) -> &'static str;
     /// The name people know it by.
@@ -139,9 +160,13 @@ pub trait Adapter: Sync {
         &[]
     }
     /// Its own status commands, run in `cwd` in the environment its sessions get; every probe
-    /// is bounded. Never reads a credential.
-    fn check(&self, _exe: &Path, _cwd: &Path) -> Result<Check, String> {
+    /// is bounded, on the account `spec` names. Never reads a credential.
+    fn check(&self, _spec: &Spec, _exe: &Path, _cwd: &Path) -> Result<Check, String> {
         Err("This CLI has no status check.".into())
+    }
+    /// How it keeps accounts apart; None: one login only (proposed for OpenCode, D90).
+    fn accounts(&self) -> Option<Accounts> {
+        None
     }
     /// Folders it worked in, from its own history, newest first.
     fn projects(&self) -> Vec<PathBuf> {
@@ -228,6 +253,9 @@ pub fn base_env(spec: &Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)>
         keys.iter()
             .filter_map(|k| Some((k.to_string(), login.vars.get(*k)?.clone()))),
     );
+    if let Some((var, home)) = &spec.account {
+        env.push((var.clone(), home.display().to_string()));
+    }
     if spec.mode == "pty" {
         env.push(("TERM".into(), "xterm-256color".into()));
     }
@@ -242,11 +270,23 @@ pub fn probe(
     args: &[&str],
     secs: u64,
 ) -> Result<std::process::Output, String> {
+    probe_as(&Spec::default(), exe, cwd, keys, args, secs)
+}
+
+/// `probe` on an account: `spec.account` sets its home.
+pub fn probe_as(
+    spec: &Spec,
+    exe: &Path,
+    cwd: &Path,
+    keys: &[&str],
+    args: &[&str],
+    secs: u64,
+) -> Result<std::process::Output, String> {
     let mut command = std::process::Command::new(exe);
     command
         .args(args)
         .env_clear()
-        .envs(base_env(&Spec::default(), exe, keys))
+        .envs(base_env(spec, exe, keys))
         .current_dir(cwd);
     setup::run(&mut command, secs)
 }
@@ -273,6 +313,15 @@ pub fn paste(text: &str) -> String {
 
 pub fn home_path(rest: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)
+}
+
+/// `rest` in the CLI's home for this spec: the account's home when it runs on one, else `default`
+/// under HOME.
+pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
+    match &spec.account {
+        Some((_, home)) => home.join(rest),
+        None => home_path(default).join(rest),
+    }
 }
 
 /// Text of a JSON line's field, or empty.

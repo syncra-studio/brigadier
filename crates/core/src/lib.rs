@@ -1,9 +1,11 @@
 //! Provider-neutral session model: Session (a folder), Backend (an adapter), Turn and Item.
 //! Everything here is shared by both owner designs; only how the owner is reached differs.
 
+mod account;
 pub mod adapters;
 pub mod fold;
 pub mod norm;
+pub mod switch;
 pub mod terminal;
 pub mod thread;
 
@@ -19,6 +21,8 @@ use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+pub use account::{account_home, as_run, data_of};
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {
     pub id: String,
@@ -32,6 +36,10 @@ pub struct Spec {
     pub created: u64,
     #[serde(skip)]
     pub dir: PathBuf,
+    /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is
+    /// the computer's own login [D51].
+    #[serde(skip)]
+    pub account: Option<(String, PathBuf)>,
 }
 
 pub fn data_dir() -> PathBuf {
@@ -281,7 +289,7 @@ pub fn send(
         return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
     }
     let resume = f.resume.get(&b).map(String::as_str);
-    let launch = a.launch(spec, resume, Some(text));
+    let launch = a.launch(&as_run(spec, f, &b, None), resume, Some(text));
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let mut req = base;
@@ -432,10 +440,12 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
 pub fn delete(spec: &Spec, f: &Fold) -> Value {
     let swept = sweep(f);
     let (mut removed, mut left, mut keep) = (vec![], vec![], false);
-    for (backend, id) in &f.resume {
+    for (backend, account, id) in &f.convs {
         let Some(a) = adapters::get(backend) else {
             continue;
         };
+        // Each conversation is cleaned where it lives: its account's home [D35, D51].
+        let spec = &as_run(spec, f, backend, Some(account));
         // The id came from the CLI's output: never let an odd one widen what gets deleted.
         if check_id(id).is_err() {
             left.push(format!(

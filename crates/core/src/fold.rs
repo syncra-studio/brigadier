@@ -3,7 +3,9 @@
 //! live child that isn't stopped, and either fresh output or a tool whose processes still run.
 
 use crate::adapters;
-use brigadier_frames::{log, procs};
+
+mod live;
+pub use live::{Live, live, live_groups};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,6 +20,9 @@ pub struct Turn {
     pub backend: String,
     pub text: String,
     pub retry_of: Option<String>,
+    /// The account or agent switch this input continues, as logged with it [D51].
+    #[serde(default)]
+    pub switch: Value,
     pub ts: u64,
     pub delivered: Option<u64>,
     pub began: bool,
@@ -54,6 +59,19 @@ pub struct Fold {
     pub backend: String,
     pub limit: Option<String>,
     pub sign_in: Option<String>,
+    /// The CLI refused to resume the conversation on this account (D90 Q4).
+    #[serde(default)]
+    pub refused: Option<String>,
+    /// The account each backend runs on now, by account id; none is the computer's login [D51].
+    #[serde(default)]
+    pub accounts: BTreeMap<String, String>,
+    /// Every conversation the session had, as (backend, account, id), so delete cleans each one
+    /// where it lives [D35].
+    #[serde(default)]
+    pub convs: BTreeSet<(String, String, String)>,
+    /// The model each backend a switch moved to runs [D51].
+    #[serde(default)]
+    pub models: BTreeMap<String, String>,
     pub cids: BTreeMap<String, u32>,
     pub unknown: u64,
     pub compactions: u64,
@@ -68,7 +86,8 @@ impl Fold {
         if let Some(turn) = self.turns.first().cloned() {
             self.turns.remove(0);
             self.last = Some(
-                json!({"cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts}),
+                json!({"cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
             );
         }
     }
@@ -122,6 +141,23 @@ impl Fold {
                 *self.cids.entry(cid.clone()).or_default() += 1;
                 self.limit = None;
                 self.sign_in = None;
+                self.refused = None;
+                // A switch takes effect with the input that continues it, in the same frame [D51].
+                let switch = &item["switch"];
+                if let Some(to) = switch["to"]["backend"].as_str() {
+                    let account = switch["to"]["account"].as_str().unwrap_or("");
+                    match account {
+                        "" => self.accounts.remove(to),
+                        a => self.accounts.insert(to.into(), a.into()),
+                    };
+                    if let Some(m) = switch["to"]["model"].as_str() {
+                        self.models.insert(to.into(), m.into());
+                    }
+                    // A new conversation: the old one stays in `convs` for delete.
+                    if switch["fresh"] == true {
+                        self.resume.remove(to);
+                    }
+                }
                 // An input while the agent waits on a question is its answer, not a new turn.
                 if let Some(t) = self.turns.first_mut().filter(|t| t.question.is_some()) {
                     t.question = None;
@@ -147,6 +183,7 @@ impl Fold {
                     backend: str_of("backend"),
                     text: str_of("text"),
                     retry_of,
+                    switch: item["switch"].clone(),
                     ts,
                     ..Default::default()
                 });
@@ -266,7 +303,12 @@ impl Fold {
                 };
                 self.turns.insert(at, turn);
             }
-            "resume_id" => drop(self.resume.insert(str_of("backend"), str_of("id"))),
+            "resume_id" => {
+                let (backend, id) = (str_of("backend"), str_of("id"));
+                let account = self.accounts.get(&backend).cloned().unwrap_or_default();
+                self.convs.insert((backend.clone(), account, id.clone()));
+                self.resume.insert(backend, id);
+            }
             "limited" => {
                 self.limit = Some(str_of("message"));
                 self.close("limited", item["message"].clone(), ts);
@@ -274,6 +316,10 @@ impl Fold {
             "sign_in" => {
                 self.sign_in = Some(str_of("message"));
                 self.close("sign_in", item["message"].clone(), ts);
+            }
+            "unresumable" => {
+                self.refused = Some(str_of("message"));
+                self.close("unresumable", item["message"].clone(), ts);
             }
             "stopped" => self.close_all("stopped", item["by"].clone(), ts),
             "compaction" if item["progress"] != "running" => self.compactions += 1,
@@ -301,73 +347,6 @@ pub enum Owner {
     Frozen,
 }
 
-pub struct Live {
-    pub owner: Owner,
-    pub child: Option<procs::Proc>,
-    pub running_below: usize,
-    pub jobs: usize,
-    pub orphans: usize,
-    pub disk_full: bool,
-    pub now: u64,
-}
-
-/// Every recorded group that still has a live member, checked by start time. A set of live group
-/// ids first, so a session with thousands of spawns costs a lookup per group.
-pub fn live_groups(fold: &Fold, all: &[procs::Proc]) -> Vec<(i32, u64)> {
-    let pgids: BTreeSet<i32> = all.iter().map(|p| p.pgid).collect();
-    fold.groups
-        .iter()
-        .filter(|&&(g, s)| pgids.contains(&g) && !procs::group(all, g, s).is_empty())
-        .copied()
-        .collect()
-}
-
-pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs::Proc]) -> Live {
-    let child = fold
-        .child
-        .as_ref()
-        .filter(|c| !c.exited)
-        .and_then(|c| procs::same(c.pid, c.start_us));
-    let running_below = child.map_or(0, |c| {
-        procs::descendants(all, c.pid)
-            .iter()
-            .filter(|p| !p.stopped)
-            .count()
-    });
-    let members: usize = live_groups(fold, all)
-        .iter()
-        .map(|&(g, s)| procs::group(all, g, s).len())
-        .sum();
-    // A live terminal's mirror isn't a job: it ends with the terminal.
-    let mirror = (fold.child.as_ref())
-        .filter(|_| child.is_some())
-        .and_then(|c| c.mirror_group)
-        .map_or(0, |(g, s)| procs::group(all, g, s).len());
-    let jobs = members.saturating_sub(child.is_some() as usize + running_below + mirror);
-    let orphans = if owner == Owner::Dead { members } else { 0 };
-    Live {
-        owner,
-        child,
-        running_below,
-        jobs,
-        orphans,
-        disk_full: free_bytes(data_dir) < (2 << 20),
-        now: log::now_ms(),
-    }
-}
-
-fn free_bytes(path: &std::path::Path) -> u64 {
-    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
-        return u64::MAX;
-    };
-    let mut s = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
-    if unsafe { libc::statvfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
-        return u64::MAX;
-    }
-    let s = unsafe { s.assume_init() };
-    s.f_bavail as u64 * s.f_frsize
-}
-
 pub fn status(fold: &Fold, live: &Live) -> Value {
     let (state, reason) = state(fold, live);
     let turn = fold.turns.first().map(|t| json!({"cid": t.cid, "origin": t.origin, "backend": t.backend, "delivered": t.delivered.is_some(), "began": t.began, "tools": t.tools.len()}));
@@ -381,7 +360,21 @@ pub fn status(fold: &Fold, live: &Live) -> Value {
     json!({"state": state, "reason": reason, "turn": turn, "last": fold.last, "owner": format!("{:?}", live.owner).to_lowercase(),
            "child": live.child.map(|c| c.pid), "jobs": live.jobs, "helpers": live.running_below, "orphans": live.orphans, "disk_full": live.disk_full,
            "undelivered": undelivered, "dup_cids": dups, "unknown": fold.unknown, "compactions": fold.compactions,
-           "items": fold.items, "backend": fold.backend, "resume": fold.resume, "versions": fold.versions})
+           "items": fold.items, "backend": fold.backend, "resume": fold.resume, "versions": fold.versions,
+           "account": fold.accounts.get(&fold.backend), "switchable": switchable(fold)})
+}
+
+/// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on, even with
+/// the terminal open, which the state would show first [D47]. Only while no turn is open.
+pub fn switchable(fold: &Fold) -> Option<&'static str> {
+    if !fold.turns.is_empty() {
+        return None;
+    }
+    match () {
+        _ if fold.limit.is_some() => Some("limited"),
+        _ if fold.refused.is_some() => Some("unresumable"),
+        _ => None,
+    }
 }
 
 /// Whether this session keeps the Mac awake [D30, D36]: background jobs its live agent left running,
@@ -423,6 +416,7 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             }
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
             _ if fold.limit.is_some() => ("limited", fold.limit.clone().into()),
+            _ if fold.refused.is_some() => ("unresumable", fold.refused.clone().into()),
             _ if outcome == "interrupted" => (
                 "interrupted",
                 fold.last.clone().unwrap_or_default()["reason"].clone(),

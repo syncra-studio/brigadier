@@ -2,13 +2,16 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, drop_lines,
-    file_lines, home_path, in_pty, paste, probe, s, shell_step, version,
+    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
+    cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step, version,
 };
 use crate::Spec;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+mod record;
+use record::{diff, rollouts};
 
 pub struct Codex;
 
@@ -53,8 +56,8 @@ impl Adapter for Codex {
 
     /// `codex login status` exits 0 when signed in and says how on stderr. Only the kind of
     /// sign-in is kept: its API-key line shows part of the key.
-    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
-        let out = probe(exe, cwd, &[], &["login", "status"], 15)?;
+    fn check(&self, spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let out = probe_as(spec, exe, cwd, &[], &["login", "status"], 15)?;
         let said = String::from_utf8_lossy(&out.stderr).to_string()
             + &String::from_utf8_lossy(&out.stdout);
         let signed_in = out.status.success();
@@ -76,6 +79,20 @@ impl Adapter for Codex {
             } else {
                 vec![]
             },
+        })
+    }
+
+    /// `CODEX_HOME` holds its login, in `auth.json` or a keyring entry keyed by that folder
+    /// (developers.openai.com/codex/auth), and its history [D51].
+    fn accounts(&self) -> Option<Accounts> {
+        Some(Accounts {
+            var: "CODEX_HOME",
+            home: ".codex",
+            links: &["sessions", "archived_sessions", "config.toml", "AGENTS.md"],
+            vendor: "OpenAI",
+            sign_in: &["login"],
+            sign_out: &["logout"],
+            kinds: &["ChatGPT account", "API key"],
         })
     }
 
@@ -149,11 +166,11 @@ impl Adapter for Codex {
             "turn.completed" => vec![Event::Usage(v["usage"].clone()), Event::TurnEnd(true)],
             "turn.failed" => {
                 let mut events: Vec<Event> =
-                    classify(s(&v, &["error", "message"])).into_iter().collect();
+                    refused(s(&v, &["error", "message"])).into_iter().collect();
                 events.push(Event::TurnEnd(false));
                 events
             }
-            "error" => vec![classify(s(&v, &["message"])).unwrap_or(Event::Unknown(line.into()))],
+            "error" => vec![refused(s(&v, &["message"])).unwrap_or(Event::Unknown(line.into()))],
             // A tool may be reported only once it ended, so its end repeats its start.
             "item.started" | "item.completed" if kind == "collab_tool_call" => agents(item, done),
             "item.started" | "item.completed" if TOOLS.contains(&kind) => {
@@ -205,10 +222,14 @@ impl Adapter for Codex {
 
     /// Its prompt history keeps the terminal's prompts by thread id, and a TUI that was killed
     /// leaves its writer lock; one a live writer holds stays, by Codex's own rule [D35].
-    fn forget(&self, _spec: &Spec, resume: &str) -> Result<(), String> {
-        drop_lines(&home_path(".codex/history.jsonl"), "session_id", resume)
-            .map_err(|e| e.to_string())?;
-        let lock = home_path(".codex/thread-writer-locks").join(format!("{resume}.lock"));
+    fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
+        drop_lines(
+            &cli_home(spec, ".codex", "history.jsonl"),
+            "session_id",
+            resume,
+        )
+        .map_err(|e| e.to_string())?;
+        let lock = cli_home(spec, ".codex", "thread-writer-locks").join(format!("{resume}.lock"));
         if let Ok(f) = std::fs::File::open(&lock)
             && f.try_lock().is_ok()
         {
@@ -284,28 +305,6 @@ impl Adapter for Codex {
             }
         }
         (turns > turn).then_some(edits)
-    }
-}
-
-/// A rollout's change to one file as a unified diff: an update's own, or a whole added or deleted file.
-fn diff(c: &Value) -> String {
-    let lines = |sign: char| {
-        let all: Vec<String> = s(c, &["content"])
-            .lines()
-            .map(|l| format!("{sign}{l}"))
-            .collect();
-        (all.len(), all.join("\n"))
-    };
-    match s(c, &["type"]) {
-        "add" => {
-            let (n, body) = lines('+');
-            format!("@@ -0,0 +1,{n} @@\n{body}")
-        }
-        "delete" => {
-            let (n, body) = lines('-');
-            format!("@@ -1,{n} +0,0 @@\n{body}")
-        }
-        _ => s(c, &["unified_diff"]).to_string(),
     }
 }
 
@@ -405,26 +404,6 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
     events
 }
 
-/// Rollouts whose names end with one of `names`: they live under sessions/YYYY/MM/DD/.
-fn rollouts(names: &[String]) -> Vec<PathBuf> {
-    let mut found = vec![];
-    let mut dirs = vec![home_path(".codex/sessions")];
-    while let Some(dir) = dirs.pop() {
-        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                dirs.push(path);
-            } else if path
-                .file_name()
-                .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
-            {
-                found.push(path);
-            }
-        }
-    }
-    found
-}
-
 /// A line of the CLI's rollout, which a terminal's mirror copies [D47]: only its events count,
 /// in the same shapes as `exec --json` once named alike.
 fn rollout(v: &Value) -> Vec<Event> {
@@ -487,4 +466,15 @@ fn rollout_item(item: &Value) -> Vec<Event> {
             }
         }
     }
+}
+
+/// A limit or sign-in, or a thread Codex won't resume on this account: its saved reasoning is
+/// encrypted for another organisation (openai/codex#13724), so only a new thread goes on (D90 Q4).
+fn refused(message: &str) -> Option<Event> {
+    if message.contains("invalid_encrypted_content")
+        || message.contains("organization_id did not match")
+    {
+        return Some(Event::Unresumable(message.chars().take(300).collect()));
+    }
+    classify(message)
 }

@@ -1,9 +1,9 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
-use super::{Adapter, Done, Event, Launch, Timing, Tool, base_env, s};
+use super::{Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, s};
 use crate::Spec;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Fake;
 
@@ -17,6 +17,38 @@ impl Adapter for Fake {
             .ok()?
             .with_file_name("brigadier-fake");
         exe.exists().then_some(exe)
+    }
+
+    /// Accounts for drills and demos only, when `BRIGADIER_FAKE_ACCOUNTS` is set: each signs in
+    /// with a mark in its home, so switching is shown with no real login [D51].
+    fn accounts(&self) -> Option<Accounts> {
+        std::env::var_os("BRIGADIER_FAKE_ACCOUNTS")?;
+        Some(Accounts {
+            var: "FAKE_ACCOUNT",
+            home: ".brigadier-fake",
+            links: &[],
+            vendor: "the fake agent's vendor",
+            sign_in: &["login"],
+            sign_out: &["logout"],
+            kinds: &["fake"],
+        })
+    }
+
+    fn check(&self, spec: &Spec, exe: &Path, _cwd: &Path) -> Result<Check, String> {
+        let signed_in = spec
+            .account
+            .as_ref()
+            .is_none_or(|(_, home)| home.join("login").exists());
+        Ok(Check {
+            version: "fake 1".into(),
+            signed_in: Some(signed_in),
+            how: if signed_in { "fake" } else { "" }.into(),
+            models: if signed_in && exe.exists() {
+                vec![("fake".into(), true)]
+            } else {
+                vec![]
+            },
+        })
     }
 
     fn per_turn(&self) -> bool {

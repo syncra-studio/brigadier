@@ -59,8 +59,15 @@ pub struct Thread {
 const PAGE: usize = 2000;
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
-const CLOSES: [&str; 7] = [
-    "exited", "turn_end", "limited", "sign_in", "stopped", "note", "input",
+const CLOSES: [&str; 8] = [
+    "exited",
+    "turn_end",
+    "limited",
+    "sign_in",
+    "unresumable",
+    "stopped",
+    "note",
+    "input",
 ];
 
 impl Thread {
@@ -153,6 +160,14 @@ impl Thread {
             waited: 0,
             kept: vec![],
         });
+        // A switch shows as its note [D51]; a continuation it wrote (not the user's words) shows
+        // only that.
+        if let Some(note) = t.switch["note"].as_str() {
+            self.add(json!({"kind": "notice", "level": "info", "text": note}));
+            if t.origin != "user" {
+                return;
+            }
+        }
         // An input, or a prompt typed in the terminal (the user's, with no command id).
         if t.cid.is_some() || t.origin == "user" {
             let origin = if t.origin == "user" { "user" } else { "system" };
@@ -175,7 +190,7 @@ impl Thread {
         let status = match outcome {
             "done" => "done",
             "stopped" => "cancelled",
-            "failed" | "interrupted" | "limited" | "sign_in" => "failed",
+            "failed" | "interrupted" | "limited" | "sign_in" | "unresumable" => "failed",
             _ => "failed",
         };
         // A step the CLI never reported ending can't outlive its turn: it takes the turn's end, its

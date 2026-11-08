@@ -39,7 +39,7 @@ struct Child {
 }
 
 /// What this host can do beyond the first frozen ops, so a client asks before it relies on any.
-pub const CAPS: [&str; 1] = ["terminal"];
+pub const CAPS: [&str; 2] = ["terminal", "switch"];
 /// How long a final drain may take: a child's pipes, then its mirror's last read.
 const DRAIN: Duration = Duration::from_secs(10);
 
@@ -196,7 +196,7 @@ impl Runner {
                 json!({"ok": true, "cid": cid, "dup": true, "result": if delivered { "delivered" } else { "logged" }}),
             );
         }
-        let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"]});
+        let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"], "switch": req["switch"]});
         if let Err(e) = self.append(log::INTENT, data.to_string().as_bytes(), true) {
             return Some(
                 json!({"ok": false, "cid": cid, "result": "not_logged", "error": e.to_string(), "disk_full": is_full(&e)}),
@@ -224,8 +224,8 @@ impl Runner {
 
     fn spawn(self: &Arc<Self>, req: &Value) -> Value {
         let _op = self.op.lock().unwrap();
-        // A handoff [D47]: only if nothing reached the log since the caller judged the session idle.
-        // Then the idle piped child goes first, its exit and output fully logged, before the new one.
+        // A handoff [D47] or a switch [D51]: only if nothing reached the log since the caller judged
+        // it idle. The idle child goes first (a switch's terminal too), its exit and output logged.
         if let Some(len) = req["if_len"].as_u64()
             && self.log.lock().unwrap().len != len
         {
@@ -234,7 +234,7 @@ impl Runner {
         let replace = req["replace"] == true
             && (self.child.lock().unwrap())
                 .as_ref()
-                .is_some_and(|c| !c.pty && !c.exited);
+                .is_some_and(|c| (!c.pty || req["switch"].is_object()) && !c.exited);
         let stops = self.stops.load(Ordering::SeqCst) + replace as u64; // a Stop meanwhile counts
         if replace {
             self.stop("handoff", 2000);

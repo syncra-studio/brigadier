@@ -111,7 +111,7 @@ impl Adapter for OpenCode {
 
     /// Signed in means a saved account (`auth list`); usable means `models` lists something for
     /// this folder: a saved or variable key, a local server it found, or its free models.
-    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
+    fn check(&self, _spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
         let text = |args: &[&str]| -> Result<String, String> {
             let out = probe(exe, cwd, self.keys(), args, 30)?;
             let said = String::from_utf8_lossy(&out.stdout).into_owned();

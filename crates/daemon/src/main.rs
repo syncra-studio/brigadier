@@ -57,9 +57,20 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const TICK: Duration = Duration::from_millis(500);
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 10] = [
-    "start", "send", "stop", "recover", "delete", "terminal", "agents", "setup", "profile",
+const ROUTED: [&str; 13] = [
+    "start",
+    "send",
+    "stop",
+    "recover",
+    "delete",
+    "terminal",
+    "agents",
+    "setup",
+    "profile",
     "projects",
+    "accounts",
+    "switching",
+    "switch",
 ];
 /// How often an open thread checks its log for new frames.
 const FOLLOW: Duration = Duration::from_millis(100);
@@ -114,11 +125,14 @@ fn main() -> io::Result<()> {
             }
         });
     }
+    // The limit each session was last looked at for, by its item count: once per limit [D51].
+    let mut seen: HashMap<String, Value> = HashMap::new();
     loop {
         match index.sync() {
             Ok((rows, gone)) => publish(&state, rows, gone),
             Err(e) => eprintln!("brigadierd: {e}"),
         }
+        auto_switch(&data, &index.rows, &mut seen);
         // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
         let on = match awake_mode(&data) {
             "off" => false,
@@ -127,6 +141,35 @@ fn main() -> io::Result<()> {
         };
         awake.set(on);
         thread::sleep(TICK);
+    }
+}
+
+/// Moves a session at its limit on by itself, only where the user turned that on [D51]. Off costs
+/// one small read per limit and does nothing else. The switch runs off this loop; the host and
+/// the limit's fixed cid keep it to one, whoever else acts on the same limit [D54, D82].
+fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashMap<String, Value>) {
+    seen.retain(|id, _| rows.contains_key(id));
+    for (id, row) in rows {
+        let Some(why) = row["switchable"].as_str() else {
+            seen.remove(id);
+            continue;
+        };
+        if seen.get(id) == Some(&row["items"]) {
+            continue;
+        }
+        seen.insert(id.clone(), row["items"].clone());
+        if !brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why) {
+            continue;
+        }
+        let (data, id) = (data.to_path_buf(), id.clone());
+        thread::spawn(move || {
+            let args = ["switch", &id, "--auto"].map(String::from);
+            match brigadier::run(&data, &args) {
+                Ok(r) if r["ok"] == true => {}
+                Ok(r) => eprintln!("brigadierd: switch {id}: {}", r["error"]),
+                Err(e) => eprintln!("brigadierd: switch {id}: {e}"),
+            }
+        });
     }
 }
 
