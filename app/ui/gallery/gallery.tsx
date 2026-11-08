@@ -5,7 +5,6 @@ import { Choices } from "./choices";
 import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
 import { AidsGallery } from "./aids";
-import { MenuKindsGallery } from "./menu-kinds";
 import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
@@ -103,7 +102,6 @@ function GalleryPage() {
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />
-        <MenuKindsGallery />
         <PickersGallery />
         <Thread />
         <Notices />
