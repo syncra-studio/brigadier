@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -17,10 +17,6 @@ type DemoSession = Session<Item, FakeCommand>;
 
 // Lives as long as the page, as the daemon outlives a window.
 const fake = createFake();
-
-// When the user pressed Send for each draft id, to time how soon its row shows and is confirmed.
-// Cleared on reopen: a row restored from a snapshot wasn't sent from this window.
-const pressedAt = new Map<string, number>();
 
 export function Demo() {
   const [session, setSession] = useState(() => createSession(fake.backend));
@@ -43,10 +39,7 @@ export function Demo() {
       <Controls
         fake={fake}
         session={session}
-        reopen={() => {
-          pressedAt.clear();
-          setSession(createSession(fake.backend));
-        }}
+        reopen={() => setSession(createSession(fake.backend))}
         wait={wait}
         setWait={setWait}
       />
@@ -115,20 +108,6 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
   const slow = useAfter(state === "pending");
   useSeen(state === "pending" ? (slow ? "pending" : null) : state);
   const hidden = wait && (state === "pending" || state === "unknown");
-  const drawn = entry !== undefined && !hidden;
-  const confirmed = entry !== undefined && entry.pending === null;
-  const pressed = pressedAt.get(entryKey);
-  const [shownMs, setShownMs] = useState<number | null>(null);
-  const [confirmedMs, setConfirmedMs] = useState<number | null>(null);
-  useEffect(() => {
-    if (!drawn || pressed === undefined || shownMs !== null) return;
-    // Runs in the frame the row is first painted in.
-    const frame = requestAnimationFrame(() => setShownMs(performance.now() - pressed));
-    return () => cancelAnimationFrame(frame);
-  }, [drawn, pressed, shownMs]);
-  useEffect(() => {
-    if (confirmed && pressed !== undefined && confirmedMs === null) setConfirmedMs(performance.now() - pressed);
-  }, [confirmed, pressed, confirmedMs]);
   if (!entry || hidden) return null;
   const { item, pending } = entry;
   if (item.kind !== "message") return <p className="text-sm text-muted-foreground">{item.kind}</p>;
@@ -141,29 +120,10 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
       time={item.sentAt}
       sending={state === "pending" && slow}
       failed={failed}
-      onRetry={() => {
-        // A retry is timed from its own press.
-        pressedAt.set(entryKey, performance.now());
-        session.retry(entryKey);
-      }}
-      onDiscard={() => session.discard(entryKey)}
+      onRetry={() => session.retry(entryKey)}
       unconfirmed={state === "unknown"}
       dimmed={state === "error"}
-    >
-      {shownMs !== null && (
-        <Note>
-          on screen in {Math.round(shownMs)} ms{confirmedMs !== null && ` · confirmed in ${Math.round(confirmedMs)} ms`}
-        </Note>
-      )}
-    </UserBubble>
-  );
-}
-
-function Note({ children }: { children: ReactNode }) {
-  return (
-    <p className="self-end text-xs text-muted-foreground tabular-nums">
-      {children}
-    </p>
+    />
   );
 }
 
@@ -194,10 +154,8 @@ function Composer({ session, wait }: { session: DemoSession; wait: boolean }) {
   // Waiting for the backend, Send spins until the last send's row arrives or is refused.
   const busy = wait && !!last?.pending && pendingState(last.pending) !== "error";
   const send = () => {
-    const pressed = performance.now();
     const words = text.trim();
     if (!words || !live || busy) return;
-    pressedAt.set(draftId, pressed);
     session.send(draftId, { text: words }, preview(draftId, words));
     setLastId(draftId);
     setText("");
