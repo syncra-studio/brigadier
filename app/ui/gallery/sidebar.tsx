@@ -2,7 +2,6 @@
 import { useState } from "react";
 
 import { NavList } from "../src/components/nav";
-import { type Hit, type TextSearch, wordStarts } from "../src/palette/palette";
 import { SidebarProvider } from "../src/components/sidebar";
 import { RowMark, SessionRowItem } from "../src/sidebar/row";
 import { AppSidebar } from "../src/sidebar/sidebar";
@@ -42,25 +41,6 @@ export const ROWS: SessionRow[] = [
   row("11", "Clean up the old exports", "waiting_answer", "needs", "p1", { reason: { approval: "r1" } }),
 ];
 
-// What some fake sessions said: Rust's message search stands in as a word-start match over one message [D72].
-const SAID: Record<string, string> = {
-  "4": "The login test fails on CI because the socket closes before the export finishes writing.",
-  "6": "Most of the time goes into measuring rows, and the exports panel re-renders on every frame.",
-  "8": "Make the hero say what the product does in one line, then export the copy for review.",
-  "10": "Sockets stay open after the window closes; the daemon should own them instead.",
-};
-const said = (q: string): Hit[] =>
-  Object.entries(SAID).flatMap(([id, text]) => {
-    const at = wordStarts(text, q);
-    return at ? [{ id, snippet: text, at }] : [];
-  });
-/** ⌘K's text search on fake data, answering after `ms`. */
-export const fakeSearch =
-  (ms: number): TextSearch =>
-  (q) =>
-    new Promise((resolve) => setTimeout(() => resolve(said(q)), ms));
-const SEARCH = fakeSearch(400);
-
 // Two pinned, and a long tail of quiet ones that pushes the rows needing you out of view, so the pill shows [D185, D200].
 const LONG: SessionRow[] = [
   ...ROWS.map((each) => (each.id === "4" || each.id === "8" ? { ...each, pinned: at(9, Number(each.id)) } : each)),
@@ -86,7 +66,6 @@ function Demo({ storeKey, rows, offline = false }: { storeKey: string; rows: Ses
           onOpen={setActive}
           onNewSession={() => setActive(null)}
           storeKey={storeKey}
-          search={SEARCH}
         />
         <div className="flex flex-1 p-4 pt-titlebar text-sm text-muted-foreground">{active === null ? "Home" : `Session ${active}`}</div>
       </SidebarProvider>

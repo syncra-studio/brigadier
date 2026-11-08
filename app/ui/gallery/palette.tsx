@@ -3,10 +3,27 @@ import { useState } from "react";
 
 import { Button } from "../src/components/button";
 import { Dialog, DialogContent } from "../src/components/dialog";
-import { PALETTE_FRAME, PaletteBody, type PaletteProps, type PaletteRow, SearchPalette, type TextSearch } from "../src/palette/palette";
+import { type Hit, PALETTE_FRAME, PaletteBody, type PaletteProps, type PaletteRow, SearchPalette, type TextSearch, wordStarts } from "../src/palette/palette";
 import { Held, Row, Section, State } from "./parts";
-import { fakeSearch, PROJECTS, ROWS } from "./sidebar";
+import { PROJECTS, ROWS } from "./sidebar";
 
+// What some fake sessions said: Rust's message search stands in as a word-start match over one message [D72].
+const SAID: Record<string, string> = {
+  "4": "The login test fails on CI because the socket closes before the export finishes writing.",
+  "6": "Most of the time goes into measuring rows, and the exports panel re-renders on every frame.",
+  "8": "Make the hero say what the product does in one line, then export the copy for review.",
+  "10": "Sockets stay open after the window closes; the daemon should own them instead.",
+};
+const said = (q: string): Hit[] =>
+  Object.entries(SAID).flatMap(([id, text]) => {
+    const at = wordStarts(text, q);
+    return at ? [{ id, snippet: text, at }] : [];
+  });
+/** ⌘K's text search on fake data, answering after `ms`. */
+const fakeSearch =
+  (ms: number): TextSearch =>
+  (q) =>
+    new Promise((resolve) => setTimeout(() => resolve(said(q)), ms));
 const AT_ONCE = fakeSearch(0);
 const SLOW = fakeSearch(600);
 const NEVER: TextSearch = () => new Promise(() => {});
@@ -61,7 +78,7 @@ function Live() {
 export function PaletteGallery() {
   return (
     <Section title="Search palette (step 1x)">
-      <Row name="live · ⌘K also opens it in the sidebar demos above">
+      <Row name="live">
         <Live />
       </Row>
       <Row name="empty query: recent, needing you first · typed: titles at once, text after · project match">

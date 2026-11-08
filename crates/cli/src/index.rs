@@ -17,7 +17,8 @@ use std::time::UNIX_EPOCH;
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
 /// 3: titles follow the short local rule [D186], so older indexes rebuild them.
-const SCHEMA: i64 = 3;
+/// 4: `sessions.archived`, so search puts archived sessions last [D197].
+const SCHEMA: i64 = 4;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
 
@@ -110,7 +111,7 @@ impl Index {
         db.execute_batch(&format!(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
              CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, title TEXT, state TEXT,
-               backend TEXT, updated INTEGER, items INTEGER, folded BLOB);
+               backend TEXT, updated INTEGER, items INTEGER, folded BLOB, archived INTEGER NOT NULL DEFAULT 0);
              CREATE VIRTUAL TABLE IF NOT EXISTS text USING fts5(id UNINDEXED, body, tokenize='unicode61');
              PRAGMA user_version={};",
             version()
@@ -259,10 +260,12 @@ impl Index {
         let tx = self.db.transaction()?;
         for row in changed {
             tx.execute(
-                "INSERT INTO sessions(id, title, state, backend, updated, items) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
-                 ON CONFLICT(id) DO UPDATE SET title=?2, state=?3, backend=?4, updated=?5, items=?6",
+                "INSERT INTO sessions(id, title, state, backend, updated, items, archived) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(id) DO UPDATE SET title=?2, state=?3, backend=?4, updated=?5, items=?6, archived=?7",
+                // A row says it's archived once archive exists (1v); until then every row is active.
                 params![row["id"].as_str(), row["title"].as_str(), row["state"].as_str(),
-                        row["backend"].as_str(), row["updated"].as_i64(), row["items"].as_i64()],
+                        row["backend"].as_str(), row["updated"].as_i64(), row["items"].as_i64(),
+                        !matches!(row["archived"], Value::Null | Value::Bool(false))],
             )?;
         }
         for id in resets {
@@ -317,9 +320,17 @@ fn load(db: &Connection) -> rusqlite::Result<BTreeMap<String, Entry>> {
     Ok(entries)
 }
 
-/// Session ids whose text holds every word, each as a whole word or a word start. Its own
-/// read-only connection and a single statement, so no read transaction stays open.
-pub fn search(data: &Path, q: &str) -> io::Result<Vec<String>> {
+/// At most this many sessions come back from a search.
+const HITS: usize = 50;
+/// Where a match starts and ends in a snippet, marked by `snippet()` and taken out again.
+const OPEN: char = '\u{2}';
+const CLOSE: char = '\u{3}';
+
+/// Sessions whose text holds every word, each as a whole word or a word start [D72]: archived ones last, then the
+/// best match first [D197]. Each comes with its best message's snippet on one line, and where the words are in it
+/// as UTF-16 offsets, the way the UI counts [D196]. Its own read-only connection and a single statement, so no
+/// read transaction stays open.
+pub fn search(data: &Path, q: &str) -> io::Result<Vec<Value>> {
     let terms: Vec<String> = q
         .split_whitespace()
         .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
@@ -329,13 +340,52 @@ pub fn search(data: &Path, q: &str) -> io::Result<Vec<String>> {
     }
     let db = Connection::open_with_flags(data.join("index.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(db_err)?;
-    // Each word may sit in a different message of the same session.
+    // Each word may sit in a different message of the same session; the snippet comes from the message
+    // holding the most of them.
     let one = "SELECT id FROM text WHERE text MATCH ?";
-    let inner = vec![one; terms.len()].join(" INTERSECT ");
-    let sql = format!("SELECT DISTINCT id FROM ({inner}) LIMIT 500");
+    let every = vec![one; terms.len()].join(" INTERSECT ");
+    let sql = format!(
+        "SELECT text.id, snippet(text, 1, char(2), char(3), '…', 12) FROM text JOIN sessions ON sessions.id = text.id
+         WHERE text MATCH ? AND text.id IN ({every}) ORDER BY sessions.archived, text.rank"
+    );
+    let any = terms.join(" OR ");
+    let params = std::iter::once(&any).chain(&terms);
     let mut stmt = db.prepare(&sql).map_err(db_err)?;
-    stmt.query_map(rusqlite::params_from_iter(&terms), |r| r.get(0))
-        .map_err(db_err)?
-        .collect::<rusqlite::Result<Vec<String>>>()
-        .map_err(db_err)
+    let mut rows = stmt
+        .query(rusqlite::params_from_iter(params))
+        .map_err(db_err)?;
+    let (mut hits, mut seen) = (vec![], std::collections::HashSet::new());
+    // shortcut: ranks every message holding any of the words before the first comes back; fine for the
+    // words people type, a per-session rank table if a common one ever profiles slow.
+    while hits.len() < HITS
+        && let Some(row) = rows.next().map_err(db_err)?
+    {
+        let id: String = row.get(0).map_err(db_err)?;
+        if seen.insert(id.clone()) {
+            hits.push(hit(id, &row.get::<_, String>(1).map_err(db_err)?));
+        }
+    }
+    Ok(hits)
+}
+
+/// A snippet on one line with its marks taken out, and where they were.
+fn hit(id: String, marked: &str) -> Value {
+    let (mut snippet, mut at, mut from, mut len) = (String::new(), vec![], 0, 0);
+    for word in marked.split_whitespace() {
+        if !snippet.is_empty() {
+            snippet.push(' ');
+            len += 1;
+        }
+        for c in word.chars() {
+            match c {
+                OPEN => from = len,
+                CLOSE => at.push([from, len]),
+                c => {
+                    snippet.push(c);
+                    len += c.len_utf16();
+                }
+            }
+        }
+    }
+    json!({"id": id, "snippet": snippet, "at": at})
 }

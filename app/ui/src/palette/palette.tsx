@@ -7,8 +7,12 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../compon
 import { ErrorLine } from "../components/error-line";
 import { Kbd } from "../components/kbd";
 import { MenuRow } from "../components/menu";
-import { ask } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { Folder, MagnifyingGlassSmSearch, Terminal } from "../icons";
+import { store, useProfile } from "../onboarding/api";
+import { startProject } from "../onboarding/start";
+import { showProject } from "../projects/store";
+import { useShown } from "../sidebar/actions";
 import { RowMark } from "../sidebar/row";
 import { type Project, type SessionRow, statusWords } from "../sidebar/words";
 
@@ -16,7 +20,7 @@ import { type Project, type SessionRow, statusWords } from "../sidebar/words";
 export type Hit = { id: string; snippet: string; at: [number, number][] };
 /** Rust's search over message text, best first [D72]; rejects with the reason. */
 export type TextSearch = (q: string) => Promise<Hit[]>;
-/** `archived` comes with archive (1v); until then no row has it [D197]. */
+/** `archived` comes with archive (1v); until then no row has it, and no tag shows [D197]. */
 export type PaletteRow = SessionRow & { archived?: boolean };
 
 export const searchText: TextSearch = (q) =>
@@ -278,5 +282,47 @@ export function SearchPalette({ open, onOpenChange, ...props }: PaletteProps & {
         {open && <PaletteBody {...props} onOpenSession={close(props.onOpenSession)} onOpenProject={close(props.onOpenProject)} />}
       </DialogContent>
     </Dialog>
+  );
+}
+
+const opened = store(false);
+/** Opens the palette: ⌘K, or the sidebar's Search. */
+export const openSearch = () => opened.set(true);
+
+/**
+ * The palette over every screen after onboarding, mounted once [D196]. A session opens its thread; a project opens
+ * Home's form in it and shows it in the sidebar, as the old app did.
+ */
+export function GlobalSearch() {
+  const { daemon, rows, projects } = useDaemon();
+  const shown = useShown(rows);
+  const open = opened.use();
+  const onboarded = useProfile().value?.onboarded;
+  useEffect(() => {
+    if (!onboarded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "KeyK" || !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      opened.set(true);
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  }, [onboarded]);
+  if (!onboarded) return null;
+  return (
+    <SearchPalette
+      open={open}
+      onOpenChange={opened.set}
+      rows={shown}
+      projects={projects ?? []}
+      offline={!daemon}
+      search={searchText}
+      onOpenSession={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
+      onOpenProject={(id) => {
+        window.location.hash = "";
+        startProject.set(id);
+        showProject(id);
+      }}
+    />
   );
 }

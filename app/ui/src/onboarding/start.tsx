@@ -6,7 +6,7 @@ import { Select } from "../components/select";
 import { useDaemon } from "../daemon";
 import { Spinner } from "../icons";
 import { addProject, useProjects } from "../projects/projects";
-import { type Agent, checkAll, errorText, run, useAgents } from "./api";
+import { type Agent, checkAll, errorText, run, store, useAgents } from "./api";
 
 /**
  * Start a session (proposed, until wave 1's composer replaces it): an agent with a model, one of
@@ -19,6 +19,9 @@ async function addPicked(): Promise<void> {
   if (picked) await addProject(picked);
 }
 
+/** The form's project, kept outside it so ⌘K's search can choose one, as the old app's did [D196]. */
+export const startProject = store("");
+
 export function StartForm() {
   const { daemon } = useDaemon();
   const loaded = useProjects();
@@ -27,7 +30,7 @@ export function StartForm() {
   const { list, checking } = useAgents();
   const usable = (list ?? []).filter((agent) => agent.models?.length);
   const [agent, setAgent] = useState("");
-  const [project, setProject] = useState("");
+  const [project, setProject] = [startProject.use(), startProject.set];
   const [models, setModels] = useState<NonNullable<Agent["models"]> | "loading" | { error: string }>("loading");
   const [model, setModel] = useState("");
   const [text, setText] = useState("");
