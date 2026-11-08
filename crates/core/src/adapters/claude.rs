@@ -223,9 +223,10 @@ fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         "ToolSearch" | "ExitPlanMode" | "TaskOutput" | "BashOutput" => ("", String::new()),
         _ => ("other", input.to_string()),
     };
-    // An edit names its file from the start; a write may create one, which only its result says.
-    let changes = match name {
-        "Edit" | "MultiEdit" | "NotebookEdit" => vec![change(&what, "modified", None, None, None)],
+    // Every edit names its file from the start, so a running or failed one still shows. Whether a
+    // write created its file only its result says; until then it reads as modified.
+    let changes = match step {
+        "edit" => vec![change(&what, "modified", None, None, None)],
         _ => vec![],
     };
     vec![Event::ToolStart(Tool {
@@ -277,6 +278,12 @@ fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event> {
             Some(lines.len() as u64),
             Some(0),
         )]
+    } else if result["structuredPatch"]
+        .as_array()
+        .is_some_and(|h| h.is_empty())
+    {
+        // A whole-file write can come without hunks: its diff and counts stay unreported.
+        vec![change(path, "modified", None, None, None)]
     } else if let Some(hunks) = result["structuredPatch"].as_array() {
         let diff = hunks
             .iter()

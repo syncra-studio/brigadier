@@ -259,7 +259,7 @@ fn tool_use(part: &Value) -> Vec<Event> {
         events.push(Event::ToolEnd(Done {
             id,
             output,
-            ok: status == "completed",
+            ok: status == "completed" && meta["exit"].as_i64().is_none_or(|c| c == 0),
             exit: meta["exit"].as_i64(),
             changes,
             child,

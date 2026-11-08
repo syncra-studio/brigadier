@@ -15,17 +15,19 @@
 //! replaces an older one (`replace_older`).
 
 use brigadier::index::{self, Index};
+use brigadier_core::fold;
 use brigadier_core::norm::Norm;
 use brigadier_core::thread::Thread;
 use brigadier_core::{check_id, data_dir, session_dir};
-use brigadier_frames::log::Reader;
+use brigadier_frames::log::{Reader, now_ms};
+use brigadier_frames::procs;
 use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, Permissions};
 use std::io::{self, Read, Write};
 use std::mem::size_of;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -284,7 +286,8 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
 }
 
 /// Folds a session's log into its thread, sends it, then follows the log and sends what changed,
-/// numbered on from the snapshot, until `watching` moves past `mine`.
+/// numbered on from the snapshot and tagged with this watch's request, until `watching` moves past
+/// `mine`. A host that died mid-turn writes no frame, so the live state ends such a turn [D60].
 // shortcut: every open folds the whole log and sends the whole thread; add a thread checkpoint and
 // paging once long sessions make opening slow.
 fn watch(
@@ -302,11 +305,13 @@ fn watch(
         return;
     }
     let (mut thread, mut norm, mut items) = (Thread::default(), Norm::default(), vec![]);
-    let mut reader = None;
+    let mut reader: Option<Reader> = None;
+    let log = dir.join("log");
+    let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
     let mut drain = |thread: &mut Thread| -> io::Result<()> {
         // A session just created may have no log yet.
-        if reader.is_none() && dir.join("log").exists() {
-            reader = Some(Reader::open(&dir.join("log"), 0, 0)?);
+        if reader.is_none() && log.exists() {
+            reader = Some(Reader::open(&log, 0, 0)?);
         }
         while let Some(frame) = reader.as_mut().map(Reader::frame).transpose()?.flatten() {
             norm.push(&frame, &mut items);
@@ -316,28 +321,57 @@ fn watch(
         }
         Ok(())
     };
+    let interrupted = |thread: &mut Thread| {
+        let owner = brigadier::owner::state(data, id);
+        let live = fold::live(thread.status_fold(), owner, data, &procs::all());
+        if thread.running() && fold::status(thread.status_fold(), &live)["state"] == "interrupted" {
+            thread.interrupt(now_ms());
+        }
+    };
     if let Err(e) = drain(&mut thread) {
         let _ = out.send(json!({"re": re, "ok": false, "error": e.to_string()}).to_string());
         return;
     }
+    interrupted(&mut thread);
     let title = title.as_str().unwrap_or("");
     let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
     if out.send(snapshot.to_string()).is_err() {
         return;
     }
-    let mut n = 0u64;
-    while watching.load(Ordering::SeqCst) == mine {
+    let tag = |mut frame: Value| {
+        frame["thread"] = id.into();
+        frame["watch"] = re.clone();
+        frame.to_string()
+    };
+    let (mut opened, mut n) = (inode(&log), 0u64);
+    for tick in 1u64.. {
         thread::sleep(FOLLOW);
+        if watching.load(Ordering::SeqCst) != mine {
+            return;
+        }
+        // Deleted: say so. Replaced (deleted and made again): the client asks for a fresh thread.
+        if !dir.join("session.json").exists() {
+            let _ = out.send(tag(json!({"error": "not_found"})));
+            return;
+        }
+        let now = inode(&log);
+        if opened.is_some() && now != opened {
+            let _ = out.send(tag(json!({"reset": true})));
+            return;
+        }
+        opened = now;
         // A damaged frame stays damaged: say so once and stop following.
         if let Err(e) = drain(&mut thread) {
-            let _ = out.send(json!({"thread": id, "error": e.to_string()}).to_string());
+            let _ = out.send(tag(json!({"error": e.to_string()})));
             return;
+        }
+        if tick % 10 == 0 && thread.running() {
+            interrupted(&mut thread);
         }
         if let Some((items, turns, work)) = thread.take() {
             n += 1;
-            let update =
-                json!({"thread": id, "n": n, "items": items, "turns": turns, "work": work});
-            if out.send(update.to_string()).is_err() {
+            let update = json!({"n": n, "items": items, "turns": turns, "work": work});
+            if out.send(tag(update)).is_err() {
                 return;
             }
         }

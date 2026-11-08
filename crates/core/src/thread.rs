@@ -4,13 +4,17 @@
 //! row are one group; reasoning and plumbing don't break it; any other row does. The same items
 //! give the same thread, so ids and `n` stay stable across reads.
 
+use crate::adapters;
 use crate::fold::{Fold, Turn};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod rows;
+
 /// The turn on screen: the status fold's first turn, from when it became first.
 struct Open {
     id: String,
+    backend: String,
     /// Its index in `turns`, and where its rows start in `items`.
     at: usize,
     from: usize,
@@ -42,6 +46,8 @@ pub struct Thread {
     keys: HashMap<(String, String), usize>,
     /// A step's row index → its group row's index.
     member: HashMap<usize, usize>,
+    /// Subagents not yet ended, by tool id: one in the background may end turns later [D78].
+    children: HashMap<String, usize>,
     changed_items: BTreeSet<usize>,
     changed_turns: BTreeSet<usize>,
     sent_work: usize,
@@ -114,6 +120,7 @@ impl Thread {
         self.changed_turns.insert(at);
         self.open = Some(Open {
             id: t.id.clone(),
+            backend: t.backend.clone(),
             at,
             from: self.items.len(),
             started: ts,
@@ -151,11 +158,18 @@ impl Thread {
             _ => "failed",
         };
         // A step the CLI never reported ending can't outlive its turn: it takes the turn's end, its
-        // own end time staying unreported.
+        // own end time staying unreported. A subagent may, while the CLI's process lives on.
+        let lives_on = adapters::get(&o.backend).is_some_and(|a| !a.per_turn());
         for at in o.from..self.items.len() {
-            if self.items[at]["progress"] == "running" && self.items[at]["kind"] != "compaction" {
+            let row = &self.items[at];
+            let kind = row["kind"].as_str().unwrap_or("");
+            if row["progress"] == "running"
+                && kind != "compaction"
+                && !(lives_on && kind == "childAgent")
+            {
                 self.items[at]["progress"] = status.into();
                 self.changed_items.insert(at);
+                self.children.retain(|_, &mut c| c != at);
             }
         }
         let turn = &mut self.turns[o.at];
@@ -173,186 +187,27 @@ impl Thread {
         }
     }
 
-    fn content(&mut self, item: &Value, kind: &str, ts: u64) {
-        let Some(turn) = self.turn_id() else {
-            return;
-        };
-        let str_of = |k: &str| item[k].as_str().unwrap_or("").to_string();
-        let key = |id: String| (turn.clone(), id);
-        // The agent's next output ends a wait on the user [D77].
-        if matches!(
-            kind,
-            "text" | "reasoning" | "tool" | "tool_done" | "compaction" | "unknown"
-        ) {
-            self.end_wait(ts);
-        }
-        match kind {
-            "text" => {
-                self.break_group();
-                let at = self.add(
-                    json!({"kind": "message", "role": "assistant", "text": item["text"],
-                    "streaming": false, "sentAt": ts}),
-                );
-                if let Some(o) = self.open.as_mut() {
-                    o.answer = Some(at as u64 + 1);
-                }
-            }
-            "reasoning" => {
-                let text = str_of("text");
-                self.add(json!({"kind": "reasoning", "heading": heading(&text), "text": text, "streaming": false}));
-            }
-            "tool" => {
-                let step = str_of("step");
-                if let Some(parent) = item["parent"].as_str() {
-                    // A subagent's own step: its row shows it as the current one [D78].
-                    if let Some(&at) = self.keys.get(&key(parent.into()))
-                        && !step.is_empty()
-                    {
-                        let row = &mut self.items[at];
-                        row["steps"] = (row["steps"].as_u64().unwrap_or(0) + 1).into();
-                        row["current"] = json!({"step": step, "input": item["input"]});
-                        self.changed_items.insert(at);
-                    }
-                    return;
-                }
-                if step.is_empty() {
-                    return;
-                }
-                // A start may repeat with more detail (a query known only once it ran).
-                if let Some(&at) = self.keys.get(&key(str_of("id"))) {
-                    if self.items[at]["kind"] == "tool" && !str_of("input").is_empty() {
-                        self.items[at]["input"] = item["input"].clone();
-                        self.changed_items.insert(at);
-                    }
-                    return;
-                }
-                let at = item["at"].as_u64().unwrap_or(ts);
-                let row = match step.as_str() {
-                    "agent" => {
-                        json!({"kind": "childAgent", "sessionId": item["id"], "title": item["input"],
-                        "progress": "running", "startedAt": at, "endedAt": null, "current": null,
-                        "steps": null, "answer": null})
-                    }
-                    "edit" => {
-                        json!({"kind": "fileChange", "changes": item["changes"], "progress": "running"})
-                    }
-                    _ => {
-                        json!({"kind": "tool", "name": item["name"], "input": item["input"], "output": "",
-                        "progress": "running", "exitCode": null, "step": step, "startedAt": at, "endedAt": null})
-                    }
-                };
-                let at = self.step(row);
-                self.keys.insert(key(str_of("id")), at);
-            }
-            "tool_done" => {
-                if let Some(parent) = item["parent"].as_str() {
-                    if let Some(&at) = self.keys.get(&key(parent.into())) {
-                        self.items[at]["current"] = Value::Null;
-                        self.changed_items.insert(at);
-                    }
-                    return;
-                }
-                let Some(&at) = self.keys.get(&key(str_of("id"))) else {
-                    return;
-                };
-                let progress = if item["ok"] == true { "done" } else { "failed" };
-                let ended = item["at"].as_u64().unwrap_or(ts);
-                let row = &mut self.items[at];
-                match row["kind"].as_str().unwrap_or("") {
-                    "tool" => {
-                        row["output"] = item["output"].clone();
-                        row["exitCode"] = item["exit"].clone();
-                        row["endedAt"] = ended.into();
-                    }
-                    "fileChange" if item["changes"].as_array().is_some_and(|c| !c.is_empty()) => {
-                        row["changes"] = item["changes"].clone();
-                    }
-                    "childAgent" => {
-                        row["endedAt"] = ended.into();
-                        row["current"] = Value::Null;
-                        let answer = str_of("output");
-                        row["answer"] = if answer.is_empty() {
-                            Value::Null
-                        } else {
-                            answer.into()
-                        };
-                        if let Some(child) = item["child"].as_str() {
-                            row["sessionId"] = child.into();
-                        }
-                    }
-                    _ => {}
-                }
-                row["progress"] = progress.into();
-                self.changed_items.insert(at);
-                if let Some(&g) = self.member.get(&at) {
-                    self.recount(g);
-                }
-            }
-            "question" => {
-                self.break_group();
-                let at = self.add(json!({"kind": "question", "question": item["text"],
-                    "options": item["options"].as_array().cloned().unwrap_or_default(), "answer": null}));
-                self.keys.insert(key(str_of("id")), at);
-                if let Some(o) = self.open.as_mut() {
-                    o.asked = Some(at);
-                    if o.wait.is_none() {
-                        o.wait = Some(ts);
-                        self.turns[o.at]["waitingSince"] = ts.into();
-                        self.changed_turns.insert(o.at);
-                    }
-                }
-            }
-            "answer" => {
-                if let Some(&at) = self.keys.get(&key(str_of("id"))) {
-                    self.items[at]["answer"] = item["text"].clone();
-                    self.changed_items.insert(at);
-                    if let Some(o) = self.open.as_mut().filter(|o| o.asked == Some(at)) {
-                        o.asked = None;
-                    }
-                }
-                self.end_wait(ts);
-            }
-            "limited" | "sign_in" => {
-                self.break_group();
-                let level = if kind == "limited" {
-                    "warning"
-                } else {
-                    "error"
-                };
-                self.add(json!({"kind": "notice", "level": level, "text": item["message"]}));
-            }
-            "compaction" => {
-                self.break_group();
-                let progress = item["progress"].as_str().unwrap_or("done");
-                let running = self.keys.get(&key("compaction".into())).copied();
-                match running.filter(|&at| self.items[at]["progress"] == "running") {
-                    Some(at) => {
-                        self.items[at]["progress"] = progress.into();
-                        self.changed_items.insert(at);
-                    }
-                    None => {
-                        let at = self.add(
-                            json!({"kind": "compaction", "summary": null, "progress": progress}),
-                        );
-                        self.keys.insert(key("compaction".into()), at);
-                    }
-                }
-            }
-            "unknown" | "unknown_frame" => {
-                self.break_group();
-                let raw = match item["raw"].as_str() {
-                    Some(text) => serde_json::from_str(text).unwrap_or_else(|_| text.into()),
-                    None => {
-                        let mut raw = item.clone();
-                        for k in ["n", "f", "ts"] {
-                            raw.as_object_mut().map(|o| o.remove(k));
-                        }
-                        raw
-                    }
-                };
-                self.add(json!({"kind": "unknown", "raw": raw}));
-            }
-            _ => {}
+    /// Ends whatever still runs because its host or agent is gone, which no frame may ever say:
+    /// the daemon calls this when the session's live state reads interrupted.
+    pub fn interrupt(&mut self, ts: u64) {
+        self.close_turn("interrupted", ts);
+        self.end_children("failed");
+    }
+
+    /// True while a turn or a subagent still runs.
+    pub fn running(&self) -> bool {
+        self.open.is_some() || !self.children.is_empty()
+    }
+
+    /// The status fold this thread keeps, for the live checks only the daemon can make.
+    pub fn status_fold(&self) -> &Fold {
+        &self.fold
+    }
+
+    fn end_children(&mut self, progress: &str) {
+        for (_, at) in std::mem::take(&mut self.children) {
+            self.items[at]["progress"] = progress.into();
+            self.changed_items.insert(at);
         }
     }
 
@@ -382,83 +237,6 @@ impl Thread {
         self.items.push(row);
         self.changed_items.insert(at);
         at
-    }
-
-    /// Adds a step's row under the open group, starting one when none is open.
-    fn step(&mut self, row: Value) -> usize {
-        let Some(o) = self.open.as_mut() else {
-            return self.add(row);
-        };
-        let g = match o.group {
-            Some(g) => g,
-            None => {
-                let id = format!("{}:g{}", o.id, o.groups);
-                o.groups += 1;
-                let g = self.add_as(
-                    json!({"kind": "group", "steps": [], "span": [0, 0]}),
-                    Some(id),
-                );
-                if let Some(o) = self.open.as_mut() {
-                    o.group = Some(g);
-                }
-                g
-            }
-        };
-        let at = self.add(row);
-        self.member.insert(at, g);
-        self.items[g]["span"] = json!([g as u64 + 2, at as u64 + 1]);
-        self.recount(g);
-        at
-    }
-
-    /// A group's counts per kind, in the order the kinds came. Edits count distinct files [D48].
-    fn recount(&mut self, g: usize) {
-        let last = self.items[g]["span"][1].as_u64().unwrap_or(0) as usize;
-        let mut steps: Vec<(String, u64)> = vec![];
-        let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
-        for at in g + 1..last.min(self.items.len()) {
-            if self.member.get(&at) != Some(&g) {
-                continue;
-            }
-            let row = &self.items[at];
-            let kind = match row["kind"].as_str().unwrap_or("") {
-                "fileChange" => "edit",
-                "childAgent" => "agent",
-                _ => row["step"].as_str().unwrap_or("other"),
-            };
-            match steps.iter_mut().find(|(k, _)| k == kind) {
-                Some((_, n)) => *n += 1,
-                None => steps.push((kind.into(), 1)),
-            }
-            if kind == "edit" {
-                let changes = row["changes"].as_array().cloned().unwrap_or_default();
-                files.extend(
-                    changes
-                        .iter()
-                        .filter_map(|c| c["path"].as_str().map(String::from)),
-                );
-                unnamed += changes.is_empty() as u64;
-            }
-        }
-        let steps: Vec<Value> = steps
-            .into_iter()
-            .map(|(kind, n)| {
-                let n = if kind == "edit" {
-                    files.len() as u64 + unnamed
-                } else {
-                    n
-                };
-                json!({"kind": kind, "n": n})
-            })
-            .collect();
-        self.items[g]["steps"] = steps.into();
-        self.changed_items.insert(g);
-    }
-
-    fn break_group(&mut self) {
-        if let Some(o) = self.open.as_mut() {
-            o.group = None;
-        }
     }
 
     fn end_wait(&mut self, ts: u64) {
@@ -494,13 +272,4 @@ impl Thread {
         self.take();
         json!({"id": id, "title": title, "turns": self.turns, "items": self.items, "work": self.work})
     }
-}
-
-/// The newest line that is bold alone (`**Reading the fold**`), as reasoning summaries head their parts.
-fn heading(text: &str) -> Option<String> {
-    text.lines()
-        .rev()
-        .map(str::trim)
-        .find(|l| l.len() > 4 && l.starts_with("**") && l.ends_with("**"))
-        .map(|l| l[2..l.len() - 2].to_string())
 }

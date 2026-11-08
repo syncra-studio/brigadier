@@ -162,14 +162,22 @@ pub fn change(
     serde_json::json!({"path": path, "change": change, "from": null, "diff": diff, "added": added, "removed": removed})
 }
 
-/// Lines added and removed in a unified diff, file headers left out.
+/// Lines added and removed in a unified diff: only lines inside hunks, so file headers don't count
+/// and a `+++counter` line does.
 pub fn counts(diff: &str) -> (u64, u64) {
-    let count = |c: char, header: &str| {
-        diff.lines()
-            .filter(|l| l.starts_with(c) && !l.starts_with(header))
-            .count() as u64
-    };
-    (count('+', "+++"), count('-', "---"))
+    let (mut added, mut removed, mut hunk) = (0, 0, false);
+    for line in diff.lines() {
+        if line.starts_with("@@") {
+            hunk = true;
+        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
+            hunk = false;
+        } else if hunk && line.starts_with('+') {
+            added += 1;
+        } else if hunk && line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added, removed)
 }
 
 /// The step a shell command is and what it acts on, after the old app's rules [D48, D65]: a

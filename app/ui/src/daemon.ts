@@ -67,14 +67,17 @@ function watch(): void {
 
 /** Opens a session's thread; the last one's rows go at once, so no other session flashes in. */
 export function openThread(id: string): void {
-  if (thread?.id === id) return;
+  if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
   setThread({ id, status: "loading" }, null);
   watch();
 }
 
 function applyThread(frame: Record<string, any>): void {
+  if (!thread || frame.watch !== threadRe) return;
+  // The session was made again under the same id: start over from a fresh snapshot.
+  if (frame.reset) return watch();
+  if (frame.error) return setThread({ id: thread.id, status: frame.error === "not_found" ? "missing" : "error", error: frame.error });
   if (!session || threadN === undefined) return;
-  if (frame.error) return setThread({ id: session.id, status: "error", error: frame.error });
   if (frame.n !== threadN + 1) return watch();
   threadN = frame.n;
   const items = session.items.slice();
@@ -119,7 +122,7 @@ function onFrame(frame: Record<string, any>): void {
     threadN = frame.n;
     setThread({ id: thread.id, status: "ready" }, next);
   } else if (frame.thread !== undefined) {
-    if (frame.thread === thread?.id) applyThread(frame);
+    applyThread(frame);
   } else if (frame.re === undefined && typeof frame.n === "number" && n !== undefined) {
     if (frame.n !== n + 1) return subscribe();
     n = frame.n;
