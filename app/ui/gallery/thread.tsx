@@ -8,6 +8,7 @@ import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
+import { ErrorCompare } from "./compare";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
@@ -156,6 +157,7 @@ export function Thread() {
     .join("\n");
   return (
     <>
+      <ErrorCompare />
       <Section title="Thread · work header · group · working line">
         <Row name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
           <Wide label="running">
