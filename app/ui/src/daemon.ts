@@ -4,19 +4,7 @@ import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
-export type Row = {
-  id: string;
-  title: string;
-  state: string;
-  backend: string;
-  updated: number;
-  items: number;
-  error: string | null;
-  /** What a switch can act on: the limit the last turn ended on, even with the terminal open [D51]. */
-  switchable?: "limited" | "unresumable" | null;
-  /** The account the session's agent runs on now; none is the computer's login. */
-  account?: string | null;
-};
+export type Row = { id: string; title: string; state: string; backend: string; updated: number; items: number; error: string | null };
 /** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
 export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
 
