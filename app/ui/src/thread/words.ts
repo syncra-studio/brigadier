@@ -33,7 +33,8 @@ const ENDED: Record<Turn["status"], string> = {
 
 /** "Working for 12s" while the turn runs (from `now`), "Worked for 3m 4s" once it's done. */
 export function workWords(turn: Turn, work: Work | undefined, now: number): string {
-  const ms = work?.ms ?? (turn.endedAt ?? now) - turn.startedAt;
+  // Like Rust's `Work.ms`, the turn's finished waits on the user don't count.
+  const ms = work?.ms ?? (turn.endedAt ?? now) - turn.startedAt - (turn.waitedMs ?? 0);
   if (turn.status === "running" && ms < 1000) return "Working";
   return `${ENDED[turn.status]} ${duration(ms)}`;
 }
