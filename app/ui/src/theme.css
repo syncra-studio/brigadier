@@ -128,6 +128,16 @@
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   --color-rail-glass: color-mix(in oklab, var(--color-card) 70%, transparent);
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
+  /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
+     text, an outlined button's wash, the filled button's hover, Reply…'s words, a file list's ground. */
+  --color-card-kind: color-mix(in oklab, var(--color-foreground) 65%, transparent);
+  --color-card-faint: color-mix(in oklab, var(--color-foreground) 35%, transparent);
+  --color-card-note: color-mix(in oklab, var(--color-foreground) 60%, transparent);
+  --color-tool-box-text: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  --color-action-wash: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+  --color-action-primary-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  --color-reply: color-mix(in oklab, var(--color-foreground) 55%, transparent);
+  --color-file-list: color-mix(in oklab, var(--color-background) 50%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -194,6 +204,8 @@
   --spacing-menu: 8rem;
   --spacing-select: 24rem;
   --container-dialog: 24rem;
+  /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
+  --container-card-narrow: 28rem;
   --container-toast: 32rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
