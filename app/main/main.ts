@@ -67,8 +67,14 @@ function openWindow(): void {
   let utility: UtilityProcess;
   const wire = (): void => {
     const { port1, port2 } = new MessageChannelMain();
+    // A crashed or swapping page throws "Render frame was disposed"; its next load wires again.
+    try {
+      window.webContents.postMessage("daemon-port", null, [port2]);
+    } catch (error) {
+      console.warn("Page not ready for the daemon port:", error);
+      return;
+    }
     utility.postMessage(null, [port1]);
-    window.webContents.postMessage("daemon-port", null, [port2]);
   };
   const fork = (): void => {
     utility = utilityProcess.fork(path.join(__dirname, "socket.js"), [socketPath]);
@@ -82,6 +88,12 @@ function openWindow(): void {
   };
   fork();
   window.webContents.on("did-finish-load", wire);
+  // A crash leaves the window blank; reloading draws it again and reconnects to the daemon.
+  // shortcut: a page that crashes on every load reloads forever; add a backoff if that ever happens.
+  window.webContents.on("render-process-gone", (_event, details) => {
+    console.error("The page's renderer is gone:", details.reason);
+    if (!window.isDestroyed()) window.webContents.reload();
+  });
   void window.loadURL(`${ORIGIN}/`);
 }
 
