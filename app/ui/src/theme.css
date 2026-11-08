@@ -138,6 +138,9 @@
   --color-action-primary-hover: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   --color-reply: color-mix(in oklab, var(--color-foreground) 55%, transparent);
   --color-file-list: color-mix(in oklab, var(--color-background) 50%, transparent);
+  /* A question's answer square: its frame and number (the old app's foreground/20 and /70). */
+  --color-marker: color-mix(in oklab, var(--color-foreground) 20%, transparent);
+  --color-marker-foreground: color-mix(in oklab, var(--color-foreground) 70%, transparent);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -685,6 +688,15 @@
   border-radius: var(--radius-sheet);
   &:has([data-confirm]) {
     border-radius: var(--radius-alert);
+  }
+}
+
+/* A question card's rows when one card follows another: each fades in 50ms after the row above
+   (decision-parts.tsx numbers them in data-row); reduced motion shows them at once. */
+@utility row-stagger {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: fade-in var(--duration-fold) var(--ease-out) backwards;
+    animation-delay: calc(attr(data-row type(<number>), 0) * 50ms);
   }
 }
 

@@ -1,8 +1,10 @@
 // The parts approval and question cards share (the old app's action card, tool box, step counter, card keys).
-import { type ComponentProps, Fragment, type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type ComponentProps, Fragment, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { ChevronRight, Reply } from "../../icons";
+import { ArrowRight, ChevronRight, Pencil, Reply, X } from "../../icons";
+import { Badge } from "../badge";
 import { cx } from "../cx";
+import { TooltipIconButton } from "../icon-button";
 
 /**
  * A card's words with their backticked names as code; `exact` (a command, a tool's input) keeps the backticks
@@ -184,7 +186,7 @@ export function ActionCardTitle({ children, detail }: { children: ReactNode; det
 /** A button's look on a card: a capsule, the primary filled, the other outlined. */
 export function actionButton(variant: "primary" | "outline", className?: string): string {
   return cx(
-    "group/action inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1 rounded-capsule border border-fill px-2 text-code leading-4.5 font-normal whitespace-nowrap select-none",
+    "group/action inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1 rounded-capsule border border-fill px-2 text-code leading-4.5 whitespace-nowrap select-none",
     "transition-all focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled motion-safe:enabled:active:scale-press-button",
     variant === "primary" ? "bg-foreground text-composer enabled:hover:bg-action-primary-hover" : "bg-action-wash text-foreground enabled:hover:bg-fill",
     className,
@@ -216,4 +218,159 @@ export function ReplyButton({ onClick }: { onClick: () => void }) {
       Reply…
     </button>
   );
+}
+
+/** A question card's header: a few words over the question (a round's title), the question, `aside` (the round's pager), then ✕. */
+export function ActionCardQuestion({
+  children,
+  kind,
+  aside,
+  onDismiss,
+  dismissLabel = "Dismiss",
+}: {
+  children: ReactNode;
+  kind?: ReactNode;
+  aside?: ReactNode;
+  onDismiss: () => void;
+  dismissLabel?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2 ps-4 pe-3 pt-4 pb-2">
+      <div role="alert" aria-atomic="true" className="flex min-w-0 flex-1 flex-col gap-1">
+        {kind && (
+          <p data-slot="action-card-kind" className="text-code leading-5 text-card-kind">
+            {kind}
+          </p>
+        )}
+        <ActionCardTitle>{children}</ActionCardTitle>
+      </div>
+      {aside}
+      <TooltipIconButton tooltip={dismissLabel} size="icon-sm" className="-mt-0.5 shrink-0 text-toolbar-foreground" onClick={onDismiss}>
+        <X />
+      </TooltipIconButton>
+    </div>
+  );
+}
+
+/** An answer's 20px square: its number (empty for a lone answer), or a dot once picked. */
+function Marker({ chosen, children }: { chosen?: boolean; children?: ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      data-slot="action-marker"
+      className={cx(
+        "flex size-5 shrink-0 items-center justify-center self-start rounded-sm border text-xs leading-none font-medium select-none",
+        chosen ? "border-foreground text-foreground" : "border-marker text-marker-foreground",
+      )}
+    >
+      {chosen ? <span className="size-1.5 rounded-capsule bg-current" /> : children}
+    </span>
+  );
+}
+
+/**
+ * A numbered answer: its square, label, "Recommended", a description, → while lit or hovered. Not a button,
+ * which would block selecting its words: `onClick` picks it, by the pointer or by Enter or Space on the row.
+ */
+export function ActionOption({
+  number,
+  name,
+  label,
+  description,
+  recommended,
+  highlighted,
+  chosen,
+  disabled,
+  className,
+  onKeyDown,
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & {
+  /** null: the card's only answer, its square left empty. */
+  number: number | null;
+  /** What it reads as to a screen reader. */
+  name: string;
+  label: ReactNode;
+  description?: ReactNode;
+  recommended?: boolean;
+  highlighted: boolean;
+  /** Picked and about to go, or marked. */
+  chosen?: boolean;
+  disabled?: boolean;
+}) {
+  const onKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event);
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    if (!disabled && !event.repeat) event.currentTarget.click();
+  };
+  return (
+    <div
+      tabIndex={0}
+      data-slot="action-option"
+      data-highlighted={highlighted || undefined}
+      aria-label={name}
+      aria-disabled={disabled || undefined}
+      onKeyDown={onKeys}
+      className={cx(
+        "group/option flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-surface px-2 py-1.5 text-start text-code focus-visible:focus-ring",
+        "aria-disabled:cursor-not-allowed",
+        highlighted ? "bg-fill-subtle" : "hover:bg-fill-subtle",
+        className,
+      )}
+      {...props}
+    >
+      <Marker chosen={chosen}>{number}</Marker>
+      <span className="flex min-w-0 flex-1 flex-col gap-y-0.5">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 font-medium wrap-anywhere">{label}</span>
+          {recommended && <Badge variant="secondary">Recommended</Badge>}
+        </span>
+        {description && <span className="min-w-0 wrap-anywhere text-toolbar-foreground">{description}</span>}
+      </span>
+      <ArrowRight
+        aria-hidden
+        className={cx(
+          "ms-auto size-icon-md shrink-0 text-toolbar-foreground",
+          highlighted ? "opacity-100" : "opacity-0 group-hover/option:opacity-100 group-focus-visible/option:opacity-100",
+        )}
+      />
+    </div>
+  );
+}
+
+/** The last row: ✎ (under numbered answers), the field, then its button. Lit while it holds the highlight. */
+export function ActionFreeText({
+  field,
+  highlighted,
+  marker = true,
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & { field: ReactNode; highlighted?: boolean; marker?: boolean; children?: ReactNode }) {
+  return (
+    <div
+      role="presentation"
+      className={cx(
+        "flex min-h-8 w-full items-start gap-2 px-2 py-1.5 text-code",
+        marker && "rounded-sheet transition-colors hover:bg-fill-subtle",
+        highlighted && "bg-fill-subtle",
+        className,
+      )}
+      {...props}
+    >
+      {marker && (
+        <span aria-hidden className="flex size-5 shrink-0 items-center justify-center text-toolbar-foreground">
+          <Pencil className="size-icon-sm" />
+        </span>
+      )}
+      {field}
+      {children && <div className="flex items-center gap-2 place-self-end">{children}</div>}
+    </div>
+  );
+}
+
+/** When one question card follows another its rows fade in 50ms apart (`row-stagger`); the first shows as is. */
+export function staggered(on: boolean, index: number): { className?: string; "data-row"?: number } {
+  return on ? { className: "row-stagger", "data-row": index } : {};
 }

@@ -45,10 +45,12 @@ export type ComposerFieldHandle = {
   focus(): void;
 };
 
-// The composer's field grows to a quarter of the window, then scrolls; the edit box to its bubble's limit.
+// The composer's field grows to a quarter of the window, then scrolls; the edit box to its bubble's limit; a
+// question card's answer to 8rem, a line tall at first.
 const SIZES = {
-  composer: { box: "max-h-composer-max", pad: "min-h-composer px-2 py-2.5" },
-  edit: { box: "max-h-user-message", pad: "min-h-composer px-2 py-1" },
+  composer: { box: "max-h-composer-max text-base", pad: "min-h-composer px-2 py-2.5" },
+  edit: { box: "max-h-user-message text-base", pad: "min-h-composer px-2 py-1" },
+  card: { box: "max-h-32 text-code", pad: "min-h-5" },
 };
 
 const MAC = navigator.userAgent.includes("Mac");
@@ -252,7 +254,7 @@ export function ComposerField({
         data-slot="composer-field"
         data-scrolled={scrolled || undefined}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-        className={cx("relative w-full cursor-text overflow-y-auto text-base data-scrolled:mask-fade-top", box)}
+        className={cx("relative w-full cursor-text overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
         <PlainTextPlugin
           contentEditable={

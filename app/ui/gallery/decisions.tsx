@@ -7,6 +7,7 @@ import { ComposerField } from "../src/components/composer/field";
 import { ComposerRail } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { ModelPill } from "./composer";
+import { QuestionRows } from "./questions";
 import { Row, Section, State } from "./parts";
 
 const LONG = "pnpm --filter @brigadier/ui exec vite build --mode production --outDir /tmp/brigadier-dist --emptyOutDir && node scripts/bundle-size.mjs --budget 450 --report /tmp/brigadier-dist/size.json && rm -rf /tmp/brigadier-dist";
@@ -144,9 +145,10 @@ export function DecisionsGallery() {
           </div>
         </State>
       </Row>
-      <Row name="Live">
+      <Row name="Approvals live">
         <Live />
       </Row>
+      <QuestionRows />
     </Section>
   );
 }
