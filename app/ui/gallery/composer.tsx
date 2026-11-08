@@ -1,6 +1,7 @@
 // The composer (slice 1) in every state, frozen, plus one live copy.
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { type Attachment, AttachmentsContext } from "../src/components/composer/attachments";
 import { ComposerCard, ComposerFooter, ComposerPill, ComposerTools, ContextRing, EditComposer, PillDivider, PlusButton } from "../src/components/composer/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
@@ -38,10 +39,28 @@ type CardProps = {
   scrolled?: boolean;
   /** What the rail over the card holds. */
   rail?: ReactNode;
+  /** A menu held open over the card, attachment tiles over the field, and what the chips show. */
+  menu?: ReactNode;
+  tiles?: ReactNode;
+  attachments?: ReadonlyMap<string, Attachment>;
 };
 
 /** A frozen composer card in one state. */
-export function Card({ initial = EMPTY_DRAFT, placeholder = "Do anything", running = false, canStop = false, canResume, armed, blocked, ring, scrolled, rail }: CardProps) {
+export function Card({
+  initial = EMPTY_DRAFT,
+  placeholder = "Do anything",
+  running = false,
+  canStop = false,
+  canResume,
+  armed,
+  blocked,
+  ring,
+  scrolled,
+  rail,
+  menu,
+  tiles,
+  attachments,
+}: CardProps) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scrolled) box.current!.querySelector("[data-slot=composer-field]")!.scrollTop = 1e6;
@@ -50,7 +69,9 @@ export function Card({ initial = EMPTY_DRAFT, placeholder = "Do anything", runni
     <div ref={box} className="w-reading">
       {rail && <ComposerRail>{rail}</ComposerRail>}
       <ComposerCard>
-        <ComposerField initial={initial} placeholder={placeholder} />
+        {menu}
+        {tiles && <AttachmentsContext value={attachments ?? new Map()}>{tiles}</AttachmentsContext>}
+        <ComposerField initial={initial} placeholder={placeholder} attachments={attachments} />
         <ComposerFooter>
           <ComposerTools>
             <PlusButton />

@@ -4,6 +4,7 @@ import { type RefObject, useEffect, useRef } from "react";
 import { Choices } from "./choices";
 import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
+import { AidsGallery } from "./aids";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
 import { Panes } from "./panes";
@@ -99,6 +100,7 @@ function GalleryPage() {
       <main className="isolate flex flex-col gap-10 px-8 py-8">
         <ComposerGallery />
         <RailGallery />
+        <AidsGallery />
         <Thread />
         <Notices />
         <Choices />
