@@ -19,11 +19,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{env, fs, process, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--opt K=V] [--text T]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B]
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
+       brigadier level <id> [ask|auto|full]
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>
@@ -124,10 +125,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
                 cwd,
                 model: flag(args, "--model").map(String::from),
+                level: flag(args, "--level").map(String::from),
+                effort: flag(args, "--effort").map(String::from),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()
             };
+            if let Some(a) = adapters::get(backend) {
+                core::level(&spec, a).map_err(io::Error::other)?;
+            }
             let spec = if core::session_dir(data, id).join("session.json").exists() {
                 core::load(data, id)?
             } else {
@@ -240,6 +246,25 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             owner::release(data, id)?;
             let f = core::fold(&spec.dir, false)?;
             Ok(core::delete(&spec, &f.fold))
+        }
+        // The session's permission level, taken at its next turn start [D129, D170].
+        "level" => {
+            let id = arg(args, 1)?;
+            let mut spec = core::load(data, id)?;
+            if let Some(want) = args.get(2) {
+                let f = core::fold(&spec.dir, true)?;
+                let backend = if f.fold.backend.is_empty() {
+                    &spec.backend
+                } else {
+                    &f.fold.backend
+                };
+                spec.level = Some(want.clone());
+                if let Some(a) = adapters::get(backend) {
+                    core::level(&spec, a).map_err(io::Error::other)?;
+                }
+                core::create(data, &spec)?;
+            }
+            Ok(json!({"ok": true, "level": spec.level}))
         }
         "up" => {
             for id in &args[1..] {

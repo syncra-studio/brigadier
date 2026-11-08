@@ -77,6 +77,10 @@ pub struct Fold {
     /// The model each backend a switch moved to runs [D51].
     #[serde(default)]
     pub models: BTreeMap<String, String>,
+    /// The newest setup (model, effort, level) given to the running child, from its inputs: what a
+    /// turn start compares to. None for a child no input set up (a terminal).
+    #[serde(default)]
+    pub given: Option<Value>,
     pub cids: BTreeMap<String, u32>,
     pub unknown: u64,
     pub compactions: u64,
@@ -154,6 +158,9 @@ impl Fold {
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;
+                if item["setup"].is_object() {
+                    self.given = Some(item["setup"].clone());
+                }
                 (self.limit, self.resets) = (None, None);
                 self.sign_in = None;
                 self.refused = None;
@@ -222,6 +229,10 @@ impl Fold {
                 let m = &item["mirror"];
                 let mirror_group =
                     (m["pgid"].as_i64().zip(m["start_us"].as_u64())).map(|(g, s)| (g as i32, s));
+                // A spawn's own input came first and set it up; one with no input knows nothing.
+                if item["cid"].is_null() {
+                    self.given = None;
+                }
                 self.child = Some(Child {
                     pid,
                     start_us,

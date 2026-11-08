@@ -316,11 +316,8 @@ fn tool_use(part: &Value) -> Vec<Event> {
         for (k, q) in questions.iter().enumerate() {
             let options = q["options"].as_array().into_iter().flatten();
             let qid = format!("{id}:{k}");
-            events.push(Event::Question(
-                qid.clone(),
-                s(q, &["question"]).into(),
-                options.map(|o| s(o, &["label"]).to_string()).collect(),
-            ));
+            let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
+            events.push(super::question(&qid, s(q, &["question"]), &options));
             if finished {
                 let answer = meta["answers"][k].as_array().map(|a| {
                     let labels: Vec<&str> = a.iter().filter_map(Value::as_str).collect();

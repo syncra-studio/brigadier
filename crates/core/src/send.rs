@@ -1,5 +1,6 @@
 //! Sending a message to a session's agent, and the one recovery for a turn that didn't finish.
 
+use crate::adapters::{Delivery, Retune};
 use crate::fold::{self, Fold, Live};
 use crate::{Spec, adapters, as_run, cli_version, sweep};
 use brigadier_frames::log;
@@ -37,28 +38,71 @@ pub fn send(
     let Some(a) = adapters::get(&b) else {
         return json!({"ok": false, "error": format!("unknown backend {b}")});
     };
-    let base =
-        json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of});
+    // Each turn runs with the level its spec says now, re-checked here [D129, D170], and the model
+    // and effort it names: a turn start hands any change to a child already running.
+    let level = match level(spec, a) {
+        Ok(level) => level,
+        Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
+    };
+    let spec = &Spec {
+        level: level.map(String::from),
+        ..spec.clone()
+    };
+    let run = as_run(spec, f, &b, None);
+    let setup = adapters::setup(&run);
+    let mut base = json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of, "setup": setup});
     let running = child.is_some();
     let pty = child.is_some_and(|(_, pty)| pty);
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
         return json!({"ok": false, "result": "refused", "error": "another backend's process is running; stop it first"});
     }
+    let mut replace = None;
+    let refolded;
+    let mut f = f;
     if running && (!a.per_turn() || pty) {
-        let mut req = base.clone();
-        req["op"] = "input".into();
-        let as_typed = if pty {
-            adapters::in_pty(spec)
-        } else {
-            spec.clone()
-        };
-        req["bytes"] = a.encode(&as_typed, text).into();
-        if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
-            req["spawn"] = spawn.into();
+        let mut bytes = String::new();
+        if !f.turns.is_empty() {
+            // A working child keeps its setup: the change waits for the next turn start.
+            base["setup"] = f.given.clone().into();
+        } else if !pty && f.given.as_ref() != Some(&setup) {
+            let g = f.given.clone().unwrap_or_default();
+            let text = |k: &str| g[k].as_str().map(String::from);
+            let last = Spec {
+                model: text("model"),
+                effort: text("effort"),
+                level: text("level"),
+                ..run.clone()
+            };
+            match a.retune(&last, &run) {
+                Retune::InMessage => {}
+                Retune::Send(Delivery::Stdin(pre)) => bytes = pre,
+                Retune::Restart => match restart(spec, call) {
+                    Ok((len, again)) => {
+                        refolded = again;
+                        f = &refolded;
+                        replace = Some(len);
+                    }
+                    Err(reply) => return reply,
+                },
+            }
         }
-        let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
-        if reply["error"] != "no_child" {
-            return reply;
+        if replace.is_none() {
+            let mut req = base.clone();
+            req["op"] = "input".into();
+            let as_typed = if pty {
+                adapters::in_pty(spec)
+            } else {
+                spec.clone()
+            };
+            bytes += &a.encode(&as_typed, text);
+            req["bytes"] = bytes.into();
+            if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
+                req["spawn"] = spawn.into();
+            }
+            let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+            if reply["error"] != "no_child" {
+                return reply;
+            }
         }
     } else if running {
         return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
@@ -87,7 +131,43 @@ pub fn send(
     ] {
         req[k] = v;
     }
+    // The idle child goes first, only if nothing reached the log since it was judged idle.
+    if let Some(len) = replace {
+        req["replace"] = true.into();
+        req["if_len"] = len.into();
+    }
     call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+}
+
+/// For a child that takes a new setup only by starting again: the log's length from its host, then
+/// the fold from at least there, so the restart is refused if anything came in between. Refused
+/// unless the child is still idle.
+fn restart(spec: &Spec, call: Call) -> Result<(u64, Fold), Value> {
+    let changed = json!({"ok": false, "result": "refused", "error": "changed"});
+    let ping =
+        call(json!({"op": "ping"})).map_err(|e| json!({"ok": false, "error": e.to_string()}))?;
+    let len = ping["len"].as_u64().ok_or(changed.clone())?;
+    let f =
+        crate::fold(&spec.dir, true).map_err(|e| json!({"ok": false, "error": e.to_string()}))?;
+    match f.fold.turns.is_empty() && ping["child"].is_number() {
+        true => Ok((len, f.fold)),
+        false => Err(changed),
+    }
+}
+
+/// The level a turn runs at: the spec's, or (proposed) the agent's most restrictive when it names
+/// none. One the agent can't enforce refuses the turn, never runs weaker [D129, D170].
+pub fn level(spec: &Spec, a: &dyn adapters::Adapter) -> Result<Option<&'static str>, String> {
+    let levels = a.can().levels;
+    match spec.level.as_deref() {
+        None => Ok(levels.first().copied()),
+        Some(want) => levels
+            .iter()
+            .find(|l| **l == want)
+            .copied()
+            .map(Some)
+            .ok_or_else(|| format!("{} can't run at the {want:?} permission level", a.label())),
+    }
 }
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself);

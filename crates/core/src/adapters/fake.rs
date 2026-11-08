@@ -1,6 +1,8 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
-use super::{Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, s};
+use super::{
+    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, Retune, Timing, Tool, base_env, s,
+};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -74,8 +76,34 @@ impl Adapter for Fake {
             argv,
             env,
             keep_stdin: true,
-            input: text.map(|t| self.encode(spec, t)),
+            // Its setup goes first, the way a retune sends it.
+            input: text.map(|t| setup_line(spec) + &self.encode(spec, t)),
         }
+    }
+
+    fn can(&self) -> Can {
+        Can {
+            steer: true,
+            stop: true,
+            resume: true,
+            levels: &["ask", "auto", "full"],
+        }
+    }
+
+    fn retune(&self, _last: &Spec, next: &Spec) -> Retune {
+        Retune::Send(Delivery::Stdin(setup_line(next)))
+    }
+
+    fn control(&self, _spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+        let line = match msg["kind"].as_str() {
+            Some("answer") => {
+                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": msg["answers"]}})
+            }
+            Some("steer") => json!({"text": msg["text"], "steer": true}),
+            Some("interrupt") => json!({"interrupt": true}),
+            _ => return Err("unknown control message".into()),
+        };
+        Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
@@ -116,10 +144,12 @@ impl Adapter for Fake {
             "beat" | "child" => vec![],
             "done" => vec![Event::TurnEnd(v["ok"].as_bool().unwrap_or(true))],
             "ask" => vec![Event::Question(
-                String::new(),
-                s(&v, &["text"]).into(),
-                vec![],
+                json!({"id": v["id"], "title": null, "items": [
+                {"text": v["text"], "options": [{"label": "Yes"}, {"label": "No"}], "recommended": 0, "multiSelect": false}]}),
             )],
+            "approve" => vec![Event::Approval(json!({"id": v["id"], "action": "command",
+                "reason": null, "command": v["command"], "grant": {"scope": "command", "pattern": v["pattern"]}}))],
+            "resolved" => vec![Event::Resolved(s(&v, &["id"]).into())],
             "compact" => vec![Event::Compaction("done")],
             "error" => vec![
                 match super::classify(&format!("{} {}", v["code"], s(&v, &["message"]))) {
@@ -145,4 +175,9 @@ impl Adapter for Fake {
         let count = |k: &str| text.lines().filter(|l| l.starts_with(k)).count() as u64;
         Some((count("say "), count("tool ")))
     }
+}
+
+/// The setup a turn runs with, as the fake agent reads it before the turn's message.
+fn setup_line(spec: &Spec) -> String {
+    format!("{}\n", json!({"setup": super::setup(spec)}))
 }

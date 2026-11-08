@@ -355,11 +355,8 @@ fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
             .enumerate()
             .map(|(k, q)| {
                 let options = q["options"].as_array().into_iter().flatten();
-                Event::Question(
-                    format!("{id}:{k}"),
-                    s(q, &["question"]).into(),
-                    options.map(|o| s(o, &["label"]).to_string()).collect(),
-                )
+                let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
+                super::question(&format!("{id}:{k}"), s(q, &["question"]), &options)
             })
             .collect();
     }

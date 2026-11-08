@@ -27,7 +27,7 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
-pub use send::{Call, Running, recover, send};
+pub use send::{Call, Running, level, recover, send};
 pub use session::delete;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -43,6 +43,13 @@ pub struct Spec {
     #[serde(default)]
     pub opts: BTreeMap<String, String>,
     pub created: u64,
+    /// Its permission level, `ask` | `auto` | `full`; None: the agent's most restrictive. Read
+    /// again at each turn start [D129, D170].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+    /// Its model's reasoning effort; None: the CLI's own default [D129].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
     #[serde(skip)]
     pub dir: PathBuf,
     /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is

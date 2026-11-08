@@ -18,6 +18,9 @@ struct Agent {
     home: PathBuf,
     tools: u32,
     waiting: bool,
+    /// The setup (model, effort, level) its turns run with, and whether a turn has said it yet.
+    setup: Value,
+    told: bool,
 }
 
 fn now() -> u64 {
@@ -151,6 +154,11 @@ impl Agent {
                 return emit(json!({"t": "done", "ok": false}));
             }
             emit(json!({"t": "turn"}));
+            // A changed setup shows on the turn it reached, as a CLI's own banner would.
+            if !self.told {
+                self.told = true;
+                self.say(&format!("Running with {}", self.setup));
+            }
         }
         for word in words {
             let word = word.to_lowercase();
@@ -278,14 +286,23 @@ fn agent(args: &[String]) {
         home,
         tools: 0,
         waiting: false,
+        setup: Value::Null,
+        told: true,
     };
     emit(json!({"t": "hello", "session": agent.sid, "version": "fake 1"}));
     for line in io::stdin().lock().lines() {
         let Ok(line) = line else { break };
         let line = line.trim_end_matches('\r');
-        let text = serde_json::from_str::<Value>(line)
-            .ok()
-            .and_then(|v| v["text"].as_str().map(String::from))
+        let v = serde_json::from_str::<Value>(line).unwrap_or_default();
+        if v["setup"].is_object() {
+            // Only a change shows: the setup it started with is no news.
+            agent.told = agent.told && (agent.setup.is_null() || agent.setup == v["setup"]);
+            agent.setup = v["setup"].clone();
+            continue;
+        }
+        let text = v["text"]
+            .as_str()
+            .map(String::from)
             .unwrap_or_else(|| line.to_string());
         if !text.trim().is_empty() {
             agent.handle(&text);
