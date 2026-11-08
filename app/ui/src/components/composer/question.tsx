@@ -343,7 +343,7 @@ function QuestionPage({
                 ref={field}
                 size="card"
                 label="Your answer"
-                placeholder={pickable ? "No, and tell Brigadier what to do differently" : "Type here"}
+                placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
                 initial={{ parts: initialText ? [initialText] : [], attachmentIds: [] }}
                 onChange={(parts) => {
                   const value = parts.filter((part) => typeof part === "string").join("");
