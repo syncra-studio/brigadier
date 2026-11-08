@@ -9,7 +9,7 @@ mod status;
 pub use live::{Live, live, live_groups};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, status, switchable, works};
+pub use status::{Owner, mark, status, switchable, works};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -60,6 +60,9 @@ pub struct Fold {
     pub versions: BTreeMap<String, String>,
     pub backend: String,
     pub limit: Option<String>,
+    /// When the limit resets (ms), if its CLI said [D74].
+    #[serde(default)]
+    pub resets: Option<u64>,
     pub sign_in: Option<String>,
     /// The CLI refused to resume the conversation on this account (D90 Q4).
     #[serde(default)]
@@ -78,6 +81,12 @@ pub struct Fold {
     pub unknown: u64,
     pub compactions: u64,
     pub items: u64,
+    /// The user's last send, else the first frame's time (ms): the list's order, which a turn never moves.
+    #[serde(default)]
+    pub sent: u64,
+    /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
+    #[serde(default)]
+    pub finished: u64,
     /// Prompts in the CLI's record already bound to the chat input that typed them, by prompt id.
     #[serde(default)]
     pub bound: BTreeMap<String, String>,
@@ -87,6 +96,7 @@ impl Fold {
     fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
             self.turns.remove(0);
+            self.finished = ts;
             self.last = Some(
                 json!({"cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
@@ -103,6 +113,9 @@ impl Fold {
     pub fn push(&mut self, item: &Value) {
         self.items += 1;
         let ts = item["ts"].as_u64().unwrap_or(0);
+        if self.sent == 0 {
+            self.sent = ts;
+        }
         let str_of = |k: &str| item[k].as_str().unwrap_or("").to_string();
         let kind = item["kind"].as_str().unwrap_or("");
         if matches!(
@@ -141,7 +154,7 @@ impl Fold {
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;
-                self.limit = None;
+                (self.limit, self.resets) = (None, None);
                 self.sign_in = None;
                 self.refused = None;
                 // A switch takes effect with the input that continues it, in the same frame [D51].
@@ -171,6 +184,9 @@ impl Fold {
                     return;
                 }
                 self.backend = str_of("backend");
+                if item["origin"] == "user" {
+                    self.sent = ts;
+                }
                 // A terminal with no mirror has no turn boundaries: each input replaces the last.
                 if self
                     .child
@@ -295,6 +311,7 @@ impl Fold {
                     .iter()
                     .position(|t| !t.began)
                     .unwrap_or(self.turns.len());
+                self.sent = ts;
                 let turn = Turn {
                     id: format!("p{}", self.items),
                     origin: "user".into(),
@@ -315,6 +332,7 @@ impl Fold {
             }
             "limited" => {
                 self.limit = Some(str_of("message"));
+                self.resets = item["resets"].as_u64();
                 self.close("limited", item["message"].clone(), ts);
             }
             "sign_in" => {
@@ -328,7 +346,7 @@ impl Fold {
             "stopped" => {
                 // The user's Stop ends the limit; a terminal's handoff stop keeps it [D51, D47].
                 if item["by"] == "user" {
-                    (self.limit, self.refused) = (None, None);
+                    (self.limit, self.resets, self.refused) = (None, None, None);
                 }
                 self.close_all("stopped", item["by"].clone(), ts)
             }

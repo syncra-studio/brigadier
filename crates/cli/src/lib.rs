@@ -16,11 +16,11 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use std::{env, process, thread};
+use std::{env, fs, process, thread};
 
 pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--cwd D] [--model M] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B]
-       brigadier status [<id>...|--all]
+       brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -146,6 +146,23 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 flag(args, "--cid"),
                 flag(args, "--backend"),
             )
+        }
+        // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
+        "seen" => {
+            let (id, at) = (arg(args, 1)?, arg(args, 2)?);
+            let at: u64 = at
+                .parse()
+                .map_err(|_| io::Error::other(format!("bad time {at:?}")))?;
+            core::load(data, id)?;
+            let path = core::session_dir(data, id).join("seen");
+            let old: u64 = fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0);
+            if at > old {
+                core::write_atomic(&path, at.to_string().as_bytes())?;
+            }
+            Ok(json!({"ok": true}))
         }
         "status" => {
             let all = procs::all();

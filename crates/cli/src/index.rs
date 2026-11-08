@@ -16,7 +16,7 @@ use std::time::UNIX_EPOCH;
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
-const SCHEMA: i64 = 1;
+const SCHEMA: i64 = 2;
 const TITLE_CHARS: usize = 80;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
@@ -150,9 +150,21 @@ impl Index {
             }
             let f = e.ahead.as_ref().unwrap_or(&e.done);
             let live = fold::live(&f.fold, owner::state(&self.data, id), &self.data, &all);
-            let state = match &e.error {
-                Some(_) => "error".into(),
-                None => fold::status(&f.fold, &live)["state"].clone(),
+            let status = fold::status(&f.fold, &live);
+            let (state, reason) = match &e.error {
+                Some(_) => ("error".into(), Value::Null),
+                None => (status["state"].clone(), status["reason"].clone()),
+            };
+            // When the user last saw its end (`brigadier seen`); a later end is unread [D173].
+            let seen = fs::read_to_string(dir.join("seen"))
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0);
+            let auto = fold::switchable(&f.fold)
+                .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
+            let mark = match &e.error {
+                Some(_) => Some("amber"),
+                None => fold::mark(&f.fold, &live, seen, auto),
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -176,7 +188,8 @@ impl Index {
                 .spec
                 .as_ref()
                 .and_then(|s| projects::of(s, &projects, &mut self.roots));
-            let row = json!({"id": id, "title": e.title, "state": state, "backend": f.fold.backend,
+            let row = json!({"id": id, "title": e.title, "state": state, "reason": reason, "mark": mark,
+                             "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project});
