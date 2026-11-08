@@ -38,11 +38,15 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
 
   const load = () => {
     const mine = ++asked.current;
-    const land = (reply: Record<string, any>) => mine === asked.current && (setGroups(asGroups(reply.groups)), setListError(null));
+    const land = (reply: Record<string, any>, fresh: boolean) => {
+      if (mine !== asked.current) return;
+      setGroups((now) => fresh || now === null ? asGroups(reply.groups) : now);
+      if (fresh) setListError(null);
+    };
     const fail = (cause: unknown) => mine === asked.current && setListError(errorText(cause));
-    // The cached answer lands first; the fresh one replaces it, and only its failure is shown.
-    run(["models", "--session", id]).then(land, () => {});
-    run(["models", "--session", id, "--fresh"]).then(land, fail);
+    // Cache fills an empty picker only; it never replaces a list already shown.
+    run(["models", "--session", id]).then((reply) => land(reply, false), () => {});
+    run(["models", "--session", id, "--fresh"]).then((reply) => land(reply, true), fail);
   };
   useEffect(() => {
     if (!offline) load();
