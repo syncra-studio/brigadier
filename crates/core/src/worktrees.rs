@@ -81,23 +81,78 @@ fn write(dir: &Path, owned: &Owned) -> io::Result<()> {
     write_atomic(&dir.join(RECORD), &serde_json::to_vec_pretty(owned)?)
 }
 
+/// The branch (or commit) a session's worktree started from; none without one.
+pub fn base(dir: &Path) -> Option<String> {
+    read(dir).ok().flatten().map(|owned| owned.base)
+}
+
 /// Where a session's worktree goes.
 pub fn path(data: &Path, id: &str) -> PathBuf {
     session_dir(data, id).join("worktree")
 }
 
-/// Makes the session's worktree from the project's current branch, with its files to copy. A
-/// failure undoes what it made; one it can't undo stays recorded for the daemon to retry.
-pub fn create(spec: &Spec, project: &projects::Project) -> io::Result<()> {
+/// Makes the session's worktree unless it's whole: a start cut short before it was finishes it
+/// here, its unfinished create undone first. A failed create on a `fresh` session (made by this
+/// start) that undid itself takes the session away too; on a retry the session keeps its log and
+/// first message, and the error says why. One it couldn't undo stays recorded [D35].
+/// Takes what `create` takes, so a change there changes only this call.
+pub fn ensure(
+    spec: &Spec,
+    project: &projects::Project,
+    fresh: bool,
+    base: Option<&str>,
+) -> io::Result<()> {
+    {
+        let _one = lock(&spec.dir)?;
+        match read(&spec.dir)? {
+            Some(owned) if !owned.failed => return Ok(()),
+            Some(owned) => {
+                undo(&owned)?;
+                fs::remove_file(spec.dir.join(RECORD))?;
+            }
+            None => {}
+        }
+    }
+    if let Err(e) = create(spec, project, base) {
+        if fresh && !spec.dir.join(RECORD).exists() {
+            fs::remove_dir_all(&spec.dir)?;
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Makes the session's worktree from `base`, else the project's current branch, with its files to copy. A failure undoes what
+/// it made; one it can't undo stays recorded for the daemon to retry.
+pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> io::Result<()> {
     let (repo, picks) = (Path::new(&project.folder), &project.include);
     let _one = lock(&spec.dir)?;
     if read(&spec.dir)?.is_some() {
         return err("This session already has a worktree record.".into());
     }
-    let base_commit = git(repo, &["rev-parse", "--verify", "HEAD"])
-        .or_else(|_| err("This project has no commit to start from.".into()))?;
-    let base =
-        git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"]).unwrap_or(base_commit.clone());
+    let (base_commit, base) = match base {
+        // A send as new starts where its source started [D204].
+        Some(base) => (
+            git(
+                repo,
+                &[
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    &format!("{base}^{{commit}}"),
+                ],
+            )
+            .or_else(|_| err(format!("{base} isn't in this project any more.")))?,
+            base.to_string(),
+        ),
+        None => {
+            let commit = git(repo, &["rev-parse", "--verify", "HEAD"])
+                .or_else(|_| err("This project has no commit to start from.".into()))?;
+            let name = git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+                .unwrap_or(commit.clone());
+            (commit, name)
+        }
+    };
     let branch = format!("brigadier/{}", spec.id);
     if git(
         repo,

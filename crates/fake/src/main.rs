@@ -242,9 +242,18 @@ impl Agent {
             "hang" => thread::sleep(Duration::from_secs(n)),
             "ask" => {
                 self.waiting = true;
-                emit(
-                    json!({"t": "ask", "id": format!("q{}", now()), "text": "Proceed with the change?"}),
-                );
+                let mut ask = json!({"t": "ask", "id": format!("q{}", now()), "text": "Proceed with the change?"});
+                // `ask:N`: a round of N questions, each a shape a CLI's question tool can take [D177].
+                if n > 1 {
+                    let shapes = [
+                        json!({"text": "Which package manager should the scripts use?", "options": [{"label": "pnpm", "description": "Already in the lockfile."}, {"label": "npm"}, {"label": "yarn"}], "recommended": 0, "multiSelect": false}),
+                        json!({"text": "Which checks should run before each push?", "options": [{"label": "Typecheck"}, {"label": "Lint"}, {"label": "Bundle check"}], "recommended": null, "multiSelect": true}),
+                        json!({"text": "What should the new command be called?", "options": [], "recommended": null, "multiSelect": false}),
+                    ];
+                    ask["title"] = "Release setup".into();
+                    ask["items"] = (0..n as usize).map(|k| shapes[k % 3].clone()).collect();
+                }
+                emit(ask);
                 return false;
             }
             "limit" if !limited() => {}

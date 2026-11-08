@@ -19,7 +19,6 @@ import { type Project, setProject, useProjects } from "./projects";
 /** The project a new session is drafted in on Home; set by whoever drafts one. */
 const drafted = store<string | null>(null);
 export const enterProject = (id: string | null) => drafted.set(id);
-export const useDraftedProject = drafted.use;
 
 /** Mounted once beside the sidebar: `active` is the open session's id, null on Home. */
 export function TrustHost({ active }: { active: string | null }) {

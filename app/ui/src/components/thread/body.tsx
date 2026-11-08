@@ -12,7 +12,7 @@ import { ToolRow } from "./tool";
  * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above;
  * `latest`: the newest answer, whose time always shows.
  */
-export function Body({ item, turn, step, dated = false, latest = false }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; latest?: boolean }) {
+export function Body({ item, turn, step, dated = false, latest = false, actions = true }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; latest?: boolean; actions?: boolean }) {
   switch (item.kind) {
     case "group":
       return null;
@@ -22,7 +22,7 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       return (
         <AssistantMessage
           text={item.text}
-          final={item.final === true || item.joined === true}
+          final={actions && (item.final === true || item.joined === true)}
           time={item.sentAt}
           latest={latest && item.final === true}
         >
@@ -60,7 +60,7 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       return <ApprovalRow keep={item.id} title={shown.title} detail={shown.detail} body={shown.body} decision={item.decision} action={item.request.action} waiting={turn?.status === "running"} />;
     }
     case "question":
-      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} waiting={!item.withdrawn && turn?.status === "running"} />;
+      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && turn?.status === "running"} />;
     case "childAgent":
       return (
         <ChildAgentRow

@@ -24,7 +24,7 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
     adapters::get(name)
-        .filter(|a| a.install().is_some() || a.sign_in().is_some())
+        .filter(|a| a.install().is_some() || a.sign_in().is_some() || a.accounts().is_some())
         .ok_or_else(|| io::Error::other(format!("unknown agent {name}")))
 }
 

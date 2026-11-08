@@ -85,6 +85,10 @@ export type Item = Base &
         origin?: "user" | "system";
         /** When it was sent, ms since the epoch. */
         sentAt?: number;
+        /** A steered message's command id, which the app's own copy settles by. */
+        cid?: string;
+        /** Steered into the running turn: it sits inside that turn's work and starts no turn of its own. */
+        steer?: boolean;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first
@@ -143,7 +147,8 @@ export type Item = Base &
     | {
         kind: "switch";
         state: "limit" | "switching" | "switched" | "failed" | "over";
-        reason: "usage-limit" | "unresumable";
+        /** `picked`: the user picked another agent's model, and the next message went to it [D129]; only ever switched. */
+        reason: "usage-limit" | "unresumable" | "picked";
         from?: string | null;
         to?: string | null;
         model?: string | null;
@@ -154,6 +159,21 @@ export type Item = Base &
         text: string;
         backend?: string;
         account?: string;
+      }
+    /**
+     * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,
+     * with the text) then its result in place. The new session's title and status come from its own row; `title`
+     * here is for when that row is gone. `failed`: Rust's `error`, and what its cleanup couldn't remove (`left`).
+     */
+    | {
+        kind: "started";
+        session: string;
+        state: "starting" | "started" | "failed";
+        text: string | null;
+        base?: string | null;
+        title?: string | null;
+        error?: string | null;
+        left?: string[] | null;
       }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }

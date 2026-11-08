@@ -31,8 +31,8 @@ const FAILS: TextSearch = async () => Promise.reject("index: database is locked"
 
 const ARCHIVED: PaletteRow[] = [
   ...ROWS,
-  { ...ROWS[7], id: "30", title: "Old export script", archived: true, sent: ROWS[0].sent + 1 },
-  { ...ROWS[3], id: "31", title: "Retired dashboard", mark: null, archived: true, sent: ROWS[0].sent + 2 },
+  { ...ROWS[7], id: "30", title: "Old export script", archived: 1, sent: ROWS[0].sent + 1 },
+  { ...ROWS[3], id: "31", title: "Retired dashboard", mark: null, archived: 1, sent: ROWS[0].sent + 2 },
 ];
 
 const nothing = () => {};

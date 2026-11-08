@@ -8,6 +8,8 @@ export type Group = Extract<Item, { kind: "group" }>;
 export type Gap = "first" | "turn" | "part" | "step";
 
 export type Line =
+  /** A finished answer's actions, after the turn's rows. */
+  | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean }
   /** A group row. `live`: its newest step while the turn runs, for the running step's words. */
@@ -19,6 +21,9 @@ type GroupLine = Extract<Line, { type: "group" }>;
 
 /** The id of a turn's work header, which is also what it toggles. */
 export const workKey = (turnId: string) => `work:${turnId}`;
+
+/** A user message that starts a turn: a steer joins the running one [D183]. */
+const opens = (item: Item | undefined) => item?.kind === "message" && item.role === "user" && !item.steer;
 
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
 
@@ -57,6 +62,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   let kept: number[] = [];
   let group: { span: [number, number]; open: boolean; single: boolean; line: GroupLine | null } | null = null;
   let before: Item | undefined;
+  let marks: Extract<Line, { type: "marks" }> | null = null;
+  const end = () => {
+    if (marks) out.push(marks);
+    marks = null;
+  };
   const push = (line: Line) => out.push(line);
   const gap = (item: Item | null, step: boolean): Gap => {
     const last = out.at(-1);
@@ -69,15 +79,18 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
 
   // A turn stopped or failed before any output still says so under its input.
   const bare = () => {
-    const turn = before?.kind === "message" && before.role === "user" ? turns.get(before.turnId) : undefined;
+    const turn = opens(before) ? turns.get(before!.turnId) : undefined;
     if (turn && turn.status !== "running" && turn.status !== "done") push({ type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null });
   };
 
   for (let at = from; at < items.length; at++) {
     const item = items[at]!;
     // A turn that begins with a switch note rather than an input also ends the bare turn before it.
-    if ((item.kind === "message" && item.role === "user") || (before && item.turnId !== before.turnId)) bare();
-    if (item.kind === "message" && item.role === "user") {
+    if (opens(item) || (before && item.turnId !== before.turnId)) {
+      bare();
+      end();
+    }
+    if (opens(item)) {
       starts.push(at);
       counts.push(out.length);
     }
@@ -85,7 +98,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
     // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
-    if (turn && before?.kind === "message" && before.role === "user" && before.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done)) {
+    if (turn && opens(before) && before!.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;
@@ -113,7 +126,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       group = { span: item.span, open: single || line!.open, single, line };
       continue;
     }
+    if (item.kind === "message" && item.role === "assistant" && item.final) {
+      marks = { type: "marks", id: `${item.id}:marks`, gap: "step", item, turn };
+    }
     push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
   }
   bare();
+  end();
 }

@@ -132,6 +132,13 @@ export function DecisionsGallery() {
             <Slot approvals={[KINDS[0]![1]]} onAnswer={refuse} />
           </Pressed>
         </State>
+        <State label="Refused, stale: Dismiss (proposed)">
+          <Pressed>
+            <div className="w-reading">
+              <ApprovalSlot approvals={[KINDS[0]![1]]} onAnswer={() => Promise.reject(new Error("Already answered"))} dismiss={() => () => {}} />
+            </div>
+          </Pressed>
+        </State>
       </Row>
       <Row name="On the rail, after Reply…">
         <State label="With more waiting">

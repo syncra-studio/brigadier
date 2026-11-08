@@ -206,17 +206,22 @@ export function AssistantMessage({
   children: ReactNode;
 }) {
   return (
-    <div className="group/answer flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
-      {final && (
-        <div className="-ms-1 flex items-center gap-0.5 text-faint-foreground">
-          <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
-          {time !== undefined && (
-            <span className={cx("ps-1 text-xs tabular-nums", !latest && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
-              {sentAt(time)}
-            </span>
-          )}
-        </div>
+      {final && <AnswerMarks text={text} time={time} latest={latest} />}
+    </div>
+  );
+}
+
+/** A finished answer's copy and time, after the turn's last step. */
+export function AnswerMarks({ text, time, latest = false }: { text: string; time?: number; latest?: boolean }) {
+  return (
+    <div className="group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground">
+      <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
+      {time !== undefined && (
+        <span className={cx("ps-1 text-xs tabular-nums", !latest && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
+          {sentAt(time)}
+        </span>
       )}
     </div>
   );

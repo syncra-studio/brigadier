@@ -6,6 +6,7 @@ import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
 import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
+import { HomeGallery } from "./home";
 import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
@@ -15,6 +16,7 @@ import { Popups } from "./popups";
 import { ArchiveGallery } from "./archive";
 import { ProjectSettingsGallery } from "./project-settings";
 import { ProjectsGallery } from "./projects";
+import { SessionGallery } from "./session";
 import { SidebarGallery } from "./sidebar";
 import { Thread } from "./thread";
 import "./gallery.css";
@@ -105,11 +107,13 @@ function GalleryPage() {
         <h1 className="ps-2 text-sm font-medium">Components</h1>
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
+        <HomeGallery />
         <ProjectsGallery />
         <ProjectSettingsGallery />
         <ArchiveGallery />
         <SidebarGallery />
         <PaletteGallery />
+        <SessionGallery />
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />

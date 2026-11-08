@@ -103,4 +103,4 @@ export const daemonSource: Source = {
 
 /** The app menu's View › Add project… and File › Open Folder… (⌘O) [D165]; called once by the app. */
 export const listenToMenu = () =>
-  window.brigadier?.onMenu((command, paths) => (command === "add-project" ? openAddProject() : void openFolders(daemonSource, paths ?? [])));
+  window.brigadier?.onMenu((command, paths) => (command === "add-project" ? openAddProject() : command === "open-folders" && void openFolders(daemonSource, paths ?? [])));

@@ -12,7 +12,6 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { useStartingRows } from "../onboarding/start";
 import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
@@ -90,7 +89,7 @@ export function AppSidebar({
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  const { live: shown, archived } = useArchiveSplit(useShown(useStartingRows(rows)));
+  const { live: shown, archived } = useArchiveSplit(useShown(rows));
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].

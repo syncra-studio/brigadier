@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::fold::{self, Owner};
-use brigadier_core::{self as core, Folded, norm, projects};
+use brigadier_core::{self as core, Folded, adapters, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
@@ -40,7 +40,7 @@ struct Entry {
     seen_len: u64,
     error: Option<String>,
     orphaned_since: Option<u64>,
-    /// Its `session.json`, read once: what never changes after the start.
+    /// Its `session.json`, read again when the folder changes: a level pick renames it in [D30].
     spec: Option<core::Spec>,
     /// Small session files, read again only when the folder changes.
     marks: Marks,
@@ -59,6 +59,8 @@ struct Marks {
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     archived: Option<u64>,
     lifecycle: Value,
+    /// The follow-up queue (`queue.json`), null when empty.
+    queue: Value,
 }
 
 impl Marks {
@@ -76,6 +78,7 @@ impl Marks {
             setup: core::worktrees::setup_state(dir, true),
             archived,
             lifecycle,
+            queue: crate::queue::row(dir),
         }
     }
 }
@@ -198,6 +201,7 @@ impl Index {
             let at = touched(&dir);
             if at != e.marks.at {
                 e.marks = Marks::read(&dir, at);
+                e.spec = None;
             }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
@@ -237,12 +241,35 @@ impl Index {
             if !alive && setup["state"] == "running" {
                 setup["state"] = "interrupted".into();
             }
+            let backend = match f.fold.backend.as_str() {
+                "" => e.spec.as_ref().map_or("", |s| s.backend.as_str()),
+                b => b,
+            };
+            let steer = adapters::get(backend).is_some_and(|a| a.can().steer);
+            // What the next turn runs at, by the same rule send uses [D129, D166, D225].
+            let held = project
+                .as_deref()
+                .is_some_and(|p| crate::models::held_in(&projects, p));
+            let next = e
+                .spec
+                .as_ref()
+                .map(|s| (s, adapters::get(crate::models::next_agent(s, &f.fold))));
+            let (levels, level) = match next {
+                Some((s, Some(a))) => (json!(a.can().levels), core::level(s, a, held)),
+                _ => (json!([]), Ok(None)),
+            };
             let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project, "setup": setup,
-                             "archived": e.marks.archived, "lifecycle": e.marks.lifecycle});
+                             "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
+                             "archived": e.marks.archived, "lifecycle": e.marks.lifecycle,
+                             "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
+                             "queue": e.marks.queue, "steer": steer,
+                             // A turn whose host is gone has nothing left to stop or queue behind [D60].
+                             "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
+                             "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
+                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref())});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

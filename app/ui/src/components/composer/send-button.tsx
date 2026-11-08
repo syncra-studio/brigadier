@@ -1,6 +1,6 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { ArrowUp, PlayTriangle, Stop } from "../../icons";
+import { ArrowUp, ArrowUpRight, PlayTriangle, Stop } from "../../icons";
 import { Button } from "../button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { FollowUp } from "./draft";
@@ -61,9 +61,32 @@ function useEscToStop(on: boolean, stoppable: boolean, onStop: () => void, butto
   return armedAt !== null && stoppable;
 }
 
+const MAC = navigator.userAgent.includes("Mac");
+
+/** Whether ⌘ (Ctrl elsewhere) is held down now, while `on`. */
+function useModHeld(on: boolean): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!on) return;
+    const check = (event: KeyboardEvent) => setHeld(MAC ? event.metaKey : event.ctrlKey);
+    const off = () => setHeld(false);
+    window.addEventListener("keydown", check);
+    window.addEventListener("keyup", check);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", check);
+      window.removeEventListener("keyup", check);
+      window.removeEventListener("blur", off);
+      setHeld(false);
+    };
+  }, [on]);
+  return on && held;
+}
+
 /**
  * The composer's send button, a circle: ↑ sends (queues or steers while a turn runs), ■ stops (also while
- * Esc is armed), ▶ resumes a stopped run. Disabled with nothing to send, or with `blocked` saying why.
+ * Esc is armed), ▶ resumes a stopped run. With `onSendNew`, holding ⌘ turns ↑ into ↗ and a click starts the message
+ * as a new session [D183, D204]. Disabled with nothing to send, or with `blocked` saying why.
  */
 export function SendButton({
   empty,
@@ -74,7 +97,9 @@ export function SendButton({
   blocked,
   keys = true,
   armed: frozenArmed = false,
+  asNew: frozenNew = false,
   onSend,
+  onSendNew,
   onStop,
   onResume,
 }: {
@@ -89,7 +114,11 @@ export function SendButton({
   keys?: boolean;
   /** Shows Stop armed (the gallery's frozen copy). */
   armed?: boolean;
+  /** Shows ↗ as if ⌘ were held (the gallery's frozen copy). */
+  asNew?: boolean;
   onSend: () => void;
+  /** Starts the message as a new session (⌘-click); without it ⌘ changes nothing. */
+  onSendNew?: () => void;
   onStop: () => void;
   onResume?: () => void;
 }) {
@@ -97,6 +126,9 @@ export function SendButton({
   const stoppable = useHeldOn(canStop, STOP_HOLD_MS);
   const armed = useEscToStop(keys, stoppable, onStop, button) || frozenArmed;
   const state = armed || (stoppable && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
+  const modHeld = useModHeld(keys && onSendNew !== undefined);
+  const asNew = state === "send" && onSendNew !== undefined && (modHeld || frozenNew);
+  const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";
   const tip =
     state === "stop"
       ? armed
@@ -104,7 +136,7 @@ export function SendButton({
         : "Stop"
       : state === "resume"
         ? "Resume"
-        : (blocked ?? (running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : "Send message"));
+        : (blocked ?? (asNew ? "Start as a new session" : onSendNew ? `${verb} ⏎ · Start as a new session ⌥⌘⏎` : verb));
   // A circle, as the old app's: not the icon-button corner (D27-D29 are about ghost icons).
   return (
     <Tooltip>
@@ -117,10 +149,10 @@ export function SendButton({
             size={null}
             data-state={state}
             disabled={state === "send" && (empty || blocked !== undefined)}
-            onClick={state === "stop" ? onStop : state === "resume" ? onResume : onSend}
+            onClick={(event) => (state === "stop" ? onStop() : state === "resume" ? onResume?.() : onSendNew && (asNew || (MAC ? event.metaKey : event.ctrlKey)) ? onSendNew() : onSend())}
             className="inline-flex size-control-sm rounded-capsule transition-all motion-safe:active:scale-press"
           >
-            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : <ArrowUp />}
+            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : asNew ? <ArrowUpRight data-slot="send-new-session" /> : <ArrowUp />}
           </Button>
         }
       />

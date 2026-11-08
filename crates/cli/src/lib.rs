@@ -5,9 +5,12 @@ mod accounts;
 mod control;
 pub mod index;
 mod mirror;
+mod models;
 pub mod owner;
 mod sessions;
+pub mod queue;
 mod setup;
+mod side;
 mod switching;
 mod title;
 
@@ -20,16 +23,16 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full]
+       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
-       brigadier index [--cold] | transcript <id> | thread <id>
+       brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] | ignored I [--in D] | reveal I | remove I]
@@ -82,7 +85,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" => &[][..],
+        | "switching" | "models" | "title" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -131,29 +134,32 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
                 cwd,
                 model: flag(args, "--model").map(String::from),
-                level: flag(args, "--level").map(String::from),
+                // Unpicked, Rust's default for the agent and the project's trust [D187, D239].
+                level: flag(args, "--level").map(String::from).or_else(|| {
+                    let held = models::held(data, project.as_ref().map(|p| p.id.as_str()));
+                    adapters::get(backend)
+                        .and_then(|a| models::default_level(a, held).map(String::from))
+                }),
                 effort: flag(args, "--effort").map(String::from),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()
             };
             if let Some(a) = adapters::get(backend) {
-                core::level(&spec, a).map_err(io::Error::other)?;
+                core::level(&spec, a, false).map_err(io::Error::other)?;
             }
-            let spec = if core::session_dir(data, id).join("session.json").exists() {
-                core::load(data, id)?
+            let fresh = !core::session_dir(data, id).join("session.json").exists();
+            let spec = if fresh {
+                core::create(data, &spec)?
             } else {
-                let spec = core::create(data, &spec)?;
-                if let Some(project) = project.filter(|_| worktree)
-                    && let Err(e) = core::worktrees::create(&spec, &project)
-                {
-                    if !spec.dir.join("worktree.json").exists() {
-                        std::fs::remove_dir_all(&spec.dir)?;
-                    }
-                    return Err(e);
-                }
-                spec
+                core::load(data, id)?
             };
+            // Only a session made for its worktree: a Local checkout one, started again, never gets one.
+            let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
+            if let Some(project) = project.filter(|_| worktree && own) {
+                let base = flag(args, "--base");
+                core::worktrees::ensure(&spec, &project, fresh, base)?;
+            }
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
@@ -229,21 +235,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(Value::Null)
         }
-        "stop" => {
-            let id = arg(args, 1)?;
-            // The agent's own stop first; the kill only when it has none or it didn't stop in time.
-            if let Ok(Some(stopped)) = control::interrupt(data, id) {
-                return Ok(stopped);
-            }
-            match owner::call(data, id, json!({"op": "stop", "by": "user"})) {
-                Ok(v) => Ok(v),
-                // No owner: nothing can be running under us, but leftovers recorded in the log still go.
-                Err(e) => {
-                    let f = core::fold(&core::session_dir(data, id), true)?;
-                    Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold)}))
-                }
-            }
-        }
+        "stop" => queue::stop(data, arg(args, 1)?),
+        "side" => side::run(data, args),
+        "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
@@ -255,6 +249,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(core::recover(&spec, &f.fold, &live, child(data, id), &call))
         }
         "archive" | "restore" | "delete" => sessions::run(data, args),
+        // The short title a first message gives its session, for the app's row before Rust's [D186].
+        "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
         "level" => control::level(data, args),
         "answer" => control::answer(data, args),
         "up" => {
@@ -341,6 +337,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "index" => index(data, has(args, "--cold")),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
+        "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),
         "awake" => {
             if let Some(mode) = args.get(1) {
@@ -407,9 +404,8 @@ fn send(
         None,
     );
     let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
-    // No result means a refusal before logging (a busy race with a turn that just ended) or no reply
-    // at all (a host moving to a new build). One retry, and only when the log proves the command
-    // never got in: an uncertain one is never sent again by itself [D54].
+    // Retry a busy race or moving host only when the log proves the command never got in;
+    // an uncertain delivery is never sent again by itself [D54].
     if reply["result"].is_null() && !logged() {
         thread::sleep(Duration::from_millis(200));
         // If no host answers, the resend fails too and the log decides the result below.

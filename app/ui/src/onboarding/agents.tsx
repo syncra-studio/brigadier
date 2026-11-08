@@ -16,7 +16,7 @@ const HERE = MAC ? "this Mac" : "this computer";
 type State = "checking" | "running" | "error" | "install" | "signIn" | "noModel" | "ready";
 
 /** Installed, signed in and has a usable model are separate: only the last makes it ready [D45]. */
-function stateOf(agent: Agent | undefined): State {
+export function stateOf(agent: Agent | undefined): State {
   if (!agent || agent.path === undefined) return "checking";
   if (agent.setup?.running) return "running";
   if (agent.error) return "error";
@@ -31,35 +31,14 @@ const RANK: Record<State, number> = { ready: 0, noModel: 1, signIn: 1, running: 
 const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 /**
- * Connecting the agents, as the old app drew it [D43, D45]: a card each, two to a row, connected
- * ones first. Each card says how its agent stands and offers the one thing it needs next: Install
- * (the vendor's own installer, then its sign-in) or Sign in (its own, in the browser), the card
- * waiting meanwhile; both run unseen on a host. Every word on a card comes from its adapter;
- * nothing here names a provider. Continue needs one agent with a model to pick.
+ * What drives an agent's card: its install or sign-in run, checked again while it goes and closed once it ends well,
+ * an install's sign-in following by itself, and why one failed. Onboarding's step and the model picker's Set up share it.
  */
-export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
-  const { daemon } = useDaemon();
-  const { list, checking, error } = useAgents();
+export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
   const [starting, setStarting] = useState<string | null>(null);
   const [failed, setFailed] = useState<Record<string, string>>({});
-  // Set once every agent has been checked, so cards don't jump as they connect.
-  const [order, setOrder] = useState<string[] | null>(null);
   // Agents whose install just ended well: their sign-in follows.
   const signInNext = useRef(new Set<string>());
-  const online = Boolean(daemon);
-
-  useEffect(() => {
-    if (online) void checkAll(true);
-  }, [online]);
-
-  // Installed some other way meanwhile (a terminal): it shows when the window comes back.
-  const missing = list?.some((agent) => stateOf(agent) === "install");
-  useEffect(() => {
-    if (!missing) return;
-    const onFocus = () => void checkAll();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [missing]);
 
   // While a run goes its agent is checked again; one that ended well goes by itself.
   const runningNames = list?.filter((agent) => agent.setup?.running).map((agent) => agent.name).join(" ") ?? "";
@@ -108,6 +87,37 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
       setStarting(null);
     }
   };
+
+  return { starting, failed, begin, close };
+}
+
+/**
+ * Connecting the agents, as the old app drew it [D43, D45]: a card each, two to a row, connected
+ * ones first. Each card says how its agent stands and offers the one thing it needs next: Install
+ * (the vendor's own installer, then its sign-in) or Sign in (its own, in the browser), the card
+ * waiting meanwhile; both run unseen on a host. Every word on a card comes from its adapter;
+ * nothing here names a provider. Continue needs one agent with a model to pick.
+ */
+export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+  const { daemon } = useDaemon();
+  const { list, checking, error } = useAgents();
+  // Set once every agent has been checked, so cards don't jump as they connect.
+  const [order, setOrder] = useState<string[] | null>(null);
+  const online = Boolean(daemon);
+  const { starting, failed, begin, close } = useAgentSetup(list, online);
+
+  useEffect(() => {
+    if (online) void checkAll(true);
+  }, [online]);
+
+  // Installed some other way meanwhile (a terminal): it shows when the window comes back.
+  const missing = list?.some((agent) => stateOf(agent) === "install");
+  useEffect(() => {
+    if (!missing) return;
+    const onFocus = () => void checkAll();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [missing]);
 
   const agents = list ?? [];
   const allChecked = list !== undefined && agents.every((agent) => stateOf(agent) !== "checking");
@@ -167,7 +177,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   );
 }
 
-function AgentCard({ agent, online, starting, retrying, failed, onAction, onCancel, onRetry }: {
+export function AgentCard({ agent, online, starting, retrying, failed, onAction, onCancel, onRetry }: {
   agent: Agent | undefined;
   online: boolean;
   starting: boolean;

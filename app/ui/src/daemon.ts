@@ -29,8 +29,6 @@ export type Row = {
   updated: number;
   items: number;
   error: string | null;
-  /** Set once archive exists (1v): ⌘K lists it last, tagged [D197]. */
-  archived?: boolean;
 };
 
 export type View = {

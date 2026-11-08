@@ -1,3 +1,4 @@
+import { newSession } from "../home/start";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { showToast } from "../components/toast";
 import { ComposeEditSquare, FolderOpen, SettingsCog, Trash } from "../icons";
@@ -5,7 +6,6 @@ import { errorText, run } from "../onboarding/api";
 import type { Project } from "./projects";
 import { openRemoveProject } from "./remove";
 import { openProjectSettings } from "./settings";
-import { enterProject } from "./trust";
 
 /**
  * A project's menu, the core four as the old app had them [D171, D212]: New session, Project settings…,
@@ -39,7 +39,5 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
 
 /** A new session in the project: Home, drafted there. */
 export function newSessionIn(id: string): void {
-  // shortcut: Home is the Start form with this project chosen, until 1s's draft takes the project.
-  enterProject(id);
-  window.location.hash = "";
+  newSession(id);
 }

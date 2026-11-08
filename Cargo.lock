@@ -16,6 +16,7 @@ dependencies = [
  "brigadier-frames",
  "libc",
  "rusqlite",
+ "serde",
  "serde_json",
 ]
 

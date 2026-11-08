@@ -9,9 +9,9 @@ import { Kbd } from "../components/kbd";
 import { MenuRow } from "../components/menu";
 import { ask, useDaemon } from "../daemon";
 import { Folder, MagnifyingGlassSmSearch, Terminal } from "../icons";
+import { newSession } from "../home/start";
 import { store, useProfile } from "../onboarding/api";
 import { showProject } from "../projects/store";
-import { enterProject } from "../projects/trust";
 import { useShown } from "../sidebar/actions";
 import { RowMark } from "../sidebar/row";
 import { type Project, type SessionRow, statusWords } from "../sidebar/words";
@@ -20,8 +20,8 @@ import { type Project, type SessionRow, statusWords } from "../sidebar/words";
 export type Hit = { id: string; snippet: string; at: [number, number][] };
 /** Rust's search over message text, best first [D72]; rejects with the reason. */
 export type TextSearch = (q: string) => Promise<Hit[]>;
-/** `archived` comes with archive (1v); until then no row has it, and no tag shows [D197]. */
-export type PaletteRow = SessionRow & { archived?: boolean };
+/** ⌘K lists an archived row last, tagged [D197]. */
+export type PaletteRow = SessionRow;
 
 export const searchText: TextSearch = (q) =>
   new Promise((resolve, reject) => ask({ op: "search", q }, (frame) => (frame.ok ? resolve(frame.hits) : reject(frame.error))));
@@ -159,7 +159,7 @@ function ResultRow({ result, projects }: { result: Result; projects: Map<string,
   const words = statusWords(row);
   const detail = (
     <>
-      {row.archived && <Badge variant="secondary">Archived</Badge>}
+      {!!row.archived && <Badge variant="secondary">Archived</Badge>}
       {row.mark && <RowMark mark={row.mark} label={words ?? ""} />}
       {row.project !== null && projects.get(row.project)?.name}
     </>
@@ -319,8 +319,7 @@ export function GlobalSearch() {
       search={searchText}
       onOpenSession={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
       onOpenProject={(id) => {
-        window.location.hash = "";
-        enterProject(id);
+        newSession(id);
         showProject(id);
       }}
     />

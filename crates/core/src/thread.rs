@@ -65,12 +65,13 @@ pub struct Thread {
     level: Option<Value>,
 }
 
-/// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
+/// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
+/// another agent the user picked [D129].
 fn reason(why: Option<&str>) -> &'static str {
-    if why == Some("unresumable") {
-        "unresumable"
-    } else {
-        "usage-limit"
+    match why {
+        Some("unresumable") => "unresumable",
+        Some("picked") => "picked",
+        _ => "usage-limit",
     }
 }
 
@@ -144,10 +145,15 @@ impl Thread {
                 }
                 if item["steer"] == true {
                     self.break_group();
-                    self.add(
+                    let at = self.add(
                         json!({"kind": "message", "role": "user", "text": item["text"],
-                        "streaming": false, "origin": "user", "sentAt": ts}),
+                        "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
+                        "steer": true}),
                     );
+                    // The user's own words stay out of the work fold, like a question [D99].
+                    if let Some(o) = self.open.as_mut() {
+                        o.kept.push(at as u64 + 1);
+                    }
                 }
             }
         } else {

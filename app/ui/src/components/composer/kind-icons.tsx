@@ -1,6 +1,6 @@
 import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Mcp, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
-import { ProviderMark } from "./pickers";
+import { ProviderMark } from "./model-picker";
 
 const extensionOf = (name: string) => (name.includes(".") ? (name.split(".").pop()?.toLowerCase() ?? "") : "");
 

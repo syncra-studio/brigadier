@@ -240,6 +240,40 @@ impl Thread {
                 };
                 self.add(json!({"kind": "unknown", "raw": raw}));
             }
+            // Send as new [D204]: one row per session started from here, its intent then its
+            // result in place; never sent to the agent.
+            "note" if item["event"] == "side" => {
+                let id = format!("side:{}", str_of("session"));
+                let at = match self.items.iter().rposition(|r| r["id"] == id.as_str()) {
+                    Some(at) => at,
+                    None => {
+                        self.break_group();
+                        let at = self.add_as(
+                            json!({"kind": "started", "session": item["session"],
+                            "state": "starting", "text": item["text"]}),
+                            Some(id),
+                        );
+                        // Out of the turn's work fold, like the user's own words [D99].
+                        if let Some(o) = self.open.as_mut() {
+                            o.kept.push(at as u64 + 1);
+                        }
+                        at
+                    }
+                };
+                if item["phase"] != "intent" {
+                    let row = &mut self.items[at];
+                    row["state"] = if item["ok"] == true {
+                        "started"
+                    } else {
+                        "failed"
+                    }
+                    .into();
+                    for k in ["base", "title", "error", "left"] {
+                        row[k] = item[k].clone();
+                    }
+                    self.changed_items.insert(at);
+                }
+            }
             _ => {}
         }
     }

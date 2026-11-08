@@ -28,13 +28,34 @@ pub fn send(
     backend: Option<&str>,
     retry_of: Option<&str>,
 ) -> Value {
-    let b = backend.map(String::from).unwrap_or_else(|| {
-        if f.backend.is_empty() {
-            spec.backend.clone()
-        } else {
-            f.backend.clone()
+    let picking = origin == "user" && backend.is_none() && retry_of.is_none() && f.picked.is_some();
+    let mut replace = None;
+    let picked_fold;
+    let f = if picking {
+        match idle(spec, call, false) {
+            Ok((len, again)) if again.picked.is_some() => {
+                replace = Some(len);
+                picked_fold = again;
+                &picked_fold
+            }
+            Ok(_) => return json!({"ok": false, "result": "refused", "error": "changed"}),
+            Err(reply) => return reply,
         }
-    });
+    } else {
+        f
+    };
+    let picked = f.picked.as_ref().filter(|_| picking);
+    let b = picked
+        .map(|p| p.backend.as_str())
+        .or(backend)
+        .map(String::from)
+        .unwrap_or_else(|| {
+            if f.backend.is_empty() {
+                spec.backend.clone()
+            } else {
+                f.backend.clone()
+            }
+        });
     let Some(a) = adapters::get(&b) else {
         return json!({"ok": false, "error": format!("unknown backend {b}")});
     };
@@ -43,11 +64,7 @@ pub fn send(
     // An untrusted or unanswered project holds every turn to Ask; an agent that can't enforce it
     // is refused, never run unheld [D129, D166].
     let held = crate::projects::held(&crate::data_of(spec), spec);
-    let asked = Spec {
-        level: Some("ask".into()),
-        ..spec.clone()
-    };
-    let level = match level(if held { &asked } else { spec }, a) {
+    let level = match level(spec, a, held) {
         Ok(level) => level,
         Err(_) if held => {
             let e = format!(
@@ -62,18 +79,30 @@ pub fn send(
         level: level.map(String::from),
         ..spec.clone()
     };
-    let run = as_run(spec, f, &b, None);
+    let mut run = as_run(spec, f, &b, None);
+    let (change, sent) = if let Some(p) = picked {
+        run.model = Some(p.model.clone());
+        run.effort = p.effort.clone();
+        match crate::switch::picked(spec, f, &b, &p.model, p.effort.as_deref(), text) {
+            Ok((change, sent)) => (Some(change), sent),
+            Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
+        }
+    } else {
+        (None, text.to_string())
+    };
     let setup = adapters::setup(&run);
     let mut base = json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of, "setup": setup});
     if held {
         base["setup"]["held"] = true.into();
     }
-    let running = child.is_some();
+    if let Some(change) = change {
+        base["switch"] = change;
+    }
+    let running = child.is_some() && !picking;
     let pty = child.is_some_and(|(_, pty)| pty);
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
         return json!({"ok": false, "result": "refused", "error": "another backend's process is running; stop it first"});
     }
-    let mut replace = None;
     let refolded;
     let mut f = f;
     if running && (!a.per_turn() || pty) {
@@ -93,7 +122,7 @@ pub fn send(
             match a.retune(&last, &run) {
                 Retune::InMessage => {}
                 Retune::Send(Delivery::Stdin(pre)) => bytes = pre,
-                Retune::Restart => match restart(spec, call) {
+                Retune::Restart => match idle(spec, call, true) {
                     Ok((len, again)) => {
                         refolded = again;
                         f = &refolded;
@@ -124,8 +153,20 @@ pub fn send(
     } else if running {
         return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
     }
-    let resume = f.resume.get(&b).map(String::as_str);
-    let launch = a.launch(&as_run(spec, f, &b, None), resume, Some(text));
+    let resume = if picking {
+        None
+    } else {
+        f.resume.get(&b).map(String::as_str)
+    };
+    let launch = a.launch(
+        &if picking {
+            run
+        } else {
+            as_run(spec, f, &b, None)
+        },
+        resume,
+        Some(&sent),
+    );
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let mut req = base;
@@ -153,30 +194,51 @@ pub fn send(
         req["replace"] = true.into();
         req["if_len"] = len.into();
     }
-    call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+    let mut reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    if picking && reply["error"] == "changed" {
+        reply["message"] = "The session changed while switching. Try again.".into();
+    }
+    reply
 }
 
-/// For a child that takes a new setup only by starting again: the log's length from its host, then
-/// the fold from at least there, so the restart is refused if anything came in between. Refused
-/// unless the child is still idle.
-fn restart(spec: &Spec, call: Call) -> Result<(u64, Fold), Value> {
+/// The host's log length, then its fold: a restart or picked switch is refused if anything comes
+/// between judging it idle and spawning. A picked switch also works with no child left alive.
+fn idle(spec: &Spec, call: Call, needs_child: bool) -> Result<(u64, Fold), Value> {
     let changed = json!({"ok": false, "result": "refused", "error": "changed"});
     let ping =
         call(json!({"op": "ping"})).map_err(|e| json!({"ok": false, "error": e.to_string()}))?;
+    if !needs_child
+        && !ping["caps"]
+            .as_array()
+            .is_some_and(|caps| caps.iter().any(|c| c == "switch"))
+    {
+        return Err(
+            json!({"ok": false, "result": "refused", "error": "old_host", "message": "This session's host is on an older build. It moves to the new one once nothing runs."}),
+        );
+    }
     let len = ping["len"].as_u64().ok_or(changed.clone())?;
     let f =
         crate::fold(&spec.dir, true).map_err(|e| json!({"ok": false, "error": e.to_string()}))?;
-    match f.fold.turns.is_empty() && ping["child"].is_number() {
+    match f.fold.turns.is_empty() && (!needs_child || ping["child"].is_number()) {
         true => Ok((len, f.fold)),
         false => Err(changed),
     }
 }
 
-/// The level a turn runs at: the spec's, or (proposed) the agent's most restrictive when it names
-/// none. One the agent can't enforce refuses the turn, never runs weaker [D129, D170].
-pub fn level(spec: &Spec, a: &dyn adapters::Adapter) -> Result<Option<&'static str>, String> {
+/// The level a turn runs at: Ask while its project holds it [D166], else the spec's, or (proposed)
+/// the agent's most restrictive when it names none. One the agent can't enforce refuses the turn,
+/// never runs weaker [D129, D170]. The session's row shows the same answer.
+pub fn level(
+    spec: &Spec,
+    a: &dyn adapters::Adapter,
+    held: bool,
+) -> Result<Option<&'static str>, String> {
     let levels = a.can().levels;
-    match spec.level.as_deref() {
+    match if held {
+        Some("ask")
+    } else {
+        spec.level.as_deref()
+    } {
         None => Ok(levels.first().copied()),
         Some(want) => levels
             .iter()

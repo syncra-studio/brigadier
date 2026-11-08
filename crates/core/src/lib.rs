@@ -47,6 +47,9 @@ pub struct Spec {
     /// again at each turn start [D129, D170].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub level: Option<String>,
+    /// The app's op id of the last level picked, which the row carries back to settle it [D30].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level_op: Option<String>,
     /// Its model's reasoning effort; None: the CLI's own default [D129].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
