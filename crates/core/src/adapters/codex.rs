@@ -2,8 +2,9 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
-    cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step, version,
+    Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
+    classify, cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
+    version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -11,7 +12,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 mod record;
-use record::{diff, rollouts};
+use record::{diff, rollouts, thread_files};
 
 pub struct Codex;
 
@@ -75,7 +76,7 @@ impl Adapter for Codex {
             signed_in: Some(signed_in),
             how: how.into(),
             models: if signed_in {
-                vec![(MODEL.into(), false)]
+                vec![ModelInfo::plain(MODEL, false)]
             } else {
                 vec![]
             },
@@ -215,9 +216,15 @@ impl Adapter for Codex {
         let names: Vec<String> = ids
             .into_iter()
             .filter(|id| crate::check_id(id).is_ok())
-            .map(|id| format!("-{id}.jsonl"))
             .collect();
-        rollouts(&names)
+        let mut paths = rollouts(
+            &names
+                .iter()
+                .map(|id| format!("-{id}.jsonl"))
+                .collect::<Vec<_>>(),
+        );
+        paths.extend(thread_files(spec, &names));
+        paths
     }
 
     /// Its prompt history keeps the terminal's prompts by thread id, and a TUI that was killed
@@ -226,6 +233,13 @@ impl Adapter for Codex {
         drop_lines(
             &cli_home(spec, ".codex", "history.jsonl"),
             "session_id",
+            resume,
+        )
+        .map_err(|e| e.to_string())?;
+        // Its thread names, by thread id.
+        drop_lines(
+            &cli_home(spec, ".codex", "session_index.jsonl"),
+            "id",
             resume,
         )
         .map_err(|e| e.to_string())?;

@@ -47,7 +47,7 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
     let len = ping["len"].as_u64().unwrap_or(0);
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
-    let mut req = json!({"op": "spawn", "argv": launch.argv, "env": env, "cwd": spec.cwd, "pty": true,
+    let mut req = json!({"op": "spawn", "argv": crate::worktrees::wrap(&crate::data_of(spec), spec, launch.argv), "env": env, "cwd": spec.cwd, "pty": true,
         "cols": ask.cols, "rows": ask.rows, "keep_stdin": true, "backend": b,
         "cli_version": cli_version(spec, a), "replace": running, "if_len": len});
     if let Some(cursor) = a.mirror_from(spec, &conv) {

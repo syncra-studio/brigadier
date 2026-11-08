@@ -115,6 +115,8 @@
   /* Live words waiting on an approval: quieter than the shimmer's base. */
   --color-live-text-quiet: color-mix(in oklab, var(--color-foreground) 30%, transparent);
   --color-link-hover: color-mix(in oklab, var(--color-link) 80%, transparent);
+  /* A row picked with ⌘- or Shift-click: the old app's bg-link/20. */
+  --color-picked: color-mix(in oklab, var(--color-link) 20%, transparent);
   /* A reply's blockquote edge, its rules (hr), and the lines between its table rows. */
   --color-quote-edge: color-mix(in oklab, var(--color-muted-foreground) 30%, transparent);
   --color-prose-rule: color-mix(in oklab, var(--color-muted-foreground) 20%, transparent);
@@ -165,6 +167,9 @@
   /* The sidebar panel's title. */
   --text-nav-title: 1.125rem;
   --text-nav-title--line-height: 1.5rem;
+  /* A project's initials in its badge. */
+  --text-badge: 0.5625rem;
+  --text-badge--line-height: 1rem;
   --text-diff: 0.75rem;
   --text-diff--line-height: 1.35rem;
   /* Inline code, a little smaller than the words around it. */
@@ -207,6 +212,12 @@
   --spacing-menu: 8rem;
   --spacing-select: 24rem;
   --container-dialog: 24rem;
+  /* Add project: its card, and the list's room for five rows (the old app's). */
+  --container-add-project: 47.5rem;
+  --spacing-add-project-list: 18.625rem;
+  /* Trust this folder? and Project settings (the old app's). */
+  --container-trust: 26.25rem;
+  --container-project-dialog: 35rem;
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
@@ -395,6 +406,8 @@
     }
   }
   --animate-spin: spin 1s linear infinite;
+  /* A sidebar row's working mark: the old app's stepped two-second turn. */
+  --animate-row-spin: spin 2s steps(60, end) infinite;
   @keyframes spin {
     to {
       transform: rotate(360deg);
@@ -758,6 +771,11 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--spacing-control-sm));
 }
 
+/* A line too long for its row fades out at its end (a sidebar row's title). */
+@utility mask-fade-end {
+  mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);
+}
+
 /* A scroll view's edges: what scrolls under them fades into the background. Raised, the bottom one
    reaches over a floating button too. */
 @utility fade-top {
@@ -822,6 +840,22 @@
     position: absolute;
     inset-block: 0;
     inset-inline-start: 0;
+    width: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+/* The hairline between the sidebar and the page, below the titlebar (the old app's). */
+@utility body-divider {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: var(--spacing-titlebar);
+    bottom: 0;
     width: 0.5px;
     background: var(--color-divider);
     pointer-events: none;

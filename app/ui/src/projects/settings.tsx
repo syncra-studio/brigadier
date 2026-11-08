@@ -1,0 +1,250 @@
+import { type FormEvent, type ReactNode, useId, useState } from "react";
+
+import { Button } from "../components/button";
+import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
+import { ErrorLine } from "../components/error-line";
+import { Input } from "../components/input";
+import { Switch } from "../components/switch";
+import { Plus, Trash } from "../icons";
+import { errorText, run, store } from "../onboarding/api";
+import { shortPath } from "./add-project";
+import { type Project, setProject, useProjects } from "./projects";
+import { RemoveProjectHost } from "./remove";
+import { daemonSource, type FolderCheck } from "./store";
+
+/*
+ * Project settings, the old app's dialog [D171, D178, D202]: Name, Folder, Trust, the ignored files
+ * copied into each new worktree, and the setup script. All kept on Brigadier's record, nothing written
+ * into the repo [D211]. Trust applies at once; the rest on Save, shown at once and kept by Rust [D30].
+ */
+
+/** Where the dialog's data comes from: the daemon, or the gallery's Fake. */
+export type SettingsSource = {
+  pick(at?: string): Promise<string | null>;
+  check(path: string): Promise<FolderCheck>;
+  /** `projects set <id> …args`, with `change` shown meanwhile; throws Rust's reason. */
+  save(project: Project, change: Partial<Project>, args: string[]): Promise<void>;
+  /** The ignored entries in `dir` of the project's folder, and those its `.worktreeinclude` copies. */
+  ignored(id: string, dir: string): Promise<{ entries: string[]; copied: string[] }>;
+};
+
+export const daemonSettings: SettingsSource = {
+  pick: daemonSource.pick,
+  check: daemonSource.check,
+  save: setProject,
+  ignored: async (id, dir) => (await run(["projects", "ignored", id, ...(dir ? ["--in", dir] : [])])) as { entries: string[]; copied: string[] },
+};
+
+const opened = store<string | null>(null);
+/** Opens Project settings for a project, from its menu. */
+export const openProjectSettings = (id: string) => opened.set(id);
+
+/** Mounted once beside the sidebar, with Remove project…. */
+export function ProjectSettingsHost() {
+  const id = opened.use();
+  const project = useProjects()?.find((each) => each.id === id && !each.pending);
+  return (
+    <>
+    <Dialog open={project !== undefined} onOpenChange={(open) => !open && opened.set(null)}>
+      <DialogContent frame="max-w-project-dialog gap-7 p-6">
+        {project && <ProjectSettings key={project.id} project={project} source={daemonSettings} onClose={() => opened.set(null)} />}
+      </DialogContent>
+    </Dialog>
+    {/* Remove project… mounts here too, so main.tsx is untouched (PROPOSED). */}
+    <RemoveProjectHost />
+    </>
+  );
+}
+
+/** A labelled part of the form, its aside beside the label. */
+function Field({ label, aside, htmlFor, children }: { label: string; aside?: string; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-2">
+        <label htmlFor={htmlFor} className="shrink-0 text-label font-medium text-foreground">
+          {label}
+        </label>
+        {aside && <span className="text-xs text-muted-foreground">{aside}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Ignored files to copy into worktrees: what the form keeps, and the look that edits it. */
+export type FilesProps = { project: Project; source: SettingsSource; files: string[]; onFiles: (files: string[]) => void };
+
+export function ProjectSettings({
+  project,
+  source,
+  onClose,
+  Files = PathRows,
+}: {
+  project: Project;
+  source: SettingsSource;
+  onClose: () => void;
+  /** The files' look, until the owner picks one (O20). */
+  Files?: (props: FilesProps) => ReactNode;
+}) {
+  const id = useId();
+  const [name, setName] = useState(project.name);
+  const [folder, setFolder] = useState(project.folder);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [files, setFiles] = useState(project.include);
+  const [setup, setSetup] = useState(project.setup);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const change = async () => {
+    setFolderError(null);
+    try {
+      const picked = await source.pick(folder);
+      if (!picked) return;
+      const check = await source.check(picked);
+      if (check.kind === "repo") setFolder(check.repo);
+      else setFolderError(check.kind === "invalid" ? check.reason : `${picked} is not in a git repository`);
+    } catch (cause) {
+      setFolderError(errorText(cause));
+    }
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) return setError("Name can't be empty.");
+    const include = files.map((each) => each.trim()).filter(Boolean);
+    const changed: Partial<Project> = {};
+    if (name.trim() !== project.name) changed.name = name.trim();
+    // A new folder is asked about again [D166].
+    if (folder !== project.folder) Object.assign(changed, { folder, trusted: null });
+    if (include.join("\n") !== project.include.join("\n")) changed.include = include;
+    if (setup !== project.setup) changed.setup = setup;
+    const args = [
+      ...(changed.name === undefined ? [] : ["--name", changed.name]),
+      ...(changed.folder === undefined ? [] : ["--folder", changed.folder]),
+      ...(changed.include === undefined ? [] : ["--include", changed.include.join("\n")]),
+      ...(changed.setup === undefined ? [] : ["--setup", changed.setup]),
+    ];
+    if (!args.length) return onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      await source.save(project, changed, args);
+      onClose();
+    } catch (cause) {
+      setError(errorText(cause));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={(event) => void submit(event)} className="flex min-w-0 flex-col gap-7">
+      <div className="flex flex-col gap-5.5">
+        <DialogTitle>Project settings</DialogTitle>
+        <Field label="Name" htmlFor={`${id}-name`}>
+          <Input id={`${id}-name`} value={name} autoFocus maxLength={80} onChange={(event) => setName(event.target.value)} />
+        </Field>
+        <Field label="Folder">
+          <div className="flex h-control-md items-center gap-2 rounded-capsule bg-fill ps-3.5 pe-1">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{shortPath(folder)}</span>
+            <Button variant="ghost" size="sm" onClick={() => void change()}>
+              Change
+            </Button>
+          </div>
+          {folder !== project.folder && <p className="text-xs text-muted-foreground">A new folder is asked about trust again.</p>}
+          <ErrorLine error={folderError} />
+        </Field>
+        {folder === project.folder && <TrustRow project={project} source={source} />}
+        <Files project={project} source={source} files={files} onFiles={setFiles} />
+        <Field label="Setup script" aside="Runs in each new worktree before its first turn, only while the folder is trusted" htmlFor={`${id}-setup`}>
+          <textarea
+            id={`${id}-setup`}
+            value={setup}
+            rows={3}
+            spellCheck={false}
+            placeholder="pnpm install"
+            className="min-h-control-md w-full resize-y rounded-control bg-fill px-3.5 py-2 font-mono text-xs placeholder:text-muted-foreground focus-visible:bg-background focus-visible:focus-ring"
+            onChange={(event) => setSetup(event.target.value)}
+          />
+        </Field>
+        <ErrorLine error={error} />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Whether the project's folder is trusted, applied at once; unanswered shows off [D166]. */
+function TrustRow({ project, source }: { project: Project; source: SettingsSource }) {
+  const id = useId();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.75">
+          <label htmlFor={id} className="text-label font-medium text-foreground">
+            Trust this folder
+          </label>
+          <p className="text-xs text-muted-foreground">Agents work here, asking as your permission level says.</p>
+        </div>
+        <Switch
+          id={id}
+          checked={project.trusted === true}
+          onCheckedChange={(on) => {
+            setError(null);
+            source.save(project, { trusted: on }, ["--trusted", String(on)]).catch((cause) => setError(errorText(cause)));
+          }}
+        />
+      </div>
+      <ErrorLine error={error} />
+    </div>
+  );
+}
+
+/** Look (a), the old app's: a path a row, typed, with Add file [D178]. */
+export function PathRows({ files, onFiles }: FilesProps) {
+  // Only a row just added takes focus, not the last one on open.
+  const [added, setAdded] = useState(false);
+  return (
+    <Field label="Secret files" aside="Copied into every worktree, never shown">
+      {files.length > 0 && (
+        <ul className="flex flex-col gap-1.5" aria-label="Secret files">
+          {files.map((file, index) => (
+            <li key={index} className="flex items-center gap-1">
+              <Input
+                value={file}
+                autoFocus={added && index === files.length - 1}
+                placeholder=".env.local"
+                spellCheck={false}
+                aria-label={`Secret file ${index + 1}`}
+                className="font-mono"
+                onChange={(event) => onFiles(files.map((each, at) => (at === index ? event.target.value : each)))}
+              />
+              <Button variant="ghost" size="icon-md" aria-label={`Remove ${file || "this file"}`} onClick={() => onFiles(files.filter((_, at) => at !== index))}>
+                <Trash />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        onClick={() => {
+          setAdded(true);
+          onFiles([...files, ""]);
+        }}
+      >
+        <Plus />
+        Add file
+      </Button>
+    </Field>
+  );
+}

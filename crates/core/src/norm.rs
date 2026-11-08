@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -58,7 +58,8 @@ impl Norm {
                 }
                 emit(
                     self,
-                    json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"]}),
+                    json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),
@@ -186,12 +187,24 @@ impl Norm {
                     self.announced.insert(self.backend.clone(), id.clone());
                     json!({"kind": "resume_id", "backend": self.backend, "id": id})
                 }
-                Event::Limited(m) => json!({"kind": "limited", "message": m}),
+                Event::Limited(m, resets) => {
+                    json!({"kind": "limited", "message": m, "resets": resets})
+                }
                 Event::SignIn(m) => json!({"kind": "sign_in", "message": m}),
                 Event::Unresumable(m) => json!({"kind": "unresumable", "message": m}),
-                Event::Question(id, t, options) => {
-                    json!({"kind": "question", "id": id, "text": t, "options": options})
+                // A question row shows its first item; the request goes with it whole [D177, D209].
+                Event::Question(q) => {
+                    let first = &q["items"][0];
+                    let options: Vec<&Value> = first["options"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|o| &o["label"])
+                        .collect();
+                    json!({"kind": "question", "id": q["id"], "text": first["text"], "options": options, "request": q})
                 }
+                Event::Approval(a) => json!({"kind": "approval", "id": a["id"], "request": a}),
+                Event::Resolved(id) => json!({"kind": "resolved", "id": id}),
                 Event::Answer(id, t) => json!({"kind": "answer", "id": id, "text": t}),
                 Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),

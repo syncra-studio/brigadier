@@ -4,8 +4,8 @@
 
 use super::setup::run as bounded;
 use super::{
-    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, in_pty,
-    paste, probe, s, shell_step, version,
+    Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change, classify,
+    counts, in_pty, paste, probe, s, shell_step, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -133,12 +133,7 @@ impl Adapter for OpenCode {
         let models = text(&["models", "--standalone"])?
             .lines()
             .filter(|l| l.contains('/') && !l.contains(' '))
-            .map(|l| {
-                (
-                    l.to_string(),
-                    LOCAL.iter().any(|p| l.starts_with(&format!("{p}/"))),
-                )
-            })
+            .map(|l| ModelInfo::plain(l, LOCAL.iter().any(|p| l.starts_with(&format!("{p}/")))))
             .collect();
         Ok(Check {
             version: version(exe, cwd)?,
@@ -316,11 +311,8 @@ fn tool_use(part: &Value) -> Vec<Event> {
         for (k, q) in questions.iter().enumerate() {
             let options = q["options"].as_array().into_iter().flatten();
             let qid = format!("{id}:{k}");
-            events.push(Event::Question(
-                qid.clone(),
-                s(q, &["question"]).into(),
-                options.map(|o| s(o, &["label"]).to_string()).collect(),
-            ));
+            let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
+            events.push(super::question(&qid, s(q, &["question"]), &options));
             if finished {
                 let answer = meta["answers"][k].as_array().map(|a| {
                     let labels: Vec<&str> = a.iter().filter_map(Value::as_str).collect();

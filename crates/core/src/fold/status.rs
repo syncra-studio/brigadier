@@ -57,7 +57,8 @@ pub fn works(fold: &Fold, live: &Live) -> bool {
     let (Some(turn), Some(child)) = (fold.turns.first(), live.child) else {
         return false;
     };
-    let waiting = child.stopped || turn.question.is_some();
+    // Only the waiting turn's own share: background jobs counted above still keep it awake.
+    let waiting = child.stopped || turn.question.is_some() || !turn.asks.is_empty();
     let Some(delivered) = turn.delivered.filter(|_| !waiting) else {
         return false;
     };
@@ -65,6 +66,37 @@ pub fn works(fold: &Fold, live: &Live) -> bool {
     let quiet_ms = t.map_or(30_000, |t| [t.no_start_ms, t.stall_ms][turn.began as usize]);
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     silence < quiet_ms || (!turn.tools.is_empty() && live.running_below > 0)
+}
+
+/// How long after a limit an automatic switch counts as on its way; one not made by then found
+/// nowhere to go, and the session is stuck [D51].
+const SWITCH_GRACE_MS: u64 = 10_000;
+
+/// A row's one mark [D173], from the fold's facts: "working", "needs" (you), "amber" (failed or
+/// stuck), "unread" (a turn ended after `seen`), or none. `auto` says an automatic switch takes this
+/// session's limit or refused resume on [D51], so it spins while that switch is on its way.
+pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static str> {
+    let (state, _) = state(fold, live);
+    let ended = fold
+        .last
+        .as_ref()
+        .and_then(|l| l["ts"].as_u64())
+        .unwrap_or(0);
+    match state {
+        "waiting_answer" | "sign_in" => Some("needs"),
+        "logged" | "starting" | "working" | "silent" | "idle_jobs" => Some("working"),
+        // Mid-turn in the terminal it works; between turns the terminal is only open [D47].
+        "terminal" if !fold.turns.is_empty() => Some("working"),
+        "limited" | "unresumable" if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS => {
+            Some("working")
+        }
+        "failed" | "interrupted" | "undelivered" | "unresumable" | "limited" | "stalled"
+        | "unresponsive" | "no_turn_started" => Some("amber"),
+        // The user's own stop: nothing to tell them, as in the old app.
+        "stopped" => None,
+        _ if fold.finished > seen => Some("unread"),
+        _ => None,
+    }
 }
 
 fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
@@ -129,6 +161,9 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     // Also in a terminal: the CLI waits on the user either way [D77].
     if let Some(q) = &turn.question {
         return ("waiting_answer", q.clone().into());
+    }
+    if let Some(id) = turn.asks.keys().next() {
+        return ("waiting_answer", serde_json::json!({"approval": id}));
     }
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     if fold.child.as_ref().is_some_and(|c| c.pty) {

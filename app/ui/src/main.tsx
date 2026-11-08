@@ -1,16 +1,24 @@
-import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
-import { Input } from "./components/input";
+import { SidebarProvider, useSidebar } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
+import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
-import { openThread, type Row, search, threadSource, useDaemon, useThread, type View } from "./daemon";
+import { openThread, type Row, threadSource, useDaemon, useThread } from "./daemon";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
+import { AddProjectHost } from "./projects/add-project";
+import { listenToMenu } from "./projects/store";
+import { ProjectSettingsHost } from "./projects/settings";
+import { TrustHost } from "./projects/trust";
+import { ArchivedBar } from "./sessions/archived";
 import { Demo } from "./session/Demo";
+import { useSeen } from "./sidebar/seen";
+import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { TerminalPane } from "./terminal/terminal";
 import { Thread } from "./thread/thread";
 import "./theme.css";
@@ -27,7 +35,7 @@ if (!window.location.hash) window.location.hash = localStorage.getItem("route") 
 window.addEventListener("hashchange", () => localStorage.setItem("route", window.location.hash));
 
 function App() {
-  const { daemon, refused, rows, search: found } = useDaemon();
+  const { daemon, refused, rows } = useDaemon();
   const hash = useHash();
   const profile = useProfile();
   // The profile says whether this is the first launch: asked again on each reconnect until known.
@@ -46,27 +54,80 @@ function App() {
   if (hash === "#accounts") return <AccountsPage />;
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
-    return <SessionThread id={id} row={rows?.find((row) => row.id === id)} offline={daemon === null} />;
+    return (
+      <Shell hash={hash} active={id}>
+        <SessionThread id={id} row={rows?.find((row) => row.id === id)} offline={daemon === null} />
+      </Shell>
+    );
   }
   return (
-    <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
-      <div className="app-drag fixed inset-x-0 top-0 h-titlebar" />
-      <h1 className="font-display text-hero font-semibold">Brigadier</h1>
-      {daemon && (
-        <p className="text-sm text-muted-foreground">
-          Daemon connected · pid {daemon.pid} · version {daemon.version}
-        </p>
-      )}
-      {daemon === null && <p className="text-sm text-destructive">{refused ?? "Daemon not reachable · reconnecting…"}</p>}
-      <a href="#states" className="text-sm text-muted-foreground hover:text-foreground">
-        Session states
-      </a>
-      <a href="#accounts" className="text-sm text-muted-foreground hover:text-foreground">
-        Accounts
-      </a>
-      <StartForm />
-      <Sessions rows={rows} found={found} offline={daemon === null} />
-    </main>
+    <Shell hash={hash} active={null}>
+      <Home />
+    </Shell>
+  );
+}
+
+// The sidebar beside every screen after onboarding [D173, D174]; open and width kept across launches.
+function Shell({ hash, active, children }: { hash: string; active: string | null; children: ReactNode }) {
+  const { daemon, rows, projects } = useDaemon();
+  const [open, setOpen] = useStored("sidebar.open", true);
+  const [width, setWidth] = useStored<number | null>("sidebar.width", null);
+  useSeen(rows?.find((row) => row.id === active));
+  return (
+    <div className="fixed inset-0 bg-chrome">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
+        <AppSidebar
+          rows={rows}
+          projects={projects ?? []}
+          active={active}
+          home={active === null}
+          offline={daemon === null}
+          onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
+          onNewSession={() => (window.location.hash = "")}
+        />
+        <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
+      </SidebarProvider>
+      {/* Past onboarding only, so it never asks there [D167]. */}
+      <TrustHost active={active} />
+      <ProjectSettingsHost />
+    </div>
+  );
+}
+
+// The window's top beside the sidebar; collapsed, it keeps clear of the traffic lights.
+function Titlebar({ children }: { children?: ReactNode }) {
+  const { open } = useSidebar();
+  return (
+    <header className="flex h-titlebar shrink-0 items-center gap-3 px-3 text-sm">
+      {!open && <div className="app-drag h-full w-traffic-lights shrink-0" />}
+      <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{children}</span>
+    </header>
+  );
+}
+
+// Home is a new session: the Start form.
+function Home() {
+  const { daemon, refused } = useDaemon();
+  return (
+    <>
+      <Titlebar />
+      <main className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto rounded-e-surface bg-background pt-titlebar">
+        <h1 className="font-display text-hero font-semibold">Brigadier</h1>
+        {daemon && (
+          <p className="text-sm text-muted-foreground">
+            Daemon connected · pid {daemon.pid} · version {daemon.version}
+          </p>
+        )}
+        {daemon === null && <p className="text-sm text-destructive">{refused ?? "Daemon not reachable · reconnecting…"}</p>}
+        <a href="#states" className="text-sm text-muted-foreground hover:text-foreground">
+          Session states
+        </a>
+        <a href="#accounts" className="text-sm text-muted-foreground hover:text-foreground">
+          Accounts
+        </a>
+        <StartForm />
+      </main>
+    </>
   );
 }
 
@@ -79,38 +140,6 @@ function FirstLoad({ error }: { error?: string }) {
   );
 }
 
-// States whose names aren't words, in the old app's wording.
-const STATE_WORDS: Record<string, string> = { no_turn_started: "Not started yet", waiting_answer: "Waiting for your answer" };
-
-// The smallest list that proves the daemon path: plain rows, every state shown.
-function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["search"]; offline: boolean }) {
-  const shown = found.ids && rows?.filter((row) => found.ids!.includes(row.id));
-  const list = shown ?? rows;
-  return (
-    <section className="flex w-full max-w-reading flex-col gap-2 px-4">
-      <Input placeholder="Search sessions" value={found.q} onChange={(event) => search(event.target.value)} />
-      {found.slow && <p className="text-sm text-muted-foreground">Searching…</p>}
-      {found.error && <p className="text-sm text-destructive">{found.error}</p>}
-      {rows === undefined && <p className="text-sm text-muted-foreground">Loading sessions…</p>}
-      {rows?.length === 0 && <p className="text-sm text-muted-foreground">No sessions</p>}
-      {rows?.length !== 0 && shown?.length === 0 && !found.slow && <p className="text-sm text-muted-foreground">No matches</p>}
-      <ul className={offline ? "text-sm text-muted-foreground" : "text-sm"}>
-        {list?.map((row) => (
-          <li key={row.id} className="flex gap-2 py-1">
-            <a href={`#thread/${encodeURIComponent(row.id)}`} className="min-w-0 flex-1 truncate hover:underline">
-              {row.title || row.id}
-            </a>
-            <span className={row.error ? "text-destructive" : "text-muted-foreground"}>{row.error ?? STATE_WORDS[row.state] ?? row.state}</span>
-            <span className="text-muted-foreground">
-              {row.backend} · {row.id}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 // Its terminal sits beside it, on the same conversation [D47].
 function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
@@ -118,35 +147,39 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   return (
-    <main className="fixed inset-0 flex flex-col">
-      <header className="flex h-titlebar shrink-0 items-center gap-3 text-sm">
-        <div className="app-drag h-full w-traffic-lights shrink-0" />
-        <a href="#" className="text-muted-foreground hover:text-foreground">
-          Sessions
-        </a>
-        <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{title || id}</span>
-      </header>
-      {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-      <div className="flex min-h-0 flex-1">
-        {state?.status === "missing" ? (
-          <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
-        ) : state?.status === "error" ? (
-          <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
-        ) : (
-          <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-            <SessionOfThread value={{ id, offline }}>
-              <Thread
-                source={threadSource}
-                footer={row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>}
-              />
-            </SessionOfThread>
-          </div>
-        )}
-        {state?.status !== "missing" && <TerminalPane id={id} />}
-      </div>
-    </main>
+    <>
+      <Titlebar>{title || id}</Titlebar>
+      <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
+        {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
+        <div className="flex min-h-0 flex-1">
+          {state?.status === "missing" ? (
+            <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
+          ) : state?.status === "error" ? (
+            <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
+          ) : (
+            <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
+              <SessionOfThread value={{ id, offline }}>
+                <Thread
+                  source={threadSource}
+                  footer={
+                    // Read-only while archived: its bar restores it [D180, D198].
+                    row?.archived ? <ArchivedBar row={row} /> :
+                    row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
+                    row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
+                  }
+                />
+              </SessionOfThread>
+            </div>
+          )}
+          {state?.status !== "missing" && <TerminalPane id={id} />}
+        </div>
+      </main>
+    </>
   );
 }
+
+// View › Add project… and File › Open Folder… (⌘O) [D165].
+listenToMenu();
 
 // Dev-only component gallery (pnpm gallery); other builds drop it.
 const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../gallery/gallery")) : null;
@@ -161,7 +194,11 @@ createRoot(document.getElementById("root")!).render(
         <Screen />
       </Suspense>
     ) : (
-      <App />
+      <>
+        <App />
+        <AddProjectHost />
+        <Toaster className="top-titlebar" />
+      </>
     )}
   </TooltipProvider>,
 );

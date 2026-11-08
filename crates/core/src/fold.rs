@@ -4,12 +4,13 @@
 
 use crate::adapters;
 
+mod asks;
 mod live;
 mod status;
 pub use live::{Live, live, live_groups};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, status, switchable, works};
+pub use status::{Owner, mark, status, switchable, works};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -30,6 +31,12 @@ pub struct Turn {
     pub began: bool,
     pub tools: BTreeSet<String>,
     pub question: Option<String>,
+    /// Requests waiting on the user (approvals and questions), by the id their CLI gave them.
+    #[serde(default)]
+    pub asks: BTreeMap<String, Value>,
+    /// The user asked it to stop: however its turn ends, it was stopped.
+    #[serde(default)]
+    pub stopping: bool,
     /// Logged, then its owner died before delivering it.
     pub orphaned: bool,
 }
@@ -49,6 +56,14 @@ pub struct Child {
     pub mirror_group: Option<(i32, u64)>,
 }
 
+/// Another agent's model and effort, picked for the next message.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Picked {
+    pub backend: String,
+    pub model: String,
+    pub effort: Option<String>,
+}
+
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
     pub turns: Vec<Turn>,
@@ -60,6 +75,9 @@ pub struct Fold {
     pub versions: BTreeMap<String, String>,
     pub backend: String,
     pub limit: Option<String>,
+    /// When the limit resets (ms), if its CLI said [D74].
+    #[serde(default)]
+    pub resets: Option<u64>,
     pub sign_in: Option<String>,
     /// The CLI refused to resume the conversation on this account (D90 Q4).
     #[serde(default)]
@@ -74,19 +92,70 @@ pub struct Fold {
     /// The model each backend a switch moved to runs [D51].
     #[serde(default)]
     pub models: BTreeMap<String, String>,
+    /// The newest setup (model, effort, level) given to the running child, from its inputs: what a
+    /// turn start compares to. None for a child no input set up (a terminal).
+    #[serde(default)]
+    pub given: Option<Value>,
+    /// The effort each backend runs at, as the app last set it; none is the CLI's default [D129].
+    #[serde(default)]
+    pub efforts: BTreeMap<String, String>,
+    /// Another agent the user picked: the next message goes to it in a new conversation [D90].
+    #[serde(default)]
+    pub picked: Option<Picked>,
+    /// The app's op id of the last `set` taken, which its pick reconciles by [D30].
+    #[serde(default)]
+    pub setup_op: Option<String>,
     pub cids: BTreeMap<String, u32>,
     pub unknown: u64,
     pub compactions: u64,
     pub items: u64,
+    /// The user's last send, else the first frame's time (ms): the list's order, which a turn never moves.
+    #[serde(default)]
+    pub sent: u64,
+    /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
+    #[serde(default)]
+    pub finished: u64,
     /// Prompts in the CLI's record already bound to the chat input that typed them, by prompt id.
     #[serde(default)]
     pub bound: BTreeMap<String, String>,
+    /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
+    /// delivered), withdrawn, or the outcome of the turn they ended with.
+    #[serde(default)]
+    pub closed: BTreeMap<String, String>,
+    /// Answers logged and not yet delivered: command id → request id.
+    #[serde(default)]
+    pub claims: BTreeMap<String, String>,
 }
 
 impl Fold {
+    /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
+    /// turn, which drops a pick; another agent is picked, for the next message [D90].
+    fn setup(&mut self, item: &Value) {
+        let b = item["backend"].as_str().unwrap_or("").to_string();
+        let model = item["model"].as_str().unwrap_or("").to_string();
+        let effort = item["effort"].as_str().map(String::from);
+        self.setup_op = item["op"].as_str().map(String::from);
+        if item["pick"] == true {
+            self.picked = Some(Picked {
+                backend: b,
+                model,
+                effort,
+            });
+            return;
+        }
+        self.picked = None;
+        match effort {
+            Some(e) => self.efforts.insert(b.clone(), e),
+            None => self.efforts.remove(&b),
+        };
+        self.models.insert(b, model);
+    }
+
     fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
+            self.end_asks(outcome);
             self.turns.remove(0);
+            self.finished = ts;
             self.last = Some(
                 json!({"cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
@@ -103,6 +172,9 @@ impl Fold {
     pub fn push(&mut self, item: &Value) {
         self.items += 1;
         let ts = item["ts"].as_u64().unwrap_or(0);
+        if self.sent == 0 {
+            self.sent = ts;
+        }
         let str_of = |k: &str| item[k].as_str().unwrap_or("").to_string();
         let kind = item["kind"].as_str().unwrap_or("");
         if matches!(
@@ -118,6 +190,8 @@ impl Fold {
                 | "usage"
                 | "question"
                 | "answer"
+                | "approval"
+                | "resolved"
                 | "reasoning"
                 | "compaction"
         ) {
@@ -134,6 +208,7 @@ impl Fold {
                     )
                 {
                     t.question = None;
+                    self.end_asks("withdrawn");
                 }
             }
         }
@@ -141,7 +216,13 @@ impl Fold {
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;
-                self.limit = None;
+                if item["setup"].is_object() {
+                    self.given = Some(item["setup"].clone());
+                }
+                if self.control(item, &cid) {
+                    return;
+                }
+                (self.limit, self.resets) = (None, None);
                 self.sign_in = None;
                 self.refused = None;
                 // A switch takes effect with the input that continues it, in the same frame [D51].
@@ -155,6 +236,11 @@ impl Fold {
                     if let Some(m) = switch["to"]["model"].as_str() {
                         self.models.insert(to.into(), m.into());
                     }
+                    match switch["to"]["effort"].as_str() {
+                        Some(e) => self.efforts.insert(to.into(), e.into()),
+                        None => self.efforts.remove(to),
+                    };
+                    self.picked = None;
                     // For delete, `convs` keeps the old conversation, or the same one's new account.
                     if switch["fresh"] == true {
                         self.resume.remove(to);
@@ -165,12 +251,19 @@ impl Fold {
                 // An input while the agent waits on a question is its answer, not a new turn.
                 if let Some(t) = self.turns.first_mut().filter(|t| t.question.is_some()) {
                     t.question = None;
+                    let asked = t.asks.iter().filter(|(_, r)| r["items"].is_array());
+                    let asked: Vec<String> = asked.map(|(id, _)| id.clone()).collect();
+                    asked.iter().for_each(|id| self.end_ask(id, "answered"));
+                    let t = &mut self.turns[0];
                     t.delivered = None;
                     t.cid = Some(cid);
                     t.ts = ts;
                     return;
                 }
                 self.backend = str_of("backend");
+                if item["origin"] == "user" {
+                    self.sent = ts;
+                }
                 // A terminal with no mirror has no turn boundaries: each input replaces the last.
                 if self
                     .child
@@ -197,6 +290,7 @@ impl Fold {
                 if let Some(t) = self.turns.iter_mut().find(|t| t.cid.as_deref() == cid) {
                     t.delivered = Some(ts);
                 }
+                self.delivered_control(cid.unwrap_or(""));
             }
             "spawned" => {
                 let (pid, start_us) = (
@@ -206,6 +300,10 @@ impl Fold {
                 let m = &item["mirror"];
                 let mirror_group =
                     (m["pgid"].as_i64().zip(m["start_us"].as_u64())).map(|(g, s)| (g as i32, s));
+                // A spawn's own input came first and set it up; one with no input knows nothing.
+                if item["cid"].is_null() {
+                    self.given = None;
+                }
                 self.child = Some(Child {
                     pid,
                     start_us,
@@ -255,7 +353,13 @@ impl Fold {
             }
             "turn_end" => {
                 let ok = item["ok"].as_bool().unwrap_or(true);
-                self.close(if ok { "done" } else { "failed" }, Value::Null, ts);
+                let stopped = self.turns.first().is_some_and(|t| t.stopping);
+                let outcome = match () {
+                    _ if stopped => "stopped",
+                    _ if ok => "done",
+                    _ => "failed",
+                };
+                self.close(outcome, Value::Null, ts);
             }
             "tool" => drop(self.turns.first_mut().map(|t| t.tools.insert(str_of("id")))),
             "tool_done" => drop(
@@ -263,12 +367,20 @@ impl Fold {
                     .first_mut()
                     .map(|t| t.tools.remove(&str_of("id"))),
             ),
-            "question" => drop(
-                self.turns
-                    .first_mut()
-                    .map(|t| t.question = Some(str_of("text"))),
-            ),
-            "answer" => drop(self.turns.first_mut().map(|t| t.question = None)),
+            "question" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.question = Some(str_of("text"));
+                }
+                self.ask(item);
+            }
+            "approval" => self.ask(item),
+            "resolved" => self.end_ask(&str_of("id"), "withdrawn"),
+            "answer" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.question = None;
+                }
+                self.end_ask(&str_of("id"), "answered");
+            }
             // A prompt the CLI took in its terminal. One a chat input typed starts that input's
             // turn, by the binding the mirror logged before it; any other is the user's own [D47].
             "prompt" => {
@@ -295,6 +407,7 @@ impl Fold {
                     .iter()
                     .position(|t| !t.began)
                     .unwrap_or(self.turns.len());
+                self.sent = ts;
                 let turn = Turn {
                     id: format!("p{}", self.items),
                     origin: "user".into(),
@@ -315,6 +428,7 @@ impl Fold {
             }
             "limited" => {
                 self.limit = Some(str_of("message"));
+                self.resets = item["resets"].as_u64();
                 self.close("limited", item["message"].clone(), ts);
             }
             "sign_in" => {
@@ -328,7 +442,7 @@ impl Fold {
             "stopped" => {
                 // The user's Stop ends the limit; a terminal's handoff stop keeps it [D51, D47].
                 if item["by"] == "user" {
-                    (self.limit, self.refused) = (None, None);
+                    (self.limit, self.resets, self.refused) = (None, None, None);
                 }
                 self.close_all("stopped", item["by"].clone(), ts)
             }
@@ -337,6 +451,7 @@ impl Fold {
             "note" => match item["event"].as_str() {
                 Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
+                Some("setup") => self.setup(item),
                 Some("owner_started") => self
                     .turns
                     .iter_mut()

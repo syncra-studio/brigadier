@@ -97,7 +97,7 @@ pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value 
             let kinds = a.accounts().map_or(&[][..], |x| x.kinds);
             json!({"installed": true, "signed_in": c.signed_in, "how": c.how,
                 "kept_apart": id.is_empty() || kinds.contains(&c.how.as_str()),
-                "models": c.models.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>()})
+                "models": c.models.iter().map(|m| m.id.clone()).collect::<Vec<_>>()})
         }
         Err(e) => json!({"installed": true, "error": e.trim()}),
     }

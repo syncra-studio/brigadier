@@ -118,9 +118,9 @@ pub(super) fn watch(
         if tick % 10 == 0 && thread.running() {
             interrupted(&mut thread);
         }
-        if let Some((items, turns, work)) = thread.take() {
+        if let Some(mut update) = thread.take() {
             n += 1;
-            let update = json!({"n": n, "items": items, "turns": turns, "work": work});
+            update["n"] = n.into();
             if out.send(tag(update)).is_err() {
                 return;
             }

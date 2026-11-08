@@ -12,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { ToolBox, VERBS } from "./tool";
 
+const WITHDRAWN = "withdrawn";
+
 /** Hangs under a row's words on a hairline, from its icon. */
 const HANGING = "ms-2 border-s border-divider ps-3.5 text-sm text-row-foreground";
 
@@ -37,24 +39,27 @@ export function ApprovalRow({
   keep,
   title,
   detail,
+  body,
   decision,
   action = "other",
   waiting,
 }: {
   keep: string;
   title: string;
-  detail: string;
-  decision: "approved" | "denied" | null;
+  detail?: string;
+  body?: ReactNode;
+  decision: "approved" | "denied" | "withdrawn" | null;
   action?: ApprovalAction;
   /** Its turn still runs, so an undecided approval waits rather than being withdrawn. */
   waiting: boolean;
 }) {
   const icon = <StepIcon icon={ACTIONS[action]} />;
-  if (decision === null) {
+  if (decision === null || decision === "withdrawn") {
+    waiting = waiting && decision === null;
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? "Asking for approval · waiting" : "Asked for approval · withdrawn"} live={waiting} />
+        <Words verb={waiting ? "Asking for approval · waiting" : `Asked for approval · ${WITHDRAWN}`} live={waiting} />
       </p>
     );
   }
@@ -64,6 +69,7 @@ export function ApprovalRow({
       detail={
         <div className="flex flex-col gap-1.5 pt-2 pb-1 text-sm">
           <p className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{title}</p>
+          {body}
           {detail && <p className="font-mono text-code whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{detail}</p>}
         </div>
       }
@@ -85,7 +91,7 @@ export function QuestionRow({ keep, question, answer, waiting }: { keep: string;
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? "Asking a question · waiting" : "Asked a question · withdrawn"} live={waiting} />
+        <Words verb={waiting ? "Asking a question · waiting" : `Asked a question · ${WITHDRAWN}`} live={waiting} />
       </p>
     );
   }

@@ -6,6 +6,8 @@ import { Select } from "../components/select";
 import { useDaemon } from "../daemon";
 import { Spinner } from "../icons";
 import { addProject, useProjects } from "../projects/projects";
+import { openAddProject } from "../projects/store";
+import { enterProject, useDraftedProject } from "../projects/trust";
 import { type Agent, checkAll, errorText, run, useAgents } from "./api";
 
 /**
@@ -27,7 +29,8 @@ export function StartForm() {
   const { list, checking } = useAgents();
   const usable = (list ?? []).filter((agent) => agent.models?.length);
   const [agent, setAgent] = useState("");
-  const [project, setProject] = useState("");
+  // The project drafted in is the one Trust this folder? asks about [D167].
+  const project = useDraftedProject();
   const [models, setModels] = useState<NonNullable<Agent["models"]> | "loading" | { error: string }>("loading");
   const [model, setModel] = useState("");
   const [text, setText] = useState("");
@@ -42,6 +45,9 @@ export function StartForm() {
   const chosenAgent = usable.some((each) => each.name === agent) ? agent : (usable[0]?.name ?? "");
   const chosen = projects.find((each) => each.id === project) ?? projects[0];
   const chosenProject = chosen?.id ?? "";
+  useEffect(() => {
+    if (chosenProject && chosenProject !== project) enterProject(chosenProject);
+  }, [chosenProject, project]);
   const folder = chosen?.folder ?? "";
 
   // The last list Rust kept lands at once, then a fresh check over it; only an agent never checked
@@ -91,7 +97,7 @@ export function StartForm() {
         : loaded === undefined
           ? "Loading the projects…"
           : loaded.length === 0
-            ? "Add a project first."
+            ? <><Button variant="link-blue" size={null} onClick={() => openAddProject()}>Add a project</Button> first.</>
           : models === "loading"
             ? "Finding the models…"
             : !Array.isArray(models)
@@ -106,7 +112,7 @@ export function StartForm() {
       <div className="flex flex-wrap items-center gap-2">
         <Select label="Agent" value={chosenAgent} disabled={!usable.length} options={usable.map((each) => ({ value: each.name, label: each.label }))} onChange={setAgent} align="start" />
         <Select label="Model" value={chosenModel} disabled={!shownModels.length} options={shownModels.map((each) => ({ value: each.id, label: each.id, hint: each.local ? "On this computer" : undefined }))} onChange={setModel} align="start" />
-        <Select label="Project" value={chosenProject} disabled={!projects.length} options={projects.map((each) => ({ value: each.id, label: each.name, hint: each.folder }))} onChange={setProject} align="start" />
+        <Select label="Project" value={chosenProject} disabled={!projects.length} options={projects.map((each) => ({ value: each.id, label: each.name, hint: each.folder }))} onChange={enterProject} align="start" />
       </div>
       <div className="flex items-center gap-2">
         <Input placeholder="What should it do?" value={text} disabled={pending} onChange={(event) => setText(event.target.value)} />

@@ -16,8 +16,8 @@ use std::time::UNIX_EPOCH;
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
-const SCHEMA: i64 = 1;
-const TITLE_CHARS: usize = 80;
+/// 3: titles follow the short local rule [D186], so older indexes rebuild them.
+const SCHEMA: i64 = 3;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
 
@@ -41,6 +41,51 @@ struct Entry {
     orphaned_since: Option<u64>,
     /// Its `session.json`, read once: what never changes after the start.
     spec: Option<core::Spec>,
+    /// Small session files, read again only when the folder changes.
+    marks: Marks,
+}
+
+/// Marks and setup output, published by creating or renaming entries in the session folder.
+#[derive(Default)]
+struct Marks {
+    /// The folder's modification time (ms) these were read at.
+    at: u64,
+    title: Option<String>,
+    pinned: Option<u64>,
+    unread: bool,
+    seen: u64,
+    setup: Value,
+    /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
+    archived: Option<u64>,
+    lifecycle: Value,
+}
+
+impl Marks {
+    fn read(dir: &Path, at: u64) -> Marks {
+        let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
+        let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
+        let (archived, lifecycle) = core::session::lifecycle(dir);
+        Marks {
+            at,
+            title: text("title").filter(|t| !t.is_empty()),
+            pinned: ms("pinned"),
+            unread: dir.join("unread").exists(),
+            seen: ms("seen").unwrap_or(0),
+            // Cache the files; whether an unfinished setup is still alive is checked every tick.
+            setup: core::worktrees::setup_state(dir, true),
+            archived,
+            lifecycle,
+        }
+    }
+}
+
+/// When a folder last changed (ms), or 0.
+pub fn touched(dir: &Path) -> u64 {
+    fs::metadata(dir)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 pub struct Index {
@@ -124,13 +169,7 @@ impl Index {
                     if user || item["kind"] == "text" {
                         let text = item["text"].as_str().unwrap_or("");
                         if user && title.is_empty() {
-                            title = text
-                                .lines()
-                                .next()
-                                .unwrap_or("")
-                                .chars()
-                                .take(TITLE_CHARS)
-                                .collect();
+                            title = crate::title::from(text);
                         }
                         texts.push(text.to_string());
                     }
@@ -150,9 +189,24 @@ impl Index {
             }
             let f = e.ahead.as_ref().unwrap_or(&e.done);
             let live = fold::live(&f.fold, owner::state(&self.data, id), &self.data, &all);
-            let state = match &e.error {
-                Some(_) => "error".into(),
-                None => fold::status(&f.fold, &live)["state"].clone(),
+            let status = fold::status(&f.fold, &live);
+            let (state, reason) = match &e.error {
+                Some(_) => ("error".into(), Value::Null),
+                None => (status["state"].clone(), status["reason"].clone()),
+            };
+            let at = touched(&dir);
+            if at != e.marks.at {
+                e.marks = Marks::read(&dir, at);
+            }
+            let auto = fold::switchable(&f.fold)
+                .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
+            let mark = match &e.error {
+                Some(_) => Some("amber"),
+                // A later end than the user last saw, or their own Mark as unread [D173, D185].
+                None => match fold::mark(&f.fold, &live, e.marks.seen, auto) {
+                    None if e.marks.unread => Some("unread"),
+                    mark => mark,
+                },
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -176,10 +230,18 @@ impl Index {
                 .spec
                 .as_ref()
                 .and_then(|s| projects::of(s, &projects, &mut self.roots));
-            let row = json!({"id": id, "title": e.title, "state": state, "backend": f.fold.backend,
+            let title = e.marks.title.as_ref().unwrap_or(&e.title);
+            let alive = live.child.is_some();
+            let mut setup = e.marks.setup.clone();
+            if !alive && setup["state"] == "running" {
+                setup["state"] = "interrupted".into();
+            }
+            let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
+                             "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project});
+                             "project": project, "setup": setup,
+                             "archived": e.marks.archived, "lifecycle": e.marks.lifecycle});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

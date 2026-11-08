@@ -188,7 +188,7 @@ function group(fake: Fake): GroupDraft {
 /** Something between two groups that ends the first. */
 function part(fake: Fake): Draft | null {
   const roll = fake.rand();
-  if (roll < 0.08) return { kind: "approval", title: `Allow ${pick(fake, COMMANDS)}?`, detail: sentence(fake), decision: fake.rand() < 0.8 ? "approved" : "denied", action: pick(fake, ACTIONS) };
+  if (roll < 0.08) return { kind: "approval", request: { id: `approval-${fake.rand()}`, reason: `Allow ${pick(fake, COMMANDS)}?`, input: sentence(fake), action: pick(fake, ACTIONS) }, decision: fake.rand() < 0.8 ? "approved" : "denied" };
   if (roll < 0.13) return { kind: "question", question: sentence(fake), options: ["Yes", "No", "Not now"], answer: "Yes" };
   if (roll < 0.15) return { kind: "compaction", summary: paragraph(fake), progress: "done" };
   if (roll < 0.2) return { kind: "notice", level: pick(fake, ["info", "warning", "error"] as const), text: sentence(fake) };

@@ -1,6 +1,9 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
-use super::{Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, s};
+use super::{
+    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing, Tool,
+    base_env, s,
+};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -44,7 +47,20 @@ impl Adapter for Fake {
             signed_in: Some(signed_in),
             how: if signed_in { "fake" } else { "" }.into(),
             models: if signed_in && exe.exists() {
-                vec![("fake".into(), true)]
+                // Efforts of its own, so the picker's effort row shows running.
+                let level = |all: &[&str], default: &str| ModelInfo {
+                    efforts: all.iter().map(|e| e.to_string()).collect(),
+                    default_effort: Some(default.into()),
+                    ..ModelInfo::plain("fake", true)
+                };
+                vec![
+                    level(&["low", "medium", "high"], "medium"),
+                    ModelInfo {
+                        id: "fake-large".into(),
+                        name: "fake-large".into(),
+                        ..level(&["low", "medium", "high", "xhigh"], "high")
+                    },
+                ]
             } else {
                 vec![]
             },
@@ -74,8 +90,34 @@ impl Adapter for Fake {
             argv,
             env,
             keep_stdin: true,
-            input: text.map(|t| self.encode(spec, t)),
+            // Its setup goes first, the way a retune sends it.
+            input: text.map(|t| setup_line(spec) + &self.encode(spec, t)),
         }
+    }
+
+    fn can(&self) -> Can {
+        Can {
+            steer: true,
+            stop: true,
+            resume: true,
+            levels: &["ask", "auto", "full"],
+        }
+    }
+
+    fn retune(&self, _last: &Spec, next: &Spec) -> Retune {
+        Retune::Send(Delivery::Stdin(setup_line(next)))
+    }
+
+    fn control(&self, _spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+        let line = match msg["kind"].as_str() {
+            Some("answer") => {
+                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": msg["answers"]}})
+            }
+            Some("steer") => json!({"text": msg["text"], "steer": true}),
+            Some("interrupt") => json!({"interrupt": true}),
+            _ => return Err("unknown control message".into()),
+        };
+        Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
@@ -116,14 +158,18 @@ impl Adapter for Fake {
             "beat" | "child" => vec![],
             "done" => vec![Event::TurnEnd(v["ok"].as_bool().unwrap_or(true))],
             "ask" => vec![Event::Question(
-                String::new(),
-                s(&v, &["text"]).into(),
-                vec![],
+                json!({"id": v["id"], "title": null, "items": [
+                {"text": v["text"], "options": [{"label": "Yes"}, {"label": "No"}], "recommended": 0, "multiSelect": false}]}),
             )],
+            "approve" => vec![Event::Approval(json!({"id": v["id"], "action": "command",
+                "reason": null, "command": v["command"], "grant": {"scope": "command", "pattern": v["pattern"]}}))],
+            "resolved" => vec![Event::Resolved(s(&v, &["id"]).into())],
             "compact" => vec![Event::Compaction("done")],
             "error" => vec![
-                super::classify(&format!("{} {}", v["code"], s(&v, &["message"])))
-                    .unwrap_or(Event::Unknown(line.into())),
+                match super::classify(&format!("{} {}", v["code"], s(&v, &["message"]))) {
+                    Some(Event::Limited(m, _)) => Event::Limited(m, v["resets"].as_u64()),
+                    other => other.unwrap_or(Event::Unknown(line.into())),
+                },
             ],
             _ => vec![Event::Unknown(line.into())],
         }
@@ -143,4 +189,9 @@ impl Adapter for Fake {
         let count = |k: &str| text.lines().filter(|l| l.starts_with(k)).count() as u64;
         Some((count("say "), count("tool ")))
     }
+}
+
+/// The setup a turn runs with, as the fake agent reads it before the turn's message.
+fn setup_line(spec: &Spec) -> String {
+    format!("{}\n", json!({"setup": super::setup(spec)}))
 }

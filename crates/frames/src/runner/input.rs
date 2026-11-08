@@ -5,6 +5,7 @@ use super::{Runner, crash_at, fail, is_full};
 use crate::log;
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::sync::atomic::Ordering;
 
 impl Runner {
     /// Logs the input durably before anything reaches the agent. Some(reply) means stop here: a
@@ -21,8 +22,22 @@ impl Runner {
                 json!({"ok": true, "cid": cid, "dup": true, "result": if delivered { "delivered" } else { "logged" }}),
             );
         }
-        let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"], "switch": req["switch"]});
-        if let Err(e) = self.append(log::INTENT, data.to_string().as_bytes(), true) {
+        let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"], "switch": req["switch"],
+                          "setup": req["setup"], "steer": req["steer"], "control": req["control"]});
+        // A control message (an answer, a steer, a stop) was judged on the log at `if_len`: it is
+        // claimed only if nothing reached the log since, in the same lock as its intent [D159].
+        let appended = {
+            let mut log = self.log.lock().unwrap();
+            if req["if_len"].as_u64().is_some_and(|len| len != log.len) {
+                return Some(fail("changed"));
+            }
+            log.append(log::INTENT, data.to_string().as_bytes(), true)
+        };
+        self.disk_full.store(
+            appended.as_ref().err().is_some_and(is_full),
+            Ordering::Relaxed,
+        );
+        if let Err(e) = appended {
             return Some(
                 json!({"ok": false, "cid": cid, "result": "not_logged", "error": e.to_string(), "disk_full": is_full(&e)}),
             );

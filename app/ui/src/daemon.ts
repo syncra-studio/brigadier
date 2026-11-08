@@ -1,12 +1,35 @@
 import { useSyncExternalStore } from "react";
 
+import type { Mark } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
-/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers. */
-export type Project = { id: string; name: string; folder: string; trusted: boolean | null; added: number };
-export type Row = { id: string; title: string; state: string; backend: string; updated: number; items: number; error: string | null };
+/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
+export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean };
+/** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
+export type Row = {
+  id: string;
+  title: string;
+  state: string;
+  reason: unknown;
+  mark: Mark;
+  resets: number | null;
+  sent: number;
+  finished: number;
+  project: string | null;
+  /** When it was pinned (ms), or null [D185]. */
+  pinned?: number | null;
+  /** When it was archived (ms), or null; and an archive, restore or delete under way, or a delete that left something [D180]. */
+  archived?: number | null;
+  lifecycle?: { op: "archive" | "restore" | "delete"; left?: string[] } | null;
+  /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
+  touched?: number;
+  backend: string;
+  updated: number;
+  items: number;
+  error: string | null;
+};
 /** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
 export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
 
@@ -121,7 +144,11 @@ function applyThread(frame: Record<string, any>): void {
     const at = turns.findIndex((each) => each.id === turn.id);
     turns = at < 0 ? [...turns, turn] : turns.with(at, turn);
   }
-  setThread(thread, { ...session, items, turns, work: [...(session.work ?? []), ...frame.work] });
+  setThread(thread, {
+    ...session, items, turns, work: [...(session.work ?? []), ...frame.work],
+    approvals: frame.approvals ?? session.approvals,
+    questions: frame.questions ?? session.questions,
+  });
 }
 
 function subscribe(): void {

@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::adapters::{self, Adapter, setup};
-use brigadier_core::{self as core, SETUP, Spec, projects, session_dir};
+use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -106,10 +106,66 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let project = projects::rename(data, arg(2), arg(3))?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
-                "remove" => {
-                    projects::remove(data, arg(2))?;
+                "set" => {
+                    let trusted = flag(args, "--trusted")
+                        .map(|value| match value {
+                            "true" => Ok(Some(true)),
+                            "false" => Ok(Some(false)),
+                            "none" => Ok(None),
+                            _ => Err(io::Error::other("--trusted must be true, false or none")),
+                        })
+                        .transpose()?;
+                    // `--include` is one path a line; empty copies none [D178].
+                    let include =
+                        flag(args, "--include").map(|v| v.lines().map(String::from).collect());
+                    let change = projects::Change {
+                        name: flag(args, "--name").map(String::from),
+                        folder: flag(args, "--folder").map(String::from),
+                        trusted,
+                        setup: flag(args, "--setup").map(String::from),
+                        include,
+                    };
+                    let project = projects::set(data, arg(2), change)?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                // Project settings' files to copy: the ignored entries in a folder [D178].
+                "ignored" => {
+                    let folder = projects::get(data, arg(2))?.folder;
+                    let dir = flag(args, "--in").unwrap_or("");
+                    let (entries, copied) = core::worktrees::ignored(Path::new(&folder), dir)?;
+                    return Ok(json!({"ok": true, "entries": entries, "copied": copied}));
+                }
+                "reveal" => {
+                    let folder = projects::get(data, arg(2))?.folder;
+                    let status = std::process::Command::new("open").arg(&folder).status()?;
+                    if !status.success() {
+                        return Err(io::Error::other(format!("Couldn't open {folder}")));
+                    }
                     return Ok(json!({"ok": true}));
                 }
+                "remove" => return crate::sessions::remove_project(data, args),
+                // Add project's (1f, 1g): `find`, `inspect <path>`, `clone <url|owner/name> --to
+                // <dest> [--github] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
+                "find" => return Ok(json!({"ok": true, "repos": repos::find(data)?})),
+                "inspect" => {
+                    return Ok(json!({"ok": true, "check": repos::inspect(data, arg(2))?}));
+                }
+                "clone" => {
+                    let (to, id) = (
+                        flag(args, "--to").unwrap_or(""),
+                        flag(args, "--id").unwrap_or(""),
+                    );
+                    let github = args.iter().any(|a| a == "--github");
+                    let project = repos::clone(data, arg(2), to, github, id)?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "init" => {
+                    let here = args.iter().any(|a| a == "--here");
+                    let project =
+                        repos::init(data, arg(2), here, flag(args, "--id").unwrap_or(""))?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "github" => return Ok(json!({"ok": true, "github": repos::github()?})),
                 _ => {}
             }
             let taken: Vec<String> = projects::list(data)?
@@ -158,7 +214,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
                 out["models"] = c
                     .models
                     .into_iter()
-                    .map(|(id, local)| json!({"id": id, "local": local}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort}))
                     .collect();
             }
             Err(e) => out["error"] = e.trim().into(),

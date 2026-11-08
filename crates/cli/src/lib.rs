@@ -2,11 +2,14 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 mod accounts;
+mod control;
 pub mod index;
 mod mirror;
 pub mod owner;
+mod sessions;
 mod setup;
 mod switching;
+mod title;
 
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Spec, adapters};
@@ -14,20 +17,22 @@ use brigadier_frames::{log, procs, take_lock};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use std::{env, process, thread};
+use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--cwd D] [--model M] [--opt K=V] [--text T]
-       brigadier send <id> <text> [--cid C] [--backend B]
-       brigadier status [<id>...|--all]
-       brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer]
+       brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
+       brigadier status [<id>...|--all] | seen <id> <ms>
+       brigadier rename <id> <title> | pin <id> [--off] | unread <id>
+       brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
+       brigadier level <id> [ask|auto|full]
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | remove I]
+       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] | ignored I [--in D] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
        brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -102,7 +107,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .filter_map(|w| w[1].split_once('='))
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
-            // A project's session runs in its folder [D165].
+            // New project sessions have their own worktree unless Local checkout is chosen [D160].
             let (projects_lock, projects) = core::projects::locked(data)?;
             let project = flag(args, "--project")
                 .map(|p| {
@@ -110,25 +115,44 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     found.ok_or_else(|| io::Error::other(format!("no project {p}")))
                 })
                 .transpose()?;
+            if project.as_ref().is_some_and(|p| p.removing) {
+                return Err(io::Error::other("This project is being removed."));
+            }
+            let worktree = project.is_some() && !has(args, "--local");
             let cwd = flag(args, "--cwd")
                 .map(String::from)
+                .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
                 .or_else(|| project.as_ref().map(|p| p.folder.clone()))
                 .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
             let spec = Spec {
-                project: project.map(|p| p.id),
+                project: project.as_ref().map(|p| p.id.clone()),
                 id: id.into(),
                 backend: backend.into(),
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
                 cwd,
                 model: flag(args, "--model").map(String::from),
+                level: flag(args, "--level").map(String::from),
+                effort: flag(args, "--effort").map(String::from),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()
             };
+            if let Some(a) = adapters::get(backend) {
+                core::level(&spec, a).map_err(io::Error::other)?;
+            }
             let spec = if core::session_dir(data, id).join("session.json").exists() {
                 core::load(data, id)?
             } else {
-                core::create(data, &spec)?
+                let spec = core::create(data, &spec)?;
+                if let Some(project) = project.filter(|_| worktree)
+                    && let Err(e) = core::worktrees::create(&spec, &project)
+                {
+                    if !spec.dir.join("worktree.json").exists() {
+                        std::fs::remove_dir_all(&spec.dir)?;
+                    }
+                    return Err(e);
+                }
+                spec
             };
             drop(projects_lock);
             owner::ensure(data, &spec)?;
@@ -139,6 +163,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "send" => {
             let (id, text) = (arg(args, 1)?, arg(args, 2)?);
+            if has(args, "--steer") {
+                return control::steer(data, id, text, flag(args, "--cid"));
+            }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             send(
@@ -148,6 +175,44 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 flag(args, "--cid"),
                 flag(args, "--backend"),
             )
+        }
+        // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
+        "seen" => {
+            let (id, at) = (arg(args, 1)?, arg(args, 2)?);
+            let at: u64 = at
+                .parse()
+                .map_err(|_| io::Error::other(format!("bad time {at:?}")))?;
+            core::load(data, id)?;
+            let dir = core::session_dir(data, id);
+            let old: u64 = fs::read_to_string(dir.join("seen"))
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0);
+            if at > old {
+                core::write_atomic(&dir.join("seen"), at.to_string().as_bytes())?;
+            }
+            // Opening it reads it, whatever Mark as unread said [D185].
+            remove(&dir.join("unread"))?;
+            Ok(json!({"ok": true, "at": index::touched(&dir)}))
+        }
+        // The user's own marks, one small file each in the session's folder [D185, D186]. Each
+        // answers the folder's time after the write: the row that shows it has `touched` as late.
+        "rename" | "pin" | "unread" => {
+            let id = arg(args, 1)?;
+            core::load(data, id)?;
+            let dir = core::session_dir(data, id);
+            match args[0].as_str() {
+                "rename" => {
+                    let name = title::clean(arg(args, 2)?).map_err(io::Error::other)?;
+                    core::write_atomic(&dir.join("title"), name.as_bytes())?;
+                }
+                "pin" if has(args, "--off") => remove(&dir.join("pinned"))?,
+                cmd => {
+                    let name = if cmd == "pin" { "pinned" } else { "unread" };
+                    core::write_atomic(&dir.join(name), log::now_ms().to_string().as_bytes())?
+                }
+            }
+            Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
         "status" => {
             let all = procs::all();
@@ -166,6 +231,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "stop" => {
             let id = arg(args, 1)?;
+            // The agent's own stop first; the kill only when it has none or it didn't stop in time.
+            if let Ok(Some(stopped)) = control::interrupt(data, id) {
+                return Ok(stopped);
+            }
             match owner::call(data, id, json!({"op": "stop", "by": "user"})) {
                 Ok(v) => Ok(v),
                 // No owner: nothing can be running under us, but leftovers recorded in the log still go.
@@ -179,19 +248,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            let _fence = core::session::fence(data, &spec)?;
             let f = core::fold(&spec.dir, true)?;
             let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
             let call = call_fn(data, id);
             Ok(core::recover(&spec, &f.fold, &live, child(data, id), &call))
         }
-        "delete" => {
-            let id = arg(args, 1)?;
-            let spec = core::load(data, id)?;
-            let _ = owner::call(data, id, json!({"op": "stop", "by": "delete"}));
-            owner::release(data, id)?;
-            let f = core::fold(&spec.dir, false)?;
-            Ok(core::delete(&spec, &f.fold))
-        }
+        "archive" | "restore" | "delete" => sessions::run(data, args),
+        "level" => control::level(data, args),
+        "answer" => control::answer(data, args),
         "up" => {
             for id in &args[1..] {
                 owner::ensure(data, &core::load(data, id)?)?;
@@ -206,6 +271,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            let _fence = core::session::fence(data, &spec)?;
             // The host's state first, then the fold: the host refuses if the log moved in between.
             let ping = owner::call(data, id, json!({"op": "ping"}))?;
             let f = core::fold(&spec.dir, true)?;
@@ -266,6 +332,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = core::load(data, id)?;
             let mut thread = core::thread::Thread::default();
             core::read(&spec.dir, |item| thread.push(item))?;
+            let f = thread.status_fold();
+            let live = fold::live(f, owner::state(data, id), data, &procs::all());
+            if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
+                thread.interrupt(log::now_ms());
+            }
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),
@@ -320,12 +391,8 @@ fn send(
     cid: Option<&str>,
     backend: Option<&str>,
 ) -> io::Result<Value> {
-    let cid = cid.map(String::from).unwrap_or_else(|| {
-        // The daemon sends from many threads of one process: the counter keeps ids apart.
-        static N: AtomicU64 = AtomicU64::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        format!("c{}-{}-{n}", log::now_ms(), process::id())
-    });
+    let _fence = core::session::fence(data, spec)?;
+    let cid = cid.map_or_else(control::new_cid, String::from);
     let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);
     let mut reply = core::send(
@@ -423,4 +490,12 @@ fn index(data: &Path, cold: bool) -> io::Result<Value> {
     let mut ix = index::Index::open(data, cold)?;
     ix.sync()?;
     Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
+}
+
+/// Removes a file that may already be gone.
+fn remove(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }

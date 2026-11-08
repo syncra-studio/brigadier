@@ -34,12 +34,19 @@ pub enum Event {
     ToolStart(Tool),
     ToolEnd(Done),
     Resume(String),
-    Limited(String),
+    /// A usage limit: the CLI's message, and when it resets (ms) if the CLI says; never guessed [D74].
+    Limited(String, Option<u64>),
     SignIn(String),
     /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
     Unresumable(String),
-    /// A question to the user: its id (the asking tool call's), the question and its options.
-    Question(String, String, Vec<String>),
+    /// A question to the user, as D177's PendingQuestion: `{id, title, items: [{text, options:
+    /// [{label, description}], recommended, multiSelect}]}`, its id the one the CLI gave it.
+    Question(Value),
+    /// A request for the user's approval, as D177's PendingApproval: `{id, action, reason,
+    /// command, cwd, paths, files, branch, host, input, body, to, grant}`; structure only [D65].
+    Approval(Value),
+    /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
+    Resolved(String),
     /// What the user answered, matched to the question by id; None when the CLI gave up asking.
     Answer(String, Option<String>),
     /// "running" or "done".
@@ -91,13 +98,38 @@ pub struct Timing {
 }
 
 /// What a status check found [D45]: where the CLI is, its version, whether it is signed in and
-/// how, and the models a session can pick (id, local). Never a credential.
+/// how, and the models a session can pick. Never a credential.
 #[derive(Default)]
 pub struct Check {
     pub version: String,
     pub signed_in: Option<bool>,
     pub how: String,
-    pub models: Vec<(String, bool)>,
+    pub models: Vec<ModelInfo>,
+}
+
+/// A model a session can pick: its id, the name people know it by, whether it runs on this
+/// computer, and the effort levels its CLI reports for it, lowest first, with its default; empty
+/// and None where the CLI reports none, never guessed [D74, D129].
+#[derive(Default)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub local: bool,
+    pub efforts: Vec<String>,
+    pub default_effort: Option<String>,
+}
+
+impl ModelInfo {
+    /// A model known only by its id: no name of its own, no efforts reported.
+    pub fn plain(id: &str, local: bool) -> Self {
+        let (id, name) = (id.to_string(), id.to_string());
+        Self {
+            id,
+            name,
+            local,
+            ..Self::default()
+        }
+    }
 }
 
 /// How a CLI keeps more than one account apart [D51]: one home folder per extra account, named by
@@ -117,6 +149,37 @@ pub struct Accounts {
     pub sign_out: &'static [&'static str],
     /// Sign-in kinds (`Check::how`) the home keeps apart; any other is refused [D51].
     pub kinds: &'static [&'static str],
+}
+
+/// What an adapter's CLI can do beyond a message [D109, D129, D170]: steer a running turn, stop
+/// one without ending the process, resume a conversation, and its permission levels out of
+/// `ask` | `auto` | `full`, most restrictive first. Empty levels: the CLI runs as it always has.
+pub struct Can {
+    pub steer: bool,
+    pub stop: bool,
+    pub resume: bool,
+    pub levels: &'static [&'static str],
+}
+
+/// How a control message reaches the agent: the adapter owns the channel; the host owns the
+/// delivery and its record. (A server's HTTP channel joins with its adapter, 1m.)
+pub enum Delivery {
+    Stdin(String),
+}
+
+/// How a running child takes a new model, effort or level before a turn's message.
+pub enum Retune {
+    /// The message itself carries it.
+    InMessage,
+    /// Delivered to the child just before the message, in the same input.
+    Send(Delivery),
+    /// The child is started again on the same conversation.
+    Restart,
+}
+
+/// What a turn runs with, as its input frame records it.
+pub fn setup(spec: &Spec) -> Value {
+    serde_json::json!({"model": spec.model, "effort": spec.effort, "level": spec.level})
 }
 
 pub trait Adapter: Sync {
@@ -178,6 +241,23 @@ pub trait Adapter: Sync {
     /// Bytes for a message to a child that is already running.
     fn encode(&self, spec: &Spec, text: &str) -> String;
     fn parse(&self, line: &str) -> Vec<Event>;
+    fn can(&self) -> Can {
+        Can {
+            steer: false,
+            stop: false,
+            resume: true,
+            levels: &[],
+        }
+    }
+    /// How an idle child running at `last` takes `next` before the next message.
+    fn retune(&self, _last: &Spec, _next: &Spec) -> Retune {
+        Retune::Restart
+    }
+    /// A control message for the running agent [D159]: `{kind: "answer", request, decision,
+    /// reason, answers}` (the request as pending), `{kind: "steer", text}` or `{kind: "interrupt"}`.
+    fn control(&self, _spec: &Spec, _msg: &Value) -> Result<Delivery, String> {
+        Err("This agent takes no control messages yet.".into())
+    }
     fn timing(&self) -> Timing;
     /// Files and folders this backend wrote outside the session folder for this session only, by
     /// exact path. Delete removes them entirely.
@@ -298,6 +378,16 @@ pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
     Ok(text.lines().next().unwrap_or("").trim().into())
 }
 
+/// A one-question PendingQuestion (D177) from a CLI that asks one at a time.
+pub fn question(id: &str, text: &str, options: &[String]) -> Event {
+    let options: Vec<Value> = options
+        .iter()
+        .map(|o| serde_json::json!({"label": o}))
+        .collect();
+    Event::Question(serde_json::json!({"id": id, "title": null, "items": [
+        {"text": text, "options": options, "recommended": null, "multiSelect": false}]}))
+}
+
 /// The session's spec, run in a terminal: what each adapter's PTY launch reads.
 pub fn in_pty(spec: &Spec) -> Spec {
     Spec {
@@ -401,7 +491,7 @@ pub fn classify(message: &str) -> Option<Event> {
         "authentication",
     ];
     if limit.iter().any(|k| m.contains(k)) {
-        Some(Event::Limited(message.to_string()))
+        Some(Event::Limited(message.to_string(), None))
     } else if auth.iter().any(|k| m.contains(k)) {
         Some(Event::SignIn(message.to_string()))
     } else {

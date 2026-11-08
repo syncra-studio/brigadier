@@ -35,7 +35,7 @@ struct Child {
 }
 
 /// What this host can do beyond the first frozen ops, so a client asks before it relies on any.
-pub const CAPS: [&str; 2] = ["terminal", "switch"];
+pub const CAPS: [&str; 3] = ["terminal", "switch", "control"];
 /// How long a final drain may take: a child's pipes, then its mirror's last read.
 const DRAIN: Duration = Duration::from_secs(10);
 

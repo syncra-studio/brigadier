@@ -9,6 +9,7 @@ use crate::fold::{Fold, Turn};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod asks;
 mod rows;
 
 /// The turn on screen: the status fold's first turn, from when it became first.
@@ -55,6 +56,13 @@ pub struct Thread {
     sent_work: usize,
     /// The switch row of a limit no switch has taken yet, by index.
     limit_row: Option<usize>,
+    /// Rows of the requests still waiting on the user, oldest first, and whether that changed.
+    pending: Vec<usize>,
+    pending_changed: bool,
+    /// Answers logged, not yet delivered: command id → (row, the answer).
+    claims: HashMap<String, (usize, Value)>,
+    /// The level the last input set up, to tell when trust taken back holds the next to Ask.
+    level: Option<Value>,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
@@ -92,31 +100,55 @@ impl Thread {
         };
         // An input while the agent waits on a question is its answer (the status fold's rule).
         let answering = kind == "input"
+            && !item["control"].is_object()
+            && item["steer"] != true
             && self
                 .fold
                 .turns
                 .first()
                 .is_some_and(|t| t.question.is_some());
         self.fold.push(item);
+        // Trust taken back holds the next turn to Ask, said once by a notice (proposed); a
+        // session held from its start says nothing, its picker shows Ask [D166].
+        let setup = &item["setup"];
+        if kind == "input" && setup.is_object() {
+            let was = self.level.replace(setup["level"].clone());
+            if setup["held"] == true && was.is_some_and(|l| l.is_string() && l != "ask") {
+                self.break_group();
+                self.add(json!({"kind": "notice", "reason": "untrusted"}));
+            }
+        }
         if answering {
             if let Some(at) = self.open.as_mut().and_then(|o| o.asked.take()) {
                 self.items[at]["answer"] = item["text"].clone();
                 self.changed_items.insert(at);
+                self.unwait_row(at);
             }
             self.end_wait(ts);
+        } else if kind == "input" && item["control"].is_object() {
+            self.control(item, ts);
         } else if kind == "input" {
-            // A joined input keeps the running turn and adds no queued turn; steer will land here.
+            // A joined input (a steer) keeps the running turn and adds no queued turn: its bubble
+            // shows in that turn, after the answer it joined.
             if item["origin"] == "user"
                 && before.len() == self.fold.turns.len()
                 && before
                     .first()
                     .zip(self.fold.turns.first())
                     .is_some_and(|(before, after)| before.id == after.id)
-                && let Some(answer) = self.open.as_ref().and_then(|o| o.answer)
             {
-                let at = answer as usize - 1;
-                self.items[at]["joined"] = true.into();
-                self.changed_items.insert(at);
+                if let Some(answer) = self.open.as_ref().and_then(|o| o.answer) {
+                    let at = answer as usize - 1;
+                    self.items[at]["joined"] = true.into();
+                    self.changed_items.insert(at);
+                }
+                if item["steer"] == true {
+                    self.break_group();
+                    self.add(
+                        json!({"kind": "message", "role": "user", "text": item["text"],
+                        "streaming": false, "origin": "user", "sentAt": ts}),
+                    );
+                }
             }
         } else {
             self.content(item, kind, ts);
@@ -209,6 +241,8 @@ impl Thread {
     /// Ends the open turn. Every outcome the status fold knows maps to one of the view's [D64].
     fn close_turn(&mut self, outcome: &str, ts: u64) {
         self.end_wait(ts);
+        // What still waited ends with its turn: undecided, it reads as withdrawn.
+        self.withdraw_all();
         let Some(o) = self.open.take() else {
             return;
         };
@@ -331,7 +365,7 @@ impl Thread {
     }
 
     /// What changed since the last call: rows and turns to replace by id, and new work.
-    pub fn take(&mut self) -> Option<(Vec<Value>, Vec<Value>, Vec<Value>)> {
+    pub fn take(&mut self) -> Option<Value> {
         let items: Vec<Value> = std::mem::take(&mut self.changed_items)
             .into_iter()
             .map(|at| self.items[at].clone())
@@ -342,7 +376,16 @@ impl Thread {
             .collect();
         let work = self.work[self.sent_work..].to_vec();
         self.sent_work = self.work.len();
-        (!items.is_empty() || !turns.is_empty() || !work.is_empty()).then_some((items, turns, work))
+        let mut out = json!({"items": items, "turns": turns, "work": work});
+        // What waits on the user goes whole whenever it changed, to replace what the view holds.
+        if std::mem::take(&mut self.pending_changed) {
+            for (k, v) in self.requests().as_object().unwrap() {
+                out[k] = v.clone();
+            }
+        } else if items.is_empty() && turns.is_empty() && work.is_empty() {
+            return None;
+        }
+        Some(out)
     }
 
     /// The view's Session with only its newest page of rows [D97, D98]; what changed so far counts
@@ -352,6 +395,9 @@ impl Thread {
         let mut page = self.page(self.items.len());
         page["id"] = id.into();
         page["title"] = title.into();
+        for (k, v) in self.requests().as_object().unwrap() {
+            page[k] = v.clone();
+        }
         page
     }
 

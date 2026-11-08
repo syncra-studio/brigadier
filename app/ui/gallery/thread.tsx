@@ -372,14 +372,14 @@ export function Thread() {
         >
           <Wide label="waiting · withdrawn">
             <div className="flex flex-col gap-1">
-              {item({ ...base("p1", RUNNING), kind: "approval", title: "Allow this command?", detail: "rm -rf dist", decision: null, action: "command" }, RUNNING)}
-              {item({ ...base("p4"), kind: "approval", title: "Allow this command?", detail: "rm -rf dist", decision: null, action: "command" })}
+              {item({ ...base("p1", RUNNING), kind: "approval", request: { id: "approval-dist", reason: null, command: "rm -rf dist", action: "command" }, decision: null }, RUNNING)}
+              {item({ ...base("p4"), kind: "approval", request: { id: "approval-dist", reason: null, command: "rm -rf dist", action: "command" }, decision: null })}
             </div>
           </Wide>
           <Wide label="allowed, open" open>
-            {item({ ...base("p2"), kind: "approval", title: "Run a command that reaches outside?", detail: "curl https://registry.npmjs.org/@base-ui/react", decision: "approved", action: "network" })}
+            {item({ ...base("p2"), kind: "approval", request: { id: "approval-network", reason: "Run a command that reaches outside?", command: "curl https://registry.npmjs.org/@base-ui/react", action: "command" }, decision: "approved" })}
           </Wide>
-          <Wide label="denied">{item({ ...base("p3"), kind: "approval", title: "Allow editing this file?", detail: "~/.zshrc", decision: "denied", action: "edit" })}</Wide>
+          <Wide label="denied">{item({ ...base("p3"), kind: "approval", request: { id: "approval-edit", reason: null, paths: ["~/.zshrc"], action: "edit" }, decision: "denied" })}</Wide>
         </Row>
         <Row name="question: waiting · answered (open) · withdrawn">
           <Wide label="question">

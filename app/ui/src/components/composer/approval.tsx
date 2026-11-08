@@ -43,7 +43,7 @@ export type ApprovalDecision = "allow" | "allowSession" | "deny";
 type Shown = { icon: ReactNode; kind: string; title: string; detail?: string; body?: ReactNode; allow?: string; deny?: string; noDeny?: boolean };
 
 /** What the card asks, compactly: its kind, the reason (or the plain question) as the title, the exact thing asked about. */
-function describe(approval: PendingApproval): Shown {
+export function describe(approval: PendingApproval): Shown {
   const { action, reason, command, cwd, paths = [], host, input, body } = approval;
   const prose = body ? (
     <ToolBox prose>

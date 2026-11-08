@@ -3,13 +3,15 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
-    cli_home, counts, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
-    uuid, version,
+    Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
+    classify, cli_home, counts, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s,
+    shell_step, uuid, version,
 };
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+
+mod clean;
 
 pub struct Claude;
 
@@ -76,7 +78,7 @@ impl Adapter for Claude {
             how: how.into(),
             models: if signed_in {
                 ["sonnet", "opus", "haiku"]
-                    .map(|m| (m.into(), false))
+                    .map(|m| ModelInfo::plain(m, false))
                     .into()
             } else {
                 vec![]
@@ -228,7 +230,7 @@ impl Adapter for Claude {
                 })
                 .collect(),
             ("rate_limit_event", _) => match s(&v, &["rate_limit_info", "status"]) {
-                "rejected" => vec![Event::Limited(line.chars().take(300).collect())],
+                "rejected" => vec![Event::Limited(line.chars().take(300).collect(), None)],
                 _ => vec![],
             },
             ("result", _) => {
@@ -253,8 +255,7 @@ impl Adapter for Claude {
     }
 
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
-        let dir = project_dir(spec);
-        vec![dir.join(format!("{resume}.jsonl")), dir.join(resume)]
+        clean::external(spec, resume)
     }
 
     /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
@@ -294,7 +295,7 @@ impl Adapter for Claude {
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
         let dir = project_dir(spec);
-        vec![dir.join("memory"), dir]
+        vec![dir.join("memory"), dir, clean::scratch(spec)]
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -355,11 +356,8 @@ fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
             .enumerate()
             .map(|(k, q)| {
                 let options = q["options"].as_array().into_iter().flatten();
-                Event::Question(
-                    format!("{id}:{k}"),
-                    s(q, &["question"]).into(),
-                    options.map(|o| s(o, &["label"]).to_string()).collect(),
-                )
+                let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
+                super::question(&format!("{id}:{k}"), s(q, &["question"]), &options)
             })
             .collect();
     }
