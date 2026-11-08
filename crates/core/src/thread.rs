@@ -183,6 +183,11 @@ impl Thread {
         turn["status"] = status.into();
         turn["endedAt"] = ts.into();
         self.changed_turns.insert(o.at);
+        if let Some(answer) = o.answer {
+            let at = answer as usize - 1;
+            self.items[at]["final"] = true.into();
+            self.changed_items.insert(at);
+        }
         // "Worked for" folds a done turn's work up to its answer, and leaves its waits out [D77]. Its
         // questions, with the user's answers, stay visible inside it [D99].
         if let (true, true, Some(first), Some(answer)) =
