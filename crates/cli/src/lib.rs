@@ -231,9 +231,14 @@ fn send(
         backend,
         None,
     );
-    // A busy refusal can race a turn that just ended; one retry settles it.
-    if reply["error"] == "busy" {
+    let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
+    // No result means a refusal before logging (a busy race with a turn that just ended) or no reply
+    // at all (a host moving to a new build). One retry, and only when the log proves the command
+    // never got in: an uncertain one is never sent again by itself [D54].
+    if reply["result"].is_null() && !logged() {
         thread::sleep(Duration::from_millis(200));
+        // If no host answers, the resend fails too and the log decides the result below.
+        let _ = owner::ensure(data, spec);
         let f = core::fold(&spec.dir, true)?;
         reply = core::send(
             spec,
@@ -249,8 +254,7 @@ fn send(
     }
     // A dropped connection says nothing about the log: the log itself does.
     if reply["result"].is_null() {
-        let logged = core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
-        reply["result"] = match (reply["ok"] == true, logged) {
+        reply["result"] = match (reply["ok"] == true, logged()) {
             (true, _) => "delivered",
             (false, true) => "logged",
             (false, false) => "not_logged",
