@@ -125,7 +125,9 @@ function useTick(): number {
 function Opened({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    box.current?.querySelector<HTMLElement>('[aria-expanded="false"]')?.click();
+    // A moment later: a toggle that shows only once its row has measured itself (a long message's Show more).
+    const timer = setTimeout(() => box.current?.querySelector<HTMLElement>('[aria-expanded="false"]')?.click(), 200);
+    return () => clearTimeout(timer);
   }, []);
   return (
     <div ref={box} className="w-full">

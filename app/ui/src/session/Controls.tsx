@@ -79,8 +79,8 @@ export function Controls({
       </Group>
       <Group title="The next send">
         <Toggle on={knobs.failNext} onClick={arm("failNext")}>Refused by the backend</Toggle>
-        <Toggle on={knobs.loseNextSend} onClick={arm("loseNextSend")}>Lost on the way, link drops</Toggle>
-        <Toggle on={knobs.dropAfterNextSend} onClick={arm("dropAfterNextSend")}>Arrives, then the link drops</Toggle>
+        <Toggle on={knobs.loseNextSend} onClick={arm("loseNextSend")}>Lost on the way, connection drops</Toggle>
+        <Toggle on={knobs.dropAfterNextSend} onClick={arm("dropAfterNextSend")}>Arrives, then the connection drops</Toggle>
         <Action
           onClick={() => {
             const id = newId();
@@ -91,9 +91,9 @@ export function Controls({
           Send twice under one id
         </Action>
       </Group>
-      <Group title="Link">
+      <Group title="Connection">
         <Toggle on={knobs.loseNextFrame} onClick={arm("loseNextFrame")}>Lose the next frame</Toggle>
-        <Action onClick={fake.dropLink}>Drop the link</Action>
+        <Action onClick={fake.dropLink}>Drop the connection</Action>
         <Action onClick={fake.killDaemon}>Stop the background service</Action>
         <Action onClick={fake.startDaemon}>Start the background service</Action>
         <Action onClick={reopen}>Reopen the window</Action>
