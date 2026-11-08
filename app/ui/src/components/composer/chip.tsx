@@ -1,16 +1,32 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from "lexical";
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 
+import { cx } from "../cx";
 import { InlineAttachment, MentionIcon } from "./attachments";
 import type { Chip } from "./draft";
+import { COMMAND_TONES, CommandKindIcon } from "./kind-icons";
+import type { SlashCommand } from "./menus";
 
-/** A chip as the text shows it: a mention's icon and blue name; an image's thumbnail or a pasted text, with ✕. */
+/** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
+export type OpenKind = "file" | "folder" | "chat" | "command" | "skill" | "mcp" | "image" | "paste";
+
+/** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
+export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
+  commands: new Map(),
+});
+
+/**
+ * A chip as the text shows it: a mention's icon and blue name; a command's icon and name in its kind's colour;
+ * an image's thumbnail or a pasted text, with ✕. A click opens what it names.
+ */
 export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }) {
   const [editor] = useLexicalComposerContext();
-  if (chip.kind !== "mention") {
+  const { onOpen, commands } = useContext(ChipContext);
+  if (chip.kind === "image" || chip.kind === "paste") {
     // As Backspace would: out of the text, its attachment kept for undo.
-    const remove = () => {
+    const remove = (event: { stopPropagation(): void }) => {
+      event.stopPropagation();
       editor.update(() => $getNodeByKey(nodeKey)?.remove());
       editor.focus();
     };
@@ -19,13 +35,23 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
         id={chip.attachmentId}
         paste={chip.kind === "paste"}
         preview={chip.kind === "paste" ? chip.preview : undefined}
+        onOpen={onOpen && (() => onOpen(chip.kind, chip.attachmentId))}
         onRemove={editor.isEditable() ? remove : undefined}
       />
     );
   }
+  const open = onOpen && (() => onOpen(chip.type, chip.id));
+  if (chip.kind === "command") {
+    return (
+      <span data-slot="composer-chip" onClick={open} className={cx("cursor-pointer", COMMAND_TONES[chip.type])}>
+        <CommandKindIcon kind={chip.type} icon={commands.get(chip.id)?.icon} className="mr-0.5 inline-block size-icon-sm align-icon" />
+        {chip.label}
+      </span>
+    );
+  }
   const name = chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1);
   return (
-    <span data-slot="composer-chip" className="cursor-pointer text-link">
+    <span data-slot="composer-chip" onClick={open} className="cursor-pointer text-link">
       <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
       {name}
     </span>
@@ -68,7 +94,8 @@ export class ChipNode extends DecoratorNode<ReactNode> {
     return false;
   }
   getTextContent(): string {
-    return this.__chip.kind === "mention" ? `@${this.__chip.label}` : "";
+    const chip = this.__chip;
+    return chip.kind === "mention" ? `@${chip.label}` : chip.kind === "command" ? chip.label : "";
   }
   decorate(): ReactNode {
     return <ComposerChip chip={this.__chip} nodeKey={this.__key} />;

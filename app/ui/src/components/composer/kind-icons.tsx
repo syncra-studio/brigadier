@@ -1,4 +1,5 @@
 import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Mcp, ToolsSkills } from "../../icons";
+import { cx } from "../cx";
 import { ProviderMark } from "./pickers";
 
 const extensionOf = (name: string) => (name.includes(".") ? (name.split(".").pop()?.toLowerCase() ?? "") : "");
@@ -43,14 +44,16 @@ export function MentionKindIcon({ type, label }: { type: "file" | "folder" | "ch
   return <FileBadge name={label} />;
 }
 
+/** A command's colour by kind, for its icon and its chip's name. */
+export const COMMAND_TONES = { command: "text-link", skill: "text-ansi-magenta", mcp: "text-ansi-cyan" };
+
 /**
- * A command row's icon: Rust's (an SVG mark, or a same-origin image), else its kind's in colour: a command blue,
- * a skill magenta, an MCP prompt cyan.
+ * A command's icon: Rust's (an SVG mark, or a same-origin image), else its kind's in colour: a command blue,
+ * a skill magenta, an MCP prompt cyan. `className` sizes it (a menu row's own size otherwise).
  */
-export function CommandKindIcon({ kind, icon }: { kind: "command" | "skill" | "mcp"; icon?: string | null }) {
-  if (icon?.startsWith("<svg")) return <ProviderMark mark={icon} className="size-icon-md" />;
-  if (icon) return <img src={icon} alt="" draggable={false} className="size-icon-md rounded-xs object-contain" />;
-  if (kind === "skill") return <ToolsSkills aria-hidden className="text-ansi-magenta" />;
-  if (kind === "mcp") return <Mcp aria-hidden className="text-ansi-cyan" />;
-  return <CodeSquareSlash aria-hidden className="text-link" />;
+export function CommandKindIcon({ kind, icon, className }: { kind: "command" | "skill" | "mcp"; icon?: string | null; className?: string }) {
+  if (icon?.startsWith("<svg")) return <ProviderMark mark={icon} className={className ?? "size-icon-md"} />;
+  if (icon) return <img src={icon} alt="" draggable={false} className={cx("rounded-xs object-contain", className ?? "size-icon-md")} />;
+  const Icon = kind === "skill" ? ToolsSkills : kind === "mcp" ? Mcp : CodeSquareSlash;
+  return <Icon aria-hidden className={cx(COMMAND_TONES[kind], className)} />;
 }

@@ -86,7 +86,7 @@ function commandMatches(commands: readonly SlashCommand[], query: string): Slash
     .map(({ command }) => command);
 }
 
-/** A row's name, what the query matched in full white and the rest dimmed. */
+/** A row's name in white, the letters the query matched in bold. */
 export function MatchedText({ text, query }: { text: string; query: string }) {
   const match = query ? fuzzyMatch(text, query) : null;
   if (!match) return text;
@@ -98,7 +98,7 @@ export function MatchedText({ text, query }: { text: string; query: string }) {
     else runs.push({ from: index, text: letter, hit: hit.has(index) });
   });
   return runs.map((each) => (
-    <span key={each.from} className={each.hit ? "text-foreground" : "text-muted-foreground"}>
+    <span key={each.from} className={cx(each.hit && "font-semibold")}>
       {each.text}
     </span>
   ));

@@ -26,13 +26,13 @@ import {
   type LexicalEditor,
   PASTE_COMMAND,
 } from "lexical";
-import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
+import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { cx } from "../cx";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
-import { $isChipNode, ChipNode } from "./chip";
+import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
-import { CommandHighlight } from "./command-highlight";
+import { CommandChips } from "./command-chips";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
 type Parts = Draft["parts"];
@@ -167,7 +167,9 @@ function numbersOf(parts: Parts): Map<string, number> {
   const numbers = new Map<string, number>();
   const count = { image: 0, paste: 0 };
   // A copied chip keeps its id: it keeps the first copy's number.
-  for (const part of parts) if (typeof part !== "string" && part.kind !== "mention" && !numbers.has(part.attachmentId)) numbers.set(part.attachmentId, ++count[part.kind]);
+  for (const part of parts) {
+    if (typeof part !== "string" && (part.kind === "image" || part.kind === "paste") && !numbers.has(part.attachmentId)) numbers.set(part.attachmentId, ++count[part.kind]);
+  }
   return numbers;
 }
 const sameNumbers = (a: Map<string, number>, b: Map<string, number>) => a.size === b.size && [...a].every(([id, n]) => b.get(id) === n);
@@ -205,6 +207,8 @@ type FieldProps = {
   onAttach?: AttachFn;
   /** What the chips' images and pasted texts show (their thumbnails, names, states), by id. */
   attachments?: ReadonlyMap<string, Attachment>;
+  /** A click on a chip: opens what it names (a mention's id, a command's id, an attachment's id). */
+  onOpen?: (kind: OpenKind, id: string) => void;
 };
 
 /**
@@ -219,11 +223,14 @@ export function ComposerField({
   mentions,
   commands,
   attachments = NO_ATTACHMENTS,
+  onOpen,
   ...props
 }: FieldProps) {
   const [scrolled, setScrolled] = useState(false);
   const [numbers, setNumbers] = useState(() => numbersOf(initial.parts));
   const { box, pad } = SIZES[size];
+  const list = commands?.commands;
+  const chips = useMemo(() => ({ onOpen, commands: new Map((list ?? []).map((command) => [command.id, command])) }), [onOpen, list]);
   const onChange = (parts: Parts) => {
     const next = numbersOf(parts);
     setNumbers((now) => (sameNumbers(now, next) ? now : next));
@@ -232,6 +239,7 @@ export function ComposerField({
   return (
     <AttachmentsContext value={attachments}>
     <ChipNumbers value={numbers}>
+    <ChipContext value={chips}>
     <LexicalComposer
       initialConfig={{
         namespace: NAMESPACE,
@@ -262,8 +270,9 @@ export function ComposerField({
       <Keys {...props} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
-      {commands && <CommandHighlight commands={commands.commands} />}
+      {commands && <CommandChips commands={commands.commands} />}
     </LexicalComposer>
+    </ChipContext>
     </ChipNumbers>
     </AttachmentsContext>
   );
@@ -278,7 +287,7 @@ function Keys({
   onEscape,
   onPullQueued,
   onAttach,
-}: Omit<FieldProps, "initial" | "placeholder" | "label" | "size" | "mentions" | "commands" | "attachments">) {
+}: Omit<FieldProps, "initial" | "placeholder" | "label" | "size" | "mentions" | "commands" | "attachments" | "onOpen">) {
   const [editor] = useLexicalComposerContext();
   // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
   const walk = useRef<{ back: number; shown: string } | null>(null);

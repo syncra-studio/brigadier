@@ -21,7 +21,8 @@ import {
   type SlashCommand,
 } from "../src/components/composer/menus";
 import { SendButton } from "../src/components/composer/send-button";
-import { Card, ModelPill } from "./composer";
+import { Toaster } from "../src/components/toast";
+import { Card, ModelPill, openChip } from "./composer";
 import { Row, Section, State } from "./parts";
 import picture from "./sample.svg?no-inline";
 
@@ -142,7 +143,7 @@ function Live() {
   const send = () => {
     const parts = field.current!.parts();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
-    setLog((list) => [...list, parts.map((part) => (typeof part === "string" ? part : part.kind === "mention" ? `@${part.label}` : `[${part.kind}]`)).join("")]);
+    setLog((list) => [...list, parts.map((part) => (typeof part === "string" ? part : part.kind === "mention" ? `@${part.label}` : part.kind === "command" ? part.label : `[${part.kind}]`)).join("")]);
     field.current!.set([]);
     setTiles([]);
   };
@@ -167,6 +168,7 @@ function Live() {
           mentions={{ results, onQuery: (query) => query !== null && setTimeout(() => setResults({ query, groups: search(query) }), 120) }}
           commands={{ commands: COMMANDS, onRun: (command) => setLog((list) => [...list, `ran ${command.label}`]) }}
           onAttach={attach}
+          onOpen={openChip}
           onChange={(parts) => setEmpty(isEmpty(draft(...parts)))}
           onSubmit={send}
         />
@@ -194,7 +196,7 @@ export function AidsGallery() {
             <Card initial={draft("Look at @")} menu={<FrozenMentions query="" />} />
           </Tall>
         </State>
-        <State label="@fi: matched letters bright">
+        <State label="@fi: matched letters bold">
           <Tall>
             <Card initial={draft("Look at @fi")} menu={<FrozenMentions query="fi" />} />
           </Tall>
@@ -234,7 +236,7 @@ export function AidsGallery() {
         </State>
       </Row>
       <Row name="Commands in the text">
-        <State label="Picked, typed mid-sentence, in backticks; a path stays plain">
+        <State label="Picked, typed mid-sentence, in backticks; a path stays plain; click one">
           <Card
             commands={{ commands: COMMANDS, onRun: noop }}
             initial={draft("/review the queue, then use the /docs skill. Not `/docs` here, and /usr/bin stays plain.\n```\n/kit in a code block\n```")}
@@ -249,6 +251,7 @@ export function AidsGallery() {
       <Row name="Live">
         <Live />
       </Row>
+      <Toaster />
     </Section>
   );
 }

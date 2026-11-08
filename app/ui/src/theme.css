@@ -537,11 +537,6 @@
   user-select: none !important;
 }
 
-/* A command in the composer's text, picked or typed: the mention chips' blue (CommandHighlight, D138). */
-::highlight(composer-command) {
-  color: var(--color-link);
-}
-
 /* An icon in a line of text, its middle on the letters' middle (a mention chip's, D135). */
 @utility align-icon {
   vertical-align: -0.125em;

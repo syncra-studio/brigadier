@@ -9,6 +9,7 @@ import type { Commands } from "../src/components/composer/menus";
 import { ComposerRail } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { Button } from "../src/components/button";
+import { showToast } from "../src/components/toast";
 import { ChevronDown } from "../src/icons";
 import { duration, useSecond } from "../src/thread/words";
 import { Row, Section, State } from "./parts";
@@ -49,6 +50,9 @@ type CardProps = {
 };
 
 /** A frozen composer card in one state. */
+/** Rust's stand-in for opening what a chip names. */
+export const openChip = (kind: string, id: string) => showToast(`Open ${kind} ${id}`);
+
 export function Card({
   initial = EMPTY_DRAFT,
   placeholder = "Do anything",
@@ -75,7 +79,7 @@ export function Card({
       <ComposerCard>
         {menu}
         {tiles && <AttachmentsContext value={attachments ?? new Map()}>{tiles}</AttachmentsContext>}
-        <ComposerField initial={initial} placeholder={placeholder} attachments={attachments} commands={commands} />
+        <ComposerField initial={initial} placeholder={placeholder} attachments={attachments} commands={commands} onOpen={openChip} />
         <ComposerFooter>
           <ComposerTools>
             <PlusButton />

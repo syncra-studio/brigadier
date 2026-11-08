@@ -5,12 +5,13 @@
  */
 
 /**
- * A chip in the text. A mention keeps what it names (`label`: the path or title it shows); an image or a
- * long paste keeps its stored attachment's id. Taking a chip out of the text never deletes that attachment:
+ * A chip in the text. A mention keeps what it names (`label`: the path or title it shows), a command, skill
+ * or MCP prompt its id and its `/name`; an image or a long paste keeps its stored attachment's id. Taking a chip out of the text never deletes that attachment:
  * it goes when the draft holding it is sent or cleared, so undo can bring the chip back.
  */
 export type Chip =
   | { kind: "mention"; id: string; type: "file" | "folder" | "chat"; label: string }
+  | { kind: "command"; id: string; type: "command" | "skill" | "mcp"; label: string }
   | { kind: "image"; attachmentId: string }
   /** `preview`: the paste's first words, for its chip. */
   | { kind: "paste"; attachmentId: string; preview?: string };

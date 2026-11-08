@@ -97,12 +97,14 @@ export function InlineAttachment({
   id,
   paste = false,
   preview,
+  onOpen,
   onRemove,
 }: {
   id: string;
   paste?: boolean;
   /** A paste's first words. */
   preview?: string;
+  onOpen?: () => void;
   onRemove?: MouseEventHandler<HTMLButtonElement>;
 }) {
   const attachment = useContext(AttachmentsContext).get(id);
@@ -113,6 +115,7 @@ export function InlineAttachment({
     <span
       data-slot={paste ? "inline-paste" : "inline-image"}
       title={label}
+      onClick={onOpen}
       className="inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-label text-foreground"
     >
       <span aria-hidden className={cx("inline-flex min-w-0 items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
