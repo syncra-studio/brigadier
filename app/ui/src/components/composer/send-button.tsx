@@ -83,7 +83,7 @@ export function SendButton({
   canStop: boolean;
   canResume?: boolean;
   followUp?: FollowUp;
-  /** Why it can't send now ("Waiting for the connection"): disabled, with this as its tip. */
+  /** Why it can't send now ("Reconnecting…"): disabled, with this as its tip. */
   blocked?: string;
   /** `false`: no Esc handling (the gallery's frozen copies, so one Esc doesn't reach them all). */
   keys?: boolean;

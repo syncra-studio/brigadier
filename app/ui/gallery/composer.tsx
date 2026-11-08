@@ -127,7 +127,7 @@ function Live() {
     setSent((list) => [...list, { mode: sendMode(running, "queue", other, true), parts }]);
     field.current!.set([]);
   };
-  const placeholder = linkDown ? "Waiting for the link to come back" : running ? `Working for ${duration(now - startedAt)}` : "Do anything";
+  const placeholder = linkDown ? "Reconnecting…" : running ? `Working for ${duration(now - startedAt)}` : "Do anything";
   return (
     <div className="flex w-full max-w-reading flex-col gap-3">
       <div className="flex gap-2">
@@ -135,7 +135,7 @@ function Live() {
           Turn running
         </Button>
         <Button size="sm" variant={linkDown ? "default" : "outline"} onClick={() => setLinkDown(!linkDown)}>
-          Link down
+          Reconnecting
         </Button>
       </div>
       <ol className="flex flex-col gap-1 text-sm text-muted-foreground">
@@ -165,7 +165,7 @@ function Live() {
             empty={empty}
             running={running}
             canStop={running}
-            blocked={linkDown ? "Waiting for the link to come back" : undefined}
+            blocked={linkDown ? "Reconnecting…" : undefined}
             onSend={() => send()}
             onStop={() => setStartedAt(null)}
           />
@@ -188,7 +188,7 @@ export function ComposerGallery() {
         <Pair label="Turn running, typed: Send queues (tip Queue)">{(old) => <Card old={old} initial={draft("And add a test")} running canStop />}</Pair>
         <Pair label="Esc armed (tip Press Esc again to stop)">{(old) => <Card old={old} initial={draft("And add a test")} running canStop armed />}</Pair>
         <Pair label="Stopped: Resume">{(old) => <Card old={old} canResume />}</Pair>
-        <Pair label="Link down: Send disabled">{(old) => <Card old={old} initial={draft("Kept while the link is down")} placeholder="Waiting for the link to come back" blocked="Waiting for the link to come back" />}</Pair>
+        <Pair label="Reconnecting: Send disabled">{(old) => <Card old={old} initial={draft("Kept while it reconnects")} placeholder="Reconnecting…" blocked="Reconnecting…" />}</Pair>
         <Pair label="Context ring">{(old) => <Card old={old} ring />}</Pair>
       </Row>
       <Row name="Footer controls">
