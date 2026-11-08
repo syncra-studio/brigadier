@@ -42,11 +42,11 @@ impl Adapter for Claude {
                 .map(String::from),
             );
         }
-        argv.extend([
-            "--model".into(),
-            model,
-            "--dangerously-skip-permissions".into(),
-        ]);
+        argv.extend(["--model".into(), model]);
+        // A terminal runs in the CLI's normal permission mode, so it asks there.
+        if spec.mode != "pty" {
+            argv.push("--dangerously-skip-permissions".into());
+        }
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
         }

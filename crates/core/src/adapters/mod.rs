@@ -5,6 +5,7 @@ mod codex;
 mod fake;
 mod files;
 mod opencode;
+pub mod setup;
 
 pub use files::{drop_lines, file_lines, uuid};
 
@@ -144,7 +145,8 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
     all().into_iter().find(|a| a.name() == name)
 }
 
-/// The environment every child starts from: nothing inherited but the basics.
+/// The environment every child starts from: nothing inherited but the basics, and the login
+/// shell's PATH after the CLI's own folder, so the user's hooks and tools are found.
 pub fn base_env(spec: &Spec, exe: &Path) -> Vec<(String, String)> {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let dir = exe
@@ -156,10 +158,7 @@ pub fn base_env(spec: &Spec, exe: &Path) -> Vec<(String, String)> {
         ("USER".into(), var("USER")),
         ("LANG".into(), "en_US.UTF-8".into()),
         ("TMPDIR".into(), var("TMPDIR")),
-        (
-            "PATH".into(),
-            format!("{dir}:/usr/bin:/bin:/usr/sbin:/sbin"),
-        ),
+        ("PATH".into(), format!("{dir}:{}", setup::login().path)),
     ];
     if spec.mode == "pty" {
         env.push(("TERM".into(), "xterm-256color".into()));

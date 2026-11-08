@@ -173,9 +173,11 @@ export function TerminalPane({ id }: { id: string }) {
       </header>
       <div className={`relative min-h-0 flex-1 ${daemon ? "" : "opacity-disabled"}`}>
         <div ref={host} className="absolute inset-0 px-3 font-mono text-xs" />
-        {state.is !== "live" && state.is !== "exited" && state.is !== "loading" && (
+        {/* An ended terminal is covered too: its last screen is the CLI's goodbye, not the session's. */}
+        {state.is !== "live" && state.is !== "loading" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-terminal-background text-sm">
             {state.is === "closed" && <p className="text-muted-foreground">This session's CLI, in its own terminal</p>}
+            {state.is === "exited" && <p className="text-muted-foreground">The terminal ended</p>}
             {state.is === "opening" && <p className="text-muted-foreground">Opening…</p>}
             {state.is === "refused" && <p className="text-muted-foreground">{state.message}</p>}
             {state.is === "error" && <p className="text-destructive">{state.message}</p>}
@@ -184,19 +186,16 @@ export function TerminalPane({ id }: { id: string }) {
                 Open terminal
               </Button>
             )}
+            {state.is === "exited" && (
+              <Button size="sm" disabled={!daemon} onClick={() => open()}>
+                Open again
+              </Button>
+            )}
             {waiting && (
               <Button size="sm" variant="soft-destructive" disabled={!daemon} onClick={stop}>
                 Stop the turn
               </Button>
             )}
-          </div>
-        )}
-        {state.is === "exited" && (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 border-t border-divider bg-terminal-background py-2 text-sm">
-            <span className="text-muted-foreground">The terminal ended</span>
-            <Button size="sm" disabled={!daemon} onClick={() => open()}>
-              Open again
-            </Button>
           </div>
         )}
       </div>

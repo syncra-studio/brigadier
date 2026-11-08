@@ -17,6 +17,10 @@ const onHash = (listener: () => void) => {
 };
 const useHash = (): string => useSyncExternalStore(onHash, () => window.location.hash);
 
+// The screen that was open comes back when the app reopens.
+if (!window.location.hash) window.location.hash = localStorage.getItem("route") ?? "";
+window.addEventListener("hashchange", () => localStorage.setItem("route", window.location.hash));
+
 function App() {
   const { daemon, refused, rows, search: found } = useDaemon();
   const hash = useHash();
