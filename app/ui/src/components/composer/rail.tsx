@@ -1,6 +1,6 @@
-import { type ComponentProps, createContext, type ReactNode, useContext, useRef, useState } from "react";
+import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
 
-import { ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
+import { ChevronRight, ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
 import { Button } from "../button";
 import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
@@ -99,11 +99,14 @@ const NOTICE_ICONS = {
 export function NoticeRow({
   level,
   action,
+  pager,
   onDismiss,
   children,
 }: {
   level: keyof typeof NOTICE_ICONS;
   action?: ReactNode;
+  /** ‹ 2 of 3 ›, between the action and ✕. */
+  pager?: ReactNode;
   onDismiss?: () => void;
   children: string;
 }) {
@@ -118,12 +121,78 @@ export function NoticeRow({
         </span>
       )}
       {action}
-      {onDismiss && (
+      {pager}
+      {onDismiss ? (
         <TooltipIconButton tooltip="Dismiss notice" size="icon-xs" className="text-muted-foreground" onClick={onDismiss}>
           <X />
         </TooltipIconButton>
+      ) : (
+        // Holds ✕'s place, so the pager stays put while paging past a notice that can't be dismissed.
+        pager && <span aria-hidden className="size-5 shrink-0" />
       )}
     </li>
+  );
+}
+
+/** A notice; one with an `action` (Retry) has that instead of ✕, as in the old app. */
+type Notice = { id: Key; level: keyof typeof NOTICE_ICONS; text: string; action?: ReactNode };
+
+/**
+ * The notices one at a time, newest first (owner's D114, D119), with ‹ "2 of 3" › before ✕ while there are more
+ * (←/→ while it has focus, wrapping at the ends). ✕ dismisses only the one on screen, and the next takes its place.
+ */
+export function PagedNotices({ notices, onDismiss }: { notices: readonly Notice[]; onDismiss: (id: Key) => void }) {
+  const order = notices.toReversed();
+  const [at, setAt] = useState<{ id?: Key; index: number }>({ index: 0 });
+  if (order.length === 0) return null;
+  // The one on screen, found by id; once it's gone, whichever took its place.
+  const found = order.findIndex((notice) => notice.id === at.id);
+  const index = found >= 0 ? found : at.index % order.length;
+  const notice = order[index]!;
+  const go = (step: number) => {
+    const next = (index + step + order.length) % order.length;
+    setAt({ id: order[next]!.id, index: next });
+  };
+  const keys = (event: KeyboardEvent) => {
+    const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    go(step);
+  };
+  const pager = order.length > 1 && (
+    <div role="group" aria-label={`Notice ${index + 1} of ${order.length}`} onKeyDown={keys} className="flex shrink-0 items-center">
+      <TooltipIconButton tooltip="Previous notice" size="icon-xs" className="text-muted-foreground" onClick={() => go(-1)}>
+        <ChevronRight className="rotate-180" />
+      </TooltipIconButton>
+      <span aria-hidden className="px-0.5 text-xs text-muted-foreground tabular-nums">
+        {index + 1} of {order.length}
+      </span>
+      <TooltipIconButton tooltip="Next notice" size="icon-xs" className="text-muted-foreground" onClick={() => go(1)}>
+        <ChevronRight />
+      </TooltipIconButton>
+    </div>
+  );
+  return (
+    <RailItem label="Notices">
+      <ul aria-live="polite" className="flex flex-col">
+        <NoticeRow
+          key={notice.id}
+          level={notice.level}
+          action={notice.action}
+          pager={pager}
+          onDismiss={
+            notice.action
+              ? undefined
+              : () => {
+                  setAt({ index });
+                  onDismiss(notice.id);
+                }
+          }
+        >
+          {notice.text}
+        </NoticeRow>
+      </ul>
+    </RailItem>
   );
 }
 

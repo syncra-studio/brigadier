@@ -7,7 +7,7 @@ import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/
 import { type Draft, isEmpty } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
-import { ComposerRail, HeldRow, NoticeRow, Notices, PausedSendDialog, RailItem, WaitingRow } from "../src/components/composer/rail";
+import { ComposerRail, HeldRow, NoticeRow, Notices, PagedNotices, PausedSendDialog, RailItem, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { Card, ModelPill } from "./composer";
 import { Held, Row, Section, State } from "./parts";
@@ -50,6 +50,27 @@ function OldHeld() {
 }
 
 type Notice = { id: number; level: "info" | "warning" | "error"; text: string };
+
+const retry = (
+  <Button variant="link-blue" size="xs" className="-my-0.5">
+    Retry
+  </Button>
+);
+const LOAD_ERROR = { level: "warning", text: "Couldn’t load messages", action: retry } as const;
+
+/** The pager (D114) live: arrows page, ✕ dismisses, Reset brings them back. */
+function ProposedNotices({ samples = NOTICE_SAMPLES }: { samples?: readonly Omit<Parameters<typeof PagedNotices>[0]["notices"][number], "id">[] }) {
+  const all = samples.map((notice, id) => ({ ...notice, id }));
+  const [notices, setNotices] = useState(all);
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Card rail={<PagedNotices notices={notices} onDismiss={(id) => setNotices((list) => list.filter((each) => each.id !== id))} />} />
+      <Button size="xs" variant="ghost" onClick={() => setNotices(all)}>
+        Reset
+      </Button>
+    </div>
+  );
+}
 const NOTICE_SAMPLES: Omit<Notice, "id">[] = [
   { level: "warning", text: "Git isn't set up in this folder, so changes can't be reviewed." },
   { level: "info", text: "The model changed to a smaller one for this turn." },
@@ -251,6 +272,33 @@ export function RailGallery() {
               </Notices>
             }
           />
+        </State>
+      </Row>
+      <Row name="Notices · Current | Proposed">
+        <State label="Current: three, stacked">
+          <Card
+            rail={
+              <Notices>
+                {NOTICE_SAMPLES.map((notice) => (
+                  <NoticeRow key={notice.text} level={notice.level} onDismiss={noop}>
+                    {notice.text}
+                  </NoticeRow>
+                ))}
+              </Notices>
+            }
+          />
+        </State>
+        <State label="Proposed: one at a time, newest first; ‹ › or ←/→ page, ✕ dismisses the one shown">
+          <ProposedNotices />
+        </State>
+        <State label="Proposed: three, one with Retry (Retry takes ✕'s place)">
+          <ProposedNotices samples={[NOTICE_SAMPLES[0]!, NOTICE_SAMPLES[2]!, LOAD_ERROR]} />
+        </State>
+        <State label="Proposed: one, with Retry (no pager)">
+          <ProposedNotices samples={[LOAD_ERROR]} />
+        </State>
+        <State label="Proposed: one (no pager)">
+          <ProposedNotices samples={[NOTICE_SAMPLES[1]!]} />
         </State>
       </Row>
       <Row name="Queue">
