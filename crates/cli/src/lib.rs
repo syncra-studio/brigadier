@@ -30,7 +30,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
-       brigadier index [--cold] | transcript <id> | thread <id>
+       brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--trusted true|false|none] [--setup S] | remove I]
@@ -83,7 +83,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" | "models" => &[][..],
+        | "switching" | "models" | "title" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -142,20 +142,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(a) = adapters::get(backend) {
                 core::level(&spec, a, false).map_err(io::Error::other)?;
             }
-            let spec = if core::session_dir(data, id).join("session.json").exists() {
-                core::load(data, id)?
+            let fresh = !core::session_dir(data, id).join("session.json").exists();
+            let spec = if fresh {
+                core::create(data, &spec)?
             } else {
-                let spec = core::create(data, &spec)?;
-                if let Some(project) = project.filter(|_| worktree)
-                    && let Err(e) = core::worktrees::create(&spec, Path::new(&project.folder))
-                {
-                    if !spec.dir.join("worktree.json").exists() {
-                        std::fs::remove_dir_all(&spec.dir)?;
-                    }
-                    return Err(e);
-                }
-                spec
+                core::load(data, id)?
             };
+            // Only a session made for its worktree: a Local checkout one, started again, never gets one.
+            let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
+            if let Some(project) = project.filter(|_| worktree && own) {
+                core::worktrees::ensure(&spec, Path::new(&project.folder), fresh)?;
+            }
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
                 Some(text) => send(data, &spec, text, flag(args, "--cid"), None),
@@ -249,6 +246,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, false)?;
             Ok(core::delete(&spec, &f.fold))
         }
+        // The short title a first message gives its session, for the app's row before Rust's [D186].
+        "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
         "level" => control::level(data, args),
         "answer" => control::answer(data, args),
         "up" => {

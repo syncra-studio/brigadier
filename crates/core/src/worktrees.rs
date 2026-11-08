@@ -85,6 +85,32 @@ pub fn path(data: &Path, id: &str) -> PathBuf {
     session_dir(data, id).join("worktree")
 }
 
+/// Makes the session's worktree unless it's whole: a start cut short before it was finishes it
+/// here, its unfinished create undone first. A failed create on a `fresh` session (made by this
+/// start) that undid itself takes the session away too; on a retry the session keeps its log and
+/// first message, and the error says why. One it couldn't undo stays recorded [D35].
+/// Takes what `create` takes, so a change there changes only this call.
+pub fn ensure(spec: &Spec, repo: &Path, fresh: bool) -> io::Result<()> {
+    {
+        let _one = lock(&spec.dir)?;
+        match read(&spec.dir)? {
+            Some(owned) if !owned.failed => return Ok(()),
+            Some(owned) => {
+                undo(&owned)?;
+                fs::remove_file(spec.dir.join(RECORD))?;
+            }
+            None => {}
+        }
+    }
+    if let Err(e) = create(spec, repo) {
+        if fresh && !spec.dir.join(RECORD).exists() {
+            fs::remove_dir_all(&spec.dir)?;
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// Makes the session's worktree from `repo`'s current branch. A failure undoes what it made; one
 /// it can't undo stays recorded for the daemon to retry.
 pub fn create(spec: &Spec, repo: &Path) -> io::Result<()> {
