@@ -26,6 +26,8 @@ pub struct Project {
     pub folder: String,
     /// None until the owner answers "Trust this folder?" [D166, D167].
     pub trusted: Option<bool>,
+    /// Runs before the first turn in a new worktree, only while trusted [D202, D211].
+    pub setup: String,
     pub added: u64,
 }
 
@@ -111,6 +113,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         name,
         folder: folder.into(),
         trusted: None,
+        setup: String::new(),
         added,
     }
 }
@@ -232,6 +235,26 @@ pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
     let (_, project) = change(data, |list| {
         let p = find(list, id)?;
         p.name = name;
+        Ok(p.clone())
+    })?;
+    Ok(project)
+}
+
+/// Changes only trust and setup; folder changes must reset trust when 1r adds them [D166].
+pub fn set(
+    data: &Path,
+    id: &str,
+    trusted: Option<Option<bool>>,
+    setup: Option<String>,
+) -> io::Result<Project> {
+    let (_, project) = change(data, |list| {
+        let p = find(list, id)?;
+        if let Some(trusted) = trusted {
+            p.trusted = trusted;
+        }
+        if let Some(setup) = setup {
+            p.setup = setup;
+        }
         Ok(p.clone())
     })?;
     Ok(project)

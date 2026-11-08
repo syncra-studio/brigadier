@@ -106,6 +106,23 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let project = projects::rename(data, arg(2), arg(3))?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
+                "set" => {
+                    let trusted = flag(args, "--trusted")
+                        .map(|value| match value {
+                            "true" => Ok(Some(true)),
+                            "false" => Ok(Some(false)),
+                            "none" => Ok(None),
+                            _ => Err(io::Error::other("--trusted must be true, false or none")),
+                        })
+                        .transpose()?;
+                    let project = projects::set(
+                        data,
+                        arg(2),
+                        trusted,
+                        flag(args, "--setup").map(String::from),
+                    )?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
                 "remove" => {
                     projects::remove(data, arg(2))?;
                     return Ok(json!({"ok": true}));

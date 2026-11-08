@@ -12,6 +12,7 @@ mod session;
 pub mod switch;
 pub mod terminal;
 pub mod thread;
+pub mod worktrees;
 
 use brigadier_frames::log::{self, Reader};
 use brigadier_frames::procs;

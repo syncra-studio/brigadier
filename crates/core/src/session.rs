@@ -8,6 +8,15 @@ use std::{fs, io};
 /// Removes the session folder and every recorded path outside it. Reports what stayed.
 pub fn delete(spec: &Spec, f: &Fold) -> Value {
     let swept = sweep(f);
+    // Preserve transcripts too when a checkpoint fails: delete must remain retryable [D35].
+    let kept_branches = match crate::worktrees::delete(&spec.dir) {
+        Ok(branch) => branch.into_iter().collect::<Vec<_>>(),
+        Err(e) => {
+            return json!({"ok": false, "swept": swept, "removed": [],
+            "left": [format!("worktree: {e}"), format!("{}: kept to try again", spec.dir.display())],
+            "kept_branches": []});
+        }
+    };
     let (mut removed, mut left, mut keep) = (vec![], vec![], false);
     for (backend, account, id) in &f.convs {
         let Some(a) = adapters::get(backend) else {
@@ -54,5 +63,6 @@ pub fn delete(spec: &Spec, f: &Fold) -> Value {
             Err(e) => left.push(format!("{}: {e}", spec.dir.display())),
         }
     }
-    json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left})
+    json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left,
+        "kept_branches": kept_branches})
 }

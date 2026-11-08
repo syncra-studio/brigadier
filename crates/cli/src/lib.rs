@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{env, fs, process, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--cwd D] [--model M] [--opt K=V] [--text T]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B]
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
@@ -29,7 +29,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | remove I]
+       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--trusted true|false|none] [--setup S] | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
        brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -104,19 +104,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .filter_map(|w| w[1].split_once('='))
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
-            // A project's session runs in its folder [D165].
+            // New project sessions have their own worktree unless Local checkout is chosen [D160].
             let project = flag(args, "--project")
                 .map(|p| {
                     let found = core::projects::list(data)?.into_iter().find(|r| r.id == p);
                     found.ok_or_else(|| io::Error::other(format!("no project {p}")))
                 })
                 .transpose()?;
+            let worktree = project.is_some() && !has(args, "--local");
             let cwd = flag(args, "--cwd")
                 .map(String::from)
+                .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
                 .or_else(|| project.as_ref().map(|p| p.folder.clone()))
                 .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
             let spec = Spec {
-                project: project.map(|p| p.id),
+                project: project.as_ref().map(|p| p.id.clone()),
                 id: id.into(),
                 backend: backend.into(),
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
@@ -129,7 +131,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = if core::session_dir(data, id).join("session.json").exists() {
                 core::load(data, id)?
             } else {
-                core::create(data, &spec)?
+                let spec = core::create(data, &spec)?;
+                if let Some(project) = project.filter(|_| worktree)
+                    && let Err(e) = core::worktrees::create(&spec, Path::new(&project.folder))
+                {
+                    if !spec.dir.join("worktree.json").exists() {
+                        std::fs::remove_dir_all(&spec.dir)?;
+                    }
+                    return Err(e);
+                }
+                spec
             };
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
