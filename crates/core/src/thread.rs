@@ -294,6 +294,7 @@ impl Thread {
     /// Ends whatever still runs because its host or agent is gone, which no frame may ever say:
     /// the daemon calls this when the session's live state reads interrupted.
     pub fn interrupt(&mut self, ts: u64) {
+        self.fold.interrupt(Value::Null, ts);
         self.close_turn("interrupted", ts);
         self.end_children("failed");
     }
