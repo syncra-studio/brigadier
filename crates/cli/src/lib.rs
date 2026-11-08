@@ -19,7 +19,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier status [<id>...|--all]
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
        brigadier read <id> [--follow] [--hash] [--tail N]
-       brigadier index [--cold] | transcript <id>";
+       brigadier index [--cold] | transcript <id> | thread <id>";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -172,6 +172,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),
         "read" => read(data, arg(args, 1)?, args),
+        // (proposed) A diagnostic: the thread the app draws, from the same fold [D64, D65].
+        "thread" => {
+            let id = arg(args, 1)?;
+            let spec = core::load(data, id)?;
+            let mut thread = core::thread::Thread::default();
+            core::read(&spec.dir, |item| thread.push(item))?;
+            Ok(thread.session(id, ""))
+        }
         "index" => index(data, has(args, "--cold")),
         "transcript" => {
             let id = arg(args, 1)?;
@@ -182,7 +190,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             core::read(&spec.dir, |i| match i["kind"].as_str() {
                 Some("text") => texts += 1,
                 Some("turn_start") => turn += 1,
-                Some("tool") => {
+                // A subagent's own steps are in its own transcript, not the parent's.
+                Some("tool") if i["parent"].is_null() => {
                     tools.insert((turn, i["id"].as_str().unwrap_or("").to_string()));
                 }
                 _ => {}

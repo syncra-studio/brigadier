@@ -4,6 +4,7 @@
 pub mod adapters;
 pub mod fold;
 pub mod norm;
+pub mod thread;
 
 use brigadier_frames::log::{self, Reader};
 use brigadier_frames::procs;
