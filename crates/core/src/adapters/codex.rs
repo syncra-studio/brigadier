@@ -1,18 +1,20 @@
 //! Codex CLI: one `codex exec --json` process per turn, continued with `exec resume <thread>`.
 
-use super::{Adapter, Event, Launch, Timing, base_env, classify, home_path, s};
+use super::{
+    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, home_path, s,
+    shell_step,
+};
 use crate::Spec;
 use serde_json::Value;
 use std::path::PathBuf;
 
 pub struct Codex;
 
-const TOOLS: [&str; 5] = [
+const TOOLS: [&str; 4] = [
     "command_execution",
     "mcp_tool_call",
     "file_change",
     "web_search",
-    "collab_tool_call",
 ];
 
 impl Adapter for Codex {
@@ -73,7 +75,7 @@ impl Adapter for Codex {
         };
         let item = &v["item"];
         let kind = s(item, &["type"]);
-        let id = || s(item, &["id"]).to_string();
+        let done = s(&v, &["type"]) == "item.completed";
         match s(&v, &["type"]) {
             "thread.started" => vec![Event::Resume(s(&v, &["thread_id"]).into())],
             "turn.started" => vec![Event::TurnStart],
@@ -85,14 +87,23 @@ impl Adapter for Codex {
                 events
             }
             "error" => vec![classify(s(&v, &["message"])).unwrap_or(Event::Unknown(line.into()))],
-            "item.started" if TOOLS.contains(&kind) => vec![Event::ToolStart(id(), kind.into())],
-            "item.completed" if TOOLS.contains(&kind) => {
-                vec![Event::ToolStart(id(), kind.into()), Event::ToolEnd(id())]
+            // A tool may be reported only once it ended, so its end repeats its start.
+            "item.started" | "item.completed" if kind == "collab_tool_call" => agents(item, done),
+            "item.started" | "item.completed" if TOOLS.contains(&kind) => {
+                let mut events = vec![Event::ToolStart(tool(item))];
+                if done {
+                    events.push(Event::ToolEnd(end(item)));
+                }
+                events
             }
             "item.completed" if kind == "agent_message" => {
                 vec![Event::Text(s(item, &["text"]).into())]
             }
-            "item.completed" if kind == "context_compaction" => vec![Event::Compaction],
+            "item.completed" if kind == "reasoning" && !s(item, &["text"]).is_empty() => {
+                vec![Event::Reasoning(s(item, &["text"]).into())]
+            }
+            "item.started" if kind == "context_compaction" => vec![Event::Compaction("running")],
+            "item.completed" if kind == "context_compaction" => vec![Event::Compaction("done")],
             "item.started" | "item.updated" | "item.completed" => vec![],
             _ => vec![Event::Unknown(line.into())],
         }
@@ -146,4 +157,100 @@ impl Adapter for Codex {
         }
         Some((texts, tools))
     }
+}
+
+/// An exec item as a step, by its type [D48, D65].
+fn tool(item: &Value) -> Tool {
+    let kind = s(item, &["type"]);
+    let (name, step, input) = match kind {
+        "command_execution" => {
+            let (step, what) = shell_step(s(item, &["command"]));
+            (kind.to_string(), step, what)
+        }
+        "file_change" => {
+            let path = s(&item["changes"][0], &["path"]);
+            (kind.to_string(), "edit", path.to_string())
+        }
+        "web_search" => (kind.to_string(), "web", s(item, &["query"]).to_string()),
+        _ => (
+            s(item, &["tool"]).to_string(),
+            "other",
+            item["arguments"].to_string(),
+        ),
+    };
+    Tool {
+        id: s(item, &["id"]).into(),
+        name,
+        step,
+        input,
+        changes: changes(item),
+        ..Default::default()
+    }
+}
+
+fn end(item: &Value) -> Done {
+    let exit = item["exit_code"].as_i64();
+    let output = match s(item, &["type"]) {
+        "command_execution" => s(item, &["aggregated_output"]).to_string(),
+        "mcp_tool_call" if !item["error"].is_null() => s(item, &["error", "message"]).to_string(),
+        "mcp_tool_call" => item["result"].to_string(),
+        _ => String::new(),
+    };
+    Done {
+        id: s(item, &["id"]).into(),
+        output,
+        ok: !matches!(s(item, &["status"]), "failed" | "declined") && exit.is_none_or(|c| c == 0),
+        exit,
+        changes: changes(item),
+        ..Default::default()
+    }
+}
+
+/// A file change names its files and how each changed, never a diff [D74, D83].
+fn changes(item: &Value) -> Vec<Value> {
+    let all = item["changes"].as_array().into_iter().flatten();
+    all.map(|c| {
+        let how = match s(c, &["kind"]) {
+            "add" => "added",
+            "delete" => "deleted",
+            _ => "modified",
+        };
+        change(s(c, &["path"]), how, None, None, None)
+    })
+    .collect()
+}
+
+/// Subagents: a spawn starts one per child thread, and any later call that reports a child
+/// finished ends it with its answer. The calls themselves (wait and the rest) draw no row [D48, D78].
+fn agents(item: &Value, done: bool) -> Vec<Event> {
+    let mut events = vec![];
+    if s(item, &["tool"]) == "spawn_agent" {
+        for child in item["receiver_thread_ids"].as_array().into_iter().flatten() {
+            events.push(Event::ToolStart(Tool {
+                id: child.as_str().unwrap_or("").into(),
+                name: "spawn_agent".into(),
+                step: "agent",
+                input: s(item, &["prompt"]).into(),
+                ..Default::default()
+            }));
+        }
+    }
+    if done {
+        for (child, state) in item["agents_states"].as_object().into_iter().flatten() {
+            let status = s(state, &["status"]);
+            if matches!(
+                status,
+                "completed" | "errored" | "failed" | "shutdown" | "not_found"
+            ) {
+                events.push(Event::ToolEnd(Done {
+                    id: child.clone(),
+                    output: s(state, &["message"]).into(),
+                    ok: status == "completed",
+                    child: Some(child.clone()),
+                    ..Default::default()
+                }));
+            }
+        }
+    }
+    events
 }

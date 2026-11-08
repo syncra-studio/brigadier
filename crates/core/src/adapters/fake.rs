@@ -1,6 +1,6 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
-use super::{Adapter, Event, Launch, Timing, base_env, s};
+use super::{Adapter, Done, Event, Launch, Timing, Tool, base_env, s};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -62,15 +62,25 @@ impl Adapter for Fake {
             "hello" => vec![Event::Resume(s(&v, &["session"]).into())],
             "turn" => vec![Event::TurnStart],
             "say" => vec![Event::Text(s(&v, &["text"]).into())],
-            "tool" => vec![Event::ToolStart(
-                s(&v, &["id"]).into(),
-                s(&v, &["name"]).into(),
-            )],
-            "tool_done" => vec![Event::ToolEnd(s(&v, &["id"]).into())],
+            "tool" => vec![Event::ToolStart(Tool {
+                id: s(&v, &["id"]).into(),
+                name: s(&v, &["name"]).into(),
+                step: "other",
+                ..Default::default()
+            })],
+            "tool_done" => vec![Event::ToolEnd(Done {
+                id: s(&v, &["id"]).into(),
+                ok: true,
+                ..Default::default()
+            })],
             "beat" | "child" => vec![],
             "done" => vec![Event::TurnEnd(v["ok"].as_bool().unwrap_or(true))],
-            "ask" => vec![Event::Question(s(&v, &["text"]).into())],
-            "compact" => vec![Event::Compaction],
+            "ask" => vec![Event::Question(
+                String::new(),
+                s(&v, &["text"]).into(),
+                vec![],
+            )],
+            "compact" => vec![Event::Compaction("done")],
             "error" => vec![
                 super::classify(&format!("{} {}", v["code"], s(&v, &["message"])))
                     .unwrap_or(Event::Unknown(line.into())),

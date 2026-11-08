@@ -10,6 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Turn {
+    /// Stable for the turn's life: its first input's cid, or `a<n>` for one the agent started.
+    #[serde(default)]
+    pub id: String,
     pub cid: Option<String>,
     pub origin: String,
     pub backend: String,
@@ -84,6 +87,8 @@ impl Fold {
                 | "unknown"
                 | "usage"
                 | "question"
+                | "answer"
+                | "reasoning"
                 | "compaction"
         ) {
             self.last_out = ts;
@@ -112,6 +117,7 @@ impl Fold {
                 }
                 let retry_of = item["retry_of"].as_str().map(String::from);
                 self.turns.push(Turn {
+                    id: cid.clone(),
                     cid: Some(cid),
                     origin: str_of("origin"),
                     backend: str_of("backend"),
@@ -166,6 +172,7 @@ impl Fold {
             "turn_start" => {
                 if self.turns.is_empty() {
                     self.turns.push(Turn {
+                        id: format!("a{}", self.items),
                         origin: "agent".into(),
                         backend: self.backend.clone(),
                         ts,
@@ -190,6 +197,7 @@ impl Fold {
                     .first_mut()
                     .map(|t| t.question = Some(str_of("text"))),
             ),
+            "answer" => drop(self.turns.first_mut().map(|t| t.question = None)),
             "resume_id" => drop(self.resume.insert(str_of("backend"), str_of("id"))),
             "limited" => {
                 self.limit = Some(str_of("message"));
@@ -200,7 +208,7 @@ impl Fold {
                 self.close("sign_in", item["message"].clone(), ts);
             }
             "stopped" => self.close_all("stopped", item["by"].clone(), ts),
-            "compaction" => self.compactions += 1,
+            "compaction" if item["progress"] != "running" => self.compactions += 1,
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -154,8 +154,11 @@ impl Norm {
                 Event::TurnStart => json!({"kind": "turn_start"}),
                 Event::TurnEnd(ok) => json!({"kind": "turn_end", "ok": ok}),
                 Event::Text(t) => json!({"kind": "text", "text": t}),
-                Event::ToolStart(id, name) => json!({"kind": "tool", "id": id, "name": name}),
-                Event::ToolEnd(id) => json!({"kind": "tool_done", "id": id}),
+                Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
+                Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
+                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at}),
+                Event::ToolEnd(d) => json!({"kind": "tool_done", "id": d.id, "output": d.output, "ok": d.ok,
+                    "exit": d.exit, "changes": d.changes, "child": d.child, "parent": d.parent, "at": d.at}),
                 Event::Resume(id) => {
                     if id.is_empty() || self.announced.get(&self.backend) == Some(&id) {
                         continue;
@@ -165,8 +168,11 @@ impl Norm {
                 }
                 Event::Limited(m) => json!({"kind": "limited", "message": m}),
                 Event::SignIn(m) => json!({"kind": "sign_in", "message": m}),
-                Event::Question(t) => json!({"kind": "question", "text": t}),
-                Event::Compaction => json!({"kind": "compaction"}),
+                Event::Question(id, t, options) => {
+                    json!({"kind": "question", "id": id, "text": t, "options": options})
+                }
+                Event::Answer(id, t) => json!({"kind": "answer", "id": id, "text": t}),
+                Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
             });

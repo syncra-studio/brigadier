@@ -1,7 +1,10 @@
 //! Claude Code: one long-lived `claude -p` per session reading stream-json from stdin, or the
 //! interactive CLI on a PTY. Frame names per its public CLI docs and observed output.
 
-use super::{Adapter, Event, Launch, Timing, base_env, classify, home_path, s};
+use super::{
+    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, home_path, s,
+    shell_step,
+};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -84,28 +87,40 @@ impl Adapter for Claude {
                 .cloned()
                 .unwrap_or_default()
         };
+        // A subagent's own steps stream here too, under the Agent call that runs it [D78].
+        let parent = v["parent_tool_use_id"].as_str().map(String::from);
         match (s(&v, &["type"]), s(&v, &["subtype"])) {
             ("system", "init") => vec![
                 Event::Resume(s(&v, &["session_id"]).into()),
                 Event::TurnStart,
             ],
-            ("system", "compact_boundary") => vec![Event::Compaction],
+            ("system", "compact_boundary") => vec![Event::Compaction("done")],
+            // A subagent's end, also one that ran in the background past its call's result [D78].
+            ("system", "task_notification") if !s(&v, &["tool_use_id"]).is_empty() => {
+                vec![Event::ToolEnd(Done {
+                    id: s(&v, &["tool_use_id"]).into(),
+                    output: s(&v, &["summary"]).into(),
+                    ok: s(&v, &["status"]) == "completed",
+                    child: v["task_id"].as_str().map(String::from),
+                    ..Default::default()
+                })]
+            }
             ("system", _) | ("stream_event", _) => vec![],
             ("assistant", _) => blocks()
                 .iter()
-                .filter_map(|b| match s(b, &["type"]) {
-                    "text" => Some(Event::Text(s(b, &["text"]).into())),
-                    "tool_use" => Some(Event::ToolStart(
-                        s(b, &["id"]).into(),
-                        s(b, &["name"]).into(),
-                    )),
-                    _ => None,
+                .flat_map(|b| match s(b, &["type"]) {
+                    "text" if parent.is_none() => vec![Event::Text(s(b, &["text"]).into())],
+                    "thinking" if parent.is_none() && !s(b, &["thinking"]).is_empty() => {
+                        vec![Event::Reasoning(s(b, &["thinking"]).into())]
+                    }
+                    "tool_use" => tool_start(b, parent.clone()),
+                    _ => vec![],
                 })
                 .collect(),
             ("user", _) => blocks()
                 .iter()
                 .filter(|b| s(b, &["type"]) == "tool_result")
-                .map(|b| Event::ToolEnd(s(b, &["tool_use_id"]).into()))
+                .flat_map(|b| tool_end(b, &v["tool_use_result"], parent.clone()))
                 .collect(),
             ("rate_limit_event", _) => match s(&v, &["rate_limit_info", "status"]) {
                 "rejected" => vec![Event::Limited(line.chars().take(300).collect())],
@@ -173,4 +188,150 @@ fn project_dir(spec: &Spec) -> PathBuf {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     home_path(".claude/projects").join(slug)
+}
+
+/// A `tool_use` block as a step, by Claude Code's tool names [D48, D65].
+fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
+    let (id, name, input) = (s(b, &["id"]), s(b, &["name"]), &b["input"]);
+    if name == "AskUserQuestion" {
+        // Per its docs: questions, each with options by label. Only an interactive CLI shows it.
+        let questions = input["questions"].as_array().cloned().unwrap_or_default();
+        return questions
+            .iter()
+            .enumerate()
+            .map(|(k, q)| {
+                let options = q["options"].as_array().into_iter().flatten();
+                Event::Question(
+                    format!("{id}:{k}"),
+                    s(q, &["question"]).into(),
+                    options.map(|o| s(o, &["label"]).to_string()).collect(),
+                )
+            })
+            .collect();
+    }
+    let field = |k: &str| s(input, &[k]).to_string();
+    let (step, what) = match name {
+        "Read" => ("read", field("file_path")),
+        "Edit" | "MultiEdit" | "Write" => ("edit", field("file_path")),
+        "NotebookEdit" => ("edit", field("notebook_path")),
+        "Grep" | "Glob" => ("search", field("pattern")),
+        "LS" => ("search", field("path")),
+        "WebFetch" => ("web", field("url")),
+        "WebSearch" => ("web", field("query")),
+        "Bash" => shell_step(&field("command")),
+        "Agent" | "Task" => ("agent", field("description")),
+        "ToolSearch" | "ExitPlanMode" | "TaskOutput" | "BashOutput" => ("", String::new()),
+        _ => ("other", input.to_string()),
+    };
+    // An edit names its file from the start; a write may create one, which only its result says.
+    let changes = match name {
+        "Edit" | "MultiEdit" | "NotebookEdit" => vec![change(&what, "modified", None, None, None)],
+        _ => vec![],
+    };
+    vec![Event::ToolStart(Tool {
+        id: id.into(),
+        name: name.into(),
+        step,
+        input: what,
+        parent,
+        changes,
+        at: None,
+    })]
+}
+
+/// A `tool_result` block, with the structured result the CLI puts beside it.
+fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event> {
+    let id = s(b, &["tool_use_id"]);
+    let text = |content: &Value| match content {
+        Value::String(t) => t.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    if let Some(answers) = result["answers"].as_object() {
+        let asked = result["questions"].as_array().cloned().unwrap_or_default();
+        return asked
+            .iter()
+            .enumerate()
+            .map(|(k, q)| {
+                let answer = answers.get(s(q, &["question"])).map(|a| match a {
+                    Value::String(t) => t.clone(),
+                    other => other.to_string(),
+                });
+                Event::Answer(format!("{id}:{k}"), answer)
+            })
+            .collect();
+    }
+    let path = s(result, &["filePath"]);
+    let changes = if result["type"] == "create" {
+        let content = s(result, &["content"]);
+        let lines: Vec<String> = content.lines().map(|l| format!("+{l}")).collect();
+        let diff = format!("@@ -0,0 +1,{} @@\n{}", lines.len(), lines.join("\n"));
+        vec![change(
+            path,
+            "added",
+            Some(diff),
+            Some(lines.len() as u64),
+            Some(0),
+        )]
+    } else if let Some(hunks) = result["structuredPatch"].as_array() {
+        let diff = hunks
+            .iter()
+            .map(|h| {
+                let lines = h["lines"].as_array().into_iter().flatten();
+                let body: Vec<&str> = lines.filter_map(Value::as_str).collect();
+                format!(
+                    "@@ -{},{} +{},{} @@\n{}",
+                    h["oldStart"],
+                    h["oldLines"],
+                    h["newStart"],
+                    h["newLines"],
+                    body.join("\n")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (added, removed) = counts(&diff);
+        vec![change(
+            path,
+            "modified",
+            Some(diff),
+            Some(added),
+            Some(removed),
+        )]
+    } else {
+        vec![]
+    };
+    // A subagent's result carries its answer and id beside the wrapped text. One launched in the
+    // background only says so here: its end comes as a task notification.
+    let child = result["agentId"].as_str().map(String::from);
+    if result["status"] == "async_launched" {
+        return vec![];
+    }
+    let output = match child {
+        Some(_) => {
+            let answer = text(&result["content"]);
+            let tag = "</tools-used-before-summary>";
+            match answer.split_once(tag) {
+                Some((_, rest)) if answer.starts_with("<tools-used-before-summary>") => {
+                    rest.trim_start().to_string()
+                }
+                _ => answer,
+            }
+        }
+        None => text(&b["content"]),
+    };
+    vec![Event::ToolEnd(Done {
+        id: id.into(),
+        output,
+        ok: b["is_error"].as_bool() != Some(true),
+        exit: None,
+        changes,
+        child,
+        parent,
+        at: None,
+    })]
 }

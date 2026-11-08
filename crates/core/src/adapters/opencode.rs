@@ -1,7 +1,10 @@
 //! OpenCode: one `opencode run --format json` per turn on a private server, with all its data under
 //! the session folder, so the owner's own server and sessions are never touched.
 
-use super::{Adapter, Event, Launch, Timing, base_env, classify, home_path, s};
+use super::{
+    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, home_path, s,
+    shell_step,
+};
 use crate::Spec;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -101,17 +104,7 @@ impl Adapter for OpenCode {
             "step_start" => events.push(Event::TurnStart),
             "step_finish" => {}
             "text" => events.push(Event::Text(s(part, &["text"]).into())),
-            "tool_use" => {
-                let id = [s(part, &["callID"]), s(part, &["id"])]
-                    .into_iter()
-                    .find(|i| !i.is_empty())
-                    .unwrap_or("")
-                    .to_string();
-                events.push(Event::ToolStart(id.clone(), s(part, &["tool"]).into()));
-                if matches!(s(part, &["state", "status"]), "completed" | "error") {
-                    events.push(Event::ToolEnd(id));
-                }
-            }
+            "tool_use" => events.extend(tool_use(part)),
             "error" => events
                 .push(classify(&v["error"].to_string()).unwrap_or(Event::Unknown(line.into()))),
             _ => events.push(Event::Unknown(line.into())),
@@ -151,4 +144,128 @@ impl Adapter for OpenCode {
         }
         Some((texts, tools))
     }
+}
+
+/// A tool part as a step, by OpenCode's tool names [D48, D65]. It comes once it ended, with its
+/// own start and end times; there is no running state to show.
+fn tool_use(part: &Value) -> Vec<Event> {
+    let id = [s(part, &["callID"]), s(part, &["id"])]
+        .into_iter()
+        .find(|i| !i.is_empty())
+        .unwrap_or("")
+        .to_string();
+    let (name, state) = (s(part, &["tool"]), &part["state"]);
+    // 2.2 nests the tool's own metadata one level down.
+    let meta = match &state["metadata"]["metadata"] {
+        Value::Object(_) => &state["metadata"]["metadata"],
+        _ => &state["metadata"],
+    };
+    let input = &state["input"];
+    let status = s(state, &["status"]);
+    let finished = matches!(status, "completed" | "error");
+    let field = |keys: &[&str]| {
+        keys.iter()
+            .map(|k| s(input, &[k]))
+            .find(|v| !v.is_empty())
+            .unwrap_or("")
+            .to_string()
+    };
+    if name == "question" {
+        let questions = input["questions"].as_array().cloned().unwrap_or_default();
+        let mut events = vec![];
+        for (k, q) in questions.iter().enumerate() {
+            let options = q["options"].as_array().into_iter().flatten();
+            let qid = format!("{id}:{k}");
+            events.push(Event::Question(
+                qid.clone(),
+                s(q, &["question"]).into(),
+                options.map(|o| s(o, &["label"]).to_string()).collect(),
+            ));
+            if finished {
+                let answer = meta["answers"][k].as_array().map(|a| {
+                    let labels: Vec<&str> = a.iter().filter_map(Value::as_str).collect();
+                    labels.join(", ")
+                });
+                events.push(Event::Answer(qid, answer));
+            }
+        }
+        return events;
+    }
+    let path = field(&["filePath", "path"]);
+    let (step, what) = match name {
+        "read" => ("read", path.clone()),
+        "edit" | "write" | "patch" | "multiedit" | "apply_patch" => ("edit", path.clone()),
+        "grep" | "glob" => ("search", field(&["pattern"])),
+        "list" => ("search", path.clone()),
+        "bash" | "shell" => shell_step(&field(&["command"])),
+        "webfetch" => ("web", field(&["url"])),
+        "websearch" | "codesearch" => ("web", field(&["query"])),
+        "task" | "subagent" => ("agent", field(&["description"])),
+        _ => ("other", input.to_string()),
+    };
+    let changes: Vec<Value> = match meta["files"].as_array() {
+        Some(files) => files
+            .iter()
+            .map(|f| {
+                let patch = s(f, &["patch"]);
+                let (added, removed) = match (f["additions"].as_u64(), f["deletions"].as_u64()) {
+                    (Some(a), Some(d)) => (a, d),
+                    _ => counts(patch),
+                };
+                let how = match s(f, &["status"]) {
+                    "added" | "created" => "added",
+                    "deleted" => "deleted",
+                    _ => "modified",
+                };
+                let path = [s(f, &["file"]), s(f, &["filePath"])]
+                    .into_iter()
+                    .find(|p| !p.is_empty());
+                let diff = (!patch.is_empty()).then(|| patch.to_string());
+                change(path.unwrap_or(""), how, diff, Some(added), Some(removed))
+            })
+            .collect(),
+        None if step == "edit" => {
+            let how = match meta["exists"].as_bool() {
+                Some(false) => "added",
+                _ => "modified",
+            };
+            vec![change(&path, how, None, None, None)]
+        }
+        None => vec![],
+    };
+    let mut events = vec![Event::ToolStart(Tool {
+        id: id.clone(),
+        name: name.into(),
+        step,
+        input: what,
+        at: state["time"]["start"].as_u64(),
+        ..Default::default()
+    })];
+    if finished {
+        let mut output = s(state, &["output"]).to_string();
+        if status == "error" {
+            output = s(state, &["error"]).into();
+        }
+        let child = meta["sessionID"].as_str().map(String::from);
+        if child.is_some() {
+            // `<subagent sessionID=… state=…>\nanswer\n</subagent>`: the answer alone.
+            let inner = output.split_once('\n').map_or("", |(_, rest)| rest);
+            output = inner
+                .trim_end()
+                .trim_end_matches("</subagent>")
+                .trim_end()
+                .to_string();
+        }
+        events.push(Event::ToolEnd(Done {
+            id,
+            output,
+            ok: status == "completed",
+            exit: meta["exit"].as_i64(),
+            changes,
+            child,
+            parent: None,
+            at: state["time"]["end"].as_u64(),
+        }));
+    }
+    events
 }
