@@ -37,3 +37,20 @@ pub fn lock_held(path: &Path) -> bool {
         Err(TryLockError::Error(_)) => false,
     }
 }
+
+/// Standard base64 with padding.
+pub fn base64(bytes: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = c.iter().fold(0u32, |n, &b| n << 8 | b as u32) << (8 * (3 - c.len()));
+        for i in 0..4 {
+            s.push(if i <= c.len() {
+                A[(n >> (18 - 6 * i)) as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+    }
+    s
+}

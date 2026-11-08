@@ -135,6 +135,9 @@ pub struct Fold {
     /// The agent's replies to requests Brigadier sent it, by request id: `{error, level}`.
     #[serde(default)]
     pub replies: BTreeMap<String, Value>,
+    /// Inputs written to an agent that acks, not yet applied by its reply [D222].
+    #[serde(default)]
+    pub acking: BTreeSet<String>,
 }
 
 impl Fold {
@@ -222,6 +225,9 @@ impl Fold {
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;
+                if item["ack"] == true {
+                    self.acking.insert(cid.clone());
+                }
                 if item["setup"].is_object() {
                     self.given = Some(item["setup"].clone());
                 }
@@ -291,12 +297,8 @@ impl Fold {
                     ..Default::default()
                 });
             }
-            "delivered" => {
-                let cid = item["cid"].as_str();
-                if let Some(t) = self.turns.iter_mut().find(|t| t.cid.as_deref() == cid) {
-                    t.delivered = Some(ts);
-                }
-                self.delivered_control(cid.unwrap_or(""));
+            "delivered" if !self.acking.contains(&str_of("cid")) => {
+                self.delivered(&str_of("cid"), ts)
             }
             "spawned" => {
                 let (pid, start_us) = (
@@ -380,8 +382,14 @@ impl Fold {
                 self.ask(item);
             }
             "approval" => self.ask(item),
-            "resolved" => self.end_ask(&str_of("id"), "withdrawn"),
-            "reply" => drop(self.replies.insert(str_of("id"), item.clone())),
+            "resolved" => self.end_ask(
+                &str_of("id"),
+                item["decision"].as_str().unwrap_or("withdrawn"),
+            ),
+            "reply" => {
+                self.replies.insert(str_of("id"), item.clone());
+                self.acked(item, ts);
+            }
             // The level the agent says it runs at is the one recorded, never the one asked [D175].
             "level" => {
                 if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {

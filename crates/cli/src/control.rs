@@ -52,11 +52,17 @@ fn deliver(
         let Some(a) = adapters::get(&backend) else {
             return Ok(refused("unknown_backend", backend.into()));
         };
-        let Delivery::Stdin(bytes) = match a.control(&as_run(&spec, &f.fold, &backend, None), &msg)
-        {
+        let run = core::Spec {
+            cid: req["cid"].as_str().map(String::from),
+            ..as_run(&spec, &f.fold, &backend, None)
+        };
+        let Delivery::Stdin(bytes) = match a.control(&run, &msg) {
             Ok(d) => d,
             Err(e) => return Ok(refused("unsupported", e.into())),
         };
+        if a.acks() {
+            req["ack"] = true.into();
+        }
         req["op"] = "input".into();
         req["origin"] = "user".into();
         req["backend"] = backend.into();
@@ -67,7 +73,8 @@ fn deliver(
         }
         let reply = owner::call(data, id, req.clone())?;
         if reply["error"] != "changed" {
-            return Ok(reply);
+            let cid = req["cid"].as_str().unwrap_or("");
+            return Ok(core::applied(&spec.dir, cid, reply));
         }
         thread::sleep(Duration::from_millis(50));
     }

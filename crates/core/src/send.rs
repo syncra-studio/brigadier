@@ -55,13 +55,17 @@ pub fn send(
     let mut base = json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of, "setup": setup});
     let running = child.is_some();
     let pty = child.is_some_and(|(_, pty)| pty);
+    if a.acks() && spec.mode != "pty" && !pty {
+        base["ack"] = true.into();
+    }
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
         return json!({"ok": false, "result": "refused", "error": "another backend's process is running; stop it first"});
     }
     let mut replace = None;
     let refolded;
     let mut f = f;
-    if running && (!a.per_turn() || pty) {
+    // An agent that doesn't queue takes a message mid-turn only as a steer.
+    if running && (!a.per_turn() || pty) && (pty || a.queues() || f.turns.is_empty()) {
         let mut bytes = String::new();
         if !f.turns.is_empty() {
             // A working child keeps its setup: the change waits for the next turn start.
@@ -98,11 +102,12 @@ pub fn send(
         if replace.is_none() {
             let mut req = base.clone();
             req["op"] = "input".into();
-            let as_typed = if pty {
+            let mut as_typed = if pty {
                 adapters::in_pty(spec)
             } else {
                 spec.clone()
             };
+            as_typed.cid = Some(cid.into());
             bytes += &a.encode(&as_typed, text);
             req["bytes"] = bytes.into();
             if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
@@ -110,14 +115,18 @@ pub fn send(
             }
             let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
             if reply["error"] != "no_child" {
-                return reply;
+                return applied(&spec.dir, cid, reply);
             }
         }
     } else if running {
         return json!({"ok": false, "result": "refused", "error": "busy: a turn is running"});
     }
     let resume = f.resume.get(&b).map(String::as_str);
-    let launch = a.launch(&as_run(spec, f, &b, None), resume, Some(text));
+    let run = Spec {
+        cid: Some(cid.into()),
+        ..as_run(spec, f, &b, None)
+    };
+    let launch = a.launch(&run, resume, Some(text));
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let mut req = base;
@@ -145,7 +154,34 @@ pub fn send(
         req["replace"] = true.into();
         req["if_len"] = len.into();
     }
-    call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+    let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    applied(&spec.dir, cid, reply)
+}
+
+/// An input written to an agent that acks is applied only once its reply names the command id
+/// [D222]: delivered on success, refused with the agent's reason on an error, and with no reply in
+/// time logged, so uncertain and never sent again by itself. Any other reply is returned as is.
+pub fn applied(dir: &std::path::Path, cid: &str, mut reply: Value) -> Value {
+    if reply["result"] != "sent" {
+        return reply;
+    }
+    let started = Instant::now();
+    let (result, error, why) = loop {
+        let f = crate::fold(dir, true).ok();
+        if let Some(r) = f.as_ref().and_then(|f| f.fold.replies.get(cid)) {
+            break match r["error"].as_str() {
+                None => ("delivered", Value::Null, Value::Null),
+                Some(e) => ("refused", "agent".into(), e.into()),
+            };
+        }
+        if started.elapsed() > CONFIRM_WAIT {
+            break ("logged", "the agent didn't confirm it".into(), Value::Null);
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+    reply["ok"] = (result != "refused").into();
+    (reply["result"], reply["error"], reply["why"]) = (result.into(), error, why);
+    reply
 }
 
 /// How long an idle child may take to confirm a new setup before the turn is refused (proposed).

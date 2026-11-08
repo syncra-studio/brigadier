@@ -59,7 +59,7 @@ impl Norm {
                 emit(
                     self,
                     json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
-                           "setup": v["setup"], "steer": v["steer"], "control": v["control"]}),
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),
@@ -205,6 +205,11 @@ impl Norm {
                 }
                 Event::Approval(a) => json!({"kind": "approval", "id": a["id"], "request": a}),
                 Event::Resolved(id) => json!({"kind": "resolved", "id": id}),
+                Event::External(path) => json!({"kind": "external", "path": path}),
+                Event::Decided(id, allowed) => {
+                    let decision = if allowed { "approved" } else { "denied" };
+                    json!({"kind": "resolved", "id": id, "decision": decision})
+                }
                 Event::Reply { id, error, level } => {
                     json!({"kind": "reply", "id": id, "error": error, "level": level})
                 }

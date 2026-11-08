@@ -27,7 +27,7 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
-pub use send::{Call, Running, level, recover, send};
+pub use send::{Call, Running, applied, level, recover, send};
 pub use session::delete;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -59,6 +59,9 @@ pub struct Spec {
     /// The session's grants from its log, for a child started anew [D193].
     #[serde(skip)]
     pub grants: Vec<Value>,
+    /// The command id of the input being built, for an agent whose reply names it [D222].
+    #[serde(skip)]
+    pub cid: Option<String>,
 }
 
 pub fn data_dir() -> PathBuf {

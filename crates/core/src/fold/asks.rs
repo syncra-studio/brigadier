@@ -73,6 +73,41 @@ impl Fold {
         }
     }
 
+    /// An input's delivery: its turn's message reached the agent, or its answer is answered.
+    pub(super) fn delivered(&mut self, cid: &str, ts: u64) {
+        if let Some(t) = self
+            .turns
+            .iter_mut()
+            .find(|t| t.cid.as_deref() == Some(cid))
+        {
+            t.delivered = Some(ts);
+        }
+        self.delivered_control(cid);
+    }
+
+    /// The agent's reply to an input it acks [D222]: success delivers it; an error refuses it with
+    /// the agent's reason, closing its request or failing its turn. No reply keeps it uncertain.
+    pub(super) fn acked(&mut self, item: &Value, ts: u64) {
+        let cid = item["id"].as_str().unwrap_or("");
+        if !self.acking.remove(cid) {
+            return;
+        }
+        let Some(error) = item["error"].as_str() else {
+            return self.delivered(cid, ts);
+        };
+        if let Some(id) = self.claims.remove(cid) {
+            self.closed.insert(id, "refused".into());
+        }
+        self.granting.remove(cid);
+        if self
+            .turns
+            .first()
+            .is_some_and(|t| t.cid.as_deref() == Some(cid))
+        {
+            self.close("failed", serde_json::json!({"refused": error}), ts);
+        }
+    }
+
     /// A control input's delivery: its answer is now answered, and a session grant held.
     pub(super) fn delivered_control(&mut self, cid: &str) {
         if let Some(id) = self.claims.remove(cid) {

@@ -10,7 +10,7 @@ mod shell;
 
 pub use shell::shell_step;
 
-pub use files::{change, counts, drop_lines, file_lines, uuid};
+pub use files::{change, counts, drop_lines, file_lines, sha1, uuid};
 
 use crate::Spec;
 use serde_json::Value;
@@ -47,6 +47,11 @@ pub enum Event {
     Approval(Value),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),
+    /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
+    Decided(String, bool),
+    /// A file the CLI wrote outside the session folder for this session alone, by exact path:
+    /// recorded so delete removes it [D35].
+    External(String),
     /// The CLI's reply to a request Brigadier sent it, by that request's id: an error, or the
     /// permission level it now runs at when the reply says one.
     Reply {
@@ -171,7 +176,7 @@ pub struct Can {
 }
 
 /// How a control message reaches the agent: the adapter owns the channel; the host owns the
-/// delivery and its record. (A server's HTTP channel joins with its adapter, 1m.)
+/// delivery and its record. A server's HTTP channel is its adapter's helper, which reads these.
 pub enum Delivery {
     Stdin(String),
 }
@@ -249,6 +254,21 @@ pub trait Adapter: Sync {
     }
     /// True when each turn is its own process; false when one child reads every message.
     fn per_turn(&self) -> bool;
+    /// True when a written input isn't applied until the agent's own reply names its command id
+    /// (`Event::Reply`, from `spec.cid`); false when writing it is delivery [D222].
+    fn acks(&self) -> bool {
+        false
+    }
+    /// True when a message sent while a turn runs waits in the agent for the next turn; false
+    /// refuses it until then (a steer still joins the turn).
+    fn queues(&self) -> bool {
+        true
+    }
+    /// A process the agent's launch runs through Brigadier's own binary (`brigadier helper <name>
+    /// …`): for a CLI reached over a server, it holds the server and speaks lines on stdin/stdout.
+    fn helper(&self, _args: &[String]) -> Result<(), String> {
+        Err("This agent has no helper.".into())
+    }
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch;
     /// Bytes for a message to a child that is already running.
     fn encode(&self, spec: &Spec, text: &str) -> String;

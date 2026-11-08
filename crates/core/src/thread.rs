@@ -61,6 +61,8 @@ pub struct Thread {
     pending_changed: bool,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
+    /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
+    acking: HashSet<String>,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
