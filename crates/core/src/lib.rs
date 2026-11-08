@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod fold;
 pub mod norm;
 pub mod projects;
+pub mod repos;
 mod send;
 mod session;
 pub mod switch;

@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::adapters::{self, Adapter, setup};
-use brigadier_core::{self as core, SETUP, Spec, projects, session_dir};
+use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -110,6 +110,28 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     projects::remove(data, arg(2))?;
                     return Ok(json!({"ok": true}));
                 }
+                // Add project's (1f, 1g): `find`, `inspect <path>`, `clone <url|owner/name> --to
+                // <dest> [--github] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
+                "find" => return Ok(json!({"ok": true, "repos": repos::find(data)?})),
+                "inspect" => {
+                    return Ok(json!({"ok": true, "check": repos::inspect(data, arg(2))?}));
+                }
+                "clone" => {
+                    let (to, id) = (
+                        flag(args, "--to").unwrap_or(""),
+                        flag(args, "--id").unwrap_or(""),
+                    );
+                    let github = args.iter().any(|a| a == "--github");
+                    let project = repos::clone(data, arg(2), to, github, id)?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "init" => {
+                    let here = args.iter().any(|a| a == "--here");
+                    let project =
+                        repos::init(data, arg(2), here, flag(args, "--id").unwrap_or(""))?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "github" => return Ok(json!({"ok": true, "github": repos::github()?})),
                 _ => {}
             }
             let taken: Vec<String> = projects::list(data)?
