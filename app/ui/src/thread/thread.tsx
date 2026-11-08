@@ -287,7 +287,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
         ref={list}
         data={data}
         shift={shift}
-        bufferSize={800}
+        bufferSize={3200}
         className="h-full"
         onScrollEnd={letGo}
         onResize={fill}
