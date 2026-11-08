@@ -27,8 +27,11 @@ export type Mention = {
 /** A part of the `@` menu: its heading (none for ranked results), rows and a grey note under them. PROPOSED. */
 export type MentionGroup = { title: string | null; items: Mention[]; note?: string };
 
-/** What the `@` menu shows: Rust's results for the typed query, asked for as it changes (null: the menu closed). */
-export type Mentions = { groups: MentionGroup[]; onQuery: (query: string | null) => void };
+/**
+ * What the `@` menu shows: Rust's latest reply, echoing the query it answers, asked for as the query changes
+ * (`onQuery(null)`: the menu closed). A reply to an older query is dropped; the last current one stays.
+ */
+export type Mentions = { results: { query: string; groups: MentionGroup[] } | null; onQuery: (query: string | null) => void };
 
 /** A command of the `/` menu, from the agent's adapter. PROPOSED. */
 export type SlashCommand = {
@@ -204,8 +207,12 @@ function OptionRow<T>({
 }
 
 /** The `@` menu: Rust's groups for the query, each row an icon, the matched name, a grey detail; picked, a chip. */
-export function MentionPlugin({ groups, onQuery }: Mentions) {
+export function MentionPlugin({ results, onQuery }: Mentions) {
   const [query, setQuery] = useState("");
+  // The last reply to the query as typed: one to an older query never shows.
+  const kept = useRef<MentionGroup[]>([]);
+  if (results?.query === query) kept.current = results.groups;
+  const groups = kept.current;
   const options = useMemo(() => groups.flatMap((group) => group.items.map((item) => new Row(item, `${group.title}:${item.id}`))), [groups]);
   return (
     <LexicalTypeaheadMenuPlugin<Row<Mention>>
@@ -216,7 +223,10 @@ export function MentionPlugin({ groups, onQuery }: Mentions) {
         setQuery(next ?? "");
         onQuery(next);
       }}
-      onClose={() => onQuery(null)}
+      onClose={() => {
+        kept.current = [];
+        onQuery(null);
+      }}
       onSelectOption={(option, replacing, close) => {
         const { id, type, label } = option.value;
         $putWithSpace(new ChipNode({ kind: "mention", id, type, label }), replacing);

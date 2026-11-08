@@ -12,6 +12,7 @@ import {
   MatchedText,
   type Mention,
   type MentionGroup,
+  type Mentions,
   MenuHeading,
   MenuNote,
   PlusMenu,
@@ -124,7 +125,7 @@ const Tall = ({ children }: { children: ReactNode }) => <div className="pt-80">{
 function Live() {
   const field = useRef<ComposerFieldHandle>(null);
   const [empty, setEmpty] = useState(true);
-  const [groups, setGroups] = useState<MentionGroup[]>([]);
+  const [results, setResults] = useState<Mentions["results"]>(null);
   const [attachments, setAttachments] = useState<ReadonlyMap<string, Attachment>>(new Map());
   const [tiles, setTiles] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
@@ -160,7 +161,8 @@ function Live() {
           ref={field}
           placeholder="Type @ or /, or paste an image"
           attachments={attachments}
-          mentions={{ groups, onQuery: (query) => setGroups(query === null ? [] : search(query)) }}
+          // Rust's stand-in answers a moment later, echoing the query.
+          mentions={{ results, onQuery: (query) => query !== null && setTimeout(() => setResults({ query, groups: search(query) }), 120) }}
           commands={{ commands: COMMANDS, onRun: (command) => setLog((list) => [...list, `ran ${command.label}`]) }}
           onAttach={attach}
           onChange={(parts) => setEmpty(isEmpty(draft(...parts)))}
