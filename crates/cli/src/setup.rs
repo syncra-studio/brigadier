@@ -125,7 +125,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let mut seen = BTreeSet::new();
             let found: Vec<String> = found
                 .iter()
-                .filter_map(|p| setup::repo(p))
+                .filter_map(|p| projects::root(p))
                 .map(|p| p.display().to_string())
                 .filter(|p| !taken.contains(p))
                 .filter(|p| seen.insert(p.clone()))
