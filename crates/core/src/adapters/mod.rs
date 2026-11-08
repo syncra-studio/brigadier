@@ -49,6 +49,9 @@ pub enum Event {
     Resolved(String),
     /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
     Decided(String, bool),
+    /// The user allowed a pending request in the CLI's own screen for the rest of the session: it
+    /// becomes a session grant held by the host, never a rule the CLI saves [D193, D247].
+    Granted(String),
     /// A file the CLI wrote outside the session folder for this session alone, by exact path:
     /// recorded so delete removes it [D35].
     External(String),

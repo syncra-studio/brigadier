@@ -41,26 +41,9 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
     if running && (a.per_turn() || f.turns.iter().any(|t| t.delivered.is_some())) {
         return json!({"ok": false, "error": "turn_running", "message": "A turn is running. The terminal opens when it ends."});
     }
-    // At the session's level, re-checked as a turn's is: a held project holds it to Ask, and an
-    // agent that can't hold it there is refused, never opened unheld [D166, D243, stream D2].
-    let held = crate::projects::held(&crate::data_of(spec), spec);
-    let want = if held {
-        Some("ask".into())
-    } else {
-        spec.level.clone()
-    };
-    let level = match crate::level(
-        &Spec {
-            level: want,
-            ..spec.clone()
-        },
-        a,
-    ) {
-        Ok(level) => level.map(String::from),
-        Err(_) if held => {
-            return json!({"ok": false, "error": "held", "message": format!("This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.", a.label())});
-        }
-        Err(e) => return json!({"ok": false, "error": "level", "message": e}),
+    let level = match level(spec, a) {
+        Ok(level) => level,
+        Err(refusal) => return refusal,
     };
     // On the account the session runs on now [D51].
     let spec = &crate::as_run(
@@ -91,4 +74,29 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
         reply["message"] = "The session changed while the terminal was opening. Try again.".into();
     }
     reply
+}
+
+/// The level a terminal runs at, re-checked as a turn's is: the session's, held to Ask in a held
+/// project; an agent that can't hold it there is refused, never run unheld [D166, D243, stream D2].
+pub fn level(spec: &Spec, a: &dyn adapters::Adapter) -> Result<Option<String>, Value> {
+    let held = crate::projects::held(&crate::data_of(spec), spec);
+    let want = if held {
+        Some("ask".into())
+    } else {
+        spec.level.clone()
+    };
+    let checked = crate::level(
+        &Spec {
+            level: want,
+            ..spec.clone()
+        },
+        a,
+    );
+    match checked {
+        Ok(level) => Ok(level.map(String::from)),
+        Err(_) if held => Err(
+            json!({"ok": false, "error": "held", "message": format!("This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.", a.label())}),
+        ),
+        Err(e) => Err(json!({"ok": false, "error": "level", "message": e})),
+    }
 }

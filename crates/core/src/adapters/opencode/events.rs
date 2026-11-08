@@ -19,10 +19,14 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         // A command's output file: the server is this session's alone, so its shells are too.
         "shell.created" => vec![Event::External(s(d, &["info", "file"]).into())],
         "permission.asked" => vec![approval(d)],
+        "permission.replied" if d["grant"] == true => vec![Event::Granted(id("requestID"))],
         "permission.replied" => vec![Event::Decided(
             id("requestID"),
             s(d, &["reply"]) != "reject",
         )],
+        // The terminal's own: the level its server now runs at, and a prompt typed in it [D47].
+        "brigadier.level" => vec![Event::Level(id("level"))],
+        "brigadier.prompt" => vec![Event::Prompt(id("id"), id("text"))],
         "form.created" => vec![form(&d["form"])],
         "form.replied" => {
             let answer = d["answer"]

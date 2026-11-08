@@ -210,6 +210,9 @@ impl Norm {
                     let decision = if allowed { "approved" } else { "denied" };
                     json!({"kind": "resolved", "id": id, "decision": decision})
                 }
+                Event::Granted(id) => {
+                    json!({"kind": "resolved", "id": id, "decision": "approved", "grant": true})
+                }
                 Event::Reply { id, error, level } => {
                     json!({"kind": "reply", "id": id, "error": error, "level": level})
                 }

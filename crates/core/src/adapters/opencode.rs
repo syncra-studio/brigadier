@@ -4,13 +4,15 @@
 
 mod control;
 mod events;
+mod grants;
 mod http;
 mod server;
+mod terminal;
 
 use super::setup::run as bounded;
 use super::{
     Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, classify,
-    home_path, in_pty, paste, probe, s, sha1, uuid, version,
+    file_lines, home_path, in_pty, paste, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
 use control::{answers, denied, model, model_ref, rules};
@@ -27,23 +29,6 @@ const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
 impl OpenCode {
     fn env(&self, spec: &Spec) -> Vec<(String, String)> {
         base_env(spec, &self.exe().unwrap_or_default(), self.keys())
-    }
-
-    /// A session's newest messages, newest first.
-    // shortcut: one page of 100; a terminal turn writing more between two reads loses the rest.
-    fn messages(&self, spec: &Spec, conv: &str) -> Option<Vec<Value>> {
-        let id = format!("sessionID={conv}");
-        let args = [
-            "api",
-            "session.message.list",
-            "--param",
-            &id,
-            "--param",
-            "limit=100",
-        ];
-        let out = self.run(spec, &args).ok()?;
-        let v: Value = serde_json::from_str(&out[out.find('{')?..]).ok()?;
-        v["data"].as_array().cloned()
     }
 
     /// Its own command on a private server, bounded; what it printed, or why it failed.
@@ -168,55 +153,60 @@ impl Adapter for OpenCode {
         server::run(args)
     }
 
-    /// Chat runs its server through Brigadier's helper, on the session's level and model, with
-    /// the session's grants [D159, D193]; its terminal is its TUI on the same data.
+    /// Its server runs in Brigadier's helper, on the session's level and model, with the
+    /// session's grants [D159, D193]. Chat talks to it through the helper's stdin; a terminal is
+    /// its TUI attached to that same server, at the level the helper sets [D47, D243].
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default().display().to_string();
         let mut env = self.env(spec);
-        if spec.mode != "pty" {
-            let helper = std::env::current_exe()
-                .unwrap_or_default()
-                .with_file_name("brigadier");
-            let mut open = json!({"location": {"directory": spec.cwd}});
-            if let Some(id) = resume {
-                open["id"] = id.into();
-            }
-            let grants: Vec<Value> = (spec.grants.iter())
-                .map(|g| json!({"action": g["cli"]["action"], "save": g["cli"]["save"]}))
-                .collect();
-            let mut lines = vec![
-                json!({"open": open, "grants": grants, "must": true}),
-                json!({"model": model_ref(spec), "must": true}),
-                json!({"permissions": rules(spec), "must": true}),
-            ];
-            lines.extend(text.map(|t| json!({"prompt": {"text": t}, "id": spec.cid})));
+        let helper = std::env::current_exe()
+            .unwrap_or_default()
+            .with_file_name("brigadier");
+        let mut argv = vec![
+            helper.display().to_string(),
+            "helper".into(),
+            "opencode".into(),
+            exe,
+        ];
+        let mut open = json!({"location": {"directory": spec.cwd}});
+        if let Some(id) = resume {
+            open["id"] = id.into();
+        }
+        let grants: Vec<Value> = (spec.grants.iter())
+            .map(|g| json!({"action": g["cli"]["action"], "save": g["cli"]["save"]}))
+            .collect();
+        let mut lines = vec![
+            json!({"open": open, "grants": grants, "must": true}),
+            json!({"model": model_ref(spec), "must": true}),
+        ];
+        if spec.mode == "pty" {
+            // Its TUI takes no -m: the model comes from its documented inline config instead.
+            env.push((
+                "OPENCODE_CONFIG_CONTENT".into(),
+                json!({ "model": model(spec) }).to_string(),
+            ));
+            let data = crate::data_of(spec).display().to_string();
+            let setup = json!({"lines": lines, "prompt": text});
+            argv.extend([
+                "--terminal".into(),
+                data,
+                spec.id.clone(),
+                setup.to_string(),
+            ]);
             return Launch {
-                argv: vec![
-                    helper.display().to_string(),
-                    "helper".into(),
-                    "opencode".into(),
-                    exe,
-                ],
+                argv,
                 env,
                 keep_stdin: true,
-                input: Some(lines.iter().map(|l| format!("{l}\n")).collect()),
+                input: None,
             };
         }
-        // Its TUI takes no -m: the model comes from its documented inline config instead.
-        env.push((
-            "OPENCODE_CONFIG_CONTENT".into(),
-            json!({ "model": model(spec) }).to_string(),
-        ));
-        let mut argv = vec![exe, "--standalone".into()];
-        if let Some(id) = resume {
-            argv.extend(["-s".into(), id.into()]);
-        }
-        argv.extend(text.map(|t| format!("--prompt={t}")));
+        lines.push(json!({"permissions": rules(spec), "must": true}));
+        lines.extend(text.map(|t| json!({"prompt": {"text": t}, "id": spec.cid})));
         Launch {
             argv,
             env,
             keep_stdin: true,
-            input: None,
+            input: Some(lines.iter().map(|l| format!("{l}\n")).collect()),
         }
     }
 
@@ -376,42 +366,23 @@ impl Adapter for OpenCode {
         }
     }
 
-    /// Its TUI opens a session by id, on the same private server data as `run` (proposed: the
-    /// first message goes through chat, so the id exists).
+    /// Its TUI on the session's own server, by the session's id (proposed: the first message goes
+    /// through chat, so the id exists).
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        if spec.level.as_deref() != Some("full") {
-            return Err(
-                "OpenCode's terminal can't ask yet, so it opens only at Full access (step 1n)."
-                    .into(),
-            );
-        }
         let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
         Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
     }
 
-    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
-        let all = self.messages(spec, conv)?;
-        Some(all.iter().map(|m| s(m, &["id"])).max().unwrap_or("").into())
+    /// What the terminal's helper wrote to the session's hooks file: its server's events.
+    fn mirror_from(&self, spec: &Spec, _conv: &str) -> Option<String> {
+        let len = std::fs::metadata(spec.dir.join(crate::terminal::HOOKS)).map_or(0, |m| m.len());
+        Some(len.to_string())
     }
 
-    /// Its record is SQLite, so the mirror asks its own API, read-only, on a private server over
-    /// the session's data; never the owner's own service.
-    fn mirror(&self, spec: &Spec, conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let Some(mut all) = self.messages(spec, conv) else {
-            return (vec![], cursor.into());
-        };
-        all.retain(|m| s(m, &["id"]) > cursor);
-        all.sort_by(|a, b| s(a, &["id"]).cmp(s(b, &["id"])));
-        let (mut lines, mut next) = (vec![], cursor.to_string());
-        for m in all {
-            // An answer still being written comes whole on a later read, and so does all after it.
-            if s(&m, &["type"]) == "assistant" && m["time"]["completed"].is_null() {
-                break;
-            }
-            next = s(&m, &["id"]).into();
-            lines.push(serde_json::json!({"type": "mirror", "message": m}).to_string());
-        }
-        (lines, next)
+    fn mirror(&self, spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let path = spec.dir.join(crate::terminal::HOOKS);
+        let (lines, end) = file_lines(&path, cursor.parse().unwrap_or(0));
+        (lines, end.to_string())
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

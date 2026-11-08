@@ -386,10 +386,14 @@ impl Fold {
                 self.ask(item);
             }
             "approval" => self.ask(item),
-            "resolved" => self.end_ask(
-                &str_of("id"),
-                item["decision"].as_str().unwrap_or("withdrawn"),
-            ),
+            "resolved" => {
+                let id = str_of("id");
+                // Allowed for the session in the CLI's screen: held like a chat grant [D193].
+                let asked = self.turns.iter().find_map(|t| t.asks.get(&id));
+                self.grants
+                    .extend(asked.filter(|_| item["grant"] == true).cloned());
+                self.end_ask(&id, item["decision"].as_str().unwrap_or("withdrawn"));
+            }
             "reply" => {
                 self.replies.insert(str_of("id"), item.clone());
                 self.acked(item, ts);

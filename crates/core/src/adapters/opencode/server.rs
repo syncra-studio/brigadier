@@ -2,56 +2,94 @@
 //! adapter's lines on stdin (each one HTTP request to its V2 API) and prints the server's events
 //! for that session as lines, with the result of each request that names an id [D222].
 
+use super::grants::{allow, grant, granted, skipping};
 use super::http::Server;
 use brigadier_frames::base64;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{self, Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use std::{mem, thread};
 
 /// What the helper keeps while it runs: never written anywhere [D193].
 #[derive(Default)]
-struct State {
-    session: String,
+pub(super) struct State {
+    pub(super) session: String,
     /// Tool calls by session/message/call id: their name and input, which later events lack.
     tools: HashMap<String, Value>,
     /// Requests waiting on the user that were printed: permission id → its ask; question form ids.
-    asked: HashMap<String, Value>,
+    pub(super) asked: HashMap<String, Value>,
     forms: HashSet<String>,
     /// The session's grants, `{action, save}`: answered `once` here, never saved [D193].
-    grants: Vec<Value>,
+    pub(super) grants: Vec<Value>,
     /// Parts already printed, so a catch-up after a reconnect doesn't print them twice.
     seen: HashSet<String>,
     newest: String,
     busy: bool,
+    /// Permission ids the terminal's "Allow always" was turned into a session grant for [D193].
+    pub(super) always: HashSet<String>,
+    /// The session's permission rules as its server last took them.
+    pub(super) rules: Value,
 }
 
-type Shared = Arc<Mutex<State>>;
+pub(super) type Shared = Arc<Mutex<State>>;
+
+/// Where the helper's lines go: its stdout, or the session's hooks file when its stdout is a
+/// terminal's screen [D47].
+pub(super) static SINK: OnceLock<Mutex<File>> = OnceLock::new();
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let exe = args
         .first()
         .ok_or("usage: brigadier helper opencode <opencode>")?;
+    if args.get(1).is_some_and(|a| a == "--terminal") {
+        return super::terminal::run(exe, &args[2..]);
+    }
     let password = super::super::uuid();
+    let (server, state, _lease) = start(exe, &password)?;
+    for line in io::stdin().lock().lines() {
+        let Ok(c) = serde_json::from_str::<Value>(&line.map_err(|e| e.to_string())?) else {
+            continue;
+        };
+        command(&server, &state, &c)?;
+    }
+    Ok(())
+}
+
+/// Starts its server and follows its events. The returned lease keeps the server alive: it stops
+/// once the lease is dropped or this helper is gone. A terminal's server keeps its output off the
+/// screen.
+pub(super) fn start(
+    exe: &str,
+    password: &str,
+) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
+    let quiet = SINK.get().is_some();
     let mut child = Command::new(exe)
         .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
-        .env("OPENCODE_PASSWORD", &password)
+        .env("OPENCODE_PASSWORD", password)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(if quiet {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
         .spawn()
         .map_err(|e| format!("OpenCode didn't start: {e}"))?;
-    // Its stdin is the server's lease: it stops once this helper is gone.
-    let _lease = child.stdin.take();
+    let lease = child.stdin.take();
     let mut out = BufReader::new(child.stdout.take().ok_or("no stdout")?);
     let mut first = String::new();
     out.read_line(&mut first).map_err(|e| e.to_string())?;
     let url: Value =
         serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
     let addr = super::super::s(&url, &["url"]).trim_start_matches("http://");
-    thread::spawn(move || io::copy(&mut out, &mut io::stderr()));
+    thread::spawn(move || match quiet {
+        true => io::copy(&mut out, &mut io::sink()),
+        false => io::copy(&mut out, &mut io::stderr()),
+    });
     let server = Arc::new(Server {
         addr: addr.into(),
         auth: base64(format!("opencode:{password}").as_bytes()),
@@ -64,18 +102,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
     connected
         .recv_timeout(Duration::from_secs(60))
         .map_err(|_| "OpenCode's events never connected")?;
-    for line in io::stdin().lock().lines() {
-        let Ok(c) = serde_json::from_str::<Value>(&line.map_err(|e| e.to_string())?) else {
-            continue;
-        };
-        command(&server, &state, &c)?;
-    }
-    Ok(())
+    Ok((server, state, lease))
 }
 
 /// One line from the adapter. A failed `must` line (the setup before a first message) ends the
 /// helper, so no message runs on a setup it didn't take [D222].
-fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
+pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
     let session = state.lock().unwrap().session.clone();
     let at = |rest: &str| format!("/api/session/{session}{rest}");
     let (p, f) = (&c["permission"], &c["form"]);
@@ -86,6 +118,13 @@ fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
     } else if c["permissions"].is_array() {
         ("PATCH", at(""), json!({"permissions": c["permissions"]}))
     } else if c["prompt"].is_object() {
+        // Under Ask, no turn runs that the user's saved rules would let skip an ask [D166, D266].
+        if let Some(why) = skipping(server, state) {
+            if let Some(id) = c["id"].as_str() {
+                say(json!({"type": "brigadier.reply", "data": {"id": id, "error": why}}));
+            }
+            return Ok(());
+        }
         ("POST", at("/prompt"), c["prompt"].clone())
     } else if c["interrupt"] == true {
         ("POST", at("/interrupt"), Value::Null)
@@ -147,64 +186,23 @@ fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
         st.session = super::super::s(&v, &["data", "id"]).into();
         st.grants = c["grants"].as_array().cloned().unwrap_or_default();
     }
-    // A new grant also answers the asks already waiting that it covers, as OpenCode's own lasting
-    // answer would, but only for this session [D193].
     if c["grant"].is_object() {
-        let mut st = state.lock().unwrap();
-        st.grants.push(c["grant"].clone());
-        let covered: Vec<Value> = (st.asked.values())
-            .filter(|a| granted(&st.grants, a))
-            .cloned()
-            .collect();
-        drop(st);
-        covered.iter().for_each(|a| allow(server, a));
+        grant(server, state, c["grant"].clone());
+    }
+    if c["permissions"].is_array() {
+        state.lock().unwrap().rules = c["permissions"].clone();
     }
     Ok(())
 }
 
-fn say(v: Value) {
+pub(super) fn say(v: Value) {
+    if let Some(sink) = SINK.get() {
+        // One write a line, so the mirror never reads half of one.
+        let _ = sink.lock().unwrap().write_all(format!("{v}\n").as_bytes());
+        return;
+    }
     let mut out = io::stdout().lock();
     let _ = writeln!(out, "{v}").and_then(|_| out.flush());
-}
-
-/// Answers an ask `once` for a grant that covers it.
-fn allow(server: &Server, ask: &Value) {
-    let (session, id) = (
-        ask["sessionID"].as_str().unwrap_or(""),
-        ask["id"].as_str().unwrap_or(""),
-    );
-    let path = format!("/api/session/{session}/permission/{id}/reply");
-    if let Err(e) = server.request("POST", &path, &json!({"decision": "once"})) {
-        eprintln!("OpenCode {path}: {e}");
-    }
-}
-
-/// Whether a grant covers every resource of an ask, by OpenCode's own matching rules.
-fn granted(grants: &[Value], ask: &Value) -> bool {
-    let resources = ask["resources"].as_array().cloned().unwrap_or_default();
-    grants.iter().any(|g| {
-        let save = g["save"].as_array().cloned().unwrap_or_default();
-        g["action"] == ask["action"]
-            && resources.iter().all(|r| {
-                save.iter()
-                    .any(|p| matches(p.as_str().unwrap_or(""), r.as_str().unwrap_or("")))
-            })
-    })
-}
-
-/// OpenCode's whole-value wildcard: `*` any run, `?` one character; `cmd *` also matches `cmd`.
-fn matches(pattern: &str, value: &str) -> bool {
-    fn go(p: &[char], v: &[char]) -> bool {
-        match (p.first(), v.first()) {
-            (None, None) => true,
-            (Some('*'), _) => go(&p[1..], v) || (!v.is_empty() && go(p, &v[1..])),
-            (Some('?'), Some(_)) => go(&p[1..], &v[1..]),
-            (Some(a), Some(b)) => a == b && go(&p[1..], &v[1..]),
-            _ => false,
-        }
-    }
-    let (p, v): (Vec<char>, Vec<char>) = (pattern.chars().collect(), value.chars().collect());
-    go(&p, &v) || pattern.strip_suffix(" *").is_some_and(|bare| bare == value)
 }
 
 /// Follows the event stream for good. After a drop it catches up from the session's own record
@@ -250,7 +248,13 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
             st.asked
                 .insert(d["id"].as_str().unwrap_or("").into(), d.clone()),
         ),
-        "permission.replied" => drop(st.asked.remove(d["requestID"].as_str().unwrap_or(""))),
+        "permission.replied" => {
+            let id = d["requestID"].as_str().unwrap_or("");
+            st.asked.remove(id);
+            if st.always.remove(id) {
+                v["data"]["grant"] = true.into();
+            }
+        }
         "form.created" if d["form"]["metadata"]["kind"] == "question" => {
             st.forms
                 .insert(d["form"]["id"].as_str().unwrap_or("").into());
@@ -278,6 +282,17 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                 "session.tool.success" | "session.tool.failed" => format!("{key}:ended"),
                 "session.text.ended" | "session.reasoning.ended" => {
                     format!("{k}:{msg}:{}", d["ordinal"])
+                }
+                // A prompt typed in the terminal, by its message id [D47].
+                "session.inbox.enqueued" if SINK.get().is_some() => {
+                    let item = &d["item"];
+                    let id = d["inboxID"].as_str().unwrap_or("").to_string();
+                    if item["type"] == "user" && st.seen.insert(format!("prompt:{id}")) {
+                        let text = item["payload"]["text"].clone();
+                        drop(st);
+                        say(json!({"type": "brigadier.prompt", "data": {"id": id, "text": text}}));
+                    }
+                    return;
                 }
                 "session.execution.started" => return busy(&mut st, true, v),
                 "session.execution.succeeded"
@@ -333,6 +348,18 @@ fn catch_up(server: &Server, state: &Shared) {
         let msg = m["id"].as_str().unwrap_or("");
         let base = json!({"sessionID": session, "assistantMessageID": msg});
         match m["type"].as_str() {
+            // A message sent while away began a turn; one typed in the terminal shows in chat by
+            // its id, once [D5, D47, D251].
+            Some("user") => {
+                let mut st = state.lock().unwrap();
+                st.busy = true;
+                if SINK.get().is_some() && st.seen.insert(format!("prompt:{msg}")) {
+                    drop(st);
+                    say(
+                        json!({"type": "brigadier.prompt", "data": {"id": msg, "text": m["text"]}}),
+                    );
+                }
+            }
             Some("assistant") => {
                 for (i, part) in m["content"].as_array().into_iter().flatten().enumerate() {
                     let mut d = base.clone();
