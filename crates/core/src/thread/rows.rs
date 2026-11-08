@@ -304,7 +304,7 @@ impl Thread {
     }
 
     /// A group's counts per kind, in the order the kinds came. Edits count distinct files [D48].
-    fn recount(&mut self, g: usize) {
+    pub(super) fn recount(&mut self, g: usize) {
         let last = self.items[g]["span"][1].as_u64().unwrap_or(0) as usize;
         let mut steps: Vec<(String, u64)> = vec![];
         let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
@@ -313,6 +313,9 @@ impl Thread {
                 continue;
             }
             let row = &self.items[at];
+            if row["hidden"] == true {
+                continue;
+            }
             let kind = match row["kind"].as_str().unwrap_or("") {
                 "fileChange" => "edit",
                 "childAgent" => "agent",
@@ -343,6 +346,9 @@ impl Thread {
                 json!({"kind": kind, "n": n})
             })
             .collect();
+        if steps.is_empty() || self.items[g]["hidden"] == true {
+            self.items[g]["hidden"] = steps.is_empty().into();
+        }
         self.items[g]["steps"] = steps.into();
         self.changed_items.insert(g);
     }

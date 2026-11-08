@@ -44,6 +44,7 @@ pub enum Event {
     Question(Value),
     /// A request for the user's approval, as D177's PendingApproval: `{id, action, reason,
     /// command, cwd, paths, files, branch, host, input, body, to, grant}`; structure only [D65].
+    /// Optional `tool`: the normalised tool id whose work awaits this approval.
     Approval(Value),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),

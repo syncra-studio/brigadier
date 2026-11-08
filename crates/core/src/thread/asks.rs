@@ -8,6 +8,7 @@ impl Thread {
     /// A request's row starts waiting: kept out of the work fold like the user's own messages
     /// [D99], and its turn's wait starts [D77].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64) {
+        self.approval_tool(at, true);
         self.pending.push(at);
         self.pending_changed = true;
         if let Some(o) = self.open.as_mut() {
@@ -79,6 +80,9 @@ impl Thread {
             }
         }
         self.changed_items.insert(at);
+        if row["decision"] == "approved" {
+            self.approval_tool(at, false);
+        }
     }
 
     /// The CLI cleared a request [D77]; or another client, or the CLI's own rule, decided it.
@@ -87,7 +91,33 @@ impl Thread {
             self.withdraw_row(at);
             if let Some(d) = decision.filter(|_| self.items[at]["kind"] == "approval") {
                 self.items[at]["decision"] = d.into();
+                if d == "approved" {
+                    self.approval_tool(at, false);
+                }
             }
+        }
+    }
+
+    /// A tool awaiting permission has not run; only an approval makes its work visible again.
+    fn approval_tool(&mut self, at: usize, hidden: bool) {
+        let row = &self.items[at];
+        let Some(tool) = row["request"]["tool"]
+            .as_str()
+            .filter(|_| row["kind"] == "approval")
+        else {
+            return;
+        };
+        let key = (
+            row["turnId"].as_str().unwrap_or("").to_string(),
+            tool.to_string(),
+        );
+        let Some(&at) = self.keys.get(&key) else {
+            return;
+        };
+        self.items[at]["hidden"] = hidden.into();
+        self.changed_items.insert(at);
+        if let Some(&g) = self.member.get(&at) {
+            self.recount(g);
         }
     }
 

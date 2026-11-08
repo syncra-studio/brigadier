@@ -82,6 +82,8 @@ export type ApprovalAction = "command" | "edit" | "network" | "permission" | "pl
 type Base = {
   id: string;
   turnId: string;
+  /** Rust hides work that is still awaiting approval, including groups with no visible steps. */
+  hidden?: boolean;
   /** Monotonic across the session: a snapshot is at N, events after it count on from N. */
   n?: number;
 };

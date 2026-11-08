@@ -103,6 +103,16 @@ fn approval(d: &Value) -> Event {
         .collect();
     let mut a = json!({"id": d["id"], "action": "other", "reason": d["message"],
                        "cli": {"session": d["sessionID"], "action": action, "save": save}});
+    let source = &d["source"];
+    if source["type"] == "tool" {
+        a["tool"] = format!(
+            "{}/{}/{}",
+            s(d, &["sessionID"]),
+            s(source, &["messageID"]),
+            s(source, &["id"])
+        )
+        .into();
+    }
     let scope = match action {
         "shell" => {
             a["action"] = "command".into();
