@@ -200,6 +200,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     toBottom,
     toIndex: (index) => {
       stuck.current = false;
+      // A jump away gives a pin's space up, as scrolling up does.
+      if (pin.current) pin.current.released = true;
       list.current?.scrollToIndex(index, { align: "start" });
     },
     scrollBy: (offset) => {
