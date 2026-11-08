@@ -103,6 +103,12 @@ function NoticeRow({
   children: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Another notice in its place starts folded.
+  const [text, setText] = useState(children);
+  if (text !== children) {
+    setText(children);
+    setOpen(false);
+  }
   const [long, setLong] = useState(false);
   const fold = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -184,8 +190,8 @@ export function Notices({ notices, onDismiss }: { notices: readonly Notice[]; on
   return (
     <RailItem label="Notices">
       <ul aria-live="polite" className="flex flex-col">
+        {/* Not keyed by notice: the pager stays mounted, so focus stays on it while paging. */}
         <NoticeRow
-          key={notice.id}
           level={notice.level}
           action={notice.action}
           pager={pager}
