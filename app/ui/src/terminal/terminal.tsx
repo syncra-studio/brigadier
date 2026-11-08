@@ -6,11 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/button";
 import { ask, setTermHandler, useDaemon } from "../daemon";
 
-/** The pane's states: the stream loading, no terminal yet, opening, live, ended, refused, failed. */
-type State =
-  | { is: "loading" | "closed" | "opening" | "live" | "exited" }
-  | { is: "refused"; error: string; message: string }
-  | { is: "error"; message: string };
+/** The pane's states: the stream loading, the run not started yet, live, ended, failed. */
+type State = { is: "loading" | "closed" | "live" | "exited" } | { is: "error"; message: string };
 
 // The 16 colours' tokens: ansi-<name> and ansi-bright-<name>.
 const ANSI = ["ansi-black", "ansi-red", "ansi-green", "ansi-yellow", "ansi-blue", "ansi-magenta", "ansi-cyan", "ansi-white"];
@@ -32,13 +29,11 @@ function theme(): ITheme {
 const bytesOf = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 
 /**
- * A session's real terminal, beside its chat [D47]: the CLI's own interactive mode on the same
- * conversation, run by the session's host. The screen is the host's log replayed, so it comes back
- * the same after the app or daemon restarts [D60]. Keys and sizes go to the host, named by the
- * terminal's spawn id, so a stale one is refused. A `setup` pane shows an install or sign-in run
- * (core::SETUP): it is never opened from here, and Close ends the run.
+ * An account's sign-in (core::SETUP), run by its own host [D45]. The screen is the host's log
+ * replayed, so it comes back the same after the app or daemon restarts [D60]. Keys and sizes go to
+ * the host, named by the run's spawn id, so a stale one is refused. Close ends the run.
  */
-export function TerminalPane({ id, setup }: { id: string; setup?: { title: string; onClose: () => void } }) {
+export function TerminalPane({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
   const { daemon } = useDaemon();
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<{ xterm: Terminal; fit: FitAddon; spawn?: number }>(null);
@@ -134,77 +129,29 @@ export function TerminalPane({ id, setup }: { id: string; setup?: { title: strin
     };
   }, [id, daemon]);
 
-  // `quiet`: a retry while a turn runs, which changes nothing on screen until it opens.
-  const open = (quiet = false) => {
-    if (!quiet) setState({ is: "opening" });
-    const size = term.current?.fit.proposeDimensions();
-    const args = ["terminal", id, "--cols", String(size?.cols ?? 120), "--rows", String(size?.rows ?? 40)];
-    ask({ op: "run", args }, (reply) => {
-      // Opened: the stream's start frame makes it live.
-      if (reply.ok || (quiet && reply.error === "turn_running")) return;
-      setState(reply.error === "turn_running" || reply.error === "old_host" || reply.error === "unsupported" || reply.error === "changed"
-        ? { is: "refused", error: reply.error, message: reply.message ?? reply.error }
-        : { is: "error", message: reply.message ?? reply.error });
-    });
-  };
-  const stop = () => ask({ op: "run", args: ["stop", id] });
-
-  // Waiting for a turn to end: try again every 2 s until it opens.
-  const waiting = state.is === "refused" && state.error === "turn_running" && Boolean(daemon);
-  useEffect(() => {
-    if (!waiting) return;
-    const retry = window.setInterval(() => open(true), 2000);
-    return () => clearInterval(retry);
-  }, [waiting]);
-
   useEffect(() => {
     if (term.current) term.current.xterm.options.disableStdin = !live;
     if (live) term.current?.xterm.focus();
   }, [live]);
 
   return (
-    <section className={`flex min-h-0 min-w-0 flex-1 flex-col bg-terminal-background ${setup ? "" : "border-l border-divider"}`}>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-terminal-background">
       <header className="flex h-control-md shrink-0 items-center gap-2 px-3 text-sm text-muted-foreground">
-        <span className="flex-1 truncate">{setup?.title ?? "Terminal"}</span>
-        {setup ? (
-          <Button size="xs" variant="ghost" onClick={setup.onClose}>
-            Close
-          </Button>
-        ) : state.is === "live" && (
-          <Button size="xs" variant="ghost" disabled={!daemon} onClick={stop}>
-            Close
-          </Button>
-        )}
+        <span className="flex-1 truncate">{title}</span>
+        <Button size="xs" variant="ghost" onClick={onClose}>
+          Close
+        </Button>
       </header>
       <div className={`relative min-h-0 flex-1 ${daemon ? "" : "opacity-disabled"}`}>
         <div ref={host} className="absolute inset-0 px-3 font-mono text-xs" />
-        {/* A session's ended terminal is covered too: its last screen is the CLI's goodbye. A setup
-            terminal keeps its last screen: that is the install's or sign-in's result. */}
-        {state.is !== "live" && state.is !== "loading" && !(setup && state.is === "exited") && (
+        {(state.is === "closed" || state.is === "error") && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-terminal-background text-sm">
-            {state.is === "closed" && <p className="text-muted-foreground">{setup ? "Starting…" : "This session's CLI, in its own terminal"}</p>}
-            {state.is === "exited" && <p className="text-muted-foreground">The terminal ended</p>}
-            {state.is === "opening" && <p className="text-muted-foreground">Opening…</p>}
-            {state.is === "refused" && <p className="text-muted-foreground">{state.message}</p>}
+            {state.is === "closed" && <p className="text-muted-foreground">Starting…</p>}
             {state.is === "error" && <p className="text-destructive">{state.message}</p>}
-            {!setup && (state.is === "closed" || state.is === "error" || (state.is === "refused" && !waiting)) && (
-              <Button size="sm" disabled={!daemon} onClick={() => open()}>
-                Open terminal
-              </Button>
-            )}
-            {state.is === "exited" && (
-              <Button size="sm" disabled={!daemon} onClick={() => open()}>
-                Open again
-              </Button>
-            )}
-            {waiting && (
-              <Button size="sm" variant="soft-destructive" disabled={!daemon} onClick={stop}>
-                Stop the turn
-              </Button>
-            )}
           </div>
         )}
-        {setup && state.is === "exited" && (
+        {/* It keeps its last screen: that is the sign-in's result. */}
+        {state.is === "exited" && (
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 border-t border-divider bg-terminal-background py-2 text-sm">
             <span className="text-muted-foreground">The terminal ended</span>
           </div>

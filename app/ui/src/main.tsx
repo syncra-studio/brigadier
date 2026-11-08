@@ -26,7 +26,6 @@ import { answeringSource } from "./session/decisions";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
-import { TerminalPane } from "./terminal/terminal";
 import { Thread } from "./thread/thread";
 import "./theme.css";
 
@@ -148,7 +147,6 @@ function FirstLoad({ error }: { error?: string }) {
 }
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
-// Its terminal sits beside it, on the same conversation [D47].
 function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
   const title = row?.title;
   useEffect(() => openThread(id), [id]);
@@ -200,7 +198,6 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
               {!row?.archived && <SessionComposer id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
             </div>
           )}
-          {(starting ? state?.status === "ready" : !missing) && <TerminalPane id={id} />}
         </div>
       </main>
     </>

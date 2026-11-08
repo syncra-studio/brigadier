@@ -84,7 +84,7 @@ export function ask(request: object, onReply?: (frame: Record<string, any>) => v
   return id;
 }
 
-/** Where the terminal's pushed frames go: one terminal view at a time [D47]. */
+/** Where a sign-in terminal's pushed frames go: one at a time [D45]. */
 export function setTermHandler(handler: typeof onTerm): void {
   onTerm = handler;
 }

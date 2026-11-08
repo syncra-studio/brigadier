@@ -36,7 +36,7 @@ const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${
 
 /**
  * Accounts and switching [D51], as the old app's agent pages drew them (D48): each agent's accounts,
- * added through its own sign-in in a real terminal [D45, D47], and the switches. Automatic switching
+ * added through its own sign-in in a real terminal [D45], and the switches. Automatic switching
  * is off until turned on, and turning it on asks first, naming whose terms or which vendors it
  * concerns. Every word about an agent comes from its adapter [D43].
  */
@@ -200,7 +200,8 @@ export function AccountsPage() {
                       <TerminalPane
                         key={open.id}
                         id={signInRun(agent.name, open.id)}
-                        setup={{ title: `${agent.label} · Sign in`, onClose: () => close(open.id) }}
+                        title={`${agent.label} · Sign in`}
+                        onClose={() => close(open.id)}
                       />
                     </div>
                   )}

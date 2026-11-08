@@ -1,7 +1,7 @@
 // Holds the daemon socket in a utility process and passes bytes both ways, untouched.
 import net from "node:net";
 
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 const RETRY_MS = 250;
 const socketPath = process.argv[2];
 

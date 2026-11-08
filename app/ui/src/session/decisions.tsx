@@ -87,7 +87,6 @@ const WHY: Record<string, string> = {
   answered: "Already answered",
   uncertain: "Your earlier answer may not have reached the agent",
   not_running: "The session that asked has ended",
-  terminal: "Answer it in the terminal",
   disconnected: "Brigadier isn't running",
 };
 function refusal(reply: Record<string, any>): string {

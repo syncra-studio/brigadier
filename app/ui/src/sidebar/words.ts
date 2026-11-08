@@ -62,7 +62,6 @@ export function statusWords(row: SessionRow): string | null {
     const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";
     return row.resets === null ? words : `${words} · resets ${hhmm(row.resets)}`;
   }
-  if (row.state === "terminal") return row.mark === "working" ? "Working · in the terminal" : "Terminal open";
   // A pending approval waits as a question does; only its reason says which [D173].
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
