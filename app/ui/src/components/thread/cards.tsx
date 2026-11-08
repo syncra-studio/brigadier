@@ -277,6 +277,8 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
     case "switched":
       // A switch logged before the shape has only Rust's sentence.
       if (!change.to) return <span>{change.text}</span>;
+      // Picked, not forced: no limit to explain.
+      if (change.reason === "picked") return <span>Switched to {to}</span>;
       return <WithTip words={refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`} tip={hit} />;
     case "failed":
       return (

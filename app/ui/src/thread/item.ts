@@ -141,7 +141,8 @@ export type Item = Base &
     | {
         kind: "switch";
         state: "limit" | "switching" | "switched" | "failed" | "over";
-        reason: "usage-limit" | "unresumable";
+        /** `picked`: the user picked another agent's model, and the next message went to it [D129]; only ever switched. */
+        reason: "usage-limit" | "unresumable" | "picked";
         from?: string | null;
         to?: string | null;
         model?: string | null;

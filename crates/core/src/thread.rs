@@ -63,12 +63,13 @@ pub struct Thread {
     claims: HashMap<String, (usize, Value)>,
 }
 
-/// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
+/// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
+/// another agent the user picked [D129].
 fn reason(why: Option<&str>) -> &'static str {
-    if why == Some("unresumable") {
-        "unresumable"
-    } else {
-        "usage-limit"
+    match why {
+        Some("unresumable") => "unresumable",
+        Some("picked") => "picked",
+        _ => "usage-limit",
     }
 }
 
