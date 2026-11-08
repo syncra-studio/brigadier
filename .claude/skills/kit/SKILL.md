@@ -52,7 +52,7 @@ How slices 1–4 were built. AGENTS.md binds over all of this.
 - Copy them from `@openai/apps-sdk-ui` 0.2.2 (MIT, credited in `THIRD_PARTY_NOTICES.md`). Never use brand icons.
 - To add some:
   1. Fetch the package into a scratch dir: `npm pack @openai/apps-sdk-ui@0.2.2`, then untar it.
-  2. Each icon is at `package/dist/es/components/Icon/svg/<Name>.js`. Copy its `viewBox` and `<path>`s.
+  2. Each icon is at `package/dist/es/components/Icon/svg/<Name>.js`, as compiled JSX: copy its `viewBox` and each `_jsx("path", { d, fillRule, … })` as a `<path>`.
   3. Write it as a local component, shaped like the ones in `app/ui/src/icons/`: `width/height="1em"`, `fill="currentColor"`, `aria-hidden`, `{...props}`, and props typed `IconProps`.
   4. Use the old app's icon name. Put general icons in `icons/index.tsx` and thread icons in `icons/thread.tsx` (re-exported).
   5. Delete the scratch dir.
