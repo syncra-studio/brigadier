@@ -166,6 +166,7 @@ pub struct Accounts {
     pub sign_out: &'static [&'static str],
     /// Sign-in kinds (`Check::how`) the home keeps apart; any other is refused [D51].
     pub kinds: &'static [&'static str],
+    pub trust: Option<crate::trust::Trust>,
 }
 
 /// What an adapter's CLI can do beyond a message [D109, D129, D170]: steer a running turn, stop
@@ -354,9 +355,8 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
     all().into_iter().find(|a| a.name() == name)
 }
 
-/// The environment every child starts from: nothing inherited but the basics.
-/// The same one for a session, a status check and a sign-in, so they agree: the login shell's
-/// PATH after the CLI's own folder, and the credential variables `keys` names.
+/// The environment every child starts from, the same for a session, a status check and a sign-in:
+/// the basics, the login shell's PATH after the CLI's own folder, and the variables `keys` names.
 pub fn base_env(spec: &Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)> {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let dir = exe

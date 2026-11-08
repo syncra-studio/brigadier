@@ -55,6 +55,8 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
         b,
         None,
     );
+    // Its account gets the project's trust entry first; a failure only means it may ask [D166].
+    let _ = crate::trust::ensure(spec, a);
     let (launch, conv) = match a.terminal(spec, f.resume.get(b).map(String::as_str)) {
         Ok(l) => l,
         Err(e) => return json!({"ok": false, "error": "unsupported", "message": e}),

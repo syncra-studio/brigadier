@@ -103,6 +103,18 @@ fn change<T>(
     Ok((list, out))
 }
 
+/// Waits for and takes the data folder's lock `name`, held until the file is dropped.
+pub fn lock(data: &Path, name: &str) -> io::Result<fs::File> {
+    fs::create_dir_all(data)?;
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join(name))?;
+    lock.lock()?;
+    Ok(lock)
+}
+
 /// `profile.json`'s plain paths as records (proposed): each resolved to its main checkout, or
 /// kept as it was when git can't, so no project silently goes.
 fn migrated(data: &Path) -> Vec<Project> {
@@ -286,7 +298,7 @@ pub struct Change {
 
 /// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
 /// refused while the project has sessions (proposed), so trust never moves under them [D166].
-/// Every trust change goes through here: 1i writes the CLIs' own trust entries from here.
+/// Every trust change goes through here; its caller then syncs the CLIs' own entries (1i).
 pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
     let name = new.name.as_deref().map(clean).transpose()?;
     let folder = new.folder.map(|f| repo(data, &f)).transpose()?;

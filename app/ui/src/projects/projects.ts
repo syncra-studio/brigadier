@@ -1,3 +1,4 @@
+import { showToast } from "../components/toast";
 import { type Project, useDaemon } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 
@@ -59,7 +60,13 @@ export async function setProject(project: Project, change: Partial<Project>, arg
   const shown = { ...project, ...change };
   hold(project.id, shown);
   try {
-    await run(["projects", "set", project.id, ...args]);
+    const reply = await run(["projects", "set", project.id, ...args]);
+    // The answer is saved even where a CLI's own trust entry couldn't be written [D166, D253].
+    for (const { agent, error } of (reply.trust_errors ?? []) as { agent: string; error: string }[]) {
+      showToast(agent
+        ? `Saved. Brigadier couldn't record it for ${agent}, so ${agent} may ask again in its terminal: ${error}`
+        : `Saved. Brigadier couldn't record it everywhere: ${error}`, { tone: "error" });
+    }
   } finally {
     // A later change holds its own: only this one's overlay goes.
     if (overlay.get().get(project.id) === shown) hold(project.id);

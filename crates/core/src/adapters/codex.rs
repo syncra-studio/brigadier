@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 mod record;
+mod trust;
 use record::{diff, rollouts, thread_files};
 
 pub struct Codex;
@@ -94,6 +95,7 @@ impl Adapter for Codex {
             sign_in: &["login"],
             sign_out: &["logout"],
             kinds: &["ChatGPT account", "API key"],
+            trust: Some(trust::TRUST),
         })
     }
 

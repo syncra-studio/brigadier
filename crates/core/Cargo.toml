@@ -9,3 +9,4 @@ brigadier-frames = { path = "../frames" }
 libc.workspace = true
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json.workspace = true
+toml_edit = "=0.25.19"

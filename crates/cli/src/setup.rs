@@ -98,7 +98,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         include,
                     };
                     let project = projects::set(data, arg(2), change)?;
-                    return Ok(json!({"ok": true, "project": project}));
+                    // The answer stays saved when a CLI's own entry can't be written [D166].
+                    let failed = core::trust::sync(data, &project.id, None);
+                    return Ok(json!({"ok": true, "project": project, "trust_errors": failed}));
                 }
                 // Project settings' files to copy: the ignored entries in a folder [D178].
                 "ignored" => {

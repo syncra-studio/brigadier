@@ -139,9 +139,9 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         }
     }
     if left.is_empty() {
-        // 1i: restore the project's CLI trust entries here, keeping a failed one's record to
-        // retry (PROPOSED: a marked spot only until 1i records them) [D35, D166].
-        match projects::remove(data, id) {
+        // The CLIs' own trust entries go back first; a failed one keeps its record and the
+        // project, so Remove again retries it [D35, D166].
+        match core::trust::restore(data, id).and_then(|()| projects::remove(data, id)) {
             Ok(()) => {
                 return Ok(json!({"ok": true, "repo": project.folder, "kept_branches": kept}));
             }

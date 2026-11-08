@@ -34,6 +34,7 @@ impl Adapter for Fake {
             sign_in: &["login"],
             sign_out: &["logout"],
             kinds: &["fake"],
+            trust: None,
         })
     }
 
