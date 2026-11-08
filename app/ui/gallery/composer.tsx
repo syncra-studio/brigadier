@@ -1,15 +1,12 @@
-// The composer (slice 1) in every state, frozen, plus one live copy. While reviewing, each state shows
-// "Current | Old app" (D22); the old column is deleted before landing.
-import { Button as BaseButton } from "@base-ui/react/button";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+// The composer (slice 1) in every state, frozen, plus one live copy.
+import { useEffect, useRef, useState } from "react";
 
 import { ComposerCard, ComposerFooter, ComposerPill, ComposerTools, ContextRing, EditComposer, PillDivider, PlusButton } from "../src/components/composer/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { SendButton } from "../src/components/composer/send-button";
 import { Button } from "../src/components/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
-import { ChevronDown, Plus } from "../src/icons";
+import { ChevronDown } from "../src/icons";
 import { duration, useSecond } from "../src/thread/words";
 import { Row, Section, State } from "./parts";
 
@@ -17,43 +14,17 @@ const noop = () => {};
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
 const LONG = Array.from({ length: 24 }, (_, i) => `Line ${i + 1} of a long message that scrolls inside the field.`).join("\n");
 
-/** Old app: the + button was a capsule on hover, and the footer pills didn't shrink when pressed. */
-function OldPlus() {
+function ModelPill() {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        delay={0}
-        render={
-          <BaseButton aria-label="Add files and more" className="inline-flex size-control-sm items-center justify-center rounded-capsule transition-all hover:bg-fill svg:size-icon-md motion-safe:active:scale-press">
-            <Plus />
-          </BaseButton>
-        }
-      />
-      <TooltipContent side="bottom">Add files and more</TooltipContent>
-    </Tooltip>
-  );
-}
-function OldPill({ children }: { children: ReactNode }) {
-  return (
-    <BaseButton className="inline-flex h-control-sm min-w-0 shrink-0 items-center gap-1.5 rounded-capsule px-2 text-sm text-muted-foreground transition-colors hover:bg-fill svg:size-icon-md">
-      {children}
-    </BaseButton>
-  );
-}
-
-function ModelPill({ old }: { old: boolean }) {
-  const words = (
-    <>
+    <ComposerPill className="gap-1">
       <span className="truncate text-foreground">Model name</span>
       <span>High</span>
       <ChevronDown className="size-icon-xs" />
-    </>
+    </ComposerPill>
   );
-  return old ? <OldPill>{words}</OldPill> : <ComposerPill className="gap-1">{words}</ComposerPill>;
 }
 
 type CardProps = {
-  old: boolean;
   initial?: Draft;
   placeholder?: string;
   running?: boolean;
@@ -67,19 +38,21 @@ type CardProps = {
 };
 
 /** A frozen composer card in one state. */
-function Card({ old, initial = EMPTY_DRAFT, placeholder = "Do anything", running = false, canStop = false, canResume, armed, blocked, ring, scrolled }: CardProps) {
+function Card({ initial = EMPTY_DRAFT, placeholder = "Do anything", running = false, canStop = false, canResume, armed, blocked, ring, scrolled }: CardProps) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scrolled) box.current!.querySelector("[data-slot=composer-field]")!.scrollTop = 1e6;
   }, [scrolled]);
   return (
-    <div ref={box} className="w-144">
+    <div ref={box} className="w-reading">
       <ComposerCard>
         <ComposerField initial={initial} placeholder={placeholder} />
         <ComposerFooter>
-          <ComposerTools>{old ? <OldPlus /> : <PlusButton />}</ComposerTools>
+          <ComposerTools>
+            <PlusButton />
+          </ComposerTools>
           {ring && <ContextRing usedTokens={45_000} windowTokens={258_000} />}
-          <ModelPill old={old} />
+          <ModelPill />
           <SendButton
             keys={false}
             empty={isEmpty(initial)}
@@ -94,20 +67,6 @@ function Card({ old, initial = EMPTY_DRAFT, placeholder = "Do anything", running
           />
         </ComposerFooter>
       </ComposerCard>
-    </div>
-  );
-}
-
-/** One state side by side: the kit now, and the old app's look. */
-function Pair({ label, frozen, children }: { label: string; frozen?: string; children: (old: boolean) => ReactNode }) {
-  return (
-    <div className="grid w-full grid-cols-2 gap-8">
-      <State label={`${label} · Current`} frozen={frozen}>
-        {children(false)}
-      </State>
-      <State label={`${label} · Old app`} frozen={frozen}>
-        {children(true)}
-      </State>
     </div>
   );
 }
@@ -160,7 +119,7 @@ function Live() {
             <ComposerPill>Pill</ComposerPill>
           </ComposerTools>
           <ContextRing usedTokens={45_000} windowTokens={258_000} />
-          <ModelPill old={false} />
+          <ModelPill />
           <SendButton
             empty={empty}
             running={running}
@@ -180,58 +139,57 @@ export function ComposerGallery() {
   return (
     <Section title="Composer">
       <Row name="Card">
-        <Pair label="Empty">{(old) => <Card old={old} />}</Pair>
-        <Pair label="Typing, with a mention chip">{(old) => <Card old={old} initial={draft("Look at ", mention, " and fix the Enter key")} />}</Pair>
-        <Pair label="Multi-line">{(old) => <Card old={old} initial={draft("First line\nSecond line\nThird line")} />}</Pair>
-        <Pair label="Scrolled: the top line fades">{(old) => <Card old={old} initial={draft(LONG)} scrolled />}</Pair>
-        <Pair label="Turn running, empty: Stop">{(old) => <Card old={old} placeholder="Working for 2m 5s" running canStop />}</Pair>
-        <Pair label="Turn running, typed: Send queues (tip Queue)">{(old) => <Card old={old} initial={draft("And add a test")} running canStop />}</Pair>
-        <Pair label="Esc armed (tip Press Esc again to stop)">{(old) => <Card old={old} initial={draft("And add a test")} running canStop armed />}</Pair>
-        <Pair label="Stopped: Resume">{(old) => <Card old={old} canResume />}</Pair>
-        <Pair label="Reconnecting: Send disabled">{(old) => <Card old={old} initial={draft("Kept while it reconnects")} placeholder="Reconnecting…" blocked="Reconnecting…" />}</Pair>
-        <Pair label="Context ring">{(old) => <Card old={old} ring />}</Pair>
+        <State label="Empty">
+          <Card />
+        </State>
+        <State label="Typing, with a mention chip">
+          <Card initial={draft("Look at ", mention, " and fix the Enter key")} />
+        </State>
+        <State label="Multi-line">
+          <Card initial={draft("First line\nSecond line\nThird line")} />
+        </State>
+        <State label="Scrolled: the top line fades">
+          <Card initial={draft(LONG)} scrolled />
+        </State>
+        <State label="Turn running, empty: Stop">
+          <Card placeholder="Working for 2m 5s" running canStop />
+        </State>
+        <State label="Turn running, typed: Send queues (tip Queue)">
+          <Card initial={draft("And add a test")} running canStop />
+        </State>
+        <State label="Esc armed (tip Press Esc again to stop)">
+          <Card initial={draft("And add a test")} running canStop armed />
+        </State>
+        <State label="Stopped: Resume">
+          <Card canResume />
+        </State>
+        <State label="Reconnecting: Send disabled">
+          <Card initial={draft("Kept while it reconnects")} placeholder="Reconnecting…" blocked="Reconnecting…" />
+        </State>
+        <State label="Context ring">
+          <Card ring />
+        </State>
       </Row>
       <Row name="Footer controls">
         {(["hover", "focus", "active"] as const).map((frozen) => (
-          <Pair key={frozen} label={frozen} frozen={frozen}>
-            {(old) => (
-              <div className="flex items-center gap-1">
-                {old ? <OldPlus /> : <PlusButton />}
-                <PillDivider />
-                <ModelPill old={old} />
-                <SendButton keys={false} empty={false} running={false} canStop={false} onSend={noop} onStop={noop} />
-              </div>
-            )}
-          </Pair>
+          <State key={frozen} label={frozen} frozen={frozen}>
+            <PlusButton />
+            <PillDivider />
+            <ModelPill />
+            <SendButton keys={false} empty={false} running={false} canStop={false} onSend={noop} onStop={noop} />
+          </State>
         ))}
       </Row>
       <Row name="Edit and resend">
-        <Pair label="Editing a sent message">
-          {(old) => (
-            <div className="w-144">
-              {old ? <OldEdit /> : <EditComposer initial={draft("Fix the Enter key in the composer")} onCancel={noop} onSend={noop} />}
-            </div>
-          )}
-        </Pair>
+        <State label="Editing a sent message">
+          <div className="w-reading">
+            <EditComposer initial={draft("Fix the Enter key in the composer")} onCancel={noop} onSend={noop} />
+          </div>
+        </State>
       </Row>
       <Row name="Live">
         <Live />
       </Row>
     </Section>
-  );
-}
-
-/** Old app: the edit box's buttons in regular weight, Cancel a bordered ghost. */
-function OldEdit() {
-  return (
-    <div className="flex flex-col px-2">
-      <div className="ms-auto flex w-full flex-col gap-2 rounded-composer bg-composer p-2">
-        <ComposerField initial={draft("Fix the Enter key in the composer")} placeholder="" label="Edit message" size="edit" />
-        <div className="flex items-center justify-end gap-2">
-          <BaseButton className="inline-flex h-control-sm items-center rounded-capsule border border-border px-2.5 text-sm hover:bg-fill">Cancel</BaseButton>
-          <BaseButton className="inline-flex h-control-sm items-center rounded-capsule bg-primary px-2.5 text-sm text-primary-fg hover:bg-primary-hover">Send</BaseButton>
-        </div>
-      </div>
-    </div>
   );
 }
