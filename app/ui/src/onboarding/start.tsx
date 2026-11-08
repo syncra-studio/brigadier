@@ -48,7 +48,8 @@ export function StartForm() {
     );
   }, [daemon, chosenAgent, chosenProject]);
 
-  const shownModels = Array.isArray(models) ? models : [];
+  // Local models first: they need no account and cost nothing [D45].
+  const shownModels = Array.isArray(models) ? models.toSorted((a, b) => Number(b.local) - Number(a.local)) : [];
   // The chosen model stays while the new list still has it.
   const chosenModel = shownModels.some((each) => each.id === model) ? model : (shownModels[0]?.id ?? "");
 

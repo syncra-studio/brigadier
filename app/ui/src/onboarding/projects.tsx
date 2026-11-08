@@ -79,8 +79,9 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     for (const path of chosen) {
       await setProfile(["--add", path], { projects: [...added, path] }).catch((cause) => failed.push(`${baseName(path)}: ${errorText(cause)}`));
     }
-    if (failed.length === 0) await setProfile(["--done"], { onboarded: true }).catch((cause) => failed.push(errorText(cause)));
     if (failed.length) setError(`Some projects could not be added.\n${failed.join("\n")}`);
+    // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.
+    else await setProfile(["--done"], {}).catch((cause) => setError(errorText(cause)));
     setBusy(null);
   };
 

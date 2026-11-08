@@ -70,9 +70,13 @@ function check(args: string[], name = "*"): Promise<void> {
       const fresh = (reply.agents as Agent[]).filter((agent) => !agent.busy && mine > (shown.get(agent.name) ?? 0));
       for (const agent of fresh) shown.set(agent.name, mine);
       const list = agents.get().list;
-      if (!list) return done(name === "*" ? { list: fresh, error: undefined } : {});
-      const merged = list.map((agent) => fresh.find((each) => each.name === agent.name) ?? agent);
-      done({ list: [...merged, ...fresh.filter((each) => !list.some((agent) => agent.name === each.name))], error: undefined });
+      if (name === "*") {
+        // A full check keeps Rust's order; an agent it couldn't answer afresh keeps its last card.
+        const next = (reply.agents as Agent[]).flatMap((agent) => (fresh.includes(agent) ? [agent] : (list?.filter((each) => each.name === agent.name) ?? [])));
+        return done({ list: next, error: undefined });
+      }
+      if (!list) return done({});
+      done({ list: list.map((agent) => fresh.find((each) => each.name === agent.name) ?? agent), error: undefined });
     },
     (cause) => done(agents.get().list ? {} : { error: errorText(cause) }),
   );
