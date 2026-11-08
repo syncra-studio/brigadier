@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
@@ -9,8 +9,9 @@ import { RowAction } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, Folder, FolderOpen, SettingsSlider } from "../icons";
+import { ComposeEditSquare, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
+import { openAddProject, setShowProject } from "../projects/store";
 import { SessionRowItem } from "./row";
 import type { Project, SessionRow } from "./words";
 
@@ -85,6 +86,14 @@ export function AppSidebar({
     />
   );
   const view = <ViewMenu grouping={grouping} onGrouping={setGrouping} />;
+  // Add project shows a project already added here: grouped by project, unfolded, in view [D165].
+  useEffect(() => {
+    setShowProject((id) => {
+      setGrouping("project");
+      setFolded(folded.filter((key) => key !== "projects" && key !== id));
+      requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
+    });
+  });
 
   return (
     <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot}>
@@ -109,14 +118,47 @@ export function AppSidebar({
           </NavSection>
         ) : (
           <>
-            <NavSection title="Projects" open={isOpen("projects")} onOpenChange={(open) => setOpen("projects", open)} steadyEnd={view}>
+            <NavSection
+              title="Projects"
+              open={isOpen("projects")}
+              onOpenChange={(open) => setOpen("projects", open)}
+              steadyEnd={view}
+              actions={
+                <Tooltip>
+                  <TooltipTrigger render={<RowAction aria-label="Add project" onClick={() => openAddProject()} />}>
+                    <Plus />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Add project</TooltipContent>
+                </Tooltip>
+              }
+            >
               <NavList>
-                {projects.toSorted((a, b) => a.name.localeCompare(b.name)).map((project) => (
-                  <ProjectRow key={project.id} name={project.name} open={isOpen(project.id)} onOpenChange={(open) => setOpen(project.id, open)}>
-                    {sorted.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                  </ProjectRow>
-                ))}
-                {projects.length === 0 && <EmptyState as="li" title="Projects group sessions on a repository." />}
+                {projects
+                  .toSorted((a, b) => a.name.localeCompare(b.name))
+                  .map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      id={project.id}
+                      name={project.name}
+                      open={isOpen(project.id)}
+                      onOpenChange={(open) => setOpen(project.id, open)}
+                    >
+                      {sorted.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                    </ProjectRow>
+                  ))}
+                {projects.length === 0 && (
+                  <EmptyState
+                    as="li"
+                    title={
+                      <span>
+                        Projects group sessions on a repository.{" "}
+                        <button type="button" className="cursor-pointer text-foreground underline-offset-link hover:underline" onClick={() => openAddProject()}>
+                          Add a project
+                        </button>
+                      </span>
+                    }
+                  />
+                )}
               </NavList>
             </NavSection>
             {/* shortcut: sessions with no project (made before projects were records) sit under their own
@@ -145,9 +187,21 @@ function Loading() {
 }
 
 /** A project and its sessions, folding away under it; "No sessions yet" with none. */
-function ProjectRow({ name, open, onOpenChange, children }: { name: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode[] }) {
+function ProjectRow({
+  id,
+  name,
+  open,
+  onOpenChange,
+  children,
+}: {
+  id: string;
+  name: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode[];
+}) {
   return (
-    <li className="flex flex-col">
+    <li data-project-id={id} className="flex flex-col">
       <NavRow aria-expanded={open} onClick={() => onOpenChange(!open)}>
         {open ? <FolderOpen /> : <Folder />}
         <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{name}</span>
@@ -165,8 +219,9 @@ function ProjectRow({ name, open, onOpenChange, children }: { name: string; open
 /** View: Group by None (one list) or Project, on the list's header whichever shows. */
 function ViewMenu({ grouping, onGrouping }: { grouping: Grouping; onGrouping: (next: Grouping) => void }) {
   const heading = useId();
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger render={<PopoverTrigger render={<RowAction aria-label="View" />} />}>
           <SettingsSlider />
@@ -190,6 +245,18 @@ function ViewMenu({ grouping, onGrouping }: { grouping: Grouping; onGrouping: (n
             </label>
           ))}
         </RadioGroup>
+        <div className="my-1 border-t border-divider" />
+        <button
+          type="button"
+          className={`${MENU_ROW} w-full text-start`}
+          onClick={() => {
+            setOpen(false);
+            openAddProject();
+          }}
+        >
+          <Plus className="size-icon-md text-muted-foreground" />
+          Add project…
+        </button>
       </PopoverContent>
     </Popover>
   );
