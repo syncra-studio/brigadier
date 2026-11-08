@@ -120,7 +120,8 @@ pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
         return refuse("busy", "Switch once this turn ends.");
     }
     owner::ensure(data, &spec)?;
-    let note = json!({"event": "setup", "op": op, "backend": b, "model": m, "effort": effort});
+    let note = json!({"event": "setup", "op": op, "backend": b, "model": m, "effort": effort,
+        "pick": b != current});
     owner::call(data, id, json!({"op": "note", "data": note}))?;
     Ok(json!({"ok": true, "op": op}))
 }
