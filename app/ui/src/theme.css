@@ -235,6 +235,11 @@
   --spacing-rail-tuck: 0.25rem;
   --spacing-rail-clear: calc(var(--spacing-rail-tuck) + 0.5rem);
   --spacing-queue-max: 30dvh;
+  /* The composer's `@`, `/` and + menus show ten rows and a half, then scroll. */
+  --spacing-command-list: calc(var(--spacing-control-sm) * 10.5);
+  /* A composer attachment: an image's thumbnail, a file's card. */
+  --spacing-attachment-thumb: 7.625rem;
+  --spacing-attachment-card: 14rem;
 
   --radius-sm: 0.375rem;
   --radius-xs: 0.1875rem;
@@ -258,6 +263,8 @@
   --radius-thread: 1rem;
   --radius-shell: 0.78125rem;
   --radius-composer: 1.375rem;
+  /* An image attachment's thumbnail. */
+  --radius-attachment: 1rem;
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
@@ -553,6 +560,8 @@
 @custom-variant in-button (:where([data-slot="button"]) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
+/* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
+@custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
 
 /* The keyboard focus ring, inside the control's edge. */
 @utility focus-ring {
@@ -596,6 +605,9 @@
 }
 @utility min-w-anchor {
   min-width: var(--anchor-width);
+}
+@utility w-anchor {
+  width: var(--anchor-width);
 }
 
 /* A menu's or popover's way in (faded, shifted toward its trigger) and out (faded). */
