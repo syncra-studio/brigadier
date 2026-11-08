@@ -157,6 +157,9 @@ impl Adapter for Fake {
             })],
             "beat" | "child" => vec![],
             "done" => vec![Event::TurnEnd(v["ok"].as_bool().unwrap_or(true))],
+            "ask" if v["items"].is_array() => vec![Event::Question(
+                json!({"id": v["id"], "title": v["title"], "items": v["items"]}),
+            )],
             "ask" => vec![Event::Question(
                 json!({"id": v["id"], "title": null, "items": [
                 {"text": v["text"], "options": [{"label": "Yes"}, {"label": "No"}], "recommended": 0, "multiSelect": false}]}),

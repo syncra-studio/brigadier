@@ -7,7 +7,7 @@ import { SidebarProvider, useSidebar } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
-import { openThread, type Row, threadSource, useDaemon, useThread } from "./daemon";
+import { openThread, type Row, useDaemon, useThread } from "./daemon";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
@@ -15,6 +15,7 @@ import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
+import { answeringSource } from "./session/decisions";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { TerminalPane } from "./terminal/terminal";
@@ -160,7 +161,7 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
               <div className="min-h-0 flex-1">
                 <SessionOfThread value={{ id, offline }}>
                   <Thread
-                    source={threadSource}
+                    source={answeringSource}
                     footer={(line || sending) && <>{line}<SentBubbles id={id} /></>}
                   />
                 </SessionOfThread>
