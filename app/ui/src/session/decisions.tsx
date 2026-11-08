@@ -12,7 +12,7 @@ import type { Runner } from "./composer";
  * Answers to the agent's requests, shown at once [D30, D203]: the card goes and the thread row shows the answer, by
  * request id, until Rust's own row has it. One logged but not proven delivered stays hidden, its row Rust's, until
  * Rust's row moves on; it's never shown as delivered nor sent again [D222]. A refusal brings the card back with its
- * error; one Rust no longer lists (a stale request) gets Dismiss beside it, as there's nothing left to answer.
+ * error; one Rust no longer lists (a stale request: the turn ended, it was answered elsewhere) gets Dismiss beside it.
  */
 type Answer = {
   request: PendingApproval | PendingQuestion;
@@ -22,9 +22,8 @@ type Answer = {
   answers?: (string | null)[];
   /** How far it got: on its way, delivered, or logged without proof it was delivered. */
   state: "sending" | "delivered" | "logged";
+  /** Rust refused it; kept, with the card, until answered again or (once Rust no longer lists it) dismissed. */
   error?: string;
-  /** Refused because Rust has nothing waiting under this id any more. */
-  stale?: boolean;
 };
 let answering = new Map<string, ReadonlyMap<string, Answer>>();
 const listeners = new Set<() => void>();
@@ -104,7 +103,7 @@ function send(run: Runner, session: string, answer: Answer): Promise<void> {
   return run(["answer", session, request.id, ...args]).then((reply) => {
     if (reply.ok) return setAnswer(session, request.id, { ...answer, state: reply.result === "delivered" ? "delivered" : "logged" });
     const error = refusal(reply);
-    setAnswer(session, request.id, { ...answer, error, stale: reply.error === "not_pending" });
+    setAnswer(session, request.id, { ...answer, error });
     throw new Error(error);
   });
 }
@@ -121,9 +120,9 @@ function useWaiting(id: string, source: Source) {
     for (const item of raw.items) {
       const request = requestOf(item);
       const answer = request === undefined ? undefined : mine?.get(request);
-      // One on its way waits for its reply (Rust's row reads withdrawn between log and delivery); a stale one for its Dismiss.
-      if (!answer || answer.stale || (answer.state === "sending" && answer.error === undefined)) continue;
-      // A refused one goes once Rust's row moves on, as a logged one does.
+      // One on its way waits for its reply (Rust's row reads withdrawn between log and delivery); a refused one for
+      // another answer or its Dismiss.
+      if (!answer || answer.error !== undefined || answer.state === "sending") continue;
       const done = answer.state === "delivered" ? decided(item) : moved(item);
       if (done) setAnswer(id, request!, undefined);
     }
@@ -132,16 +131,17 @@ function useWaiting(id: string, source: Source) {
     forgetReasons(id, keep);
     forgetQuestions(id, keep);
   });
-  const stale = [...(mine?.values() ?? [])].filter((each) => each.stale);
-  const listed = (list: { id: string }[] | undefined, each: Answer) => list?.some((one) => one.id === each.request.id);
-  const approvals = [...(session?.approvals ?? []), ...stale.filter((each) => !("items" in each.request) && !listed(session?.approvals, each)).map((each) => each.request as PendingApproval)];
-  const questions = [...(session?.questions ?? []), ...stale.filter((each) => "items" in each.request && !listed(session?.questions, each)).map((each) => each.request as PendingQuestion)];
+  const listed = (list: { id: string }[] | undefined, each: Answer) => list?.some((one) => one.id === each.request.id) === true;
+  // Refused, and nothing waits on it any more (the turn ended, it was answered elsewhere): stale.
+  const stale = [...(mine?.values() ?? [])].filter((each) => each.error !== undefined && !listed("items" in each.request ? session?.questions : session?.approvals, each));
+  const approvals = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request]))];
+  const questions = [...(session?.questions ?? []), ...stale.flatMap((each) => ("items" in each.request ? [each.request] : []))];
   return {
     approvals,
     questions,
     error: (request: string) => mine?.get(request)?.error ?? null,
     /** A stale card's Dismiss (PROPOSED): nothing waits on it, so it only goes. */
-    dismiss: (request: string) => (mine?.get(request)?.stale ? () => setAnswer(id, request, undefined) : undefined),
+    dismiss: (request: string) => (stale.some((each) => each.request.id === request) ? () => setAnswer(id, request, undefined) : undefined),
   };
 }
 
