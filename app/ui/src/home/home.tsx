@@ -29,7 +29,7 @@ type Ran = { project: string | null; sent: number; backend: string; model?: stri
  * one on this computer first; only a model the list still has counts [D129].
  */
 export function HomeDraft() {
-  const { daemon, rows } = useDaemon();
+  const { daemon, rows, projects: savedProjects } = useDaemon();
   const name = useProfile().value?.name ?? "";
   const projects = useProjects()?.filter((each) => !each.pending);
   const draft = useHomeDraft();
@@ -45,11 +45,12 @@ export function HomeDraft() {
   }, [added]);
   const project = projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null;
 
-  const [listed, setListed] = useState<{ project: string; groups: LevelGroup[]; fresh: boolean } | null>(null);
+  const [listed, setListed] = useState<{ project: string; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [setUp, setSetUp] = useState<string | null>(null);
   const asked = useRef(0);
   const id = project?.id;
+  const trusted = savedProjects?.find((each) => each.id === id)?.trusted;
   const groups = listed && listed.project === id ? listed.groups : null;
   const fresh = listed?.project === id && listed?.fresh;
   const load = () => {
@@ -57,8 +58,8 @@ export function HomeDraft() {
     const mine = ++asked.current;
     const land = (reply: Record<string, any>, fresh: boolean) => {
       if (mine !== asked.current) return;
-      // Cache fills this project's empty picker only; a list already shown always wins.
-      setListed((now) => !fresh && now?.project === id ? now : { project: id, groups: asGroups(reply.groups) as LevelGroup[], fresh });
+      // Cache fills an empty picker or updates trust; otherwise the list already shown wins.
+      setListed((now) => !fresh && now?.project === id && now.trusted === trusted ? now : { project: id, trusted, groups: asGroups(reply.groups) as LevelGroup[], fresh });
       if (fresh) setListError(null);
     };
     run(["models", "--project", id]).then((reply) => land(reply, false), () => {});
@@ -67,7 +68,7 @@ export function HomeDraft() {
   useEffect(() => {
     if (daemon) load();
     return () => { asked.current++; };
-  }, [daemon, id]);
+  }, [daemon, id, trusted]);
 
   const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
     Boolean(choice && groups?.some((group) => !group.unavailable && group.provider === choice.provider && group.models.some((each) => each.id === choice.model)));
@@ -108,7 +109,7 @@ export function HomeDraft() {
         initial={draft.text}
         onDraft={(text) => setHomeDraft({ text })}
         focus={draft.focus}
-        onSend={(text) => project && model && start(project.id, draft.workIn, model, text, pick)}
+        onSend={(text) => project && model && start(project.id, draft.workIn, model, text, pick ?? agent?.level ?? undefined)}
       />
       <SetUpAgentDialog
         name={setUp}
