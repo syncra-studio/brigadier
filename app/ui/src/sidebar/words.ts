@@ -1,3 +1,5 @@
+import type { Row } from "../daemon";
+
 /** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, or nothing. */
 export type Mark = "working" | "needs" | "amber" | "unread" | null;
 
@@ -18,11 +20,7 @@ export type SessionRow = {
   finished: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
-  /** When it was pinned (ms), or null [D185]. */
-  pinned?: number | null;
-  /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
-  touched?: number;
-};
+} & Pick<Row, "pinned" | "touched">;
 
 export type Project = { id: string; name: string };
 

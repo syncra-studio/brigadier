@@ -18,6 +18,10 @@ export type Row = {
   sent: number;
   finished: number;
   project: string | null;
+  /** When it was pinned (ms), or null [D185]. */
+  pinned?: number | null;
+  /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
+  touched?: number;
   backend: string;
   updated: number;
   items: number;
