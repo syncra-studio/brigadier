@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import { AccountsPage } from "./accounts/page";
+import { LimitBar } from "./accounts/limit";
 import { Input } from "./components/input";
 import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
-import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
+import { openThread, type Row, search, threadSource, useDaemon, useThread, type View } from "./daemon";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
@@ -41,10 +43,10 @@ function App() {
   if (hash === "#states") return <Demo />;
   if (!profile.value) return <FirstLoad error={daemon === null ? (refused ?? "Daemon not reachable · reconnecting…") : profile.error} />;
   if (!profile.value.onboarded) return <Onboarding profile={profile.value} />;
+  if (hash === "#accounts") return <AccountsPage />;
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
-    const row = rows?.find((each) => each.id === id);
-    return <SessionThread id={id} title={row?.title} stalled={row?.state === "stalled"} offline={daemon === null} />;
+    return <SessionThread id={id} row={rows?.find((row) => row.id === id)} offline={daemon === null} />;
   }
   return (
     <main className="fixed inset-0 flex flex-col items-center gap-2 overflow-y-auto pt-titlebar">
@@ -58,6 +60,9 @@ function App() {
       {daemon === null && <p className="text-sm text-destructive">{refused ?? "Daemon not reachable · reconnecting…"}</p>}
       <a href="#states" className="text-sm text-muted-foreground hover:text-foreground">
         Session states
+      </a>
+      <a href="#accounts" className="text-sm text-muted-foreground hover:text-foreground">
+        Accounts
       </a>
       <StartForm />
       <Sessions rows={rows} found={found} offline={daemon === null} />
@@ -108,7 +113,8 @@ function Sessions({ rows, found, offline }: { rows: View["rows"]; found: View["s
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 // Its terminal sits beside it, on the same conversation [D47].
-function SessionThread({ id, title, stalled, offline }: { id: string; title: string | undefined; stalled: boolean; offline: boolean }) {
+function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
+  const title = row?.title;
   useEffect(() => openThread(id), [id]);
   const state = useThread();
   return (
@@ -121,6 +127,7 @@ function SessionThread({ id, title, stalled, offline }: { id: string; title: str
         <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{title || id}</span>
       </header>
       {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
+      <LimitBar row={row} offline={offline} />
       <div className="flex min-h-0 flex-1">
         {state?.status === "missing" ? (
           <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
@@ -128,7 +135,7 @@ function SessionThread({ id, title, stalled, offline }: { id: string; title: str
           <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
         ) : (
           <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-            <Thread source={threadSource} footer={stalled && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
+            <Thread source={threadSource} footer={row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
           </div>
         )}
         {state?.status !== "missing" && <TerminalPane id={id} />}

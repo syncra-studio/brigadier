@@ -1,0 +1,107 @@
+import { useSyncExternalStore } from "react";
+
+import { errorText, run } from "../onboarding/api";
+
+/** One account as Rust checked it in its own home [D51]; `id` "" is the computer's own login. */
+export type Account = {
+  id: string;
+  name: string;
+  check: { installed: boolean; signed_in?: boolean | null; how?: string; kept_apart?: boolean; models?: string[]; error?: string };
+  limited_at: number | null;
+  sign_in: { id: string; running: boolean; code: number | null; signal: number | null } | null;
+};
+
+/** An agent with its switching settings; `accounts` is null for one that keeps one login. */
+export type SwitchAgent = {
+  name: string;
+  label: string;
+  installed: boolean;
+  released: boolean;
+  accounts: { vendor: string; auto: boolean; list: Account[] } | null;
+};
+
+type State = { agents?: SwitchAgent[]; switchAgents?: boolean; error?: string; loading: boolean };
+
+let state: State = { loading: false };
+const listeners = new Set<() => void>();
+const set = (next: Partial<State>) => {
+  state = { ...state, ...next };
+  for (const listener of listeners) listener();
+};
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+export const useAccounts = () => useSyncExternalStore(subscribe, () => state);
+
+// The last asked list wins: an older reply never lands over a newer one.
+let asked = 0;
+
+/** Every agent's accounts, each checked in its own home. The last list stays while it loads. */
+export function loadAccounts(): Promise<void> {
+  const mine = ++asked;
+  set({ loading: true });
+  return run(["accounts"]).then(
+    (reply) => {
+      if (mine === asked) set({ agents: reply.agents, switchAgents: reply.switch_agents, error: undefined, loading: false });
+    },
+    (cause) => {
+      if (mine === asked) set({ error: errorText(cause), loading: false });
+    },
+  );
+}
+
+/** A switching setting: shown at once, then the list again; on failure it goes back and throws [D30]. */
+export async function setSwitching(args: string[], shown: (agents: SwitchAgent[]) => Partial<State>): Promise<void> {
+  const before = state;
+  if (state.agents) set(shown(state.agents));
+  try {
+    await run(["switching", ...args]);
+  } catch (cause) {
+    set({ agents: before.agents, switchAgents: before.switchAgents });
+    throw cause;
+  }
+  void loadAccounts();
+}
+
+/** Turns an agent's account switching or release on or off, shown at once. */
+export const setAgent = (name: string, key: "auto" | "release", on: boolean) =>
+  setSwitching(["--agent", name, `--${key}`, on ? "on" : "off"], (agents) => ({
+    agents: agents.map((agent) =>
+      agent.name !== name
+        ? agent
+        : key === "release"
+          ? { ...agent, released: on }
+          : { ...agent, accounts: agent.accounts && { ...agent.accounts, auto: on } },
+    ),
+  }));
+
+export const setAgents = (on: boolean) => setSwitching(["--agents", on ? "on" : "off"], () => ({ switchAgents: on }));
+
+/** The account's sign-in terminal id, as Rust names its setup run. */
+export const signInRun = (agent: string, id: string) => `setup-${agent}-${id}`;
+
+/** Adds an account and opens its CLI's own sign-in; returns the new account's id. */
+export async function addAccount(agent: string): Promise<string> {
+  const reply = await run(["accounts", "add", agent, "--cols", "100", "--rows", "16"]);
+  void loadAccounts();
+  return reply.account as string;
+}
+
+export async function signIn(id: string): Promise<void> {
+  await run(["accounts", "sign-in", id, "--cols", "100", "--rows", "16"]);
+  void loadAccounts();
+}
+
+export const closeSignIn = (id: string) => run(["accounts", "close", id]).then(() => loadAccounts());
+
+/** Removes an account; Rust refuses while a session runs on it and says why. */
+export async function removeAccount(id: string): Promise<string | null> {
+  const reply = await run(["accounts", "remove", id]);
+  await loadAccounts();
+  return (reply.note as string | null) ?? null;
+}
+
+/** Switches a session at its limit to `account` ("" is the computer's login); no account: a new conversation with a hand-off. */
+export const switchSession = (session: string, account?: string) =>
+  run(["switch", session, ...(account === undefined ? [] : ["--account", account])]);
