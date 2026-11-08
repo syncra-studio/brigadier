@@ -38,6 +38,13 @@ const ROWS: SessionRow[] = [
   row("8", "Landing page hero copy", "idle", null, "p2"),
   row("9", "Run the nightly build", "idle_jobs", "working", "p1"),
   row("10", "A session from before projects", "stopped", null, null),
+  row("11", "Clean up the old exports", "waiting_answer", "needs", "p1", { reason: { approval: "r1" } }),
+];
+
+// Two pinned, and a long tail of quiet ones that pushes the rows needing you out of view, so the pill shows [D185, D200].
+const LONG: SessionRow[] = [
+  ...ROWS.map((each) => (each.id === "4" || each.id === "8" ? { ...each, pinned: at(9, Number(each.id)) } : each)),
+  ...Array.from({ length: 14 }, (_, n) => row(String(20 + n), `Earlier session ${n + 1}`, "idle", null, n % 2 ? "p1" : "p2", { sent: at(8, n) })),
 ];
 
 // The second demo opens on Group by project; after that it keeps what you pick.
@@ -77,12 +84,12 @@ export function SidebarGallery() {
         ))}
       </Row>
       <Row name="hover card · each state in words">
-        {[ROWS[1], ROWS[4], ROWS[5], ROWS[6], ROWS[9]].map((each) => (
+        {[ROWS[1], ROWS[10], ROWS[4], ROWS[5], ROWS[6], ROWS[9]].map((each) => (
           <State key={each.id} label={statusWords(each) ?? "says nothing"}>
             <Held className="h-40 w-140">
               {(box) => (
                 <NavList className="w-60">
-                  <SessionRowItem row={each} project={PROJECTS.find((p) => p.id === each.project)} active={false} badged held={box} onOpen={() => {}} />
+                  <SessionRowItem row={each} project={PROJECTS.find((p) => p.id === each.project)} active={false} badged held={box} onOpen={() => {}} onRename={() => {}} />
                 </NavList>
               )}
             </Held>
@@ -101,6 +108,9 @@ export function SidebarGallery() {
         </State>
         <State label="empty">
           <Demo storeKey="gallery-sidebar-d" rows={[]} />
+        </State>
+        <State label="pinned · need-you pill (scroll the list)">
+          <Demo storeKey="gallery-sidebar-f" rows={LONG} />
         </State>
         <State label="offline">
           <Demo storeKey="gallery-sidebar-e" rows={ROWS} offline />

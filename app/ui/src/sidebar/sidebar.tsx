@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
@@ -12,6 +12,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openAddProject, setShowProject } from "../projects/store";
+import { markUnread, pin, rename, useShown } from "./actions";
+import { RenameDialog } from "./menu";
+import { NeedYouPill } from "./pill";
 import { SessionRowItem } from "./row";
 import type { Project, SessionRow } from "./words";
 
@@ -70,10 +73,64 @@ export function AppSidebar({
 }) {
   const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "none");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
+  const [renaming, setRenaming] = useState<SessionRow | null>(null);
+  const list = useRef<HTMLDivElement>(null);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
-  const sorted = rows?.toSorted(byLastSend);
+  const shown = useShown(rows);
   const projectOf = new Map(projects.map((project) => [project.id, project]));
+  // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
+  const pinned = shown?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
+  const rest = shown?.filter((each) => !each.pinned).toSorted(byLastSend);
+  const homeless = rest?.filter((each) => each.project === null || !projectOf.has(each.project)) ?? [];
+  const byName = projects.toSorted((a, b) => a.name.localeCompare(b.name));
+  // Each section's rows top to bottom, keyed by what folds them: the order ⌥⌘A goes in and the pill counts.
+  const sections: [string[], SessionRow[]][] =
+    grouping === "none"
+      ? [
+          [["pinned"], pinned],
+          [["open"], rest ?? []],
+        ]
+      : [
+          [["pinned"], pinned],
+          ...byName.map((project): [string[], SessionRow[]] => [["projects", project.id], rest?.filter((each) => each.project === project.id) ?? []]),
+          [["none"], homeless],
+        ];
+  const order = sections.flatMap(([, each]) => each);
+  const activeRow = order.find((each) => each.id === active);
+
+  // Unfolds what holds a row, then brings it into view.
+  const reveal = (id: string) => {
+    const keys = sections.find(([, each]) => each.some((row) => row.id === id))?.[0] ?? [];
+    if (keys.some((key) => !isOpen(key))) setFolded(folded.filter((key) => !keys.includes(key)));
+    requestAnimationFrame(() => list.current?.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
+  };
+  // ⌥⌘A: the next session waiting on you below the open one, wrapping once [D185].
+  const nextNeedingYou = () => {
+    const at = order.findIndex((each) => each.id === active);
+    const next = [...order.slice(at + 1), ...order.slice(0, Math.max(at, 0))].find((each) => each.mark === "needs");
+    if (!next) return;
+    onOpen(next.id);
+    reveal(next.id);
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.ctrlKey || event.repeat || event.isComposing) return;
+      const key = `${event.altKey ? "⌥" : ""}${event.shiftKey ? "⇧" : ""}${event.code}`;
+      const action = {
+        "⌥KeyA": nextNeedingYou,
+        "⌥KeyP": activeRow && (() => pin(activeRow, !activeRow.pinned)),
+        "⌥KeyR": activeRow && (() => setRenaming(activeRow)),
+        "⇧KeyU": activeRow && (() => markUnread(activeRow, true)),
+      }[key];
+      if (!action) return;
+      event.preventDefault();
+      action();
+    };
+    addEventListener("keydown", onKeyDown);
+    return () => removeEventListener("keydown", onKeyDown);
+  });
+
   const row = (each: SessionRow, layout: { badged?: boolean; nested?: boolean }) => (
     <SessionRowItem
       key={each.id}
@@ -82,6 +139,7 @@ export function AppSidebar({
       active={each.id === active}
       offline={offline}
       onOpen={onOpen}
+      onRename={setRenaming}
       {...layout}
     />
   );
@@ -94,6 +152,11 @@ export function AppSidebar({
       requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
     });
   });
+  // Counted where its sections are unfolded, without the open session [D200].
+  const attention = sections
+    .filter(([keys]) => keys.every(isOpen))
+    .flatMap(([, each]) => each)
+    .filter((each) => each.id !== active && (each.mark === "needs" || each.mark === "amber"));
 
   return (
     <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot}>
@@ -106,71 +169,85 @@ export function AppSidebar({
           </NavRow>
         </li>
       </NavList>
-      <div className={LIST}>
-        {sorted === undefined ? (
-          <Loading />
-        ) : grouping === "none" ? (
-          <NavSection title="Open" open={isOpen("open")} onOpenChange={(open) => setOpen("open", open)} steadyEnd={view}>
-            <NavList className="gap-1">
-              {sorted.map((each) => row(each, { badged: true }))}
-              {sorted.length === 0 && <EmptyState as="li" title="Sessions you start appear here." />}
-            </NavList>
-          </NavSection>
-        ) : (
-          <>
-            <NavSection
-              title="Projects"
-              open={isOpen("projects")}
-              onOpenChange={(open) => setOpen("projects", open)}
-              steadyEnd={view}
-              actions={
-                <Tooltip>
-                  <TooltipTrigger render={<RowAction aria-label="Add project" onClick={() => openAddProject()} />}>
-                    <Plus />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Add project</TooltipContent>
-                </Tooltip>
-              }
-            >
-              <NavList>
-                {projects
-                  .toSorted((a, b) => a.name.localeCompare(b.name))
-                  .map((project) => (
-                    <ProjectRow
-                      key={project.id}
-                      id={project.id}
-                      name={project.name}
-                      open={isOpen(project.id)}
-                      onOpenChange={(open) => setOpen(project.id, open)}
-                    >
-                      {sorted.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                    </ProjectRow>
-                  ))}
-                {projects.length === 0 && (
-                  <EmptyState
-                    as="li"
-                    title={
-                      <span>
-                        Projects group sessions on a repository.{" "}
-                        <button type="button" className="cursor-pointer text-foreground underline-offset-link hover:underline" onClick={() => openAddProject()}>
-                          Add a project
-                        </button>
-                      </span>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={list} className={LIST}>
+          {rest === undefined ? (
+            <Loading />
+          ) : (
+            <>
+              {pinned.length > 0 && (
+                <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                  <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
+                </NavSection>
+              )}
+              {grouping === "none" ? (
+                <NavSection title="Open" open={isOpen("open")} onOpenChange={(open) => setOpen("open", open)} steadyEnd={view}>
+                  <NavList className="gap-1">
+                    {rest.map((each) => row(each, { badged: true }))}
+                    {shown?.length === 0 && <EmptyState as="li" title="Sessions you start appear here." />}
+                  </NavList>
+                </NavSection>
+              ) : (
+                <>
+                  <NavSection
+                    title="Projects"
+                    open={isOpen("projects")}
+                    onOpenChange={(open) => setOpen("projects", open)}
+                    steadyEnd={view}
+                    actions={
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction aria-label="Add project" onClick={() => openAddProject()} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Add project</TooltipContent>
+                      </Tooltip>
                     }
-                  />
-                )}
-              </NavList>
-            </NavSection>
-            {/* shortcut: sessions with no project (made before projects were records) sit under their own
-                title; drop it once 1a gives every session a project. */}
-            {sorted.some((each) => each.project === null || !projectOf.has(each.project)) && (
-              <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
-                <NavList>{sorted.filter((each) => each.project === null || !projectOf.has(each.project)).map((each) => row(each, {}))}</NavList>
-              </NavSection>
-            )}
-          </>
-        )}
+                  >
+                    <NavList>
+                      {byName.map((project) => (
+                        <ProjectRow
+                          key={project.id}
+                          id={project.id}
+                          name={project.name}
+                          open={isOpen(project.id)}
+                          onOpenChange={(open) => setOpen(project.id, open)}
+                        >
+                          {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                        </ProjectRow>
+                      ))}
+                      {projects.length === 0 && (
+                        <EmptyState
+                          as="li"
+                          title={
+                            <span>
+                              Projects group sessions on a repository.{" "}
+                              <button
+                                type="button"
+                                className="cursor-pointer text-foreground underline-offset-link hover:underline"
+                                onClick={() => openAddProject()}
+                              >
+                                Add a project
+                              </button>
+                            </span>
+                          }
+                        />
+                      )}
+                    </NavList>
+                  </NavSection>
+                  {/* Sessions with no project (made before projects were records) [D224]. */}
+                  {homeless.length > 0 && (
+                    <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                      <NavList>{homeless.map((each) => row(each, {}))}</NavList>
+                    </NavSection>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+        <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
       </div>
+      <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />
     </SidebarPanel>
   );
 }

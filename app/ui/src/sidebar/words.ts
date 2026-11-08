@@ -7,6 +7,8 @@ export type SessionRow = {
   title: string;
   /** The fold's state, the fact behind the mark; only ever shown through its words here. */
   state: string;
+  /** What the state is about, as Rust says: a question's text, `{approval: id}`, a limit's message… */
+  reason?: unknown;
   mark: Mark;
   /** When a usage limit resets (ms), if its CLI said; null otherwise [D74]. */
   resets: number | null;
@@ -16,6 +18,10 @@ export type SessionRow = {
   finished: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
+  /** When it was pinned (ms), or null [D185]. */
+  pinned?: number | null;
+  /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
+  touched?: number;
 };
 
 export type Project = { id: string; name: string };
@@ -59,6 +65,8 @@ export function statusWords(row: SessionRow): string | null {
     return row.resets === null ? words : `${words} · resets ${hhmm(row.resets)}`;
   }
   if (row.state === "terminal") return row.mark === "working" ? "Working · in the terminal" : "Terminal open";
+  // A pending approval waits as a question does; only its reason says which [D173].
+  if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
 }
