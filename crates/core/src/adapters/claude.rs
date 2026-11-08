@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 mod clean;
 
+mod trust;
+
 pub struct Claude;
 
 impl Adapter for Claude {
@@ -98,6 +100,7 @@ impl Adapter for Claude {
             sign_in: &["auth", "login", "--claudeai"],
             sign_out: &["auth", "logout"],
             kinds: &["Claude account"],
+            trust: Some(trust::TRUST),
         })
     }
 

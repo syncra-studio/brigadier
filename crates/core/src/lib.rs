@@ -12,6 +12,7 @@ pub mod session;
 pub mod switch;
 pub mod terminal;
 pub mod thread;
+pub mod trust;
 mod worktree_setup;
 pub mod worktrees;
 

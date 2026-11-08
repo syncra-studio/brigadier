@@ -38,6 +38,14 @@ pub fn send(
     let Some(a) = adapters::get(&b) else {
         return json!({"ok": false, "error": format!("unknown backend {b}")});
     };
+    // Its CLI holds the project's trust answer before the turn, "untrusted" included [D182].
+    if let Err(e) = crate::trust::ensure(&as_run(spec, f, &b, None), a) {
+        let e = format!(
+            "This folder isn't trusted, and Brigadier couldn't record that in {}'s own settings, so it could trust the folder on its own: {e}",
+            a.label()
+        );
+        return json!({"ok": false, "result": "refused", "error": e});
+    }
     // Each turn runs with the level its spec says now, re-checked here [D129, D170], and the model
     // and effort it names: a turn start hands any change to a child already running.
     // An untrusted or unanswered project holds every turn to Ask; an agent that can't enforce it
