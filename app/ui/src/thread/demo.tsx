@@ -67,12 +67,12 @@ export function Demo() {
       <div className="min-h-0 flex-1">
         <Thread key={shown?.key} source={source} ref={thread} footer={running && store ? <Working store={store} /> : null} />
       </div>
-      <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-4">
+      {/* Stands in for the composer: its height (96 px) and gap to the window's bottom. */}
+      <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-3">
         <textarea
           aria-label="Message"
           placeholder="Type here while it streams"
-          className="w-full resize-none rounded-overlay bg-card px-4 py-3 text-base shadow-raised outline-none"
-          rows={2}
+          className="h-24 w-full resize-none rounded-overlay bg-card px-4 py-3 text-base shadow-raised outline-none"
         />
       </div>
     </main>
