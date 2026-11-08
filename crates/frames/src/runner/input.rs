@@ -23,7 +23,7 @@ impl Runner {
             );
         }
         let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"], "switch": req["switch"],
-                          "setup": req["setup"], "steer": req["steer"], "control": req["control"]});
+                          "setup": req["setup"], "steer": req["steer"], "control": req["control"], "ack": req["ack"]});
         // A control message (an answer, a steer, a stop) was judged on the log at `if_len`: it is
         // claimed only if nothing reached the log since, in the same lock as its intent [D159].
         let appended = {
@@ -62,6 +62,16 @@ impl Runner {
         }
     }
 
+    /// Marks a written input delivered, unless its agent acks: then only the agent's own reply to
+    /// the command id, a later line of its output, says it was applied [D222].
+    pub(super) fn written(&self, req: &Value, cid: Option<&str>) -> &'static str {
+        if req["ack"] == true {
+            return "sent";
+        }
+        self.delivered(cid);
+        "delivered"
+    }
+
     pub(super) fn input(&self, req: &Value) -> Value {
         let _op = self.op.lock().unwrap();
         {
@@ -91,10 +101,7 @@ impl Runner {
             None => Err(io::Error::other("child exited")),
         };
         match written {
-            Ok(()) => {
-                self.delivered(cid);
-                json!({"ok": true, "cid": cid, "result": "delivered"})
-            }
+            Ok(()) => json!({"ok": true, "cid": cid, "result": self.written(req, cid)}),
             Err(e) => json!({"ok": true, "cid": cid, "result": "logged", "error": e.to_string()}),
         }
     }

@@ -61,6 +61,8 @@ pub struct Thread {
     pending_changed: bool,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
+    /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
+    acking: HashSet<String>,
     /// The level the last input set up, to tell when trust taken back holds the next to Ask.
     level: Option<Value>,
 }
@@ -78,8 +80,9 @@ fn reason(why: Option<&str>) -> &'static str {
 const PAGE: usize = 2000;
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
-const CLOSES: [&str; 8] = [
+const CLOSES: [&str; 9] = [
     "exited",
+    "reply",
     "turn_end",
     "limited",
     "sign_in",

@@ -36,6 +36,10 @@ impl Thread {
     /// An answer logged: its request stops waiting at once; its row shows it once delivered.
     pub(super) fn control(&mut self, item: &Value, ts: u64) {
         let c = &item["control"];
+        if item["ack"] == true {
+            self.acking
+                .insert(item["cid"].as_str().unwrap_or("").to_string());
+        }
         if c["kind"] != "answer" {
             return;
         }

@@ -228,8 +228,12 @@ impl Runner {
         if let Err(e) = wrote {
             return json!({"ok": true, "cid": cid, "result": "logged", "error": e.to_string(), "pid": pid});
         }
-        self.delivered(cid);
-        json!({"ok": true, "cid": cid, "result": if cid.is_some() { "delivered" } else { "spawned" }, "pid": pid, "spawn": spawn})
+        let result = if cid.is_some() {
+            self.written(req, cid)
+        } else {
+            "spawned"
+        };
+        json!({"ok": true, "cid": cid, "result": result, "pid": pid, "spawn": spawn})
     }
 
     /// Copies a child stream into the log. When the disk is full it holds the bytes and retries,

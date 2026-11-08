@@ -192,8 +192,10 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
             ));
             continue;
         }
+        // A failed forget keeps its files: they're how a retry knows there's still something to do.
         if let Err(e) = a.forget(spec, id) {
             left.push(format!("{backend}: {e}"));
+            continue;
         }
         for path in a.external(spec, id) {
             let gone = if path.is_dir() {

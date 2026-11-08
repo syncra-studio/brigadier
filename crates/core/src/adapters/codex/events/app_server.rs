@@ -1,0 +1,183 @@
+//! The app-server's lines as the helper passes them on, in the same shapes as `exec --json` once
+//! named alike [D159]. Requests carry what an answer needs under `cli`, as D177 leaves room for.
+
+use super::super::super::{Event, s};
+use super::{parse, refused, snake};
+use serde_json::{Value, json};
+
+pub fn events(v: &Value) -> Vec<Event> {
+    let p = &v["params"];
+    let d = &v["data"];
+    match s(v, &["method"]) {
+        "" if s(v, &["type"]) == "brigadier.reply" => vec![Event::Reply {
+            id: s(d, &["id"]).into(),
+            error: d["error"].as_str().map(String::from),
+            level: None,
+        }],
+        "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
+        "turn/started" => vec![Event::TurnStart],
+        "turn/completed" => completed(p),
+        method @ ("item/started" | "item/completed") => {
+            let kind = method.replace('/', ".");
+            let exec = json!({"type": kind, "item": exec_item(&p["item"])});
+            parse(&exec.to_string())
+        }
+        "thread/tokenUsage/updated" => vec![Event::Usage(snake_keys(&p["tokenUsage"]["last"]))],
+        "serverRequest/resolved" => vec![Event::Resolved(s(p, &["requestId"]).into())],
+        "item/commandExecution/requestApproval" => vec![command(v)],
+        "item/fileChange/requestApproval" => vec![edit(v)],
+        "item/permissions/requestApproval" => vec![permissions(v)],
+        "mcpServer/elicitation/request" => vec![mcp(v)],
+        "item/tool/requestUserInput" => vec![question(v)],
+        _ => vec![],
+    }
+}
+
+/// Whether a failed turn hit a usage limit.
+pub fn limited(turn: &Value) -> bool {
+    let info = s(turn, &["error", "codexErrorInfo"]);
+    matches!(info, "usageLimitExceeded" | "rateLimitExceeded")
+        || matches!(
+            refused(s(turn, &["error", "message"])),
+            Some(Event::Limited(..))
+        )
+}
+
+fn completed(p: &Value) -> Vec<Event> {
+    let turn = &p["turn"];
+    let status = s(turn, &["status"]);
+    let mut events = vec![];
+    if status == "failed" {
+        let message = s(turn, &["error", "message"]);
+        events.push(if limited(turn) {
+            Event::Limited(message.into(), p["brigadier"]["resets"].as_u64())
+        } else if s(turn, &["error", "codexErrorInfo"]) == "unauthorized" {
+            Event::SignIn(message.into())
+        } else {
+            refused(message).unwrap_or(Event::Unknown(message.into()))
+        });
+    }
+    events.push(Event::TurnEnd(status == "completed"));
+    events
+}
+
+fn snake_keys(v: &Value) -> Value {
+    let keys = v.as_object().into_iter().flatten();
+    Value::Object(keys.map(|(k, v)| (snake(k), v.clone())).collect())
+}
+
+/// A `camelCase` thread item as `exec --json` names it.
+fn exec_item(item: &Value) -> Value {
+    let mut e = snake_keys(item);
+    for k in ["type", "tool"] {
+        if let Some(name) = e[k].as_str().map(snake) {
+            e[k] = name.into();
+        }
+    }
+    if e["type"] == "reasoning" {
+        let parts = e["summary"].as_array().into_iter().flatten();
+        let text: Vec<&str> = parts.filter_map(Value::as_str).collect();
+        e["text"] = text.join("\n").into();
+    }
+    if let Some(states) = e["agents_states"].as_object_mut() {
+        for state in states.values_mut() {
+            let status = snake(s(state, &["status"]));
+            state["status"] = status.into();
+        }
+    }
+    e
+}
+
+/// What answering a request takes: its own JSON-RPC id, method, thread and turn.
+fn cli(v: &Value) -> Value {
+    let p = &v["params"];
+    json!({"rid": v["rid"], "method": v["method"], "thread": p["threadId"], "turn": p["turnId"], "cwd": p["cwd"]})
+}
+
+fn command(v: &Value) -> Event {
+    let p = &v["params"];
+    let net = &p["networkApprovalContext"];
+    let host = net["host"].as_str();
+    let mut a = json!({"id": v["id"], "action": if host.is_some() { "network" } else { "command" },
+        "reason": p["reason"], "command": p["command"], "host": net["host"], "cli": cli(v)});
+    if p["insideSession"] != true {
+        a["cwd"] = p["cwd"].clone();
+    }
+    if p["canGrant"] == true {
+        a["grant"] = match host {
+            Some(host) => json!({"scope": "network", "pattern": host}),
+            None => json!({"scope": "command", "pattern": p["command"]}),
+        };
+    }
+    Event::Approval(a)
+}
+
+/// Its file requests name no files and list no decisions, though they take `acceptForSession`:
+/// the helper adds the files from the item they belong to, and the grant covers their folder [D193].
+fn edit(v: &Value) -> Event {
+    let p = &v["params"];
+    let paths: Vec<&str> = (p["files"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .collect();
+    let mut a = json!({"id": v["id"], "action": "edit", "reason": p["reason"], "paths": paths, "cli": cli(v)});
+    let root = p["grantRoot"].as_str().map(String::from).or(parent(&paths));
+    if let Some(root) = root {
+        a["grant"] = json!({"scope": "edits", "pattern": root});
+    }
+    Event::Approval(a)
+}
+
+/// The folder that holds every path; None when that would be the root, or nothing was reported.
+fn parent(paths: &[&str]) -> Option<String> {
+    let dirs: Vec<Vec<&str>> = (paths.iter())
+        .map(|p| {
+            let mut parts: Vec<&str> = p.split('/').collect();
+            parts.pop();
+            parts
+        })
+        .collect();
+    let first = dirs.first()?;
+    let same = (0..first.len())
+        .take_while(|&i| dirs.iter().all(|d| d.get(i) == first.get(i)))
+        .count();
+    (same > 1).then(|| first[..same].join("/"))
+}
+
+/// Codex's request for more permissions: no scope in D177 fits, so no session grant (proposed).
+fn permissions(v: &Value) -> Event {
+    let p = &v["params"];
+    let mut who = cli(v);
+    who["permissions"] = p["permissions"].clone();
+    Event::Approval(
+        json!({"id": v["id"], "action": "permission", "reason": p["reason"],
+        "input": p["permissions"].to_string(), "cli": who}),
+    )
+}
+
+fn mcp(v: &Value) -> Event {
+    let p = &v["params"];
+    Event::Approval(
+        json!({"id": v["id"], "action": "other", "reason": p["request"]["message"],
+        "input": p["serverName"], "cli": cli(v)}),
+    )
+}
+
+fn question(v: &Value) -> Event {
+    let p = &v["params"];
+    let questions = p["questions"].as_array().cloned().unwrap_or_default();
+    let items: Vec<Value> = (questions.iter())
+        .map(|q| {
+            let options = q["options"].as_array().cloned().unwrap_or_default();
+            let options: Vec<Value> = (options.iter())
+                .map(|o| json!({"label": o["label"], "description": o["description"]}))
+                .collect();
+            json!({"text": q["question"], "options": options, "recommended": null, "multiSelect": false})
+        })
+        .collect();
+    let mut who = cli(v);
+    who["ids"] = questions.iter().map(|q| q["id"].clone()).collect();
+    Event::Question(
+        json!({"id": v["id"], "title": questions.first().map(|q| q["header"].clone()),
+        "items": items, "cli": who}),
+    )
+}
