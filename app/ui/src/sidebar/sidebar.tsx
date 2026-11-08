@@ -162,8 +162,8 @@ export function AppSidebar({
   const view = <ViewMenu grouping={grouping} onGrouping={setGrouping} />;
   // Add project shows a project already added here: grouped by project, unfolded, in view [D165].
   useEffect(() => {
-    setShowProject((id) => {
-      setGrouping("project");
+    setShowProject((id, group) => {
+      if (group) setGrouping("project");
       setFolded(folded.filter((key) => key !== "projects" && key !== id));
       requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
     });

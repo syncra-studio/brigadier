@@ -439,6 +439,21 @@
   color-scheme: dark;
 }
 
+@layer base {
+  body {
+    @apply select-none;
+  }
+  input,
+  textarea,
+  [contenteditable],
+  .markdown,
+  pre,
+  code,
+  [data-selectable] {
+    @apply select-text;
+  }
+}
+
 /* Thin overlay-style scrollbars that appear on hover, carried by the standard properties. */
 @layer components {
   * {
@@ -964,6 +979,8 @@
 @utility edge-fade-sidebar {
   --edge-size-top: 2.5rem;
   --edge-size-bottom: 4rem;
+  scroll-padding-top: var(--edge-size-top);
+  scroll-padding-bottom: var(--edge-size-bottom);
 }
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
 @utility wash-line {

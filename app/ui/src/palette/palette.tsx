@@ -320,7 +320,7 @@ export function GlobalSearch() {
       onOpenSession={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
       onOpenProject={(id) => {
         newSession(id);
-        showProject(id);
+        showProject(id, false);
       }}
     />
   );

@@ -132,13 +132,14 @@ export function QuestionRow({
     <OpeningRow
       keep={keep}
       detail={
-        <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm">
+        <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm select-text">
           {pairs.map((pair, at) => (
             <div key={at} className="flex flex-col gap-1">
               <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{pair.text}</dt>
               <dd className="whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{pair.given}</dd>
             </div>
           ))}
+
         </dl>
       }
     >

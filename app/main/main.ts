@@ -114,7 +114,7 @@ function openWindow(): void {
   // A crash leaves the window blank; reloading draws it again and reconnects to the daemon.
   // shortcut: a page that crashes on every load reloads forever; add a backoff if that ever happens.
   window.webContents.on("render-process-gone", (_event, details) => {
-    console.error("The page's renderer is gone:", details.reason);
+    console.error("The page's renderer is gone:", new Date().toISOString(), details);
     if (!window.isDestroyed()) window.webContents.reload();
   });
   if (hold) holdForIntro(window, themeBackground, introColours);
