@@ -1,14 +1,18 @@
 //! Codex CLI: one `codex exec --json` process per turn, continued with `exec resume <thread>`.
 
+use super::setup::{first_field, newest};
 use super::{
-    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, drop_lines, file_lines,
-    home_path, in_pty, paste, s, shell_step,
+    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, drop_lines,
+    file_lines, home_path, in_pty, paste, probe, s, shell_step, version,
 };
 use crate::Spec;
 use serde_json::Value;
-use std::{collections::BTreeSet, path::PathBuf};
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 pub struct Codex;
+
+const MODEL: &str = "gpt-5.6-luna";
 
 const TOOLS: [&str; 4] = [
     "command_execution",
@@ -22,9 +26,56 @@ impl Adapter for Codex {
         "codex"
     }
 
-    fn exe(&self) -> Option<PathBuf> {
-        let exe = home_path(".local/bin/codex");
-        exe.exists().then_some(exe)
+    fn label(&self) -> &'static str {
+        "Codex"
+    }
+
+    fn bin(&self) -> (&'static str, &'static [&'static str]) {
+        ("codex", &[".local/bin"])
+    }
+
+    fn install(&self) -> Option<&'static str> {
+        Some("curl -fsSL https://chatgpt.com/codex/install.sh | sh")
+    }
+
+    fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
+        Some(("Sign in", &["login"]))
+    }
+
+    /// `codex login status` exits 0 when signed in and says how on stderr. Only the kind of
+    /// sign-in is kept: its API-key line shows part of the key.
+    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let out = probe(exe, cwd, &[], &["login", "status"], 15)?;
+        let said = String::from_utf8_lossy(&out.stderr).to_string()
+            + &String::from_utf8_lossy(&out.stdout);
+        let signed_in = out.status.success();
+        let how = if !signed_in {
+            ""
+        } else if said.contains("ChatGPT") {
+            "ChatGPT account"
+        } else if said.contains("API key") {
+            "API key"
+        } else {
+            "signed in"
+        };
+        Ok(Check {
+            version: version(exe, cwd)?,
+            signed_in: Some(signed_in),
+            how: how.into(),
+            models: if signed_in {
+                vec![(MODEL.into(), false)]
+            } else {
+                vec![]
+            },
+        })
+    }
+
+    /// The folder each rollout ran in, from its first line.
+    fn projects(&self) -> Vec<PathBuf> {
+        newest(&home_path(".codex/sessions"), ".jsonl", 3, 300)
+            .iter()
+            .filter_map(|p| first_field(p, &["payload", "cwd"]).map(PathBuf::from))
+            .collect()
     }
 
     fn per_turn(&self) -> bool {
@@ -33,7 +84,7 @@ impl Adapter for Codex {
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
-        let model = spec.model.clone().unwrap_or_else(|| "gpt-5.6-luna".into());
+        let model = spec.model.clone().unwrap_or_else(|| MODEL.into());
         let mut argv = vec![exe.display().to_string()];
         if spec.mode != "pty" {
             argv.extend(
@@ -63,7 +114,7 @@ impl Adapter for Codex {
         argv.extend(text.map(String::from));
         Launch {
             argv,
-            env: base_env(spec, &exe),
+            env: base_env(spec, &exe, self.keys()),
             keep_stdin: spec.mode == "pty",
             input: None,
         }
@@ -145,14 +196,16 @@ impl Adapter for Codex {
 
     /// Its prompt history keeps the terminal's prompts by thread id, and a TUI that was killed
     /// leaves its writer lock; one a live writer holds stays, by Codex's own rule [D35].
-    fn forget(&self, _spec: &Spec, resume: &str) {
-        let _ = drop_lines(&home_path(".codex/history.jsonl"), "session_id", resume);
+    fn forget(&self, _spec: &Spec, resume: &str) -> Result<(), String> {
+        drop_lines(&home_path(".codex/history.jsonl"), "session_id", resume)
+            .map_err(|e| e.to_string())?;
         let lock = home_path(".codex/thread-writer-locks").join(format!("{resume}.lock"));
         if let Ok(f) = std::fs::File::open(&lock)
             && f.try_lock().is_ok()
         {
             let _ = std::fs::remove_file(&lock);
         }
+        Ok(())
     }
 
     /// Its TUI resumes a thread by id; a new thread's id can't be picked, so the first message of

@@ -34,7 +34,7 @@ impl Adapter for Fake {
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
         }
-        let mut env = base_env(spec, &exe);
+        let mut env = base_env(spec, &exe, &[]);
         for (k, v) in &spec.opts {
             env.push((k.clone(), v.clone()));
         }

@@ -55,8 +55,12 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // shortcut: polls every log's size each tick (about 10k stats a second at 10k sessions); move to
 // kqueue if that shows up in a profile.
 const TICK: Duration = Duration::from_millis(500);
-/// The commands that reach a host. The rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 6] = ["start", "send", "stop", "recover", "delete", "terminal"];
+/// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
+/// rest of the CLI prints to stdout or never returns.
+const ROUTED: [&str; 10] = [
+    "start", "send", "stop", "recover", "delete", "terminal", "agents", "setup", "profile",
+    "projects",
+];
 /// How often an open thread checks its log for new frames.
 const FOLLOW: Duration = Duration::from_millis(100);
 

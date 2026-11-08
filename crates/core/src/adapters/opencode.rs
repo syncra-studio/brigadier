@@ -1,30 +1,25 @@
-//! OpenCode: one `opencode run --format json` per turn on a private server, with all its data under
-//! the session folder, so the owner's own server and sessions are never touched.
+//! OpenCode: one `opencode run --format json` per turn, each on a private server (`--standalone`),
+//! never the owner's own service [D86]. It uses OpenCode's own store, so a key the user saved there
+//! works in every session, and delete removes the session through OpenCode itself [D35, D89].
 
+use super::setup::run as bounded;
 use super::{
-    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, home_path,
-    in_pty, paste, s, shell_step,
+    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, in_pty,
+    paste, probe, s, shell_step, version,
 };
 use crate::Spec;
 use serde_json::Value;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::Command;
 
 pub struct OpenCode;
 
+/// Providers that run on this Mac: OpenCode finds their servers by itself [D68].
+const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
+
 impl OpenCode {
     fn env(&self, spec: &Spec) -> Vec<(String, String)> {
-        let mut env = base_env(spec, &self.exe().unwrap_or_default());
-        let root = spec.dir.join("opencode");
-        for (k, d) in [
-            ("XDG_DATA_HOME", "data"),
-            ("XDG_CONFIG_HOME", "config"),
-            ("XDG_STATE_HOME", "state"),
-            ("XDG_CACHE_HOME", "cache"),
-        ] {
-            env.push((k.into(), root.join(d).display().to_string()));
-        }
-        env
+        base_env(spec, &self.exe().unwrap_or_default(), self.keys())
     }
 
     /// A session's newest messages, newest first.
@@ -39,27 +34,27 @@ impl OpenCode {
             "--param",
             "limit=100",
         ];
-        let out = self.run(spec, &args)?;
+        let out = self.run(spec, &args).ok()?;
         let v: Value = serde_json::from_str(&out[out.find('{')?..]).ok()?;
         v["data"].as_array().cloned()
     }
 
-    fn run(&self, spec: &Spec, args: &[&str]) -> Option<String> {
-        let mut command = Command::new(self.exe()?);
+    /// Its own command on a private server, bounded; what it printed, or why it failed.
+    fn run(&self, spec: &Spec, args: &[&str]) -> Result<String, String> {
+        let mut command = Command::new(self.exe().ok_or("OpenCode is not installed")?);
         command
             .args(args)
             .arg("--standalone")
             .env_clear()
             .envs(self.env(spec))
             .current_dir(&spec.cwd);
-        let out = command
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        let out = bounded(&mut command, 60)?;
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        if out.status.success() {
+            Ok(text)
+        } else {
+            Err(text + &String::from_utf8_lossy(&out.stderr))
+        }
     }
 }
 
@@ -68,9 +63,78 @@ impl Adapter for OpenCode {
         "opencode"
     }
 
-    fn exe(&self) -> Option<PathBuf> {
-        let exe = home_path(".opencode/bin/opencode");
-        exe.exists().then_some(exe)
+    fn label(&self) -> &'static str {
+        "OpenCode"
+    }
+
+    fn bin(&self) -> (&'static str, &'static [&'static str]) {
+        ("opencode", &[".opencode/bin"])
+    }
+
+    fn install(&self) -> Option<&'static str> {
+        Some("curl -fsSL https://opencode.ai/v2/install | bash")
+    }
+
+    /// Its own picker: an API key for any provider it knows, typed into its prompt [D45, D51].
+    fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
+        Some(("Add an API key", &["auth", "login", "--standalone"]))
+    }
+
+    /// The models.dev variables of the providers people most often use with it; a saved account
+    /// wins over a variable.
+    fn keys(&self) -> &'static [&'static str] {
+        &[
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "GROQ_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "MISTRAL_API_KEY",
+            "XAI_API_KEY",
+            "OPENCODE_API_KEY",
+        ]
+    }
+
+    /// Signed in means a saved account (`auth list`); usable means `models` lists something for
+    /// this folder: a saved or variable key, a local server it found, or its free models.
+    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let text = |args: &[&str]| -> Result<String, String> {
+            let out = probe(exe, cwd, self.keys(), args, 30)?;
+            let said = String::from_utf8_lossy(&out.stdout).into_owned();
+            match out.status.success() {
+                true => Ok(said),
+                false => Err(said + &String::from_utf8_lossy(&out.stderr)),
+            }
+        };
+        let auth = text(&["auth", "list", "--format", "json", "--standalone"])?;
+        let auth: Value =
+            serde_json::from_str(&auth[auth.find('[').unwrap_or(0)..]).unwrap_or_default();
+        let saved: Vec<&str> = auth
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|p| p["connections"].as_array().is_some_and(|c| !c.is_empty()))
+            .map(|p| s(p, &["name"]))
+            .collect();
+        let models = text(&["models", "--standalone"])?
+            .lines()
+            .filter(|l| l.contains('/') && !l.contains(' '))
+            .map(|l| {
+                (
+                    l.to_string(),
+                    LOCAL.iter().any(|p| l.starts_with(&format!("{p}/"))),
+                )
+            })
+            .collect();
+        Ok(Check {
+            version: version(exe, cwd)?,
+            signed_in: Some(!saved.is_empty()),
+            how: saved.join(", "),
+            models,
+        })
     }
 
     fn per_turn(&self) -> bool {
@@ -148,8 +212,13 @@ impl Adapter for OpenCode {
         }
     }
 
-    fn forget(&self, spec: &Spec, resume: &str) {
-        self.run(spec, &["session", "delete", resume]);
+    /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
+    /// as deleted. Never touches credentials or other sessions.
+    fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
+        match self.run(spec, &["session", "delete", resume]) {
+            Err(e) if !e.contains("Session not found") => Err(format!("OpenCode: {}", e.trim())),
+            _ => Ok(()),
+        }
     }
 
     /// Its TUI opens a session by id, on the same private server data as `run` (proposed: the
@@ -185,7 +254,7 @@ impl Adapter for OpenCode {
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
-        let out = self.run(spec, &["session", "export", resume])?;
+        let out = self.run(spec, &["session", "export", resume]).ok()?;
         let v: Value = serde_json::from_str(&out[out.find('{')?..]).ok()?;
         let (mut texts, mut tools) = (0, 0);
         for m in v["messages"]

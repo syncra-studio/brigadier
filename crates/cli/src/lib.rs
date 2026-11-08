@@ -4,6 +4,7 @@
 pub mod index;
 mod mirror;
 pub mod owner;
+mod setup;
 
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Spec, adapters};
@@ -22,7 +23,9 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>
-       brigadier awake [off|work|always]";
+       brigadier awake [off|work|always]
+       brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
+       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -66,7 +69,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // Every session id this command names, checked before any path is built from it.
     let ids = match cmd {
         "status" | "up" => &args[1..],
-        "index" | "awake" => &[][..],
+        "index" | "awake" | "agents" | "setup" | "profile" | "projects" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -190,7 +193,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let exe = env::current_exe()
                     .unwrap_or_default()
                     .with_file_name("brigadier");
-                let mut env: serde_json::Map<String, Value> = adapters::base_env(&spec, &exe)
+                let mut env: serde_json::Map<String, Value> = adapters::base_env(&spec, &exe, &[])
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect();
@@ -241,6 +244,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),
+        "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "awake" => {
             if let Some(mode) = args.get(1) {
                 if !core::AWAKE_MODES.contains(&mode.as_str()) {

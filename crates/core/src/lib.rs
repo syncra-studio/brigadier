@@ -50,8 +50,15 @@ pub fn check_id(id: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// A setup run (an install or sign-in in a terminal [D45]) is a session folder of its own under
+/// `setup/`, off the session list, so the host, log and terminal serve it unchanged [D47, D60].
+pub const SETUP: &str = "setup-";
+
 pub fn session_dir(data: &Path, id: &str) -> PathBuf {
-    data.join("sessions").join(id)
+    match id.strip_prefix(SETUP) {
+        Some(agent) => data.join("setup").join(agent),
+        None => data.join("sessions").join(id),
+    }
 }
 
 pub fn ids(data: &Path) -> Vec<String> {
@@ -424,7 +431,7 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
 /// Removes the session folder and every recorded path outside it. Reports what stayed.
 pub fn delete(spec: &Spec, f: &Fold) -> Value {
     let swept = sweep(f);
-    let (mut removed, mut left) = (vec![], vec![]);
+    let (mut removed, mut left, mut keep) = (vec![], vec![], false);
     for (backend, id) in &f.resume {
         let Some(a) = adapters::get(backend) else {
             continue;
@@ -436,7 +443,11 @@ pub fn delete(spec: &Spec, f: &Fold) -> Value {
             ));
             continue;
         }
-        a.forget(spec, id);
+        // Failed: the folder stays, and its log keeps the ids a later delete tries again with.
+        if let Err(e) = a.forget(spec, id) {
+            left.push(format!("{backend}: {e}"));
+            keep = true;
+        }
         for path in a.external(spec, id) {
             let gone = if path.is_dir() {
                 fs::remove_dir_all(&path)
@@ -456,9 +467,13 @@ pub fn delete(spec: &Spec, f: &Fold) -> Value {
             }
         }
     }
-    match fs::remove_dir_all(&spec.dir) {
-        Ok(()) => removed.push(spec.dir.display().to_string()),
-        Err(e) => left.push(format!("{}: {e}", spec.dir.display())),
+    if keep {
+        left.push(format!("{}: kept to try again", spec.dir.display()));
+    } else {
+        match fs::remove_dir_all(&spec.dir) {
+            Ok(()) => removed.push(spec.dir.display().to_string()),
+            Err(e) => left.push(format!("{}: {e}", spec.dir.display())),
+        }
     }
     json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left})
 }

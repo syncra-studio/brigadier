@@ -1,13 +1,14 @@
 //! Claude Code: one long-lived `claude -p` per session reading stream-json from stdin, or the
 //! interactive CLI on a PTY. Frame names per its public CLI docs and observed output.
 
+use super::setup::{first_field, newest};
 use super::{
-    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, drop_lines,
-    file_lines, home_path, in_pty, paste, s, shell_step, uuid,
+    Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts,
+    drop_lines, file_lines, home_path, in_pty, paste, probe, s, shell_step, uuid, version,
 };
 use crate::Spec;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Claude;
 
@@ -16,9 +17,55 @@ impl Adapter for Claude {
         "claude"
     }
 
-    fn exe(&self) -> Option<PathBuf> {
-        let exe = home_path(".local/bin/claude");
-        exe.exists().then_some(exe)
+    fn label(&self) -> &'static str {
+        "Claude Code"
+    }
+
+    fn bin(&self) -> (&'static str, &'static [&'static str]) {
+        ("claude", &[".local/bin"])
+    }
+
+    fn install(&self) -> Option<&'static str> {
+        Some("curl -fsSL https://claude.ai/install.sh | bash")
+    }
+
+    fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
+        Some(("Sign in", &["auth", "login"]))
+    }
+
+    /// `claude auth status` exits 0 when signed in and says how in its JSON. No key variable is
+    /// passed on: in print mode one would bill it in place of the user's subscription.
+    fn check(&self, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let out = probe(exe, cwd, &[], &["auth", "status"], 15)?;
+        let status: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+        let signed_in = out.status.success();
+        let how = match s(&status, &["authMethod"]) {
+            "claude.ai" => "Claude account",
+            "api_key" | "api_key_helper" => "API key",
+            "oauth_token" => "token",
+            "third_party" => "cloud provider",
+            _ => "",
+        };
+        Ok(Check {
+            version: version(exe, cwd)?,
+            signed_in: Some(signed_in),
+            how: how.into(),
+            models: if signed_in {
+                ["sonnet", "opus", "haiku"]
+                    .map(|m| (m.into(), false))
+                    .into()
+            } else {
+                vec![]
+            },
+        })
+    }
+
+    /// The folder each transcript was written in, from its own record.
+    fn projects(&self) -> Vec<PathBuf> {
+        newest(&home_path(".claude/projects"), ".jsonl", 1, 300)
+            .iter()
+            .filter_map(|p| first_field(p, &["cwd"]).map(PathBuf::from))
+            .collect()
     }
 
     fn per_turn(&self) -> bool {
@@ -61,7 +108,7 @@ impl Adapter for Claude {
         };
         Launch {
             argv,
-            env: base_env(spec, &exe),
+            env: base_env(spec, &exe, self.keys()),
             keep_stdin: true,
             input,
         }
@@ -172,8 +219,10 @@ impl Adapter for Claude {
     }
 
     /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
-    fn forget(&self, _spec: &Spec, resume: &str) {
-        let _ = drop_lines(&home_path(".claude/history.jsonl"), "sessionId", resume);
+    fn forget(&self, _spec: &Spec, resume: &str) -> Result<(), String> {
+        drop_lines(&home_path(".claude/history.jsonl"), "sessionId", resume)
+            .map(drop)
+            .map_err(|e| e.to_string())
     }
 
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
