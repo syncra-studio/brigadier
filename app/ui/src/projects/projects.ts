@@ -63,7 +63,9 @@ export async function setProject(project: Project, change: Partial<Project>, arg
     const reply = await run(["projects", "set", project.id, ...args]);
     // The answer is saved even where a CLI's own trust entry couldn't be written [D166, D253].
     for (const { agent, error } of (reply.trust_errors ?? []) as { agent: string; error: string }[]) {
-      showToast(`Saved. Brigadier couldn't record it for ${agent}, so ${agent} may ask again in its terminal: ${error}`, { tone: "error" });
+      showToast(agent
+        ? `Saved. Brigadier couldn't record it for ${agent}, so ${agent} may ask again in its terminal: ${error}`
+        : `Saved. Brigadier couldn't record it everywhere: ${error}`, { tone: "error" });
     }
   } finally {
     // A later change holds its own: only this one's overlay goes.
