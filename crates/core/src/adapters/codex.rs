@@ -6,7 +6,7 @@ use super::{
 };
 use crate::Spec;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
 pub struct Codex;
 
@@ -117,7 +117,22 @@ impl Adapter for Codex {
         }
     }
 
-    fn external(&self, _spec: &Spec, resume: &str) -> Vec<PathBuf> {
+    fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
+        let mut ids = BTreeSet::from([resume.to_string()]);
+        let mut backend = String::new();
+        let _ = crate::read(&spec.dir, |item| {
+            if let Some(b) = item["backend"].as_str() {
+                backend = b.into();
+            }
+            if backend == self.name() && item["kind"] == "tool" && item["name"] == "spawn_agent" {
+                ids.insert(s(item, &["id"]).into());
+            }
+        });
+        let names: Vec<String> = ids
+            .into_iter()
+            .filter(|id| crate::check_id(id).is_ok())
+            .map(|id| format!("-{id}.jsonl"))
+            .collect();
         // Rollouts live under sessions/YYYY/MM/DD/ with the thread id in the name.
         let mut found = vec![];
         let mut dirs = vec![home_path(".codex/sessions")];
@@ -128,7 +143,7 @@ impl Adapter for Codex {
                     dirs.push(path);
                 } else if path
                     .file_name()
-                    .is_some_and(|n| n.to_string_lossy().contains(resume))
+                    .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
                 {
                     found.push(path);
                 }
@@ -140,6 +155,13 @@ impl Adapter for Codex {
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
         let (mut texts, mut tools) = (0, 0);
         for path in self.external(spec, resume) {
+            if !path
+                .file_name()?
+                .to_string_lossy()
+                .ends_with(&format!("-{resume}.jsonl"))
+            {
+                continue;
+            }
             for v in std::fs::read_to_string(path)
                 .ok()?
                 .lines()
