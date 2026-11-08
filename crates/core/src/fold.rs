@@ -153,7 +153,11 @@ impl Fold {
 
     fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
-            self.end_asks(outcome);
+            self.end_asks(if outcome == "interrupted" {
+                "withdrawn"
+            } else {
+                outcome
+            });
             self.turns.remove(0);
             self.finished = ts;
             self.last = Some(
@@ -452,11 +456,13 @@ impl Fold {
                 Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
-                Some("owner_started") => self
-                    .turns
-                    .iter_mut()
-                    .filter(|t| t.delivered.is_none())
-                    .for_each(|t| t.orphaned = true),
+                Some("owner_started") => {
+                    self.interrupt(json!({"owner_restarted": true}), ts);
+                    self.turns
+                        .iter_mut()
+                        .filter(|t| t.delivered.is_none())
+                        .for_each(|t| t.orphaned = true);
+                }
                 _ => {}
             },
             _ => {}
