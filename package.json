@@ -6,7 +6,7 @@
   "main": "app/main/dist/main.js",
   "packageManager": "pnpm@12.18.0",
   "scripts": {
-    "start": "PATH=\"$HOME/.cargo/bin:$PATH\" BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build && pnpm build && electron .",
+    "start": "PATH=\"$HOME/.cargo/bin:$PATH\" BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build && pnpm build && scripts/electron .",
     "thread": "VITE_SCREEN=thread pnpm start",
     "build": "tsc -p app/main && vite build app/ui",
     "typecheck": "tsc -p app/main --noEmit && tsc -p app/ui --noEmit",

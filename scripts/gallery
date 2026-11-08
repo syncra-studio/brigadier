@@ -9,4 +9,4 @@ node_modules/.bin/vite build app/ui --mode gallery --watch &
 watcher=$! # the shim execs node, so this is the watcher itself
 trap 'kill "$watcher"' EXIT
 until [ -f app/ui/dist/build-id.js ]; do sleep 0.2; done
-pnpm exec electron . "$@"
+scripts/electron . "$@"

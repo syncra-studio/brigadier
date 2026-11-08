@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Runs Electron from source. On macOS it runs a copy named Brigadier.app, since the menu bar and Dock
+# take the name from the bundle's Info.plist and app.setName can't change it (as VS Code does).
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+[ "$(uname)" = Darwin ] || exec pnpm exec electron "$@"
+dev=target/dev
+app=$dev/Brigadier.app
+# Requiring electron downloads its binary if missing; the version decides when to copy again.
+version="$(node -p 'require("electron"), require("electron/package.json").version' | tail -n 1)"
+if [ "$(cat "$dev/version" 2>/dev/null)" != "$version" ]; then
+  rm -rf "$dev"
+  mkdir -p "$dev"
+  cp -Rc node_modules/electron/dist/Electron.app "$app"
+  plutil -replace CFBundleName -string Brigadier "$app/Contents/Info.plist"
+  plutil -replace CFBundleDisplayName -string Brigadier "$app/Contents/Info.plist"
+  codesign --force --sign - "$app"
+  echo "$version" >"$dev/version"
+fi
+exec "$app/Contents/MacOS/Electron" "$@"
