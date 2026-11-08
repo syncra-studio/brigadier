@@ -11,6 +11,7 @@ import { Kit } from "./kit";
 import { Notices } from "./notices";
 import { Panes } from "./panes";
 import { Popups } from "./popups";
+import { ProjectsGallery } from "./projects";
 import { Thread } from "./thread";
 import "./gallery.css";
 
@@ -100,6 +101,7 @@ function GalleryPage() {
         <h1 className="ps-2 text-sm font-medium">Components</h1>
       </header>
       <main className="isolate flex flex-col gap-10 px-8 py-8">
+        <ProjectsGallery />
         <ComposerGallery />
         <RailGallery />
         <AidsGallery />

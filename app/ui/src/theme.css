@@ -207,6 +207,9 @@
   --spacing-menu: 8rem;
   --spacing-select: 24rem;
   --container-dialog: 24rem;
+  /* Add project: its card, and the list's room for five rows (the old app's). */
+  --container-add-project: 47.5rem;
+  --spacing-add-project-list: 18.625rem;
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
