@@ -85,6 +85,13 @@ impl Thread {
                     self.children.insert(str_of("id"), at);
                 }
             }
+            // The backend's own record of a turn's edits, with their diffs [D95].
+            "changes" => {
+                if let Some(at) = self.row_of(&turn, &str_of("id")) {
+                    self.items[at]["changes"] = item["changes"].clone();
+                    self.changed_items.insert(at);
+                }
+            }
             "tool_done" => {
                 if let Some(parent) = item["parent"].as_str() {
                     if let Some(at) = self.row_of(&turn, parent) {

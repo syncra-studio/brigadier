@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -21,6 +21,9 @@ pub struct Norm {
     bufs: [Vec<u8>; 2],
     over: [usize; 2],
     announced: BTreeMap<String, String>,
+    /// Turns begun per resume id, and this turn's file edits so far: (tool id, its changes).
+    turns: BTreeMap<String, u64>,
+    edits: Vec<(String, Vec<Value>)>,
 }
 
 impl Norm {
@@ -150,15 +153,32 @@ impl Norm {
         };
         let mut items = vec![];
         for event in adapter.parse(&text) {
-            items.push(match event {
-                Event::TurnStart => json!({"kind": "turn_start"}),
-                Event::TurnEnd(ok) => json!({"kind": "turn_end", "ok": ok}),
+            let item = match event {
+                Event::TurnStart => {
+                    self.edits.clear();
+                    let resume = self
+                        .announced
+                        .get(&self.backend)
+                        .cloned()
+                        .unwrap_or_default();
+                    *self.turns.entry(resume).or_default() += 1;
+                    json!({"kind": "turn_start"})
+                }
+                Event::TurnEnd(ok) => {
+                    items.extend(self.counted(adapter));
+                    json!({"kind": "turn_end", "ok": ok})
+                }
                 Event::Text(t) => json!({"kind": "text", "text": t}),
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
                     "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at}),
-                Event::ToolEnd(d) => json!({"kind": "tool_done", "id": d.id, "output": d.output, "ok": d.ok,
-                    "exit": d.exit, "changes": d.changes, "child": d.child, "parent": d.parent, "at": d.at}),
+                Event::ToolEnd(d) => {
+                    if d.parent.is_none() && !d.changes.is_empty() {
+                        self.edits.push((d.id.clone(), d.changes.clone()));
+                    }
+                    json!({"kind": "tool_done", "id": d.id, "output": d.output, "ok": d.ok,
+                    "exit": d.exit, "changes": d.changes, "child": d.child, "parent": d.parent, "at": d.at})
+                }
                 Event::Resume(id) => {
                     if id.is_empty() || self.announced.get(&self.backend) == Some(&id) {
                         continue;
@@ -175,8 +195,52 @@ impl Norm {
                 Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
-            });
+            };
+            items.push(item);
         }
         items
+    }
+
+    /// This turn's edits again, each file with its diff from the backend's own record, only when
+    /// the record's edits match these one-to-one by order and file; otherwise none [D74, D83, D95].
+    fn counted(&mut self, adapter: &dyn adapters::Adapter) -> Vec<Value> {
+        let edits = std::mem::take(&mut self.edits);
+        let resume = self
+            .announced
+            .get(&self.backend)
+            .cloned()
+            .unwrap_or_default();
+        let turn = self.turns.get(&resume).map_or(0, |n| n.saturating_sub(1));
+        let theirs = match edits.is_empty() {
+            true => None,
+            false => adapter.diffs(&resume, turn),
+        };
+        let Some(theirs) = theirs.filter(|t| t.len() == edits.len()) else {
+            return vec![];
+        };
+        let mut out = vec![];
+        for ((id, changes), files) in edits.iter().zip(&theirs) {
+            if changes.len() != files.len() {
+                return vec![];
+            }
+            let mut counted = vec![];
+            for c in changes {
+                let path = c["path"].as_str().unwrap_or("");
+                let Some((_, diff)) = files.iter().find(|(p, _)| p == path) else {
+                    return vec![];
+                };
+                let (added, removed) = adapters::counts(diff);
+                let how = c["change"].as_str().unwrap_or("");
+                counted.push(adapters::change(
+                    path,
+                    how,
+                    Some(diff.clone()),
+                    Some(added),
+                    Some(removed),
+                ));
+            }
+            out.push(json!({"kind": "changes", "id": id, "changes": counted}));
+        }
+        out
     }
 }

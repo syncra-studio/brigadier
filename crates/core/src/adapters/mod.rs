@@ -104,6 +104,11 @@ pub trait Adapter: Sync {
     fn transcript(&self, _spec: &Spec, _resume: &str) -> Option<(u64, u64)> {
         None
     }
+    /// Thread `resume`'s turn `turn` (from 0) from the backend's own record: each file edit in
+    /// order, as (path, unified diff) per file. None when there's no such record or turn.
+    fn diffs(&self, _resume: &str, _turn: u64) -> Option<Vec<Vec<(String, String)>>> {
+        None
+    }
 }
 
 pub fn all() -> [&'static dyn Adapter; 4] {

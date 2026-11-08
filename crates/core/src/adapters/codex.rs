@@ -133,23 +133,7 @@ impl Adapter for Codex {
             .filter(|id| crate::check_id(id).is_ok())
             .map(|id| format!("-{id}.jsonl"))
             .collect();
-        // Rollouts live under sessions/YYYY/MM/DD/ with the thread id in the name.
-        let mut found = vec![];
-        let mut dirs = vec![home_path(".codex/sessions")];
-        while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    dirs.push(path);
-                } else if path
-                    .file_name()
-                    .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
-                {
-                    found.push(path);
-                }
-            }
-        }
-        found
+        rollouts(&names)
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -178,6 +162,70 @@ impl Adapter for Codex {
             }
         }
         Some((texts, tools))
+    }
+
+    fn diffs(&self, resume: &str, turn: u64) -> Option<Vec<Vec<(String, String)>>> {
+        crate::check_id(resume).ok()?;
+        let path = rollouts(&[format!("-{resume}.jsonl")]).pop()?;
+        let (mut turns, mut edits) = (0, vec![]);
+        for v in std::fs::read_to_string(path)
+            .ok()?
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        {
+            let p = &v["payload"];
+            match s(p, &["type"]) {
+                "task_started" => turns += 1,
+                "item_completed" if turns == turn + 1 && p["item"]["type"] == "FileChange" => {
+                    let files = p["item"]["changes"].as_object()?;
+                    edits.push(files.iter().map(|(f, c)| (f.clone(), diff(c))).collect());
+                }
+                _ => {}
+            }
+        }
+        (turns > turn).then_some(edits)
+    }
+}
+
+/// Rollouts live under sessions/YYYY/MM/DD/ with the thread id in the name.
+fn rollouts(names: &[String]) -> Vec<PathBuf> {
+    let mut found = vec![];
+    let mut dirs = vec![home_path(".codex/sessions")];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path
+                .file_name()
+                .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
+            {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// A rollout's change to one file as a unified diff: an update's own, or a whole added or deleted file.
+fn diff(c: &Value) -> String {
+    let lines = |sign: char| {
+        let all: Vec<String> = s(c, &["content"])
+            .lines()
+            .map(|l| format!("{sign}{l}"))
+            .collect();
+        (all.len(), all.join("\n"))
+    };
+    match s(c, &["type"]) {
+        "add" => {
+            let (n, body) = lines('+');
+            format!("@@ -0,0 +1,{n} @@\n{body}")
+        }
+        "delete" => {
+            let (n, body) = lines('-');
+            format!("@@ -1,{n} +0,0 @@\n{body}")
+        }
+        _ => s(c, &["unified_diff"]).to_string(),
     }
 }
 
