@@ -212,9 +212,12 @@ export function Panes() {
         </Row>
       </Section>
       <Section title="Error line · Empty state">
-        <Row name="error line · empty state: line, card, centered">
+        <Row name="error line · empty state: line, sm, card, centered">
           <State label="error line">
             <ErrorLine error="Couldn't save: the disk is full." />
+          </State>
+          <State label="error line, sm">
+            <ErrorLine size="sm" error="The run failed · the provider closed the stream." />
           </State>
           <State label="line">
             <div className="w-60">

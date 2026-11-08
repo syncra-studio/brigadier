@@ -288,12 +288,12 @@ export function Thread() {
         </Row>
       </Section>
       <Section title="Thread · messages">
-        <Row name="user: hover (time, copy) · long (Show more) · sending · not sent · dimmed · system line">
+        <Row name="user: hover (time, copy) · long (Show more) · sending · not sent · unconfirmed · dimmed · extra line · system line">
           <Wide label="hover" frozen="hover">
             {item({ ...base("u1"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 })}
           </Wide>
           <Wide label="long">{item({ ...base("u2"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
-          <Wide label="sending · not sent · dimmed (look only: the states session sets them)">
+          <Wide label="sending · not sent · unconfirmed · dimmed · extra line (look only: the states session sets them)">
             <Bubbles />
           </Wide>
           <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
@@ -378,13 +378,26 @@ export function Thread() {
   );
 }
 
-/** The bubble's look-only send states. */
+/** The bubble's look-only send states, a narrow failed one, and one with a line under it. */
 function Bubbles() {
   return (
     <div className="flex flex-col gap-4">
       <UserBubble keep="look-sending" text="Ship the thread rows." sending />
       <UserBubble keep="look-failed" text="Ship the thread rows." failed="the daemon isn't reachable" onRetry={noop} onDiscard={noop} />
+      <div className="w-72">
+        <UserBubble
+          keep="look-failed-long"
+          text="Ship the thread rows."
+          failed="the agent refused it: its provider answered 529, overloaded"
+          onRetry={noop}
+          onDiscard={noop}
+        />
+      </div>
+      <UserBubble keep="look-unconfirmed" text="Ship the thread rows." unconfirmed />
       <UserBubble keep="look-dimmed" text="Ship the thread rows." dimmed />
+      <UserBubble keep="look-extra" text="Ship the thread rows." time={Date.now()}>
+        <p className="text-xs text-muted-foreground tabular-nums">on screen in 10 ms · confirmed in 152 ms</p>
+      </UserBubble>
     </div>
   );
 }
