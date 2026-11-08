@@ -5,6 +5,7 @@ import type { IconProps } from "../../icons";
 import type { ApprovalAction, Progress, StepKind } from "../../thread/item";
 import { duration, useSecond } from "../../thread/words";
 import { cx } from "../cx";
+import { ErrorLine } from "../error-line";
 import { LabeledDivider } from "../labeled-divider";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { ToolBox, VERBS } from "./tool";
@@ -200,11 +201,12 @@ export function CompactionDivider({ progress = "done" }: { progress?: Progress }
 
 /** Something the app or agent wants seen: an error's sentence in red; a warning or note with its icon. */
 export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"; text: string }) {
+  if (level === "error") return <ErrorLine size="sm" error={text} className="wrap-anywhere" />;
   return (
-    <p role={level === "error" ? "alert" : undefined} className={cx(ROW, "flex-wrap")}>
+    <p className={cx(ROW, "flex-wrap")}>
       {level === "warning" && <Warning className="size-4 shrink-0 text-warning" />}
       {level === "info" && <Info className="size-4 shrink-0" />}
-      <span className={cx("min-w-0 wrap-anywhere", level === "error" && "text-destructive")}>{text}</span>
+      <span className="min-w-0 wrap-anywhere">{text}</span>
     </p>
   );
 }

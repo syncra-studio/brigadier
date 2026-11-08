@@ -6,6 +6,7 @@ import { useKept } from "../../thread/kept";
 import { Button } from "../button";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
+import { ErrorLine } from "../error-line";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
 /** A step's verb while it runs, once done and while it waits to start ("Reading", "Read", "read"), by kind. */
@@ -168,7 +169,7 @@ export function ToolBox({ title, children }: { title?: string; children: ReactNo
 function ToolDetail({ name, input, output, failed }: { name: string; input: string; output: string; failed: boolean }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 pt-1">
-      {failed && <p className="text-destructive">{name} failed.</p>}
+      {failed && <ErrorLine size="sm" error={`${name} failed.`} />}
       {input && <ToolBox title="Input">{input}</ToolBox>}
       {output ? <ToolBox title="Output">{output}</ToolBox> : !failed && <p className="text-sm text-muted-foreground">Tool returned no content</p>}
     </div>
