@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::fold::{self, Owner};
-use brigadier_core::{self as core, Folded, norm};
+use brigadier_core::{self as core, Folded, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
@@ -39,12 +39,16 @@ struct Entry {
     seen_len: u64,
     error: Option<String>,
     orphaned_since: Option<u64>,
+    /// Its `session.json`, read once: what never changes after the start.
+    spec: Option<core::Spec>,
 }
 
 pub struct Index {
     db: Connection,
     data: PathBuf,
     entries: BTreeMap<String, Entry>,
+    /// Each session folder's repository, asked of git once [D165].
+    roots: projects::Roots,
     pub rows: BTreeMap<String, Value>,
 }
 
@@ -80,6 +84,7 @@ impl Index {
             db,
             data: data.to_path_buf(),
             entries,
+            roots: projects::Roots::default(),
             rows: BTreeMap::new(),
         })
     }
@@ -90,6 +95,7 @@ impl Index {
     pub fn sync(&mut self) -> io::Result<(Vec<Value>, Vec<String>)> {
         let all = procs::all();
         let ids = core::ids(&self.data);
+        let projects = projects::list(&self.data).unwrap_or_default();
         let gone: Vec<String> = self
             .entries
             .keys()
@@ -163,9 +169,17 @@ impl Index {
                 e.orphaned_since = None;
             }
             let works = e.error.is_none() && fold::works(&f.fold, &live);
+            if e.spec.is_none() {
+                e.spec = core::load(&self.data, id).ok();
+            }
+            let project = e
+                .spec
+                .as_ref()
+                .and_then(|s| projects::of(s, &projects, &mut self.roots));
             let row = json!({"id": id, "title": e.title, "state": state, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
-                             "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend)});
+                             "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
+                             "project": project});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);
