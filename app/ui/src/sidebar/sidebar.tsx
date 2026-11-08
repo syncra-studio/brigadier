@@ -5,12 +5,14 @@ import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Radio, RadioGroup } from "../components/radio";
-import { RowAction } from "../components/row-action";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
+import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
+import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { openAddProject, setShowProject } from "../projects/store";
 import { markUnread, pin, rename, useShown } from "./actions";
 import { RenameDialog } from "./menu";
@@ -207,8 +209,7 @@ export function AppSidebar({
                       {byName.map((project) => (
                         <ProjectRow
                           key={project.id}
-                          id={project.id}
-                          name={project.name}
+                          project={project}
                           open={isOpen(project.id)}
                           onOpenChange={(open) => setOpen(project.id, open)}
                         >
@@ -263,26 +264,45 @@ function Loading() {
   );
 }
 
-/** A project and its sessions, folding away under it; "No sessions yet" with none. */
+/** A project and its sessions, folding away under it; "No sessions yet" with none. Hovered, its menu and New session [D171, D212]. */
 function ProjectRow({
-  id,
-  name,
+  project,
   open,
   onOpenChange,
   children,
 }: {
-  id: string;
-  name: string;
+  project: Project;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode[];
 }) {
   return (
-    <li data-project-id={id} className="flex flex-col">
-      <NavRow aria-expanded={open} onClick={() => onOpenChange(!open)}>
-        {open ? <FolderOpen /> : <Folder />}
-        <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{name}</span>
-      </NavRow>
+    <li data-project-id={project.id} className="flex flex-col">
+      <div className="group/row relative">
+        <NavRow aria-expanded={open} onClick={() => onOpenChange(!open)}>
+          {open ? <FolderOpen /> : <Folder />}
+          <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{project.name}</span>
+        </NavRow>
+        <RowActionsSlot>
+          <DropdownMenu modal={false}>
+            <Tooltip>
+              <TooltipTrigger render={<DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${project.name}`} />} />}>
+                <DotsHorizontal />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Project actions</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start">
+              <ProjectMenuItems project={project} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSessionIn(project.id)} />}>
+              <ComposeEditSquare />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">New session</TooltipContent>
+          </Tooltip>
+        </RowActionsSlot>
+      </div>
       <NavFold open={open}>
         <NavList className="pt-px pb-2">
           {children}
