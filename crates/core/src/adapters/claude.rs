@@ -3,9 +3,9 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
-    cli_home, counts, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
-    uuid, version,
+    Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
+    classify, cli_home, counts, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s,
+    shell_step, uuid, version,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -76,7 +76,7 @@ impl Adapter for Claude {
             how: how.into(),
             models: if signed_in {
                 ["sonnet", "opus", "haiku"]
-                    .map(|m| (m.into(), false))
+                    .map(|m| ModelInfo::plain(m, false))
                     .into()
             } else {
                 vec![]

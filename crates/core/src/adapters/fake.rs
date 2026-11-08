@@ -1,7 +1,8 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
 use super::{
-    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, Retune, Timing, Tool, base_env, s,
+    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing, Tool,
+    base_env, s,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -46,7 +47,20 @@ impl Adapter for Fake {
             signed_in: Some(signed_in),
             how: if signed_in { "fake" } else { "" }.into(),
             models: if signed_in && exe.exists() {
-                vec![("fake".into(), true)]
+                // Efforts of its own, so the picker's effort row shows running.
+                let level = |all: &[&str], default: &str| ModelInfo {
+                    efforts: all.iter().map(|e| e.to_string()).collect(),
+                    default_effort: Some(default.into()),
+                    ..ModelInfo::plain("fake", true)
+                };
+                vec![
+                    level(&["low", "medium", "high"], "medium"),
+                    ModelInfo {
+                        id: "fake-large".into(),
+                        name: "fake-large".into(),
+                        ..level(&["low", "medium", "high", "xhigh"], "high")
+                    },
+                ]
             } else {
                 vec![]
             },

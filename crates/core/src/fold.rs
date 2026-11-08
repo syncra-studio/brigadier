@@ -49,6 +49,14 @@ pub struct Child {
     pub mirror_group: Option<(i32, u64)>,
 }
 
+/// Another agent's model and effort, picked for the next message.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Picked {
+    pub backend: String,
+    pub model: String,
+    pub effort: Option<String>,
+}
+
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
     pub turns: Vec<Turn>,
@@ -81,6 +89,15 @@ pub struct Fold {
     /// turn start compares to. None for a child no input set up (a terminal).
     #[serde(default)]
     pub given: Option<Value>,
+    /// The effort each backend runs at, as the app last set it; none is the CLI's default [D129].
+    #[serde(default)]
+    pub efforts: BTreeMap<String, String>,
+    /// Another agent the user picked: the next message goes to it in a new conversation [D90].
+    #[serde(default)]
+    pub picked: Option<Picked>,
+    /// The app's op id of the last `set` taken, which its pick reconciles by [D30].
+    #[serde(default)]
+    pub setup_op: Option<String>,
     pub cids: BTreeMap<String, u32>,
     pub unknown: u64,
     pub compactions: u64,
@@ -97,6 +114,29 @@ pub struct Fold {
 }
 
 impl Fold {
+    /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
+    /// turn, which drops a pick; another agent is picked, for the next message [D90].
+    fn setup(&mut self, item: &Value) {
+        let b = item["backend"].as_str().unwrap_or("").to_string();
+        let model = item["model"].as_str().unwrap_or("").to_string();
+        let effort = item["effort"].as_str().map(String::from);
+        self.setup_op = item["op"].as_str().map(String::from);
+        if item["pick"] == true {
+            self.picked = Some(Picked {
+                backend: b,
+                model,
+                effort,
+            });
+            return;
+        }
+        self.picked = None;
+        match effort {
+            Some(e) => self.efforts.insert(b.clone(), e),
+            None => self.efforts.remove(&b),
+        };
+        self.models.insert(b, model);
+    }
+
     fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
             self.turns.remove(0);
@@ -175,6 +215,11 @@ impl Fold {
                     if let Some(m) = switch["to"]["model"].as_str() {
                         self.models.insert(to.into(), m.into());
                     }
+                    match switch["to"]["effort"].as_str() {
+                        Some(e) => self.efforts.insert(to.into(), e.into()),
+                        None => self.efforts.remove(to),
+                    };
+                    self.picked = None;
                     // For delete, `convs` keeps the old conversation, or the same one's new account.
                     if switch["fresh"] == true {
                         self.resume.remove(to);
@@ -366,6 +411,7 @@ impl Fold {
             "note" => match item["event"].as_str() {
                 Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
+                Some("setup") => self.setup(item),
                 Some("owner_started") => self
                     .turns
                     .iter_mut()

@@ -98,13 +98,38 @@ pub struct Timing {
 }
 
 /// What a status check found [D45]: where the CLI is, its version, whether it is signed in and
-/// how, and the models a session can pick (id, local). Never a credential.
+/// how, and the models a session can pick. Never a credential.
 #[derive(Default)]
 pub struct Check {
     pub version: String,
     pub signed_in: Option<bool>,
     pub how: String,
-    pub models: Vec<(String, bool)>,
+    pub models: Vec<ModelInfo>,
+}
+
+/// A model a session can pick: its id, the name people know it by, whether it runs on this
+/// computer, and the effort levels its CLI reports for it, lowest first, with its default; empty
+/// and None where the CLI reports none, never guessed [D74, D129].
+#[derive(Default)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub local: bool,
+    pub efforts: Vec<String>,
+    pub default_effort: Option<String>,
+}
+
+impl ModelInfo {
+    /// A model known only by its id: no name of its own, no efforts reported.
+    pub fn plain(id: &str, local: bool) -> Self {
+        let (id, name) = (id.to_string(), id.to_string());
+        Self {
+            id,
+            name,
+            local,
+            ..Self::default()
+        }
+    }
 }
 
 /// How a CLI keeps more than one account apart [D51]: one home folder per extra account, named by

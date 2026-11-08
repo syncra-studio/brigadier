@@ -2,8 +2,9 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Check, Done, Event, Launch, Timing, Tool, base_env, change, classify,
-    cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step, version,
+    Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
+    classify, cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, shell_step,
+    version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -75,7 +76,7 @@ impl Adapter for Codex {
             signed_in: Some(signed_in),
             how: how.into(),
             models: if signed_in {
-                vec![(MODEL.into(), false)]
+                vec![ModelInfo::plain(MODEL, false)]
             } else {
                 vec![]
             },
