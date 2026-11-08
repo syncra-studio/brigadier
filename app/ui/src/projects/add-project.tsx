@@ -258,7 +258,7 @@ function PickView({
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col">
       <Header title="Add project" line="Pick a git repository for your sessions to work in." />
       <div className="flex items-center gap-2.5 px-7">
         <Input aria-label="Search repositories" placeholder="Search repositories" value={query} autoFocus onChange={(event) => setQuery(event.target.value)} onKeyDown={onSearchKey} />
@@ -317,9 +317,9 @@ function PickView({
         }
       >
         <CancelButton />
-        <Button size="sm" disabled={!current || busy} onClick={() => add()}>
+        <Button size="sm" className="min-w-0 max-w-1/3" disabled={!current || busy} onClick={() => add()}>
           {busy && <Spinner className="animate-spin" />}
-          {current ? `Add ${current.name}` : "Add project"}
+          <span className="truncate" title={current ? `Add ${current.name}` : undefined}>{current ? `Add ${current.name}` : "Add project"}</span>
         </Button>
       </Footer>
     </div>
@@ -348,8 +348,8 @@ function RepoRow({ row, chosen, onPick, onAdd }: { row: Repo; chosen: boolean; o
         <Folder className={cx("size-icon-md", chosen ? "text-foreground" : "text-muted-foreground")} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.75">
-        <span className="truncate text-sm font-medium">{row.name}</span>
-        <span className="truncate font-mono text-xs text-muted-foreground">{shortPath(row.path)}</span>
+        <span className="truncate text-sm font-medium" title={row.name}>{row.name}</span>
+        <span className="truncate font-mono text-xs text-muted-foreground" title={row.path}>{shortPath(row.path)}</span>
       </span>
       {added ? (
         <Badge variant="secondary">

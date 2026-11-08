@@ -39,6 +39,11 @@ function fake(with_: Partial<Source> = {}): Source {
 
 const FOUND = fake({ find: async () => REPOS, github: async () => GITHUB });
 const LOADING = fake({ find: never, github: never });
+const LONG_NAME = "long-repo-".repeat(10);
+const LONG = fake({
+  find: async () => [{ path: `/Users/you/code/${LONG_NAME}`, name: LONG_NAME, project_id: null }],
+  github: async () => ({ repos: [{ name: `you/${LONG_NAME}`, description: "A repository with a long name", private: true }] }),
+});
 
 function Frozen({ label, source, start, githubIn, offline = false }: { label: string; source: Source; start?: View; githubIn?: GitHubIn; offline?: boolean }) {
   return (
@@ -100,6 +105,10 @@ export function ProjectsGallery() {
           source={FOUND}
           start={{ kind: "new", parent: DEFAULT_PARENT, name: "my-project", error: "Author identity unknown: please tell git who you are (git config --global user.email)." }}
         />
+      </Row>
+      <Row name="long repository names: 100 characters · no sideways scroll">
+        <Frozen label="Clone from URL · long name" source={LONG} start={{ kind: "clone" }} />
+        <Frozen label="On this Mac and On GitHub · long names" source={LONG} githubIn="pick" />
       </Row>
     </Section>
   );

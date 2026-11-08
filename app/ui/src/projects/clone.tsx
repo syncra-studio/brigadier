@@ -109,7 +109,7 @@ export function CloneView({
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col">
+    <form onSubmit={submit} className="flex min-w-0 flex-col">
       <Header title="Clone from URL" line="Paste a link to a git repository. We'll copy it to your Mac and add it." onBack={busy ? undefined : onBack} />
       <div className="flex flex-col gap-5.5 px-7 pt-1 pb-7">
         <div className="flex flex-col gap-2">
@@ -286,7 +286,7 @@ export function GitHubRepos({
               clone.running !== null && !mine && "opacity-row-disabled",
             )}
           >
-            <span className="shrink-0 font-mono text-xs">{repo.name}</span>
+            <span className="min-w-0 truncate font-mono text-xs" title={repo.name}>{repo.name}</span>
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{repo.description}</span>
             {repo.private && <Badge variant="outline">Private</Badge>}
             {mine && <Spinner className="size-icon-sm shrink-0 animate-spin" />}
