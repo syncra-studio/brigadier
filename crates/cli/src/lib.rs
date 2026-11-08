@@ -5,6 +5,7 @@ mod accounts;
 mod control;
 pub mod index;
 mod mirror;
+mod models;
 pub mod owner;
 mod setup;
 mod switching;
@@ -81,7 +82,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" => &[][..],
+        | "switching" | "models" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| *a != "--all") {
@@ -340,6 +341,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "index" => index(data, has(args, "--cold")),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
+        "models" => models::models(data, args),
+        "set" => models::set(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),
         "awake" => {
             if let Some(mode) = args.get(1) {
