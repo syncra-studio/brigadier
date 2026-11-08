@@ -234,7 +234,8 @@ impl Index {
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project, "setup": setup});
+                             "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
+                             "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);
