@@ -51,6 +51,10 @@ export class ChipNode extends DecoratorNode<ReactNode> {
   isInline(): true {
     return true;
   }
+  // The caret steps over it and Backspace takes it at once, rather than selecting it first.
+  isKeyboardSelectable(): false {
+    return false;
+  }
   getTextContent(): string {
     return this.__chip.kind === "mention" ? `@${this.__chip.label}` : "";
   }
