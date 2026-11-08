@@ -35,6 +35,7 @@ pub fn as_run(spec: &Spec, f: &Fold, backend: &str, account: Option<&str>) -> Sp
     } else if backend != spec.backend {
         run.model = None;
     }
+    run.grants = f.grants.clone();
     if let Some(e) = f.efforts.get(backend) {
         run.effort = Some(e.clone());
     } else if backend != spec.backend {

@@ -63,6 +63,8 @@ pub struct Thread {
     claims: HashMap<String, (usize, Value)>,
     /// The level the last input set up, to tell when trust taken back holds the next to Ask.
     level: Option<Value>,
+    /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
+    acking: HashSet<String>,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or

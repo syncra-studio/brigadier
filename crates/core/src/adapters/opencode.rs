@@ -1,15 +1,24 @@
-//! OpenCode: one `opencode run --format json` per turn, each on a private server (`--standalone`),
-//! never the owner's own service [D86]. It uses OpenCode's own store, so a key the user saved there
+//! OpenCode: chat holds its own server (`opencode serve`) for the session through Brigadier's helper,
+//! never the owner's own service [D86, D159]. It uses OpenCode's own store, so a key the user saved there
 //! works in every session, and delete removes the session through OpenCode itself [D35, D89].
+
+mod control;
+mod events;
+mod grants;
+mod http;
+mod server;
+mod terminal;
 
 use super::setup::run as bounded;
 use super::{
-    Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change, classify,
-    counts, in_pty, paste, probe, s, shell_step, version,
+    Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, classify,
+    file_lines, home_path, in_pty, paste, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use serde_json::Value;
-use std::path::Path;
+use control::{answers, denied, model, model_ref, rules};
+use events::{mirrored, tool_use};
+use serde_json::{Value, json};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 pub struct OpenCode;
@@ -19,24 +28,26 @@ const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
 
 impl OpenCode {
     fn env(&self, spec: &Spec) -> Vec<(String, String)> {
-        base_env(spec, &self.exe().unwrap_or_default(), self.keys())
-    }
-
-    /// A session's newest messages, newest first.
-    // shortcut: one page of 100; a terminal turn writing more between two reads loses the rest.
-    fn messages(&self, spec: &Spec, conv: &str) -> Option<Vec<Value>> {
-        let id = format!("sessionID={conv}");
-        let args = [
-            "api",
-            "session.message.list",
-            "--param",
-            &id,
-            "--param",
-            "limit=100",
-        ];
-        let out = self.run(spec, &args).ok()?;
-        let v: Value = serde_json::from_str(&out[out.find('{')?..]).ok()?;
-        v["data"].as_array().cloned()
+        let mut env = base_env(spec, &self.exe().unwrap_or_default(), self.keys());
+        // Keep credentials in its normal database; even output missed during a stream drop is
+        // session-owned and removed on delete [D35, D89].
+        env.extend([
+            (
+                "XDG_DATA_HOME".into(),
+                spec.dir.join("runtime").display().to_string(),
+            ),
+            (
+                "XDG_STATE_HOME".into(),
+                spec.dir.join("state").display().to_string(),
+            ),
+            (
+                "OPENCODE_DB".into(),
+                home_path(".local/share/opencode/opencode.db")
+                    .display()
+                    .to_string(),
+            ),
+        ]);
+        env
     }
 
     /// Its own command on a private server, bounded; what it printed, or why it failed.
@@ -144,53 +155,164 @@ impl Adapter for OpenCode {
     }
 
     fn per_turn(&self) -> bool {
+        false
+    }
+
+    /// Each line to the helper is one request to its server, applied only once its reply names it.
+    fn acks(&self) -> bool {
         true
     }
 
+    /// A message sent to its session mid-turn joins the turn that runs, so only a steer goes then.
+    fn queues(&self) -> bool {
+        false
+    }
+
+    fn helper(&self, args: &[String]) -> Result<(), String> {
+        server::run(args)
+    }
+
+    /// Its server runs in Brigadier's helper, on the session's level and model, with the
+    /// session's grants [D159, D193]. Chat talks to it through the helper's stdin; a terminal is
+    /// its TUI attached to that same server, at the level the helper sets [D47, D243].
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
-        let model = spec
-            .model
-            .clone()
-            .unwrap_or_else(|| "opencode/deepseek-v4.1-flash-free".into());
-        let mut argv = vec![self.exe().unwrap_or_default().display().to_string()];
-        if spec.mode != "pty" {
-            argv.extend(["run", "--format", "json", "--auto"].map(String::from));
-        }
-        argv.push("--standalone".into());
+        let exe = self.exe().unwrap_or_default().display().to_string();
         let mut env = self.env(spec);
-        // Its TUI takes no -m: the model comes from its documented inline config instead.
+        let helper = std::env::current_exe()
+            .unwrap_or_default()
+            .with_file_name("brigadier");
+        let mut argv = vec![
+            helper.display().to_string(),
+            "helper".into(),
+            "opencode".into(),
+            exe,
+        ];
+        let mut open = json!({"location": {"directory": spec.cwd}});
+        if let Some(id) = resume {
+            open["id"] = id.into();
+        }
+        let grants: Vec<Value> = (spec.grants.iter())
+            .map(|g| json!({"action": g["cli"]["action"], "save": g["cli"]["save"]}))
+            .collect();
+        let mut lines = vec![
+            json!({"open": open, "grants": grants, "must": true}),
+            json!({"model": model_ref(spec), "must": true}),
+        ];
         if spec.mode == "pty" {
+            // Its TUI takes no -m: the model comes from its documented inline config instead.
             env.push((
                 "OPENCODE_CONFIG_CONTENT".into(),
-                serde_json::json!({ "model": model }).to_string(),
+                json!({ "model": model(spec) }).to_string(),
             ));
-        } else {
-            argv.extend(["-m".into(), model]);
+            let data = crate::data_of(spec).display().to_string();
+            let setup = json!({"lines": lines, "prompt": text});
+            argv.extend([
+                "--terminal".into(),
+                data,
+                spec.id.clone(),
+                setup.to_string(),
+            ]);
+            return Launch {
+                argv,
+                env,
+                keep_stdin: true,
+                input: None,
+            };
         }
-        if let Some(id) = resume {
-            argv.extend(["-s".into(), id.into()]);
-        }
-        if spec.mode == "pty" {
-            argv.extend(text.map(|t| format!("--prompt={t}")));
-        } else {
-            argv.extend(text.map(String::from));
-        }
+        lines.push(json!({"permissions": rules(spec), "must": true}));
+        lines.extend(text.map(|t| json!({"prompt": {"text": t}, "id": spec.cid})));
         Launch {
             argv,
             env,
-            keep_stdin: spec.mode == "pty",
-            input: None,
+            keep_stdin: true,
+            input: Some(lines.iter().map(|l| format!("{l}\n")).collect()),
         }
     }
 
-    fn encode(&self, _spec: &Spec, text: &str) -> String {
-        paste(text)
+    fn encode(&self, spec: &Spec, text: &str) -> String {
+        if spec.mode == "pty" {
+            return paste(text);
+        }
+        format!("{}\n", json!({"prompt": {"text": text}, "id": spec.cid}))
+    }
+
+    /// No auto mode, so Auto isn't offered [D175, D187].
+    fn can(&self) -> Can {
+        Can {
+            steer: true,
+            stop: true,
+            resume: true,
+            levels: &["ask", "full"],
+        }
+    }
+
+    /// A new model, effort or level goes to the idle session as its own requests, each confirmed
+    /// before the message [D222].
+    fn retune(&self, last: &Spec, next: &Spec) -> Retune {
+        let mut lines = vec![];
+        if (model(last), &last.effort) != (model(next), &next.effort) {
+            lines.push(json!({"model": model_ref(next)}));
+        }
+        if last.level != next.level {
+            lines.push(json!({"permissions": rules(next)}));
+        }
+        if lines.is_empty() {
+            return Retune::InMessage;
+        }
+        let ids: Vec<String> = lines
+            .iter()
+            .map(|_| format!("brigadier-{}", uuid()))
+            .collect();
+        let lines = lines.into_iter().zip(&ids).map(|(mut l, id)| {
+            l["id"] = id.as_str().into();
+            format!("{l}\n")
+        });
+        Retune::Confirm(Delivery::Stdin(lines.collect()), ids)
+    }
+
+    /// A control message as the helper's line, named by its command id [D159, D192, D193].
+    fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+        let r = &msg["request"];
+        let mut line = match s(msg, &["kind"]) {
+            "steer" => json!({"prompt": {"text": msg["text"], "delivery": "steer"}}),
+            "interrupt" => json!({"interrupt": true}),
+            "answer" if r["items"].is_array() => {
+                json!({"form": {"session": r["cli"]["session"], "id": r["id"], "answer": answers(r, msg)}})
+            }
+            "answer" => {
+                let mut p =
+                    json!({"session": r["cli"]["session"], "id": r["id"], "decision": "once"});
+                let mut line = json!({});
+                match s(msg, &["decision"]) {
+                    "allow" => {}
+                    // Held by the helper for this session; its `always` saves lasting rules [D193].
+                    "allowSession" if r["grant"].is_object() => {
+                        line["grant"] =
+                            json!({"action": r["cli"]["action"], "save": r["cli"]["save"]});
+                    }
+                    "deny" => {
+                        p["decision"] = "reject".into();
+                        p["message"] = denied(s(msg, &["reason"])).into();
+                    }
+                    other => return Err(format!("no such decision here: {other:?}")),
+                }
+                line["permission"] = p;
+                line
+            }
+            _ => return Err("unknown control message".into()),
+        };
+        line["id"] = spec.cid.clone().into();
+        Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
         };
+        if let Some(events) = events::server(&v) {
+            return events;
+        }
+        // A turn of `run`, as sessions before its server logged them.
         let part = &v["part"];
         let mut events: Vec<Event> = v["sessionID"]
             .as_str()
@@ -218,6 +340,42 @@ impl Adapter for OpenCode {
         }
     }
 
+    /// Its commands' output files, as the session recorded them, only ever in its shell folder;
+    /// and the snapshot repo of the session's own worktree. One of a folder others use stays.
+    fn external(&self, spec: &Spec, _resume: &str) -> Vec<PathBuf> {
+        let mut files = vec![];
+        let _ = crate::read(&spec.dir, |item| {
+            if item["kind"] == "external" {
+                files.push(PathBuf::from(s(item, &["path"])));
+            }
+        });
+        files.retain(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let shell = p.parent().and_then(Path::parent).and_then(Path::file_name);
+            let plain =
+                (p.components()).all(|c| matches!(c, Component::RootDir | Component::Normal(_)));
+            p.is_absolute()
+                && plain
+                && name.starts_with("sh_")
+                && name.ends_with(".out")
+                && shell == Some("shell".as_ref())
+        });
+        if spec.dir.join("worktree.json").exists() {
+            // Named by the SHA-1 of the worktree's real path, under each project's folder.
+            let dir = std::fs::canonicalize(&spec.dir).unwrap_or(spec.dir.clone());
+            let name = sha1(dir.join("worktree").to_string_lossy().as_bytes());
+            let projects = std::fs::read_dir(home_path(".local/share/opencode/snapshot"));
+            files.extend(
+                projects
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|p| p.path().join(&name)),
+            );
+        }
+        files
+    }
+
     /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
     /// as deleted. Never touches credentials or other sessions.
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
@@ -227,36 +385,23 @@ impl Adapter for OpenCode {
         }
     }
 
-    /// Its TUI opens a session by id, on the same private server data as `run` (proposed: the
-    /// first message goes through chat, so the id exists).
+    /// Its TUI on the session's own server, by the session's id (proposed: the first message goes
+    /// through chat, so the id exists).
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
         let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
         Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
     }
 
-    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
-        let all = self.messages(spec, conv)?;
-        Some(all.iter().map(|m| s(m, &["id"])).max().unwrap_or("").into())
+    /// What the terminal's helper wrote to the session's hooks file: its server's events.
+    fn mirror_from(&self, spec: &Spec, _conv: &str) -> Option<String> {
+        let len = std::fs::metadata(spec.dir.join(crate::terminal::HOOKS)).map_or(0, |m| m.len());
+        Some(len.to_string())
     }
 
-    /// Its record is SQLite, so the mirror asks its own API, read-only, on a private server over
-    /// the session's data; never the owner's own service.
-    fn mirror(&self, spec: &Spec, conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let Some(mut all) = self.messages(spec, conv) else {
-            return (vec![], cursor.into());
-        };
-        all.retain(|m| s(m, &["id"]) > cursor);
-        all.sort_by(|a, b| s(a, &["id"]).cmp(s(b, &["id"])));
-        let (mut lines, mut next) = (vec![], cursor.to_string());
-        for m in all {
-            // An answer still being written comes whole on a later read, and so does all after it.
-            if s(&m, &["type"]) == "assistant" && m["time"]["completed"].is_null() {
-                break;
-            }
-            next = s(&m, &["id"]).into();
-            lines.push(serde_json::json!({"type": "mirror", "message": m}).to_string());
-        }
-        (lines, next)
+    fn mirror(&self, spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let path = spec.dir.join(crate::terminal::HOOKS);
+        let (lines, end) = file_lines(&path, cursor.parse().unwrap_or(0));
+        (lines, end.to_string())
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -278,157 +423,5 @@ impl Adapter for OpenCode {
             }
         }
         Some((texts, tools))
-    }
-}
-
-/// A tool part as a step, by OpenCode's tool names [D48, D65]. It comes once it ended, with its
-/// own start and end times; there is no running state to show.
-fn tool_use(part: &Value) -> Vec<Event> {
-    let id = [s(part, &["callID"]), s(part, &["id"])]
-        .into_iter()
-        .find(|i| !i.is_empty())
-        .unwrap_or("")
-        .to_string();
-    let (name, state) = (s(part, &["tool"]), &part["state"]);
-    // 2.2 nests the tool's own metadata one level down.
-    let meta = match &state["metadata"]["metadata"] {
-        Value::Object(_) => &state["metadata"]["metadata"],
-        _ => &state["metadata"],
-    };
-    let input = &state["input"];
-    let status = s(state, &["status"]);
-    let finished = matches!(status, "completed" | "error");
-    let field = |keys: &[&str]| {
-        keys.iter()
-            .map(|k| s(input, &[k]))
-            .find(|v| !v.is_empty())
-            .unwrap_or("")
-            .to_string()
-    };
-    if name == "question" {
-        let questions = input["questions"].as_array().cloned().unwrap_or_default();
-        let mut events = vec![];
-        for (k, q) in questions.iter().enumerate() {
-            let options = q["options"].as_array().into_iter().flatten();
-            let qid = format!("{id}:{k}");
-            let options: Vec<String> = options.map(|o| s(o, &["label"]).to_string()).collect();
-            events.push(super::question(&qid, s(q, &["question"]), &options));
-            if finished {
-                let answer = meta["answers"][k].as_array().map(|a| {
-                    let labels: Vec<&str> = a.iter().filter_map(Value::as_str).collect();
-                    labels.join(", ")
-                });
-                events.push(Event::Answer(qid, answer));
-            }
-        }
-        return events;
-    }
-    let path = field(&["filePath", "path"]);
-    let (step, what) = match name {
-        "read" => ("read", path.clone()),
-        "edit" | "write" | "patch" | "multiedit" | "apply_patch" => ("edit", path.clone()),
-        "grep" | "glob" => ("search", field(&["pattern"])),
-        "list" => ("search", path.clone()),
-        "bash" | "shell" => shell_step(&field(&["command"])),
-        "webfetch" => ("web", field(&["url"])),
-        "websearch" | "codesearch" => ("web", field(&["query"])),
-        "task" | "subagent" => ("agent", field(&["description"])),
-        _ => ("other", input.to_string()),
-    };
-    let changes: Vec<Value> = match meta["files"].as_array() {
-        Some(files) => files
-            .iter()
-            .map(|f| {
-                let patch = s(f, &["patch"]);
-                let (added, removed) = match (f["additions"].as_u64(), f["deletions"].as_u64()) {
-                    (Some(a), Some(d)) => (a, d),
-                    _ => counts(patch),
-                };
-                let how = match s(f, &["status"]) {
-                    "added" | "created" => "added",
-                    "deleted" => "deleted",
-                    _ => "modified",
-                };
-                let path = [s(f, &["file"]), s(f, &["filePath"])]
-                    .into_iter()
-                    .find(|p| !p.is_empty());
-                let diff = (!patch.is_empty()).then(|| patch.to_string());
-                change(path.unwrap_or(""), how, diff, Some(added), Some(removed))
-            })
-            .collect(),
-        None if step == "edit" => {
-            let how = match meta["exists"].as_bool() {
-                Some(false) => "added",
-                _ => "modified",
-            };
-            vec![change(&path, how, None, None, None)]
-        }
-        None => vec![],
-    };
-    let mut events = vec![Event::ToolStart(Tool {
-        id: id.clone(),
-        name: name.into(),
-        step,
-        input: what,
-        at: state["time"]["start"].as_u64(),
-        ..Default::default()
-    })];
-    if finished {
-        let mut output = s(state, &["output"]).to_string();
-        if status == "error" {
-            output = s(state, &["error"]).into();
-        }
-        let child = meta["sessionID"].as_str().map(String::from);
-        if child.is_some() {
-            // `<subagent sessionID=… state=…>\nanswer\n</subagent>`: the answer alone.
-            let inner = output.split_once('\n').map_or("", |(_, rest)| rest);
-            output = inner
-                .trim_end()
-                .trim_end_matches("</subagent>")
-                .trim_end()
-                .to_string();
-        }
-        events.push(Event::ToolEnd(Done {
-            id,
-            output,
-            ok: status == "completed" && meta["exit"].as_i64().is_none_or(|c| c == 0),
-            exit: meta["exit"].as_i64(),
-            changes,
-            child,
-            parent: None,
-            at: state["time"]["end"].as_u64(),
-        }));
-    }
-    events
-}
-
-/// A message the mirror read from OpenCode's API [D47]: a typed prompt, an answer's parts, or the
-/// idle mark that ends a turn.
-fn mirrored(m: &Value) -> Vec<Event> {
-    match s(m, &["type"]) {
-        "user" => vec![Event::Prompt(s(m, &["id"]).into(), s(m, &["text"]).into())],
-        "idle" => vec![Event::TurnEnd(s(m, &["outcome"]) == "succeeded")],
-        "assistant" => m["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .flat_map(|c| match s(c, &["type"]) {
-                "text" => vec![Event::Text(s(c, &["text"]).into())],
-                "reasoning" if !s(c, &["text"]).is_empty() => vec![Event::Reasoning(s(c, &["text"]).into())],
-                // In the shape `run` gives a tool part, so the same reading applies.
-                "tool" => {
-                    let state = &c["state"];
-                    let parts = state["content"].as_array().into_iter().flatten();
-                    let output: Vec<&str> = parts.filter_map(|p| p["text"].as_str()).collect();
-                    let part = serde_json::json!({"callID": c["id"], "tool": c["name"], "state": {
-                        "status": state["status"], "input": state["input"], "output": output.join("\n"),
-                        "error": state["error"], "metadata": state["metadata"],
-                        "time": {"start": c["time"]["ran"], "end": c["time"]["completed"]}}});
-                    tool_use(&part)
-                }
-                _ => vec![],
-            })
-            .collect(),
-        _ => vec![],
     }
 }

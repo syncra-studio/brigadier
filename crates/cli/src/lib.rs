@@ -3,6 +3,7 @@
 
 mod accounts;
 mod control;
+mod hook;
 pub mod index;
 mod mirror;
 mod models;
@@ -172,6 +173,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if has(args, "--steer") {
                 return control::steer(data, id, text, flag(args, "--cid"));
             }
+            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"))? {
+                return Ok(reply);
+            }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             send(
@@ -308,6 +312,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             };
             Ok(core::terminal::open(&spec, &f.fold, &ping, &call, ask))
         }
+        // A terminal CLI's hook: Brigadier's own error never fails the CLI's step.
+        "hook" => Ok(hook::run(data, arg(args, 1)?, arg(args, 2)?).unwrap_or(Value::Null)),
         "mirror" => {
             let since = flag(args, "--since")
                 .and_then(|n| n.parse().ok())
@@ -390,19 +396,15 @@ fn send(
 ) -> io::Result<Value> {
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(control::new_cid, String::from);
-    let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);
-    let mut reply = core::send(
-        spec,
-        &f.fold,
-        child(data, &spec.id),
-        &call,
-        &cid,
-        "user",
-        text,
-        backend,
-        None,
-    );
+    let go = || -> io::Result<Value> {
+        let f = core::fold(&spec.dir, true)?;
+        let running = child(data, &spec.id);
+        Ok(core::send(
+            spec, &f.fold, running, &call, &cid, "user", text, backend, None,
+        ))
+    };
+    let mut reply = go()?;
     let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
     // Retry a busy race or moving host only when the log proves the command never got in;
     // an uncertain delivery is never sent again by itself [D54].
@@ -410,18 +412,7 @@ fn send(
         thread::sleep(Duration::from_millis(200));
         // If no host answers, the resend fails too and the log decides the result below.
         let _ = owner::ensure(data, spec);
-        let f = core::fold(&spec.dir, true)?;
-        reply = core::send(
-            spec,
-            &f.fold,
-            child(data, &spec.id),
-            &call,
-            &cid,
-            "user",
-            text,
-            backend,
-            None,
-        );
+        reply = go()?;
     }
     // A dropped connection says nothing about the log: the log itself does.
     if reply["result"].is_null() {

@@ -125,6 +125,19 @@ pub struct Fold {
     /// Answers logged and not yet delivered: command id → request id.
     #[serde(default)]
     pub claims: BTreeMap<String, String>,
+    /// "Allow … for this session" answers logged and not yet delivered: command id → request.
+    #[serde(default)]
+    pub granting: BTreeMap<String, Value>,
+    /// The session's grants, as the requests they answered: held while its host lives, and given
+    /// again to a child started anew, never written to a CLI's settings [D193].
+    #[serde(default)]
+    pub grants: Vec<Value>,
+    /// The agent's replies to requests Brigadier sent it, by request id: `{error, level}`.
+    #[serde(default)]
+    pub replies: BTreeMap<String, Value>,
+    /// Inputs written to an agent that acks, not yet applied by its reply [D222].
+    #[serde(default)]
+    pub acking: BTreeSet<String>,
 }
 
 impl Fold {
@@ -204,13 +217,9 @@ impl Fold {
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
                 // A question in a terminal is answered by keys, which aren't logged: the agent's
-                // next step in its record ends the wait. Raw screen bytes don't [D77].
-                if pty
-                    && matches!(
-                        kind,
-                        "text" | "tool" | "tool_done" | "reasoning" | "turn_start"
-                    )
-                {
+                // next step in its record ends the wait. Raw screen bytes don't, nor a tool's start,
+                // which the CLI records before it asks to run it [D77].
+                if pty && matches!(kind, "text" | "tool_done" | "reasoning" | "turn_start") {
                     t.question = None;
                     self.end_asks("withdrawn");
                 }
@@ -220,6 +229,9 @@ impl Fold {
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;
+                if item["ack"] == true {
+                    self.acking.insert(cid.clone());
+                }
                 if item["setup"].is_object() {
                     self.given = Some(item["setup"].clone());
                 }
@@ -289,12 +301,8 @@ impl Fold {
                     ..Default::default()
                 });
             }
-            "delivered" => {
-                let cid = item["cid"].as_str();
-                if let Some(t) = self.turns.iter_mut().find(|t| t.cid.as_deref() == cid) {
-                    t.delivered = Some(ts);
-                }
-                self.delivered_control(cid.unwrap_or(""));
+            "delivered" if !self.acking.contains(&str_of("cid")) => {
+                self.delivered(&str_of("cid"), ts)
             }
             "spawned" => {
                 let (pid, start_us) = (
@@ -378,7 +386,24 @@ impl Fold {
                 self.ask(item);
             }
             "approval" => self.ask(item),
-            "resolved" => self.end_ask(&str_of("id"), "withdrawn"),
+            "resolved" => {
+                let id = str_of("id");
+                // Allowed for the session in the CLI's screen: held like a chat grant [D193].
+                let asked = self.turns.iter().find_map(|t| t.asks.get(&id));
+                self.grants
+                    .extend(asked.filter(|_| item["grant"] == true).cloned());
+                self.end_ask(&id, item["decision"].as_str().unwrap_or("withdrawn"));
+            }
+            "reply" => {
+                self.replies.insert(str_of("id"), item.clone());
+                self.acked(item, ts);
+            }
+            // The level the agent says it runs at is the one recorded, never the one asked [D175].
+            "level" => {
+                if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
+                    g["level"] = item["level"].clone();
+                }
+            }
             "answer" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.question = None;
@@ -432,7 +457,8 @@ impl Fold {
             }
             "limited" => {
                 self.limit = Some(str_of("message"));
-                self.resets = item["resets"].as_u64();
+                // A second limit line that gives no time keeps the one the first gave [D74].
+                self.resets = item["resets"].as_u64().or(self.resets);
                 self.close("limited", item["message"].clone(), ts);
             }
             "sign_in" => {
@@ -462,6 +488,9 @@ impl Fold {
                         .iter_mut()
                         .filter(|t| t.delivered.is_none())
                         .for_each(|t| t.orphaned = true);
+                    // Session grants live as long as the host that holds them [D193, D238].
+                    self.grants.clear();
+                    self.granting.clear();
                 }
                 _ => {}
             },

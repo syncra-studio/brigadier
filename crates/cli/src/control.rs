@@ -52,11 +52,17 @@ fn deliver(
         let Some(a) = adapters::get(&backend) else {
             return Ok(refused("unknown_backend", backend.into()));
         };
-        let Delivery::Stdin(bytes) = match a.control(&as_run(&spec, &f.fold, &backend, None), &msg)
-        {
+        let run = core::Spec {
+            cid: req["cid"].as_str().map(String::from),
+            ..as_run(&spec, &f.fold, &backend, None)
+        };
+        let Delivery::Stdin(bytes) = match a.control(&run, &msg) {
             Ok(d) => d,
             Err(e) => return Ok(refused("unsupported", e.into())),
         };
+        if a.acks() {
+            req["ack"] = true.into();
+        }
         req["op"] = "input".into();
         req["origin"] = "user".into();
         req["backend"] = backend.into();
@@ -67,7 +73,8 @@ fn deliver(
         }
         let reply = owner::call(data, id, req.clone())?;
         if reply["error"] != "changed" {
-            return Ok(reply);
+            let cid = req["cid"].as_str().unwrap_or("");
+            return Ok(core::applied(&spec.dir, cid, reply));
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -122,6 +129,34 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         msg["request"] = asked.clone();
         Ok(msg)
     })
+}
+
+/// A plain message while the agent waits on a question: that question's answer, through its
+/// control channel, so the agent and the log agree on what's pending. None when no question waits
+/// or the agent can't take it there: the message goes as any other [D159, D222].
+pub fn reply(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result<Option<Value>> {
+    let f = core::fold(&core::session_dir(data, id), true)?;
+    let asked = f.fold.turns.first().and_then(|t| {
+        let mut questions = t.asks.iter().filter(|(_, r)| r["items"].is_array());
+        questions.next().map(|(k, _)| k.clone())
+    });
+    let Some(request) = asked else {
+        return Ok(None);
+    };
+    let control = json!({"kind": "answer", "request": request, "reply": text});
+    let cid = cid.map_or_else(new_cid, String::from);
+    let req = json!({"cid": cid, "control": control});
+    let reply = deliver(data, id, req, true, |f| {
+        match f.turns.first().and_then(|t| t.asks.get(request.as_str())) {
+            Some(asked) => {
+                let mut msg = control.clone();
+                msg["request"] = asked.clone();
+                Ok(msg)
+            }
+            None => Err(refused("not_pending", Value::Null)),
+        }
+    })?;
+    Ok((reply["result"] != "refused").then_some(reply))
 }
 
 /// A message into the turn that runs, where the agent can take one [D109, D159].

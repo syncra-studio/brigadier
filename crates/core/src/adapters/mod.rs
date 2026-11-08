@@ -10,7 +10,7 @@ mod shell;
 
 pub use shell::shell_step;
 
-pub use files::{drop_lines, file_lines, uuid};
+pub use files::{change, counts, drop_lines, file_lines, sha1, uuid};
 
 use crate::Spec;
 use serde_json::Value;
@@ -47,6 +47,23 @@ pub enum Event {
     Approval(Value),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),
+    /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
+    Decided(String, bool),
+    /// The user allowed a pending request in the CLI's own screen for the rest of the session: it
+    /// becomes a session grant held by the host, never a rule the CLI saves [D193, D247].
+    Granted(String),
+    /// A file the CLI wrote outside the session folder for this session alone, by exact path:
+    /// recorded so delete removes it [D35].
+    External(String),
+    /// The CLI's reply to a request Brigadier sent it, by that request's id: an error, or the
+    /// permission level it now runs at when the reply says one.
+    Reply {
+        id: String,
+        error: Option<String>,
+        level: Option<String>,
+    },
+    /// The permission level the CLI says it runs at, which may be safer than the one asked [D175].
+    Level(String),
     /// What the user answered, matched to the question by id; None when the CLI gave up asking.
     Answer(String, Option<String>),
     /// "running" or "done".
@@ -162,7 +179,7 @@ pub struct Can {
 }
 
 /// How a control message reaches the agent: the adapter owns the channel; the host owns the
-/// delivery and its record. (A server's HTTP channel joins with its adapter, 1m.)
+/// delivery and its record. A server's HTTP channel is its adapter's helper, which reads these.
 pub enum Delivery {
     Stdin(String),
 }
@@ -173,6 +190,9 @@ pub enum Retune {
     InMessage,
     /// Delivered to the child just before the message, in the same input.
     Send(Delivery),
+    /// Delivered first on its own; the message follows only once the child replied to each of
+    /// these request ids without an error, else the turn is refused [D222].
+    Confirm(Delivery, Vec<String>),
     /// The child is started again on the same conversation.
     Restart,
 }
@@ -237,6 +257,21 @@ pub trait Adapter: Sync {
     }
     /// True when each turn is its own process; false when one child reads every message.
     fn per_turn(&self) -> bool;
+    /// True when a written input isn't applied until the agent's own reply names its command id
+    /// (`Event::Reply`, from `spec.cid`); false when writing it is delivery [D222].
+    fn acks(&self) -> bool {
+        false
+    }
+    /// True when a message sent while a turn runs waits in the agent for the next turn; false
+    /// refuses it until then (a steer still joins the turn).
+    fn queues(&self) -> bool {
+        true
+    }
+    /// A process the agent's launch runs through Brigadier's own binary (`brigadier helper <name>
+    /// …`): for a CLI reached over a server, it holds the server and speaks lines on stdin/stdout.
+    fn helper(&self, _args: &[String]) -> Result<(), String> {
+        Err("This agent has no helper.".into())
+    }
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch;
     /// Bytes for a message to a child that is already running.
     fn encode(&self, spec: &Spec, text: &str) -> String;
@@ -254,7 +289,8 @@ pub trait Adapter: Sync {
         Retune::Restart
     }
     /// A control message for the running agent [D159]: `{kind: "answer", request, decision,
-    /// reason, answers}` (the request as pending), `{kind: "steer", text}` or `{kind: "interrupt"}`.
+    /// reason, answers, reply}` (the request as pending; `reply` is a plain message that answers a
+    /// question), `{kind: "steer", text}` or `{kind: "interrupt"}`.
     fn control(&self, _spec: &Spec, _msg: &Value) -> Result<Delivery, String> {
         Err("This agent takes no control messages yet.".into())
     }
@@ -284,8 +320,14 @@ pub trait Adapter: Sync {
     }
     /// The CLI's interactive mode on this conversation, and the conversation id it will write
     /// (a new one when `resume` is None and the CLI lets us pick it). None: no terminal [D47].
+    /// It runs at `spec.level`, or refuses a level it can't hold [D243].
     fn terminal(&self, _spec: &Spec, _resume: Option<&str>) -> Result<(Launch, String), String> {
         Err("This CLI has no terminal.".into())
+    }
+    /// What the CLI's hook prints to refuse the step a held session's terminal is about to take
+    /// above Ask (trust taken back while it's open), or None to let it go [D166, D243].
+    fn hold(&self, _hook: &Value) -> Option<String> {
+        None
     }
     /// Where the CLI's record of `conv` ends now: the mirror starts reading there. None: the
     /// backend keeps no record a mirror can read, so its terminal's work stays in the terminal.
@@ -417,54 +459,6 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
 /// Text of a JSON line's field, or empty.
 pub fn s<'a>(v: &'a Value, path: &[&str]) -> &'a str {
     path.iter().fold(v, |v, k| &v[*k]).as_str().unwrap_or("")
-}
-
-/// One changed file in the thread's FileChange shape [D74, D83]: what the CLI didn't report is null.
-pub fn change(
-    path: &str,
-    change: &str,
-    diff: Option<String>,
-    added: Option<u64>,
-    removed: Option<u64>,
-) -> Value {
-    let diff = diff.map(|d| hunks(&d)).filter(|d| !d.is_empty());
-    serde_json::json!({"path": path, "change": change, "from": null, "diff": diff, "added": added, "removed": removed})
-}
-
-/// A unified diff's hunks alone: the file headers (`Index:`, `===`, `---`, `+++`) dropped.
-fn hunks(diff: &str) -> String {
-    let mut hunk = false;
-    let mut out = String::new();
-    for line in diff.lines() {
-        if line.starts_with("@@") {
-            hunk = true;
-        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
-            hunk = false;
-        }
-        if hunk {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-/// Lines added and removed in a unified diff: only lines inside hunks, so file headers don't count
-/// and a `+++counter` line does.
-pub fn counts(diff: &str) -> (u64, u64) {
-    let (mut added, mut removed, mut hunk) = (0, 0, false);
-    for line in diff.lines() {
-        if line.starts_with("@@") {
-            hunk = true;
-        } else if line.starts_with("diff ") || line.starts_with("Index: ") {
-            hunk = false;
-        } else if hunk && line.starts_with('+') {
-            added += 1;
-        } else if hunk && line.starts_with('-') {
-            removed += 1;
-        }
-    }
-    (added, removed)
 }
 
 /// Classifies an error message the way every backend needs: a limit, a sign-in, or neither.

@@ -161,12 +161,16 @@ impl Thread {
                 self.wait_on(at, ts);
             }
             "resolved" => {
-                self.withdraw(&str_of("id"));
+                self.withdraw(&str_of("id"), item["decision"].as_str());
                 if self.pending.is_empty() {
                     self.end_wait(ts);
                 }
             }
-            "delivered" => self.delivered(&str_of("cid")),
+            "delivered" if !self.acking.contains(&str_of("cid")) => self.delivered(&str_of("cid")),
+            // An input the agent acks is applied by its reply, not by being written [D222].
+            "reply" if self.acking.remove(&str_of("id")) && item["error"].is_null() => {
+                self.delivered(&str_of("id"))
+            }
             "answer" => {
                 if let Some(&at) = self.keys.get(&key(str_of("id"))) {
                     self.items[at]["answer"] = item["text"].clone();

@@ -111,7 +111,11 @@ impl Adapter for Fake {
     fn control(&self, _spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         let line = match msg["kind"].as_str() {
             Some("answer") => {
-                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": msg["answers"]}})
+                // A plain message that answers a question reads as its one answer.
+                let answers = msg["reply"]
+                    .as_str()
+                    .map_or(msg["answers"].clone(), |r| json!([r]));
+                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": answers}})
             }
             Some("steer") => json!({"text": msg["text"], "steer": true}),
             Some("interrupt") => json!({"interrupt": true}),

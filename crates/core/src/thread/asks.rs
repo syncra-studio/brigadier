@@ -36,6 +36,10 @@ impl Thread {
     /// An answer logged: its request stops waiting at once; its row shows it once delivered.
     pub(super) fn control(&mut self, item: &Value, ts: u64) {
         let c = &item["control"];
+        if item["ack"] == true {
+            self.acking
+                .insert(item["cid"].as_str().unwrap_or("").to_string());
+        }
         if c["kind"] != "answer" {
             return;
         }
@@ -63,7 +67,11 @@ impl Thread {
         } else {
             let answers = c["answers"].as_array().cloned().unwrap_or_default();
             let given: Vec<&str> = answers.iter().filter_map(Value::as_str).collect();
-            row["answer"] = given.join("\n").into();
+            // A plain message that answered the round shows as its answer.
+            row["answer"] = c["reply"]
+                .as_str()
+                .map_or(given.join("\n"), String::from)
+                .into();
             row["answers"] = answers.into();
             row["withdrawn"] = false.into();
             if let Some(o) = self.open.as_mut().filter(|o| o.asked == Some(at)) {
@@ -73,10 +81,14 @@ impl Thread {
         self.changed_items.insert(at);
     }
 
-    /// The CLI cleared a request, or (in a terminal) the agent moved on past it [D77].
-    pub(super) fn withdraw(&mut self, id: &str) {
+    /// The CLI cleared a request, or (in a terminal) the agent moved on past it [D77]; or another
+    /// client, or the CLI's own rule, decided it.
+    pub(super) fn withdraw(&mut self, id: &str, decision: Option<&str>) {
         if let Some(at) = self.unwait(id) {
             self.withdraw_row(at);
+            if let Some(d) = decision.filter(|_| self.items[at]["kind"] == "approval") {
+                self.items[at]["decision"] = d.into();
+            }
         }
     }
 
@@ -96,7 +108,7 @@ impl Thread {
         let ids: Vec<String> = (self.pending.iter())
             .filter_map(|&at| self.items[at]["request"]["id"].as_str().map(String::from))
             .collect();
-        ids.iter().for_each(|id| self.withdraw(id));
+        ids.iter().for_each(|id| self.withdraw(id, None));
     }
 
     /// What still waits on the user, oldest first, in D177's shapes.

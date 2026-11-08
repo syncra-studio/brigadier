@@ -191,6 +191,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         }
         if let Err(e) = a.forget(spec, id) {
             left.push(format!("{backend}: {e}"));
+            continue;
         }
         for path in a.external(spec, id) {
             let gone = if path.is_dir() {
@@ -201,7 +202,9 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
             match gone {
                 Ok(()) => removed.push(path.display().to_string()),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => left.push(format!("{}: {e}", path.display())),
+                Err(e) => {
+                    left.push(format!("{}: {e}", path.display()));
+                }
             }
         }
         // Shared folders go only once empty: other sessions may still have files in them.
