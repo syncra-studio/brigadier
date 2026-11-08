@@ -173,10 +173,11 @@ export function Play(props: IconProps) {
   );
 }
 
-export function Hamburger(props: IconProps) {
+// Lucide's grip-vertical (ISC, see THIRD_PARTY_NOTICES.md), filled like apps-sdk-ui's DotsVertical: a drag handle.
+export function GripVertical(props: IconProps) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
-      <path d="M3 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1Z" />
+      <path d="M9 21a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0-7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0-7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm6 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0-7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0-7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z" />
     </svg>
   );
 }

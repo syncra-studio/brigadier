@@ -3,7 +3,7 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
-import { ArrowCurvedRight, DotsHorizontal, EditPencil, Hamburger, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { ArrowCurvedRight, DotsHorizontal, EditPencil, GripVertical, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
@@ -201,7 +201,7 @@ function QueueRow({
                 requestAnimationFrame(() => grip.focus());
               }}
             >
-              <Hamburger className="size-icon-sm" />
+              <GripVertical className="size-icon-sm" />
             </BaseButton>
           </span>
         )}
