@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useRef, useState } from "react";
 
 import { Check, ChevronDown, Dock, Folder, Globe, HandRaised, ShieldExclamation, ShieldTerminal, Terminal, Warning } from "../../icons";
 import { Button } from "../button";
@@ -17,6 +17,9 @@ export type ModelGroup = { provider: string; label: string; mark: string | null;
 /** What the session runs on. */
 export type ModelChoice = { provider: string; model: string; effort: string | null };
 
+// A popup held open in the gallery's box never shifts to stay in view.
+const STILL = { side: "none", align: "none" } as const;
+
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
   const known: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
@@ -26,7 +29,9 @@ export function effortLabel(effort: string): string {
 /** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */
 export function ProviderMark({ mark, className }: { mark: string | null; className?: string }) {
   if (!mark) return <Terminal aria-hidden className={className} />;
-  return <span aria-hidden className={cx("inline-grid shrink-0 place-items-center svg:size-full", className)} dangerouslySetInnerHTML={{ __html: mark }} />;
+  // A sized svg: a pill's or row's own `svg:` icon size would otherwise compete with the mark's box.
+  const html = mark.replace("<svg", '<svg class="size-full"');
+  return <span aria-hidden className={cx("inline-grid shrink-0 place-items-center", className)} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 const SIDEBAR_ROW = cx(
@@ -71,11 +76,14 @@ export function ModelPicker({
   value,
   onChange,
   disabled,
+  held,
 }: {
   groups: ModelGroup[];
   value: ModelChoice;
   onChange: (choice: ModelChoice) => void;
   disabled?: boolean;
+  /** The gallery's box to hold it open in, not taking focus. */
+  held?: HTMLElement;
 }) {
   const [browsing, setBrowsing] = useState(value.provider);
   const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
@@ -89,17 +97,29 @@ export function ModelPicker({
       effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
     });
   return (
-    <Popover onOpenChange={(open) => open && setBrowsing(value.provider)}>
+    <Popover open={held ? true : undefined} onOpenChange={(open) => open && setBrowsing(value.provider)}>
       <PopoverTrigger
         disabled={disabled}
-        render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" className="gap-1" />}
+        render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
       >
-        <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
-        <span className="truncate text-foreground">{model?.name ?? value.model}</span>
-        {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
-        <ChevronDown className="size-icon-xs" />
+        {/* The old pill's tighter gap; the pill's own is set in its base. */}
+        <span className="flex min-w-0 items-center gap-1">
+          <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
+          <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+          {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
+          <ChevronDown className="size-icon-xs" />
+        </span>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" padded={false} aria-label="Model" className="max-w-full overflow-hidden">
+      <PopoverContent
+        side="top"
+        align="end"
+        padded={false}
+        aria-label="Model"
+        container={held}
+        collisionAvoidance={held ? STILL : undefined}
+        initialFocus={held ? false : undefined}
+        className="max-w-full overflow-hidden"
+      >
         {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the lists' arrow keys */}
         <div data-slot="model-picker" onKeyDown={moveKeys} className="flex h-model-picker-height max-h-available w-model-picker max-w-full flex-col">
           <div className="flex min-h-0 flex-1">
@@ -185,32 +205,43 @@ export function PermissionPicker({
   onChange,
   untrusted = false,
   onLearnMore,
+  held,
 }: {
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
   untrusted?: boolean;
   /** Opens the permission levels' help; without it there is no "Learn more". */
   onLearnMore?: () => void;
+  /** The gallery's box to hold the menu open in. */
+  held?: HTMLElement;
 }) {
   const [confirming, setConfirming] = useState(false);
   const value = untrusted ? "ask" : chosen;
   const { label, Icon } = LEVELS.find((each) => each.level === value)!;
   return (
     <>
-      <DropdownMenu modal={false}>
+      <DropdownMenu modal={false} open={held ? true : undefined}>
         <DropdownMenuTrigger
           render={
             <ComposerPill
               aria-label={`Permission level: ${label}`}
               data-slot="permission-picker"
-              className={cx("max-w-xs", value === "full" && "text-full-access")}
+              className="max-w-xs"
             />
           }
         >
-          <Icon />
-          <span className="truncate">{label}</span>
+          {/* Orange on the parts: the pill's base sets its own text colour. */}
+          <Icon className={cx("size-icon-md", value === "full" && "text-full-access")} />
+          <span className={cx("truncate", value === "full" && "text-full-access")}>{label}</span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" data-slot="permission-menu" className="w-125 max-w-full p-1.5">
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          data-slot="permission-menu"
+          container={held}
+          collisionAvoidance={held ? STILL : undefined}
+          className="w-125 max-w-full p-1.5"
+        >
           <div className="flex items-end justify-between gap-6 px-2 pt-1 pb-1.5 text-sm">
             <p className="text-muted-foreground">How should the agent’s actions be approved?</p>
             {onLearnMore && (
@@ -240,12 +271,15 @@ export function PermissionPicker({
                   value={level}
                   disabled={untrusted && level !== "ask"}
                   indicator={<Check className="size-icon-md" />}
-                  className={cx("gap-3 rounded-surface py-1.5", orange && "text-full-access")}
+                  className={cx("py-1.5", orange && "text-full-access")}
                 >
-                  <LevelIcon className="size-icon-md" />
-                  <span className="flex min-w-0 flex-col">
-                    <span>{name}</span>
-                    <span className={cx("whitespace-nowrap", orange ? "text-full-access" : "text-muted-foreground")}>{detail}</span>
+                  {/* The old row's wider gap; the item's own is set in its base. */}
+                  <span className="flex min-w-0 items-center gap-3">
+                    <LevelIcon className="size-icon-md" />
+                    <span className="flex min-w-0 flex-col">
+                      <span>{name}</span>
+                      <span className={cx("whitespace-nowrap", orange ? "text-full-access" : "text-muted-foreground")}>{detail}</span>
+                    </span>
                   </span>
                 </DropdownMenuRadioItem>
               );
@@ -279,17 +313,19 @@ export function FullAccessDialog({
   onCancel,
   onConfirm,
   onLearnMore,
-  container,
+  held,
 }: {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   onLearnMore?: () => void;
-  container?: HTMLElement | null;
+  /** The gallery's box to hold it open in, not modal and not taking focus. */
+  held?: HTMLElement;
 }) {
+  const cancel = useRef<HTMLButtonElement>(null);
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent showCloseButton={false} container={container}>
+    <Dialog open={open} modal={!held} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent showCloseButton={false} container={held} initialFocus={held ? false : cancel}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Warning className="size-icon-md" />
@@ -321,7 +357,7 @@ export function FullAccessDialog({
           )}
         </p>
         <DialogFooter>
-          <Button variant="secondary" autoFocus onClick={onCancel}>
+          <Button ref={cancel} variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
           <Button variant="soft-destructive" onClick={onConfirm}>
