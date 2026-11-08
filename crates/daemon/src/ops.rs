@@ -18,7 +18,7 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 17] = [
+const ROUTED: [&str; 19] = [
     "start",
     "seen",
     "rename",
@@ -26,6 +26,8 @@ const ROUTED: [&str; 17] = [
     "unread",
     "send",
     "stop",
+    "answer",
+    "level",
     "recover",
     "delete",
     "terminal",

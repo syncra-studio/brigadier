@@ -23,6 +23,12 @@ impl Thread {
             "text" | "reasoning" | "tool" | "tool_done" | "compaction" | "unknown"
         ) {
             self.end_wait(ts);
+            // In a terminal, approvals are answered by keys that aren't logged: the agent's next
+            // step closes them, as withdrawn [D77].
+            let pty = self.fold.child.as_ref().is_some_and(|c| c.pty);
+            if pty && matches!(kind, "text" | "reasoning" | "tool" | "tool_done") {
+                self.withdraw_all();
+            }
         }
         match kind {
             "text" => {
@@ -140,18 +146,27 @@ impl Thread {
             "question" => {
                 self.break_group();
                 let at = self.add(json!({"kind": "question", "question": item["text"],
-                    "options": item["options"].as_array().cloned().unwrap_or_default(), "answer": null}));
+                    "options": item["options"].as_array().cloned().unwrap_or_default(), "answer": null,
+                    "request": item["request"]}));
                 self.keys.insert(key(str_of("id")), at);
                 if let Some(o) = self.open.as_mut() {
                     o.asked = Some(at);
-                    o.kept.push(at as u64 + 1);
-                    if o.wait.is_none() {
-                        o.wait = Some(ts);
-                        self.turns[o.at]["waitingSince"] = ts.into();
-                        self.changed_turns.insert(o.at);
-                    }
+                }
+                self.wait_on(at, ts);
+            }
+            "approval" => {
+                self.break_group();
+                let at = self
+                    .add(json!({"kind": "approval", "request": item["request"], "decision": null}));
+                self.wait_on(at, ts);
+            }
+            "resolved" => {
+                self.withdraw(&str_of("id"));
+                if self.pending.is_empty() {
+                    self.end_wait(ts);
                 }
             }
+            "delivered" => self.delivered(&str_of("cid")),
             "answer" => {
                 if let Some(&at) = self.keys.get(&key(str_of("id"))) {
                     self.items[at]["answer"] = item["text"].clone();
@@ -160,6 +175,7 @@ impl Thread {
                         o.asked = None;
                     }
                 }
+                self.unwait(&str_of("id"));
                 self.end_wait(ts);
             }
             // A process gone ends its background subagents with it.
@@ -299,7 +315,7 @@ impl Thread {
         self.changed_items.insert(g);
     }
 
-    fn break_group(&mut self) {
+    pub(super) fn break_group(&mut self) {
         if let Some(o) = self.open.as_mut() {
             o.group = None;
         }

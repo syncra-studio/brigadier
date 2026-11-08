@@ -3,13 +3,17 @@
 //! count starts, received messages and child deaths without trusting Brigadier's own records.
 //! `gen` writes synthetic session logs for the scale drill.
 
+mod control;
+
 use brigadier_frames::log;
 use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 use std::{env, process, thread};
 
@@ -21,6 +25,12 @@ struct Agent {
     /// The setup (model, effort, level) its turns run with, and whether a turn has said it yet.
     setup: Value,
     told: bool,
+    /// Stdin's lines, and the messages that came while a turn ran, for after it.
+    rx: Receiver<Value>,
+    backlog: VecDeque<Value>,
+    /// Answers to its requests by id, and what the user allowed for this session [D193].
+    answers: HashMap<String, Value>,
+    grants: HashSet<String>,
 }
 
 fn now() -> u64 {
@@ -68,7 +78,15 @@ impl Agent {
 
     /// Runs `cmd` as a tool for up to `secs`, with a heartbeat each second unless `quiet`. Progress
     /// is saved, so a resumed session continues what is left rather than starting over.
-    fn tool(&mut self, directive: &str, secs: u64, done_before: u64, quiet: bool, cmd: &str) {
+    /// False when the user stopped the turn inside it.
+    fn tool(
+        &mut self,
+        directive: &str,
+        secs: u64,
+        done_before: u64,
+        quiet: bool,
+        cmd: &str,
+    ) -> bool {
         self.tools += 1;
         let id = format!("tl{}-{}", self.tools, now());
         self.note(&format!("tool {directive}"));
@@ -82,7 +100,10 @@ impl Agent {
             .spawn()
         {
             Ok(c) => c,
-            Err(e) => return self.say(&format!("tool failed: {e}")),
+            Err(e) => {
+                self.say(&format!("tool failed: {e}"));
+                return true;
+            }
         };
         ledger(&format!(
             "child {} {} {}",
@@ -99,6 +120,9 @@ impl Agent {
             if let Ok(Some(_)) = child.try_wait() {
                 break;
             }
+            if self.poll() {
+                return self.stopped(Some(&mut child));
+            }
             thread::sleep(Duration::from_millis(250));
             let elapsed = started.elapsed().as_secs();
             if elapsed > beat {
@@ -112,6 +136,7 @@ impl Agent {
         ledger(&format!("child_done {}", child.id()));
         self.note(&format!("finished {directive}"));
         emit(json!({"t": "tool_done", "id": id}));
+        true
     }
 
     /// The last tool that started but never finished, with the seconds it already ran.
@@ -185,14 +210,22 @@ impl Agent {
         let left = n.saturating_sub(done_before);
         match name {
             "say" => (0..n).for_each(|i| self.say(&format!("line {i}"))),
-            "tree" => self.tool(
-                word,
-                n,
-                done_before,
-                false,
-                &format!("sleep {left} & sleep {left} & wait"),
-            ),
-            "tool_sleep" => self.tool(word, n, done_before, true, &format!("sleep {left}")),
+            "tree" => {
+                let cmd = format!("sleep {left} & sleep {left} & wait");
+                if !self.tool(word, n, done_before, false, &cmd) {
+                    return false;
+                }
+            }
+            "tool_sleep" => {
+                if !self.tool(word, n, done_before, true, &format!("sleep {left}")) {
+                    return false;
+                }
+            }
+            "approve" => {
+                if !self.approve(n) {
+                    return false;
+                }
+            }
             "cargo" => {
                 let cargo = env::var("FAKE_CARGO").unwrap_or_else(|_| "cargo".into());
                 let manifest = env::var("FAKE_CARGO_MANIFEST").unwrap_or_default();
@@ -202,12 +235,16 @@ impl Agent {
                     target.display(),
                     target.display()
                 );
-                self.tool(word, n, done_before, false, &cmd);
+                if !self.tool(word, n, done_before, false, &cmd) {
+                    return false;
+                }
             }
             "hang" => thread::sleep(Duration::from_secs(n)),
             "ask" => {
                 self.waiting = true;
-                emit(json!({"t": "ask", "text": "Proceed with the change?"}));
+                emit(
+                    json!({"t": "ask", "id": format!("q{}", now()), "text": "Proceed with the change?"}),
+                );
                 return false;
             }
             "limit" if !limited() => {}
@@ -288,23 +325,34 @@ fn agent(args: &[String]) {
         waiting: false,
         setup: Value::Null,
         told: true,
+        rx: control::reader(),
+        backlog: VecDeque::new(),
+        answers: HashMap::new(),
+        grants: HashSet::new(),
     };
     emit(json!({"t": "hello", "session": agent.sid, "version": "fake 1"}));
-    for line in io::stdin().lock().lines() {
-        let Ok(line) = line else { break };
-        let line = line.trim_end_matches('\r');
-        let v = serde_json::from_str::<Value>(line).unwrap_or_default();
+    while let Some(v) = agent.backlog.pop_front().or_else(|| agent.rx.recv().ok()) {
         if v["setup"].is_object() {
-            // Only a change shows: the setup it started with is no news.
-            agent.told = agent.told && (agent.setup.is_null() || agent.setup == v["setup"]);
-            agent.setup = v["setup"].clone();
+            agent.set_up(&v["setup"]);
             continue;
         }
-        let text = v["text"]
-            .as_str()
-            .map(String::from)
-            .unwrap_or_else(|| line.to_string());
-        if !text.trim().is_empty() {
+        // A stop while it waits on a question ends that turn; with none open, it means nothing.
+        if v["interrupt"] == true {
+            if std::mem::take(&mut agent.waiting) {
+                agent.stopped(None);
+            }
+            continue;
+        }
+        // An answer from the question card: its answers, as if typed.
+        let text = match v["answer"]["answers"].as_array() {
+            Some(answers) => answers
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", "),
+            None => v["text"].as_str().unwrap_or("").to_string(),
+        };
+        if !text.trim().is_empty() || (agent.waiting && v["answer"]["answers"].is_array()) {
             agent.handle(&text);
         }
     }

@@ -141,7 +141,11 @@ function applyThread(frame: Record<string, any>): void {
     const at = turns.findIndex((each) => each.id === turn.id);
     turns = at < 0 ? [...turns, turn] : turns.with(at, turn);
   }
-  setThread(thread, { ...session, items, turns, work: [...(session.work ?? []), ...frame.work] });
+  setThread(thread, {
+    ...session, items, turns, work: [...(session.work ?? []), ...frame.work],
+    approvals: frame.approvals ?? session.approvals,
+    questions: frame.questions ?? session.questions,
+  });
 }
 
 function subscribe(): void {

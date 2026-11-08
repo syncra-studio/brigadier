@@ -2,6 +2,7 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 mod accounts;
+mod control;
 pub mod index;
 mod mirror;
 pub mod owner;
@@ -15,12 +16,12 @@ use brigadier_frames::{log, procs, take_lock};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use std::{env, fs, process, thread};
+use std::{env, fs, thread};
 
 pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
-       brigadier send <id> <text> [--cid C] [--backend B]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer]
+       brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
@@ -156,6 +157,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "send" => {
             let (id, text) = (arg(args, 1)?, arg(args, 2)?);
+            if has(args, "--steer") {
+                return control::steer(data, id, text, flag(args, "--cid"));
+            }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             send(
@@ -221,6 +225,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "stop" => {
             let id = arg(args, 1)?;
+            // The agent's own stop first; the kill only when it has none or it didn't stop in time.
+            if let Ok(Some(stopped)) = control::interrupt(data, id) {
+                return Ok(stopped);
+            }
             match owner::call(data, id, json!({"op": "stop", "by": "user"})) {
                 Ok(v) => Ok(v),
                 // No owner: nothing can be running under us, but leftovers recorded in the log still go.
@@ -247,25 +255,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, false)?;
             Ok(core::delete(&spec, &f.fold))
         }
-        // The session's permission level, taken at its next turn start [D129, D170].
-        "level" => {
-            let id = arg(args, 1)?;
-            let mut spec = core::load(data, id)?;
-            if let Some(want) = args.get(2) {
-                let f = core::fold(&spec.dir, true)?;
-                let backend = if f.fold.backend.is_empty() {
-                    &spec.backend
-                } else {
-                    &f.fold.backend
-                };
-                spec.level = Some(want.clone());
-                if let Some(a) = adapters::get(backend) {
-                    core::level(&spec, a).map_err(io::Error::other)?;
-                }
-                core::create(data, &spec)?;
-            }
-            Ok(json!({"ok": true, "level": spec.level}))
-        }
+        "level" => control::level(data, args),
+        "answer" => control::answer(data, args),
         "up" => {
             for id in &args[1..] {
                 owner::ensure(data, &core::load(data, id)?)?;
@@ -340,6 +331,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = core::load(data, id)?;
             let mut thread = core::thread::Thread::default();
             core::read(&spec.dir, |item| thread.push(item))?;
+            let f = thread.status_fold();
+            let live = fold::live(f, owner::state(data, id), data, &procs::all());
+            if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
+                thread.interrupt(log::now_ms());
+            }
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),
@@ -394,12 +390,7 @@ fn send(
     cid: Option<&str>,
     backend: Option<&str>,
 ) -> io::Result<Value> {
-    let cid = cid.map(String::from).unwrap_or_else(|| {
-        // The daemon sends from many threads of one process: the counter keeps ids apart.
-        static N: AtomicU64 = AtomicU64::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        format!("c{}-{}-{n}", log::now_ms(), process::id())
-    });
+    let cid = cid.map_or_else(control::new_cid, String::from);
     let f = core::fold(&spec.dir, true)?;
     let call = call_fn(data, &spec.id);
     let mut reply = core::send(

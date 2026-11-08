@@ -4,6 +4,7 @@
 
 use crate::adapters;
 
+mod asks;
 mod live;
 mod status;
 pub use live::{Live, live, live_groups};
@@ -30,6 +31,12 @@ pub struct Turn {
     pub began: bool,
     pub tools: BTreeSet<String>,
     pub question: Option<String>,
+    /// Requests waiting on the user (approvals and questions), by the id their CLI gave them.
+    #[serde(default)]
+    pub asks: BTreeMap<String, Value>,
+    /// The user asked it to stop: however its turn ends, it was stopped.
+    #[serde(default)]
+    pub stopping: bool,
     /// Logged, then its owner died before delivering it.
     pub orphaned: bool,
 }
@@ -111,6 +118,13 @@ pub struct Fold {
     /// Prompts in the CLI's record already bound to the chat input that typed them, by prompt id.
     #[serde(default)]
     pub bound: BTreeMap<String, String>,
+    /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
+    /// delivered), withdrawn, or the outcome of the turn they ended with.
+    #[serde(default)]
+    pub closed: BTreeMap<String, String>,
+    /// Answers logged and not yet delivered: command id → request id.
+    #[serde(default)]
+    pub claims: BTreeMap<String, String>,
 }
 
 impl Fold {
@@ -139,6 +153,7 @@ impl Fold {
 
     fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
+            self.end_asks(outcome);
             self.turns.remove(0);
             self.finished = ts;
             self.last = Some(
@@ -175,6 +190,8 @@ impl Fold {
                 | "usage"
                 | "question"
                 | "answer"
+                | "approval"
+                | "resolved"
                 | "reasoning"
                 | "compaction"
         ) {
@@ -191,6 +208,7 @@ impl Fold {
                     )
                 {
                     t.question = None;
+                    self.end_asks("withdrawn");
                 }
             }
         }
@@ -200,6 +218,9 @@ impl Fold {
                 *self.cids.entry(cid.clone()).or_default() += 1;
                 if item["setup"].is_object() {
                     self.given = Some(item["setup"].clone());
+                }
+                if self.control(item, &cid) {
+                    return;
                 }
                 (self.limit, self.resets) = (None, None);
                 self.sign_in = None;
@@ -230,6 +251,10 @@ impl Fold {
                 // An input while the agent waits on a question is its answer, not a new turn.
                 if let Some(t) = self.turns.first_mut().filter(|t| t.question.is_some()) {
                     t.question = None;
+                    let asked = t.asks.iter().filter(|(_, r)| r["items"].is_array());
+                    let asked: Vec<String> = asked.map(|(id, _)| id.clone()).collect();
+                    asked.iter().for_each(|id| self.end_ask(id, "answered"));
+                    let t = &mut self.turns[0];
                     t.delivered = None;
                     t.cid = Some(cid);
                     t.ts = ts;
@@ -265,6 +290,7 @@ impl Fold {
                 if let Some(t) = self.turns.iter_mut().find(|t| t.cid.as_deref() == cid) {
                     t.delivered = Some(ts);
                 }
+                self.delivered_control(cid.unwrap_or(""));
             }
             "spawned" => {
                 let (pid, start_us) = (
@@ -327,7 +353,13 @@ impl Fold {
             }
             "turn_end" => {
                 let ok = item["ok"].as_bool().unwrap_or(true);
-                self.close(if ok { "done" } else { "failed" }, Value::Null, ts);
+                let stopped = self.turns.first().is_some_and(|t| t.stopping);
+                let outcome = match () {
+                    _ if stopped => "stopped",
+                    _ if ok => "done",
+                    _ => "failed",
+                };
+                self.close(outcome, Value::Null, ts);
             }
             "tool" => drop(self.turns.first_mut().map(|t| t.tools.insert(str_of("id")))),
             "tool_done" => drop(
@@ -335,12 +367,20 @@ impl Fold {
                     .first_mut()
                     .map(|t| t.tools.remove(&str_of("id"))),
             ),
-            "question" => drop(
-                self.turns
-                    .first_mut()
-                    .map(|t| t.question = Some(str_of("text"))),
-            ),
-            "answer" => drop(self.turns.first_mut().map(|t| t.question = None)),
+            "question" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.question = Some(str_of("text"));
+                }
+                self.ask(item);
+            }
+            "approval" => self.ask(item),
+            "resolved" => self.end_ask(&str_of("id"), "withdrawn"),
+            "answer" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.question = None;
+                }
+                self.end_ask(&str_of("id"), "answered");
+            }
             // A prompt the CLI took in its terminal. One a chat input typed starts that input's
             // turn, by the binding the mirror logged before it; any other is the user's own [D47].
             "prompt" => {

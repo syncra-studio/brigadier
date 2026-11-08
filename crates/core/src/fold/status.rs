@@ -57,7 +57,8 @@ pub fn works(fold: &Fold, live: &Live) -> bool {
     let (Some(turn), Some(child)) = (fold.turns.first(), live.child) else {
         return false;
     };
-    let waiting = child.stopped || turn.question.is_some();
+    // Only the waiting turn's own share: background jobs counted above still keep it awake.
+    let waiting = child.stopped || turn.question.is_some() || !turn.asks.is_empty();
     let Some(delivered) = turn.delivered.filter(|_| !waiting) else {
         return false;
     };
@@ -160,6 +161,9 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     // Also in a terminal: the CLI waits on the user either way [D77].
     if let Some(q) = &turn.question {
         return ("waiting_answer", q.clone().into());
+    }
+    if let Some(id) = turn.asks.keys().next() {
+        return ("waiting_answer", serde_json::json!({"approval": id}));
     }
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     if fold.child.as_ref().is_some_and(|c| c.pty) {

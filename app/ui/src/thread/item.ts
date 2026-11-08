@@ -1,3 +1,6 @@
+import type { PendingApproval } from "../components/composer/approval";
+import type { PendingQuestion } from "../components/composer/question";
+
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
 
 // Draft contract Rust must meet, not final: `n`, `origin`, `backend`, the `group` row, `StepKind` and `Work`, and
@@ -13,6 +16,9 @@ export type Session = {
   items: Item[];
   /** One per finished turn that did work. */
   work?: Work[];
+  /** Requests still waiting on the user, replayed on reconnect and reconciled by CLI id. */
+  approvals?: PendingApproval[];
+  questions?: PendingQuestion[];
 };
 
 export type Turn = {
@@ -107,8 +113,8 @@ export type Item = Base &
         endedAt?: number | null;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress }
-    | { kind: "approval"; title: string; detail: string; decision: "approved" | "denied" | null; action?: ApprovalAction }
-    | { kind: "question"; question: string; options: string[]; answer: string | null }
+    | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null }
+    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean }
     | {
         kind: "childAgent";
         sessionId: string;
