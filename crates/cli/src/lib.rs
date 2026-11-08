@@ -341,8 +341,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "index" => index(data, has(args, "--cold")),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
-        "models" => models::models(data, args),
-        "set" => models::set(data, args),
+        "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),
         "awake" => {
             if let Some(mode) = args.get(1) {
@@ -408,9 +407,8 @@ fn send(
         None,
     );
     let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
-    // No result means a refusal before logging (a busy race with a turn that just ended) or no reply
-    // at all (a host moving to a new build). One retry, and only when the log proves the command
-    // never got in: an uncertain one is never sent again by itself [D54].
+    // Retry a busy race or moving host only when the log proves the command never got in;
+    // an uncertain delivery is never sent again by itself [D54].
     if reply["result"].is_null() && !logged() {
         thread::sleep(Duration::from_millis(200));
         // If no host answers, the resend fails too and the log decides the result below.

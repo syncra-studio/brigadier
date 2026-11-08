@@ -157,10 +157,10 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 <SessionOfThread value={{ id, offline }}>
                   <Thread
                     source={threadSource}
-                  footer={
-                    row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
-                    row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
-                  }
+                    footer={
+                      row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
+                      row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
+                    }
                   />
                 </SessionOfThread>
               </div>
