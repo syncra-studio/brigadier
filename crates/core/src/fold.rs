@@ -34,6 +34,9 @@ pub struct Child {
     pub backend: String,
     pub exited: bool,
     pub pty: bool,
+    /// A mirror copies its CLI's record into the log, so its turns come and go like piped ones.
+    #[serde(default)]
+    pub mirror: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -52,6 +55,9 @@ pub struct Fold {
     pub unknown: u64,
     pub compactions: u64,
     pub items: u64,
+    /// Prompts in the CLI's record already bound to the chat input that typed them, by prompt id.
+    #[serde(default)]
+    pub bound: BTreeMap<String, String>,
 }
 
 impl Fold {
@@ -111,8 +117,12 @@ impl Fold {
                     return;
                 }
                 self.backend = str_of("backend");
-                // A terminal has no turn boundaries: each input replaces the last as "current".
-                if self.child.as_ref().is_some_and(|c| c.pty && !c.exited) {
+                // A terminal with no mirror has no turn boundaries: each input replaces the last.
+                if self
+                    .child
+                    .as_ref()
+                    .is_some_and(|c| c.pty && !c.exited && !c.mirror)
+                {
                     self.turns.clear();
                 }
                 let retry_of = item["retry_of"].as_str().map(String::from);
@@ -144,8 +154,13 @@ impl Fold {
                     backend: str_of("backend"),
                     exited: false,
                     pty: item["mode"] == "pty",
+                    mirror: item["mirror"].is_object(),
                 });
                 self.groups.push((pid, start_us));
+                let m = &item["mirror"];
+                if let (Some(g), Some(s)) = (m["pgid"].as_i64(), m["start_us"].as_u64()) {
+                    self.groups.push((g as i32, s));
+                }
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -198,6 +213,44 @@ impl Fold {
                     .map(|t| t.question = Some(str_of("text"))),
             ),
             "answer" => drop(self.turns.first_mut().map(|t| t.question = None)),
+            // A prompt the CLI took in its terminal. One a chat input typed starts that input's
+            // turn, by the binding the mirror logged before it; any other is the user's own [D47].
+            "prompt" => {
+                self.last_out = ts;
+                let cid = self.bound.remove(&str_of("id"));
+                // The CLI takes a prompt only once the turn before it is over, ended or not (Esc
+                // ends one with no turn end in its record).
+                while self
+                    .turns
+                    .first()
+                    .is_some_and(|t| t.began && (cid.is_none() || t.cid != cid))
+                {
+                    self.close("stopped", json!("terminal"), ts);
+                }
+                let typed =
+                    cid.and_then(|c| self.turns.iter_mut().find(|t| t.cid.as_deref() == Some(&c)));
+                if let Some(t) = typed {
+                    t.began = true;
+                    return;
+                }
+                // Ahead of inputs still queued: the CLI runs it now.
+                let at = self
+                    .turns
+                    .iter()
+                    .position(|t| !t.began)
+                    .unwrap_or(self.turns.len());
+                let turn = Turn {
+                    id: format!("p{}", self.items),
+                    origin: "user".into(),
+                    backend: self.backend.clone(),
+                    text: str_of("text"),
+                    ts,
+                    delivered: Some(ts),
+                    began: true,
+                    ..Default::default()
+                };
+                self.turns.insert(at, turn);
+            }
             "resume_id" => drop(self.resume.insert(str_of("backend"), str_of("id"))),
             "limited" => {
                 self.limit = Some(str_of("message"));
@@ -211,6 +264,7 @@ impl Fold {
             "compaction" if item["progress"] != "running" => self.compactions += 1,
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {
+                Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("owner_started") => self
                     .turns
@@ -319,6 +373,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             .unwrap_or("");
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
+            // An open terminal between turns, whatever the last chat turn's outcome was [D47].
+            _ if live.child.is_some() && fold.child.as_ref().is_some_and(|c| c.pty) => {
+                ("terminal", Value::Null)
+            }
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
             _ if fold.limit.is_some() => ("limited", fold.limit.clone().into()),
             _ if outcome == "interrupted" => (

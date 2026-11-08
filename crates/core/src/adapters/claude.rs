@@ -2,8 +2,8 @@
 //! interactive CLI on a PTY. Frame names per its public CLI docs and observed output.
 
 use super::{
-    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, home_path, s,
-    shell_step,
+    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, counts, drop_lines,
+    file_lines, home_path, in_pty, paste, s, shell_step, uuid,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -69,7 +69,7 @@ impl Adapter for Claude {
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
         if spec.mode == "pty" {
-            return format!("{text}\r");
+            return paste(text);
         }
         format!(
             "{}\n",
@@ -89,7 +89,20 @@ impl Adapter for Claude {
         };
         // A subagent's own steps stream here too, under the Agent call that runs it [D78].
         let parent = v["parent_tool_use_id"].as_str().map(String::from);
+        // A line of the CLI's own record, which a terminal's mirror copies [D47]: the same
+        // messages as stream-json, plus the typed prompt, the turn's end and bookkeeping.
+        let record = v.get("sessionId").is_some()
+            || matches!(s(&v, &["type"]), "file-history-snapshot" | "summary");
+        let typed = v["message"]["content"].as_str().filter(|t| {
+            record && v["isMeta"] != true && v["isSidechain"] != true && !t.starts_with('<')
+        });
         match (s(&v, &["type"]), s(&v, &["subtype"])) {
+            ("user", _) if typed.is_some() => vec![
+                Event::Resume(s(&v, &["sessionId"]).into()),
+                Event::Prompt(s(&v, &["uuid"]).into(), typed.unwrap_or("").into()),
+            ],
+            ("system", "turn_duration") if record => vec![Event::TurnEnd(true)],
+            _ if record && v["isSidechain"] == true => vec![],
             ("system", "init") => vec![
                 Event::Resume(s(&v, &["session_id"]).into()),
                 Event::TurnStart,
@@ -120,7 +133,13 @@ impl Adapter for Claude {
             ("user", _) => blocks()
                 .iter()
                 .filter(|b| s(b, &["type"]) == "tool_result")
-                .flat_map(|b| tool_end(b, &v["tool_use_result"], parent.clone()))
+                .flat_map(|b| {
+                    let result = match &v["tool_use_result"] {
+                        Value::Null => &v["toolUseResult"],
+                        r => r,
+                    };
+                    tool_end(b, result, parent.clone())
+                })
                 .collect(),
             ("rate_limit_event", _) => match s(&v, &["rate_limit_info", "status"]) {
                 "rejected" => vec![Event::Limited(line.chars().take(300).collect())],
@@ -134,6 +153,7 @@ impl Adapter for Claude {
                 events.push(Event::TurnEnd(v["is_error"].as_bool() != Some(true)));
                 events
             }
+            _ if record => vec![],
             _ => vec![Event::Unknown(line.into())],
         }
     }
@@ -149,6 +169,35 @@ impl Adapter for Claude {
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
         let dir = project_dir(spec);
         vec![dir.join(format!("{resume}.jsonl")), dir.join(resume)]
+    }
+
+    /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
+    fn forget(&self, _spec: &Spec, resume: &str) {
+        let _ = drop_lines(&home_path(".claude/history.jsonl"), "sessionId", resume);
+    }
+
+    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
+        let mut launch = self.launch(&in_pty(spec), resume, None);
+        let conv = match resume {
+            Some(id) => id.to_string(),
+            None => {
+                let id = uuid();
+                launch.argv.extend(["--session-id".into(), id.clone()]);
+                id
+            }
+        };
+        Ok((launch, conv))
+    }
+
+    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
+        let path = project_dir(spec).join(format!("{conv}.jsonl"));
+        Some(std::fs::metadata(path).map_or(0, |m| m.len()).to_string())
+    }
+
+    fn mirror(&self, spec: &Spec, conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let path = project_dir(spec).join(format!("{conv}.jsonl"));
+        let (lines, end) = file_lines(&path, cursor.parse().unwrap_or(0));
+        (lines, end.to_string())
     }
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {

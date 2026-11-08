@@ -3,7 +3,10 @@
 mod claude;
 mod codex;
 mod fake;
+mod files;
 mod opencode;
+
+pub use files::{drop_lines, file_lines, uuid};
 
 use crate::Spec;
 use serde_json::Value;
@@ -35,6 +38,8 @@ pub enum Event {
     Answer(String, Option<String>),
     /// "running" or "done".
     Compaction(&'static str),
+    /// A prompt the CLI took in its own terminal: its id in the CLI's record, and its text [D47].
+    Prompt(String, String),
     Usage(Value),
     Unknown(String),
 }
@@ -109,6 +114,21 @@ pub trait Adapter: Sync {
     fn diffs(&self, _resume: &str, _turn: u64) -> Option<Vec<Vec<(String, String)>>> {
         None
     }
+    /// The CLI's interactive mode on this conversation, and the conversation id it will write
+    /// (a new one when `resume` is None and the CLI lets us pick it). None: no terminal [D47].
+    fn terminal(&self, _spec: &Spec, _resume: Option<&str>) -> Result<(Launch, String), String> {
+        Err("This CLI has no terminal.".into())
+    }
+    /// Where the CLI's record of `conv` ends now: the mirror starts reading there. None: the
+    /// backend keeps no record a mirror can read, so its terminal's work stays in the terminal.
+    fn mirror_from(&self, _spec: &Spec, _conv: &str) -> Option<String> {
+        None
+    }
+    /// New lines of the CLI's record after `cursor`, for `parse`, and the cursor after them. Only
+    /// whole entries, oldest first; read-only.
+    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
+        (vec![], cursor.into())
+    }
 }
 
 pub fn all() -> [&'static dyn Adapter; 4] {
@@ -145,6 +165,19 @@ pub fn base_env(spec: &Spec, exe: &Path) -> Vec<(String, String)> {
         env.push(("TERM".into(), "xterm-256color".into()));
     }
     env
+}
+
+/// The session's spec, run in a terminal: what each adapter's PTY launch reads.
+pub fn in_pty(spec: &Spec) -> Spec {
+    Spec {
+        mode: "pty".into(),
+        ..spec.clone()
+    }
+}
+
+/// A message typed into a TUI: a bracketed paste, so its newlines stay text, then Enter.
+pub fn paste(text: &str) -> String {
+    format!("\x1b[200~{}\x1b[201~\r", text.replace('\x1b', ""))
 }
 
 pub fn home_path(rest: &str) -> PathBuf {

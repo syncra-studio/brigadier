@@ -1,8 +1,8 @@
 //! Codex CLI: one `codex exec --json` process per turn, continued with `exec resume <thread>`.
 
 use super::{
-    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, home_path, s,
-    shell_step,
+    Adapter, Done, Event, Launch, Timing, Tool, base_env, change, classify, drop_lines, file_lines,
+    home_path, in_pty, paste, s, shell_step,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -46,6 +46,10 @@ impl Adapter for Codex {
                 ]
                 .map(String::from),
             );
+        } else {
+            // Its TUI would otherwise join a shared background server, outside this session's
+            // process group [D60]; the sandbox flag also skips its trust screen.
+            argv.extend(["--no-daemon", "--sandbox", "workspace-write"].map(String::from));
         }
         argv.extend([
             "-m".into(),
@@ -66,13 +70,16 @@ impl Adapter for Codex {
     }
 
     fn encode(&self, _spec: &Spec, text: &str) -> String {
-        format!("{text}\r")
+        paste(text)
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
         };
+        if v.get("payload").is_some() {
+            return rollout(&v);
+        }
         let item = &v["item"];
         let kind = s(item, &["type"]);
         let done = s(&v, &["type"]) == "item.completed";
@@ -136,6 +143,37 @@ impl Adapter for Codex {
         rollouts(&names)
     }
 
+    /// Its prompt history keeps the terminal's prompts by thread id, and a TUI that was killed
+    /// leaves its writer lock; one a live writer holds stays, by Codex's own rule [D35].
+    fn forget(&self, _spec: &Spec, resume: &str) {
+        let _ = drop_lines(&home_path(".codex/history.jsonl"), "session_id", resume);
+        let lock = home_path(".codex/thread-writer-locks").join(format!("{resume}.lock"));
+        if let Ok(f) = std::fs::File::open(&lock)
+            && f.try_lock().is_ok()
+        {
+            let _ = std::fs::remove_file(&lock);
+        }
+    }
+
+    /// Its TUI resumes a thread by id; a new thread's id can't be picked, so the first message of
+    /// a session goes through chat (proposed).
+    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
+        let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
+        Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
+    }
+
+    fn mirror_from(&self, _spec: &Spec, conv: &str) -> Option<String> {
+        let path = rollouts(&[format!("-{conv}.jsonl")]).pop()?;
+        let len = std::fs::metadata(&path).ok()?.len();
+        Some(format!("{len}\t{}", path.display()))
+    }
+
+    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let (from, path) = cursor.split_once('\t').unwrap_or(("0", ""));
+        let (lines, end) = file_lines(std::path::Path::new(path), from.parse().unwrap_or(0));
+        (lines, format!("{end}\t{path}"))
+    }
+
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
         let (mut texts, mut tools) = (0, 0);
         for path in self.external(spec, resume) {
@@ -185,26 +223,6 @@ impl Adapter for Codex {
         }
         (turns > turn).then_some(edits)
     }
-}
-
-/// Rollouts live under sessions/YYYY/MM/DD/ with the thread id in the name.
-fn rollouts(names: &[String]) -> Vec<PathBuf> {
-    let mut found = vec![];
-    let mut dirs = vec![home_path(".codex/sessions")];
-    while let Some(dir) = dirs.pop() {
-        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                dirs.push(path);
-            } else if path
-                .file_name()
-                .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
-            {
-                found.push(path);
-            }
-        }
-    }
-    found
 }
 
 /// A rollout's change to one file as a unified diff: an update's own, or a whole added or deleted file.
@@ -280,7 +298,7 @@ fn end(item: &Value) -> Done {
 fn changes(item: &Value) -> Vec<Value> {
     let all = item["changes"].as_array().into_iter().flatten();
     all.map(|c| {
-        let how = match s(c, &["kind"]) {
+        let how = match [s(c, &["kind"]), s(c, &["kind", "type"])].concat().as_str() {
             "add" => "added",
             "delete" => "deleted",
             _ => "modified",
@@ -323,4 +341,88 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
         }
     }
     events
+}
+
+/// Rollouts whose names end with one of `names`: they live under sessions/YYYY/MM/DD/.
+fn rollouts(names: &[String]) -> Vec<PathBuf> {
+    let mut found = vec![];
+    let mut dirs = vec![home_path(".codex/sessions")];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path
+                .file_name()
+                .is_some_and(|n| names.iter().any(|id| n.to_string_lossy().ends_with(id)))
+            {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// A line of the CLI's rollout, which a terminal's mirror copies [D47]: only its events count,
+/// in the same shapes as `exec --json` once named alike.
+fn rollout(v: &Value) -> Vec<Event> {
+    let p = &v["payload"];
+    if s(v, &["type"]) != "event_msg" {
+        return vec![];
+    }
+    match s(p, &["type"]) {
+        "task_complete" => vec![Event::TurnEnd(true)],
+        "turn_aborted" => vec![Event::TurnEnd(false)],
+        "item_completed" => rollout_item(&p["item"]),
+        _ => vec![],
+    }
+}
+
+fn rollout_item(item: &Value) -> Vec<Event> {
+    let joined = |v: &Value| {
+        let parts = v.as_array().into_iter().flatten();
+        let texts: Vec<&str> = parts
+            .filter_map(|p| p.as_str().or(p["text"].as_str()))
+            .collect();
+        texts.join("\n")
+    };
+    let kind = s(item, &["type"]);
+    match kind {
+        "UserMessage" => vec![Event::Prompt(
+            s(item, &["id"]).into(),
+            joined(&item["content"]),
+        )],
+        "AgentMessage" => vec![Event::Text(joined(&item["content"]))],
+        "Reasoning" => {
+            let text = joined(&item["summary_text"]);
+            if text.is_empty() {
+                vec![]
+            } else {
+                vec![Event::Reasoning(text)]
+            }
+        }
+        _ => {
+            // CommandExecution → command_execution, with its command as one line.
+            let mut e = item.clone();
+            let snake: String = kind
+                .chars()
+                .enumerate()
+                .flat_map(|(i, c)| {
+                    let sep = (i > 0 && c.is_ascii_uppercase()).then_some('_');
+                    sep.into_iter().chain([c.to_ascii_lowercase()])
+                })
+                .collect();
+            e["type"] = snake.clone().into();
+            if let Some(last) = item["command"].as_array().and_then(|c| c.last()) {
+                e["command"] = last.clone();
+            }
+            match snake.as_str() {
+                "collab_agent_tool_call" | "collab_tool_call" => agents(&e, true),
+                k if TOOLS.contains(&k) => {
+                    vec![Event::ToolStart(tool(&e)), Event::ToolEnd(end(&e))]
+                }
+                _ => vec![],
+            }
+        }
+    }
 }

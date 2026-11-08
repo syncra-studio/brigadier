@@ -4,6 +4,7 @@
 pub mod adapters;
 pub mod fold;
 pub mod norm;
+pub mod terminal;
 pub mod thread;
 
 use brigadier_frames::log::{self, Reader};
@@ -205,13 +206,18 @@ pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
 
 pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
 
+/// The child a host holds, from its ping: its spawn id (0 from a host too old to say) and
+/// whether it runs in a terminal.
+pub type Running = Option<(u64, bool)>;
+
 /// Sends one message: the owner logs it with its command id before writing it anywhere. Prints
-/// back exactly what happened: delivered, logged (not proven delivered) or refused.
+/// back exactly what happened: delivered, logged (not proven delivered) or refused. While the
+/// terminal is open the message is typed into it, made for that one child [D47].
 #[allow(clippy::too_many_arguments)]
 pub fn send(
     spec: &Spec,
     f: &Fold,
-    child: Option<i32>,
+    child: Running,
     call: Call,
     cid: &str,
     origin: &str,
@@ -232,13 +238,22 @@ pub fn send(
     let base =
         json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of});
     let running = child.is_some();
+    let pty = child.is_some_and(|(_, pty)| pty);
     if running && f.child.as_ref().is_some_and(|c| c.backend != b) {
         return json!({"ok": false, "result": "refused", "error": "another backend's process is running; stop it first"});
     }
-    if running && (!a.per_turn() || spec.mode == "pty") {
+    if running && (!a.per_turn() || pty) {
         let mut req = base.clone();
         req["op"] = "input".into();
-        req["bytes"] = a.encode(spec, text).into();
+        let as_typed = if pty {
+            adapters::in_pty(spec)
+        } else {
+            spec.clone()
+        };
+        req["bytes"] = a.encode(&as_typed, text).into();
+        if let Some((spawn, _)) = child.filter(|(spawn, _)| *spawn > 0) {
+            req["spawn"] = spawn.into();
+        }
         let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
         if reply["error"] != "no_child" {
             return reply;
@@ -268,7 +283,7 @@ pub fn send(
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself);
 /// an interrupted turn continues through the backend's resume id.
-pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Option<i32>, call: Call) -> Value {
+pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -> Value {
     let status = fold::status(f, live);
     let state = status["state"].as_str().unwrap_or("");
     let now = log::now_ms();

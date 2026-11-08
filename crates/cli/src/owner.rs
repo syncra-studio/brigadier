@@ -53,7 +53,12 @@ pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
 }
 
 pub fn call(data: &Path, id: &str, req: Value) -> io::Result<Value> {
-    let timeout = if req["op"] == "stop" { 10 } else { 3 };
+    // A spawn may first wait out a handoff: a stop, then the last child's final drain.
+    let timeout = match req["op"].as_str() {
+        Some("stop") => 10,
+        Some("spawn") => 20,
+        _ => 3,
+    };
     let mut conn = wire::connect(
         &session_dir(data, id).join("s"),
         Duration::from_secs(timeout),

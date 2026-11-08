@@ -133,7 +133,8 @@ impl Thread {
             wait: None,
             waited: 0,
         });
-        if t.cid.is_some() {
+        // An input, or a prompt typed in the terminal (the user's, with no command id).
+        if t.cid.is_some() || t.origin == "user" {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(
                 json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,

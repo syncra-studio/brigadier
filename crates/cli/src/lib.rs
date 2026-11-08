@@ -2,6 +2,7 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 pub mod index;
+mod mirror;
 pub mod owner;
 
 use brigadier_core::fold::{self, Owner};
@@ -18,6 +19,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier send <id> <text> [--cid C] [--backend B]
        brigadier status [<id>...|--all]
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
+       brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>";
 
@@ -42,12 +44,11 @@ fn call_fn<'a>(data: &'a Path, id: &'a str) -> impl Fn(Value) -> io::Result<Valu
     move |req| owner::call(data, id, req)
 }
 
-/// The child pid the owner holds right now, if any. An owner that doesn't answer reads as none.
-fn child(data: &Path, id: &str) -> Option<i32> {
-    owner::call(data, id, json!({"op": "ping"}))
-        .ok()
-        .and_then(|v| v["child"].as_i64())
-        .map(|p| p as i32)
+/// The child the owner holds right now, if any. An owner that doesn't answer reads as none.
+fn child(data: &Path, id: &str) -> core::Running {
+    let ping = owner::call(data, id, json!({"op": "ping"})).ok()?;
+    ping["child"].as_i64()?;
+    Some((ping["spawn"].as_u64().unwrap_or(0), ping["pty"] == true))
 }
 
 fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
@@ -172,6 +173,64 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),
         "read" => read(data, arg(args, 1)?, args),
+        "terminal" => {
+            let id = arg(args, 1)?;
+            let spec = core::load(data, id)?;
+            owner::ensure(data, &spec)?;
+            // The host's state first, then the fold: the host refuses if the log moved in between.
+            let ping = owner::call(data, id, json!({"op": "ping"}))?;
+            let f = core::fold(&spec.dir, true)?;
+            let num = |name: &str, default: u16| {
+                flag(args, name)
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(default)
+            };
+            let mirror = |backend: &str, conv: &str, cursor: &str, since: u64| {
+                let exe = env::current_exe()
+                    .unwrap_or_default()
+                    .with_file_name("brigadier");
+                let mut env: serde_json::Map<String, Value> = adapters::base_env(&spec, &exe)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+                env.insert("BRIGADIER_DATA".into(), data.display().to_string().into());
+                let argv = [
+                    exe.display().to_string(),
+                    "mirror".into(),
+                    id.into(),
+                    "--backend".into(),
+                    backend.into(),
+                    "--conv".into(),
+                    conv.into(),
+                    "--from".into(),
+                    cursor.into(),
+                    "--since".into(),
+                    since.to_string(),
+                ];
+                json!({"argv": argv, "env": env})
+            };
+            let call = call_fn(data, id);
+            let ask = core::terminal::Ask {
+                cols: num("--cols", 120),
+                rows: num("--rows", 40),
+                mirror: &mirror,
+            };
+            Ok(core::terminal::open(&spec, &f.fold, &ping, &call, ask))
+        }
+        "mirror" => {
+            let since = flag(args, "--since")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            let need = |name: &str| flag(args, name).ok_or_else(|| io::Error::other(USAGE));
+            mirror::run(
+                data,
+                arg(args, 1)?,
+                need("--backend")?,
+                need("--conv")?,
+                flag(args, "--from").unwrap_or(""),
+                since,
+            )
+        }
         // (proposed) A diagnostic: the thread the app draws, from the same fold [D64, D65].
         "thread" => {
             let id = arg(args, 1)?;

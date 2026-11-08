@@ -54,6 +54,14 @@ impl Adapter for Fake {
         }
     }
 
+    /// Its terminal is its own PTY mode, with no record to mirror: for drills and demos.
+    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
+        Ok((
+            self.launch(&super::in_pty(spec), resume, None),
+            resume.unwrap_or("").into(),
+        ))
+    }
+
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
