@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ErrorLine } from "../components/error-line";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
 import type { Row } from "../daemon";
+import { useStart } from "../home/start";
 import { errorText, run } from "../onboarding/api";
 import { SetUpAgentDialog } from "./set-up";
 import { newId } from "./store";
@@ -29,6 +30,7 @@ export const asGroups = (groups: Rust[]): ModelGroup[] =>
  * next message goes to it [D90]. Offline it can't be opened.
  */
 export function SessionModel({ id, row, offline }: { id: string; row: ModelRow | undefined; offline: boolean }) {
+  const starting = useStart(id)?.asking === true;
   const [groups, setGroups] = useState<ModelGroup[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ op: string; choice: ModelChoice } | null>(null);
@@ -49,8 +51,10 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     run(["models", "--session", id, "--fresh"]).then((reply) => land(reply, true), fail);
   };
   useEffect(() => {
-    if (!offline) load();
-  }, [id, offline]);
+    // Home opens this view before Rust has made the session and its worktree.
+    if (!offline && !starting) load();
+    return () => { asked.current++; };
+  }, [id, offline, starting]);
 
   // Settled once Rust's row has taken it.
   if (pending && row?.setup_op === pending.op) setPending(null);
