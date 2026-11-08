@@ -297,8 +297,14 @@ pub trait Adapter: Sync {
     }
     /// The CLI's interactive mode on this conversation, and the conversation id it will write
     /// (a new one when `resume` is None and the CLI lets us pick it). None: no terminal [D47].
+    /// It runs at `spec.level`, or refuses a level it can't hold [D243].
     fn terminal(&self, _spec: &Spec, _resume: Option<&str>) -> Result<(Launch, String), String> {
         Err("This CLI has no terminal.".into())
+    }
+    /// What the CLI's hook prints to refuse the step a held session's terminal is about to take
+    /// above Ask (trust taken back while it's open), or None to let it go [D166, D243].
+    fn hold(&self, _hook: &Value) -> Option<String> {
+        None
     }
     /// Where the CLI's record of `conv` ends now: the mirror starts reading there. None: the
     /// backend keeps no record a mirror can read, so its terminal's work stays in the terminal.

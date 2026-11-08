@@ -128,7 +128,7 @@ pub struct Fold {
     /// "Allow … for this session" answers logged and not yet delivered: command id → request.
     #[serde(default)]
     pub granting: BTreeMap<String, Value>,
-    /// The session's grants, as the requests they answered: held for the whole session, and given
+    /// The session's grants, as the requests they answered: held while its host lives, and given
     /// again to a child started anew, never written to a CLI's settings [D193].
     #[serde(default)]
     pub grants: Vec<Value>,
@@ -210,13 +210,9 @@ impl Fold {
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
                 // A question in a terminal is answered by keys, which aren't logged: the agent's
-                // next step in its record ends the wait. Raw screen bytes don't [D77].
-                if pty
-                    && matches!(
-                        kind,
-                        "text" | "tool" | "tool_done" | "reasoning" | "turn_start"
-                    )
-                {
+                // next step in its record ends the wait. Raw screen bytes don't, nor a tool's start,
+                // which the CLI records before it asks to run it [D77].
+                if pty && matches!(kind, "text" | "tool_done" | "reasoning" | "turn_start") {
                     t.question = None;
                     self.end_asks("withdrawn");
                 }
@@ -470,11 +466,15 @@ impl Fold {
                 Some("bound") => drop(self.bound.insert(str_of("prompt"), str_of("cid"))),
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
-                Some("owner_started") => self
-                    .turns
-                    .iter_mut()
-                    .filter(|t| t.delivered.is_none())
-                    .for_each(|t| t.orphaned = true),
+                Some("owner_started") => {
+                    self.turns
+                        .iter_mut()
+                        .filter(|t| t.delivered.is_none())
+                        .for_each(|t| t.orphaned = true);
+                    // Session grants live as long as the host that holds them [D193, D238].
+                    self.grants.clear();
+                    self.granting.clear();
+                }
                 _ => {}
             },
             _ => {}

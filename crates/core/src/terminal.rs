@@ -6,6 +6,9 @@ use crate::fold::Fold;
 use crate::{Call, Spec, adapters, cli_version};
 use serde_json::{Value, json};
 
+/// Where a terminal's hooks keep what they report, in the session folder, for its mirror to read.
+pub const HOOKS: &str = "hooks.jsonl";
+
 /// What the terminal needs that only the caller knows: its size, and the command line of the
 /// mirror for (backend, conversation, cursor, log length at the handoff).
 pub struct Ask<'a> {
@@ -38,8 +41,37 @@ pub fn open(spec: &Spec, f: &Fold, ping: &Value, call: Call, ask: Ask) -> Value 
     if running && (a.per_turn() || f.turns.iter().any(|t| t.delivered.is_some())) {
         return json!({"ok": false, "error": "turn_running", "message": "A turn is running. The terminal opens when it ends."});
     }
+    // At the session's level, re-checked as a turn's is: a held project holds it to Ask, and an
+    // agent that can't hold it there is refused, never opened unheld [D166, D243, stream D2].
+    let held = crate::projects::held(&crate::data_of(spec), spec);
+    let want = if held {
+        Some("ask".into())
+    } else {
+        spec.level.clone()
+    };
+    let level = match crate::level(
+        &Spec {
+            level: want,
+            ..spec.clone()
+        },
+        a,
+    ) {
+        Ok(level) => level.map(String::from),
+        Err(_) if held => {
+            return json!({"ok": false, "error": "held", "message": format!("This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.", a.label())});
+        }
+        Err(e) => return json!({"ok": false, "error": "level", "message": e}),
+    };
     // On the account the session runs on now [D51].
-    let spec = &crate::as_run(spec, f, b, None);
+    let spec = &crate::as_run(
+        &Spec {
+            level,
+            ..spec.clone()
+        },
+        f,
+        b,
+        None,
+    );
     let (launch, conv) = match a.terminal(spec, f.resume.get(b).map(String::as_str)) {
         Ok(l) => l,
         Err(e) => return json!({"ok": false, "error": "unsupported", "message": e}),

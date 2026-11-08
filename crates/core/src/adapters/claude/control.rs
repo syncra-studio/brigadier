@@ -103,6 +103,23 @@ pub fn parse(v: &Value) -> Option<Vec<Event>> {
     })
 }
 
+/// A hook line its terminal ran [D47]: the level it runs at (the mode it started in, not the one
+/// asked [D238]), and a request it's about to ask in its own screen, answered there [D77].
+pub fn hook(h: &Value, id: &str) -> Vec<Event> {
+    let mut events: Vec<Event> = (level_of(s(h, &["permission_mode"])))
+        .map(|l| Event::Level(l.into()))
+        .into_iter()
+        .collect();
+    if s(h, &["hook_event_name"]) == "PermissionRequest" {
+        let r = json!({"tool_name": h["tool_name"], "input": h["tool_input"], "permission_suggestions": h["permission_suggestions"]});
+        events.push(match s(&r, &["tool_name"]) {
+            "AskUserQuestion" => question(id, &r),
+            _ => approval(id, &r),
+        });
+    }
+    events
+}
+
 /// The level a `system` line says the CLI runs at, if it says one.
 pub fn level(v: &Value) -> Option<Event> {
     level_of(s(v, &["permissionMode"])).map(|l| Event::Level(l.into()))

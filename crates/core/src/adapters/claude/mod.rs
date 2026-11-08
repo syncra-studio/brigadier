@@ -12,6 +12,7 @@ use super::{
     uuid, version,
 };
 use crate::Spec;
+use crate::terminal::HOOKS;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
@@ -138,26 +139,25 @@ impl Adapter for Claude {
             argv.extend(["--effort".into(), effort.clone()]);
         }
         // Its prompts and questions come on the control channel, at the session's level; Full
-        // can be taken later without a restart. A terminal runs in the CLI's normal mode, asking
-        // there.
+        // can be taken later without a restart. A terminal asks in its own screen, at the same
+        // level [D243].
         if spec.mode != "pty" {
-            let level = spec.level.as_deref().unwrap_or("ask");
             argv.extend(
                 [
                     "--permission-prompt-tool",
                     "stdio",
                     "--allow-dangerously-skip-permissions",
-                    "--permission-mode",
-                    control::mode(level),
                 ]
                 .map(String::from),
             );
-            // The session's grants, given again to a child started anew [D193].
-            let rules = control::rules(&spec.grants);
-            if !rules.is_empty() {
-                argv.push("--allowedTools".into());
-                argv.extend(rules);
-            }
+        }
+        let level = spec.level.as_deref().unwrap_or("ask");
+        argv.extend(["--permission-mode".into(), control::mode(level).into()]);
+        // The session's grants, given again to a child its host starts anew [D193, D238].
+        let rules = control::rules(&spec.grants);
+        if !rules.is_empty() {
+            argv.push("--allowedTools".into());
+            argv.extend(rules);
         }
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
@@ -209,6 +209,9 @@ impl Adapter for Claude {
         };
         if let Some(events) = control::parse(&v) {
             return events;
+        }
+        if v["hook"].is_object() {
+            return control::hook(&v["hook"], s(&v, &["id"]));
         }
         let blocks = || {
             v["message"]["content"]
@@ -316,12 +319,31 @@ impl Adapter for Claude {
             "sessionId",
             resume,
         )
-        .map(drop)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        purge(self, spec)
     }
 
     fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
         let mut launch = self.launch(&in_pty(spec), resume, None);
+        // Its hooks tell Brigadier the level it runs at and what it asks in its screen, and let a
+        // held session refuse a turn above Ask [D47, D238, D243]. They only add to the user's own.
+        let exe = std::env::current_exe()
+            .unwrap_or_default()
+            .with_file_name("brigadier");
+        let data = crate::data_of(spec);
+        let command = [data.as_path(), &exe].map(|p| quote(&p.display().to_string()));
+        let command = format!(
+            "BRIGADIER_DATA={} {} hook {} claude",
+            command[0],
+            command[1],
+            quote(&spec.id)
+        );
+        let hook = serde_json::json!([{"matcher": "*", "hooks": [{"type": "command", "command": command}]}]);
+        let settings =
+            serde_json::json!({"hooks": {"UserPromptSubmit": hook, "PermissionRequest": hook}});
+        launch
+            .argv
+            .extend(["--settings".into(), settings.to_string()]);
         let conv = match resume {
             Some(id) => id.to_string(),
             None => {
@@ -333,15 +355,32 @@ impl Adapter for Claude {
         Ok((launch, conv))
     }
 
+    /// Its record, then what its hooks kept in the session folder: `<record end>:<hooks end>`.
     fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
-        let path = project_dir(spec).join(format!("{conv}.jsonl"));
-        Some(std::fs::metadata(path).map_or(0, |m| m.len()).to_string())
+        let len = |p: PathBuf| std::fs::metadata(p).map_or(0, |m| m.len());
+        let record = len(project_dir(spec).join(format!("{conv}.jsonl")));
+        Some(format!("{record}:{}", len(spec.dir.join(HOOKS))))
     }
 
     fn mirror(&self, spec: &Spec, conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let (record, hooks) = cursor.split_once(':').unwrap_or((cursor, "0"));
         let path = project_dir(spec).join(format!("{conv}.jsonl"));
-        let (lines, end) = file_lines(&path, cursor.parse().unwrap_or(0));
-        (lines, end.to_string())
+        let (mut lines, end) = file_lines(&path, record.parse().unwrap_or(0));
+        let (more, hooks) = file_lines(&spec.dir.join(HOOKS), hooks.parse().unwrap_or(0));
+        lines.extend(more);
+        (lines, format!("{end}:{hooks}"))
+    }
+
+    /// A held session's terminal starts no turn above Ask: trust taken back while it's open, or
+    /// its mode changed there, refuses the next prompt until it's opened again [D166, D243].
+    fn hold(&self, hook: &Value) -> Option<String> {
+        let above = matches!(
+            s(hook, &["permission_mode"]),
+            "auto" | "bypassPermissions" | "acceptEdits"
+        );
+        (s(hook, &["hook_event_name"]) == "UserPromptSubmit" && above).then(|| {
+            serde_json::json!({"decision": "block", "reason": "This folder isn't trusted, so its sessions run under Ask. Close this terminal and open it again to go on under Ask."}).to_string()
+        })
     }
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
@@ -368,6 +407,38 @@ impl Adapter for Claude {
         }
         Some((texts, tools))
     }
+}
+
+/// A shell word for a hook's command line.
+fn quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+/// A working folder inside the session's own (its worktree) is the session's alone, so Claude's
+/// own purge takes what it keeps for that folder, its entry in `.claude.json` among it [D35]. Run
+/// only when that entry is there, so a delete never fails on nothing to purge.
+fn purge(a: &Claude, spec: &Spec) -> Result<(), String> {
+    let Ok(inside) = Path::new(&spec.cwd).strip_prefix(&spec.dir) else {
+        return Ok(());
+    };
+    let dir = std::fs::canonicalize(&spec.dir).unwrap_or_else(|_| spec.dir.clone());
+    let folder = dir.join(inside).display().to_string();
+    let config = std::fs::read(cli_home(spec, "", ".claude.json")).unwrap_or_default();
+    let config: Value = serde_json::from_slice(&config).unwrap_or_default();
+    if config["projects"].get(&folder).is_none() {
+        return Ok(());
+    }
+    let exe = a
+        .exe()
+        .ok_or("Claude Code isn't installed, so its record of the worktree stays")?;
+    let out = probe_as(spec, &exe, &dir, &[], &["purge", &folder, "--yes"], 30)?;
+    if !out.status.success() {
+        return Err(format!(
+            "claude purge: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(())
 }
 
 /// A user line the CLI writes itself (slash commands, `!` shell runs, reminders), not a prompt.

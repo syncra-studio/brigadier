@@ -3,6 +3,7 @@
 
 mod accounts;
 mod control;
+mod hook;
 pub mod index;
 mod mirror;
 pub mod owner;
@@ -314,6 +315,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             };
             Ok(core::terminal::open(&spec, &f.fold, &ping, &call, ask))
         }
+        // A terminal CLI's hook: Brigadier's own error never fails the CLI's step.
+        "hook" => Ok(hook::run(data, arg(args, 1)?, arg(args, 2)?).unwrap_or(Value::Null)),
         "mirror" => {
             let since = flag(args, "--since")
                 .and_then(|n| n.parse().ok())

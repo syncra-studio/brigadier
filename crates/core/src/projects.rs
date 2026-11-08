@@ -240,7 +240,8 @@ pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
     Ok(project)
 }
 
-/// Changes only trust and setup; folder changes must reset trust when 1r adds them [D166].
+/// Changes only trust and setup; folder changes must reset trust when 1r adds them [D166]. Every
+/// trust change goes through here: 1i writes the CLIs' own trust entries from here.
 pub fn set(
     data: &Path,
     id: &str,
@@ -301,4 +302,16 @@ pub fn of(spec: &Spec, projects: &[Project], roots: &mut Roots) -> Option<String
         .iter()
         .find(|p| p.folder == found)
         .map(|p| p.id.clone())
+}
+
+/// Whether a session's turns are held to Ask: its project is untrusted or unanswered [D166]. A
+/// session in no project isn't (proposed); records that can't be read hold it.
+pub fn held(data: &Path, spec: &Spec) -> bool {
+    let Ok(projects) = list(data) else {
+        return true;
+    };
+    let id = of(spec, &projects, &mut Roots::default());
+    projects
+        .iter()
+        .any(|p| Some(&p.id) == id.as_ref() && p.trusted != Some(true))
 }
