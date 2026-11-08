@@ -120,6 +120,20 @@ pub trait Adapter: Sync {
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
         None
     }
+    /// Its mark, one SVG drawn on its card only to name it, as the old app had it [D118, D123].
+    /// None: a generic terminal is drawn.
+    fn mark(&self) -> Option<&'static str> {
+        None
+    }
+    /// Whether its sign-in prints a page that shows a code to paste back, for when the browser
+    /// can't hand the sign-in back: the first `https` link it prints.
+    fn code_page(&self) -> bool {
+        false
+    }
+    /// A code pasted from that page, as its sign-in takes it, or why it isn't one.
+    fn sign_in_code(&self, code: &str) -> Result<String, String> {
+        Ok(code.trim().into())
+    }
     /// Credential variables it reads, passed on from the login shell, never stored or logged.
     fn keys(&self) -> &'static [&'static str] {
         &[]

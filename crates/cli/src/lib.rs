@@ -25,7 +25,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects";
+       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects [--check P]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()

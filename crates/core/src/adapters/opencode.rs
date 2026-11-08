@@ -79,6 +79,13 @@ impl Adapter for OpenCode {
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }
 
+    /// The frame of its mark (opencode.ai/favicon.svg), in the current colour, as the old app drew it [D123].
+    fn mark(&self) -> Option<&'static str> {
+        Some(
+            r#"<svg viewBox="96 96 320 320" fill="currentColor"><path d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"/></svg>"#,
+        )
+    }
+
     /// Its own picker: an API key for any provider it knows, typed into its prompt [D45, D51].
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
         Some(("Add an API key", &["auth", "login", "--standalone"]))

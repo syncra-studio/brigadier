@@ -73,3 +73,11 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Provider marks
+
+Each agent card shows its provider's mark only to name the provider it connects to (`crates/core/src/adapters/`). The marks are trademarks of their owners.
+
+- Claude Code: Claude's spark from Simple Icons (https://simpleicons.org), CC0 1.0. Claude is a trademark of Anthropic.
+- Codex: the OpenAI logo from @openai/apps-sdk-ui (above), MIT License. OpenAI is a trademark of OpenAI.
+- OpenCode: the frame of OpenCode's mark, from https://opencode.ai/favicon.svg.

@@ -61,16 +61,22 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let size = |name: &str| flag(args, name).and_then(|n| n.parse::<u16>().ok());
             match args.get(2).map(String::as_str) {
                 Some("close") => close(data, &id).map(|()| json!({"ok": true})),
+                // `setup <agent> code <code>`: a code pasted from its sign-in's code page.
+                Some("code") => send_code(data, a, &id, args.get(3).map_or("", String::as_str)),
                 Some(action @ ("install" | "sign-in")) => {
                     start(data, a, &id, action, size("--cols"), size("--rows"))
                 }
                 _ => Err(io::Error::other(
-                    "usage: brigadier setup <agent> install|sign-in|close",
+                    "usage: brigadier setup <agent> install|sign-in|close|code <code>",
                 )),
             }
         }
         "profile" => profile(data, args),
         "projects" => {
+            // A folder picked with Add folder…: its repository, shown ticked and added at the finish.
+            if let Some(path) = flag(args, "--check") {
+                return Ok(json!({"ok": true, "repo": repo_of(path)?}));
+            }
             let taken = read_profile(data)["projects"].clone();
             let found = thread::scope(|s| {
                 let all = adapters::all().map(|a| s.spawn(move || a.projects()));
@@ -97,7 +103,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// session in `cwd` can pick, which may be none even when signed in; plus its setup run, if any.
 fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
     let mut out = json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
-        "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a)});
+        "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
+        "mark": a.mark()});
     if !BUSY.lock().unwrap().insert(a.name()) {
         out["busy"] = true.into();
         return out;
@@ -130,16 +137,60 @@ fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
         return Value::Null;
     };
     let ping = owner::call(data, &id, json!({"op": "ping"})).unwrap_or_default();
-    let mut exited = Value::Null;
+    let running = !ping["child"].is_null();
+    let action = spec.opts.get("setup").map(String::as_str);
+    // Its output is read only while a sign-in that offers a code page runs.
+    let page = running && action == Some("sign-in") && a.code_page();
+    let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
-        while let Ok(Some(f)) = r.next_with(|k| k == log::EXITED) {
+        let wanted = |k| k == log::EXITED || (page && k == log::PTY);
+        while let Ok(Some(f)) = r.next_with(wanted) {
             if f.kind == log::EXITED {
                 exited = serde_json::from_slice(&f.data).unwrap_or_default();
+            } else if f.kind == log::PTY {
+                out.extend_from_slice(&f.data);
             }
         }
     }
-    json!({"id": id, "action": spec.opts.get("setup"), "running": !ping["child"].is_null(),
-        "code": exited["code"], "signal": exited["signal"]})
+    json!({"id": id, "action": action, "running": running, "code": exited["code"],
+        "signal": exited["signal"], "code_page": code_page(&out)})
+}
+
+/// The first `https` link a sign-in printed, up to a space or a control character (a terminal
+/// link's own escape ends it).
+fn code_page(out: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(out);
+    let start = text.find("https://")?;
+    let page = text[start..]
+        .chars()
+        .take_while(|c| !c.is_whitespace() && !c.is_control());
+    Some(page.collect())
+}
+
+/// Types a code pasted from the sign-in's code page into the sign-in, as its adapter takes it.
+fn send_code(data: &Path, a: &dyn Adapter, id: &str, code: &str) -> io::Result<Value> {
+    let code = a.sign_in_code(code).map_err(io::Error::other)?;
+    let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
+    if ping["child"].is_null() || !a.code_page() {
+        let label = a.label();
+        return Err(io::Error::other(format!(
+            "{label}'s sign-in isn't waiting for a code. Sign in again."
+        )));
+    }
+    let reply = owner::call(
+        data,
+        id,
+        json!({"op": "keys", "spawn": ping["spawn"], "bytes": format!("{code}\r")}),
+    )?;
+    if reply["ok"] != true {
+        return Err(io::Error::other(
+            reply["error"]
+                .as_str()
+                .unwrap_or("The sign-in didn't take the code.")
+                .to_string(),
+        ));
+    }
+    Ok(json!({"ok": true}))
 }
 
 /// Runs the vendor's installer, or the CLI's own sign-in, in a terminal on a host [D45, D47, D60].
@@ -210,6 +261,14 @@ fn close(data: &Path, id: &str) -> io::Result<()> {
     }
 }
 
+/// The top folder of the git repository `path` is in.
+fn repo_of(path: &str) -> io::Result<String> {
+    setup::repo(Path::new(path))
+        .filter(|r| r.is_dir())
+        .map(|r| r.display().to_string())
+        .ok_or_else(|| io::Error::other(format!("{path} is not in a git repository")))
+}
+
 fn read_profile(data: &Path) -> Value {
     let p: Value = fs::read(data.join("profile.json"))
         .ok()
@@ -236,10 +295,7 @@ fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let list = p["projects"].as_array_mut().unwrap();
     if let Some(path) = flag(args, "--add") {
-        let repo = setup::repo(Path::new(path))
-            .filter(|r| r.is_dir())
-            .ok_or_else(|| io::Error::other(format!("{path} is not in a git repository")))?;
-        let repo = repo.display().to_string();
+        let repo = repo_of(path)?;
         if !list.iter().any(|x| *x == repo) {
             list.push(repo.into());
         }
