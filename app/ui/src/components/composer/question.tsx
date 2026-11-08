@@ -2,7 +2,7 @@
 import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ErrorLine } from "../error-line";
-import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
+import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
@@ -38,9 +38,11 @@ type Kept = {
 };
 const FRESH: Kept = { page: 0, answers: [], drafts: [], lit: [], marked: [] };
 
-// Kept by card id outside the card: putting it aside or a visit to Settings unmounts it, and coming back finds it as it was.
-// shortcut: module-wide, dropped only once answered; scope it per session and drop it with the session once real sessions arrive.
+// Kept by session and card id outside the card: putting it aside or a visit to Settings unmounts it, and coming back
+// finds it as it was. Dropped once answered, or by `forgetQuestions`.
 const keptCards = new Map<string, Kept>();
+/** Drops the session's kept cards for questions no longer waiting. */
+export const forgetQuestions = (session: string, keep: ReadonlySet<string>) => forgetCards(keptCards, session, keep);
 
 function useKeptQuestion(id: string) {
   const [kept, setKept] = useState(() => keptCards.get(id) ?? FRESH);
@@ -70,16 +72,26 @@ export function QuestionCard({
   onDismiss,
   footer,
   stagger = false,
+  error: refused = null,
+  session = "",
+  dismiss,
 }: {
   question: PendingQuestion;
   onAnswer: (answers: (string | null)[]) => Promise<void>;
   onDismiss: () => void;
   footer?: ReactNode;
+  /** A refusal that came after the card was hidden at once, so it shows when the card comes back. */
+  error?: string | null;
   /** It follows another card: its rows fade in one after another. */
   stagger?: boolean;
+  /** Whose question it is: what keeps one session's answers and drafts from another's. */
+  session?: string;
+  /** Nothing waits on it any more: Dismiss beside its error puts it away. */
+  dismiss?: () => void;
 }) {
   const { id, items } = question;
-  const [{ page, answers, drafts, lit, marked }, keep] = useKeptQuestion(id);
+  const key = cardKey(session, id);
+  const [{ page, answers, drafts, lit, marked }, keep] = useKeptQuestion(key);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const at = Math.min(page, items.length - 1);
@@ -91,7 +103,7 @@ export function QuestionCard({
     setBusy(true);
     setError(null);
     onAnswer(all)
-      .then(() => keptCards.delete(id))
+      .then(() => keptCards.delete(key))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setBusy(false));
   };
@@ -141,7 +153,8 @@ export function QuestionCard({
       // ✕ skips what is still open in the round, so the asker hears and carries on.
       onClose={() => send(items.map((_, index) => answers[index] ?? null))}
       busy={busy}
-      error={error}
+      error={error ?? refused}
+      dismiss={dismiss}
       footer={footer}
       stagger={stagger && at === 0}
     />
@@ -173,6 +186,7 @@ function QuestionPage({
   onClose,
   busy,
   error,
+  dismiss,
   footer,
   stagger,
 }: {
@@ -194,6 +208,7 @@ function QuestionPage({
   onClose: () => void;
   busy: boolean;
   error: string | null;
+  dismiss?: () => void;
   footer?: ReactNode;
   stagger: boolean;
 }) {
@@ -370,7 +385,7 @@ function QuestionPage({
           </button>
         </ActionFreeText>
       </div>
-      <ErrorLine error={error} className="px-4 pb-2" />
+      <ErrorLine error={error} className="px-4 pb-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
       {footer}
     </ActionCard>
   );

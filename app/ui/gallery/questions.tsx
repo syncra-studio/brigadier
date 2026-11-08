@@ -26,6 +26,7 @@ const CHECKS = { text: "Which checks should run before each push?", options: [{ 
 const NAME = { text: "What should the new command be called?", options: [], recommended: null, multiSelect: false };
 
 const ask = (id: string, items: PendingQuestion["items"], title?: string): PendingQuestion => ({ id, title, items });
+const ROUND = ask("round", [MANAGER, CHECKS, NAME], "Release setup");
 
 const never = () => new Promise<void>(() => {});
 const refuse = () => Promise.reject(new Error("The session ended before the answer reached it"));
@@ -40,12 +41,12 @@ function Act({ run, children }: { run: (card: HTMLElement) => void; children: Re
 const key = (card: HTMLElement, name: string) => card.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
 const click = (card: HTMLElement, selector: string, at = 0) => card.querySelectorAll<HTMLElement>(selector)[at]?.click();
 /** A card as it waits on the rail. */
-function Card({ question, onAnswer = () => later(600) }: { question: PendingQuestion; onAnswer?: (answers: (string | null)[]) => Promise<void> }) {
+function Card({ question, onAnswer = () => later(600), error, dismiss }: { question: PendingQuestion; onAnswer?: (answers: (string | null)[]) => Promise<void>; error?: string; dismiss?: () => void }) {
   return (
     <div className="w-reading">
       <ComposerRail>
         <RailItem variant="decision" label="Waiting for you">
-          <QuestionCard question={question} onAnswer={onAnswer} onDismiss={() => {}} />
+          <QuestionCard question={question} onAnswer={onAnswer} onDismiss={() => {}} error={error} dismiss={dismiss} />
         </RailItem>
       </ComposerRail>
     </div>
@@ -191,8 +192,38 @@ export function QuestionRows() {
         </State>
         <State label="A question answered">
           <Decided>
-            <QuestionRow keep="decided-q1" question={STORAGE.text} answer="In the session's folder (Recommended)" waiting={false} />
+            <QuestionRow keep="decided-q1" question={STORAGE.text} answer="In the session's folder" round={ask("decided-q1", [STORAGE])} answers={["In the session's folder"]} waiting={false} />
           </Decided>
+        </State>
+      </Row>
+      <Row name="D209 for the owner: the round's row, proposed | plain">
+        <State label="Proposed: count and the round's title">
+          <QuestionRow keep="d209-p" question={MANAGER.text} answer="pnpm" round={ROUND} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
+        </State>
+        <State label="Plain: Asked N questions">
+          <QuestionRow keep="d209-n" question={MANAGER.text} answer="pnpm" round={{ ...ROUND, title: null }} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
+        </State>
+      </Row>
+      <Row name="A round in the thread (open the answered ones)">
+        <State label="Waiting">
+          <QuestionRow keep="round-w" question={MANAGER.text} answer={null} round={ROUND} waiting />
+        </State>
+        <State label="Answered, one skipped, multi-select">
+          <QuestionRow keep="round-a" question={MANAGER.text} answer={"pnpm\nTypecheck, `scripts/limits`"} round={ROUND} answers={["pnpm", "Typecheck, `scripts/limits`", null]} waiting={false} />
+        </State>
+        <State label="Answered in its own words">
+          <QuestionRow keep="round-o" question={MANAGER.text} answer="bun" round={ask("round-o", [MANAGER, STORAGE])} answers={["bun", "In the session's folder"]} waiting={false} />
+        </State>
+        <State label="Withdrawn">
+          <QuestionRow keep="round-x" question={MANAGER.text} answer={null} round={ROUND} waiting={false} />
+        </State>
+      </Row>
+      <Row name="Refused after it was hidden: back with its error">
+        <State label="Rust refused a stale answer">
+          <Card question={ask("q10", [MANAGER, CHECKS, NAME], "Release setup")} error="Already answered" dismiss={() => {}} />
+        </State>
+        <State label="Refused, still waiting: answer again">
+          <Card question={ask("q11", [MANAGER])} error="Brigadier isn't running" />
         </State>
       </Row>
       <Row name="Questions live (Esc puts one aside)">

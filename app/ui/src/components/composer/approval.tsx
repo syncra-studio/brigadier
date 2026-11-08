@@ -8,7 +8,7 @@ import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { RailItem } from "./rail";
-import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
+import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
 import { ComposerField } from "./field";
 
@@ -146,10 +146,11 @@ function grantWords({ scope, pattern }: NonNullable<PendingApproval["grant"]>): 
   return { scope: pattern, tip: `Allow commands that start with ${pattern} in this chat. ${kept}` };
 }
 
-// Deny reasons typed, by approval id, outside any slot: paging away and back, or Reply… moving the card to the
-// rail, keeps them. Read as each card mounts, so not state.
-// shortcut: module-wide and never cleared; scope it per session and drop an id once it's answered when real sessions arrive.
+// Deny reasons typed, by session and approval id, outside any slot: paging away and back, or Reply… moving the card
+// to the rail, keeps them. Read as each card mounts, so not state. Dropped once answered, or by `forgetReasons`.
 const reasons = new Map<string, string>();
+/** Drops the session's deny reasons for approvals no longer waiting. */
+export const forgetReasons = (session: string, keep: ReadonlySet<string>) => forgetCards(reasons, session, keep);
 
 /** Where a card stands among the approvals waiting: "1 of 3", with ‹ › to step between them. */
 export type ApprovalStep = { index: number; total: number; onStep: (index: number) => void };
@@ -172,6 +173,7 @@ export function ApprovalCard({
   step,
   onReply,
   footer,
+  dismiss,
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -185,6 +187,8 @@ export function ApprovalCard({
   /** In the composer's place: brings the message field back. */
   onReply?: () => void;
   footer?: ReactNode;
+  /** Nothing waits on it any more: Dismiss beside its error puts it away. */
+  dismiss?: () => void;
 }) {
   const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
@@ -255,7 +259,7 @@ export function ApprovalCard({
           <>
             {/* Not while an answer goes: the card would move to the rail without it. */}
             {onReply && <ReplyButton disabled={busy} onClick={onReply} />}
-            <ErrorLine error={error} className="me-auto" />
+            <ErrorLine error={error} className="me-auto" actions={dismiss && <DismissButton onClick={dismiss} />} />
           </>
         }
       >
@@ -321,6 +325,8 @@ export function ApprovalSlot({
   onAnswer,
   onReply,
   denyReason = true,
+  session = "",
+  dismiss,
 }: {
   approvals: readonly PendingApproval[];
   placement?: "composer" | "rail";
@@ -329,6 +335,10 @@ export function ApprovalSlot({
   onReply?: () => void;
   /** The deny reason field (D192). */
   denyReason?: boolean;
+  /** Whose approvals they are: what keeps one session's typed reasons from another's. */
+  session?: string;
+  /** A refused card nothing waits on any more: its Dismiss. */
+  dismiss?: (id: string) => (() => void) | undefined;
 }) {
   // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
   const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
@@ -347,6 +357,7 @@ export function ApprovalSlot({
     setSending((ids) => new Set(ids).add(id));
     setErrors((map) => new Map([...map].filter(([key]) => key !== id)));
     onAnswer(id, decision, reason)
+      .then(() => reasons.delete(cardKey(session, id)))
       .catch((cause: unknown) => setErrors((map) => new Map(map).set(id, cause instanceof Error ? cause.message : String(cause))))
       .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
   };
@@ -357,8 +368,9 @@ export function ApprovalSlot({
       onAnswer={answer}
       busy={sending.has(id)}
       error={errors.get(id) ?? null}
-      reason={reasons.get(id)}
-      onReason={denyReason ? (text) => reasons.set(id, text) : undefined}
+      reason={reasons.get(cardKey(session, id))}
+      onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
+      dismiss={dismiss?.(id)}
       step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
       onReply={placement === "composer" ? onReply : undefined}
       footer={placement === "rail" && <MoreWaiting more={approvals.length - 1} />}

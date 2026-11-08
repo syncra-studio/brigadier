@@ -3,6 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { ApprovalAction, Item, Progress, StepKind } from "../../thread/item";
+import type { PendingQuestion, QuestionItem } from "../composer/question";
 import { duration, useSecond } from "../../thread/words";
 import { Button } from "../button";
 import { cx } from "../cx";
@@ -80,33 +81,69 @@ export function ApprovalRow({
   );
 }
 
+/** An answer as the row shows it: a recommended pick says so, each one of a multi-select too; a skipped one says that. */
+function answerWords(item: QuestionItem | undefined, answer: string | null): string {
+  if (!answer?.trim()) return "No answer provided";
+  const recommended = item?.recommended == null ? undefined : item.options[item.recommended]?.label;
+  const mark = (label: string) => (label === recommended ? `${label} (Recommended)` : label);
+  const labels = new Set(item?.options.map((option) => option.label));
+  const picks = item?.multiSelect && !labels.has(answer) ? answer.split(", ") : [answer];
+  return picks.every((pick) => labels.has(pick)) ? picks.map(mark).join(", ") : answer;
+}
+
 /**
- * A question the agent asked. While it `waiting`s: "Asking a question · waiting" (the card to answer sits
- * in the composer's place). Answered, it opens to the question and the answer; unanswered once the turn
- * has moved on, it was withdrawn.
+ * A question, or a round of them, the agent asked. While it `waiting`s: "Asking a question · waiting" or
+ * "Asking questions · waiting" (the card to answer sits on the composer's rail). Answered: "Asked a question" or
+ * "Asked 3 questions", with the round's title after it, opening to each question and its answer; unanswered once
+ * the turn has moved on, it was withdrawn.
  */
-export function QuestionRow({ keep, question, answer, waiting }: { keep: string; question: string; answer: string | null; waiting: boolean }) {
+export function QuestionRow({
+  keep,
+  question,
+  answer,
+  waiting,
+  round,
+  answers,
+}: {
+  keep: string;
+  question: string;
+  answer: string | null;
+  waiting: boolean;
+  /** The round as it was asked; without it, the one `question`. */
+  round?: PendingQuestion;
+  /** One answer per question of the round, null for a skipped one. */
+  answers?: (string | null)[];
+}) {
   const icon = <StepIcon icon={QuestionMarkCircle} />;
+  const items = round?.items ?? [];
+  const count = Math.max(items.length, 1);
+  const title = round?.title ? ` · ${round.title}` : "";
+  const asked = `Asked ${count === 1 ? "a question" : `${count} questions`}${title}`;
   if (answer === null) {
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? "Asking a question · waiting" : `Asked a question · ${WITHDRAWN}`} live={waiting} />
+        <Words verb={waiting ? `${count === 1 ? "Asking a question" : "Asking questions"} · waiting` : `${asked} · ${WITHDRAWN}`} live={waiting} />
       </p>
     );
   }
+  const pairs = items.length > 0 ? items.map((item, at) => ({ text: item.text, given: answerWords(item, answers ? (answers[at] ?? null) : at === 0 ? answer : null) })) : [{ text: question, given: answer }];
   return (
     <OpeningRow
       keep={keep}
       detail={
         <dl className="flex flex-col gap-3 pt-2 pb-1 text-sm">
-          <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{question}</dt>
-          <dd className="whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{answer}</dd>
+          {pairs.map((pair, at) => (
+            <div key={at} className="flex flex-col gap-1">
+              <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{pair.text}</dt>
+              <dd className="whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{pair.given}</dd>
+            </div>
+          ))}
         </dl>
       }
     >
       {icon}
-      <Words verb="Asked a question" />
+      <Words verb={asked} />
     </OpeningRow>
   );
 }

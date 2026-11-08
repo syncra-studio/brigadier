@@ -60,7 +60,7 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       return <ApprovalRow keep={item.id} title={shown.title} detail={shown.detail} body={shown.body} decision={item.decision} action={item.request.action} waiting={turn?.status === "running"} />;
     }
     case "question":
-      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} waiting={!item.withdrawn && turn?.status === "running"} />;
+      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && turn?.status === "running"} />;
     case "childAgent":
       return (
         <ChildAgentRow

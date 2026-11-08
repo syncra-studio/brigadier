@@ -209,6 +209,23 @@ export function ActionCardActions({ leading, children }: { leading?: ReactNode; 
   );
 }
 
+/** Beside a card's error when nothing waits on it any more (a stale request): puts the card away. */
+export function DismissButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+      Dismiss
+    </button>
+  );
+}
+
+/** A card cache's key: request ids are only unique within their session. */
+export const cardKey = (session: string, id: string) => `${session}\n${id}`;
+
+/** Drops a session's cached cards that are no longer waiting, settled or gone. */
+export function forgetCards(cache: Map<string, unknown>, session: string, keep: ReadonlySet<string>): void {
+  for (const key of cache.keys()) if (key.startsWith(`${session}\n`) && !keep.has(key.slice(session.length + 1))) cache.delete(key);
+}
+
 /** An approval's "Reply…" in the composer's place: brings the message field back. */
 export function ReplyButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (

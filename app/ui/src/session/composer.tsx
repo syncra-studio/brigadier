@@ -10,6 +10,7 @@ import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
 import type { Source } from "../thread/thread";
+import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
 import { newId } from "./store";
@@ -97,8 +98,12 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
  * wave 3, D191); ⌘⏎ or ⌥⏎ does the other, steering only where the agent can; ⌘⏎ in an empty field steers the first
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159].
  */
-export function SessionComposer({ id, row, offline, run = daemonRun, source = threadSource }: { id: string; row: ComposerRow | undefined; offline: boolean; run?: Runner; source?: Source }) {
+export function SessionComposer({ id, row, offline, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; run?: Runner; source?: Source }) {
   const field = useRef<ComposerFieldHandle>(null);
+  // An approval takes the composer's place until Reply… moves it to the rail [D199].
+  const approval = useApprovalWaiting(id, source);
+  const [replying, setReplying] = useState(false);
+  if (replying && !approval) setReplying(false);
   const [empty, setEmpty] = useState(true);
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -225,8 +230,12 @@ export function SessionComposer({ id, row, offline, run = daemonRun, source = th
           onEdit={edit}
           onMove={move}
         />
+        <SessionQuestions id={id} run={run} source={source} />
+        {replying && <SessionApprovals id={id} run={run} source={source} placement="rail" />}
       </ComposerRail>
-      <ComposerCard>
+      {!replying && <SessionApprovals id={id} run={run} source={source} placement="composer" onReply={() => setReplying(true)} />}
+      {/* Kept while an approval has its place, so the draft and its caret stay. */}
+      <ComposerCard className={approval && !replying ? "hidden" : undefined}>
         <ComposerField
           ref={field}
           placeholder="Do anything"
