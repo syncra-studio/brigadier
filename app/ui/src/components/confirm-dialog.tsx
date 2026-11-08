@@ -9,6 +9,8 @@ type ConfirmFormProps = {
   description: ReactNode;
   /** More lines under the description. */
   children?: ReactNode;
+  /** The other button's words; "Cancel" by default. */
+  cancel?: ReactNode;
   /** The confirm button's words ("Delete", "Stage"). */
   confirm: ReactNode;
   /** A red confirm, for what can't be undone. */
@@ -27,6 +29,7 @@ export function ConfirmForm({
   title,
   description,
   children,
+  cancel = "Cancel",
   confirm,
   destructive = false,
   busy = false,
@@ -45,7 +48,7 @@ export function ConfirmForm({
       {/* Marks the card as a confirm's, for its rounder corners. */}
       <DialogFooter data-confirm>
         <Button variant="ghost" disabled={busy} onClick={onCancel}>
-          Cancel
+          {cancel}
         </Button>
         <Button ref={confirmRef} variant={destructive ? "destructive" : "default"} disabled={busy || disabled} onClick={onConfirm}>
           {busy && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
