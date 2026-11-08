@@ -295,8 +295,6 @@
   /* A list folding open or shut, the sidebar's spring; the peek's way out. */
   --duration-fold: 300ms;
   --duration-peek-out: 200ms;
-  /* A queued row sliding to its new slot while another is dragged. */
-  --duration-reorder: 160ms;
   /* A rail card opening from nothing to its height; a queued row fading in. */
   --animate-rail-open: rail-open var(--duration-fold) var(--ease-enter);
   @keyframes rail-open {
@@ -439,25 +437,6 @@
   overflow-y: clip;
 }
 
-/* A queued row while another is dragged: moved by the drag (queue-drag.ts sets data-shift), sliding to its
-   slot unless it is the one grabbed, which follows the pointer above the rest. */
-@utility queue-shift {
-  translate: 0 attr(data-shift px, 0px);
-  &[data-grabbed] {
-    position: relative;
-    z-index: 1;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    [data-reordering] > &:not([data-grabbed]) {
-      transition: translate var(--duration-reorder) ease;
-    }
-    /* Released: every row, the dropped one too, eases from where it was into its slot. */
-    [data-settling] > & {
-      transition: translate var(--duration-reorder) ease;
-    }
-  }
-}
-
 /* A notice's words: one line until opened to the whole text (rail.tsx); the height eases between. */
 @utility notice-fold {
   interpolate-size: allow-keywords;
@@ -469,12 +448,6 @@
   @media (prefers-reduced-motion: no-preference) {
     transition: height var(--duration-fold) var(--ease-enter);
   }
-}
-
-/* A queue drag keeps the closed hand wherever the pointer goes (queue-drag.ts); outside the layers, so it wins. */
-:root[data-grabbing],
-:root[data-grabbing] * {
-  cursor: grabbing;
 }
 
 @utility app-no-drag {

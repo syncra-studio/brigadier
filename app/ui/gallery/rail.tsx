@@ -26,9 +26,21 @@ const MANY = [
   item("q5", "queued", "A long follow-up that goes on well past the width of the card, so its end is cut off with an ellipsis and shown whole on hover"),
 ];
 
-/** The queue with no-op actions. */
-function Queue(props: Partial<Parameters<typeof QueueCard>[0]>) {
-  return <QueueCard items={ONE} canEdit onResume={noop} onSteer={noop} onRemove={noop} onEdit={noop} onMove={noop} {...props} />;
+/** The queue with no-op actions, except moves: Rust's stand-in confirms each one a moment later. */
+function Queue({ items: start = ONE, ...props }: Partial<Parameters<typeof QueueCard>[0]>) {
+  const [items, setItems] = useState(start);
+  const confirm = (id: string, to: number) =>
+    new Promise<void>((done) =>
+      setTimeout(() => {
+        setItems((list) => {
+          const rest = list.filter((each) => each.id !== id);
+          rest.splice(to, 0, list.find((each) => each.id === id)!);
+          return rest;
+        });
+        done();
+      }, 400),
+    );
+  return <QueueCard items={items} canEdit onResume={noop} onSteer={noop} onRemove={noop} onEdit={noop} onMove={confirm} {...props} />;
 }
 
 /** Old app: a held message named the worker it was for, after the worker's glyph. */

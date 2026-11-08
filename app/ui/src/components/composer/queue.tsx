@@ -1,4 +1,7 @@
 import { Button as BaseButton } from "@base-ui/react/button";
+import { DragDropProvider } from "@dnd-kit/react";
+import { isSortable, useSortable } from "@dnd-kit/react/sortable";
+import { useState } from "react";
 
 import { ArrowCurvedRight, DotsHorizontal, EditPencil, Hamburger, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Button } from "../button";
@@ -7,7 +10,6 @@ import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../menu";
 import type { Draft } from "./draft";
-import { useQueueDrag } from "./queue-drag";
 import { RailItem } from "./rail";
 
 /**
@@ -37,6 +39,14 @@ function attached(draft: Draft): string | null {
   if (images === total) return plural(total, "Image attachment", "images");
   if (total === 1 && chips.length === 1) return "Pasted text";
   return plural(total, "1 file", "files");
+}
+
+/** The list with one item moved to `to`. */
+function moved<T extends { id: string }>(items: readonly T[], id: string, to: number): T[] {
+  const rest = items.filter((each) => each.id !== id);
+  const item = items.find((each) => each.id === id);
+  if (item) rest.splice(to, 0, item);
+  return rest;
 }
 
 /**
@@ -71,9 +81,19 @@ export function QueueCard({
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit: (id: string) => void;
-  onMove: (id: string, to: number) => void;
+  /** Moves it to `to` in the new order; settles when Rust has it. */
+  onMove: (id: string, to: number) => Promise<unknown> | void;
 }) {
-  const { listRef, shown, grip } = useQueueDrag(items, onMove);
+  // The order the user made, held by id until every move has settled, so Rust's order never undoes one in flight.
+  const [held, setHeld] = useState<{ order: readonly string[]; moving: number } | null>(null);
+  const rank = new Map(held?.order.map((id, at) => [id, at]));
+  const shown = held ? items.toSorted((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)) : items;
+  const move = (id: string, to: number) => {
+    setHeld((now) => ({ order: moved(shown, id, to).map((each) => each.id), moving: (now?.moving ?? 0) + 1 }));
+    void Promise.resolve(onMove(id, to))
+      .catch(() => {}) // the failure comes back as `error`
+      .finally(() => setHeld((now) => (now && now.moving > 1 ? { ...now, moving: now.moving - 1 } : null)));
+  };
   if (items.length === 0) return null;
   return (
     <RailItem label="Message queue">
@@ -87,84 +107,144 @@ export function QueueCard({
           </Button>
         </div>
       )}
-      <ol ref={listRef} aria-label="Queued messages" className="flex max-h-queue-max flex-col overflow-y-auto p-1">
-        {shown.map((item, index) => {
-          const local = item.state === "local";
-          const deciding = item.state === "deciding";
-          const text = preview(item.draft);
-          const files = attached(item.draft);
-          const draggable = items.length > 1 && !local;
-          const glyph = cx("size-icon-sm", draggable && "group-hover/queue-item:invisible group-focus-within/queue-item:invisible");
-          return (
-            <li
+      <DragDropProvider
+        onDragEnd={({ operation, canceled }) => {
+          const { source } = operation;
+          if (!canceled && isSortable(source) && source.index !== source.initialIndex) move(String(source.id), source.index);
+        }}
+      >
+        <ol aria-label="Queued messages" className="flex max-h-queue-max flex-col overflow-y-auto p-1">
+          {shown.map((item, index) => (
+            <QueueRow
               key={item.id}
-              data-slot="queue-item"
-              aria-busy={deciding || undefined}
-              className="group/queue-item flex min-h-control-md items-center gap-2 rounded-control ps-1.5 pe-1 text-sm queue-shift data-grabbed:bg-fill-hover motion-safe:animate-fade-in"
-            >
-              <span className="relative flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
-                {deciding ? <Spinner className={cx(glyph, "animate-spin motion-reduce:animate-none")} /> : <QueueGlyph className={glyph} />}
-                {draggable && (
-                  <span className="invisible absolute inset-0 flex group-hover/queue-item:visible group-focus-within/queue-item:visible">
-                    <BaseButton
-                      aria-label="Drag to reorder"
-                      title="Drag to reorder"
-                      className="flex size-full cursor-grab touch-none items-center justify-center rounded-control transition-all hover:bg-fill hover:text-foreground focus-visible:focus-ring active:cursor-grabbing"
-                      {...grip(item.id, index)}
-                    >
-                      <Hamburger className="size-icon-sm" />
-                    </BaseButton>
-                  </span>
-                )}
-              </span>
-              {/* The message comes first: short of room, the note after it gives way. */}
-              <span className="min-w-0 flex-auto truncate" title={text || undefined}>
-                {text ? (
-                  <>
-                    {text}
-                    {files && <span className="text-muted-foreground"> · {files}</span>}
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">{files}</span>
-                )}
-              </span>
-              {deciding && (
-                <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
-                  Deciding
-                </span>
-              )}
-              {steer && (
-                <TooltipIconButton
-                  tooltip="Submit without interrupting the model"
-                  side="top"
-                  size="xs"
-                  className="text-muted-foreground"
-                  disabled={local}
-                  onClick={() => onSteer(item.id)}
-                >
-                  <ArrowCurvedRight />
-                  Steer
-                </TooltipIconButton>
-              )}
-              <TooltipIconButton tooltip="Delete queued message" side="top" className="text-muted-foreground" disabled={local} onClick={() => onRemove(item.id)}>
-                <Trash />
-              </TooltipIconButton>
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Queued message actions" className="text-muted-foreground aria-expanded:bg-fill" />}>
-                  <DotsHorizontal />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered"} onClick={() => onEdit(item.id)}>
-                    <EditPencil />
-                    Edit message
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </li>
-          );
-        })}
-      </ol>
+              item={item}
+              index={index}
+              draggable={items.length > 1 && item.state !== "local"}
+              last={shown.length - 1}
+              steer={steer}
+              canEdit={canEdit}
+              onSteer={onSteer}
+              onRemove={onRemove}
+              onEdit={onEdit}
+              onMove={move}
+            />
+          ))}
+        </ol>
+      </DragDropProvider>
       <ErrorLine error={error} className="px-3 pb-1" />
     </RailItem>
   );
+}
+
+/** One queued message: glyph (the drag grip on hover), its words, Steer, Delete and ⋯. */
+function QueueRow({
+  item,
+  index,
+  draggable,
+  last,
+  steer,
+  canEdit,
+  onSteer,
+  onRemove,
+  onEdit,
+  onMove,
+}: {
+  item: QueuedMessage;
+  index: number;
+  draggable: boolean;
+  /** The last index, for ↑/↓. */
+  last: number;
+  steer: boolean;
+  canEdit: boolean;
+  onSteer: (id: string) => void;
+  onRemove: (id: string) => void;
+  onEdit: (id: string) => void;
+  onMove: (id: string, to: number) => void;
+}) {
+      const local = item.state === "local";
+      const deciding = item.state === "deciding";
+      const text = preview(item.draft);
+      const files = attached(item.draft);
+      const { ref, handleRef, isDragging } = useSortable({ id: item.id, index, disabled: !draggable });
+      const glyph = cx("size-icon-sm", draggable && "group-hover/queue-item:invisible group-focus-within/queue-item:invisible");
+      return (
+        <li
+          ref={ref}
+          data-slot="queue-item"
+          aria-busy={deciding || undefined}
+          className={cx(
+            "group/queue-item flex min-h-control-md items-center gap-2 rounded-control ps-1.5 pe-1 text-sm motion-safe:animate-fade-in",
+            isDragging && "bg-fill-hover",
+          )}
+        >
+          <span className="relative flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
+            {deciding ? <Spinner className={cx(glyph, "animate-spin motion-reduce:animate-none")} /> : <QueueGlyph className={glyph} />}
+            {draggable && (
+              <span className="absolute inset-0 flex opacity-0 group-hover/queue-item:opacity-100 group-focus-within/queue-item:opacity-100">
+                <BaseButton
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                  className="flex size-full cursor-grab touch-none items-center justify-center rounded-control transition-all hover:bg-fill hover:text-foreground focus-visible:focus-ring"
+                  ref={handleRef}
+                  onKeyDown={(event) => {
+                    // ↑/↓ move it one step; Space starts the library's keyboard drag, which owns the arrows meanwhile.
+                    const to = index + (event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0);
+                    if (isDragging || to === index || to < 0 || to > last) return;
+                    event.preventDefault();
+                    onMove(item.id, to);
+                    // Moving the row takes focus from it; give it back so ↑/↓ keep going.
+                    const grip = event.currentTarget;
+                    requestAnimationFrame(() => grip.focus());
+                  }}
+                >
+                  <Hamburger className="size-icon-sm" />
+                </BaseButton>
+              </span>
+            )}
+          </span>
+          {/* The message comes first: short of room, the note after it gives way. */}
+          <span className="min-w-0 flex-auto truncate" title={text || undefined}>
+            {text ? (
+              <>
+                {text}
+                {files && <span className="text-muted-foreground"> · {files}</span>}
+              </>
+            ) : (
+              <span className="text-muted-foreground">{files}</span>
+            )}
+          </span>
+          {deciding && (
+            <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
+              Deciding
+            </span>
+          )}
+          {steer && (
+            <TooltipIconButton
+              tooltip="Submit without interrupting the model"
+              side="top"
+              size="xs"
+              className="text-muted-foreground"
+              disabled={local}
+              onClick={() => onSteer(item.id)}
+            >
+              <ArrowCurvedRight />
+              Steer
+            </TooltipIconButton>
+          )}
+          <TooltipIconButton tooltip="Delete queued message" side="top" className="text-muted-foreground" disabled={local} onClick={() => onRemove(item.id)}>
+            <Trash />
+          </TooltipIconButton>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Queued message actions" className="text-muted-foreground aria-expanded:bg-fill" />}>
+              <DotsHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered"} onClick={() => onEdit(item.id)}>
+                <EditPencil />
+                Edit message
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </li>
+      );
 }
