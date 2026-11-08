@@ -73,7 +73,7 @@ function Card({ old, initial = EMPTY_DRAFT, placeholder = "Do anything", running
     if (scrolled) box.current!.querySelector("[data-slot=composer-field]")!.scrollTop = 1e6;
   }, [scrolled]);
   return (
-    <div ref={box} className="w-full max-w-reading">
+    <div ref={box} className="w-144">
       <ComposerCard>
         <ComposerField initial={initial} placeholder={placeholder} />
         <ComposerFooter>
@@ -208,7 +208,7 @@ export function ComposerGallery() {
       <Row name="Edit and resend">
         <Pair label="Editing a sent message">
           {(old) => (
-            <div className="w-full max-w-reading">
+            <div className="w-144">
               {old ? <OldEdit /> : <EditComposer initial={draft("Fix the Enter key in the composer")} onCancel={noop} onSend={noop} />}
             </div>
           )}
