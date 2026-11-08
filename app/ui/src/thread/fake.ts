@@ -254,17 +254,17 @@ class Writer {
 }
 
 /** A finished session of about `count` items. `huge` adds one very long command output and one very long reply. */
-export function fakeSession(count: number, seed = 1, huge = false, prefix = ""): Session {
+export function fakeSession(count: number, seed = 1, huge = false): Session {
   const fake: Fake = { rand: random(seed), seq: 0 };
   const writer = new Writer();
   let time = Date.UTC(2026, 10, 1);
   while (writer.items.length < count) {
     const startedAt = time;
-    const turn: Turn = { id: prefix + id(fake, "turn"), status: "done", startedAt, endedAt: (time += between(fake, 5, 300) * 1000), backend: "fake" };
+    const turn: Turn = { id: id(fake, "turn"), status: "done", startedAt, endedAt: (time += between(fake, 5, 300) * 1000), backend: "fake" };
     writer.turn(fake, turn);
   }
   // Whole turns only: a cut turn's group and fold would cover the items after it.
-  const items = writer.items.map((item) => (prefix && !item.id.startsWith(prefix) ? { ...item, id: prefix + item.id } : item));
+  const items = writer.items;
   if (huge && count > 4) {
     const from = Math.floor(count / 2);
     const tool = items.findIndex((item, at) => at >= from && item.kind === "tool" && item.name === "shell");
@@ -310,20 +310,25 @@ export class FakeThread {
     this.emit({ items: [...this.session.items, ...items] });
   }
 
-  /** Older history arriving above: `count` items numbered before the first one. */
-  prepend(count: number): void {
-    const older = fakeSession(count, this.fake.seq++, false, `old${this.fake.seq}-`);
-    const shift = (this.session.items[0]?.n ?? 1) - 1 - (older.items.at(-1)?.n ?? 0);
-    const items = older.items.map((item) => {
-      const moved = { ...item, n: item.n! + shift } as Item;
-      return moved.kind === "group" ? { ...moved, span: [moved.span[0] + shift, moved.span[1] + shift] as [number, number] } : moved;
-    });
-    const work = (older.work ?? []).map((each) => ({ ...each, folded: [each.folded[0] + shift, each.folded[1] + shift] as [number, number] }));
-    this.emit({ items: [...items, ...this.session.items], turns: [...older.turns, ...this.session.turns], work: [...work, ...(this.session.work ?? [])] });
-  }
-
   private item(draft: Draft, turn: Turn, at?: string): Item {
     return { ...draft, id: at ?? id(this.fake, "item"), turnId: turn.id, n: this.n++ } as Item;
+  }
+
+  /** Stopped by the user: the turn and whatever in it was still live. */
+  private stop(turnId: string): void {
+    const now = Date.now();
+    this.emit({
+      turns: this.session.turns.map((turn) => (turn.id === turnId ? { ...turn, status: "cancelled", endedAt: now } : turn)),
+      items: this.session.items.map((item) =>
+        item.turnId !== turnId
+          ? item
+          : item.kind === "tool" && item.progress === "running"
+            ? { ...item, progress: "cancelled", endedAt: now }
+            : (item.kind === "message" || item.kind === "reasoning") && item.streaming
+              ? { ...item, streaming: false }
+              : item,
+      ),
+    });
   }
 
   /** Grows item `at`'s text to `full`, paced by the clock (a slow renderer gets the same text in fewer updates). */
@@ -349,9 +354,11 @@ export class FakeThread {
     let stopped = false;
     let timer = 0;
     const wait = (ms: number) => new Promise((done) => (timer = window.setTimeout(done, ms)));
+    let live: string | null = null;
     const run = async () => {
       while (!stopped) {
         const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake", waitingSince: null, waitedMs: 0 };
+        live = turn.id;
         this.emit({ turns: [...this.session.turns, turn] });
         this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false, sentAt: Date.now() }, turn));
         const thought = this.item({ kind: "reasoning", text: "", streaming: true, heading: heading(this.fake) }, turn);
@@ -380,6 +387,7 @@ export class FakeThread {
         this.append(answer);
         await this.grow(this.session.items.length - 1, answer, head + markdown(this.fake, prefill ? prefill + 20 : between(this.fake, 4, 12)), charsPerSecond, () => stopped, wait);
         if (stopped) return;
+        live = null;
         const ended = { ...turn, status: "done" as const, endedAt: Date.now() };
         this.emit({
           turns: this.session.turns.map((each) => (each.id === turn.id ? ended : each)),
@@ -393,6 +401,7 @@ export class FakeThread {
     return () => {
       stopped = true;
       window.clearTimeout(timer);
+      if (live) this.stop(live);
     };
   }
 }
