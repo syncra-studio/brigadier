@@ -170,7 +170,7 @@ export function AccountsPage() {
               <SettingsCard>
                 <SettingsRow
                   label="Switch to another agent automatically"
-                  description="When every account of an agent is at its limit, the work carries on with another agent, with a hand-off of the thread. Off, it waits for you."
+                  description="When every account of an agent is at its limit, the work carries on with another agent. Off, it waits for you."
                   error={failed.agents}
                 >
                   <Switch
@@ -228,7 +228,7 @@ export function AccountsPage() {
           ask?.kind === "auto"
             ? `Switching ${ask.agent.label} accounts automatically to keep working past a usage limit may breach ${ask.agent.accounts?.vendor}'s terms. You turn it on at your own risk.`
             : ask?.kind === "agents"
-              ? `When an agent's accounts are all at their limit, the conversation goes to another vendor's agent${targets.length ? ` (${listNames(targets)})` : ""}, with a hand-off of the whole thread, including what it read. You turn it on at your own risk.`
+              ? `When an agent's accounts are all at their limit, the conversation goes to another vendor's agent${targets.length ? ` (${listNames(targets)})` : ""}, and that agent sees the whole thread, including what it read. You turn it on at your own risk.`
               : ask?.kind === "remove"
                 ? `${ask.agent.label} signs it out with its own sign-out, then its folder is deleted. Your history stays.`
                 : ""

@@ -64,7 +64,9 @@ pub fn switch(
     let (origin, text) = if fresh {
         match handoff(spec, why, &last, to.from) {
             Ok(t) => ("system", t),
-            Err(e) => return json!({"ok": false, "error": format!("hand-off: {e}")}),
+            Err(e) => {
+                return json!({"ok": false, "error": format!("couldn't start the new conversation: {e}")});
+            }
         }
     } else if proof {
         ("user", last["text"].as_str().unwrap_or("").to_string())
@@ -80,15 +82,10 @@ pub fn switch(
     } else {
         "switched to"
     };
-    let note = match (why, fresh) {
-        ("unresumable", _) => format!(
-            "{to_named} couldn't resume this conversation · started a new one with a hand-off"
-        ),
-        (_, true) => format!(
-            "Usage limit on {} · {how} {to_named} with a hand-off of this thread",
-            to.from
-        ),
-        _ => format!("Usage limit on {} · {how} {to_named}", to.from),
+    let note = if why == "unresumable" {
+        format!("{to_named} couldn't resume this conversation · started a new one")
+    } else {
+        format!("Usage limit on {} · {how} {to_named}", to.from)
     };
     let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to.backend, "account": to.account, "model": to.model},
