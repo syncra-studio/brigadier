@@ -6,6 +6,7 @@ import { Select } from "../components/select";
 import { useDaemon } from "../daemon";
 import { Spinner } from "../icons";
 import { addProject, useProjects } from "../projects/projects";
+import { openAddProject } from "../projects/store";
 import { type Agent, checkAll, errorText, run, useAgents } from "./api";
 
 /**
@@ -91,7 +92,7 @@ export function StartForm() {
         : loaded === undefined
           ? "Loading the projects…"
           : loaded.length === 0
-            ? "Add a project first."
+            ? <><Button variant="link-blue" size={null} onClick={() => openAddProject()}>Add a project</Button> first.</>
           : models === "loading"
             ? "Finding the models…"
             : !Array.isArray(models)
