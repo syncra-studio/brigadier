@@ -14,15 +14,22 @@ const plugins = [remarkGfm];
  */
 export function Markdown({ text, keep }: { text: string; keep: string }) {
   const tokens = marked.lexer(text);
-  // A block alone can't see link definitions in the others (nested ones too), so blocks that may use one get them all.
-  const definitions = Object.entries(tokens.links)
-    .map(([label, link]) => `[${label}]: <${link.href}>${link.title ? ` "${link.title.replace(/"/g, '\\"')}"` : ""}`)
-    .join("\n");
+  // A block alone can't see link definitions in the others (nested ones too), so a block gets the ones it names,
+  // and a definition still streaming redraws only the blocks that use it.
+  const definitions = Object.entries(tokens.links).map(
+    ([label, link]) => [`[${label}]`, `[${label}]: <${link.href}>${link.title ? ` "${link.title.replace(/"/g, '\\"')}"` : ""}`] as const,
+  );
+  const withDefinitions = (raw: string) => {
+    // marked keys them lower-cased with runs of whitespace as one space.
+    const named = raw.toLowerCase().replace(/\s+/g, " ");
+    const used = definitions.filter(([label]) => named.includes(label)).map(([, line]) => line);
+    return used.length ? `${raw}\n\n${used.join("\n")}` : raw;
+  };
   return (
     <div className="markdown">
       {tokens.map((token, at) =>
         token.type === "space" || token.type === "def" ? null : (
-          <Block key={at} text={definitions && token.type !== "code" ? `${token.raw}\n\n${definitions}` : token.raw} keep={`${keep}:${at}`} />
+          <Block key={at} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${at}`} />
         ),
       )}
     </div>
