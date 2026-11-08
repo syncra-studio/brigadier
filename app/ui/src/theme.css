@@ -458,6 +458,19 @@
   }
 }
 
+/* A notice's words: one line until opened to the whole text (rail.tsx); the height eases between. */
+@utility notice-fold {
+  interpolate-size: allow-keywords;
+  height: 1lh;
+  overflow: clip;
+  &[data-open] {
+    height: auto;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    transition: height var(--duration-fold) var(--ease-enter);
+  }
+}
+
 /* A queue drag keeps the closed hand wherever the pointer goes (queue-drag.ts); outside the layers, so it wins. */
 :root[data-grabbing],
 :root[data-grabbing] * {

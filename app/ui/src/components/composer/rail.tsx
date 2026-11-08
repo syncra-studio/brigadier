@@ -1,6 +1,6 @@
-import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useRef, useState } from "react";
+import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useLayoutEffect, useRef, useState } from "react";
 
-import { ChevronRight, ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
+import { ChevronDown, ChevronRight, ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
 import { Button } from "../button";
 import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
@@ -94,7 +94,8 @@ const NOTICE_ICONS = {
 
 /**
  * What the user must act on, or what stopped the turn (D64: notices live here, never in a banner): a tinted
- * icon, the words, its action (Retry) and ✕. An error's words are the kit's one error line (D87).
+ * icon, the words, its action (Retry) and ✕. An error's words are the kit's one error line (D87). Words past
+ * one line are cut with an ellipsis, and the chevron after them opens the whole text in place (D122).
  */
 export function NoticeRow({
   level,
@@ -110,31 +111,48 @@ export function NoticeRow({
   onDismiss?: () => void;
   children: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const fold = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const words = fold.current?.firstElementChild;
+    if (!words || open) return;
+    const measure = () => setLong(words.scrollHeight > words.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(words);
+    return () => observer.disconnect();
+  }, [open, children]);
+  const clamp = "line-clamp-1 group-data-open/notice:line-clamp-none";
   return (
     <li data-level={level} className="flex items-start gap-2.5 py-2 ps-3.5 pe-2.5 text-label text-foreground">
       {NOTICE_ICONS[level]}
-      {level === "error" ? (
-        <ErrorLine error={children} className="min-w-0 flex-1" />
-      ) : (
-        <span className="min-w-0 flex-1 whitespace-pre-wrap">
-          {children}
-        </span>
+      <div ref={fold} data-open={open || undefined} className={cx("group/notice min-w-0 flex-1 notice-fold", level === "error" && "text-xs")}>
+        {level === "error" ? <ErrorLine error={children} className={clamp} /> : <p className={cx(clamp, "whitespace-pre-wrap")}>{children}</p>}
+      </div>
+      {(long || open) && (
+        <TooltipIconButton
+          tooltip={open ? "Show less" : "Show the whole notice"}
+          size="icon-xs"
+          aria-expanded={open}
+          className="text-muted-foreground"
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronDown className={cx("chevron-motion", open && "rotate-180")} />
+        </TooltipIconButton>
       )}
       {action}
       {pager}
-      {onDismiss ? (
+      {onDismiss && (
         <TooltipIconButton tooltip="Dismiss notice" size="icon-xs" className="text-muted-foreground" onClick={onDismiss}>
           <X />
         </TooltipIconButton>
-      ) : (
-        // Holds ✕'s place, so the pager stays put while paging past a notice that can't be dismissed.
-        pager && <span aria-hidden className="size-5 shrink-0" />
       )}
     </li>
   );
 }
 
-/** A notice; one with an `action` (Retry) has that instead of ✕, as in the old app. */
+/** A notice; `action` (Retry) comes before the pager and ✕. */
 type Notice = { id: Key; level: keyof typeof NOTICE_ICONS; text: string; action?: ReactNode };
 
 /**
@@ -180,14 +198,10 @@ export function PagedNotices({ notices, onDismiss }: { notices: readonly Notice[
           level={notice.level}
           action={notice.action}
           pager={pager}
-          onDismiss={
-            notice.action
-              ? undefined
-              : () => {
-                  setAt({ index });
-                  onDismiss(notice.id);
-                }
-          }
+          onDismiss={() => {
+            setAt({ index });
+            onDismiss(notice.id);
+          }}
         >
           {notice.text}
         </NoticeRow>

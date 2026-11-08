@@ -57,6 +57,15 @@ const retry = (
   </Button>
 );
 const LOAD_ERROR = { level: "warning", text: "Couldn’t load messages", action: retry } as const;
+const LONG = {
+  level: "error",
+  text: "The agent stopped: its process exited (code 1). The last thing it printed was: error: could not compile `brigadier-core` (lib) due to 3 previous errors; warning: build failed, waiting for other jobs to finish. Check the terminal for the full log.",
+} as const;
+const LONG_RETRY = {
+  level: "warning",
+  text: "Couldn’t load messages: the session's history file is locked by another process, so its newest turns can't be read until that process lets go of it.",
+  action: retry,
+} as const;
 
 /** The pager (D114) live: arrows page, ✕ dismisses, Reset brings them back. */
 function ProposedNotices({ samples = NOTICE_SAMPLES }: { samples?: readonly Omit<Parameters<typeof PagedNotices>[0]["notices"][number], "id">[] }) {
@@ -291,11 +300,17 @@ export function RailGallery() {
         <State label="Proposed: one at a time, newest first; ‹ › or ←/→ page, ✕ dismisses the one shown">
           <ProposedNotices />
         </State>
-        <State label="Proposed: three, one with Retry (Retry takes ✕'s place)">
+        <State label="Proposed: three, one with Retry">
           <ProposedNotices samples={[NOTICE_SAMPLES[0]!, NOTICE_SAMPLES[2]!, LOAD_ERROR]} />
         </State>
         <State label="Proposed: one, with Retry (no pager)">
           <ProposedNotices samples={[LOAD_ERROR]} />
+        </State>
+        <State label="Proposed: long, one line until the chevron opens it">
+          <ProposedNotices samples={[NOTICE_SAMPLES[1]!, LONG]} />
+        </State>
+        <State label="Proposed: long, with Retry">
+          <ProposedNotices samples={[LONG_RETRY]} />
         </State>
         <State label="Proposed: one (no pager)">
           <ProposedNotices samples={[NOTICE_SAMPLES[1]!]} />
