@@ -14,7 +14,7 @@ import { StartForm } from "./onboarding/start";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { Demo } from "./session/Demo";
-import { SessionModel } from "./session/model";
+import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { TerminalPane } from "./terminal/terminal";
@@ -141,6 +141,10 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   const title = row?.title;
   useEffect(() => openThread(id), [id]);
   const state = useThread();
+  const sending = useSending(id);
+  const line =
+    row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
+    row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>;
   return (
     <>
       <Titlebar>{title || id}</Titlebar>
@@ -157,17 +161,11 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 <SessionOfThread value={{ id, offline }}>
                   <Thread
                     source={threadSource}
-                    footer={
-                      row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
-                      row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
-                    }
+                    footer={(line || sending) && <>{line}<SentBubbles id={id} /></>}
                   />
                 </SessionOfThread>
               </div>
-              {/* Where the composer goes in 1p; until then its model pill [D129, D190]. */}
-              <div className="flex shrink-0 justify-end px-4 py-2">
-                <SessionModel id={id} row={row} offline={offline} />
-              </div>
+              <SessionComposer id={id} row={row} offline={offline} />
             </div>
           )}
           {state?.status !== "missing" && <TerminalPane id={id} />}
