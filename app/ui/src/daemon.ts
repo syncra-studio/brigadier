@@ -4,6 +4,8 @@ import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
+/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers. */
+export type Project = { id: string; name: string; folder: string; trusted: boolean | null; added: number };
 export type Row = { id: string; title: string; state: string; backend: string; updated: number; items: number; error: string | null };
 /** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
 export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
@@ -14,6 +16,8 @@ export type View = {
   refused?: string;
   /** undefined until the first list; kept while disconnected, so it never flashes empty. */
   rows?: Row[];
+  /** The same for the projects, which come with the rows [D40, D71]. */
+  projects?: Project[];
   search: Search;
 };
 
@@ -26,6 +30,7 @@ let searchId = 0;
 const SLOW_MS = 200;
 // The list at N, then each update N+1, N+2… in order [D40]. A gap asks for a fresh list.
 let rows = new Map<string, Row>();
+let projects = new Map<string, Project>();
 let n: number | undefined;
 const listeners = new Set<() => void>();
 // One-off replies by request id (a command, the terminal's stream), and where terminal frames go.
@@ -140,8 +145,9 @@ function onFrame(frame: Record<string, any>): void {
     set({ daemon: null, refused: frame.error });
   } else if (frame.re === listId) {
     rows = new Map(frame.rows.map((row: Row) => [row.id, row]));
+    projects = new Map(frame.projects.map((project: Project) => [project.id, project]));
     n = frame.n;
-    set({ rows: [...rows.values()] });
+    set({ rows: [...rows.values()], projects: [...projects.values()] });
   } else if (frame.re === searchId) {
     // Only the latest query's reply lands; it swaps the results in place, never backwards.
     const { q, ids } = view.search;
@@ -174,7 +180,9 @@ function onFrame(frame: Record<string, any>): void {
     n = frame.n;
     for (const row of frame.rows as Row[]) rows.set(row.id, row);
     for (const id of frame.gone as string[]) rows.delete(id);
-    set({ rows: [...rows.values()] });
+    for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
+    for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
+    set({ rows: [...rows.values()], projects: [...projects.values()] });
   }
 }
 

@@ -1,7 +1,9 @@
 //! The daemon's op table: one connection's handshake, then each request routed by its op.
 
 use super::watch::{self, Shown};
-use super::{HANDSHAKE_TIMEOUT, PROTOCOL_VERSION, Shared, Sub, WRITE_TIMEOUT, snapshot, term};
+use super::{
+    HANDSHAKE_TIMEOUT, PROTOCOL_VERSION, Shared, Sub, WRITE_TIMEOUT, publish, snapshot, term,
+};
 use brigadier::index;
 use brigadier_core::check_id;
 use brigadier_frames::wire;
@@ -79,7 +81,7 @@ pub(super) fn serve(
                 let mut s = state.lock().unwrap();
                 let ready = s.ready;
                 if ready {
-                    let _ = out.send(snapshot(&re, s.n, &s.rows));
+                    let _ = out.send(snapshot(&re, s.n, &s.rows, &s.projects));
                 }
                 let waiting = (!ready).then_some(re);
                 s.subs.insert(
@@ -166,7 +168,7 @@ pub(super) fn serve(
                     .flatten()
                     .filter_map(|a| a.as_str().map(String::from))
                     .collect();
-                let (out, data) = (out.clone(), PathBuf::from(data));
+                let (out, data, state) = (out.clone(), PathBuf::from(data), state.clone());
                 // A start waits for its host to answer: never hold up this connection's reads.
                 thread::spawn(move || {
                     let mut reply = match args.first() {
@@ -174,6 +176,12 @@ pub(super) fn serve(
                             .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),
                         _ => json!({"ok": false, "error": format!("not routed: {args:?}")}),
                     };
+                    // A project change goes out before its reply, so the app's pending row can
+                    // leave as the reply lands [D30]. Before the first pass, that pass sends it.
+                    let ready = state.lock().unwrap().ready;
+                    if ready && args.first().is_some_and(|c| c == "projects") {
+                        publish(&state, &data, vec![], vec![]);
+                    }
                     reply["re"] = re;
                     let _ = out.send(reply.to_string());
                 });

@@ -3,9 +3,10 @@
 //! app's commands to the hosts. Killing it leaves every host working: they never depend on it.
 //!
 //! Its protocol is its own (the hosts keep theirs): the 4-byte version, a hello, then JSON frames.
-//! `{"id", "op": "subscribe"}` answers `{"re", "n", "rows"}`, the list at N, and then pushes
-//! `{"n": N+1, "rows", "gone"}`, `{"n": N+2, …}` in order [D40, D71]. A client that sees a gap
-//! subscribes again for a fresh snapshot; a new connection always starts with one.
+//! `{"id", "op": "subscribe"}` answers `{"re", "n", "rows", "projects"}`, the lists at N, and then
+//! pushes `{"n": N+1, "rows", "gone", "projects", "projects_gone"}`, `{"n": N+2, …}` in order, each
+//! naming what changed by id [D40, D71]. A client that sees a gap subscribes again for a fresh
+//! snapshot; a new connection always starts with one.
 //!
 //! `{"id", "op": "thread", "session"}` answers `{"re", "ok", "n", "session"}`, the session's thread
 //! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
@@ -64,6 +65,7 @@ struct State {
     n: u64,
     ready: bool,
     rows: BTreeMap<String, Value>,
+    projects: BTreeMap<String, Value>,
     subs: HashMap<u64, Sub>,
 }
 
@@ -106,7 +108,7 @@ fn main() -> io::Result<()> {
     let mut seen: HashMap<String, Value> = HashMap::new();
     loop {
         match index.sync() {
-            Ok((rows, gone)) => publish(&state, rows, gone),
+            Ok((rows, gone)) => publish(&state, &data, rows, gone),
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         switch::auto_switch(&data, &index.rows, &mut seen);
@@ -181,11 +183,36 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
     Ok(true)
 }
 
-/// Applies one pass's changes as update N+1 and sends it, in order, to every subscriber. Requests
-/// that came before the first pass get their snapshot now.
-fn publish(state: &Shared, rows: Vec<Value>, gone: Vec<String>) {
+/// Applies one pass's changes, and the projects' (read under the lock, so two readers never send
+/// them out of order), as update N+1 and sends it, in order, to every subscriber. Requests that
+/// came before the first pass get their snapshot now.
+// shortcut: reads `projects.json` every pass, a small file (proposed); stat it first if many
+// projects ever make that show in a profile.
+fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
     let mut s = state.lock().unwrap();
-    let delta = !rows.is_empty() || !gone.is_empty();
+    let (mut projects, mut projects_gone) = (vec![], vec![]);
+    match brigadier_core::projects::list(data) {
+        Ok(list) => {
+            let list: BTreeMap<String, Value> =
+                list.into_iter().map(|p| (p.id.clone(), json!(p))).collect();
+            projects_gone = s
+                .projects
+                .keys()
+                .filter(|id| !list.contains_key(*id))
+                .cloned()
+                .collect();
+            projects = list
+                .iter()
+                .filter(|(id, p)| s.projects.get(*id) != Some(p))
+                .map(|(_, p)| p.clone())
+                .collect();
+            s.projects = list;
+        }
+        // A damaged file keeps the last list it read.
+        Err(e) => eprintln!("brigadierd: projects: {e}"),
+    }
+    let delta =
+        !rows.is_empty() || !gone.is_empty() || !projects.is_empty() || !projects_gone.is_empty();
     for row in &rows {
         s.rows
             .insert(row["id"].as_str().unwrap_or("").into(), row.clone());
@@ -196,15 +223,28 @@ fn publish(state: &Shared, rows: Vec<Value>, gone: Vec<String>) {
     s.n += delta as u64;
     s.ready = true;
     let State {
-        n, rows: all, subs, ..
+        n,
+        rows: all,
+        projects: all_projects,
+        subs,
+        ..
     } = &mut *s;
-    let update = json!({"n": *n, "rows": rows, "gone": gone}).to_string();
+    let update = json!({"n": *n, "rows": rows, "gone": gone, "projects": projects,
+        "projects_gone": projects_gone});
+    let update = update.to_string();
     subs.retain(|_, sub| match sub.waiting.take() {
-        Some(re) => sub.out.send(snapshot(&re, *n, all)).is_ok(),
+        Some(re) => sub.out.send(snapshot(&re, *n, all, all_projects)).is_ok(),
         None => !delta || sub.out.send(update.clone()).is_ok(),
     });
 }
 
-fn snapshot(re: &Value, n: u64, rows: &BTreeMap<String, Value>) -> String {
-    json!({"re": re, "n": n, "rows": rows.values().collect::<Vec<_>>()}).to_string()
+fn snapshot(
+    re: &Value,
+    n: u64,
+    rows: &BTreeMap<String, Value>,
+    projects: &BTreeMap<String, Value>,
+) -> String {
+    let (rows, projects) = (rows.values(), projects.values());
+    json!({"re": re, "n": n, "rows": rows.collect::<Vec<_>>(), "projects": projects.collect::<Vec<_>>()})
+        .to_string()
 }
