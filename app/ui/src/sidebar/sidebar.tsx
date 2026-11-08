@@ -24,7 +24,7 @@ import type { Project, SessionRow } from "./words";
 type Grouping = "none" | "project";
 
 /** A view choice kept across launches. */
-function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
+export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
   const [value, setValue] = useState<T>(() => {
     const saved = localStorage.getItem(key);
     return saved === null ? initial : (JSON.parse(saved) as T);

@@ -1,12 +1,28 @@
 import { useSyncExternalStore } from "react";
 
+import type { Mark } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string };
 /** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers. */
 export type Project = { id: string; name: string; folder: string; trusted: boolean | null; added: number };
-export type Row = { id: string; title: string; state: string; backend: string; updated: number; items: number; error: string | null };
+/** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
+export type Row = {
+  id: string;
+  title: string;
+  state: string;
+  reason: unknown;
+  mark: Mark;
+  resets: number | null;
+  sent: number;
+  finished: number;
+  project: string | null;
+  backend: string;
+  updated: number;
+  items: number;
+  error: string | null;
+};
 /** `slow` turns on only once a query has been pending for SLOW_MS, so fast typing never flickers. */
 export type Search = { q: string; pending: boolean; slow?: boolean; ids?: string[]; error?: string };
 

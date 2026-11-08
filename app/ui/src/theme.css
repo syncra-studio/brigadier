@@ -842,6 +842,22 @@
   }
 }
 
+/* The hairline between the sidebar and the page, below the titlebar (the old app's). */
+@utility body-divider {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: var(--spacing-titlebar);
+    bottom: 0;
+    width: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
 /* A bar growing to its new width (a progress bar). */
 @utility transition-width {
   transition-property: width;
