@@ -204,6 +204,9 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   useLayoutEffect(() => {
     if (stuck.current) list.current?.scrollToIndex(last, { align: "end" });
     else fit();
+    // Rows too few to scroll give no scroll to ask for older ones on.
+    const handle = list.current;
+    if (handle && handle.scrollSize <= handle.viewportSize) source.older?.();
   }, [data, last, fit]);
 
   // A growing last row or footer is measured after the effect above, and the viewport can shrink (window, composer),
