@@ -213,6 +213,9 @@
   /* Add project: its card, and the list's room for five rows (the old app's). */
   --container-add-project: 47.5rem;
   --spacing-add-project-list: 18.625rem;
+  /* Trust this folder? and Project settings (the old app's). */
+  --container-trust: 26.25rem;
+  --container-project-dialog: 35rem;
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;

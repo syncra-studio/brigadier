@@ -50,3 +50,18 @@ export async function addProject(folder: string, args = ["add", folder], id = ne
     throw cause;
   }
 }
+
+/**
+ * Changes a project's record with `projects set <id> …args`: shown at once, then Rust's record by id,
+ * or taken back with Rust's reason thrown [D30].
+ */
+export async function setProject(project: Project, change: Partial<Project>, args: string[]): Promise<void> {
+  const shown = { ...project, ...change };
+  hold(project.id, shown);
+  try {
+    await run(["projects", "set", project.id, ...args]);
+  } finally {
+    // A later change holds its own: only this one's overlay goes.
+    if (overlay.get().get(project.id) === shown) hold(project.id);
+  }
+}
