@@ -4,6 +4,7 @@ import { VList, type VListHandle } from "virtua";
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
+import { ScrollFade } from "../components/scroll-fade";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null };
@@ -144,12 +145,15 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           )
         }
       </VList>
+      {/* Over the scroller, not in it: rows fade out under the top bar and at the bottom edge. */}
+      <ScrollFade edge="top" />
+      <ScrollFade edge="bottom" />
       {away && (
         <button
           type="button"
           aria-label="Jump to the latest"
           onClick={toBottom}
-          className="absolute bottom-4 left-1/2 size-control-md -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay"
+          className="absolute bottom-4 left-1/2 z-20 size-control-md -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay"
         >
           ↓
         </button>
