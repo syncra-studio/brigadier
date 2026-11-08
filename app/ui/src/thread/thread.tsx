@@ -81,17 +81,23 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const marks = useMemo(() => messageMarks(items ?? []), [items]);
   const all = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
-  // its next scroll end it holds every later resize to the list's end, so a row added or growing below would move the
-  // screen. So once rows arrive above, the rows from the old first on stay as drawn until Virtua's scroll end.
+  // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
+  // rows arrive above, everything stays as drawn for one painted frame, in which Virtua measures what was drawn before
+  // they came; then they go in, and the rows from the old first on stay as drawn until Virtua's scroll end, the only
+  // place it leaves that mode. Virtua is pinned at 0.54.2: an upgrade must re-run the prepend and both-ends checks.
   const drawn = useRef<readonly Line[]>([]);
   const held = useRef<readonly Line[] | null>(null);
+  // Older rows waiting for a painted frame: false while they wait, true once it has passed.
+  const ripe = useRef<boolean | null>(null);
   const scrolled = useRef(0);
   const wait = useRef<ReturnType<typeof setTimeout>>(undefined);
   const before = drawn.current[0]?.id;
-  const shift = before !== undefined && all[0]?.id !== before && all.some((line) => line.id === before);
-  const frozen = held.current ?? (shift ? drawn.current : null);
+  const above = before !== undefined && all[0]?.id !== before && all.some((line) => line.id === before);
+  const shift = above && ripe.current === true;
+  const frozen = held.current ?? (above ? drawn.current : null);
   const from = frozen ? all.findIndex((line) => line.id === frozen[0]?.id) : -1;
-  const rows = useMemo(() => (frozen && from >= 0 ? [...all.slice(0, from), ...frozen] : all), [all, frozen, from]);
+  const merged = useMemo(() => (frozen && from >= 0 ? [...all.slice(0, from), ...frozen] : all), [all, frozen, from]);
+  const rows = above && !shift ? drawn.current : merged;
   const letGo = useCallback(() => {
     if (!held.current) return;
     held.current = null;
@@ -100,6 +106,21 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   useLayoutEffect(() => {
     drawn.current = rows;
     held.current = rows === all ? null : frozen;
+    if (above && !shift) {
+      if (ripe.current === null) {
+        ripe.current = false;
+        // After the next frame is painted, its sizes have reached Virtua.
+        requestAnimationFrame(() =>
+          setTimeout(() => {
+            if (ripe.current !== false) return;
+            ripe.current = true;
+            redraw();
+          }),
+        );
+      }
+      return;
+    }
+    ripe.current = null;
     if (!shift || rows === all) return;
     // A list too short to scroll gets no scroll end.
     scrolled.current = 0;
