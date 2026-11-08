@@ -98,8 +98,19 @@ impl Fold {
                 | "compaction"
         ) {
             self.last_out = ts;
+            let pty = self.child.as_ref().is_some_and(|c| c.pty);
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
+                // A question in a terminal is answered by keys, which aren't logged: the agent's
+                // next step in its record ends the wait. Raw screen bytes don't [D77].
+                if pty
+                    && matches!(
+                        kind,
+                        "text" | "tool" | "tool_done" | "reasoning" | "turn_start"
+                    )
+                {
+                    t.question = None;
+                }
             }
         }
         match kind {
@@ -422,12 +433,13 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     if child.stopped {
         return ("stalled", json!({"stopped": child.pid}));
     }
+    // Also in a terminal: the CLI waits on the user either way [D77].
+    if let Some(q) = &turn.question {
+        return ("waiting_answer", q.clone().into());
+    }
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     if fold.child.as_ref().is_some_and(|c| c.pty) {
         return ("terminal", json!({"quiet_ms": silence}));
-    }
-    if let Some(q) = &turn.question {
-        return ("waiting_answer", q.clone().into());
     }
     if !turn.began {
         return if silence > timing.no_start_ms {
