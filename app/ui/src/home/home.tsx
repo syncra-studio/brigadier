@@ -45,21 +45,28 @@ export function HomeDraft() {
   }, [added]);
   const project = projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null;
 
-  const [groups, setGroups] = useState<LevelGroup[] | null>(null);
+  const [listed, setListed] = useState<{ project: string; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [setUp, setSetUp] = useState<string | null>(null);
   const asked = useRef(0);
   const id = project?.id;
+  const groups = listed && listed.project === id ? listed.groups : null;
+  const fresh = listed?.project === id && listed?.fresh;
   const load = () => {
     if (!id) return;
     const mine = ++asked.current;
-    const land = (reply: Record<string, any>) => mine === asked.current && (setGroups(asGroups(reply.groups) as LevelGroup[]), setListError(null));
-    // The last check lands at once, then a fresh one over it; only the fresh one's failure shows [D128].
-    run(["models", "--project", id]).then(land, () => {});
-    run(["models", "--project", id, "--fresh"]).then(land, (cause) => mine === asked.current && setListError(errorText(cause)));
+    const land = (reply: Record<string, any>, fresh: boolean) => {
+      if (mine !== asked.current) return;
+      // Cache fills this project's empty picker only; a list already shown always wins.
+      setListed((now) => !fresh && now?.project === id ? now : { project: id, groups: asGroups(reply.groups) as LevelGroup[], fresh });
+      if (fresh) setListError(null);
+    };
+    run(["models", "--project", id]).then((reply) => land(reply, false), () => {});
+    run(["models", "--project", id, "--fresh"]).then((reply) => land(reply, true), (cause) => mine === asked.current && setListError(errorText(cause)));
   };
   useEffect(() => {
     if (daemon) load();
+    return () => { asked.current++; };
   }, [daemon, id]);
 
   const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
@@ -69,8 +76,11 @@ export function HomeDraft() {
   const offered = groups?.filter((group) => !group.unavailable).flatMap((group) => group.models.map((each) => ({ group, each })));
   const first = offered?.find(({ each }) => (each as { local?: boolean }).local) ?? offered?.[0];
   const firstChoice = first && { provider: first.group.provider, model: first.each.id, effort: first.each.defaultEffort ?? null };
-  // Before the list lands, what it most likely holds shows, unpickable.
-  const model = groups === null ? (draft.model ?? lastChoice) : ([draft.model, lastChoice, firstChoice].find(has) ?? null);
+  // Only a fresh list can disprove a pick; cache may offer the first one, never replace it.
+  const model = fresh ? ([draft.model, lastChoice, firstChoice].find(has) ?? null) : (draft.model ?? lastChoice ?? firstChoice ?? null);
+  useEffect(() => {
+    if (model !== draft.model) setHomeDraft({ model });
+  }, [model, draft.model]);
   // The model's agent's levels here; a pick it can't take, or any while held, falls back to Rust's start default [D166, D187, D239].
   const agent = groups?.find((group) => group.provider === model?.provider);
   const pick = agent && !agent.held && agent.levels.includes(draft.level!) ? draft.level : undefined;
