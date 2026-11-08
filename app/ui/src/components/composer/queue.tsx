@@ -3,7 +3,7 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
-import { ArrowCurvedRight, DotsHorizontal, EditPencil, GripVertical, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { ArrowCurvedRight, ChevronUpDown, DotsHorizontal, EditPencil, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
@@ -110,6 +110,9 @@ export function QueueCard({
       <DragDropProvider
         onDragEnd={({ operation, canceled }) => {
           const { source } = operation;
+          // A press focuses the grip, which keeps it up; let it go unless the keyboard put focus there.
+          const grip = document.activeElement;
+          if (grip instanceof HTMLElement && grip.closest("[data-slot=queue-item]") && !grip.matches(":focus-visible")) grip.blur();
           if (!canceled && isSortable(source) && source.index !== source.initialIndex) move(String(source.id), source.index);
         }}
       >
@@ -165,10 +168,12 @@ function QueueRow({
   const deciding = item.state === "deciding";
   const text = preview(item.draft);
   const files = attached(item.draft);
-  const { ref, handleRef, isDragging } = useSortable({ id: item.id, index, disabled: !draggable });
+  const { ref, handleRef, isDragging, isDropping } = useSortable({ id: item.id, index, disabled: !draggable });
+  // Grabbed, the grip stays up until the drop or Esc has settled, wherever the pointer goes (D127).
+  const grabbed = isDragging || isDropping;
   // It fades in once: a row moved in the DOM (a reorder) would otherwise replay it.
   const [entered, setEntered] = useState(false);
-  const glyph = cx("size-icon-sm", draggable && "group-hover/queue-item:invisible group-focus-within/queue-item:invisible");
+  const glyph = cx("size-icon-sm", grabbed ? "invisible" : draggable && "group-hover/queue-item:invisible group-focus-within/queue-item:invisible");
   return (
     <li
       ref={ref}
@@ -184,11 +189,19 @@ function QueueRow({
       <span className="relative flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
         {deciding ? <Spinner className={cx(glyph, "animate-spin motion-reduce:animate-none")} /> : <QueueGlyph className={glyph} />}
         {draggable && (
-          <span className="absolute inset-0 flex opacity-0 group-hover/queue-item:opacity-100 group-focus-within/queue-item:opacity-100">
+          <span
+            className={cx(
+              "absolute inset-0 flex",
+              grabbed ? "opacity-100" : "opacity-0 group-hover/queue-item:opacity-100 group-focus-within/queue-item:opacity-100",
+            )}
+          >
             <BaseButton
               aria-label="Drag to reorder"
               title="Drag to reorder"
-              className="flex size-full cursor-grab touch-none items-center justify-center rounded-control transition-all hover:bg-fill hover:text-foreground focus-visible:focus-ring"
+              className={cx(
+                "flex size-full cursor-grab touch-none items-center justify-center rounded-control transition-all hover:bg-fill hover:text-foreground focus-visible:focus-ring",
+                grabbed && "bg-fill text-foreground",
+              )}
               ref={handleRef}
               onKeyDown={(event) => {
                 // ↑/↓ move it one step; Space starts the library's keyboard drag, which owns the arrows meanwhile.
@@ -201,7 +214,7 @@ function QueueRow({
                 requestAnimationFrame(() => grip.focus());
               }}
             >
-              <GripVertical className="size-icon-sm" />
+              <ChevronUpDown className="size-icon-sm" />
             </BaseButton>
           </span>
         )}

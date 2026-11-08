@@ -1,5 +1,4 @@
-// The composer rail (slice 2) in every state, frozen, plus one live copy. While reviewing, where the kit
-// differs from the old app a state shows "Current | Old app" (D22); the old column is deleted before landing.
+// The composer rail (slice 2) in every state, frozen, plus one live copy.
 import { useRef, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -7,7 +6,7 @@ import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/
 import { type Draft, isEmpty } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
-import { ComposerRail, HeldRow, NoticeRow, Notices, PagedNotices, PausedSendDialog, RailItem, WaitingRow } from "../src/components/composer/rail";
+import { ComposerRail, HeldRow, Notices, PausedSendDialog, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { Card, ModelPill } from "./composer";
 import { Held, Row, Section, State } from "./parts";
@@ -43,24 +42,6 @@ function Queue({ items: start = ONE, ...props }: Partial<Parameters<typeof Queue
   return <QueueCard items={items} canEdit onResume={noop} onSteer={noop} onRemove={noop} onEdit={noop} onMove={confirm} {...props} />;
 }
 
-/** Old app: a held message named the worker it was for, after the worker's glyph. */
-function OldHeld() {
-  return (
-    <RailItem label="Message not sent">
-      <div className="flex min-h-control-md items-center gap-2 px-3 text-sm text-muted-foreground">
-        <span className="size-icon-sm shrink-0 rounded-capsule bg-fill-active" />
-        <span className="min-w-0 flex-1 truncate">Not sent to Worker 2</span>
-        <Button size="xs" variant="ghost">
-          Restore
-        </Button>
-        <Button size="xs" variant="ghost">
-          Discard
-        </Button>
-      </div>
-    </RailItem>
-  );
-}
-
 type Notice = { id: number; level: "info" | "warning" | "error"; text: string };
 
 const retry = (
@@ -79,13 +60,13 @@ const LONG_RETRY = {
   action: retry,
 } as const;
 
-/** The pager (D114) live: arrows page, ✕ dismisses, Reset brings them back. */
-function ProposedNotices({ samples = NOTICE_SAMPLES }: { samples?: readonly Omit<Parameters<typeof PagedNotices>[0]["notices"][number], "id">[] }) {
+/** The notices, live: arrows page, ✕ dismisses, Reset brings them back. */
+function SampleNotices({ samples = NOTICE_SAMPLES }: { samples?: readonly Omit<Parameters<typeof Notices>[0]["notices"][number], "id">[] }) {
   const all = samples.map((notice, id) => ({ ...notice, id }));
   const [notices, setNotices] = useState(all);
   return (
     <div className="flex flex-col items-start gap-2">
-      <Card rail={<PagedNotices notices={notices} onDismiss={(id) => setNotices((list) => list.filter((each) => each.id !== id))} />} />
+      <Card rail={<Notices notices={notices} onDismiss={(id) => setNotices((list) => list.filter((each) => each.id !== id))} />} />
       <Button size="xs" variant="ghost" onClick={() => setNotices(all)}>
         Reset
       </Button>
@@ -169,15 +150,7 @@ function Live() {
       </ol>
       <div>
         <ComposerRail>
-          {notices.length > 0 && (
-            <Notices>
-              {notices.map((notice) => (
-                <NoticeRow key={notice.id} level={notice.level} onDismiss={() => setNotices((list) => list.filter((each) => each.id !== notice.id))}>
-                  {notice.text}
-                </NoticeRow>
-              ))}
-            </Notices>
-          )}
+          <Notices notices={notices} onDismiss={(id) => setNotices((list) => list.filter((each) => each.id !== id))} />
           <QueueCard
             items={queue}
             paused={paused}
@@ -259,73 +232,23 @@ export function RailGallery() {
   return (
     <Section title="Composer rail">
       <Row name="Notices">
-        <State label="Warning and info, dismissable">
-          <Card
-            rail={
-              <Notices>
-                <NoticeRow level="warning" onDismiss={noop}>
-                  {NOTICE_SAMPLES[0]!.text}
-                </NoticeRow>
-                <NoticeRow level="info" onDismiss={noop}>
-                  {NOTICE_SAMPLES[1]!.text}
-                </NoticeRow>
-              </Notices>
-            }
-          />
+        <State label="Three: one at a time, newest first; ‹ › or ←/→ page, ✕ dismisses the one shown">
+          <SampleNotices />
         </State>
-        <State label="Error (the kit's error line), and one with an action">
-          <Card
-            rail={
-              <Notices>
-                <NoticeRow level="error" onDismiss={noop}>
-                  {NOTICE_SAMPLES[2]!.text}
-                </NoticeRow>
-                <NoticeRow
-                  level="warning"
-                  action={
-                    <Button variant="link-blue" size="xs" className="-my-0.5">
-                      Retry
-                    </Button>
-                  }
-                >
-                  Couldn’t load messages
-                </NoticeRow>
-              </Notices>
-            }
-          />
+        <State label="Three, one with Retry">
+          <SampleNotices samples={[NOTICE_SAMPLES[0]!, NOTICE_SAMPLES[2]!, LOAD_ERROR]} />
         </State>
-      </Row>
-      <Row name="Notices · Current | Proposed">
-        <State label="Current: three, stacked">
-          <Card
-            rail={
-              <Notices>
-                {NOTICE_SAMPLES.map((notice) => (
-                  <NoticeRow key={notice.text} level={notice.level} onDismiss={noop}>
-                    {notice.text}
-                  </NoticeRow>
-                ))}
-              </Notices>
-            }
-          />
+        <State label="One, with Retry (no pager)">
+          <SampleNotices samples={[LOAD_ERROR]} />
         </State>
-        <State label="Proposed: one at a time, newest first; ‹ › or ←/→ page, ✕ dismisses the one shown">
-          <ProposedNotices />
+        <State label="Long: one line until the chevron opens it">
+          <SampleNotices samples={[NOTICE_SAMPLES[1]!, LONG]} />
         </State>
-        <State label="Proposed: three, one with Retry">
-          <ProposedNotices samples={[NOTICE_SAMPLES[0]!, NOTICE_SAMPLES[2]!, LOAD_ERROR]} />
+        <State label="Long, with Retry">
+          <SampleNotices samples={[LONG_RETRY]} />
         </State>
-        <State label="Proposed: one, with Retry (no pager)">
-          <ProposedNotices samples={[LOAD_ERROR]} />
-        </State>
-        <State label="Proposed: long, one line until the chevron opens it">
-          <ProposedNotices samples={[NOTICE_SAMPLES[1]!, LONG]} />
-        </State>
-        <State label="Proposed: long, with Retry">
-          <ProposedNotices samples={[LONG_RETRY]} />
-        </State>
-        <State label="Proposed: one (no pager)">
-          <ProposedNotices samples={[NOTICE_SAMPLES[1]!]} />
+        <State label="One (no pager)">
+          <SampleNotices samples={[NOTICE_SAMPLES[1]!]} />
         </State>
       </Row>
       <Row name="Queue">
@@ -350,24 +273,14 @@ export function RailGallery() {
         <State label="An action failed">
           <Card running canStop rail={<Queue items={MANY.slice(0, 2)} error="Couldn't delete the message. Try again." />} />
         </State>
-        <div className="grid w-full grid-cols-2 gap-8">
-          <State label="Just sent · Current: actions wait, disabled">
-            <Card running canStop rail={<Queue items={[...ONE, item("q9", "local", "Just sent, not confirmed yet")]} steer />} />
-          </State>
-          <State label="Just sent · Old app: actions shown, doing nothing">
-            <Card running canStop rail={<Queue items={[...ONE, item("q9", "queued", "Just sent, not confirmed yet")]} steer />} />
-          </State>
-        </div>
+        <State label="Just sent: actions wait, disabled">
+          <Card running canStop rail={<Queue items={[...ONE, item("q9", "local", "Just sent, not confirmed yet")]} steer />} />
+        </State>
       </Row>
       <Row name="Held message, waiting decisions">
-        <div className="grid w-full grid-cols-2 gap-8">
-          <State label="Held · Current">
-            <Card rail={<HeldRow reason="the session ended before it went" onRestore={noop} onDiscard={noop} />} />
-          </State>
-          <State label="Held · Old app (workers only)">
-            <Card rail={<OldHeld />} />
-          </State>
-        </div>
+        <State label="Held">
+          <Card rail={<HeldRow reason="the session ended before it went" onRestore={noop} onDiscard={noop} />} />
+        </State>
         <State label="One decision put aside">
           <Card rail={<WaitingRow count={1} onShow={noop} />} />
         </State>
@@ -377,11 +290,7 @@ export function RailGallery() {
             canStop
             rail={
               <>
-                <Notices>
-                  <NoticeRow level="warning" onDismiss={noop}>
-                    {NOTICE_SAMPLES[0]!.text}
-                  </NoticeRow>
-                </Notices>
+                <Notices notices={[{ id: 0, ...NOTICE_SAMPLES[0]! }]} onDismiss={noop} />
                 <Queue items={MANY.slice(0, 2)} steer />
                 <HeldRow reason="the session ended before it went" onRestore={noop} onDiscard={noop} />
                 <WaitingRow count={3} onShow={noop} />

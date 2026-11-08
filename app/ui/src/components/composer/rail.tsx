@@ -76,15 +76,6 @@ export function RailItem({
   );
 }
 
-/** The notices card: one `NoticeRow` each, newest last. */
-export function Notices({ children }: { children: ReactNode }) {
-  return (
-    <RailItem label="Notices">
-      <ul className="flex flex-col divide-y divide-border">{children}</ul>
-    </RailItem>
-  );
-}
-
 const ICON = "mt-0.5 size-icon-sm shrink-0";
 const NOTICE_ICONS = {
   info: <Info className={cx(ICON, "text-muted-foreground")} />,
@@ -97,7 +88,7 @@ const NOTICE_ICONS = {
  * icon, the words, its action (Retry) and ✕. An error's words are the kit's one error line (D87). Words past
  * one line are cut with an ellipsis, and the chevron after them opens the whole text in place (D122).
  */
-export function NoticeRow({
+function NoticeRow({
   level,
   action,
   pager,
@@ -159,7 +150,7 @@ type Notice = { id: Key; level: keyof typeof NOTICE_ICONS; text: string; action?
  * The notices one at a time, newest first (owner's D114, D119), with ‹ "2 of 3" › before ✕ while there are more
  * (←/→ while it has focus, wrapping at the ends). ✕ dismisses only the one on screen, and the next takes its place.
  */
-export function PagedNotices({ notices, onDismiss }: { notices: readonly Notice[]; onDismiss: (id: Key) => void }) {
+export function Notices({ notices, onDismiss }: { notices: readonly Notice[]; onDismiss: (id: Key) => void }) {
   const order = notices.toReversed();
   const [at, setAt] = useState<{ id?: Key; index: number }>({ index: 0 });
   if (order.length === 0) return null;

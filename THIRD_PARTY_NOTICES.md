@@ -28,7 +28,7 @@ SOFTWARE.
 
 ## Lucide
 
-The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), and `GripVertical` is drawn from Lucide's grip-vertical, both under the ISC License:
+The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), under the ISC License:
 
 ```
 ISC License
