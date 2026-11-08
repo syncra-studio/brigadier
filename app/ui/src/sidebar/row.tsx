@@ -113,7 +113,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
                 onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
               />
             }
