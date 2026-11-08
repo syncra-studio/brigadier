@@ -9,7 +9,8 @@ import { JumpSign, messageMarks } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
-export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void };
+/** `sent(id)`: this window sent the message drawn under `id` (the client id it keeps once the backend has it), so it pins. */
+export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void; sent(id: string): void };
 
 /** How close to the end, in px, still counts as at the bottom. */
 const NEAR_END = 2;
@@ -176,15 +177,18 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     if (Math.abs(drift) > 1) move();
   }, [space]);
   const seen = useRef(newest);
+  const mine = useRef<string | null>(null);
   useLayoutEffect(() => {
     const before = seen.current;
     seen.current = newest;
     if (newest === before || before === undefined || newest === undefined) return;
+    // One from elsewhere (another window, the terminal) while the user reads further up moves nothing: ↓ shows.
+    if (away && newest !== mine.current) return;
     pin.current = { id: newest, released: false };
     stuck.current = false;
     setAway(false);
     fit();
-  }, [newest, fit]);
+  }, [newest, fit, away]);
 
   // Rows too few to scroll give no scroll to ask for older ones on: ask once they are drawn and measured.
   const fill = () => {
@@ -207,6 +211,9 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     scrollBy: (offset) => {
       hand();
       list.current?.scrollBy(offset);
+    },
+    sent: (id) => {
+      mine.current = id;
     },
   }), [last]);
 

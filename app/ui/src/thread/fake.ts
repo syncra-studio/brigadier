@@ -360,9 +360,10 @@ export class FakeThread {
 
   /**
    * Streams turns for ever until stopped: thinking, a group of commands whose output grows, then a markdown reply,
-   * then the turn's work summary. `prefill` blocks of reply are there before it starts growing.
+   * then the turn's work summary. `prefill` blocks of reply are there before it starts growing. `sentId` is the first
+   * user message's id.
    */
-  stream(tokensPerSecond = 60, prefill = 0): () => void {
+  stream(tokensPerSecond = 60, prefill = 0, sentId?: string): () => void {
     const charsPerSecond = tokensPerSecond * 4;
     let stopped = false;
     let timer = 0;
@@ -373,7 +374,8 @@ export class FakeThread {
         const turn: Turn = { id: id(this.fake, "turn"), status: "running", startedAt: Date.now(), endedAt: null, backend: "fake", waitingSince: null, waitedMs: 0 };
         live = turn.id;
         this.emit({ turns: [...this.session.turns, turn] });
-        this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false, sentAt: Date.now() }, turn));
+        this.append(this.item({ kind: "message", role: "user", origin: "user", text: paragraph(this.fake), streaming: false, sentAt: Date.now() }, turn, sentId));
+        sentId = undefined;
         const thought = this.item({ kind: "reasoning", text: "", streaming: true, heading: heading(this.fake) }, turn);
         this.append(thought);
         await this.grow(this.session.items.length - 1, thought, paragraph(this.fake), charsPerSecond, () => stopped, wait);

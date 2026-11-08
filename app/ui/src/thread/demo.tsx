@@ -28,8 +28,8 @@ export function Demo() {
   const [size, setSize] = useState(10_000);
   const [huge, setHuge] = useState(false);
   const [streaming, setStreaming] = useState(true);
-  // Each send starts a new turn with a new user message now (one still running is stopped).
-  const [sent, setSent] = useState(0);
+  // Each send starts a new turn with a new user message now (one still running is stopped); `id` when sent from here.
+  const [sent, setSent] = useState<{ id?: string }>({});
   const thread = useRef<ThreadHandle>(null);
   // Built in slices; the last session stays on screen until the next one is ready.
   const [shown, setShown] = useState<{ store: FakeThread; key: string } | null>(null);
@@ -42,7 +42,7 @@ export function Demo() {
     };
   }, [size, huge]);
   const store = shown?.store;
-  useEffect(() => (streaming ? store?.stream() : undefined), [store, streaming, sent]);
+  useEffect(() => (streaming ? store?.stream(undefined, undefined, sent.id) : undefined), [store, streaming, sent]);
   const source = store ?? LOADING;
   const running = useSyncExternalStore(source.subscribe, () => source.get()?.turns.at(-1)?.status === "running");
   return (
@@ -63,11 +63,21 @@ export function Demo() {
         </Toggle>
         <Toggle
           onClick={() => {
+            const id = crypto.randomUUID();
+            thread.current?.sent(id);
             setStreaming(true);
-            setSent(sent + 1);
+            setSent({ id });
           }}
         >
           Send
+        </Toggle>
+        <Toggle
+          onClick={() => {
+            setStreaming(true);
+            setSent({});
+          }}
+        >
+          Send from elsewhere
         </Toggle>
         <Toggle onClick={() => store && thread.current?.toIndex(Math.floor(store.get().items.length * 0.05))}>Jump far up</Toggle>
         <Toggle onClick={() => thread.current?.toBottom()}>Jump to bottom</Toggle>
