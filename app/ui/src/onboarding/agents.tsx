@@ -49,7 +49,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   const online = Boolean(daemon);
 
   useEffect(() => {
-    if (online) void checkAll();
+    if (online) void checkAll(true);
   }, [online]);
 
   // Installed some other way meanwhile (a terminal): it shows when the window comes back.
@@ -118,11 +118,9 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   const description =
     list === undefined && error
       ? "The agents couldn't be checked."
-      : !allChecked && ready.length === 0
-        ? `Looking for the agents on ${HERE}…`
-        : ready.length === 0
-          ? "Connect at least one agent to continue."
-          : `${listNames(ready.map((agent) => agent.label))} ${ready.length === 1 ? "is" : "are"} ready.${ready.length < agents.length ? " Connect any others you use, or start right away." : ""}`;
+      : ready.length === 0
+        ? "Connect at least one agent to continue."
+        : `${listNames(ready.map((agent) => agent.label))} ${ready.length === 1 ? "is" : "are"} ready.${ready.length < agents.length ? " Connect any others you use, or start right away." : ""}`;
 
   return (
     <div className="onboarding-step flex min-h-0 flex-1 flex-col">
@@ -130,20 +128,21 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
       <div className="mt-12 min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         <div className="mx-auto flex w-full max-w-onboarding flex-col gap-3">
           {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-          {list === undefined && error ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-sm">
+          {error && (
+            <div className="flex items-center gap-3 text-sm">
               <ErrorLine size="sm" error={error} />
               <Button variant={null} size={null} className={RAISED_BUTTON} disabled={!online || checking.has("*")} onClick={() => void checkAll()}>
                 Try again
               </Button>
             </div>
-          ) : list?.length === 0 ? (
+          )}
+          {list?.length === 0 ? (
             <p className="rounded-settings border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">No agents are available in this build.</p>
           ) : (
             <ul className="onboarding-agent-grid">
-              {(list === undefined ? [undefined, undefined, undefined] : sorted).map((agent, index) => (
+              {sorted.map((agent) => (
                 <AgentCard
-                  key={agent?.name ?? index}
+                  key={agent.name}
                   agent={agent}
                   online={online}
                   starting={starting === agent?.name}
@@ -208,7 +207,7 @@ function AgentCard({ agent, online, starting, retrying, failed, onAction, onCanc
               ? `${agent?.how || "Signed in"} · No model available`
               : agent?.how || "Signed in";
 
-  const action = agent && (state === "install" ? (agent.install ? "install" : null) : agent.sign_in ? "sign-in" : null);
+  const action = agent && state !== "checking" && (state === "install" ? (agent.install ? "install" : null) : agent.sign_in ? "sign-in" : null);
   return (
     <li
       data-state={waiting ? "waiting" : state}
@@ -255,8 +254,6 @@ function AgentCard({ agent, online, starting, retrying, failed, onAction, onCanc
             </span>
             <span className="invisible col-start-1 row-start-1 text-center group-hover/wait:visible group-focus-visible/wait:visible">Cancel</span>
           </Button>
-        ) : state === "checking" && agent ? (
-          <Spinner className="size-icon-sm animate-spin text-muted-foreground" />
         ) : state === "error" ? (
           <Button variant={null} size={null} className={RAISED_BUTTON} disabled={!online || retrying} onClick={onRetry}>
             {retrying && <Spinner className="size-icon-md animate-spin" />}

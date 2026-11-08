@@ -8,13 +8,13 @@ use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::io;
+use std::fs::File;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
 
-/// Adapters with a check running: one at a time each, so a stuck CLI never piles up probes.
-static BUSY: Mutex<BTreeSet<&str>> = Mutex::new(BTreeSet::new());
 static PROFILE: Mutex<()> = Mutex::new(());
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -31,42 +31,14 @@ fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = adapters::home_path("");
     match args.first().map(String::as_str).unwrap_or("") {
-        // `agents [<name>] [--cwd D] [--cached]`: every agent (reading the login shell again first,
-        // since an install may have changed it), or one, checked in the folder a session would run
-        // in. `--cached` answers at once with each agent's last check there, checking only one never
-        // checked; the page asks again without it to refresh [D30].
+        // `--cached` never probes: a saved check, or the adapter's static card [D30, D272].
         "agents" => {
             let cwd = flag(args, "--cwd").map_or(home, PathBuf::from);
-            let cached = args.iter().any(|a| a == "--cached");
-            let names: Vec<&str> = match args.get(1).filter(|a| !a.starts_with("--")) {
-                Some(name) => vec![agent(name)?.name()],
-                None => {
-                    if !cached {
-                        setup::refresh();
-                    }
-                    let all = adapters::all().into_iter();
-                    all.filter(|a| agent(a.name()).is_ok())
-                        .map(|a| a.name())
-                        .collect()
-                }
+            let names = match args.get(1).filter(|a| !a.starts_with("--")) {
+                Some(name) => vec![agent(name)?],
+                None => available(),
             };
-            let checks: Vec<_> = names
-                .into_iter()
-                .map(|name| {
-                    let (data, cwd) = (data.to_path_buf(), cwd.clone());
-                    thread::spawn(move || {
-                        let a = agent(name).unwrap();
-                        match last_check(&data, a, &cwd).filter(|_| cached) {
-                            Some(mut last) => {
-                                last["setup"] = setup_state(&data, a);
-                                last
-                            }
-                            None => check(&data, a, &cwd),
-                        }
-                    })
-                })
-                .collect();
-            let agents: Vec<Value> = checks.into_iter().filter_map(|t| t.join().ok()).collect();
+            let agents = agents(data, &cwd, names, args.iter().any(|a| a == "--cached"))?;
             Ok(json!({"ok": true, "agents": agents}))
         }
         "setup" => {
@@ -193,16 +165,90 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
-/// One agent's state [D45]: installed (where, which version), signed in (and how), and the models a
-/// session in `cwd` can pick, which may be none even when signed in; plus its setup run, if any.
-fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
-    let mut out = json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
+fn available() -> Vec<&'static dyn Adapter> {
+    adapters::all()
+        .into_iter()
+        .filter(|a| agent(a.name()).is_ok())
+        .collect()
+}
+
+fn card(data: &Path, a: &dyn Adapter) -> Value {
+    json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
-        "mark": a.mark()});
-    if !BUSY.lock().unwrap().insert(a.name()) {
-        out["busy"] = true.into();
-        return out;
+        "mark": a.mark()})
+}
+
+fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
+    let mut out = last_check(data, a, cwd).unwrap_or_else(|| json!({}));
+    out.as_object_mut()
+        .unwrap()
+        .extend(card(data, a).as_object().unwrap().clone());
+    out
+}
+
+fn now_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64
+}
+
+/// The lock covers daemon threads and CLI processes, and dies with its holder. A caller that
+/// waited reuses checks completed since it arrived; an interrupted check is tried again.
+fn agents(
+    data: &Path,
+    cwd: &Path,
+    names: Vec<&'static dyn Adapter>,
+    cached: bool,
+) -> io::Result<Vec<Value>> {
+    if cached {
+        return Ok(names.into_iter().map(|a| saved(data, a, cwd)).collect());
     }
+    fs::create_dir_all(data.join("agents"))?;
+    let path = data.join("agents/check.lock");
+    let before = fs::read(&path).unwrap_or_default();
+    let mut lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)?;
+    lock.lock()?;
+    let completed = fs::read(&path)?;
+    let last: Value = serde_json::from_slice(&completed).unwrap_or_default();
+    if completed != before
+        && last["cwd"] == cwd.to_str().unwrap_or("")
+        && names.iter().all(|a| {
+            last["names"]
+                .as_array()
+                .is_some_and(|v| v.iter().any(|n| n == a.name()))
+        })
+    {
+        return Ok(names.into_iter().map(|a| saved(data, a, cwd)).collect());
+    }
+    setup::refresh();
+    let checks: Vec<Value> = thread::scope(|s| {
+        let checks: Vec<_> = names
+            .iter()
+            .map(|a| s.spawn(move || check(data, *a, cwd)))
+            .collect();
+        checks
+            .into_iter()
+            .map(|t| {
+                t.join()
+                    .unwrap_or_else(|_| Err(io::Error::other("agent check panicked")))
+            })
+            .collect::<io::Result<_>>()
+    })?;
+    // Publish completion only after every cache was saved. A crash leaves waiters free to retry.
+    let completed = json!({"cwd": cwd, "names": names.iter().map(|a| a.name()).collect::<Vec<_>>(), "at": now_ns()});
+    lock.set_len(0)?;
+    lock.write_all(completed.to_string().as_bytes())?;
+    Ok(checks)
+}
+
+/// Installed, signed in and usable models are separate [D45]. Only Rust probes and saves them.
+fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
+    let mut out = card(data, a);
     let exe = a.exe();
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
@@ -220,9 +266,8 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
             Err(e) => out["error"] = e.trim().into(),
         }
     }
-    BUSY.lock().unwrap().remove(a.name());
-    keep_check(data, a, cwd, &out);
-    out
+    keep_check(data, a, cwd, &out)?;
+    Ok(out)
 }
 
 /// Each agent's last check per folder: `agents/<name>.json`, `{cwd: check}`.
@@ -232,21 +277,23 @@ fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
 
 fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
     let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
-    all.get(cwd.to_str()?).cloned()
+    all.get(cwd.to_str()?).filter(|v| v.is_object()).cloned()
 }
 
-/// Keeps the check for the next `--cached` ask. Best effort: losing it costs one slow open.
-fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) {
+/// Keeps the check before releasing the lock, so a waiting caller gets the same result.
+fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) -> io::Result<()> {
     let path = checks_path(data, a);
     let mut all: Value = fs::read(&path)
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .filter(|v| v.is_object())
         .unwrap_or_else(|| json!({}));
     if let (Some(map), Some(cwd)) = (all.as_object_mut(), cwd.to_str()) {
         map.insert(cwd.into(), out.clone());
-        let _ = fs::create_dir_all(path.parent().unwrap());
-        let _ = core::write_atomic(&path, all.to_string().as_bytes());
+        fs::create_dir_all(path.parent().unwrap())?;
+        core::write_atomic(&path, all.to_string().as_bytes())?;
     }
+    Ok(())
 }
 
 /// The agent's setup run: which, whether it still runs, and how it ended.
@@ -439,5 +486,8 @@ fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
         core::write_atomic(&data.join("profile.json"), p.to_string().as_bytes())?;
     }
     p["ok"] = true.into();
+    if args.len() == 1 {
+        p["agents"] = agents(data, &adapters::home_path(""), available(), true)?.into();
+    }
     Ok(p)
 }

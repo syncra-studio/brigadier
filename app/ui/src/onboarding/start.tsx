@@ -37,7 +37,6 @@ export function StartForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const asked = useRef(0);
-  const [again, setAgain] = useState(0);
 
   useEffect(() => {
     if (daemon && list === undefined) void checkAll(true);
@@ -60,14 +59,14 @@ export function StartForm() {
     const land = (last: boolean) => (reply: Record<string, any>) => {
       if (mine !== asked.current || fresh) return;
       const found: Agent | undefined = reply.agents[0];
-      // A check already running answers busy: ask again shortly rather than show no models.
-      if (found?.busy) return void (last && setTimeout(() => mine === asked.current && setAgain((n) => n + 1), 1000));
+      // A cache-only reply may have just the static card; keep waiting for its first check.
+      if (found?.path === undefined) return;
       fresh = last;
       setModels(found?.error ? { error: found.error } : (found?.models ?? []));
     };
     run([...args, "--cached"]).then(land(false), () => {});
     run(args).then(land(true), (cause) => mine === asked.current && setModels({ error: errorText(cause) }));
-  }, [daemon, chosenAgent, folder, again]);
+  }, [daemon, chosenAgent, folder]);
 
   // Local models first: they need no account and cost nothing [D45].
   const shownModels = Array.isArray(models) ? models.toSorted((a, b) => Number(b.local) - Number(a.local)) : [];
