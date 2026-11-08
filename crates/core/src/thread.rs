@@ -61,8 +61,6 @@ pub struct Thread {
     pending_changed: bool,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
-    /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
-    acking: HashSet<String>,
     /// The level the last input set up, to tell when trust taken back holds the next to Ask.
     level: Option<Value>,
     /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
@@ -102,7 +100,7 @@ const CLOSES: [&str; 9] = [
 
 impl Thread {
     pub fn push(&mut self, item: &Value) {
-        if crate::worktrees::setup_launch(item) {
+        if crate::worktree_setup::setup_launch(item) {
             // An earlier undelivered turn can hold this input's row back until after its launch.
             self.setup_at = Some(
                 self.items

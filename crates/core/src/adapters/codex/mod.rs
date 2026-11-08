@@ -1,10 +1,9 @@
-//! Codex CLI: chat runs its app-server through Brigadier's helper, a thread per session [D159]; the
-//! terminal is its TUI on the same thread. `exec --json` output is still parsed, for older sessions' logs.
+//! Codex CLI: chat runs its app-server through Brigadier's helper, a thread per session [D159].
 
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env,
-    cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, version,
+    cli_home, drop_lines, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -149,53 +148,27 @@ impl Adapter for Codex {
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
-        if spec.mode != "pty" {
-            let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
-            // A thread that never took a turn has no record, and Codex refuses to resume it.
-            let home = cli_home(spec, ".codex", "");
-            let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());
-            let open =
-                json!({"open": control::open(spec, resume), "grants": spec.grants, "id": spec.cid});
-            let lines = [Some(open), text.map(|t| control::turn(spec, t))];
-            return Launch {
-                argv: vec![
-                    helper.display().to_string(),
-                    "helper".into(),
-                    "codex".into(),
-                    exe.display().to_string(),
-                ],
-                env: base_env(spec, &exe, self.keys()),
-                keep_stdin: true,
-                input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),
-            };
-        }
-        let model = spec.model.clone().unwrap_or_else(|| MODEL.into());
-        // Its TUI would otherwise join a shared background server, outside this session's
-        // process group [D60]; the sandbox flag also skips its trust screen.
-        let mut argv = vec![exe.display().to_string()];
-        argv.extend(["--no-daemon", "--sandbox", "workspace-write"].map(String::from));
-        argv.extend([
-            "-m".into(),
-            model,
-            "-c".into(),
-            "model_reasoning_effort=\"low\"".into(),
-        ]);
-        if let Some(id) = resume {
-            argv.extend(["resume".into(), id.into()]);
-        }
-        argv.extend(text.map(String::from));
+        let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        // A thread that never took a turn has no record, and Codex refuses to resume it.
+        let home = cli_home(spec, ".codex", "");
+        let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());
+        let open =
+            json!({"open": control::open(spec, resume), "grants": spec.grants, "id": spec.cid});
+        let lines = [Some(open), text.map(|t| control::turn(spec, t))];
         Launch {
-            argv,
+            argv: vec![
+                helper.display().to_string(),
+                "helper".into(),
+                "codex".into(),
+                exe.display().to_string(),
+            ],
             env: base_env(spec, &exe, self.keys()),
             keep_stdin: true,
-            input: None,
+            input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),
         }
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        if spec.mode == "pty" {
-            return paste(text);
-        }
         format!("{}\n", control::turn(spec, text))
     }
 
@@ -261,25 +234,6 @@ impl Adapter for Codex {
             let _ = std::fs::remove_file(&lock);
         }
         Ok(())
-    }
-
-    /// Its TUI resumes a thread by id; a new thread's id can't be picked, so the first message of
-    /// a session goes through chat (proposed).
-    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
-        let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
-        Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
-    }
-
-    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
-        let path = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{conv}.jsonl")]).pop()?;
-        let len = std::fs::metadata(&path).ok()?.len();
-        Some(format!("{len}\t{}", path.display()))
-    }
-
-    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
-        let (from, path) = cursor.split_once('\t').unwrap_or(("0", ""));
-        let (lines, end) = file_lines(std::path::Path::new(path), from.parse().unwrap_or(0));
-        (lines, format!("{end}\t{path}"))
     }
 
     /// Its record keeps each message with the id `turn/start` gave it.

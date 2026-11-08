@@ -212,7 +212,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     const before = seen.current;
     seen.current = newest;
     if (newest === before || before === undefined || newest === undefined) return;
-    // One from elsewhere (another window, the terminal) while the user reads further up moves nothing: ↓ shows.
+    // One from elsewhere (another window) while the user reads further up moves nothing: ↓ shows.
     if (away && newest !== mine.current) return;
     pin.current = { id: newest, released: false };
     stuck.current = false;

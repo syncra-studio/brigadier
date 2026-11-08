@@ -5,7 +5,7 @@
 //! the record and lock layout, and five tries per edit.
 //!
 //! Lock order: `projects.lock`, then `trust.lock`, then the CLI's own lock for its file. A CLI
-//! that takes no lock (Codex) can still write between the last re-read and the rename; that
+//! that takes no lock can still write between the last re-read and the rename; that
 //! window is a known limit, accepted (D253).
 
 use crate::adapters::{self, Adapter, home_path};

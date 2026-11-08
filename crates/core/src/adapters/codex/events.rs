@@ -1,5 +1,4 @@
-//! What Codex prints, as events: the app-server lines its helper passes on, `exec --json` lines in
-//! older logs, and rollout lines a terminal's mirror copies. All map to the same shapes [D48, D65].
+//! What Codex prints, as events: app-server lines and `exec --json` output [D48, D65].
 
 use super::super::{Done, Event, Tool, change, classify, counts, s, shell_step};
 use serde_json::Value;
@@ -18,9 +17,6 @@ pub fn parse(line: &str) -> Vec<Event> {
     let Ok(v) = serde_json::from_str::<Value>(line) else {
         return vec![Event::Unknown(line.into())];
     };
-    if v.get("payload").is_some() {
-        return rollout(&v);
-    }
     if v.get("method").is_some() || s(&v, &["type"]).starts_with("brigadier.") {
         return app_server::events(&v);
     }
@@ -168,63 +164,6 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
         }
     }
     events
-}
-
-/// A line of the CLI's rollout, which a terminal's mirror copies [D47]: only its events count,
-/// in the same shapes as `exec --json` once named alike.
-fn rollout(v: &Value) -> Vec<Event> {
-    let p = &v["payload"];
-    if s(v, &["type"]) != "event_msg" {
-        return vec![];
-    }
-    match s(p, &["type"]) {
-        "task_complete" => vec![Event::TurnEnd(true)],
-        "turn_aborted" => vec![Event::TurnEnd(false)],
-        "item_completed" => rollout_item(&p["item"]),
-        _ => vec![],
-    }
-}
-
-fn rollout_item(item: &Value) -> Vec<Event> {
-    let joined = |v: &Value| {
-        let parts = v.as_array().into_iter().flatten();
-        let texts: Vec<&str> = parts
-            .filter_map(|p| p.as_str().or(p["text"].as_str()))
-            .collect();
-        texts.join("\n")
-    };
-    let kind = s(item, &["type"]);
-    match kind {
-        "UserMessage" => vec![Event::Prompt(
-            s(item, &["id"]).into(),
-            joined(&item["content"]),
-        )],
-        "AgentMessage" => vec![Event::Text(joined(&item["content"]))],
-        "Reasoning" => {
-            let text = joined(&item["summary_text"]);
-            if text.is_empty() {
-                vec![]
-            } else {
-                vec![Event::Reasoning(text)]
-            }
-        }
-        _ => {
-            // CommandExecution → command_execution, with its command as one line.
-            let mut e = item.clone();
-            let snake = snake(kind);
-            e["type"] = snake.clone().into();
-            if let Some(last) = item["command"].as_array().and_then(|c| c.last()) {
-                e["command"] = last.clone();
-            }
-            match snake.as_str() {
-                "collab_agent_tool_call" | "collab_tool_call" => agents(&e, true),
-                k if TOOLS.contains(&k) => {
-                    vec![Event::ToolStart(tool(&e)), Event::ToolEnd(end(&e))]
-                }
-                _ => vec![],
-            }
-        }
-    }
 }
 
 /// `CommandExecution` or `aggregatedOutput` as `command_execution` or `aggregated_output`.
