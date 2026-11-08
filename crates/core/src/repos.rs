@@ -371,8 +371,10 @@ pub fn github() -> io::Result<Value> {
     let mut command = tool(gh.to_str().unwrap_or("gh"));
     command.args(["repo", "list", "--json", fields, "--limit", GH_LIMIT]);
     let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-    // gh exits 4 when it needs a sign-in (its `gh help exit-codes`).
-    if out.status.code() == Some(4) {
+    // gh exits 4 when it needs a sign-in (its `gh help exit-codes`); a token GitHub refuses fails
+    // with its own hint to sign in again.
+    let refused = String::from_utf8_lossy(&out.stderr).contains("gh auth login");
+    if out.status.code() == Some(4) || (!out.status.success() && refused) {
         return Ok(json!({"gh": "signed-out"}));
     }
     if !out.status.success() {
