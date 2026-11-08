@@ -75,8 +75,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
 
   for (let at = from; at < items.length; at++) {
     const item = items[at]!;
+    // A turn that begins with a switch note rather than an input also ends the bare turn before it.
+    if ((item.kind === "message" && item.role === "user") || (before && item.turnId !== before.turnId)) bare();
     if (item.kind === "message" && item.role === "user") {
-      bare();
       starts.push(at);
       counts.push(out.length);
     }

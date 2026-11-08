@@ -165,7 +165,10 @@ impl Thread {
             // A process gone ends its background subagents with it.
             "exited" => self.end_children("failed"),
             "stopped" => self.end_children("cancelled"),
-            "limited" | "sign_in" | "unresumable" => {
+            // A usage limit is no error of the turn: the limit line under the thread says it, as in
+            // the old app, and the switch note keeps it in the thread [D51].
+            "limited" => self.break_group(),
+            "sign_in" | "unresumable" => {
                 self.break_group();
                 let level = if kind != "sign_in" {
                     "warning"

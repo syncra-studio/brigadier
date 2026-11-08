@@ -127,7 +127,6 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
         <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{title || id}</span>
       </header>
       {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-      <LimitBar row={row} offline={offline} />
       <div className="flex min-h-0 flex-1">
         {state?.status === "missing" ? (
           <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
@@ -135,7 +134,14 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
           <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
         ) : (
           <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-            <Thread source={threadSource} footer={row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>} />
+            <Thread source={threadSource} footer={
+                row?.state === "stalled" ? (
+                  <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
+                ) : (
+                  row?.switchable && <LimitBar row={row} offline={offline} />
+                )
+              }
+            />
           </div>
         )}
         {state?.status !== "missing" && <TerminalPane id={id} />}

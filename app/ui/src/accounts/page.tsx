@@ -10,7 +10,7 @@ import { SettingsRow } from "../components/settings-row";
 import { Skeleton } from "../components/skeleton";
 import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
-import { Spinner } from "../icons";
+import { Plus, Spinner } from "../icons";
 import { errorText } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
 import {
@@ -266,7 +266,6 @@ function AgentSection({
   children?: ReactNode;
 }) {
   const accounts = agent.accounts;
-  const extra = accounts?.list.filter((a) => a.id !== "") ?? [];
   return (
     <section className="flex flex-col gap-2">
       <h2 className="flex items-center gap-2 px-1 text-label font-medium">
@@ -285,14 +284,19 @@ function AgentSection({
             onRemove={() => onRemove(account)}
           />
         ))}
-        {accounts && extra.length === 0 && <EmptyState variant="card" title={`No other ${agent.label} accounts`} />}
         {accounts && (
-          <div className="flex flex-col gap-1 px-4 py-3">
-            <Button size="inline" variant="link" className="self-start" disabled={!online || !agent.installed || adding} onClick={onAdd}>
-              {adding && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
-              Add another {agent.label} account
+          <div className="flex flex-col">
+            <Button
+              size={null}
+              variant="link-blue"
+              className="flex gap-2 self-start px-4 py-3 text-label font-medium"
+              disabled={!online || !agent.installed || adding}
+              onClick={onAdd}
+            >
+              {adding ? <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" /> : <Plus aria-hidden className="size-icon-sm" />}
+              {accounts.list.some((a) => a.check.signed_in === true) ? `Add another ${agent.label} account` : `Add a ${agent.label} account`}
             </Button>
-            <ErrorLine error={failed[agent.name]} />
+            <ErrorLine error={failed[agent.name]} className="px-4 pb-3" />
           </div>
         )}
         {accounts && (

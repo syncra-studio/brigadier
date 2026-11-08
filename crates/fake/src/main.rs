@@ -162,7 +162,13 @@ impl Agent {
                 return;
             }
         }
-        self.say(&format!("ok {first}"));
+        // A continuation Brigadier wrote ("[Your last turn stopped early…]") gets a plain reply,
+        // not an echo of its first word, which reads as a cut-off answer.
+        if first.starts_with('[') {
+            self.say("Carried on from where I stopped. All done.");
+        } else {
+            self.say(&format!("ok {first}"));
+        }
         emit(json!({"t": "done"}));
     }
 
