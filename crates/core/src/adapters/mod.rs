@@ -8,7 +8,7 @@ mod opencode;
 pub mod setup;
 mod shell;
 
-pub use shell::shell_step;
+pub use shell::{shell_step, unwrap_shell};
 
 pub use files::{change, counts, drop_lines, sha1, uuid};
 
@@ -304,6 +304,11 @@ pub trait Adapter: Sync {
     /// session folder, and with it the ids a later delete needs to try again [D35].
     fn forget(&self, _spec: &Spec, _resume: &str) -> Result<(), String> {
         Ok(())
+    }
+    /// Whether the backend's own record names input `cid`, by id: proof it took it. False proves
+    /// nothing: the backend may not have written it down yet.
+    fn accepted(&self, _spec: &Spec, _resume: &str, _cid: &str) -> bool {
+        false
     }
     /// Assistant texts and tool calls counted from the backend's own transcript.
     fn transcript(&self, _spec: &Spec, _resume: &str) -> Option<(u64, u64)> {

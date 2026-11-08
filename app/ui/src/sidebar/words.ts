@@ -36,6 +36,7 @@ const STATE_WORDS: Record<string, string | null> = {
   failed: "Failed",
   interrupted: "Interrupted",
   undelivered: "Couldn't send your message",
+  uncertain: "Couldn't confirm your message arrived",
   unresumable: "Can't resume on this account",
   stalled: "Stalled · no output for a while",
   unresponsive: "Not responding",

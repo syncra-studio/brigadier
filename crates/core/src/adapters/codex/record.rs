@@ -1,8 +1,8 @@
 //! Codex's own session record (its rollout files): where they are and the diffs they keep.
 
-use super::super::{home_path, s};
+use super::super::s;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Rollouts whose names end with one of `names`: they live under sessions/YYYY/MM/DD/.
 /// Per thread in Codex's home: its shell snapshots and generated images [D35].
@@ -27,13 +27,10 @@ pub(super) fn thread_files(spec: &crate::Spec, ids: &[String]) -> Vec<PathBuf> {
     paths
 }
 
-pub(super) fn rollouts(names: &[String]) -> Vec<PathBuf> {
+pub(super) fn rollouts(home: &Path, names: &[String]) -> Vec<PathBuf> {
     let mut found = vec![];
     // Rollouts Codex archived too; older ones are compressed to `.jsonl.zst` [D35].
-    let mut dirs = vec![
-        home_path(".codex/sessions"),
-        home_path(".codex/archived_sessions"),
-    ];
+    let mut dirs = vec![home.join("sessions"), home.join("archived_sessions")];
     while let Some(dir) = dirs.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let path = entry.path();

@@ -76,7 +76,7 @@ fn pattern(args: &[String]) -> Option<&str> {
 }
 
 /// `/bin/zsh -lc 'wc -l a.py'` and `cd /tmp/x && wc -l a.py` → `wc -l a.py`.
-fn unwrap_shell(command: &str) -> String {
+pub fn unwrap_shell(command: &str) -> String {
     let mut c = command.trim().to_string();
     if let Some((program, rest)) = c.split_once(char::is_whitespace)
         && matches!(basename(program), "sh" | "bash" | "zsh")

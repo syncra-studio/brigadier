@@ -1,29 +1,27 @@
-//! Codex CLI: one `codex exec --json` process per turn, continued with `exec resume <thread>`.
+//! Codex CLI: chat runs its app-server through Brigadier's helper, a thread per session [D159]; the
+//! terminal is its TUI on the same thread. `exec --json` output is still parsed, for older sessions' logs.
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Check, Done, Event, Launch, ModelInfo, Timing, Tool, base_env, change,
-    classify, cli_home, drop_lines, home_path, probe_as, s, shell_step, version,
+    Accounts, Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env,
+    cli_home, drop_lines, file_lines, home_path, in_pty, paste, probe_as, s, version,
 };
 use crate::Spec;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+mod control;
+mod events;
+mod models;
 mod record;
+mod server;
 mod trust;
 use record::{diff, rollouts, thread_files};
 
 pub struct Codex;
 
 const MODEL: &str = "gpt-5.6-luna";
-
-const TOOLS: [&str; 4] = [
-    "command_execution",
-    "mcp_tool_call",
-    "file_change",
-    "web_search",
-];
 
 impl Adapter for Codex {
     fn name(&self) -> &'static str {
@@ -76,7 +74,8 @@ impl Adapter for Codex {
             signed_in: Some(signed_in),
             how: how.into(),
             models: if signed_in {
-                vec![ModelInfo::plain(MODEL, false)]
+                models::list(spec, exe, cwd, 15)
+                    .unwrap_or_else(|| vec![ModelInfo::plain(MODEL, false)])
             } else {
                 vec![]
             },
@@ -107,23 +106,74 @@ impl Adapter for Codex {
     }
 
     fn per_turn(&self) -> bool {
+        false
+    }
+
+    /// Each line to the helper is one request to its server, applied only once its reply names it.
+    fn acks(&self) -> bool {
         true
+    }
+
+    /// A message sent mid-turn would need its own queue: only a steer goes then (until 1p).
+    fn queues(&self) -> bool {
+        false
+    }
+
+    fn helper(&self, args: &[String]) -> Result<(), String> {
+        server::run(args)
+    }
+
+    fn can(&self) -> Can {
+        Can {
+            steer: true,
+            stop: true,
+            resume: true,
+            levels: &["ask", "auto", "full"],
+        }
+    }
+
+    /// Level, model and effort ride on the next `turn/start`, checked with it [D222].
+    fn retune(&self, _last: &Spec, _next: &Spec) -> Retune {
+        Retune::InMessage
+    }
+
+    fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+        let line = match msg["kind"].as_str() {
+            Some("answer") => control::answer(spec, msg)?,
+            Some("steer") => json!({"id": spec.cid, "steer": msg["text"]}),
+            Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
+            _ => return Err("Codex takes no such control message.".into()),
+        };
+        Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
+        if spec.mode != "pty" {
+            let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+            // A thread that never took a turn has no record, and Codex refuses to resume it.
+            let home = cli_home(spec, ".codex", "");
+            let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());
+            let open =
+                json!({"open": control::open(spec, resume), "grants": spec.grants, "id": spec.cid});
+            let lines = [Some(open), text.map(|t| control::turn(spec, t))];
+            return Launch {
+                argv: vec![
+                    helper.display().to_string(),
+                    "helper".into(),
+                    "codex".into(),
+                    exe.display().to_string(),
+                ],
+                env: base_env(spec, &exe, self.keys()),
+                keep_stdin: true,
+                input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),
+            };
+        }
         let model = spec.model.clone().unwrap_or_else(|| MODEL.into());
+        // Its TUI would otherwise join a shared background server, outside this session's
+        // process group [D60]; the sandbox flag also skips its trust screen.
         let mut argv = vec![exe.display().to_string()];
-        argv.extend(
-            [
-                "exec",
-                "--json",
-                "--skip-git-repo-check",
-                "--sandbox",
-                "workspace-write",
-            ]
-            .map(String::from),
-        );
+        argv.extend(["--no-daemon", "--sandbox", "workspace-write"].map(String::from));
         argv.extend([
             "-m".into(),
             model,
@@ -137,53 +187,20 @@ impl Adapter for Codex {
         Launch {
             argv,
             env: base_env(spec, &exe, self.keys()),
-            keep_stdin: false,
+            keep_stdin: true,
             input: None,
         }
     }
 
-    fn encode(&self, _spec: &Spec, text: &str) -> String {
-        format!("{text}\n")
+    fn encode(&self, spec: &Spec, text: &str) -> String {
+        if spec.mode == "pty" {
+            return paste(text);
+        }
+        format!("{}\n", control::turn(spec, text))
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
-            return vec![Event::Unknown(line.into())];
-        };
-        let item = &v["item"];
-        let kind = s(item, &["type"]);
-        let done = s(&v, &["type"]) == "item.completed";
-        match s(&v, &["type"]) {
-            "thread.started" => vec![Event::Resume(s(&v, &["thread_id"]).into())],
-            "turn.started" => vec![Event::TurnStart],
-            "turn.completed" => vec![Event::Usage(v["usage"].clone()), Event::TurnEnd(true)],
-            "turn.failed" => {
-                let mut events: Vec<Event> =
-                    refused(s(&v, &["error", "message"])).into_iter().collect();
-                events.push(Event::TurnEnd(false));
-                events
-            }
-            "error" => vec![refused(s(&v, &["message"])).unwrap_or(Event::Unknown(line.into()))],
-            // A tool may be reported only once it ended, so its end repeats its start.
-            "item.started" | "item.completed" if kind == "collab_tool_call" => agents(item, done),
-            "item.started" | "item.completed" if TOOLS.contains(&kind) => {
-                let mut events = vec![Event::ToolStart(tool(item))];
-                if done {
-                    events.push(Event::ToolEnd(end(item)));
-                }
-                events
-            }
-            "item.completed" if kind == "agent_message" => {
-                vec![Event::Text(s(item, &["text"]).into())]
-            }
-            "item.completed" if kind == "reasoning" && !s(item, &["text"]).is_empty() => {
-                vec![Event::Reasoning(s(item, &["text"]).into())]
-            }
-            "item.started" if kind == "context_compaction" => vec![Event::Compaction("running")],
-            "item.completed" if kind == "context_compaction" => vec![Event::Compaction("done")],
-            "item.started" | "item.updated" | "item.completed" => vec![],
-            _ => vec![Event::Unknown(line.into())],
-        }
+        events::parse(line)
     }
 
     fn timing(&self) -> Timing {
@@ -210,6 +227,7 @@ impl Adapter for Codex {
             .filter(|id| crate::check_id(id).is_ok())
             .collect();
         let mut paths = rollouts(
+            &cli_home(spec, ".codex", ""),
             &names
                 .iter()
                 .map(|id| format!("-{id}.jsonl"))
@@ -222,6 +240,7 @@ impl Adapter for Codex {
     /// Its prompt history by thread id, and a writer lock a killed process left; one a live
     /// writer holds stays, by Codex's own rule [D35].
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
+        delete_thread(self, spec, resume)?;
         drop_lines(
             &cli_home(spec, ".codex", "history.jsonl"),
             "session_id",
@@ -242,6 +261,37 @@ impl Adapter for Codex {
             let _ = std::fs::remove_file(&lock);
         }
         Ok(())
+    }
+
+    /// Its TUI resumes a thread by id; a new thread's id can't be picked, so the first message of
+    /// a session goes through chat (proposed).
+    fn terminal(&self, spec: &Spec, resume: Option<&str>) -> Result<(Launch, String), String> {
+        let id = resume.ok_or("Send the first message in chat. The terminal then opens on it.")?;
+        Ok((self.launch(&in_pty(spec), Some(id), None), id.into()))
+    }
+
+    fn mirror_from(&self, spec: &Spec, conv: &str) -> Option<String> {
+        let path = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{conv}.jsonl")]).pop()?;
+        let len = std::fs::metadata(&path).ok()?.len();
+        Some(format!("{len}\t{}", path.display()))
+    }
+
+    fn mirror(&self, _spec: &Spec, _conv: &str, cursor: &str) -> (Vec<String>, String) {
+        let (from, path) = cursor.split_once('\t').unwrap_or(("0", ""));
+        let (lines, end) = file_lines(std::path::Path::new(path), from.parse().unwrap_or(0));
+        (lines, format!("{end}\t{path}"))
+    }
+
+    /// Its record keeps each message with the id `turn/start` gave it.
+    fn accepted(&self, spec: &Spec, resume: &str, cid: &str) -> bool {
+        let found = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{resume}.jsonl")]);
+        found.iter().any(|path| {
+            std::fs::read_to_string(path).is_ok_and(|all| {
+                all.lines()
+                    .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                    .any(|v| v["payload"]["item"]["client_id"] == cid)
+            })
+        })
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
@@ -274,7 +324,7 @@ impl Adapter for Codex {
 
     fn diffs(&self, resume: &str, turn: u64) -> Option<Vec<Vec<(String, String)>>> {
         crate::check_id(resume).ok()?;
-        let path = rollouts(&[format!("-{resume}.jsonl")]).pop()?;
+        let path = rollouts(&home_path(".codex"), &[format!("-{resume}.jsonl")]).pop()?;
         let (mut turns, mut edits) = (0, vec![]);
         for v in std::fs::read_to_string(path)
             .ok()?
@@ -295,109 +345,14 @@ impl Adapter for Codex {
     }
 }
 
-/// An exec item as a step, by its type [D48, D65].
-fn tool(item: &Value) -> Tool {
-    let kind = s(item, &["type"]);
-    let (name, step, input) = match kind {
-        "command_execution" => {
-            let (step, what) = shell_step(s(item, &["command"]));
-            (kind.to_string(), step, what)
+/// Its own delete: the thread's rows in its databases, its subagents' threads and its rollout. With
+/// no Codex to ask, only a home that's gone proves nothing is left [D35, D244].
+fn delete_thread(codex: &Codex, spec: &Spec, resume: &str) -> Result<(), String> {
+    match codex.exe() {
+        Some(exe) => models::delete(spec, &exe, &home_path(""), resume),
+        None if cli_home(spec, ".codex", "").exists() => {
+            Err("Codex isn't installed, so its record of this thread can't be removed.".into())
         }
-        "file_change" => {
-            let path = s(&item["changes"][0], &["path"]);
-            (kind.to_string(), "edit", path.to_string())
-        }
-        "web_search" => (kind.to_string(), "web", s(item, &["query"]).to_string()),
-        _ => (
-            s(item, &["tool"]).to_string(),
-            "other",
-            item["arguments"].to_string(),
-        ),
-    };
-    Tool {
-        id: s(item, &["id"]).into(),
-        name,
-        step,
-        input,
-        changes: changes(item),
-        ..Default::default()
+        None => Ok(()),
     }
-}
-
-fn end(item: &Value) -> Done {
-    let exit = item["exit_code"].as_i64();
-    let output = match s(item, &["type"]) {
-        "command_execution" => s(item, &["aggregated_output"]).to_string(),
-        "mcp_tool_call" if !item["error"].is_null() => s(item, &["error", "message"]).to_string(),
-        "mcp_tool_call" => item["result"].to_string(),
-        _ => String::new(),
-    };
-    Done {
-        id: s(item, &["id"]).into(),
-        output,
-        ok: !matches!(s(item, &["status"]), "failed" | "declined") && exit.is_none_or(|c| c == 0),
-        exit,
-        changes: changes(item),
-        ..Default::default()
-    }
-}
-
-/// A file change names its files and how each changed, never a diff [D74, D83].
-fn changes(item: &Value) -> Vec<Value> {
-    let all = item["changes"].as_array().into_iter().flatten();
-    all.map(|c| {
-        let how = match [s(c, &["kind"]), s(c, &["kind", "type"])].concat().as_str() {
-            "add" => "added",
-            "delete" => "deleted",
-            _ => "modified",
-        };
-        change(s(c, &["path"]), how, None, None, None)
-    })
-    .collect()
-}
-
-/// Subagents: a spawn starts one per child thread, and any later call that reports a child
-/// finished ends it with its answer. The calls themselves (wait and the rest) draw no row [D48, D78].
-fn agents(item: &Value, done: bool) -> Vec<Event> {
-    let mut events = vec![];
-    if s(item, &["tool"]) == "spawn_agent" {
-        for child in item["receiver_thread_ids"].as_array().into_iter().flatten() {
-            events.push(Event::ToolStart(Tool {
-                id: child.as_str().unwrap_or("").into(),
-                name: "spawn_agent".into(),
-                step: "agent",
-                input: s(item, &["prompt"]).into(),
-                ..Default::default()
-            }));
-        }
-    }
-    if done {
-        for (child, state) in item["agents_states"].as_object().into_iter().flatten() {
-            let status = s(state, &["status"]);
-            if matches!(
-                status,
-                "completed" | "errored" | "failed" | "shutdown" | "not_found"
-            ) {
-                events.push(Event::ToolEnd(Done {
-                    id: child.clone(),
-                    output: s(state, &["message"]).into(),
-                    ok: status == "completed",
-                    child: Some(child.clone()),
-                    ..Default::default()
-                }));
-            }
-        }
-    }
-    events
-}
-
-/// A limit or sign-in, or a thread Codex won't resume on this account: its saved reasoning is
-/// encrypted for another organisation (openai/codex#13724), so only a new thread goes on (D90 Q4).
-fn refused(message: &str) -> Option<Event> {
-    if message.contains("invalid_encrypted_content")
-        || message.contains("organization_id did not match")
-    {
-        return Some(Event::Unresumable(message.chars().take(300).collect()));
-    }
-    classify(message)
 }

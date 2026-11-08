@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -60,7 +60,7 @@ impl Norm {
                 emit(
                     self,
                     json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
-                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"]}),
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "starts_child": v["starts_child"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),

@@ -39,6 +39,9 @@ pub struct Turn {
     pub stopping: bool,
     /// Logged, then its owner died before delivering it.
     pub orphaned: bool,
+    /// Its input starts a child that no `spawned` record has named yet.
+    #[serde(default)]
+    pub spawning: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -271,6 +274,7 @@ impl Fold {
                     retry_of,
                     switch: item["switch"].clone(),
                     ts,
+                    spawning: item["starts_child"] == true,
                     ..Default::default()
                 });
             }
@@ -296,6 +300,7 @@ impl Fold {
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
+                self.spawn_settled(&str_of("cid"), false);
             }
             "exited" => {
                 let pid = item["pid"].as_i64().unwrap_or(0) as i32;
@@ -404,6 +409,7 @@ impl Fold {
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
+                Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);
                     self.turns
