@@ -138,6 +138,7 @@ async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: s
   return picked.canceled ? [] : picked.filePaths;
 }
 ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
+ipcMain.on("text-undo", (event) => event.sender.undo());
 
 // The standard menus plus Add project's: File › Open Folder… (⌘O, the picker, several at once) and
 // View › Add project…, each told to the page, which does the rest [D165].
@@ -158,7 +159,25 @@ function setMenu(): void {
           { role: process.platform === "darwin" ? "close" : "quit" },
         ],
       },
-      { role: "editMenu" },
+      {
+        role: "editMenu",
+        submenu: [
+          { label: "Undo", accelerator: "CmdOrCtrl+Z", click: (_item, window) => tell(window as BrowserWindow | undefined, "undo") },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          ...(process.platform === "darwin" ? [
+            { role: "pasteAndMatchStyle" as const },
+            { role: "delete" as const },
+            { role: "selectAll" as const },
+            { type: "separator" as const },
+            { label: "Substitutions", submenu: [{ role: "showSubstitutions" as const }, { type: "separator" as const }, { role: "toggleSmartQuotes" as const }, { role: "toggleSmartDashes" as const }, { role: "toggleTextReplacement" as const }] },
+            { label: "Speech", submenu: [{ role: "startSpeaking" as const }, { role: "stopSpeaking" as const }] },
+          ] : [{ role: "delete" as const }, { type: "separator" as const }, { role: "selectAll" as const }]),
+        ],
+      },
       {
         label: "View",
         submenu: [
