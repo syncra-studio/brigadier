@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -8,6 +8,7 @@ import { showToast } from "../components/toast";
 import { Folder, Link, Plus, Spinner } from "../icons";
 import { errorText } from "../onboarding/api";
 import { CancelButton, Footer, Header, OfflineLine, shortPath, type View } from "./add-project";
+import { newProjectId, useProjects } from "./projects";
 import { closeAddProject, DEFAULT_PARENT, type GitHub, showProject, type Source } from "./store";
 
 /** `owner/name` is a GitHub repository; anything else is taken as typed (the old app's). */
@@ -20,13 +21,15 @@ const cloneUrl = (typed: string) => {
 const folderFromUrl = (url: string) => (url.trim().replace(/\/+$/, "").split(/[/:]/).pop() ?? "").replace(/\.git$/, "");
 
 /**
- * A clone, from the URL field or the GitHub list: the dialog stays open with "Cloning…" until it's
- * done [D168]. Closed meanwhile, the clone goes on and its outcome comes as a toast. Through a lost
- * daemon it stays "Cloning…" and reconciles by id when it's back, never shown failed [D30].
+ * An add the dialog waits on (a clone, a new repository, a folder git starts in) under an id made
+ * here: "Cloning…" or the button's spinner until it's done [D168]. Closed meanwhile, it goes on and
+ * a toast tells how it ended. Through a lost daemon it keeps waiting and settles when the projects
+ * list holds its id, never shown failed [D30].
  */
-export function useClone(source: Source, started: string | null = null) {
-  const [cloning, setCloning] = useState<string | null>(started);
+export function useAdd(started: string | null = null) {
+  const [running, setRunning] = useState<{ id: string; what: string; done?: string } | null>(started ? { id: "", what: started } : null);
   const [error, setError] = useState<string | null>(null);
+  const [away, setAway] = useState(false);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -34,24 +37,42 @@ export function useClone(source: Source, started: string | null = null) {
       mounted.current = false;
     };
   }, []);
-  const clone = async (from: string, parent: string, folder: string, github = false) => {
-    if (cloning) return;
-    setCloning(from);
+  const finish = (id: string, done?: string) => {
+    if (mounted.current) closeAddProject();
+    showProject(id);
+    if (done) showToast(done);
+  };
+  const projects = useProjects();
+  const settled = away && running && projects?.some((project) => project.id === running.id && !project.pending) ? running : null;
+  const finishSettled = useEffectEvent(finish);
+  useEffect(() => {
+    if (settled) finishSettled(settled.id, settled.done);
+  }, [settled]);
+  /** Runs `work` under a new id; `done` is the toast after, `failed` what a toast says when closed. */
+  const start = async (what: string, work: (id: string) => Promise<unknown>, done?: string, failed?: string) => {
+    if (running) return;
+    const id = newProjectId();
+    setRunning({ id, what, done });
     setError(null);
+    setAway(false);
     try {
-      const id = await source.clone(from, `${parent}${folder}`, github);
-      if (mounted.current) closeAddProject();
-      showProject(id);
-      showToast(`Cloned ${folder}`);
+      await work(id);
+      finish(id, done);
     } catch (cause) {
-      if (!mounted.current) return showToast(`Could not clone ${folder}: ${errorText(cause)}`, { tone: "error" });
-      setError(errorText(cause));
-      setCloning(null);
+      const reason = errorText(cause);
+      if (reason === "disconnected") return setAway(true);
+      if (!mounted.current) return showToast(failed ? `${failed}: ${reason}` : reason, { tone: "error" });
+      setError(reason);
+      setRunning(null);
     }
   };
-  return { cloning, error, setError, clone };
+  return { running: running?.what ?? null, error, setError, start };
 }
-type Clone = ReturnType<typeof useClone>;
+type Add = ReturnType<typeof useAdd>;
+
+/** A clone of `from` (a URL, or with `github` an `owner/name`) into `parent` + `folder`. */
+const cloneInto = (add: Add, source: Source, from: string, parent: string, folder: string, github = false) =>
+  add.start(from, (id) => source.clone(id, from, `${parent}${folder}`, github), `Cloned ${folder}`, `Could not clone ${folder}`);
 
 // ----- Clone from URL -----
 
@@ -73,9 +94,9 @@ export function CloneView({
   const [parent, setParent] = useState(DEFAULT_PARENT);
   // The error is about the URL itself: its field shows it.
   const [invalid, setInvalid] = useState(Boolean(start.error));
-  const clone = useClone(source, start.cloning ? cloneUrl(start.url ?? "") : null);
+  const clone = useAdd(start.cloning ? cloneUrl(start.url ?? "") : null);
   const error = clone.error ?? start.error ?? null;
-  const busy = clone.cloning !== null;
+  const busy = clone.running !== null;
   const folder = folderFromUrl(url);
 
   const submit = (event: FormEvent) => {
@@ -84,7 +105,7 @@ export function CloneView({
     const reason = !url.trim() ? "Paste the repository's URL." : !folder ? "That URL doesn't name a repository." : null;
     setInvalid(Boolean(reason));
     if (reason) return clone.setError(reason);
-    void clone.clone(cloneUrl(url), parent, folder);
+    void cloneInto(clone, source, cloneUrl(url), parent, folder);
   };
 
   return (
@@ -152,35 +173,23 @@ export function NewRepoView({
   const id = useId();
   const [name, setName] = useState(start.name);
   const [parent, setParent] = useState(start.parent);
-  const [error, setError] = useState<string | null>(start.error ?? null);
-  // The error is about the name itself: its field shows it, git's reason included.
-  const [invalid, setInvalid] = useState(Boolean(start.error));
-  const [busy, setBusy] = useState(false);
+  const add = useAdd();
+  const [typed, setTyped] = useState<string | null>(start.error ?? null);
+  const error = typed ?? add.error;
+  const busy = add.running !== null;
   const folder = name.trim();
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
     if (!folder || folder === "." || folder === ".." || folder.includes("/")) {
-      setError(folder ? `"${folder}" can't be a folder name.` : "Name the repository.");
-      setInvalid(true);
-      return;
+      return setTyped(folder ? `"${folder}" can't be a folder name.` : "Name the repository.");
     }
-    setBusy(true);
-    setError(null);
-    try {
-      const project = await source.add(`${parent}${folder}`, "new");
-      closeAddProject();
-      showProject(project);
-    } catch (cause) {
-      setError(errorText(cause));
-      setInvalid(true);
-      setBusy(false);
-    }
+    void add.start(folder, (id) => source.add(id, `${parent}${folder}`, "new"));
   };
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="flex flex-col">
+    <form onSubmit={submit} className="flex flex-col">
       <Header title="New repository" line="Name it and choose where it goes. Brigadier starts git in it and adds it." onBack={busy ? undefined : onBack} />
       <div className="flex flex-col gap-5.5 px-7 pt-1 pb-7">
         <div className="flex flex-col gap-2">
@@ -196,18 +205,18 @@ export function NewRepoView({
               maxLength={200}
               disabled={busy}
               placeholder="my-project"
-              aria-invalid={invalid || undefined}
+              aria-invalid={Boolean(error) || undefined}
               onChange={(event) => {
                 setName(event.target.value);
-                setError(null);
-                setInvalid(false);
+                setTyped(null);
+                add.setError(null);
               }}
               className={BOX_INPUT}
             />
           </div>
           <ErrorLine error={error} />
         </div>
-        <SaveTo parent={parent} name={folder} disabled={busy} source={source} onParent={setParent} onError={setError} />
+        <SaveTo parent={parent} name={folder} disabled={busy} source={source} onParent={setParent} onError={setTyped} />
         <OfflineLine offline={offline && busy} />
       </div>
       <Footer>
@@ -233,7 +242,7 @@ export function GitHubRepos({
 }: {
   source: Source;
   filter: string;
-  clone: Clone;
+  clone: Add;
   parent: string;
   /** About three rows high, under Pick's own list. */
   short?: boolean;
@@ -264,17 +273,17 @@ export function GitHubRepos({
     <div className={cx("flex flex-col gap-0.5 overflow-y-auto", short ? "max-h-32" : "max-h-add-project-list")}>
       {shown.map((repo) => {
         const folder = repo.name.split("/")[1]!;
-        const mine = clone.cloning === repo.name;
+        const mine = clone.running === repo.name;
         return (
           <button
             key={repo.name}
             type="button"
-            disabled={clone.cloning !== null}
-            onClick={() => void clone.clone(repo.name, parent, folder, true)}
+            disabled={clone.running !== null}
+            onClick={() => void cloneInto(clone, source, repo.name, parent, folder, true)}
             className={cx(
               "flex h-10.5 w-full shrink-0 cursor-pointer items-center gap-3 rounded-surface px-3 text-start outline-none focus-visible:focus-ring",
               "hover:bg-fill-subtle disabled:cursor-not-allowed",
-              clone.cloning !== null && !mine && "opacity-row-disabled",
+              clone.running !== null && !mine && "opacity-row-disabled",
             )}
           >
             <span className="shrink-0 font-mono text-xs">{repo.name}</span>

@@ -1,5 +1,5 @@
 import { type Project, useDaemon } from "../daemon";
-import { run, store } from "../onboarding/api";
+import { errorText, run, store } from "../onboarding/api";
 
 export type { Project };
 /** A project as shown: `pending` while Rust hasn't answered an add made here [D30]. */
@@ -23,21 +23,30 @@ export function useProjects(): Shown[] | undefined {
   const list = useDaemon().projects;
   const mine = overlay.use();
   if (!list) return undefined;
-  const shown: Shown[] = list.map((project) => mine.get(project.id) ?? project);
+  // A pending add gives way to Rust's record once the list holds it.
+  const shown: Shown[] = list.map((project) => (mine.get(project.id)?.pending ? project : (mine.get(project.id) ?? project)));
   for (const [id, project] of mine) if (!list.some((each) => each.id === id)) shown.push(project);
   return shown.toSorted((a, b) => a.added - b.added);
 }
 
+/** An id made here for a project being added, so its row shows at once and settles by it [D30]. */
+export const newProjectId = () => `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
 /**
- * Adds the repository `folder` is in as a project: shown at once as pending under an id made
- * here, then Rust's record under the same id, or gone with Rust's reason thrown [D30, D165].
+ * Adds the repository `folder` is in as a project, or with `args` a clone or new repository there:
+ * shown at once as pending under `id`, then Rust's record under the same id, or gone with Rust's
+ * reason thrown [D30, D165]. Through a lost daemon it stays pending (the "disconnected" error is
+ * still thrown) and settles when the list holds `id`.
  */
-export async function addProject(folder: string): Promise<Project> {
-  const id = `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+export async function addProject(folder: string, args = ["add", folder], id = newProjectId()): Promise<Project> {
   hold(id, { id, name: baseName(folder), folder, trusted: null, added: Date.now(), pending: true });
   try {
-    return (await run(["projects", "add", folder, "--id", id])).project as Project;
-  } finally {
+    const reply = await run(["projects", ...args, "--id", id]);
     hold(id);
+    return reply.project as Project;
+  } catch (cause) {
+    // shortcut: an add that fails while the daemon is away stays pending until the app restarts; keep each run's outcome by id in the daemon if that shows up.
+    if (errorText(cause) !== "disconnected") hold(id);
+    throw cause;
   }
 }

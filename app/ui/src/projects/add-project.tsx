@@ -9,8 +9,10 @@ import { Input } from "../components/input";
 import { showToast } from "../components/toast";
 import { ArrowLeft, Check, Folder, FolderOpen, Link, Plus, Spinner } from "../icons";
 import { errorText } from "../onboarding/api";
-import { CloneView, GitHubRepos, NewRepoView, useClone } from "./clone";
-import { closeAddProject, DEFAULT_PARENT, type FolderCheck, type Repo, showProject, type Source, useAddProject } from "./store";
+import { CloneView, GitHubRepos, NewRepoView, useAdd } from "./clone";
+import { newProjectId } from "./projects";
+import { useDaemon } from "../daemon";
+import { closeAddProject, daemonSource, DEFAULT_PARENT, type FolderCheck, type Repo, showProject, type Source, useAddProject } from "./store";
 
 /*
  * Add project, the old app's dialog [D165]: pick a git repository found on this Mac (or choose a
@@ -31,6 +33,11 @@ export function AddProjectDialog({ source, offline }: { source: Source; offline:
       <DialogContent frame={ADD_PROJECT_FRAME}>{open && <AddProject key={opening} source={source} offline={offline} initialPath={path} />}</DialogContent>
     </Dialog>
   );
+}
+
+/** The app's Add project, on the daemon. */
+export function AddProjectHost() {
+  return <AddProjectDialog source={daemonSource} offline={useDaemon().daemon === null} />;
 }
 
 /** The view open, and for the gallery the state it starts in. */
@@ -149,8 +156,9 @@ function PickView({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const clone = useClone(source);
+  // A folder git starts in, or a GitHub repository cloning (O17's alternative).
+  const adding = useAdd();
+  const busy = adding.running !== null;
 
   // Asked again on reconnect, until it answers.
   useEffect(() => {
@@ -218,30 +226,23 @@ function PickView({
   const current = pickable.find((row) => row.path === selected) ?? pickable[0] ?? null;
 
   // A repository shows at once as pending in the sidebar [D30]; a plain folder waits here for git init.
-  const add = async (row: Repo | null = current) => {
+  const add = (row: Repo | null = current) => {
     if (!row || busy) return;
-    if (!row.plain) {
-      closeAddProject();
-      // Failed, the pending row goes and a toast says why [D30].
-      source.add(row.path).then(showProject, (cause: unknown) => showToast(`Could not add ${row.name}: ${errorText(cause)}`, { tone: "error" }));
-      return;
-    }
-    setBusy(true);
     setError(null);
-    try {
-      const id = await source.add(row.path, "here");
-      closeAddProject();
-      showProject(id);
-    } catch (cause) {
-      setError(errorText(cause));
-      setBusy(false);
-    }
+    if (row.plain) return void adding.start(row.path, (id) => source.add(id, row.path, "here"));
+    const id = newProjectId();
+    closeAddProject();
+    showProject(id);
+    // Failed, the pending row goes and a toast says why; a lost daemon leaves it pending [D30].
+    source.add(id, row.path).catch((cause: unknown) => {
+      if (errorText(cause) !== "disconnected") showToast(`Could not add ${row.name}: ${errorText(cause)}`, { tone: "error" });
+    });
   };
 
   const onSearchKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      void add();
+      add();
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       if (pickable.length === 0) return;
@@ -274,7 +275,7 @@ function PickView({
         {/* While the scan runs the list holds its five rows' room. */}
         <div role="radiogroup" aria-label="On this Mac" className={cx("flex max-h-add-project-list flex-col gap-0.5 overflow-y-auto", repos === null && "min-h-add-project-list")}>
           {rows.map((row) => (
-            <RepoRow key={row.path} row={row} chosen={row === current} onPick={() => setSelected(row.path)} onAdd={() => void add(row)} />
+            <RepoRow key={row.path} row={row} chosen={row === current} onPick={() => setSelected(row.path)} onAdd={() => add(row)} />
           ))}
           {rows.length === 0 && (
             <p className="flex h-14.5 items-center px-3 text-sm text-muted-foreground">
@@ -288,14 +289,15 @@ function PickView({
             </p>
           )}
         </div>
-        {error && <ErrorLine error={error} className="px-3" />}
+        <ErrorLine error={error ?? (github ? null : adding.error)} className="px-3" />
+        {!github && <OfflineLine offline={offline && busy} />}
         {github && (
           <div className="flex flex-col gap-2 pt-3">
             <span className="px-3 text-xs text-muted-foreground">On GitHub</span>
-            <GitHubRepos source={source} filter={query} clone={clone} parent={DEFAULT_PARENT} short />
+            <GitHubRepos source={source} filter={query} clone={adding} parent={DEFAULT_PARENT} short />
             <div className="flex flex-col gap-1 px-3">
-              <ErrorLine error={clone.error} />
-              <OfflineLine offline={offline && clone.cloning !== null} />
+              <ErrorLine error={adding.error} />
+              <OfflineLine offline={offline && busy} />
             </div>
           </div>
         )}
@@ -315,7 +317,7 @@ function PickView({
         }
       >
         <CancelButton />
-        <Button size="sm" disabled={!current || busy || clone.cloning !== null} onClick={() => void add()}>
+        <Button size="sm" disabled={!current || busy} onClick={() => add()}>
           {busy && <Spinner className="animate-spin" />}
           {current ? `Add ${current.name}` : "Add project"}
         </Button>
