@@ -115,6 +115,37 @@ pub fn switch(
     reply
 }
 
+/// The user's next message after picking another agent (`to`, its model and effort) [D90, D129]:
+/// the input's `switch` and what the CLI is sent, the hand-off and then the user's own words. The
+/// log keeps only the words. A new conversation on `to`'s current account; its row says so.
+pub fn picked(
+    spec: &Spec,
+    f: &Fold,
+    to: &str,
+    model: &str,
+    effort: Option<&str>,
+    text: &str,
+) -> std::io::Result<(Value, String)> {
+    let from = if f.backend.is_empty() {
+        spec.backend.as_str()
+    } else {
+        f.backend.as_str()
+    };
+    let label = |b: &str| adapters::get(b).map_or_else(|| b.to_string(), |a| a.label().into());
+    let (from_label, to_label) = (label(from), label(to));
+    let seed = handoff(
+        spec,
+        "picked",
+        &f.last.clone().unwrap_or_default(),
+        &from_label,
+    )?;
+    let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
+        "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "effort": effort},
+        "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {model}"),
+        "from_label": from_label, "to_label": to_label});
+    Ok((switch, format!("{seed}\n\n{text}")))
+}
+
 /// The hand-off a new conversation starts from (D90 Q1, as in the old app): every user message,
 /// the last exchange verbatim, and the whole thread written to a file in the session folder for
 /// anything older [D35].
@@ -124,8 +155,12 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
     crate::read(&spec.dir, |item| {
         let text = item["text"].as_str().unwrap_or("");
         match item["kind"].as_str().unwrap_or("") {
-            // A message a switch sent again is the same message: counted once.
-            "input" | "prompt" if item["origin"] != "system" && item["switch"].is_null() => {
+            // A message a switch sent again is the same message: counted once. A picked agent's
+            // first message is the user's own, sent once.
+            "input" | "prompt"
+                if item["origin"] != "system"
+                    && (item["switch"].is_null() || item["switch"]["why"] == "picked") =>
+            {
                 since = thread.len();
                 asked.push(text.to_string());
                 thread += &format!("\n## User\n\n{text}\n");
@@ -164,12 +199,14 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
         }
         messages.insert_str(0, &line);
     }
-    let reason = if why == "unresumable" {
-        "the agent couldn't resume it on this account"
-    } else {
-        "its usage limit was reached"
+    let reason = match why {
+        "unresumable" => "the agent couldn't resume it on this account",
+        "picked" => "the user picked you to carry on",
+        _ => "its usage limit was reached",
     };
-    let then = if last["began"] == true {
+    let then = if why == "picked" {
+        "The user's new message follows."
+    } else if last["began"] == true {
         "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done."
     } else {
         "The last message wasn't worked on yet. Do it now."
