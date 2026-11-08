@@ -105,6 +105,8 @@ export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMo
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
       if (event.button !== 0 || active.current) return;
       event.preventDefault();
+      // preventDefault keeps focus where it was: give it to the grip, so Esc cancels here, not as Stop.
+      event.currentTarget.focus();
       event.currentTarget.setPointerCapture(event.pointerId);
       const drag: Drag = { id, pointer: event.pointerId, origin: event.clientY, at: event.clientY, to: index, rows: [], scroll: 0 };
       active.current = drag;

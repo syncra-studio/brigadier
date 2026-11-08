@@ -89,8 +89,8 @@ function Live() {
   const send = () => {
     const d = draft(...field.current!.parts());
     if (isEmpty(d)) return;
-    if (!running) return say(`sent · ${words(take())}`);
     if (paused && queue.length > 0) return setAsk(d);
+    if (!running) return say(`sent · ${words(take())}`);
     enqueue(take());
   };
   const pull = (id: string) => {
