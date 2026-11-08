@@ -32,8 +32,8 @@ const LONG_CHARS = 1200;
 /**
  * The user's message, on the right. Hovered or focused, its time and a copy button show under it; past 20
  * lines it folds with "Show more". A message on its way shows "Sending…"; one that failed says why with
- * Try again and Discard; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a
- * message the turn hasn't reached). `children` are extra lines under it, above the hover row.
+ * Try again; one whose delivery can't be proven yet is `unconfirmed`. `dimmed` greys it (a message the
+ * turn hasn't reached).
  */
 export function UserBubble({
   keep,
@@ -42,10 +42,8 @@ export function UserBubble({
   sending,
   failed,
   onRetry,
-  onDiscard,
   unconfirmed = false,
   dimmed = false,
-  children,
 }: {
   /** Keeps its fold while it scrolls out of view. */
   keep: string;
@@ -56,11 +54,9 @@ export function UserBubble({
   /** Why it wasn't sent. */
   failed?: string;
   onRetry?: () => void;
-  onDiscard?: () => void;
   /** Sent, but its delivery can't be proven while the link is down. */
   unconfirmed?: boolean;
   dimmed?: boolean;
-  children?: ReactNode;
 }) {
   const [more, setMore] = useKept(`${keep}:more`);
   const long = text.length > LONG_CHARS || text.split("\n", LONG_LINES + 1).length > LONG_LINES;
@@ -88,28 +84,17 @@ export function UserBubble({
             <span role="alert" className="wrap-anywhere text-destructive">
               Not sent · {failed}
             </span>
-            {/* Together: Discard never wraps onto a line alone. */}
-            <span className="flex shrink-0 gap-x-2">
-              {onRetry && (
-                <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-                  Try again
-                </button>
-              )}
-              {onDiscard && (
-                <button type="button" onClick={onDiscard} className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring">
-                  Discard
-                </button>
-              )}
-            </span>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                Try again
+              </button>
+            )}
           </p>
         ) : unconfirmed ? (
           <p role="status" className="text-xs text-muted-foreground">
             Not confirmed · it's checked once the link is back
           </p>
-        ) : null}
-        {children}
-        {/* Space kept even when hidden, so hovering shifts nothing; drawn last, so it leaves no gap above `children`. */}
-        {!sending && !failed && !unconfirmed && (
+        ) : (
           <div className="-mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100">
             {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
