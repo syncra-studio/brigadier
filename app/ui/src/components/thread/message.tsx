@@ -108,7 +108,7 @@ export function UserBubble({
           <ErrorLine
             size="sm"
             error={failed && `Not sent · ${failed}`}
-            className="items-end text-end"
+            className="justify-end"
             actions={
               onRetry ? (
                 <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
