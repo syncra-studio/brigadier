@@ -9,6 +9,7 @@ mod models;
 pub mod owner;
 pub mod queue;
 mod setup;
+mod side;
 mod switching;
 mod title;
 
@@ -21,8 +22,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
@@ -151,7 +152,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             // Only a session made for its worktree: a Local checkout one, started again, never gets one.
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
-                core::worktrees::ensure(&spec, Path::new(&project.folder), fresh)?;
+                let base = flag(args, "--base");
+                core::worktrees::ensure(&spec, Path::new(&project.folder), fresh, base)?;
             }
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
@@ -228,6 +230,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(Value::Null)
         }
         "stop" => queue::stop(data, arg(args, 1)?),
+        "side" => side::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;
