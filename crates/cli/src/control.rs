@@ -180,18 +180,22 @@ pub(super) fn new_cid() -> String {
 pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = crate::arg(args, 1)?;
     let mut spec = core::load(data, id)?;
-    if let Some(want) = args.get(2) {
+    let op = crate::flag(args, "--op");
+    if let Some(want) = args.get(2).filter(|w| !w.starts_with("--")) {
+        // Held to Ask, it can't be raised: the project's trust is the way [D166, D187].
+        if want != "ask" && crate::models::held(data, spec.project.as_deref()) {
+            return Err(io::Error::other(
+                "This folder isn't trusted, so sessions here ask first. Change it in the project's settings.",
+            ));
+        }
         let f = core::fold(&spec.dir, true)?;
-        let backend = if f.fold.backend.is_empty() {
-            &spec.backend
-        } else {
-            &f.fold.backend
-        };
         spec.level = Some(want.clone());
-        if let Some(a) = adapters::get(backend) {
-            core::level(&spec, a).map_err(io::Error::other)?;
+        spec.level_op = op.map(String::from);
+        // Checked against the agent the next message goes to [D225].
+        if let Some(a) = adapters::get(crate::models::next_agent(&spec, &f.fold)) {
+            core::level(&spec, a, false).map_err(io::Error::other)?;
         }
         core::create(data, &spec)?;
     }
-    Ok(json!({"ok": true, "level": spec.level}))
+    Ok(json!({"ok": true, "level": spec.level, "op": op}))
 }

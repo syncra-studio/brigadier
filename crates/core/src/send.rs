@@ -60,8 +60,9 @@ pub fn send(
         return json!({"ok": false, "error": format!("unknown backend {b}")});
     };
     // Each turn runs with the level its spec says now, re-checked here [D129, D170], and the model
-    // and effort it names: a turn start hands any change to a child already running.
-    let level = match level(spec, a) {
+    // and effort it names: a turn start hands any change to a child already running. Whether the
+    // project holds it to Ask comes with B's trust gate (1h, D166).
+    let level = match level(spec, a, false) {
         Ok(level) => level,
         Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
     };
@@ -212,11 +213,20 @@ fn idle(spec: &Spec, call: Call, needs_child: bool) -> Result<(u64, Fold), Value
     }
 }
 
-/// The level a turn runs at: the spec's, or (proposed) the agent's most restrictive when it names
-/// none. One the agent can't enforce refuses the turn, never runs weaker [D129, D170].
-pub fn level(spec: &Spec, a: &dyn adapters::Adapter) -> Result<Option<&'static str>, String> {
+/// The level a turn runs at: Ask while its project holds it [D166], else the spec's, or (proposed)
+/// the agent's most restrictive when it names none. One the agent can't enforce refuses the turn,
+/// never runs weaker [D129, D170]. The session's row shows the same answer.
+pub fn level(
+    spec: &Spec,
+    a: &dyn adapters::Adapter,
+    held: bool,
+) -> Result<Option<&'static str>, String> {
     let levels = a.can().levels;
-    match spec.level.as_deref() {
+    match if held {
+        Some("ask")
+    } else {
+        spec.level.as_deref()
+    } {
         None => Ok(levels.first().copied()),
         Some(want) => levels
             .iter()

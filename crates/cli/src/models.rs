@@ -3,26 +3,81 @@
 //! which records the model and effort the next turn takes, or the agent the next message goes to.
 
 use crate::{flag, owner, setup};
-use brigadier_core as core;
+use brigadier_core::adapters::{self, Adapter};
+use brigadier_core::fold::Fold;
+use brigadier_core::{self as core, Spec};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
 
-/// The folder a session runs in, or `--cwd`.
-fn cwd_of(data: &Path, args: &[String]) -> io::Result<String> {
-    match flag(args, "--session") {
-        Some(id) => {
-            core::check_id(id)?;
-            Ok(core::load(data, id)?.cwd)
-        }
-        None => Ok(flag(args, "--cwd").unwrap_or("").into()),
+/// The folder a session runs in, a project's folder, or `--cwd`; and whether that project holds
+/// its turns to Ask.
+fn cwd_of(data: &Path, args: &[String]) -> io::Result<(String, bool)> {
+    if let Some(id) = flag(args, "--session") {
+        core::check_id(id)?;
+        let spec = core::load(data, id)?;
+        return Ok((spec.cwd, held(data, spec.project.as_deref())));
+    }
+    let project = flag(args, "--project");
+    let folder = project
+        .and_then(|p| {
+            core::projects::list(data)
+                .ok()?
+                .into_iter()
+                .find(|r| r.id == p)
+        })
+        .map(|r| r.folder);
+    let cwd = flag(args, "--cwd").map(String::from).or(folder);
+    Ok((cwd.unwrap_or_default(), held(data, project)))
+}
+
+/// Whether a project holds its sessions' turns to Ask: untrusted or unanswered [D166]. No project
+/// doesn't; records that can't be read do.
+/// shortcut: stands in for B's `projects::held` (wave1/projects) for Fake presentation only, and
+/// send doesn't use it; swap it for B's when that lands, which is what makes 1t operational.
+pub fn held(data: &Path, project: Option<&str>) -> bool {
+    project.is_some_and(|id| core::projects::list(data).map_or(true, |all| held_in(&all, id)))
+}
+
+/// The same, from records already read.
+pub fn held_in(projects: &[core::projects::Project], id: &str) -> bool {
+    projects
+        .iter()
+        .any(|p| p.id == id && p.trusted != Some(true))
+}
+
+/// The level a new session starts on [D187]: Ask while held, else Auto where the agent has it,
+/// else its most restrictive (Ask on an agent with no auto mode).
+pub fn default_level(a: &dyn Adapter, held: bool) -> Option<&'static str> {
+    let levels = a.can().levels;
+    let want = if held { "ask" } else { "auto" };
+    match levels.iter().find(|l| **l == want) {
+        None if held => None,
+        found => found.or(levels.first()).copied(),
+    }
+}
+
+/// The agent a session's next message goes to: one the user picked, else its own [D90, D225].
+pub fn next_agent<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
+    match &f.picked {
+        Some(p) => &p.backend,
+        None if f.backend.is_empty() => &spec.backend,
+        None => &f.backend,
+    }
+}
+
+/// An agent's levels and the one its new session starts on there [D129, D175, D187].
+fn levels(name: &Value, held: bool) -> (Value, Value) {
+    match adapters::get(name.as_str().unwrap_or("")) {
+        Some(a) => (json!(a.can().levels), json!(default_level(a, held))),
+        None => (json!([]), Value::Null),
     }
 }
 
 /// One agent's check as a picker group. Not installed: no CLI found. Not signed in: nothing to
 /// pick and no sign-in found (a CLI with free or local models lists them signed out) [D45].
 /// A model from a check kept before efforts were reported has none, never guessed [D74].
-fn group(check: &Value) -> Value {
+fn group(check: &Value, held: bool) -> Value {
     let unavailable = if check["path"].is_null() && check.get("path").is_some() {
         json!("install")
     } else if check["models"].as_array().is_none_or(Vec::is_empty) && check["signed_in"] == false {
@@ -37,17 +92,21 @@ fn group(check: &Value) -> Value {
                 "default_effort": m["default_effort"]})
         })
         .collect();
+    let (levels, level) = levels(&check["name"], held);
     json!({"provider": check["name"], "label": check["label"], "mark": check["mark"],
-        "unavailable": unavailable, "models": models, "error": check["error"]})
+        "unavailable": unavailable, "models": models, "error": check["error"],
+        "levels": levels, "level": level, "held": held})
 }
 
-/// `models [--session ID | --cwd D] [--fresh]`: the groups from each agent's last check in that
-/// folder, at once; `--fresh` checks again first, for the page to ask after the first answer.
+/// `models [--session ID | --project P | --cwd D] [--fresh]`: the groups from each agent's last
+/// check in that folder, at once; `--fresh` checks again first, for the page to ask after the first
+/// answer. Each carries its levels and the one a new session there starts on.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "set" {
         return set(data, args);
     }
-    let mut ask = vec!["agents".to_string(), "--cwd".into(), cwd_of(data, args)?];
+    let (cwd, held) = cwd_of(data, args)?;
+    let mut ask = vec!["agents".to_string(), "--cwd".into(), cwd];
     if !args.iter().any(|a| a == "--fresh") {
         ask.push("--cached".into());
     }
@@ -56,7 +115,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         .as_array()
         .into_iter()
         .flatten()
-        .map(group)
+        .map(|check| group(check, held))
         .collect();
     Ok(json!({"ok": true, "groups": groups}))
 }
@@ -88,7 +147,7 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
             "--cached".into(),
         ],
     )?;
-    let g = group(&checks["agents"][0]);
+    let g = group(&checks["agents"][0], false);
     if !g["unavailable"].is_null() {
         return refuse(
             "not_set_up",

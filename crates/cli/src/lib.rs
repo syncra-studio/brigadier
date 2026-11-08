@@ -27,7 +27,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
+       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>
@@ -128,14 +128,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
                 cwd,
                 model: flag(args, "--model").map(String::from),
-                level: flag(args, "--level").map(String::from),
+                // Unpicked, Rust's default for the agent and the project's trust [D187, D239].
+                level: flag(args, "--level").map(String::from).or_else(|| {
+                    let held = models::held(data, project.as_ref().map(|p| p.id.as_str()));
+                    adapters::get(backend)
+                        .and_then(|a| models::default_level(a, held).map(String::from))
+                }),
                 effort: flag(args, "--effort").map(String::from),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()
             };
             if let Some(a) = adapters::get(backend) {
-                core::level(&spec, a).map_err(io::Error::other)?;
+                core::level(&spec, a, false).map_err(io::Error::other)?;
             }
             let spec = if core::session_dir(data, id).join("session.json").exists() {
                 core::load(data, id)?

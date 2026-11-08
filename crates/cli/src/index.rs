@@ -39,7 +39,7 @@ struct Entry {
     seen_len: u64,
     error: Option<String>,
     orphaned_since: Option<u64>,
-    /// Its `session.json`, read once: what never changes after the start.
+    /// Its `session.json`, read again when the folder changes: a level pick renames it in [D30].
     spec: Option<core::Spec>,
     /// Small session files, read again only when the folder changes.
     marks: Marks,
@@ -194,6 +194,7 @@ impl Index {
             let at = touched(&dir);
             if at != e.marks.at {
                 e.marks = Marks::read(&dir, at);
+                e.spec = None;
             }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
@@ -238,13 +239,29 @@ impl Index {
                 b => b,
             };
             let steer = adapters::get(backend).is_some_and(|a| a.can().steer);
+            // What the next turn runs at, by the same rule send uses [D129, D166, D225].
+            let held = e
+                .spec
+                .as_ref()
+                .and_then(|s| s.project.as_deref())
+                .is_some_and(|p| crate::models::held_in(&projects, p));
+            let next = e
+                .spec
+                .as_ref()
+                .map(|s| (s, adapters::get(crate::models::next_agent(s, &f.fold))));
+            let (levels, level) = match next {
+                Some((s, Some(a))) => (json!(a.can().levels), core::level(s, a, held)),
+                _ => (json!([]), Ok(None)),
+            };
             let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
                              "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
-                             "queue": e.marks.queue, "steer": steer, "running": !f.fold.turns.is_empty()});
+                             "queue": e.marks.queue, "steer": steer, "running": !f.fold.turns.is_empty(),
+                             "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
+                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref())});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);
