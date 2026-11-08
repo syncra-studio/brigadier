@@ -5,6 +5,9 @@ import { Input } from "./components/input";
 import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, search, threadSource, useDaemon, useThread, type View } from "./daemon";
+import { loadProfile, useProfile } from "./onboarding/api";
+import { Onboarding } from "./onboarding/onboarding";
+import { StartForm } from "./onboarding/start";
 import { Demo } from "./session/Demo";
 import { TerminalPane } from "./terminal/terminal";
 import { Thread } from "./thread/thread";
@@ -24,7 +27,14 @@ window.addEventListener("hashchange", () => localStorage.setItem("route", window
 function App() {
   const { daemon, refused, rows, search: found } = useDaemon();
   const hash = useHash();
+  const profile = useProfile();
+  // The profile says whether this is the first launch: asked again on each reconnect until known.
+  useEffect(() => {
+    if (daemon && !profile.value) loadProfile();
+  }, [daemon, profile.value]);
   if (hash === "#states") return <Demo />;
+  if (!profile.value) return <FirstLoad error={daemon === null ? (refused ?? "Daemon not reachable · reconnecting…") : profile.error} />;
+  if (!profile.value.onboarded) return <Onboarding profile={profile.value} />;
   if (hash.startsWith("#thread/")) {
     const id = decodeURIComponent(hash.slice("#thread/".length));
     const row = rows?.find((each) => each.id === id);
@@ -43,7 +53,17 @@ function App() {
       <a href="#states" className="text-sm text-muted-foreground hover:text-foreground">
         Session states
       </a>
+      <StartForm />
       <Sessions rows={rows} found={found} offline={daemon === null} />
+    </main>
+  );
+}
+
+// Before the profile is known: a blank window that drags, or why it can't load.
+function FirstLoad({ error }: { error?: string }) {
+  return (
+    <main className="app-drag fixed inset-0 flex items-center justify-center">
+      <p className={error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{error ?? "Loading…"}</p>
     </main>
   );
 }

@@ -1,10 +1,11 @@
-// Only supervises: opens the window, starts the daemon, wires the page to the utility process.
+// Only supervises: opens the window, starts the daemon, wires the page to the utility process. The
+// one exception is the native folder picker, which only a main process can show (D19, D40, D71).
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, MessageChannelMain, net, protocol, utilityProcess, type UtilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, MessageChannelMain, net, protocol, utilityProcess, type UtilityProcess } from "electron";
 
 const APP_NAME = "Brigadier";
 const APP_ID = "sh.brigadier.app";
@@ -98,6 +99,13 @@ function openWindow(): void {
 }
 
 app.on("window-all-closed", () => app.quit());
+// A folder the user picks, or null; what it is for is checked in Rust.
+ipcMain.handle("pick-folder", async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const options = { defaultPath: app.getPath("home"), properties: ["openDirectory" as const, "createDirectory" as const] };
+  const picked = await (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options));
+  return picked.canceled ? null : (picked.filePaths[0] ?? null);
+});
 void app.whenReady().then(() => {
   startDaemon();
   serveUi();
