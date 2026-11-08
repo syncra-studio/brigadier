@@ -19,7 +19,12 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       if (item.origin === "system") return <SystemLine text={item.text} />;
       if (item.role === "user") return <UserBubble keep={item.id} text={item.text} time={item.sentAt} dated={dated} />;
       return (
-        <AssistantMessage text={item.text} final={item.final === true} time={item.sentAt} latest={latest}>
+        <AssistantMessage
+          text={item.text}
+          final={item.final === true || item.joined === true}
+          time={item.sentAt}
+          latest={latest && item.final === true}
+        >
           <Markdown text={item.text} keep={item.id} />
         </AssistantMessage>
       );

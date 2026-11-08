@@ -317,7 +317,7 @@ export function Thread() {
             <Bubbles />
           </Wide>
         </Row>
-        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · latest (time always) · older (time on hover) · older, hover · long code block">
+        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · a joined answer · latest (time always) · older (time on hover) · older, hover · long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
           <Wide label="a turn: commentary (no actions) · its final answer">
             {/* The thread's space between a turn's parts (pt-4). */}
@@ -325,6 +325,13 @@ export function Thread() {
               {item({ ...base("a0"), kind: "message", role: "assistant", text: "I'll check how the list draws while a reply streams.", streaming: false })}
               {item({ ...base("a0b"), kind: "message", role: "assistant", text: "Found it: every block draws again. Fixing that now.", streaming: false })}
               <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+            </div>
+          </Wide>
+          <Wide label="a turn: an answer a follow-up joined (copy, time on hover) · its final answer">
+            <div className="flex flex-col gap-4">
+              {item({ ...base("a0j"), kind: "message", role: "assistant", text: "Done: the list now draws only the block that changed.", streaming: false, joined: true, sentAt: NOW - 3 * 60_000 })}
+              {item({ ...base("a0k"), kind: "message", role: "assistant", text: "Checking the code blocks too, as you asked.", streaming: false })}
+              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
             </div>
           </Wide>
           <Wide label="latest">

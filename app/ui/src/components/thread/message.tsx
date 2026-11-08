@@ -188,9 +188,9 @@ export function SystemLine({ text }: { text: string }) {
 }
 
 /**
- * The agent's message: `children` is the rendered reply. Under a turn's `final` answer its actions show,
- * always (not only on hover): copy, then the time, which shows under the `latest` answer and on hover
- * or focus under an older one. Commentary between the turn's steps has none.
+ * The agent's message: `children` is the rendered reply. Under a turn's `final` answer, or one a follow-up
+ * joined, its actions show always (not only on hover): copy, then the time, which shows under the `latest`
+ * answer and on hover or focus under an older or joined one. Commentary between the turn's steps has none.
  */
 export function AssistantMessage({
   text,

@@ -208,6 +208,8 @@ function turnParts(fake: Fake): (Draft | GroupDraft)[] {
     parts.push(group(fake));
     const between = part(fake);
     if (between) parts.push(between);
+    // An answer a follow-up joined (Rust adds no item for that input yet, only the mark).
+    if (fake.rand() < 0.08) parts.push({ kind: "message", role: "assistant", text: markdown(fake, 2), streaming: false, joined: true });
   }
   parts.push({ kind: "message", role: "assistant", text: markdown(fake), streaming: false, final: true });
   return parts;
