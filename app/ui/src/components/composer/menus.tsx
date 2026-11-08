@@ -47,7 +47,8 @@ export type SlashCommand = {
   text?: string;
 };
 
-export type Commands = { commands: SlashCommand[]; onRun: (command: SlashCommand) => void };
+/** `commands` null: not listed yet (the menu says it's loading, never "No commands"). */
+export type Commands = { commands: SlashCommand[] | null; onRun: (command: SlashCommand) => void };
 
 /**
  * Where `query` matches `text`, as the menus match: at its start, anywhere in it, or letter by letter in order.
@@ -225,7 +226,8 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
   const [query, setQuery] = useState("");
   // The last reply to the query as typed: one to an older query never shows.
   const kept = useRef<MentionGroup[]>([]);
-  if (results?.query === query) kept.current = results.groups;
+  const answered = results?.query === query;
+  if (answered) kept.current = results.groups;
   const groups = kept.current;
   const options = useMemo(() => groups.flatMap((group) => group.items.map((item) => new Row(item, `${group.title}:${item.id}`))), [groups]);
   const card = useCard();
@@ -279,7 +281,8 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
                 </div>
               );
             })}
-            {empty && <MenuNote>No results</MenuNote>}
+            {/* Until the first reply to the query comes, the last rows stay; with none yet, it's searching. */}
+            {empty && <MenuNote>{answered ? "No results" : "Searching…"}</MenuNote>}
           </Panel>
         );
       }}
@@ -293,7 +296,7 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
  */
 export function SlashPlugin({ commands, onRun }: Commands) {
   const [query, setQuery] = useState("");
-  const options = useMemo(() => commandMatches(commands, query).map((command) => new Row(command, command.id)), [commands, query]);
+  const options = useMemo(() => commandMatches(commands ?? [], query).map((command) => new Row(command, command.id)), [commands, query]);
   const card = useCard();
   if (!card) return null;
   return (
@@ -330,7 +333,7 @@ export function SlashPlugin({ commands, onRun }: Commands) {
               </div>
             );
           })}
-          {props.options.length === 0 && <MenuNote>No commands</MenuNote>}
+          {props.options.length === 0 && <MenuNote>{commands ? "No commands" : "Loading…"}</MenuNote>}
         </Panel>
       )}
     />

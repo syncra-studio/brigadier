@@ -89,29 +89,46 @@ export function TileRemove({
   );
 }
 
-/** An image or a pasted text where it sits in the text: its thumbnail or icon, "Image #n", and in the field a ✕. */
-export function InlineAttachment({ id, paste = false, onRemove }: { id: string; paste?: boolean; onRemove?: MouseEventHandler<HTMLButtonElement> }) {
+/**
+ * An image or a pasted text where it sits in the text: its thumbnail or icon, and "Image #n" or the paste's first
+ * words (cut with …); in the field a ✕.
+ */
+export function InlineAttachment({
+  id,
+  paste = false,
+  preview,
+  onRemove,
+}: {
+  id: string;
+  paste?: boolean;
+  /** A paste's first words. */
+  preview?: string;
+  onRemove?: MouseEventHandler<HTMLButtonElement>;
+}) {
   const attachment = useContext(AttachmentsContext).get(id);
   const n = useContext(ChipNumbers).get(id);
-  const label = `${paste ? "Pasted text" : "Image"}${n ? ` #${n}` : ""}`;
+  const label = paste ? (preview ? `Pasted text: ${preview}…` : `Pasted text${n ? ` #${n}` : ""}`) : `Image${n ? ` #${n}` : ""}`;
   const busy = attachment?.state === "uploading";
   return (
     <span
       data-slot={paste ? "inline-paste" : "inline-image"}
       title={label}
-      className="inline-flex items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-xs text-foreground"
+      className="inline-flex max-w-full items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-label text-foreground"
     >
-      <span className={cx("inline-flex items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
+      <span aria-hidden className={cx("inline-flex min-w-0 items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
         {paste ? (
-          <FileDocument aria-hidden className="size-icon-xs" />
+          <FileDocument className="size-icon-sm shrink-0" />
         ) : attachment?.url ? (
-          <img src={attachment.url} alt="" draggable={false} className="size-icon-sm rounded-xs object-cover" />
+          <img src={attachment.url} alt="" draggable={false} className="size-icon-md shrink-0 rounded-xs object-cover" />
         ) : (
-          <FileImage aria-hidden className="size-icon-xs" />
+          <FileImage className="size-icon-sm shrink-0" />
         )}
-        {label}
+        {/* A very short preview: the words run out at the chip's edge. */}
+        <span className={cx(paste && preview && "max-w-32 truncate")}>{paste && preview ? preview : label}</span>
       </span>
-      {onRemove && <TileRemove small label={`Remove ${label}`} onClick={onRemove} />}
+      {/* Screen readers hear the whole label, not the cut words. */}
+      <span className="sr-only">{label}</span>
+      {onRemove && <TileRemove small label={`Remove ${paste ? "pasted text" : label}`} onClick={onRemove} />}
     </span>
   );
 }
@@ -155,12 +172,12 @@ function ImageTile({ attachment, remove }: { attachment: Attachment; remove: Rea
   const { url, name } = attachment;
   return (
     <div data-slot="attachment-image" title={name} className="group/tile relative size-attachment-thumb shrink-0">
-      <div className={cx("size-full overflow-hidden rounded-attachment bg-muted", !url && "animate-pulse motion-reduce:animate-none")}>
+      <div className={cx("size-full overflow-hidden rounded-surface bg-muted", !url && "animate-pulse motion-reduce:animate-none")}>
         {url && (
           <img src={url} alt={name} draggable={false} className={cx("size-full object-cover", attachment.state === "uploading" && "opacity-disabled")} />
         )}
       </div>
-      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-attachment ring-1 ring-border ring-inset" />
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-surface ring-1 ring-border ring-inset" />
       {attachment.state === "uploading" && (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <Spinner aria-label="Uploading" className="size-icon-md motion-safe:animate-spin" />

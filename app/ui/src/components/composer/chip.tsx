@@ -14,12 +14,19 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
       editor.update(() => $getNodeByKey(nodeKey)?.remove());
       editor.focus();
     };
-    return <InlineAttachment id={chip.attachmentId} paste={chip.kind === "paste"} onRemove={editor.isEditable() ? remove : undefined} />;
+    return (
+      <InlineAttachment
+        id={chip.attachmentId}
+        paste={chip.kind === "paste"}
+        preview={chip.kind === "paste" ? chip.preview : undefined}
+        onRemove={editor.isEditable() ? remove : undefined}
+      />
+    );
   }
   const name = chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1);
   return (
     <span data-slot="composer-chip" className="text-link">
-      <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-text-bottom" />
+      <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
       {name}
     </span>
   );

@@ -227,7 +227,15 @@ export function AidsGallery() {
         <State label="Images: stored, storing; a pasted text">
           <Card
             attachments={ATTACHMENTS}
-            initial={draft("Like this ", { kind: "image", attachmentId: "i1" }, " not this ", { kind: "image", attachmentId: "i2" }, " and read ", { kind: "paste", attachmentId: "p1" })}
+            initial={draft("Like this ", { kind: "image", attachmentId: "i1" }, " not this ", { kind: "image", attachmentId: "i2" }, " and read ", { kind: "paste", attachmentId: "p1", preview: "Error: connect ECONNREFUSED 127.0.0.1:5432 at TCPConnectWrap.afterConnect" })}
+          />
+        </State>
+      </Row>
+      <Row name="Commands in the text">
+        <State label="Picked, typed mid-sentence, in backticks; a path stays plain">
+          <Card
+            commands={{ commands: COMMANDS, onRun: noop }}
+            initial={draft("/review the queue, then use the /docs skill. Not `/docs` here, and /usr/bin stays plain.\n```\n/kit in a code block\n```")}
           />
         </State>
       </Row>

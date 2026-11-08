@@ -12,7 +12,8 @@
 export type Chip =
   | { kind: "mention"; id: string; type: "file" | "folder" | "chat"; label: string }
   | { kind: "image"; attachmentId: string }
-  | { kind: "paste"; attachmentId: string };
+  /** `preview`: the paste's first words, for its chip. */
+  | { kind: "paste"; attachmentId: string; preview?: string };
 
 /** The text with its chips in place, and the files attached beside it (shown as tiles, not in the text). */
 export type Draft = { parts: (string | Chip)[]; attachmentIds: string[] };

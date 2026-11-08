@@ -240,7 +240,8 @@
   /* The composer's `@`, `/` and + menus show ten rows and a half, then scroll. */
   --spacing-command-list: calc(var(--spacing-control-sm) * 10.5);
   /* A composer attachment: an image's thumbnail, a file's card. */
-  --spacing-attachment-thumb: 7.625rem;
+  /* As tall as a file card: its icon box, padding and border (D136). */
+  --spacing-attachment-thumb: calc(var(--spacing-control-lg) + 0.75rem + 2px);
   --spacing-attachment-card: 14rem;
   /* The model picker: its width and its one height. */
   --spacing-model-picker: 33.75rem;
@@ -269,7 +270,6 @@
   --radius-shell: 0.78125rem;
   --radius-composer: 1.375rem;
   /* An image attachment's thumbnail. */
-  --radius-attachment: 1rem;
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
@@ -535,6 +535,16 @@
 :root:has([data-dnd-dragging]) * {
   cursor: grabbing !important;
   user-select: none !important;
+}
+
+/* A command in the composer's text, picked or typed: the mention chips' blue (CommandHighlight, D138). */
+::highlight(composer-command) {
+  color: var(--color-link);
+}
+
+/* An icon in a line of text, its middle on the letters' middle (a mention chip's, D135). */
+@utility align-icon {
+  vertical-align: -0.125em;
 }
 
 @utility app-no-drag {

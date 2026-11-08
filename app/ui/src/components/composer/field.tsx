@@ -32,6 +32,7 @@ import { cx } from "../cx";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
 import { $isChipNode, ChipNode } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
+import { CommandHighlight } from "./command-highlight";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
 type Parts = Draft["parts"];
@@ -150,7 +151,8 @@ function pasteAttachments(event: ClipboardEvent | InputEvent | KeyboardEvent, on
   const add = (file: File, kind: "image" | "paste" | null) => {
     const id = crypto.randomUUID();
     added.push([id, file, kind !== null]);
-    if (kind) chips.push(new ChipNode({ kind, attachmentId: id }));
+    if (kind === "paste") chips.push(new ChipNode({ kind, attachmentId: id, preview: text.trim().replace(/\s+/g, " ").slice(0, 80) }));
+    else if (kind) chips.push(new ChipNode({ kind, attachmentId: id }));
   };
   if (files.length > 0) for (const file of files) add(file, file.type.startsWith("image/") ? "image" : null);
   else add(new File([text], "Pasted text.txt", { type: "text/plain" }), "paste");
@@ -260,6 +262,7 @@ export function ComposerField({
       <Keys {...props} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
+      {commands && <CommandHighlight commands={commands.commands} />}
     </LexicalComposer>
     </ChipNumbers>
     </AttachmentsContext>

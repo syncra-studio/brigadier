@@ -5,6 +5,7 @@ import { type Attachment, AttachmentsContext } from "../src/components/composer/
 import { ComposerCard, ComposerFooter, ComposerPill, ComposerTools, ContextRing, EditComposer, PillDivider, PlusButton } from "../src/components/composer/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
+import type { Commands } from "../src/components/composer/menus";
 import { ComposerRail } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { Button } from "../src/components/button";
@@ -43,6 +44,8 @@ type CardProps = {
   menu?: ReactNode;
   tiles?: ReactNode;
   attachments?: ReadonlyMap<string, Attachment>;
+  /** The `/` menu's commands, which the text paints. */
+  commands?: Commands;
 };
 
 /** A frozen composer card in one state. */
@@ -60,6 +63,7 @@ export function Card({
   menu,
   tiles,
   attachments,
+  commands,
 }: CardProps) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -71,7 +75,7 @@ export function Card({
       <ComposerCard>
         {menu}
         {tiles && <AttachmentsContext value={attachments ?? new Map()}>{tiles}</AttachmentsContext>}
-        <ComposerField initial={initial} placeholder={placeholder} attachments={attachments} />
+        <ComposerField initial={initial} placeholder={placeholder} attachments={attachments} commands={commands} />
         <ComposerFooter>
           <ComposerTools>
             <PlusButton />
