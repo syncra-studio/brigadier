@@ -6,6 +6,7 @@ import { cx } from "../cx";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
+import { Segment, SegmentedRoot } from "../segmented";
 import { ComposerPill } from "./composer";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
@@ -42,10 +43,10 @@ const MODEL_ROW = cx(
   "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-surface ps-2.5 pe-8 text-start text-sm outline-none",
   "hover:bg-fill focus-visible:bg-fill",
 );
-// One level in the footer: the fill is the chosen one, the ring the keyboard.
+// One level in the footer: the fill is the chosen one, the ring the keyboard. The old picker's 10% fill, not the kit Segmented's 5%.
 const SEGMENT = cx(
   "flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-capsule px-2 text-label whitespace-nowrap text-faint-foreground outline-none",
-  "transition-colors hover:text-foreground focus-visible:focus-ring aria-checked:bg-fill-hover aria-checked:text-foreground motion-reduce:transition-none",
+  "transition-colors hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground motion-reduce:transition-none",
 );
 
 /** ↑ ↓ move through a list's rows, ← → between the agents and the models. */
@@ -160,25 +161,23 @@ export function ModelPicker({
               Effort
               {model && <span className="opacity-75"> · {model.name}</span>}
             </div>
-            <div role="radiogroup" aria-label="Effort" className="flex shrink-0 items-center gap-0.5">
-              {!model || model.efforts.length === 0 ? (
-                <div className="pe-1.75 text-xs text-muted-foreground">{model ? "No effort levels" : "Pick a model"}</div>
-              ) : (
-                model.efforts.map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    role="radio"
-                    aria-checked={value.effort === level}
-                    title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined}
-                    onClick={() => onChange({ ...value, effort: level })}
-                    className={SEGMENT}
-                  >
+            {!model || model.efforts.length === 0 ? (
+              <div className="shrink-0 pe-1.75 text-xs text-muted-foreground">{model ? "No effort levels" : "Pick a model"}</div>
+            ) : (
+              // Arrow keys move between the levels; the group is one Tab stop.
+              <SegmentedRoot
+                aria-label="Effort"
+                value={value.effort ? [value.effort] : []}
+                onValueChange={([level]) => level !== undefined && onChange({ ...value, effort: level })}
+                className="flex shrink-0 items-center gap-0.5"
+              >
+                {model.efforts.map((level) => (
+                  <Segment key={level} value={level} title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined} className={SEGMENT}>
                     {effortLabel(level)}
-                  </button>
-                ))
-              )}
-            </div>
+                  </Segment>
+                ))}
+              </SegmentedRoot>
+            )}
           </div>
         </div>
       </PopoverContent>
