@@ -126,7 +126,7 @@ function applyThread(frame: Record<string, any>): void {
   if (!session || threadN === undefined) return;
   if (frame.n !== threadN + 1) return watch();
   threadN = frame.n;
-  const items = session.items.slice();
+  const items = frame.items.length ? session.items.slice() : session.items;
   for (const item of frame.items as Item[]) {
     const at = itemAt.get(item.id);
     // A row older than the pages held comes with its page.
@@ -140,7 +140,8 @@ function applyThread(frame: Record<string, any>): void {
     turns = at < 0 ? [...turns, turn] : turns.with(at, turn);
   }
   setThread(thread, {
-    ...session, items, turns, work: [...(session.work ?? []), ...frame.work],
+    ...session, items, turns, work: frame.work.length ? [...(session.work ?? []), ...frame.work] : session.work,
+    setup: "setup" in frame ? frame.setup : session.setup,
     approvals: frame.approvals ?? session.approvals,
     questions: frame.questions ?? session.questions,
   });

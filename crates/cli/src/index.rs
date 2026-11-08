@@ -46,7 +46,7 @@ struct Entry {
     marks: Marks,
 }
 
-/// Marks and setup output, published by creating or renaming entries in the session folder.
+/// Marks published by creating or renaming entries in the session folder.
 #[derive(Default)]
 struct Marks {
     /// The folder's modification time (ms) these were read at.
@@ -55,7 +55,6 @@ struct Marks {
     pinned: Option<u64>,
     unread: bool,
     seen: u64,
-    setup: Value,
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     archived: Option<u64>,
     lifecycle: Value,
@@ -74,8 +73,6 @@ impl Marks {
             pinned: ms("pinned"),
             unread: dir.join("unread").exists(),
             seen: ms("seen").unwrap_or(0),
-            // Cache the files; whether an unfinished setup is still alive is checked every tick.
-            setup: core::worktrees::setup_state(dir, true),
             archived,
             lifecycle,
             queue: crate::queue::row(dir),
@@ -236,11 +233,6 @@ impl Index {
                 .as_ref()
                 .and_then(|s| projects::of(s, &projects, &mut self.roots));
             let title = e.marks.title.as_ref().unwrap_or(&e.title);
-            let alive = live.child.is_some();
-            let mut setup = e.marks.setup.clone();
-            if !alive && setup["state"] == "running" {
-                setup["state"] = "interrupted".into();
-            }
             let backend = match f.fold.backend.as_str() {
                 "" => e.spec.as_ref().map_or("", |s| s.backend.as_str()),
                 b => b,
@@ -262,7 +254,7 @@ impl Index {
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
+                             "project": project, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
                              "archived": e.marks.archived, "lifecycle": e.marks.lifecycle,
                              "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
                              "queue": e.marks.queue, "steer": steer,

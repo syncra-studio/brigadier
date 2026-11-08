@@ -9,7 +9,7 @@ import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, type Row, useDaemon, useThread } from "./daemon";
-import { HomeDraft, type Setup, SetupLine, StartingBubble, StartingThread, useStartShown } from "./home/home";
+import { HomeDraft, StartingBubble, StartingThread, useStartShown } from "./home/home";
 import { newSession, useStart, useStartingRows } from "./home/start";
 import { Key } from "./icons";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -162,7 +162,6 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   const starting = useStart(id);
   const missing = state?.status === "missing" && !starting;
   const shown = useStartShown(id);
-  const setup = (row as { setup?: Setup } | undefined)?.setup;
   return (
     <>
       <Titlebar>{title || id}</Titlebar>
@@ -184,10 +183,8 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                     source={answeringSource}
                     footer={
                       // Read-only while archived: its bar restores it [D180, D198].
-                      row?.archived ? <ArchivedBar row={row} /> : (line || sending || starting || setup || sides) && (
+                      row?.archived ? <ArchivedBar row={row} /> : (line || sending || starting || sides) && (
                         <>
-                          {/* Where the thread meets the composer: the worktree's setup script [D229]. */}
-                          <SetupLine id={id} setup={setup} />
                           <StartingBubble id={id} />
                           {line}
                           <SentBubbles id={id} />

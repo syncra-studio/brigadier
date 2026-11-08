@@ -1,10 +1,20 @@
 //! A worktree session's setup script [D202]: run once before the first launch, in a trusted
-//! project only, and its state for the row.
+//! project only, and its state for the thread.
 
 use crate::{Spec, projects, write_atomic};
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
+
+/// The recorded wrapper launch anchors setup to its input, including after restore [D290].
+pub fn setup_launch(item: &serde_json::Value) -> bool {
+    item["kind"] == "spawned"
+        && item["argv"][0] == "/bin/sh"
+        && item["argv"][1] == "-c"
+        && item["argv"][5]
+            .as_str()
+            .is_some_and(|p| p.ends_with("/setup.started"))
+}
 
 /// The first launch of a worktree session in a trusted project with a setup script runs the
 /// script first, in the worktree, once: its stdin is empty so it can't take the message meant for
@@ -31,7 +41,7 @@ pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
         return argv;
     }
     let path = |name: &str| spec.dir.join(name).display().to_string();
-    // The script stays an argument; renaming the tail wakes the folder-mtime gate in the index.
+    // The script stays an argument; each tail update replaces its capped output atomically.
     let line = r#"if (set -C; : >"$2") 2>/dev/null; then
     : >"$3.raw"
     (cd "$5" && /bin/sh -c "$1") </dev/null >"$3.raw" 2>&1 &
@@ -57,7 +67,7 @@ shift 5; exec "$@""#;
     head.into_iter().chain(files).chain(argv).collect()
 }
 
-/// How the session's setup script went, for its row: null when none ran; else running, done,
+/// How the session's setup script went, for its thread: null when none ran; else running, done,
 /// failed (with its code) or interrupted. `alive` says whether its host's child still runs.
 pub fn setup_state(dir: &Path, alive: bool) -> serde_json::Value {
     if !dir.join("setup.started").exists() {

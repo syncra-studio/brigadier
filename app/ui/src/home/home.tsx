@@ -197,7 +197,7 @@ const SETUP_WORDS = {
   interrupted: "The setup script was interrupted",
 } as const;
 
-/** The setup line where the thread meets the composer: its words, opening to the script's last output. */
+/** The setup line at Rust's place in the thread, opening to the script's last output [D290]. */
 export function SetupLine({ id, setup }: { id: string; setup: Setup }) {
   if (!setup) return null;
   const words = <Words verb={SETUP_WORDS[setup.state]} live={setup.state === "running"} />;

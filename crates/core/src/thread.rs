@@ -65,6 +65,10 @@ pub struct Thread {
     level: Option<Value>,
     /// Control inputs written to an agent that acks, not yet applied by its reply [D222].
     acking: HashSet<String>,
+    /// Where the latest setup ran; its files retain only that run's output.
+    setup_at: Option<usize>,
+    setup: Value,
+    setup_changed: bool,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
@@ -94,6 +98,14 @@ const CLOSES: [&str; 8] = [
 
 impl Thread {
     pub fn push(&mut self, item: &Value) {
+        if crate::worktrees::setup_launch(item) {
+            self.setup_at = Some(
+                self.items
+                    .iter()
+                    .position(|row| row["turnId"] == item["cid"])
+                    .unwrap_or(self.items.len()),
+            );
+        }
         let ts = item["ts"].as_u64().unwrap_or(0);
         let kind = item["kind"].as_str().unwrap_or("");
         let before: Vec<Turn> = if CLOSES.contains(&kind) {
@@ -373,6 +385,21 @@ impl Thread {
         }
     }
 
+    /// Setup sits before its launch's input.
+    pub fn sync_setup(&mut self, mut setup: Value, alive: bool) {
+        if !alive && setup["state"] == "running" {
+            setup["state"] = "interrupted".into();
+        }
+        if setup.is_object() {
+            setup["before"] = self
+                .items
+                .get(self.setup_at.unwrap_or(0))
+                .map_or(Value::Null, |row| row["id"].clone());
+        }
+        self.setup_changed |= setup != self.setup;
+        self.setup = setup;
+    }
+
     /// What changed since the last call: rows and turns to replace by id, and new work.
     pub fn take(&mut self) -> Option<Value> {
         let items: Vec<Value> = std::mem::take(&mut self.changed_items)
@@ -386,12 +413,16 @@ impl Thread {
         let work = self.work[self.sent_work..].to_vec();
         self.sent_work = self.work.len();
         let mut out = json!({"items": items, "turns": turns, "work": work});
+        let setup_changed = std::mem::take(&mut self.setup_changed);
+        if setup_changed {
+            out["setup"] = self.setup.clone();
+        }
         // What waits on the user goes whole whenever it changed, to replace what the view holds.
         if std::mem::take(&mut self.pending_changed) {
             for (k, v) in self.requests().as_object().unwrap() {
                 out[k] = v.clone();
             }
-        } else if items.is_empty() && turns.is_empty() && work.is_empty() {
+        } else if items.is_empty() && turns.is_empty() && work.is_empty() && !setup_changed {
             return None;
         }
         Some(out)
@@ -404,6 +435,7 @@ impl Thread {
         let mut page = self.page(self.items.len());
         page["id"] = id.into();
         page["title"] = title.into();
+        page["setup"] = self.setup.clone();
         for (k, v) in self.requests().as_object().unwrap() {
             page[k] = v.clone();
         }

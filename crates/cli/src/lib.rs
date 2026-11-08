@@ -333,12 +333,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             let mut thread = core::thread::Thread::default();
+            // A visible setup marker guarantees SPAWNED is logged before this read starts.
+            let setup = core::worktrees::setup_state(&spec.dir, true);
             core::read(&spec.dir, |item| thread.push(item))?;
             let f = thread.status_fold();
             let live = fold::live(f, owner::state(data, id), data, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
                 thread.interrupt(log::now_ms());
             }
+            thread.sync_setup(setup, live.child.is_some());
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),

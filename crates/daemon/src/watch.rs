@@ -50,6 +50,8 @@ pub(super) fn watch(
     let log = dir.join("log");
     let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
     let mut drain = |thread: &mut Thread| -> io::Result<()> {
+        // A visible setup marker guarantees SPAWNED is logged before this drain starts.
+        let setup = brigadier_core::worktrees::setup_state(&dir, true);
         // A session just created may have no log yet.
         if reader.is_none() && log.exists() {
             reader = Some(Reader::open(&log, 0, 0)?);
@@ -60,6 +62,14 @@ pub(super) fn watch(
                 thread.push(&item);
             }
         }
+        let alive = setup["state"] != "running"
+            || (thread
+                .status_fold()
+                .child
+                .as_ref()
+                .is_some_and(|c| !c.exited)
+                && brigadier::owner::state(data, id) != fold::Owner::Dead);
+        thread.sync_setup(setup, alive);
         Ok(())
     };
     let interrupted = |thread: &mut Thread| {

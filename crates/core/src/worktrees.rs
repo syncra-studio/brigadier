@@ -5,7 +5,7 @@
 //! made, so a failed create and a delete remove only what the session owns [D35, D181].
 
 use crate::adapters::setup;
-pub use crate::worktree_setup::{setup_state, wrap};
+pub use crate::worktree_setup::{setup_launch, setup_state, wrap};
 use crate::{Spec, ids, projects, session_dir, write_atomic};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};

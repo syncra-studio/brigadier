@@ -79,7 +79,16 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const items = session?.items;
   const lines = useMemo(lineMaker, []);
   const marks = useMemo(() => messageMarks(items ?? []), [items]);
-  const all = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
+  const threadRows = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
+  const setup = session?.setup;
+  const all = useMemo(() => {
+    const rows = threadRows;
+    if (!setup) return rows;
+    const at = setup.before === null ? rows.length : rows.findIndex((row) => row.id === setup.before);
+    if (at < 0) return rows;
+    const line: Line = { type: "setup", id: `${session.id}:setup:${setup.before ?? "tail"}`, gap: at === 0 ? "first" : "turn", setup };
+    return [...rows.slice(0, at), line, ...rows.slice(at)];
+  }, [threadRows, setup, session?.id]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
   // rows arrive above, everything stays as drawn for one painted frame, in which Virtua measures what was drawn before

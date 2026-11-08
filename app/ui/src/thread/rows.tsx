@@ -5,6 +5,7 @@ import { Body } from "../components/thread/body";
 import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
+import { SetupLine } from "../home/home";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -19,7 +20,9 @@ export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean
 export const LineRow = memo(function LineRow(props: LineProps) {
   return (
     <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]}`} data-item={props.id}>
-      {props.type === "marks" ? (
+      {props.type === "setup" ? (
+        <SetupLine id={props.id} setup={props.setup} />
+      ) : props.type === "marks" ? (
         <AnswerMarks text={props.item.text} time={props.item.sentAt} latest={props.latest} />
       ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />

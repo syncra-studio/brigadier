@@ -1,6 +1,6 @@
 // Which rows the list draws, from the session and what the user has opened: drawing only, no thread rules.
 // Rust sends groups and work folds ready-made; this hides what a closed one covers and places the work header.
-import type { Item, Turn, Work } from "./item";
+import type { Item, Session, Turn, Work } from "./item";
 
 export type Group = Extract<Item, { kind: "group" }>;
 
@@ -8,6 +8,7 @@ export type Group = Extract<Item, { kind: "group" }>;
 export type Gap = "first" | "turn" | "part" | "step";
 
 export type Line =
+  | { type: "setup"; id: string; gap: Gap; setup: NonNullable<Session["setup"]> }
   /** A finished answer's actions, after the turn's rows. */
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
@@ -73,7 +74,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (!last) return "first";
     if (item?.kind === "message" && item.role === "user") return "turn";
     if (last.type === "item" && last.item.kind === "message" && last.item.role === "user") return "turn";
-    if (item && last.type !== "work" && last.item.turnId !== item.turnId) return "turn";
+    if (item && last.type !== "work" && last.type !== "setup" && last.item.turnId !== item.turnId) return "turn";
     return step ? "step" : "part";
   };
 

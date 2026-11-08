@@ -1,5 +1,6 @@
 import type { PendingApproval } from "../components/composer/approval";
 import type { PendingQuestion } from "../components/composer/question";
+import type { Setup } from "../home/home";
 
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
 
@@ -16,6 +17,8 @@ export type Session = {
   items: Item[];
   /** One per finished turn that did work. */
   work?: Work[];
+  /** Rust places the latest setup before this row; null means after the rows so far. */
+  setup?: (NonNullable<Setup> & { before: string | null }) | null;
   /** Requests still waiting on the user, replayed on reconnect and reconciled by CLI id. */
   approvals?: PendingApproval[];
   questions?: PendingQuestion[];
