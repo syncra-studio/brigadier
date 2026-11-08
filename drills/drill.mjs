@@ -5,6 +5,8 @@
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
 //   drills: killloop, hang, catalogue, scale, sleep
+//   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
+//   daemon from a previous release's code.
 //
 // Results print as JSON lines; the last line is the summary. Scratch lives under $DRILL_ROOT
 // (default /tmp/brigadier-drill) and is removed at the end unless KEEP=1.
@@ -50,8 +52,8 @@ const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsW
 const agentsOf = (id) => ps().filter((p) => p.cmd.includes('brigadier-fake agent') && p.cmd.includes(`/sessions/${id}/fake`))
 
 // The fake agent's ledger: ground truth kept outside Brigadier.
-function ledger() {
-  const lines = fs.existsSync(`${DATA}/ledger`) ? fs.readFileSync(`${DATA}/ledger`, 'utf8').trim().split('\n') : []
+function ledger(name = 'ledger') {
+  const lines = fs.existsSync(`${DATA}/${name}`) ? fs.readFileSync(`${DATA}/${name}`, 'utf8').trim().split('\n') : []
   const recv = {}, starts = {}, children = {}, done = new Map()
   for (const l of lines) {
     const p = l.split(' ')
@@ -70,13 +72,13 @@ function freshData(name) {
   fs.mkdirSync(DATA, { recursive: true, mode: 0o700 })
 }
 
-function fakeOpts() {
+function fakeOpts(ledgerName = 'ledger') {
   const home = process.env.HOME
-  return ['--opt', `FAKE_LEDGER=${DATA}/ledger`, '--opt', `FAKE_CARGO=${home}/.cargo/bin/cargo`, '--opt', `FAKE_CARGO_MANIFEST=${process.env.CARGO_MANIFEST ?? ''}`]
+  return ['--opt', `FAKE_LEDGER=${DATA}/${ledgerName}`, '--opt', `FAKE_CARGO=${home}/.cargo/bin/cargo`, '--opt', `FAKE_CARGO_MANIFEST=${process.env.CARGO_MANIFEST ?? ''}`]
 }
 
-function startFake(id, extra = []) {
-  return cli(['start', id, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts(), ...extra]).out
+function startFake(id, extra = [], env = {}, ledgerName) {
+  return cli(['start', id, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts(ledgerName), ...extra], env).out
 }
 
 function gitRepo(name) {
@@ -100,16 +102,34 @@ async function waitFor(fn, ms, step = 100) {
   return { ok: false, ms: now() - t }
 }
 
-// The daemon, run against this drill's data folder.
-let daemon = null
-function startDaemon() {
-  daemon = spawn(`${BIN}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA }, detached: true, stdio: 'ignore' })
-  daemon.unref()
+// The daemon, run against this drill's data folder. Every one started is killed at the end, since
+// a new one may have replaced the old or left on its own.
+let daemons = []
+function startDaemon(bin = BIN) {
+  const d = spawn(`${bin}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA }, detached: true, stdio: 'ignore' })
+  d.unref()
+  daemons.push(d)
 }
 function stopDaemon() {
-  if (daemon) kill(daemon.pid)
-  daemon = null
+  for (const d of daemons) kill(d.pid)
+  daemons = []
 }
+// The running daemon's first frame (hello or refusal): its pid and build number.
+function daemonHello(ms = 2000) {
+  return new Promise((resolve) => {
+    const s = net.connect(`${DATA}/daemon.sock`)
+    const done = (v) => { clearTimeout(timer); s.destroy(); resolve(v) }
+    const timer = setTimeout(() => done(null), ms)
+    s.on('error', () => done(null))
+    s.on('connect', () => { const v = Buffer.alloc(4); v.writeUInt32BE(2); s.write(v) })
+    let buf = Buffer.alloc(0)
+    s.on('data', (c) => {
+      buf = Buffer.concat([buf, c])
+      if (buf.length >= 4 && buf.length >= 4 + buf.readUInt32BE(0)) done(JSON.parse(buf.subarray(4, 4 + buf.readUInt32BE(0))))
+    })
+  })
+}
+const ownerJson = (id) => { try { return { ...JSON.parse(fs.readFileSync(`${DATA}/sessions/${id}/owner.json`, 'utf8')), mtime: fs.statSync(`${DATA}/sessions/${id}/owner.json`).mtimeMs } } catch { return {} } }
 // One request on a fresh daemon connection: the reply, or null if nothing answers in time.
 function daemonCall(request, ms = 3000) {
   return new Promise((resolve) => {
@@ -187,17 +207,32 @@ const BUSY = new Set(['working', 'silent', 'starting', 'logged'])
 // Drill 1 ------------------------------------------------------------------------------------------
 async function killloop(minutes) {
   freshData('killloop')
-  startDaemon()
-  // f01-f20 start through the CLI, d01 through the daemon, the app's way in.
-  const fakes = [...Array.from({ length: 20 }, (_, i) => `f${String(i + 1).padStart(2, '0')}`), 'd01']
+  // A previous release's daemon first, when given: the first update must replace it [D60].
+  const OLD = process.env.OLD_BIN
+  startDaemon(OLD ?? BIN)
+  // f01-f20 start through the CLI, d01 through the daemon, the app's way in, o01-o02 on hosts of the
+  // previous release, driven by today's CLI.
+  const olds = OLD ? ['o01', 'o02'] : []
+  const fakes = [...Array.from({ length: 20 }, (_, i) => `f${String(i + 1).padStart(2, '0')}`), 'd01', ...olds]
   const work = (id) => (fakes.indexOf(id) < 4 ? 'cargo:600' : 'tree:600')
-  const acked = {}
+  const acked = {}, idleAcked = {}
   const send = (id, text, c = cid()) => {
     const r = cli(['send', id, `${c} ${text}`, '--cid', c])
     if (['delivered', 'logged'].includes(r.out.result)) acked[c] = { id, result: r.out.result }
     return r
   }
+  // Idle hosts: their agent exits after each turn, so they hold nothing and move to each new build.
+  const idles = ['i01', 'i02', 'i03']
+  const idleTurn = (id) => {
+    const c = cid('i')
+    const r = cli(['send', id, `${c} exit:0`, '--cid', c])
+    if (['delivered', 'logged'].includes(r.out.result)) idleAcked[c] = { id, result: r.out.result }
+    return r.out.result
+  }
   for (const id of fakes.slice(0, 20)) startFake(id)
+  for (const id of olds) startFake(id, [], { BRIGADIER_HOST: `${OLD}/brigadier-host` })
+  for (const id of idles) startFake(id, [], {}, 'ledger-idle')
+  for (const id of idles) idleTurn(id)
   const viaDaemon = await daemonCall({ op: 'run', args: ['start', 'd01', '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()] }, 10000)
   if (!viaDaemon?.ok) throw new Error(`start through the daemon failed: ${JSON.stringify(viaDaemon)}`)
   startFake('t01', ['--mode', 'pty'])
@@ -224,12 +259,21 @@ async function killloop(minutes) {
     inflight.kill('SIGKILL')
     const before = pidsBefore()
     const listBefore = await daemonList(5000)
-    // The clients and the daemon die, and the app's binaries are replaced.
+    const helloBefore = await daemonHello()
+    const idleBefore = Object.fromEntries(idles.map((id) => [id, ownerJson(id)]))
+    // The clients die and the app's binaries are replaced. On odd minutes the old daemon is left
+    // running, and the new one must replace it only if its build is newer; on even ones it's killed.
     for (const f of followers) f.child.kill('SIGKILL')
-    stopDaemon()
+    const leave = k % 2 === 1
+    if (!leave) stopDaemon()
     swapTo(builds[k % builds.length])
     const killedAt = now()
     startDaemon()
+    // The new daemon decides at once: it serves (it replaced the old one, or there was none) or leaves.
+    const fresh = daemons.at(-1)
+    for (const t = now(); now() - t < 10000; await sleep(50)) {
+      if (fresh.exitCode !== null || (await daemonHello(500))?.pid === fresh.pid) break
+    }
     const listAfter = await daemonList(10000)
     ev.daemon_list_ms = listAfter?.ms ?? null
     ev.daemon_same_list = !!listBefore && !!listAfter && listBefore.ids.join('\n') === listAfter.ids.join('\n')
@@ -242,6 +286,19 @@ async function killloop(minutes) {
     ev.correct_ms = right.ok ? right.ms : null
     const back = await waitFor(() => fakes.every((id) => ['working', 'idle'].includes(statusAll()[id]?.state)), 20000, 100)
     ev.working_again_ms = back.ok ? now() - killedAt : null
+    const helloAfter = await daemonHello()
+    ev.daemon = { old: leave ? 'left running' : 'killed', before: [helloBefore?.pid, helloBefore?.build ?? 'legacy'], after: [helloAfter?.pid, helloAfter?.build ?? 'legacy'], replaced: leave && helloBefore?.pid !== helloAfter?.pid }
+    // Idle hosts re-exec onto the new binary: same pid, owner.json rewritten. Then they take a turn.
+    const moved = await waitFor(() => idles.every((id) => ownerJson(id).mtime > killedAt), 10000, 100)
+    ev.idle_moved_ms = moved.ok ? now() - killedAt : null
+    ev.idle_same_pid = idles.filter((id) => ownerJson(id).pid === idleBefore[id].pid).length
+    ev.idle_turns = idles.map(idleTurn)
+    ev.host_builds = {}
+    for (const id of fs.readdirSync(`${DATA}/sessions`)) {
+      if (!alive(ownerJson(id).pid)) continue
+      const b = ownerJson(id).build ?? 'legacy'
+      ev.host_builds[b] = (ev.host_builds[b] ?? 0) + 1
+    }
     for (let i = 0; i < 5; i++) {
       const r = cli(['send', 'chat', `${c} say:1`, '--cid', c])
       if (['delivered', 'logged'].includes(r.out.result)) { acked[c] = { id: 'chat', result: r.out.result }; break }
@@ -276,7 +333,7 @@ async function killloop(minutes) {
     const h2 = cli(['read', id, '--hash']).out.hash
     history[id] = { follows: files.length, mismatched: bad.length, rehash_equal: h1 === h2, items: full.length }
   }
-  const L = ledger()
+  const L = ledger(), LI = ledger('ledger-idle')
   // Died: gone without finishing, or finished well before its planned end.
   const deadChildren = Object.entries(L.children).filter(([pid, c]) => L.done.has(pid) ? L.done.get(pid) < c.ends - 5000 : !alive(+pid)).length
   const lost = Object.keys(acked).filter((c) => !(L.recv[c] >= 1)).length
@@ -298,6 +355,10 @@ async function killloop(minutes) {
     orphans_max: Math.max(...events.map((e) => e.orphans)),
     tool_children_started: Object.keys(L.children).length, tool_children_died: deadChildren, agent_restarts: restarts,
     acked: Object.keys(acked).length, lost, doubled, history, transcripts, usage, versions,
+    daemon_replaced: events.filter((e) => e.daemon.replaced).length, daemon_left_running: events.filter((e) => e.daemon.old === 'left running').length,
+    idle_moved: events.filter((e) => e.idle_moved_ms !== null).length, idle_moved_ms_max: Math.max(...events.map((e) => e.idle_moved_ms ?? 1e9)),
+    idle_same_pid_min: Math.min(...events.map((e) => e.idle_same_pid)),
+    idle_acked: Object.keys(idleAcked).length, idle_lost: Object.keys(idleAcked).filter((c) => !(LI.recv[c] >= 1)).length, idle_doubled: Object.keys(idleAcked).filter((c) => LI.recv[c] > 1).length,
   }
   summary.leftovers = cleanup()
   for (const [id] of real) fs.rmSync(`${ROOT}/repo-${id}`, { recursive: true, force: true })
@@ -385,6 +446,40 @@ async function hang() {
     spawns: cli(['read', 'h4']).all.filter((i) => i.kind === 'spawned').length,
     background: bg.length, watchdog_found: !!dog, swept_ms: swept.ok ? now() - k4 : null, survivors: bg.filter(alive).length,
   }
+  // Host killed between starting a child and logging its group: the child is still at its gate,
+  // reads EOF and never runs [D60].
+  const inH5 = (p) => p.cmd.includes(`/sessions/h5/fake`)
+  startFake('h5', [], { BRIGADIER_CRASH_AT: 'after_fork:gate' })
+  const gate = cid('gate')
+  const g5 = cli(['send', 'h5', `${gate} bg:300`, '--cid', gate])
+  const k5 = now()
+  const gone5 = await waitFor(() => !ps().some(inH5), 5000, 50)
+  r.killed_at_spawn = { send: g5.out.result, gone_ms: gone5.ok ? now() - k5 : null, survivors: ps().filter(inH5).length, agent_got_it: (ledger().recv[gate] ?? 0) > 0 }
+  // A host that moved to a new build: same pid, a fresh watchdog, no zombie, and the new watchdog
+  // still stops the tree when the host is killed.
+  startFake('h6')
+  cli(['send', 'h6', `${cid()} exit:0`])
+  await sleep(2500)
+  const h6 = ownerPid('h6')
+  const dog6 = ps().find((p) => p.ppid === h6 && p.cmd.includes('--watchdog'))?.pid
+  fs.copyFileSync(`${BIN}/${OWNER_BIN}`, `${BIN}/.${OWNER_BIN}.new`)
+  fs.renameSync(`${BIN}/.${OWNER_BIN}.new`, `${BIN}/${OWNER_BIN}`)
+  const t6 = now()
+  const moved6 = await waitFor(() => ownerJson('h6').mtime > t6, 10000, 50)
+  await sleep(300)
+  const kids6 = ps().filter((p) => p.ppid === h6)
+  r.moved_host = {
+    moved_ms: moved6.ok ? moved6.ms : null, same_pid: ownerJson('h6').pid === h6, old_watchdog_gone: !alive(dog6),
+    watchdogs: kids6.filter((p) => p.cmd.includes('--watchdog')).length, zombies: kids6.filter((p) => p.stat.startsWith('Z')).length,
+  }
+  cli(['send', 'h6', `${cid()} tree:120`])
+  await sleep(1500)
+  const tree6 = ps().filter((p) => p.pgid === agentsOf('h6')[0]?.pgid).map((p) => p.pid)
+  kill(h6)
+  const k6 = now()
+  const freed6 = await waitFor(() => tree6.every((p) => !alive(p)), 5000, 50)
+  r.moved_host.tree = tree6.length
+  r.moved_host.tree_gone_ms = freed6.ok ? now() - k6 : null
   r.leftovers = cleanup()
   log({ drill: 'hang', ...r })
 }
@@ -415,6 +510,8 @@ async function catalogue() {
   const crashEnv = { BRIGADIER_CRASH_AT: 'after_intent:boom' }
   startFake('c2')
   cli(['send', 'c2', 'warm say:1'])
+  // The warm turn ends first, so the only open turn is the one the crash catches.
+  await waitFor(() => status(['c2']).c2.state === 'idle', 5000, 50)
   kill(ownerPid('c2'))
   await sleep(300)
   cli(['up', 'c2'], crashEnv)
