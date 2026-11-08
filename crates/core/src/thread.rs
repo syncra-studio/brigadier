@@ -53,6 +53,17 @@ pub struct Thread {
     changed_items: BTreeSet<usize>,
     changed_turns: BTreeSet<usize>,
     sent_work: usize,
+    /// The switch row of a limit no switch has taken yet, by index.
+    limit_row: Option<usize>,
+}
+
+/// A switch row's reason, from the status fold's: a usage limit, or a resume the agent refused.
+fn reason(why: Option<&str>) -> &'static str {
+    if why == Some("unresumable") {
+        "unresumable"
+    } else {
+        "usage-limit"
+    }
 }
 
 /// About how many rows the snapshot and each older page carry [D98].
@@ -160,13 +171,27 @@ impl Thread {
             waited: 0,
             kept: vec![],
         });
-        // A switch shows as its note [D51]; a continuation it wrote (not the user's words) shows
-        // only that.
+        // A switch turns its limit's row into the switched line, in place [D51, D132]; a
+        // continuation it wrote (not the user's words) shows only that.
         if let Some(note) = t.switch["note"].as_str() {
-            self.add(json!({"kind": "notice", "level": "info", "text": note}));
+            // The kit's switch shape (D133); `text` is the whole note, for logs from before it.
+            let sw = &t.switch;
+            let switched = json!({"state": "switched", "text": note, "from": sw["from_label"],
+                "to": sw["to_label"], "model": sw["to"]["model"], "handoff": sw["fresh"],
+                "automatic": sw["auto"]});
+            let at = match self.limit_row.take() {
+                Some(at) => at,
+                None => self.add(json!({"kind": "switch", "reason": reason(sw["why"].as_str())})),
+            };
+            for (k, v) in switched.as_object().unwrap() {
+                self.items[at][k] = v.clone();
+            }
+            self.changed_items.insert(at);
             if t.origin != "user" {
                 return;
             }
+        } else {
+            self.end_limit();
         }
         // An input, or a prompt typed in the terminal (the user's, with no command id).
         if t.cid.is_some() || t.origin == "user" {
@@ -282,6 +307,14 @@ impl Thread {
         self.items.push(row);
         self.changed_items.insert(at);
         at
+    }
+
+    /// A limit no switch took any more (a Stop, a new message): its row stays, as history.
+    fn end_limit(&mut self) {
+        if let Some(at) = self.limit_row.take() {
+            self.items[at]["state"] = "over".into();
+            self.changed_items.insert(at);
+        }
     }
 
     fn end_wait(&mut self, ts: u64) {

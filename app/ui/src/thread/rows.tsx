@@ -2,6 +2,7 @@ import { memo } from "react";
 
 import { Body } from "../components/thread/body";
 import { GroupRow, WorkHeader } from "../components/thread/work";
+import { SwitchRow } from "../accounts/limit";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -20,6 +21,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
         <GroupRow item={props.item} live={props.live} open={props.open} onToggle={props.onToggle} />
+      ) : props.item.kind === "switch" ? (
+        <SwitchRow item={props.item} />
       ) : (
         <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} />
       )}

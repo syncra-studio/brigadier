@@ -164,18 +164,34 @@ impl Thread {
             }
             // A process gone ends its background subagents with it.
             "exited" => self.end_children("failed"),
-            "stopped" => self.end_children("cancelled"),
-            // A usage limit is no error of the turn: the limit line under the thread says it, as in
-            // the old app, and the switch note keeps it in the thread [D51].
-            "limited" => self.break_group(),
-            "sign_in" | "unresumable" => {
+            "stopped" => {
+                self.end_children("cancelled");
+                // The user's Stop ends the limit: its line stays, without its switch [D51].
+                if item["by"] == "user" {
+                    self.end_limit();
+                }
+            }
+            // A limit (or a refused resume) is no error of the turn: one row that a switch turns into
+            // the switched line in place, as compaction's row changes, never a second row [D51, D132].
+            "limited" | "unresumable" => {
                 self.break_group();
-                let level = if kind != "sign_in" {
-                    "warning"
-                } else {
-                    "error"
-                };
-                self.add(json!({"kind": "notice", "level": level, "text": item["message"]}));
+                self.end_limit();
+                let backend = self.fold.backend.clone();
+                let account = self
+                    .fold
+                    .accounts
+                    .get(&backend)
+                    .cloned()
+                    .unwrap_or_default();
+                // `backend` and `account` name the side at its limit until a switch names both.
+                let at = self.add(json!({"kind": "switch", "state": "limit",
+                    "reason": super::reason(Some(kind)), "backend": backend, "account": account,
+                    "handoff": false, "automatic": false, "text": item["message"]}));
+                self.limit_row = Some(at);
+            }
+            "sign_in" => {
+                self.break_group();
+                self.add(json!({"kind": "notice", "level": "error", "text": item["message"]}));
             }
             "compaction" => {
                 self.break_group();

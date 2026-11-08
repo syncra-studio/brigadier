@@ -17,7 +17,7 @@ const LAST_EXCHANGE: usize = 40_000;
 const MESSAGES: usize = 40_000;
 
 /// Where the session goes: a backend, its account ("" is the computer's login), and its model
-/// when it changes; `label` and `from` name both sides in the note.
+/// when it changes; `label` and `from` name both sides (the model apart) for the thread's row.
 pub struct Target<'a> {
     pub backend: &'a str,
     pub account: &'a str,
@@ -71,6 +71,10 @@ pub fn switch(
     } else {
         ("system", CARRY_ON.to_string())
     };
+    let to_named = match to.model {
+        Some(m) => format!("{} · {m}", to.label),
+        None => to.label.to_string(),
+    };
     let how = if auto {
         "switched automatically to"
     } else {
@@ -78,18 +82,18 @@ pub fn switch(
     };
     let note = match (why, fresh) {
         ("unresumable", _) => format!(
-            "{} couldn't resume this conversation · started a new one with a hand-off",
-            to.label
+            "{to_named} couldn't resume this conversation · started a new one with a hand-off"
         ),
         (_, true) => format!(
-            "Usage limit on {} · {how} {} with a hand-off of this thread",
-            to.from, to.label
+            "Usage limit on {} · {how} {to_named} with a hand-off of this thread",
+            to.from
         ),
-        _ => format!("Usage limit on {} · {how} {}", to.from, to.label),
+        _ => format!("Usage limit on {} · {how} {to_named}", to.from),
     };
     let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to.backend, "account": to.account, "model": to.model},
-        "auto": auto, "fresh": fresh, "why": why, "note": note});
+        "auto": auto, "fresh": fresh, "why": why, "note": note,
+        "from_label": to.from, "to_label": to.label});
     let mut run = as_run(spec, f, to.backend, Some(to.account));
     if let Some(m) = to.model {
         run.model = Some(m.into());

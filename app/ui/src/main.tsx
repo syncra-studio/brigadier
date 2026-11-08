@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AccountsPage } from "./accounts/page";
-import { LimitBar } from "./accounts/limit";
+import { SessionOfThread } from "./accounts/limit";
 import { Input } from "./components/input";
 import { WorkingLine } from "./components/thread/work";
 import { TooltipProvider } from "./components/tooltip";
@@ -134,14 +134,12 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
           <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
         ) : (
           <div className={`min-h-0 min-w-0 flex-1 ${offline ? "opacity-disabled" : ""}`}>
-            <Thread source={threadSource} footer={
-                row?.state === "stalled" ? (
-                  <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
-                ) : (
-                  row?.switchable && <LimitBar row={row} offline={offline} />
-                )
-              }
-            />
+            <SessionOfThread value={{ id, offline }}>
+              <Thread
+                source={threadSource}
+                footer={row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>}
+              />
+            </SessionOfThread>
           </div>
         )}
         {state?.status !== "missing" && <TerminalPane id={id} />}

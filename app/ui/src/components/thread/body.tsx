@@ -78,5 +78,8 @@ export function Body({ item, turn, step, dated = false, latest = false }: { item
       return <NoticeRow level={item.level} text={item.text} />;
     case "unknown":
       return <UnknownRow keep={item.id} raw={item.raw} />;
+    // The app draws it (its switch needs the session); see thread/rows.tsx.
+    case "switch":
+      return null;
   }
 }

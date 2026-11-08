@@ -134,10 +134,7 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
             json!({"ok": false, "error": "no_target", "message": "No other account or agent has room."}),
         );
     };
-    let mut to_label = label(&v, to, &account);
-    if let Some(m) = &model {
-        to_label += &format!(" · {m}");
-    }
+    let to_label = label(&v, to, &account);
     // Asked again last: a setting turned off meanwhile stops an automatic switch [D51].
     let still = || {
         let v = load(data);
