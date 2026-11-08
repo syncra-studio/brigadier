@@ -1,26 +1,26 @@
 // The composer's typing aids (slice 3): the `@` and `/` menus, chips, attachments and the + menu, frozen, plus one live copy.
 import { type ReactNode, useRef, useState } from "react";
 
-import { type Attachment, AttachmentsContext, AttachmentTiles, MentionIcon } from "../src/components/composer/attachments";
+import { type Attachment, AttachmentsContext, AttachmentTiles } from "../src/components/composer/attachments";
 import { ComposerCard, ComposerFooter, ComposerTools } from "../src/components/composer/composer";
 import { type Draft, isEmpty } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import {
+  CommandRow,
   ComposerMenu,
   ComposerMenuOption,
   fuzzyMatch,
-  MatchedText,
+  KIND_HEADINGS,
   type Mention,
   type MentionGroup,
   type Mentions,
   MenuHeading,
+  MentionRow,
   MenuNote,
   PlusMenu,
   type SlashCommand,
 } from "../src/components/composer/menus";
 import { SendButton } from "../src/components/composer/send-button";
-import { MenuRow } from "../src/components/menu";
-import { Sparkle, Terminal } from "../src/icons";
 import { Card, ModelPill } from "./composer";
 import { Row, Section, State } from "./parts";
 import picture from "./sample.svg?no-inline";
@@ -34,26 +34,34 @@ const FILES: Mention[] = [
   { id: "f3", type: "folder", label: "app/ui/src/components/composer", name: "composer", detail: "app/ui/src/components" },
   { id: "f4", type: "file", label: "../brigadier-plan/PLAN.md", name: "PLAN.md", detail: "docs" },
   { id: "f5", type: "file", label: "app/ui/src/theme.css", name: "theme.css", detail: "app/ui/src" },
+  { id: "f6", type: "file", label: "docs/spec.pdf", name: "spec.pdf", detail: "docs" },
+  { id: "f7", type: "file", label: "data/usage.csv", name: "usage.csv", detail: "data" },
+  { id: "f8", type: "file", label: "design/roadmap.pptx", name: "roadmap.pptx", detail: "design" },
+  { id: "f9", type: "file", label: "app/ui/gallery/sample.svg", name: "sample.svg", detail: "app/ui/gallery" },
+  { id: "f10", type: "file", label: "crates/core/src/state.rs", name: "state.rs", detail: "crates/core/src" },
+  { id: "f11", type: "file", label: "package.json", name: "package.json", detail: "" },
 ];
 const CHATS: Mention[] = [
   { id: "c1", type: "chat", label: "Fix the queue's drag order", hint: "2h" },
   { id: "c2", type: "chat", label: "Composer slice 3", hint: "yesterday" },
 ];
-const COMMANDS: SlashCommand[] = [
-  { id: "compact", label: "/compact", description: "Save the context so far", icon: <Terminal /> },
-  { id: "review", label: "/review", description: "Review the changes", icon: <Terminal />, text: "/review" },
-  { id: "model", label: "/model", description: "Pick another model", icon: <Terminal />, disabled: true, hint: "While working" },
-  { id: "skill-docs", label: "/docs", description: "Write the docs for a change", icon: <Sparkle />, group: "Skills", text: "/docs" },
-  { id: "skill-kit", label: "/kit", description: "Port a component to the kit", icon: <Sparkle />, group: "Skills", text: "/kit" },
+export const COMMANDS: SlashCommand[] = [
+  { id: "compact", kind: "command", label: "/compact", description: "Save the context so far" },
+  { id: "review", kind: "command", label: "/review", description: "Review the changes", text: "/review" },
+  { id: "model", kind: "command", label: "/model", description: "Pick another model", disabled: true, hint: "While working" },
+  { id: "skill-docs", kind: "skill", label: "/docs", description: "Write the docs for a change", text: "/docs" },
+  { id: "skill-kit", kind: "skill", label: "/kit", description: "Port a component to the kit", text: "/kit" },
+  { id: "mcp-triage", kind: "mcp", source: "issues", label: "/issues:triage", description: "Sort the new issues by area and urgency", text: "/issues:triage" },
 ];
 
-/** Rust's stand-in search: the files and chats matching the query, the files ranked. */
-function search(query: string): MentionGroup[] {
-  const files = FILES.filter((file) => fuzzyMatch(file.name ?? file.label, query));
-  const chats = CHATS.filter((chat) => fuzzyMatch(chat.label, query));
+/** Rust's stand-in search: files, folders and chats matching the query, each under its heading; with nothing typed, a hint for files. */
+export function search(query: string): MentionGroup[] {
+  const matching = (items: Mention[]) => items.filter((item) => fuzzyMatch(item.name ?? item.label, query));
+  const files = matching(FILES.filter((item) => item.type === "file"));
   return [
-    { title: null, items: files },
-    { title: "Chats", items: chats, note: chats.length === 0 && query === "" ? "No other chats" : undefined },
+    query === "" ? { title: "Files", items: [], note: "Type to search files" } : { title: "Files", items: files },
+    { title: "Folders", items: matching(FILES.filter((item) => item.type === "folder")) },
+    { title: "Chats", items: matching(CHATS) },
   ];
 }
 
@@ -71,8 +79,8 @@ const ATTACHMENTS = new Map<string, Attachment>(
 );
 
 /** The `@` menu as it shows for `query`, its first row highlighted. */
-function FrozenMentions({ query }: { query: string }) {
-  const groups = search(query);
+export function FrozenMentions({ query, searching = false }: { query: string; searching?: boolean }) {
+  const groups = searching ? [] : search(query);
   const empty = groups.every((group) => group.items.length === 0 && !group.note);
   let at = 0;
   return (
@@ -83,34 +91,28 @@ function FrozenMentions({ query }: { query: string }) {
             {group.title && <MenuHeading>{group.title}</MenuHeading>}
             {group.items.map((item) => (
               <ComposerMenuOption key={item.id} selected={at++ === 0}>
-                <MenuRow
-                  icon={<MentionIcon type={item.type} label={item.label} />}
-                  title={<MatchedText text={item.name ?? item.label} query={query} />}
-                  detail={item.detail}
-                  hint={item.hint}
-                  mono
-                />
+                <MentionRow item={item} query={query} />
               </ComposerMenuOption>
             ))}
             {group.note && <MenuNote>{group.note}</MenuNote>}
           </div>
         ),
       )}
-      {empty && <MenuNote>No results</MenuNote>}
+      {empty && <MenuNote>{searching ? "Searching…" : "No results"}</MenuNote>}
     </ComposerMenu>
   );
 }
 
 /** The `/` menu as it shows for `query`. */
-function FrozenCommands({ query }: { query: string }) {
+export function FrozenCommands({ query }: { query: string }) {
   const shown = COMMANDS.filter((command) => fuzzyMatch(command.label, query));
   return (
     <ComposerMenu label="Slash commands">
       {shown.map((command, index) => (
         <div key={command.id} className="contents">
-          {command.group && command.group !== shown[index - 1]?.group && <MenuHeading>{command.group}</MenuHeading>}
+          {command.kind !== shown[index - 1]?.kind && <MenuHeading>{KIND_HEADINGS[command.kind]}</MenuHeading>}
           <ComposerMenuOption selected={index === 0} disabled={command.disabled}>
-            <MenuRow icon={command.icon} title={<MatchedText text={command.label} query={query} />} detail={command.description} hint={command.hint} />
+            <CommandRow command={command} query={query} />
           </ComposerMenuOption>
         </div>
       ))}

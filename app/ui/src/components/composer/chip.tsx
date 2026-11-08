@@ -25,7 +25,7 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
   }
   const name = chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1);
   return (
-    <span data-slot="composer-chip" className="text-link">
+    <span data-slot="composer-chip" className="cursor-pointer text-link">
       <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
       {name}
     </span>

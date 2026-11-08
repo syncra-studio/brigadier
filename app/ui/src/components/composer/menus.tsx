@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { Paperclip } from "../../icons";
 import { cx } from "../cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow, menuSurface } from "../menu";
-import { MentionIcon } from "./attachments";
+import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
 import { ChipNode } from "./chip";
 import { PlusButton } from "./composer";
 
@@ -38,9 +38,12 @@ export type SlashCommand = {
   id: string;
   label: string;
   description?: string;
-  /** A heading it's listed under ("Skills"); ungrouped ones come first. */
-  group?: string;
-  icon?: ReactNode;
+  /** Listed under its kind's heading: Commands, Skills, MCP prompts. */
+  kind: "command" | "skill" | "mcp";
+  /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
+  source?: string;
+  /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
+  icon?: string | null;
   hint?: string;
   disabled?: boolean;
   /** What picking it types where the `/` was (an agent's "/review"), the rest kept; without it, it runs. */
@@ -72,14 +75,14 @@ export function fuzzyMatch(text: string, query: string): { rank: 0 | 1 | 2; at: 
   return { rank: 2, at };
 }
 
-/** Commands matching `query`, best first within each group, the groups kept in order so no heading repeats. */
+/** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
 function commandMatches(commands: readonly SlashCommand[], query: string): SlashCommand[] {
-  const groups = [...new Set(commands.map((command) => command.group))];
+  const order = { command: 0, skill: 1, mcp: 2 };
   const rank = (command: SlashCommand) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
   return commands
     .map((command) => ({ command, rank: rank(command) }))
     .filter(({ rank }) => rank < 3)
-    .toSorted((a, b) => groups.indexOf(a.command.group) - groups.indexOf(b.command.group) || a.rank - b.rank)
+    .toSorted((a, b) => order[a.command.kind] - order[b.command.kind] || a.rank - b.rank)
     .map(({ command }) => command);
 }
 
@@ -175,6 +178,32 @@ const ANCHOR = "contents!";
 export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-sm text-muted-foreground">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="px-2 py-1 text-sm text-muted-foreground">{children}</p>;
 
+export const KIND_HEADINGS = { command: "Commands", skill: "Skills", mcp: "MCP prompts" } as const;
+
+/** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
+export function MentionRow({ item, query }: { item: Mention; query: string }) {
+  return (
+    <MenuRow
+      icon={<MentionKindIcon type={item.type} label={item.label} />}
+      title={<MatchedText text={item.name ?? item.label} query={query} />}
+      detail={item.detail}
+      hint={item.type === "chat" ? "Chat" : item.hint}
+    />
+  );
+}
+
+/** A command's row: its icon, the name, its line in grey after it. */
+export function CommandRow({ command, query }: { command: SlashCommand; query: string }) {
+  return (
+    <MenuRow
+      icon={<CommandKindIcon kind={command.kind} icon={command.icon} />}
+      title={<MatchedText text={command.label} query={query} />}
+      detail={command.description}
+      hint={command.hint}
+    />
+  );
+}
+
 /** One of a composer menu's rows, its content a `MenuRow`; highlighted by the keys or the pointer. */
 export function ComposerMenuOption({ selected, disabled, className, ...props }: ComponentProps<"div"> & { selected: boolean; disabled?: boolean }) {
   return (
@@ -267,13 +296,7 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
                     const option = props.options[row]!;
                     return (
                       <OptionRow key={option.key} option={option} index={row} props={props}>
-                        <MenuRow
-                          icon={<MentionIcon type={item.type} label={item.label} />}
-                          title={<MatchedText text={item.name ?? item.label} query={query} />}
-                          detail={item.detail}
-                          hint={item.hint}
-                          mono
-                        />
+                        <MentionRow item={item} query={query} />
                       </OptionRow>
                     );
                   })}
@@ -322,13 +345,13 @@ export function SlashPlugin({ commands, onRun }: Commands) {
         <Panel anchor={anchor}>
           {props.options.map((option, index) => {
             const command = option.value;
-            const group = command.group ?? null;
-            const previous = props.options[index - 1]?.value.group ?? null;
+            const group = KIND_HEADINGS[command.kind];
+            const previous = index > 0 ? KIND_HEADINGS[props.options[index - 1]!.value.kind] : null;
             return (
               <div key={option.key} className="contents">
                 {group && group !== previous && <MenuHeading>{group}</MenuHeading>}
                 <OptionRow option={option} index={index} props={props} disabled={command.disabled}>
-                  <MenuRow icon={command.icon} title={<MatchedText text={command.label} query={query} />} detail={command.description} hint={command.hint} />
+                  <CommandRow command={command} query={query} />
                 </OptionRow>
               </div>
             );
