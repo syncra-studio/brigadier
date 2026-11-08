@@ -5,6 +5,7 @@
 use super::http::Server;
 use super::server::Shared;
 use serde_json::{Value, json};
+use std::collections::{HashSet, VecDeque};
 
 /// A new session grant `{action, save}`. It also answers the asks already waiting that it covers,
 /// as OpenCode's own lasting answer would, but only for this session [D193].
@@ -54,19 +55,8 @@ pub(super) fn skipping(server: &Server, state: &Shared) -> Option<String> {
         }
     };
     let text = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
-    // The last matching rule wins, as in OpenCode; a read pattern is also tried on a secret file.
-    let asks = |action: &str, resource: &str| {
-        (rules.iter().rev())
-            .find(|r| {
-                matches(&text(r, "action"), action) && matches(&text(r, "resource"), resource)
-            })
-            .is_none_or(|r| r["effect"] == "ask")
-    };
     let named: Vec<String> = (saved.iter())
-        .filter(|r| {
-            let (action, resource) = (text(r, "action"), text(r, "resource"));
-            asks(&action, &resource) || asks(&action, &resource.replace('*', ".env"))
-        })
+        .filter(|r| skips(&rules, &text(r, "action"), &text(r, "resource")))
         .map(|r| {
             format!(
                 "{} {:?} (id {})",
@@ -80,6 +70,84 @@ pub(super) fn skipping(server: &Server, state: &Shared) -> Option<String> {
         "OpenCode has rules saved for this project that let it act without asking: {}. This session runs under Ask, so Brigadier doesn't start a turn while they're there. Remove them in OpenCode (opencode api permission.saved.remove --param id=<id>) to go on.",
         named.join(", ")
     ))
+}
+
+/// Whether any resource covered by this saved pattern would ask. Walk the wildcard states
+/// together, including later allow exceptions: sampling a pattern misses `?` and secret paths.
+fn skips(rules: &[Value], action: &str, resource: &str) -> bool {
+    let rules: Vec<&Value> = rules
+        .iter()
+        .filter(|r| matches(r["action"].as_str().unwrap_or(""), action))
+        .collect();
+    let patterns: Vec<Vec<char>> = std::iter::once(resource)
+        .chain(rules.iter().map(|r| r["resource"].as_str().unwrap_or("")))
+        .map(|p| p.chars().collect())
+        .collect();
+    let step = |p: &[char], at: &[usize], c: Option<char>| {
+        let mut next: Vec<usize> = match c {
+            None => vec![0],
+            Some(c) => at
+                .iter()
+                .filter_map(|&i| match p.get(i) {
+                    Some('*') => Some(i),
+                    Some('?') => Some(i + 1),
+                    Some(&ch) if ch == c => Some(i + 1),
+                    _ => None,
+                })
+                .collect(),
+        };
+        let mut i = 0;
+        while i < next.len() {
+            let n = next[i];
+            if p.get(n) == Some(&'*') && !next.contains(&(n + 1)) {
+                next.push(n + 1);
+            }
+            i += 1;
+        }
+        next.sort_unstable();
+        next.dedup();
+        next
+    };
+    let mut letters: HashSet<char> = patterns
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|c| !matches!(c, '*' | '?'))
+        .collect();
+    // All other characters make the same transitions as one another.
+    if let Some(c) = (0..=0x10ffff)
+        .filter_map(char::from_u32)
+        .find(|c| !letters.contains(c))
+    {
+        letters.insert(c);
+    }
+    let start: Vec<Vec<usize>> = patterns.iter().map(|p| step(p, &[], None)).collect();
+    let mut seen = HashSet::from([start.clone()]);
+    let mut queue = VecDeque::from([start]);
+    while let Some(at) = queue.pop_front() {
+        let accepts = |i: usize| at[i].contains(&patterns[i].len());
+        if accepts(0)
+            && rules
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(i, _)| accepts(i + 1))
+                .is_none_or(|(_, r)| r["effect"] == "ask")
+        {
+            return true;
+        }
+        for &c in &letters {
+            let next: Vec<Vec<usize>> = patterns
+                .iter()
+                .zip(&at)
+                .map(|(p, at)| step(p, at, Some(c)))
+                .collect();
+            if !next[0].is_empty() && seen.insert(next.clone()) {
+                queue.push_back(next);
+            }
+        }
+    }
+    false
 }
 
 /// Answers an ask `once` for a grant that covers it.
