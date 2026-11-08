@@ -716,15 +716,3 @@
   padding-inline: calc(var(--spacing) * 3);
   min-width: calc(100% + var(--spacing) * 6);
 }
-
-/* Gallery only, generated where used: the "Old app" column (D22) draws the kit as the old app did, with
-   the arrow cursor, no press and the 10px icon-button corner. Deleted with the column. */
-@utility old-app {
-  --radius-control: 0.625rem;
-  & :where(button, label, [role="tab"], [role="radio"]) {
-    cursor: default !important;
-  }
-  & * {
-    scale: none !important;
-  }
-}

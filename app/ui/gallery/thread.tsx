@@ -8,7 +8,7 @@ import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
-import { Compare, Row, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -298,7 +298,7 @@ export function Thread() {
         </Row>
       </Section>
       <Section title="Thread · messages">
-        <Compare name="user: first (dated) · hover (time, copy) · long (Show more) · markdown · code block across the cut · opened · system line">
+        <Row name="user: first (dated) · hover (time, copy) · long (Show more) · markdown · code block across the cut · opened · system line">
           <Wide label="dated (first, or over an hour after the last): today · last week">
             <Body item={{ ...base("u0"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 }} turn={DONE} step={false} dated />
             <Body item={{ ...base("u0b"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 4 * 86_400_000 }} turn={DONE} step={false} dated />
@@ -311,13 +311,13 @@ export function Thread() {
           <Wide label="long, a code block across the cut (cut after it)">{item({ ...base("u5"), kind: "message", role: "user", text: CODE_USER, streaming: false })}</Wide>
           <Wide label="long, opened" open>{item({ ...base("u2o"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
           <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
-        </Compare>
+        </Row>
         <Row name="user: sending · not sent · unconfirmed · dimmed (owner's own states, D59/D84-D88: no old equivalent)">
           <Wide label="look only: the states session sets them">
             <Bubbles />
           </Wide>
         </Row>
-        <Compare name="answer: streaming (live) · latest (time always) · older (time on hover) · older, hover · long code block">
+        <Row name="answer: streaming (live) · latest (time always) · older (time on hover) · older, hover · long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
           <Wide label="latest">
             <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
@@ -327,7 +327,7 @@ export function Thread() {
             {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}
           </Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false })}</Wide>
-        </Compare>
+        </Row>
       </Section>
       <Section title="Thread · jump to the latest">
         <Row name="idle · streaming (dots, live) · streaming, hover (↓) · streaming, focus">
