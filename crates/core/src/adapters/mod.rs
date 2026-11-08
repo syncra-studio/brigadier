@@ -34,7 +34,8 @@ pub enum Event {
     ToolStart(Tool),
     ToolEnd(Done),
     Resume(String),
-    Limited(String),
+    /// A usage limit: the CLI's message, and when it resets (ms) if the CLI says; never guessed [D74].
+    Limited(String, Option<u64>),
     SignIn(String),
     /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
     Unresumable(String),
@@ -401,7 +402,7 @@ pub fn classify(message: &str) -> Option<Event> {
         "authentication",
     ];
     if limit.iter().any(|k| m.contains(k)) {
-        Some(Event::Limited(message.to_string()))
+        Some(Event::Limited(message.to_string(), None))
     } else if auth.iter().any(|k| m.contains(k)) {
         Some(Event::SignIn(message.to_string()))
     } else {

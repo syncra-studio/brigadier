@@ -122,8 +122,10 @@ impl Adapter for Fake {
             )],
             "compact" => vec![Event::Compaction("done")],
             "error" => vec![
-                super::classify(&format!("{} {}", v["code"], s(&v, &["message"])))
-                    .unwrap_or(Event::Unknown(line.into())),
+                match super::classify(&format!("{} {}", v["code"], s(&v, &["message"]))) {
+                    Some(Event::Limited(m, _)) => Event::Limited(m, v["resets"].as_u64()),
+                    other => other.unwrap_or(Event::Unknown(line.into())),
+                },
             ],
             _ => vec![Event::Unknown(line.into())],
         }

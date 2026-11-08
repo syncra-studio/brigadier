@@ -228,7 +228,7 @@ impl Adapter for Claude {
                 })
                 .collect(),
             ("rate_limit_event", _) => match s(&v, &["rate_limit_info", "status"]) {
-                "rejected" => vec![Event::Limited(line.chars().take(300).collect())],
+                "rejected" => vec![Event::Limited(line.chars().take(300).collect(), None)],
                 _ => vec![],
             },
             ("result", _) => {

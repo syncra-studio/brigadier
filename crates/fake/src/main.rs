@@ -205,7 +205,8 @@ impl Agent {
             "limit" if !limited() => {}
             "limit" => {
                 emit(
-                    json!({"t": "error", "code": 429, "message": "rate limited, try again in 60s"}),
+                    // When it resets, as some CLIs say: the minute its own message names.
+                    json!({"t": "error", "code": 429, "message": "rate limited, try again in 60s", "resets": now() + 60_000}),
                 );
                 emit(json!({"t": "done", "ok": false}));
                 return false;

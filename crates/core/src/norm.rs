@@ -186,7 +186,9 @@ impl Norm {
                     self.announced.insert(self.backend.clone(), id.clone());
                     json!({"kind": "resume_id", "backend": self.backend, "id": id})
                 }
-                Event::Limited(m) => json!({"kind": "limited", "message": m}),
+                Event::Limited(m, resets) => {
+                    json!({"kind": "limited", "message": m, "resets": resets})
+                }
                 Event::SignIn(m) => json!({"kind": "sign_in", "message": m}),
                 Event::Unresumable(m) => json!({"kind": "unresumable", "message": m}),
                 Event::Question(id, t, options) => {
