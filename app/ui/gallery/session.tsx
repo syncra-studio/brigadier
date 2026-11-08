@@ -4,9 +4,10 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { CheckboxRow } from "../src/components/checkbox-row";
 import type { Row as SessionRow } from "../src/daemon";
 import { type ComposerRow, type Runner, SentBubbles, SessionComposer } from "../src/session/composer";
+import { LevelPicker } from "../src/session/level";
 import type { Session } from "../src/thread/item";
 import type { Source } from "../src/thread/thread";
-import { Row, Section } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const TURN_MS = 6000;
 const REPLY_MS = 400;
@@ -144,6 +145,20 @@ export function SessionGallery() {
     <Section title="Composer in a session">
       <Row name="Live, on a stand-in for Rust">
         <Live />
+      </Row>
+      <Row name="Permission pill: each agent's own levels">
+        <State label="Three levels, a trusted project: Auto">
+          <LevelPicker levels={["ask", "auto", "full"]} level="auto" held={false} onChange={() => {}} />
+        </State>
+        <State label="No auto mode: Ask">
+          <LevelPicker levels={["ask", "full"]} level="ask" held={false} onChange={() => {}} />
+        </State>
+        <State label="An untrusted project: Ask, locked">
+          <LevelPicker levels={["ask", "auto", "full"]} level="ask" held onChange={() => {}} />
+        </State>
+        <State label="No levels: no pill">
+          <LevelPicker levels={[]} level={null} held={false} onChange={() => {}} />
+        </State>
       </Row>
     </Section>
   );

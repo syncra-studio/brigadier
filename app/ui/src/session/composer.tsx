@@ -10,6 +10,7 @@ import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
 import type { Source } from "../thread/thread";
+import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
 import { newId } from "./store";
 
@@ -239,7 +240,7 @@ export function SessionComposer({ id, row, offline, run = daemonRun, source = th
           }}
         />
         <ComposerFooter>
-          {/* The permission pill goes here (1t). */}
+          <SessionLevel id={id} row={row} />
           <ComposerTools />
           <ErrorLine error={stopError} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
