@@ -6,6 +6,7 @@ mod control;
 pub mod index;
 mod mirror;
 pub mod owner;
+mod sessions;
 mod setup;
 mod switching;
 mod title;
@@ -24,7 +25,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
-       brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
+       brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full]
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -247,14 +248,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let call = call_fn(data, id);
             Ok(core::recover(&spec, &f.fold, &live, child(data, id), &call))
         }
-        "delete" => {
-            let id = arg(args, 1)?;
-            let spec = core::load(data, id)?;
-            let _ = owner::call(data, id, json!({"op": "stop", "by": "delete"}));
-            owner::release(data, id)?;
-            let f = core::fold(&spec.dir, false)?;
-            Ok(core::delete(&spec, &f.fold))
-        }
+        "archive" | "restore" | "delete" => sessions::run(data, args),
         "level" => control::level(data, args),
         "answer" => control::answer(data, args),
         "up" => {

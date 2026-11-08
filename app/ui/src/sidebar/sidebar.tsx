@@ -13,6 +13,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
+import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
+import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
 import { markUnread, pin, rename, useShown } from "./actions";
 import { RenameDialog } from "./menu";
@@ -79,7 +81,9 @@ export function AppSidebar({
   const list = useRef<HTMLDivElement>(null);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
-  const shown = useShown(rows);
+  // Archived rows dock below the list; the rest are the live ones [D198].
+  const { live: shown, archived } = useArchiveSplit(useShown(rows));
+  const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
   const pinned = shown?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
@@ -100,6 +104,7 @@ export function AppSidebar({
         ];
   const order = sections.flatMap(([, each]) => each);
   const activeRow = order.find((each) => each.id === active);
+  useArchiveKeys(order, active, onNewSession);
 
   // Unfolds what holds a row, then brings it into view.
   const reveal = (id: string) => {
@@ -141,6 +146,8 @@ export function AppSidebar({
       active={each.id === active}
       offline={offline}
       onOpen={onOpen}
+      picked={picks.has(each.id)}
+      onClick={(event) => clickRow(event, each, order, active, onOpen)}
       onRename={setRenaming}
       {...layout}
     />
@@ -248,6 +255,7 @@ export function AppSidebar({
         </div>
         <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
       </div>
+      <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />
     </SidebarPanel>
   );

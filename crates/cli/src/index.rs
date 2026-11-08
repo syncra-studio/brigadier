@@ -55,12 +55,16 @@ struct Marks {
     unread: bool,
     seen: u64,
     setup: Value,
+    /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
+    archived: Option<u64>,
+    lifecycle: Value,
 }
 
 impl Marks {
     fn read(dir: &Path, at: u64) -> Marks {
         let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
         let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
+        let (archived, lifecycle) = core::session::lifecycle(dir);
         Marks {
             at,
             title: text("title").filter(|t| !t.is_empty()),
@@ -69,6 +73,8 @@ impl Marks {
             seen: ms("seen").unwrap_or(0),
             // Cache the files; whether an unfinished setup is still alive is checked every tick.
             setup: core::worktrees::setup_state(dir, true),
+            archived,
+            lifecycle,
         }
     }
 }
@@ -234,7 +240,8 @@ impl Index {
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
-                             "project": project, "setup": setup});
+                             "project": project, "setup": setup,
+                             "archived": e.marks.archived, "lifecycle": e.marks.lifecycle});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

@@ -20,7 +20,7 @@ export type SessionRow = {
   finished: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
-} & Pick<Row, "pinned" | "touched">;
+} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle">;
 
 export type Project = { id: string; name: string };
 

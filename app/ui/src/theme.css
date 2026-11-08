@@ -115,6 +115,8 @@
   /* Live words waiting on an approval: quieter than the shimmer's base. */
   --color-live-text-quiet: color-mix(in oklab, var(--color-foreground) 30%, transparent);
   --color-link-hover: color-mix(in oklab, var(--color-link) 80%, transparent);
+  /* A row picked with ⌘- or Shift-click: the old app's bg-link/20. */
+  --color-picked: color-mix(in oklab, var(--color-link) 20%, transparent);
   /* A reply's blockquote edge, its rules (hr), and the lines between its table rows. */
   --color-quote-edge: color-mix(in oklab, var(--color-muted-foreground) 30%, transparent);
   --color-prose-rule: color-mix(in oklab, var(--color-muted-foreground) 20%, transparent);

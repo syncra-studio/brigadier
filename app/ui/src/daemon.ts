@@ -20,6 +20,9 @@ export type Row = {
   project: string | null;
   /** When it was pinned (ms), or null [D185]. */
   pinned?: number | null;
+  /** When it was archived (ms), or null; and an archive, restore or delete under way, or a delete that left something [D180]. */
+  archived?: number | null;
+  lifecycle?: { op: "archive" | "restore" | "delete"; left?: string[] } | null;
   /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
   touched?: number;
   backend: string;

@@ -18,9 +18,14 @@ fn host_exe() -> io::Result<PathBuf> {
 }
 
 /// Starts the session's host unless one holds its lock, then waits until it answers. Two racing
-/// starts both spawn; the lock lets one win and the other exits at once.
+/// starts both spawn; the lock lets one win and the other exits at once. A session that takes no
+/// new work is refused with why.
 pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
     let dir = session_dir(data, &spec.id);
+    // Archived, or being archived, restored or deleted: no new work [D180].
+    if let Some(why) = brigadier_core::session::closed(&dir) {
+        return Err(io::Error::other(why));
+    }
     if !lock_held(&dir.join("owner.lock")) {
         let mut host = Command::new(host_exe()?);
         host.arg(&dir)

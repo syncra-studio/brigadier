@@ -5,11 +5,12 @@
 //! made, so a failed create and a delete remove only what the session owns [D35, D181].
 
 use crate::adapters::setup;
+pub use crate::worktree_setup::{setup_state, wrap};
 use crate::{Spec, ids, projects, session_dir, write_atomic};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -57,8 +58,8 @@ fn git(dir: &Path, args: &[&str]) -> io::Result<String> {
         .to_string())
 }
 
-/// One create or delete at a time per session.
-fn lock(dir: &Path) -> io::Result<File> {
+/// One create, archive, restore or delete at a time per session.
+pub fn lock(dir: &Path) -> io::Result<File> {
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -318,21 +319,32 @@ fn undo(owned: &Owned) -> io::Result<()> {
     Ok(())
 }
 
-/// Takes a session's worktree away for delete [D35, D181]: its changes are committed to its
-/// branch as a checkpoint first, and if that fails nothing is removed and the error says why.
-/// Then the worktree and its registration go, and the branch too when its base holds all of it;
-/// a branch with work that never landed stays and is returned.
-pub fn delete(dir: &Path) -> io::Result<Option<String>> {
-    let _one = lock(dir)?;
+/// Whether the branch exists in the repository.
+fn has_branch(repo: &Path, branch: &str) -> bool {
+    git(
+        repo,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .is_ok()
+}
+
+/// Frees the session's worktree [D180]: its changes are committed to its branch as a checkpoint
+/// first, and if that fails nothing is removed and the error says why. Then the worktree and its
+/// registration go; the branch and this record stay, for a restore or a delete. The caller holds
+/// `lock`.
+pub fn free(dir: &Path) -> io::Result<()> {
     let Some(owned) = read(dir)? else {
-        return Ok(None);
+        return Ok(());
     };
     if let Some(path) = owned.path.as_deref().map(Path::new).filter(|p| p.exists()) {
         let branch = git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
         if Some(&branch) != owned.branch.as_ref() {
-            return err(
-                "The worktree is on another branch; switch back before deleting it.".into(),
-            );
+            return err("The worktree is on another branch; switch back first.".into());
         }
         git(path, &["add", "-A"])?;
         if !git(path, &["diff", "--cached", "--name-only", "-z"])?.is_empty() {
@@ -348,33 +360,97 @@ pub fn delete(dir: &Path) -> io::Result<Option<String>> {
             )?;
         }
     }
-    unregister(&owned)?;
-    let repo = Path::new(&owned.repo);
-    let Some(branch) = owned.branch else {
+    unregister(&owned)
+}
+
+/// Whether the session's worktree is in place.
+pub fn present(dir: &Path) -> bool {
+    matches!(read(dir), Ok(Some(o)) if o.path.as_deref().is_some_and(|p| Path::new(p).exists()))
+}
+
+/// The session's branch when it holds work its base doesn't, uncommitted changes included: the
+/// delete confirm names it [D181]. A check git can't answer counts as unlanded, so it asks.
+pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
+    let Some(owned) = read(dir)? else {
         return Ok(None);
     };
-    if git(
-        repo,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{branch}"),
-        ],
+    let repo = Path::new(&owned.repo);
+    let Some(branch) = owned.branch.filter(|b| has_branch(repo, b)) else {
+        return Ok(None);
+    };
+    let dirty = owned
+        .path
+        .as_deref()
+        .map(Path::new)
+        .filter(|p| p.exists())
+        .is_some_and(|p| git(p, &["status", "--porcelain"]).map_or(true, |s| !s.is_empty()));
+    let landed = git(repo, &["merge-base", "--is-ancestor", &branch, &owned.base]).is_ok();
+    Ok((dirty || !landed).then_some(branch))
+}
+
+/// Takes a session's worktree away for delete [D35, D181]: freed as above, then its branch goes
+/// when its base holds all of it, or when `drop` says so and it's still this session's own. A
+/// branch with work that never landed, kept, is returned. The caller holds `lock`.
+pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
+    free(dir)?;
+    let Some(owned) = read(dir)? else {
+        return Ok(None);
+    };
+    let repo = Path::new(&owned.repo);
+    let Some(branch) = owned.branch.filter(|b| has_branch(repo, b)) else {
+        return Ok(None);
+    };
+    if unlanded(dir)?.is_some() && !drop {
+        return Ok(Some(branch));
+    }
+    // Re-checked as it runs: only the branch this session made, named for it [D181].
+    let id = dir.file_name().map(|n| n.to_string_lossy().into_owned());
+    if Some(branch.as_str()) != id.map(|id| format!("brigadier/{id}")).as_deref() {
+        return err(format!(
+            "The branch {branch} isn't this session's own; it stays."
+        ));
+    }
+    git(repo, &["branch", "-D", &branch])?;
+    Ok(None)
+}
+
+/// Puts an archived session's worktree back at its path on its branch, with its files to copy
+/// [D178, D180, D211]. A failure removes what it added, so restore can run again. The caller
+/// holds `lock`.
+pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
+    let Some(mut owned) = read(dir)? else {
+        return Ok(());
+    };
+    let (Some(branch), Some(path)) = (owned.branch.clone(), owned.path.clone()) else {
+        return Ok(());
+    };
+    if Path::new(&path).exists() {
+        return Ok(());
+    }
+    let repo = PathBuf::from(&owned.repo);
+    if !has_branch(&repo, &branch) {
+        return err(format!(
+            "Its branch {branch} is gone, so its work can't come back."
+        ));
+    }
+    let added = git(&repo, &["worktree", "add", "--quiet", &path, &branch]);
+    owned.admin = git(
+        Path::new(&path),
+        &["rev-parse", "--path-format=absolute", "--git-dir"],
     )
-    .is_err()
-    {
-        return Ok(None);
+    .ok();
+    let made = added
+        .and_then(|_| write(dir, &owned))
+        .and_then(|()| include(&repo, Path::new(&path), picks));
+    if let Err(e) = made {
+        unregister(&owned).map_err(|r| io::Error::other(format!("{e}; rollback failed: {r}")))?;
+        return Err(e);
     }
-    if git(repo, &["merge-base", "--is-ancestor", &branch, &owned.base]).is_ok() {
-        git(repo, &["branch", "-D", &branch])?;
-        return Ok(None);
-    }
-    Ok(Some(branch))
+    Ok(())
 }
 
 /// At the daemon's start: undoes each create that failed and couldn't undo itself, and removes
-/// its session once it has.
+/// its session once it has; then each archive, restore or delete cut short.
 pub fn sweep(data: &Path) {
     for id in ids(data) {
         let dir = session_dir(data, &id);
@@ -386,80 +462,11 @@ pub fn sweep(data: &Path) {
             let _ = fs::remove_dir_all(&dir);
         }
     }
+    // Archives, restores and deletes cut short finish or roll back [D35, D180].
+    crate::session::sweep(data);
 }
 
-/// The first launch of a worktree session in a trusted project with a setup script runs the
-/// script first, in the worktree, once: its stdin is empty so it can't take the message meant for
-/// the agent, its output goes to `setup.log`, and how it ended to `setup.exit`. A failure doesn't
-/// stop the agent (proposed). A script started before and never ended was interrupted: it's
-/// recorded so and not run again.
-pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
-    let (started, exit) = (spec.dir.join("setup.started"), spec.dir.join("setup.exit"));
-    if !matches!(read(&spec.dir), Ok(Some(owned)) if !owned.failed) || exit.exists() {
-        return argv;
-    }
-    if started.exists() {
-        let _ = write_atomic(&exit, b"interrupted");
-        return argv;
-    }
-    let script = projects::list(data)
-        .unwrap_or_default()
-        .into_iter()
-        .find(|p| Some(&p.id) == spec.project.as_ref())
-        .filter(|p| p.trusted == Some(true))
-        .map(|p| p.setup)
-        .unwrap_or_default();
-    if script.trim().is_empty() {
-        return argv;
-    }
-    let path = |name: &str| spec.dir.join(name).display().to_string();
-    // The script stays an argument; renaming the tail wakes the folder-mtime gate in the index.
-    let line = r#"if (set -C; : >"$2") 2>/dev/null; then
-    : >"$3.raw"
-    (cd "$5" && /bin/sh -c "$1") </dev/null >"$3.raw" 2>&1 &
-    pid=$!
-    while kill -0 "$pid" 2>/dev/null; do
-        tail -c 8192 "$3.raw" >"$3.tmp" && mv -f "$3.tmp" "$3"
-        sleep 1
-    done
-    wait "$pid"; code=$?
-    tail -c 8192 "$3.raw" >"$3.tmp" && mv -f "$3.tmp" "$3"
-    rm -f "$3.raw"
-    printf '%s\n' "$code" >"$4.tmp" && mv -f "$4.tmp" "$4"
-fi
-shift 5; exec "$@""#;
-    let head = ["/bin/sh", "-c", line, "sh"].map(String::from);
-    let files = [
-        script,
-        path("setup.started"),
-        path("setup.log"),
-        path("setup.exit"),
-        path("worktree"),
-    ];
-    head.into_iter().chain(files).chain(argv).collect()
-}
-
-/// How the session's setup script went, for its row: null when none ran; else running, done,
-/// failed (with its code) or interrupted. `alive` says whether its host's child still runs.
-pub fn setup_state(dir: &Path, alive: bool) -> serde_json::Value {
-    if !dir.join("setup.started").exists() {
-        return serde_json::Value::Null;
-    }
-    let exit = fs::read_to_string(dir.join("setup.exit")).ok();
-    let (state, code) = match exit.as_deref().map(str::trim) {
-        None if alive => ("running", None),
-        None | Some("interrupted") => ("interrupted", None),
-        Some("0") => ("done", Some(0)),
-        Some(code) => ("failed", code.parse::<i64>().ok()),
-    };
-    let tail = (|| -> io::Result<String> {
-        let mut log = File::open(dir.join("setup.log"))?;
-        let start = log.metadata()?.len().saturating_sub(8192);
-        log.seek(SeekFrom::Start(start))?;
-        let mut bytes = vec![];
-        log.take(8192).read_to_end(&mut bytes)?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
-    })()
-    .unwrap_or_default();
-    serde_json::json!({"state": state, "code": code, "tail": tail})
+/// Whether the session has a worktree made in full.
+pub(crate) fn made(dir: &Path) -> bool {
+    matches!(read(dir), Ok(Some(owned)) if !owned.failed)
 }

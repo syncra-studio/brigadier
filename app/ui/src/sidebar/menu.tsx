@@ -6,6 +6,7 @@ import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
 import { Dot, Pencil, Pin, Unpin } from "../icons";
+import { ArchiveMenuItem } from "../sessions/archive";
 import { markUnread, pin } from "./actions";
 import type { SessionRow } from "./words";
 
@@ -29,6 +30,7 @@ export function RowMenuItems({ row, active, onRename }: { row: SessionRow; activ
         Mark as unread
         <DropdownMenuShortcut>⇧⌘U</DropdownMenuShortcut>
       </DropdownMenuItem>
+      <ArchiveMenuItem row={row} />
     </>
   );
 }

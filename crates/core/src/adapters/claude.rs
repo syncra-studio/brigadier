@@ -11,6 +11,8 @@ use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
+mod clean;
+
 pub struct Claude;
 
 impl Adapter for Claude {
@@ -253,8 +255,7 @@ impl Adapter for Claude {
     }
 
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
-        let dir = project_dir(spec);
-        vec![dir.join(format!("{resume}.jsonl")), dir.join(resume)]
+        clean::external(spec, resume)
     }
 
     /// Its prompt history keeps the terminal's prompts, by conversation id [D35].
@@ -294,7 +295,7 @@ impl Adapter for Claude {
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
         let dir = project_dir(spec);
-        vec![dir.join("memory"), dir]
+        vec![dir.join("memory"), dir, clean::scratch(spec)]
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

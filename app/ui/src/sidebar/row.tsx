@@ -1,4 +1,5 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
+import type { MouseEvent, ReactNode } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
@@ -73,7 +74,10 @@ export function SessionRowItem({
   nested = false,
   offline = false,
   held,
+  picked = false,
+  menu,
   onOpen,
+  onClick,
   onRename,
 }: {
   row: SessionRow;
@@ -87,12 +91,18 @@ export function SessionRowItem({
   onRename: (row: SessionRow) => void;
   /** The gallery's box: the card shows there, held open. */
   held?: HTMLElement;
+  /** One of several picked with ⌘- or Shift-click [D185]. */
+  picked?: boolean;
+  /** Its menu, in place of the live row's (an archived row's Restore and Delete…). */
+  menu?: ReactNode;
+  /** A click with its keys, in place of opening it. */
+  onClick?: (event: MouseEvent) => void;
 }) {
   const mark = active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark;
   const words = statusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
-  const items = <RowMenuItems row={row} active={active} onRename={() => onRename(row)} />;
+  const items = menu ?? <RowMenuItems row={row} active={active} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/row relative" />}>
@@ -100,7 +110,12 @@ export function SessionRowItem({
           <TooltipTrigger
             delay={CARD_DELAY_MS}
             render={
-              <NavRow aria-current={active ? "page" : undefined} className={cx("pe-1.5", nested && "ps-8", badged && "h-9")} onClick={() => onOpen(row.id)} />
+              <NavRow
+                aria-current={active ? "page" : undefined}
+                data-picked={picked || undefined}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
+                onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
+              />
             }
           >
             {badged && project && <ProjectBadge name={project.name} />}

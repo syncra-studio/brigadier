@@ -8,10 +8,11 @@ pub mod norm;
 pub mod projects;
 pub mod repos;
 mod send;
-mod session;
+pub mod session;
 pub mod switch;
 pub mod terminal;
 pub mod thread;
+mod worktree_setup;
 pub mod worktrees;
 
 use brigadier_frames::log::{self, Reader};
@@ -28,7 +29,6 @@ use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
 pub use send::{Call, Running, level, recover, send};
-pub use session::delete;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {

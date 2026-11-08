@@ -15,6 +15,7 @@ import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
+import { ArchivedBar } from "./sessions/archived";
 import { Demo } from "./session/Demo";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
@@ -161,6 +162,8 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
                 <Thread
                   source={threadSource}
                   footer={
+                    // Read-only while archived: its bar restores it [D180, D198].
+                    row?.archived ? <ArchivedBar row={row} /> :
                     row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
                     row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>
                   }

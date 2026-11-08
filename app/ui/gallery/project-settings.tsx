@@ -35,7 +35,7 @@ function fake(with_: Partial<SettingsSource> = {}): SettingsSource {
 const FAKE = fake();
 
 /** A dialog held open in its own box, as the app shows it. */
-function Frozen({ label, frame, tall, children }: { label: string; frame: string; tall?: boolean; children: ReactNode }) {
+export function Frozen({ label, frame, tall, children }: { label: string; frame: string; tall?: boolean; children: ReactNode }) {
   return (
     <State label={label}>
       <Held className={`${tall ? "h-232" : "h-80"} w-160 overflow-hidden rounded-surface`}>
