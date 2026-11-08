@@ -67,6 +67,8 @@ pub(super) fn start(
     password: &str,
 ) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
     let quiet = SINK.get().is_some();
+    std::fs::create_dir_all(super::super::home_path(".local/share/opencode"))
+        .map_err(|e| e.to_string())?;
     let mut child = Command::new(exe)
         .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
         .env("OPENCODE_PASSWORD", password)

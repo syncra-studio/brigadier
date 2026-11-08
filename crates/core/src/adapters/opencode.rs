@@ -28,7 +28,26 @@ const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
 
 impl OpenCode {
     fn env(&self, spec: &Spec) -> Vec<(String, String)> {
-        base_env(spec, &self.exe().unwrap_or_default(), self.keys())
+        let mut env = base_env(spec, &self.exe().unwrap_or_default(), self.keys());
+        // Keep credentials in its normal database; even output missed during a stream drop is
+        // session-owned and removed on delete [D35, D89].
+        env.extend([
+            (
+                "XDG_DATA_HOME".into(),
+                spec.dir.join("runtime").display().to_string(),
+            ),
+            (
+                "XDG_STATE_HOME".into(),
+                spec.dir.join("state").display().to_string(),
+            ),
+            (
+                "OPENCODE_DB".into(),
+                home_path(".local/share/opencode/opencode.db")
+                    .display()
+                    .to_string(),
+            ),
+        ]);
+        env
     }
 
     /// Its own command on a private server, bounded; what it printed, or why it failed.
