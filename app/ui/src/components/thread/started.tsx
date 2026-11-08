@@ -31,17 +31,14 @@ export function StartedLine({
 }) {
   if (error) {
     return (
-      <ErrorLine
-        size="sm"
-        error={`Couldn’t start the session · ${error}`}
-        actions={
-          onPutBack && (
-            <Button variant="link-blue" size={null} onClick={onPutBack}>
-              Put back
-            </Button>
-          )
-        }
-      />
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+        <ErrorLine size="sm" error={`Couldn’t start the session · ${error}`} className="min-w-0 wrap-anywhere" />
+        {onPutBack && (
+          <Button variant="link-blue" size={null} onClick={onPutBack}>
+            Put back
+          </Button>
+        )}
+      </div>
     );
   }
   const words = starting ? "Starting a new session" : base ? `Started a new session from ${base}` : "Started a new session";
