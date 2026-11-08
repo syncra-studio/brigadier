@@ -6,7 +6,7 @@
 
 use super::OpenCode;
 use super::control::rules;
-use super::grants::{grant, skipping};
+use super::grants::skipping;
 use super::server::{self, SINK, Shared, command, say};
 use crate::Spec;
 use serde_json::{Value, json};
@@ -192,17 +192,11 @@ fn pass(
         let mut v: Value = serde_json::from_slice(&body).unwrap_or_default();
         if v["decision"] == "always" {
             // Held for the session here, never saved as OpenCode's lasting rule [D193].
-            let ask = state.lock().unwrap().asked.get(at(4)).cloned();
-            let Some(ask) = ask else {
+            if !state.lock().unwrap().asked.contains_key(at(4)) {
                 return refuse(client, "This request isn't waiting any more.");
-            };
+            }
             v["decision"] = "once".into();
             state.lock().unwrap().always.insert(at(4).into());
-            grant(
-                server,
-                state,
-                json!({"action": ask["action"], "save": ask["save"]}),
-            );
             body = v.to_string().into_bytes();
         }
     }

@@ -250,9 +250,19 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         ),
         "permission.replied" => {
             let id = d["requestID"].as_str().unwrap_or("");
-            st.asked.remove(id);
-            if st.always.remove(id) {
+            let ask = st.asked.remove(id);
+            if st.always.remove(id) && d["reply"] != "reject" {
                 v["data"]["grant"] = true.into();
+                drop(st);
+                say(v);
+                if let Some(ask) = ask {
+                    grant(
+                        server,
+                        state,
+                        json!({"action": ask["action"], "save": ask["save"]}),
+                    );
+                }
+                return;
             }
         }
         "form.created" if d["form"]["metadata"]["kind"] == "question" => {
