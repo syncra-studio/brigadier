@@ -3,9 +3,10 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "../components/button";
 import { Input } from "../components/input";
 import { Select } from "../components/select";
-import { useDaemon } from "../daemon";
+import { type Row, useDaemon } from "../daemon";
 import { Spinner } from "../icons";
 import { addProject, useProjects } from "../projects/projects";
+import type { SessionRow } from "../sidebar/words";
 import { type Agent, checkAll, errorText, run, store, useAgents } from "./api";
 
 /**
@@ -21,6 +22,18 @@ async function addPicked(): Promise<void> {
 
 /** The form's project, kept outside it so ⌘K's search can choose one, as the old app's did [D196]. */
 export const startProject = store("");
+
+const starting = store<Row | null>(null);
+
+/** A start shows at once; Rust's row replaces it under the same id [D30]. */
+export function useStartingRows(rows: SessionRow[] | undefined): SessionRow[] | undefined {
+  const pending = starting.use();
+  const known = pending && rows?.some((row) => row.id === pending.id);
+  useEffect(() => {
+    if (known) starting.set(null);
+  }, [known]);
+  return pending && !known ? [...(rows ?? []), pending] : rows;
+}
 
 export function StartForm() {
   const { daemon } = useDaemon();
@@ -77,10 +90,13 @@ export function StartForm() {
     setPending(true);
     setError(null);
     const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const sent = Date.now();
+    starting.set({ id, title: text.trim().split(/\r?\n/, 1)[0], state: "starting", reason: null, mark: "working", resets: null, sent, finished: 0, project: chosenProject, backend: "", updated: sent, items: 0, error: null });
     try {
       await run(["start", id, "--backend", chosenAgent, "--project", chosenProject, "--model", chosenModel, "--text", text.trim()]);
       window.location.hash = `#thread/${encodeURIComponent(id)}`;
     } catch (cause) {
+      starting.set(null);
       setError(errorText(cause));
       setPending(false);
     }

@@ -11,6 +11,7 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, SettingsSlider } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
+import { useStartingRows } from "../onboarding/start";
 import { openSearch } from "../palette/palette";
 import { openAddProject, setShowProject } from "../projects/store";
 import { markUnread, pin, rename, useShown } from "./actions";
@@ -78,7 +79,7 @@ export function AppSidebar({
   const list = useRef<HTMLDivElement>(null);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
-  const shown = useShown(rows);
+  const shown = useShown(useStartingRows(rows));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
   const pinned = shown?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
