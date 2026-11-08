@@ -182,8 +182,24 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
     }
     if let (Ok((_, out)), true) = (&result, c["open"].is_object()) {
         let v: Value = serde_json::from_str(out).unwrap_or_default();
+        let session = super::super::s(&v, &["data", "id"]);
+        // A new helper follows from here; earlier conversation turns are already in the log.
+        let (code, body) = server
+            .request(
+                "GET",
+                &format!("/api/session/{session}/message?limit=1"),
+                &Value::Null,
+            )
+            .map_err(|e| e.to_string())?;
+        if code >= 300 {
+            return Err(format!(
+                "OpenCode couldn't read the conversation tail: {code} {body}"
+            ));
+        }
+        let tail: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
         let mut st = state.lock().unwrap();
-        st.session = super::super::s(&v, &["data", "id"]).into();
+        st.session = session.into();
+        st.newest = super::super::s(&tail["data"][0], &["id"]).into();
         st.grants = c["grants"].as_array().cloned().unwrap_or_default();
     }
     if c["grant"].is_object() {
