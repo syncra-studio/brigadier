@@ -301,6 +301,22 @@
       translate: calc(var(--spacing) * -0.75) 0;
     }
   }
+  /* The jump button's three dots while a reply streams: each rises in turn. */
+  --animate-wave-dot: wave-dot 1s ease-in-out infinite;
+  @keyframes wave-dot {
+    0%,
+    10%,
+    70%,
+    100% {
+      transform: translateY(0);
+    }
+    25% {
+      transform: translateY(1.2px);
+    }
+    55% {
+      transform: translateY(calc(var(--spacing) * -0.5));
+    }
+  }
   --animate-spin: spin 1s linear infinite;
   @keyframes spin {
     to {
@@ -350,6 +366,25 @@
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
+}
+
+@utility wave-dot {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: var(--animate-wave-dot);
+    &:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+    &:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+  }
+}
+
+/* A user's message cut 20 lines down, or further, to the end of a code block crossing that line (message.tsx
+   measures it). */
+@utility user-message-cut {
+  max-height: attr(data-cut px, var(--spacing-user-message));
+  overflow-y: clip;
 }
 
 @utility app-no-drag {
@@ -680,4 +715,16 @@
   margin-inline: calc(var(--spacing) * -3);
   padding-inline: calc(var(--spacing) * 3);
   min-width: calc(100% + var(--spacing) * 6);
+}
+
+/* Gallery only, generated where used: the "Old app" column (D22) draws the kit as the old app did, with
+   the arrow cursor, no press and the 10px icon-button corner. Deleted with the column. */
+@utility old-app {
+  --radius-control: 0.625rem;
+  & :where(button, label, [role="tab"], [role="radio"]) {
+    cursor: default !important;
+  }
+  & * {
+    scale: none !important;
+  }
 }

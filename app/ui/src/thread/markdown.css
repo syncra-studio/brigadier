@@ -64,6 +64,14 @@
   & :not(pre) > code {
     @apply rounded-control bg-muted px-1.5 py-0.5 font-mono text-code-inline;
   }
+  /* On the user's bubble: any unbroken run (a long path) breaks anywhere, and on its muted fill inline code takes
+     a light wash. */
+  [data-bubble] > & {
+    @apply wrap-anywhere;
+    & :not(pre) > code {
+      @apply bg-fill-hover;
+    }
+  }
   & table {
     @apply my-3 block w-full overflow-x-auto border-collapse text-sm first:mt-0 last:mb-0;
   }

@@ -3,12 +3,12 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Body } from "../src/components/thread/body";
-import { UserBubble } from "../src/components/thread/message";
+import { JumpSign, UserBubble } from "../src/components/thread/message";
 import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work";
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
-import { Row, Section, State } from "./parts";
+import { Compare, Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const RUNNING: Turn = { id: "t-run", status: "running", startedAt: NOW - 12_000, endedAt: null };
@@ -101,6 +101,14 @@ const agent = (id: string, progress: Progress): Extract<Item, { kind: "childAgen
 });
 
 const USER = "Can you make the thread rows match the old app, and check the shell box against a failing test?";
+const MD_USER = "Two things:\n1. Make **the bubble** render `inline code`\n2. Keep each line\nas typed";
+const CODE_USER = [
+  ...Array.from({ length: 16 }, (_, i) => `Line ${i + 1} before the code.`),
+  "```ts",
+  ...Array.from({ length: 8 }, (_, i) => `const step${i + 1} = ${i + 1};`),
+  "```",
+  "After the code.",
+].join("\n");
 const LONG_USER = Array.from({ length: 28 }, (_, i) => `Line ${i + 1} of a long pasted message.`).join("\n");
 
 /** Ticks once a second while the gallery is open: the live copies' clock. */
@@ -288,20 +296,57 @@ export function Thread() {
         </Row>
       </Section>
       <Section title="Thread · messages">
-        <Row name="user: hover (time, copy) · long (Show more) · sending · not sent · unconfirmed · dimmed · system line">
+        <Compare name="user: first (dated) · hover (time, copy) · long (Show more) · markdown · code block across the cut · opened · system line">
+          <Wide label="dated (first, or over an hour after the last): today · last week">
+            <Body item={{ ...base("u0"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 }} turn={DONE} step={false} dated />
+            <Body item={{ ...base("u0b"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 4 * 86_400_000 }} turn={DONE} step={false} dated />
+          </Wide>
           <Wide label="hover" frozen="hover">
             {item({ ...base("u1"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 })}
           </Wide>
           <Wide label="long">{item({ ...base("u2"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
-          <Wide label="sending · not sent · unconfirmed · dimmed (look only: the states session sets them)">
+          <Wide label="markdown, line breaks kept">{item({ ...base("u4"), kind: "message", role: "user", text: MD_USER, streaming: false })}</Wide>
+          <Wide label="long, a code block across the cut (cut after it)">{item({ ...base("u5"), kind: "message", role: "user", text: CODE_USER, streaming: false })}</Wide>
+          <Wide label="long, opened" open>{item({ ...base("u2o"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
+          <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
+        </Compare>
+        <Row name="user: sending · not sent · unconfirmed · dimmed (owner's own states, D59/D84-D88: no old equivalent)">
+          <Wide label="look only: the states session sets them">
             <Bubbles />
           </Wide>
-          <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
         </Row>
-        <Row name="answer: streaming (live) · finished with its actions · a long code block">
+        <Compare name="answer: streaming (live) · latest (time always) · older (time on hover) · older, hover · long code block">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
-          <Wide label="finished">{item({ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}</Wide>
+          <Wide label="latest">
+            <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+          </Wide>
+          <Wide label="older">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}</Wide>
+          <Wide label="older, hover" frozen="hover">
+            {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, sentAt: NOW - 60_000 })}
+          </Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false })}</Wide>
+        </Compare>
+      </Section>
+      <Section title="Thread · jump to the latest">
+        <Row name="idle · streaming (dots, live) · streaming, hover (↓) · streaming, focus">
+          {(
+            [
+              ["idle", false, undefined],
+              ["streaming", true, undefined],
+              ["streaming, hover", true, "hover"],
+              ["streaming, focus", true, "focus"],
+            ] as const
+          ).map(([label, running, frozen]) => (
+            <State key={label} label={label} frozen={frozen}>
+              <button
+                type="button"
+                aria-label="Jump to the latest"
+                className="group/jump flex size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+              >
+                <JumpSign running={running} />
+              </button>
+            </State>
+          ))}
         </Row>
       </Section>
       <Section title="Thread · approvals · questions · subagents · compaction · notices · unknown">

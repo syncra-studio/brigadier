@@ -175,7 +175,7 @@ function Composer({ session, wait }: { session: DemoSession; wait: boolean }) {
             event.preventDefault();
             send();
           }}
-          placeholder={live ? "Message the agent" : "Waiting for the link to come back"}
+          placeholder={live ? "Message the agent" : "Waiting to reconnect"}
           className="min-h-control-md flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground"
         />
         <Button onClick={send} aria-busy={busy} disabled={!busy && (!live || !text.trim())}>

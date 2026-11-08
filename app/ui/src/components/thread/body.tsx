@@ -8,17 +8,18 @@ import { ToolRow } from "./tool";
 
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
- * `turn` says whether a question still waits (its turn runs).
+ * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above;
+ * `latest`: the newest answer, whose time always shows.
  */
-export function Body({ item, turn, step }: { item: Item; turn: Turn | undefined; step: boolean }) {
+export function Body({ item, turn, step, dated = false, latest = false }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; latest?: boolean }) {
   switch (item.kind) {
     case "group":
       return null;
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
-      if (item.role === "user") return <UserBubble keep={item.id} text={item.text} time={item.sentAt} />;
+      if (item.role === "user") return <UserBubble keep={item.id} text={item.text} time={item.sentAt} dated={dated} />;
       return (
-        <AssistantMessage text={item.text} streaming={item.streaming} time={item.sentAt}>
+        <AssistantMessage text={item.text} streaming={item.streaming} time={item.sentAt} latest={latest}>
           <Markdown text={item.text} keep={item.id} />
         </AssistantMessage>
       );

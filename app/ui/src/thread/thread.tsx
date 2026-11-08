@@ -5,6 +5,7 @@ import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { ScrollFade } from "../components/scroll-fade";
+import { JumpSign, messageMarks } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
@@ -76,6 +77,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const work = useMemo(() => new Map(workList?.map((each) => [each.turnId, each])), [workList]);
   const items = session?.items;
   const lines = useMemo(lineMaker, []);
+  const marks = useMemo(() => messageMarks(items ?? []), [items]);
   const all = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every later resize to the list's end, so a row added or growing below would move the
@@ -283,7 +285,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
               <Spacer space={space} />
             </div>
           ) : (
-            <LineRow key={line.id} {...line} onToggle={toggle} />
+            <LineRow key={line.id} {...line} dated={marks.dated.has(line.id)} latest={line.id === marks.latest} onToggle={toggle} />
           )
         }
       </VList>
@@ -295,9 +297,9 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           type="button"
           aria-label="Jump to the latest"
           onClick={toBottom}
-          className="absolute bottom-6 left-1/2 z-20 size-control-md -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay"
+          className="group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
         >
-          ↓
+          <JumpSign running={turnList?.at(-1)?.status === "running"} />
         </button>
       )}
     </div>
