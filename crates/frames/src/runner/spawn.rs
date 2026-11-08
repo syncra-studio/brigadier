@@ -5,6 +5,7 @@ use super::{Child, DRAIN, GATE, GATE_FD, Runner, crash_at, fail};
 use crate::spawn::{spawn_pipes, spawn_pty};
 use crate::{log, procs, wire};
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
@@ -25,17 +26,29 @@ impl Runner {
         {
             return fail("changed");
         }
-        let replace = req["replace"] == true
-            && (self.child.lock().unwrap())
-                .as_ref()
-                .is_some_and(|c| (!c.pty || req["switch"].is_object()) && !c.exited);
-        let stops = self.stops.load(Ordering::SeqCst) + replace as u64; // a Stop meanwhile counts
-        if replace {
+        let replace = (self.child.lock().unwrap())
+            .as_ref()
+            .filter(|c| {
+                req["replace"] == true && (!c.pty || req["switch"].is_object()) && !c.exited
+            })
+            .map(|c| c.pid);
+        let stops = self.stops.load(Ordering::SeqCst) + replace.is_some() as u64;
+        if replace.is_some() {
             self.stop("handoff", 2000);
         }
-        if !self.wait_free(replace) {
+        if !self.wait_free(replace.is_some()) {
             return fail("busy");
         }
+        let mut req = Cow::Borrowed(req);
+        if let Some(pid) = replace
+            && let Some(len) = req["if_len"].as_u64()
+        {
+            match self.handoff_len(len, pid, stops) {
+                Ok(len) => req.to_mut()["if_len"] = len.into(),
+                Err(e) => return fail(e),
+            }
+        }
+        let req = req.as_ref();
         if let Some(reply) = self.intent(req) {
             return reply;
         }
