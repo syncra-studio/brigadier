@@ -13,6 +13,8 @@ import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
+import { ProjectSettingsHost } from "./projects/settings";
+import { TrustHost } from "./projects/trust";
 import { Demo } from "./session/Demo";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
@@ -84,6 +86,9 @@ function Shell({ hash, active, children }: { hash: string; active: string | null
         />
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
       </SidebarProvider>
+      {/* Past onboarding only, so it never asks there [D167]. */}
+      <TrustHost active={active} />
+      <ProjectSettingsHost />
     </div>
   );
 }
