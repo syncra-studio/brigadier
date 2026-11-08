@@ -13,24 +13,28 @@ function moved<T extends { id: string }>(items: readonly T[], id: string, to: nu
 }
 
 /** Back to rest, all at once, so nothing slides home. */
-function restore(list: HTMLElement | null, drag: Drag) {
-  list?.removeAttribute("data-reordering");
-  for (const row of drag.rows) {
-    row.element.removeAttribute("data-shift");
-    row.element.removeAttribute("data-grabbed");
+function restore(list: HTMLElement | null) {
+  if (!list) return;
+  list.removeAttribute("data-reordering");
+  list.removeAttribute("data-settling");
+  for (const row of list.children) {
+    row.removeAttribute("data-shift");
+    row.removeAttribute("data-grabbed");
   }
 }
 
 /**
  * Drag-to-reorder for the queue (the old app's): the grabbed row follows the pointer while the others slide
  * into their new slots (the `queue-shift` utility reads `data-shift`), and nothing moves in the DOM until
- * release. The new order shows at once and holds until `items` changes; ↑/↓ on the grip move one step, Esc
- * cancels a drag.
+ * release. On release every row eases from where it was into its slot; the new order holds until `items`
+ * changes. ↑/↓ on the grip move one step, Esc cancels a drag.
  */
 export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMove: (id: string, to: number) => void) {
   const listRef = useRef<HTMLOListElement>(null);
   const active = useRef<Drag | null>(null);
   const [pending, setPending] = useState<{ source: readonly T[]; id: string; to: number } | null>(null);
+  const settle = useRef<{ from: Map<HTMLElement, number>; grabbed?: HTMLElement } | null>(null);
+  const settled = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shown = pending?.source === items ? moved(items, pending.id, pending.to) : items;
   const latest = useRef({ items, shown, onMove });
   useLayoutEffect(() => {
@@ -40,7 +44,7 @@ export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMo
   const measure = (drag: Drag) => {
     const list = listRef.current;
     if (!list) return;
-    restore(list, drag);
+    restore(list);
     drag.scroll = list.scrollTop;
     drag.rows = [...list.querySelectorAll<HTMLElement>(":scope > [data-slot=queue-item]")].flatMap((element, index) => {
       const item = latest.current.shown[index];
@@ -68,17 +72,46 @@ export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMo
       slot += row.size + gap;
     }
   };
+  // Each row starts where it was drawn (`from`: its top on screen) and slides to its slot; the dropped one stays on top.
+  const glide = ({ from, grabbed }: NonNullable<typeof settle.current>) => {
+    const list = listRef.current;
+    if (!list) return;
+    for (const [element, top] of from) element.setAttribute("data-shift", String(top - element.getBoundingClientRect().top));
+    grabbed?.setAttribute("data-grabbed", "");
+    void list.offsetHeight; // style the start before the slide begins
+    list.setAttribute("data-settling", "");
+    for (const element of from.keys()) element.removeAttribute("data-shift");
+    clearTimeout(settled.current);
+    settled.current = setTimeout(
+      () => {
+        list.removeAttribute("data-settling");
+        grabbed?.removeAttribute("data-grabbed");
+      },
+      parseFloat(getComputedStyle(list).getPropertyValue("--duration-reorder")) || 0,
+    );
+  };
+  useLayoutEffect(() => {
+    if (!settle.current) return;
+    glide(settle.current);
+    settle.current = null;
+  });
+
   const finish = (commit: boolean) => {
     const drag = active.current;
     if (!drag) return;
     active.current = null;
-    restore(listRef.current, drag);
+    document.documentElement.removeAttribute("data-grabbing");
+    const from = new Map(drag.rows.map((row) => [row.element, row.element.getBoundingClientRect().top]));
+    const released = { from, grabbed: drag.rows.find((row) => row.id === drag.id)?.element };
+    restore(listRef.current);
     const { items, onMove } = latest.current;
-    const from = items.findIndex((item) => item.id === drag.id);
-    if (commit && from >= 0 && from !== drag.to) {
+    const index = items.findIndex((item) => item.id === drag.id);
+    if (commit && index >= 0 && index !== drag.to) {
+      // Glides once the new order is drawn.
+      settle.current = released;
       setPending({ source: items, id: drag.id, to: drag.to });
       onMove(drag.id, drag.to);
-    }
+    } else glide(released);
   };
 
   // Rows can come, go or move during a drag: measure them again by id, keeping the grabbed one under the pointer.
@@ -96,7 +129,10 @@ export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMo
   useLayoutEffect(() => itemsChanged(items), [items]);
   useLayoutEffect(
     () => () => {
-      if (active.current) restore(listRef.current, active.current);
+      clearTimeout(settled.current);
+      if (!active.current) return;
+      restore(listRef.current);
+      document.documentElement.removeAttribute("data-grabbing");
     },
     [],
   );
@@ -110,6 +146,8 @@ export function useQueueDrag<T extends { id: string }>(items: readonly T[], onMo
       event.currentTarget.setPointerCapture(event.pointerId);
       const drag: Drag = { id, pointer: event.pointerId, origin: event.clientY, at: event.clientY, to: index, rows: [], scroll: 0 };
       active.current = drag;
+      clearTimeout(settled.current);
+      document.documentElement.setAttribute("data-grabbing", "");
       measure(drag);
       paint(drag);
     },

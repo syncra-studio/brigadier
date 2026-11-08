@@ -451,7 +451,17 @@
     [data-reordering] > &:not([data-grabbed]) {
       transition: translate var(--duration-reorder) ease;
     }
+    /* Released: every row, the dropped one too, eases from where it was into its slot. */
+    [data-settling] > & {
+      transition: translate var(--duration-reorder) ease;
+    }
   }
+}
+
+/* A queue drag keeps the closed hand wherever the pointer goes (queue-drag.ts); outside the layers, so it wins. */
+:root[data-grabbing],
+:root[data-grabbing] * {
+  cursor: grabbing;
 }
 
 @utility app-no-drag {
