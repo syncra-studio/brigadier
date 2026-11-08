@@ -97,6 +97,7 @@ export function ModelPicker({
   disabled,
   held,
   search: typed = "",
+  asksSwitch = true,
 }: {
   groups: ModelGroup[];
   value: ModelChoice;
@@ -108,6 +109,8 @@ export function ModelPicker({
   held?: HTMLElement;
   /** The gallery's search, already typed. */
   search?: string;
+  /** False before a session exists: another agent is then just a pick, with nothing to hand off. */
+  asksSwitch?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [browsing, setBrowsing] = useState(value.provider);
@@ -136,7 +139,7 @@ export function ModelPicker({
       model: next.id,
       effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
     };
-    if (provider === value.provider) onChange(choice);
+    if (provider === value.provider || !asksSwitch) onChange(choice);
     else setSwitching(choice);
   };
   const modelRow = (provider: string, entry: Model, mark?: { mark: string | null; label: string }) => {

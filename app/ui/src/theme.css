@@ -190,6 +190,8 @@
   --font-weight-semibold: 600;
 
   --tracking-tooltip: -0.01em;
+  /* Home's "What should we build in {project}?" (the old theme's). */
+  --tracking-hero: -0.015em;
   --tracking-tight: -0.025em;
   --tracking-wide: 0.025em;
   --tracking-wider: 0.05em;
