@@ -77,6 +77,12 @@ export function AppSidebar({
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  const previousRows = useRef(rows);
+  useEffect(() => {
+    // Deleting the open conversation returned Home in the old app.
+    if (active && rows && previousRows.current?.some((row) => row.id === active) && !rows.some((row) => row.id === active)) onNewSession();
+    previousRows.current = rows;
+  }, [rows, active, onNewSession]);
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   const shown = useShown(useStartingRows(rows));
