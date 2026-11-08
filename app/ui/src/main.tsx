@@ -5,11 +5,14 @@ import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
 import { Input } from "./components/input";
 import { WorkingLine } from "./components/thread/work";
+import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, type Row, search, threadSource, useDaemon, useThread, type View } from "./daemon";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { StartForm } from "./onboarding/start";
+import { AddProjectHost } from "./projects/add-project";
+import { listenToMenu } from "./projects/store";
 import { Demo } from "./session/Demo";
 import { TerminalPane } from "./terminal/terminal";
 import { Thread } from "./thread/thread";
@@ -148,6 +151,9 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   );
 }
 
+// View › Add project… and File › Open Folder… (⌘O) [D165].
+listenToMenu();
+
 // Dev-only component gallery (pnpm gallery); other builds drop it.
 const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../gallery/gallery")) : null;
 // `pnpm thread` builds the thread demo in place of the app.
@@ -161,7 +167,11 @@ createRoot(document.getElementById("root")!).render(
         <Screen />
       </Suspense>
     ) : (
-      <App />
+      <>
+        <App />
+        <AddProjectHost />
+        <Toaster className="top-titlebar" />
+      </>
     )}
   </TooltipProvider>,
 );
