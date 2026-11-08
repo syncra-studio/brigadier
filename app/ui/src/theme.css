@@ -198,7 +198,7 @@
   --spacing-surface-inset: 0.25rem;
   /* A scroll view's faded edges. */
   --spacing-fade-top: 1.25rem;
-  --spacing-fade-bottom: 2rem;
+  --spacing-fade-bottom: 3rem;
   /* A popup slides in from its trigger by this much. */
   --spacing-popup-shift: 0.5rem;
   /* A user message shows this much until "Show more"; a shell box this much output. */
