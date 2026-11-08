@@ -1,7 +1,7 @@
 // The composer's pickers (slice 3): the model and permission pills, their popups held open, the Full access confirm, plus live copies.
 import { useState } from "react";
 
-import { FullAccessDialog, type ModelChoice, type ModelGroup, ModelPicker, type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
+import { FullAccessDialog, SwitchAgentDialog, type ModelChoice, type ModelGroup, ModelPicker, type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { Held, Row, Section, State } from "./parts";
 
 const noop = () => {};
@@ -49,10 +49,15 @@ export function PickersGallery() {
         <State label="Open: agents, models, effort">
           <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} />}</Held>
         </State>
-        <State label="A model without effort levels">
+        <State label="A model without effort levels: no footer">
           <Held className="flex h-100 w-140 items-end justify-end">
             {(box) => <ModelPicker groups={GROUPS} value={{ provider: "cloud", model: "mini", effort: null }} onChange={noop} held={box} />}
           </Held>
+        </State>
+      </Row>
+      <Row name="Switch to another agent">
+        <State label="Picked another agent's model">
+          <Held className="h-56 w-88 overflow-hidden rounded-surface">{(box) => <SwitchAgentDialog to="Other agent" onCancel={noop} onConfirm={noop} held={box} />}</Held>
         </State>
       </Row>
       <Row name="Permission pill">
@@ -70,8 +75,11 @@ export function PickersGallery() {
         </State>
       </Row>
       <Row name="Permission menu">
-        <State label="Open, with Learn more">
-          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="acceptEdits" onChange={noop} onLearnMore={noop} held={box} />}</Held>
+        <State label="Open">
+          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="acceptEdits" onChange={noop} held={box} />}</Held>
+        </State>
+        <State label="An agent with two levels">
+          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="ask" levels={["ask", "full"]} onChange={noop} held={box} />}</Held>
         </State>
         <State label="An untrusted folder: Ask only">
           <Held className="flex h-68 w-130 items-end">{(box) => <PermissionPicker value="full" onChange={noop} untrusted held={box} />}</Held>
@@ -80,7 +88,7 @@ export function PickersGallery() {
       <Row name="Full access confirm">
         <State label="Open">
           <Held className="h-140 w-104 overflow-hidden rounded-surface">
-            {(box) => <FullAccessDialog open onCancel={noop} onConfirm={noop} onLearnMore={noop} held={box} />}
+            {(box) => <FullAccessDialog open onCancel={noop} onConfirm={noop} held={box} />}
           </Held>
         </State>
       </Row>
@@ -91,14 +99,14 @@ export function PickersGallery() {
   );
 }
 
-/** Pick a model and effort; Full access asks first. */
+/** Pick a model and effort (another agent's asks first); Full access asks first. */
 function Live() {
   const [model, setModel] = useState(LARGE);
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   return (
     <State label="Live">
       <ModelPicker groups={GROUPS} value={model} onChange={setModel} />
-      <PermissionPicker value={permission} onChange={setPermission} onLearnMore={noop} />
+      <PermissionPicker value={permission} onChange={setPermission} />
     </State>
   );
 }

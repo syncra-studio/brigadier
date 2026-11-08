@@ -2,6 +2,7 @@ import { type KeyboardEvent, useRef, useState } from "react";
 
 import { Check, ChevronDown, Dock, Folder, Globe, HandRaised, ShieldExclamation, ShieldTerminal, Terminal, Warning } from "../../icons";
 import { Button } from "../button";
+import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
@@ -91,97 +92,145 @@ export function ModelPicker({
   const current = groups.find((entry) => entry.provider === value.provider);
   const model = current?.models.find((entry) => entry.id === value.model);
   // A new model keeps the effort when it has that level, else takes its own default.
-  const pick = (provider: string, next: Model) =>
-    onChange({
+  // Another agent's model is a switch (Rust starts a new conversation with a hand-off): asked first.
+  const [switching, setSwitching] = useState<ModelChoice | null>(null);
+  const pick = (provider: string, next: Model) => {
+    const choice = {
       provider,
       model: next.id,
       effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
-    });
+    };
+    if (provider === value.provider) onChange(choice);
+    else setSwitching(choice);
+  };
   return (
-    <Popover open={held ? true : undefined} onOpenChange={(open) => open && setBrowsing(value.provider)}>
-      <PopoverTrigger
-        disabled={disabled}
-        render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
-      >
-        {/* The old pill's tighter gap; the pill's own is set in its base. */}
-        <span className="flex min-w-0 items-center gap-1">
-          <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
-          <span className="truncate text-foreground">{model?.name ?? value.model}</span>
-          {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
-          <ChevronDown className="size-icon-xs" />
-        </span>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        padded={false}
-        aria-label="Model"
-        container={held}
-        collisionAvoidance={held ? STILL : undefined}
-        initialFocus={held ? false : undefined}
-        className="max-w-full overflow-hidden"
-      >
-        {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the lists' arrow keys */}
-        <div data-slot="model-picker" onKeyDown={moveKeys} className="flex h-model-picker-height max-h-available w-model-picker max-w-full flex-col">
-          <div className="flex min-h-0 flex-1">
-            <div role="listbox" aria-label="Agents" data-picker-part="agents" className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5">
-              {groups.map((entry) => (
-                <button
-                  key={entry.provider}
-                  type="button"
-                  role="option"
-                  aria-selected={entry.provider === group?.provider}
-                  onClick={() => setBrowsing(entry.provider)}
-                  className={SIDEBAR_ROW}
-                >
-                  <ProviderMark mark={entry.mark} className="size-icon-md" />
-                  <span className="min-w-0 truncate">{entry.label}</span>
-                  <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.length}</span>
-                </button>
-              ))}
-            </div>
-            <div aria-hidden className="w-px shrink-0 bg-divider" />
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5">
-              <div role="listbox" aria-label={`${group?.label ?? ""} models`} data-picker-part="models" className="flex flex-col gap-0.5">
-                {group?.models.map((entry) => {
-                  const checked = group.provider === value.provider && entry.id === value.model;
-                  return (
-                    <button key={entry.id} type="button" role="option" aria-selected={checked} onClick={() => pick(group.provider, entry)} className={MODEL_ROW}>
-                      <span className="min-w-0 truncate">{entry.name}</span>
-                      {checked && <Check aria-hidden className="size-icon-sm shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-              {group?.models.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models listed yet</p>}
-            </div>
-          </div>
-          <div className="flex h-11 shrink-0 items-center gap-3 border-t border-divider ps-4 pe-2.25">
-            <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              Effort
-              {model && <span className="opacity-75"> · {model.name}</span>}
-            </div>
-            {!model || model.efforts.length === 0 ? (
-              <div className="shrink-0 pe-1.75 text-xs text-muted-foreground">{model ? "No effort levels" : "Pick a model"}</div>
-            ) : (
-              // Arrow keys move between the levels; the group is one Tab stop.
-              <SegmentedRoot
-                aria-label="Effort"
-                value={value.effort ? [value.effort] : []}
-                onValueChange={([level]) => level !== undefined && onChange({ ...value, effort: level })}
-                className="flex shrink-0 items-center gap-0.5"
-              >
-                {model.efforts.map((level) => (
-                  <Segment key={level} value={level} title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined} className={SEGMENT}>
-                    {effortLabel(level)}
-                  </Segment>
+    <>
+      <Popover open={held ? true : undefined} onOpenChange={(open) => open && setBrowsing(value.provider)}>
+        <PopoverTrigger
+          disabled={disabled}
+          render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
+        >
+          {/* The old pill's tighter gap; the pill's own is set in its base. */}
+          <span className="flex min-w-0 items-center gap-1">
+            <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
+            <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+            {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
+            <ChevronDown className="size-icon-xs" />
+          </span>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          padded={false}
+          aria-label="Model"
+          container={held}
+          collisionAvoidance={held ? STILL : undefined}
+          initialFocus={held ? false : undefined}
+          className="max-w-full overflow-hidden"
+        >
+          {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the lists' arrow keys */}
+          <div data-slot="model-picker" onKeyDown={moveKeys} className="flex h-model-picker-height max-h-available w-model-picker max-w-full flex-col">
+            <div className="flex min-h-0 flex-1">
+              <div role="listbox" aria-label="Agents" data-picker-part="agents" className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5">
+                {groups.map((entry) => (
+                  <button
+                    key={entry.provider}
+                    type="button"
+                    role="option"
+                    aria-selected={entry.provider === group?.provider}
+                    onClick={() => setBrowsing(entry.provider)}
+                    className={SIDEBAR_ROW}
+                  >
+                    <ProviderMark mark={entry.mark} className="size-icon-md" />
+                    <span className="min-w-0 truncate">{entry.label}</span>
+                    <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.length}</span>
+                  </button>
                 ))}
-              </SegmentedRoot>
+              </div>
+              <div aria-hidden className="w-px shrink-0 bg-divider" />
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5">
+                <div role="listbox" aria-label={`${group?.label ?? ""} models`} data-picker-part="models" className="flex flex-col gap-0.5">
+                  {group?.models.map((entry) => {
+                    const checked = group.provider === value.provider && entry.id === value.model;
+                    return (
+                      <button key={entry.id} type="button" role="option" aria-selected={checked} onClick={() => pick(group.provider, entry)} className={MODEL_ROW}>
+                        <span className="min-w-0 truncate">{entry.name}</span>
+                        {checked && <Check aria-hidden className="size-icon-sm shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {group?.models.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models listed yet</p>}
+              </div>
+            </div>
+            {/* Hidden when the model has no levels (some agents report none). */}
+            {model && model.efforts.length > 0 && (
+              <div className="flex h-11 shrink-0 items-center gap-3 border-t border-divider ps-4 pe-2.25">
+                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  Effort
+                  <span className="opacity-75"> · {model.name}</span>
+                </div>
+                {/* Arrow keys move between the levels; the group is one Tab stop. */}
+                <SegmentedRoot
+                  aria-label="Effort"
+                  value={value.effort ? [value.effort] : []}
+                  onValueChange={([level]) => level !== undefined && onChange({ ...value, effort: level })}
+                  className="flex shrink-0 items-center gap-0.5"
+                >
+                  {model.efforts.map((level) => (
+                    <Segment key={level} value={level} title={model.defaultEffort === level && value.effort !== level ? "Default" : undefined} className={SEGMENT}>
+                      {effortLabel(level)}
+                    </Segment>
+                  ))}
+                </SegmentedRoot>
+              </div>
             )}
           </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      <SwitchAgentDialog
+        to={switching && (groups.find((entry) => entry.provider === switching.provider)?.label ?? switching.provider)}
+        onCancel={() => setSwitching(null)}
+        onConfirm={() => {
+          if (switching) onChange(switching);
+          setSwitching(null);
+        }}
+      />
+    </>
+  );
+}
+
+/** "Switch to X?": the chat goes on with another agent, as a new conversation it hands what's done to. */
+export function SwitchAgentDialog({
+  to,
+  onCancel,
+  onConfirm,
+  held,
+}: {
+  /** The agent's name; null while closed. */
+  to: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  /** The gallery's box to hold it open in, not modal and not taking focus. */
+  held?: HTMLElement;
+}) {
+  const confirm = useRef<HTMLButtonElement>(null);
+  // Kept while the dialog animates out.
+  const [name, setName] = useState(to ?? "");
+  if (to !== null && to !== name) setName(to);
+  return (
+    <Dialog open={to !== null} modal={!held} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent container={held} initialFocus={held ? false : confirm}>
+        <ConfirmForm
+          title={`Switch to ${name}?`}
+          description={`The chat goes on with ${name} in a new conversation. It gets a hand-off of everything so far, so nothing is lost.`}
+          confirm="Switch"
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+          confirmRef={confirm}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -194,6 +243,8 @@ const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typ
   { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
 ];
 
+const ALL_LEVELS = LEVELS.map((each) => each.level);
+
 /**
  * The permission pill and menu, opening upward: "How should the agent's actions be approved?", each level with
  * its icon and one line, a check on the one in use, Full access in orange and confirmed before it turns on. In
@@ -202,12 +253,15 @@ const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typ
 export function PermissionPicker({
   value: chosen,
   onChange,
+  levels = ALL_LEVELS,
   untrusted = false,
   onLearnMore,
   held,
 }: {
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
+  /** The levels the agent has, from its adapter; one it lacks isn't offered. */
+  levels?: readonly PermissionLevel[];
   untrusted?: boolean;
   /** Opens the permission levels' help; without it there is no "Learn more". */
   onLearnMore?: () => void;
@@ -262,7 +316,7 @@ export function PermissionPicker({
               else onChange(next);
             }}
           >
-            {LEVELS.map(({ level, label: name, detail, Icon: LevelIcon }) => {
+            {LEVELS.filter((each) => levels.includes(each.level)).map(({ level, label: name, detail, Icon: LevelIcon }) => {
               const orange = level === "full";
               return (
                 <DropdownMenuRadioItem
