@@ -236,10 +236,10 @@ export function AidsGallery() {
         </State>
       </Row>
       <Row name="Commands in the text">
-        <State label="Picked, typed mid-sentence, in backticks; a path stays plain; click one">
+        <State label="Picked, typed mid-sentence, in backticks; a path and a run-only command stay plain; click one">
           <Card
             commands={{ commands: COMMANDS, onRun: noop }}
-            initial={draft("/review the queue, then use the /docs skill. Not `/docs` here, and /usr/bin stays plain.\n```\n/kit in a code block\n```")}
+            initial={draft("/review the queue, then use the /docs skill. Not `/docs` here; /usr/bin and /compact (it runs) stay plain.\n```\n/kit in a code block\n```")}
           />
         </State>
       </Row>
