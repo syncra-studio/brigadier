@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::fold::{self, Owner};
-use brigadier_core::{self as core, Folded, norm, projects};
+use brigadier_core::{self as core, Folded, adapters, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
@@ -55,6 +55,8 @@ struct Marks {
     unread: bool,
     seen: u64,
     setup: Value,
+    /// The follow-up queue (`queue.json`), null when empty.
+    queue: Value,
 }
 
 impl Marks {
@@ -69,6 +71,7 @@ impl Marks {
             seen: ms("seen").unwrap_or(0),
             // Cache the files; whether an unfinished setup is still alive is checked every tick.
             setup: core::worktrees::setup_state(dir, true),
+            queue: crate::queue::row(dir),
         }
     }
 }
@@ -230,12 +233,18 @@ impl Index {
             if !alive && setup["state"] == "running" {
                 setup["state"] = "interrupted".into();
             }
+            let backend = match f.fold.backend.as_str() {
+                "" => e.spec.as_ref().map_or("", |s| s.backend.as_str()),
+                b => b,
+            };
+            let steer = adapters::get(backend).is_some_and(|a| a.can().steer);
             let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": f.fold.backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project, "setup": setup, "model": e.spec.as_ref().and_then(|s| core::as_run(s, &f.fold, &f.fold.backend, None).model),
-                             "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op});
+                             "effort": f.fold.efforts.get(&f.fold.backend), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
+                             "queue": e.marks.queue, "steer": steer, "running": !f.fold.turns.is_empty()});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

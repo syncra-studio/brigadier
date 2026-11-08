@@ -7,6 +7,7 @@ pub mod index;
 mod mirror;
 mod models;
 pub mod owner;
+pub mod queue;
 mod setup;
 mod switching;
 mod title;
@@ -26,7 +27,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off] | unread <id>
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full]
+       brigadier level <id> [ask|auto|full] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier terminal <id> [--cols N] [--rows N]
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier index [--cold] | transcript <id> | thread <id>
@@ -224,21 +225,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(Value::Null)
         }
-        "stop" => {
-            let id = arg(args, 1)?;
-            // The agent's own stop first; the kill only when it has none or it didn't stop in time.
-            if let Ok(Some(stopped)) = control::interrupt(data, id) {
-                return Ok(stopped);
-            }
-            match owner::call(data, id, json!({"op": "stop", "by": "user"})) {
-                Ok(v) => Ok(v),
-                // No owner: nothing can be running under us, but leftovers recorded in the log still go.
-                Err(e) => {
-                    let f = core::fold(&core::session_dir(data, id), true)?;
-                    Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold)}))
-                }
-            }
-        }
+        "stop" => queue::stop(data, arg(args, 1)?),
+        "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
