@@ -46,8 +46,8 @@ export type FileChange = {
   change: "added" | "modified" | "deleted" | "renamed";
   /** The old path of a renamed file. */
   from: string | null;
-  /** Unified diff. */
-  diff: string;
+  /** Unified diff; null when the CLI reported none (some report only the path and kind): its row then shows no diff, never an empty one. */
+  diff: string | null;
   /** Lines added and removed; null when not reported. */
   added: number | null;
   removed: number | null;

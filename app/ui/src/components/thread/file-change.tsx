@@ -18,7 +18,7 @@ export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
  * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a dot for a
- * created (blue) or deleted (red) file. A finished one opens to its diff. A declined change reads "Rejected".
+ * created (blue) or deleted (red) file. A finished one opens to its diff; one without a diff doesn't open. A declined change reads "Rejected".
  */
 export function FileChangeRow({ keep, change, progress }: { keep: string; change: FileChange; progress: Progress }) {
   const { added, removed } = change;
@@ -46,8 +46,15 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
       {change.change === "deleted" && <span className="size-1.5 rounded-capsule bg-destructive" />}
     </>
   );
+  if (change.diff === null)
+    return (
+      <div className={ROW}>
+        {head}
+        <span className="ms-1 flex shrink-0 items-center gap-1.5">{trail}</span>
+      </div>
+    );
   return (
-    <OpeningRow keep={keep} trail={trail} detail={<DiffCard keep={keep} change={change} />}>
+    <OpeningRow keep={keep} trail={trail} detail={<DiffCard keep={keep} change={change} diff={change.diff} />}>
       {head}
     </OpeningRow>
   );
@@ -68,9 +75,9 @@ function Counts({ added, removed, quiet = false }: { added: number; removed: num
  * A file's diff: its name, counts and copy over the lines, added green, removed red. The thread's code block
  * draws it (coloured once it settles, folded past 14 lines), in the diff card's frame.
  */
-export function DiffCard({ keep, change }: { keep: string; change: FileChange }) {
+export function DiffCard({ keep, change, diff: text }: { keep: string; change: FileChange; diff: string }) {
   const { added, removed } = change;
-  const diff = change.diff.replace(/\n$/, "");
+  const diff = text.replace(/\n$/, "");
   const count = diff ? diff.split("\n", MAX_DIFF_LINES + 1).length : 0;
   const title = (
     <>
@@ -86,7 +93,7 @@ export function DiffCard({ keep, change }: { keep: string; change: FileChange })
     <div className="mt-1 flex min-w-0 flex-col overflow-clip rounded-shell border border-border">
       <div className="flex min-h-8 items-center gap-2 bg-fill-subtle ps-3 pe-1 text-sm text-action-hover">
         {title}
-        {count > 0 && <CopyButton text={change.diff} tooltip="Copy diff" size="icon-xs" className="ms-auto" />}
+        {count > 0 && <CopyButton text={text} tooltip="Copy diff" size="icon-xs" className="ms-auto" />}
       </div>
       <p className="px-3 py-2 text-sm text-muted-foreground">{empty}</p>
     </div>

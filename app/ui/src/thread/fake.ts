@@ -110,7 +110,9 @@ function diff(fake: Fake): FileChange {
   const counted = fake.rand() < 0.95;
   const added = counted ? body.filter((line) => line.startsWith("+")).length : null;
   const removed = counted ? body.filter((line) => line.startsWith("-")).length : null;
-  return { path, change, from: null, diff: [`@@ -1,${lines.length} +1,${body.length} @@`, ...body].join("\n"), added, removed };
+  // Some come without a diff: only the path and kind were reported.
+  const diff = fake.rand() < 0.9 ? [`@@ -1,${lines.length} +1,${body.length} @@`, ...body].join("\n") : null;
+  return { path, change, from: null, diff, added, removed };
 }
 
 const ACTIONS: ApprovalAction[] = ["command", "command", "edit", "network", "permission", "plan", "land", "message", "browser", "other"];
