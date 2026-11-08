@@ -139,8 +139,8 @@ async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: s
 }
 ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
 
-// The standard menus plus Add project's: File › Open Folder… (⌘O, the picker, several at once) and
-// View › Add project…, each told to the page, which does the rest [D165].
+// The standard menus plus File › New Session (⌘N) [D184] and Add project's: File › Open Folder… (⌘O, the
+// picker, several at once) and View › Add project…, each told to the page, which does the rest [D165].
 function setMenu(): void {
   const tell = (window: BrowserWindow | undefined, command: string, paths?: string[]) => window?.webContents.send("menu", command, paths);
   const openFolder = async (window: BrowserWindow | undefined) => {
@@ -153,6 +153,8 @@ function setMenu(): void {
       {
         label: "File",
         submenu: [
+          { label: "New Session", accelerator: "CmdOrCtrl+N", click: (_item, window) => tell(window as BrowserWindow | undefined, "new-session") },
+          { type: "separator" },
           { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
           { type: "separator" },
           { role: process.platform === "darwin" ? "close" : "quit" },

@@ -16,7 +16,7 @@ declare global {
       pickFolder(): Promise<string | null>;
       /** Folders picked, several with `multi`, starting at `at` (`~/` is home); none when cancelled. */
       pickFolders(options?: { at?: string; multi?: boolean }): Promise<string[]>;
-      /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project". */
+      /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;

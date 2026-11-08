@@ -19,7 +19,7 @@ type ModelRow = Row & {
 type Rust = { provider: string; label: string; mark: string | null; unavailable: "install" | "sign-in" | null; models: { id: string; name: string; efforts: string[]; default_effort: string | null }[] };
 
 /** Rust's groups in the kit picker's shape. */
-const asGroups = (groups: Rust[]): ModelGroup[] =>
+export const asGroups = (groups: Rust[]): ModelGroup[] =>
   groups.map((group) => ({ ...group, models: group.models.map(({ default_effort, ...model }) => ({ ...model, defaultEffort: default_effort ?? undefined })) }));
 
 /**

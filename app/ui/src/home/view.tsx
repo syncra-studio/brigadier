@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../components/composer/composer";
@@ -46,6 +46,8 @@ export type HomeProps = {
   onSetUp?: (provider: string) => void;
   /** Why the models can't be listed. */
   modelError?: string | null;
+  /** The permission level pill, 1t's LevelPicker, mounted by the caller. */
+  level?: ReactNode;
   offline: boolean;
   /** The draft's text as last left. */
   initial?: Draft;
@@ -125,7 +127,7 @@ export function HomeView(props: HomeProps) {
               onSubmit={() => send(field.current?.parts() ?? [])}
             />
             <ComposerFooter>
-              {/* The permission pill goes here (1t). */}
+              {props.level}
               <ComposerTools />
               {props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
               <SendButton empty={empty} running={false} canStop={false} blocked={blocked} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
