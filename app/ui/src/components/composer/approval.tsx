@@ -8,7 +8,8 @@ import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { RailItem } from "./rail";
-import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, actionButton, CodeSpans, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
+import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
+import { ComposerField } from "./field";
 
 /** An approval as Rust sends it (msgs/w18-fields-4.md, boss D177). Agent text (`reason`, `body`) passes as is. */
 export type PendingApproval = {
@@ -151,29 +152,37 @@ export type ApprovalStep = { index: number; total: number; onStep: (index: numbe
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
  * session] [Allow once]. Esc denies from anywhere in the view; allowing takes a click, or Enter on an Allow the
  * user moved to: a stray Enter never allows. A message to another session is the exception: the card takes
- * focus, and Enter on it sends (its ⏎ shows while it has focus). While an answer goes (`busy`) the buttons wait,
- * and a refusal shows its `error` on the card.
+ * focus, and Enter on it sends (its ⏎ shows while it has focus). With `onReason` a field above the buttons takes
+ * what the agent should do instead (D192): Deny sends it, Enter in it denies with it, empty it denies as before.
+ * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card.
  */
 export function ApprovalCard({
   approval,
   onAnswer,
   busy,
   error,
+  reason = "",
+  onReason,
   step,
   onReply,
   footer,
 }: {
   approval: PendingApproval;
-  onAnswer: (decision: ApprovalDecision) => void;
+  /** `reason`: what the user typed with a deny, trimmed; none when empty. */
+  onAnswer: (decision: ApprovalDecision, reason?: string) => void;
   busy: boolean;
   error: string | null;
+  /** The deny reason typed so far (read as the card mounts), and as it changes; without `onReason` no field. */
+  reason?: string;
+  onReason?: (text: string) => void;
   step?: ApprovalStep;
   /** In the composer's place: brings the message field back. */
   onReply?: () => void;
   footer?: ReactNode;
 }) {
+  const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
-    if (!busy) onAnswer(decision);
+    if (!busy) onAnswer(decision, decision === "deny" ? typed.trim() || undefined : undefined);
   };
   const deny = () => answer("deny");
   const message = approval.action === "message";
@@ -211,6 +220,30 @@ export function ApprovalCard({
         </div>
       </div>
       {shown.body}
+      {onReason && !shown.noDeny && (
+        <div className="px-2 pt-2">
+          <ActionFreeText
+            field={
+              <div className="min-w-0 flex-1">
+                <ComposerField
+                  size="card"
+                  label="What to do instead"
+                  placeholder="Tell the agent what to do instead"
+                  initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
+                  onChange={(parts) => {
+                    const text = parts.filter((part) => typeof part === "string").join("");
+                    setTyped(text);
+                    onReason(text);
+                  }}
+                  onSubmit={() => typed.trim() && deny()}
+                  // Esc leaves the field; the next one denies, as anywhere else.
+                  onEscape={() => document.activeElement instanceof HTMLElement && document.activeElement.blur()}
+                />
+              </div>
+            }
+          />
+        </div>
+      )}
       <ActionCardActions
         leading={
           <>
@@ -280,17 +313,23 @@ export function ApprovalSlot({
   placement = "composer",
   onAnswer,
   onReply,
+  denyReason = true,
 }: {
   approvals: readonly PendingApproval[];
   placement?: "composer" | "rail";
-  onAnswer: (id: string, decision: ApprovalDecision) => Promise<void>;
+  /** `reason`: what to do instead, typed with a deny. */
+  onAnswer: (id: string, decision: ApprovalDecision, reason?: string) => Promise<void>;
   onReply?: () => void;
+  /** The deny reason field (D192). */
+  denyReason?: boolean;
 }) {
   // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
   const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   // Answers on their way and refusals, by id: paging away and back keeps them.
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  // Deny reasons typed, by id: paging away and back keeps them. Read as each card mounts, so not state.
+  const [reasons] = useState(() => new Map<string, string>());
   // One that came while nobody could see the window is simply there when it shows again.
   const [opens] = useState(() => document.visibilityState === "visible");
   const found = approvals.findIndex((each) => each.id === shown.id);
@@ -298,11 +337,11 @@ export function ApprovalSlot({
   const approval = approvals[at];
   if (!approval) return null;
   const { id } = approval;
-  const answer = (decision: ApprovalDecision) => {
+  const answer = (decision: ApprovalDecision, reason?: string) => {
     if (sending.has(id)) return;
     setSending((ids) => new Set(ids).add(id));
     setErrors((map) => new Map([...map].filter(([key]) => key !== id)));
-    onAnswer(id, decision)
+    onAnswer(id, decision, reason)
       .catch((cause: unknown) => setErrors((map) => new Map(map).set(id, cause instanceof Error ? cause.message : String(cause))))
       .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
   };
@@ -313,6 +352,8 @@ export function ApprovalSlot({
       onAnswer={answer}
       busy={sending.has(id)}
       error={errors.get(id) ?? null}
+      reason={reasons.get(id)}
+      onReason={denyReason ? (text) => reasons.set(id, text) : undefined}
       step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
       onReply={placement === "composer" ? onReply : undefined}
       footer={placement === "rail" && <MoreWaiting more={approvals.length - 1} />}

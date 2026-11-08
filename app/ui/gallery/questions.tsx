@@ -7,6 +7,7 @@ import { ComposerField } from "../src/components/composer/field";
 import { type PendingQuestion, QuestionCard } from "../src/components/composer/question";
 import { ComposerRail, RailItem, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
+import { ApprovalRow, QuestionRow } from "../src/components/thread/cards";
 import { ModelPill } from "./composer";
 import { Row, State } from "./parts";
 
@@ -38,11 +39,6 @@ function Act({ run, children }: { run: (card: HTMLElement) => void; children: Re
 }
 const key = (card: HTMLElement, name: string) => card.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
 const click = (card: HTMLElement, selector: string, at = 0) => card.querySelectorAll<HTMLElement>(selector)[at]?.click();
-const type = (card: HTMLElement, words: string) => {
-  card.querySelector<HTMLElement>("[contenteditable]")!.focus();
-  document.execCommand("insertText", false, words);
-};
-
 /** A card as it waits on the rail. */
 function Card({ question, onAnswer = () => later(600) }: { question: PendingQuestion; onAnswer?: (answers: (string | null)[]) => Promise<void> }) {
   return (
@@ -68,6 +64,16 @@ function Composer() {
         <SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />
       </ComposerFooter>
     </ComposerCard>
+  );
+}
+
+/** A decided card's thread row, and the composer back in its place. */
+function Decided({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-reading flex-col gap-3">
+      {children}
+      <Composer />
+    </div>
   );
 }
 
@@ -146,11 +152,6 @@ export function QuestionRows() {
             <Card question={ask("q5", [CHECKS])} />
           </Act>
         </State>
-        <State label="Typed: Submit">
-          <Act run={(card) => type(card, "Use bun, the scripts already assume it")}>
-            <Card question={ask("q6", [MANAGER])} />
-          </Act>
-        </State>
         <State label="A round: 2 of 3, after picking">
           <Act run={(card) => click(card, "[data-slot=action-option]")}>
             <Card question={ask("q7", [MANAGER, CHECKS, NAME], "Release setup")} />
@@ -175,6 +176,23 @@ export function QuestionRows() {
             </ComposerRail>
             <Composer />
           </div>
+        </State>
+      </Row>
+      <Row name="Once decided: the card goes, the thread keeps its row (open it)">
+        <State label="An approval allowed">
+          <Decided>
+            <ApprovalRow keep="decided-a1" action="command" title="Run the type checker to see what broke" detail="pnpm typecheck" decision="approved" waiting={false} />
+          </Decided>
+        </State>
+        <State label="An approval denied">
+          <Decided>
+            <ApprovalRow keep="decided-a2" action="edit" title="Allow editing these files?" detail="app/ui/src/theme.css" decision="denied" waiting={false} />
+          </Decided>
+        </State>
+        <State label="A question answered">
+          <Decided>
+            <QuestionRow keep="decided-q1" question={STORAGE.text} answer="In the session's folder (Recommended)" waiting={false} />
+          </Decided>
         </State>
       </Row>
       <Row name="Questions live (Esc puts one aside)">

@@ -59,10 +59,10 @@ function Live() {
   const [approvals, setApprovals] = useState<PendingApproval[]>(KINDS.slice(0, 3).map(([, each]) => each));
   const [replying, setReplying] = useState(false);
   const [log, setLog] = useState<string[]>([]);
-  const answer = async (id: string, decision: ApprovalDecision) => {
+  const answer = async (id: string, decision: ApprovalDecision, reason?: string) => {
     await later(500);
     setApprovals((list) => list.filter((each) => each.id !== id));
-    setLog((lines) => [...lines.slice(-3), `${decision} · ${id}`]);
+    setLog((lines) => [...lines.slice(-3), `${decision}${reason ? ` “${reason}”` : ""} · ${id}`]);
   };
   const more = () => setApprovals((list) => [...list, ...KINDS.slice(3, 6).map(([, each]) => ({ ...each, id: `${each.id}-${list.length}` }))]);
   const slot = approvals.length > 0 && !replying;
