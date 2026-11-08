@@ -6,20 +6,25 @@
 //! `{"id", "op": "subscribe"}` answers `{"re", "n", "rows"}`, the list at N, and then pushes
 //! `{"n": N+1, "rows", "gone"}`, `{"n": N+2, …}` in order [D40, D71]. A client that sees a gap
 //! subscribes again for a fresh snapshot; a new connection always starts with one.
+//!
+//! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
+//! replaces an older one (`replace_older`).
 
 use brigadier::index::{self, Index};
 use brigadier_core::data_dir;
-use brigadier_frames::{take_lock, wire};
+use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, Permissions};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
+use std::mem::size_of;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{process, thread};
 
 const PROTOCOL_VERSION: u32 = 2;
@@ -53,8 +58,14 @@ fn main() -> io::Result<()> {
     fs::set_permissions(&data, Permissions::from_mode(0o700))?;
     // The kernel frees this lock however a daemon dies, so whoever holds it owns the socket and the
     // index, and two daemons starting together can't replace each other's.
-    let Some(_lock) = take_lock(&data.join("daemon.lock"))? else {
-        return Ok(());
+    let lock = data.join("daemon.lock");
+    let _lock = match take_lock(&lock)? {
+        Some(held) => held,
+        None if replace_older(&data)? => match take_lock(&lock)? {
+            Some(held) => held,
+            None => return Ok(()),
+        },
+        None => return Ok(()),
     };
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
@@ -76,6 +87,62 @@ fn main() -> io::Result<()> {
         }
         thread::sleep(TICK);
     }
+}
+
+/// An app update starts its daemon while the old one still runs. Stops the running one if its build
+/// number is lower, and says whether it did. A daemon from before build numbers (no `build` in its
+/// hello or refusal) counts as older. A refusal alone is never a reason, and a daemon that doesn't
+/// answer or is the same build or newer stays, so two app copies never replace each other's.
+fn replace_older(data: &Path) -> io::Result<bool> {
+    // Nothing answering means a daemon still starting up: leave it be.
+    let Ok(mut stream) = UnixStream::connect(data.join("daemon.sock")) else {
+        return Ok(false);
+    };
+    if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
+        return Ok(false);
+    }
+    // The kernel names the listener, whatever version it is.
+    let mut pid: libc::pid_t = 0;
+    let mut len = size_of::<libc::pid_t>() as libc::socklen_t;
+    let got = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERPID,
+            (&raw mut pid).cast(),
+            &mut len,
+        )
+    };
+    if got != 0 || pid <= 0 {
+        return Ok(false);
+    }
+    stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
+    stream.write_all(&PROTOCOL_VERSION.to_be_bytes())?;
+    let Some(first) = wire::read_frame(&mut stream)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return Ok(false);
+    };
+    if first["build"]
+        .as_u64()
+        .is_some_and(|b| b >= wire::build() as u64)
+    {
+        return Ok(false);
+    }
+    drop(stream);
+    let lock = data.join("daemon.lock");
+    for sig in [libc::SIGTERM, libc::SIGKILL] {
+        unsafe { libc::kill(pid, sig) };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while lock_held(&lock) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        if !lock_held(&lock) {
+            break;
+        }
+    }
+    Ok(true)
 }
 
 /// Applies one pass's changes as update N+1 and sends it, in order, to every subscriber. Requests
@@ -116,7 +183,7 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
     stream.set_read_timeout(None)?;
     let version = u32::from_be_bytes(version);
     if version != PROTOCOL_VERSION {
-        let refused = json!({"status": "refused", "error": format!("protocol version mismatch: daemon speaks {PROTOCOL_VERSION}, client sent {version}")});
+        let refused = json!({"status": "refused", "error": format!("protocol version mismatch: daemon speaks {PROTOCOL_VERSION}, client sent {version}"), "build": wire::build()});
         return wire::write_frame(&mut stream, &refused.to_string());
     }
     // One writer per connection, so replies and pushes never interleave and a slow client never
@@ -132,8 +199,7 @@ fn serve(mut stream: UnixStream, conn: u64, state: &Shared, data: &Path) -> io::
         }
         let _ = writer.shutdown(std::net::Shutdown::Both);
     });
-    let hello =
-        json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION")});
+    let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
     let _ = out.send(hello.to_string());
     while let Ok(text) = wire::read_frame(&mut stream) {
         let req: Value = serde_json::from_str(&text).unwrap_or(Value::Null);

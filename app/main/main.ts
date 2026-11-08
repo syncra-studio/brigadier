@@ -1,7 +1,6 @@
-// Only supervises: opens the window, starts the daemon if nothing answers, wires the page to the utility process.
+// Only supervises: opens the window, starts the daemon, wires the page to the utility process.
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
-import { connect } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -25,14 +24,12 @@ mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 app.setPath("userData", path.join(dataDir, "chromium"));
 protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true } }]);
 
-function startDaemonIfNothingAnswers(): void {
-  const probe = connect(socketPath);
-  probe.once("connect", () => probe.destroy());
-  probe.once("error", () => {
-    const daemon = spawn(daemonPath, { detached: true, stdio: "ignore" });
-    daemon.once("error", (error) => console.error("Could not start the daemon:", error));
-    daemon.unref();
-  });
+// The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
+// older one, which may answer but refuse this app.
+function startDaemon(): void {
+  const daemon = spawn(daemonPath, { detached: true, stdio: "ignore" });
+  daemon.once("error", (error) => console.error("Could not start the daemon:", error));
+  daemon.unref();
 }
 
 function serveUi(): void {
@@ -72,7 +69,7 @@ function openWindow(): void {
   };
   const fork = (): void => {
     utility = utilityProcess.fork(path.join(__dirname, "socket.js"), [socketPath]);
-    utility.on("message", (message) => message === "down" && startDaemonIfNothingAnswers());
+    utility.on("message", (message) => message === "down" && startDaemon());
     // A dead utility process must not leave the page showing a stale "connected".
     utility.once("exit", () => {
       if (window.isDestroyed()) return;
@@ -87,7 +84,7 @@ function openWindow(): void {
 
 app.on("window-all-closed", () => app.quit());
 void app.whenReady().then(() => {
-  startDaemonIfNothingAnswers();
+  startDaemon();
   serveUi();
   openWindow();
 });

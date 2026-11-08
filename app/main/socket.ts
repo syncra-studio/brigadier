@@ -22,7 +22,7 @@ function connect(): void {
   current.on("close", () => {
     if (socket !== current) return;
     port.postMessage(null);
-    // Main starts the daemon again if nothing answers.
+    // Main starts a daemon, which stays only if none of this build or newer runs.
     process.parentPort.postMessage("down");
     retry = setTimeout(connect, RETRY_MS);
   });
