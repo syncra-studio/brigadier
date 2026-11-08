@@ -51,8 +51,36 @@ fn read(data: &Path) -> io::Result<Option<Vec<Project>>> {
 pub fn list(data: &Path) -> io::Result<Vec<Project>> {
     match read(data)? {
         Some(list) => Ok(list),
-        None => change(data, |_| Ok(())).map(|(list, ())| list),
+        None => locked(data).map(|(_, list)| list),
     }
+}
+
+/// Holds `projects.lock` with the current records, migrating once if needed. A session start
+/// holds it through project validation and writing its record, never through starting the host.
+pub fn locked(data: &Path) -> io::Result<(fs::File, Vec<Project>)> {
+    fs::create_dir_all(data)?;
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join("projects.lock"))?;
+    lock.lock()?;
+    let list = match read(data)? {
+        Some(list) => list,
+        None => {
+            let list = migrated(data);
+            write(data, &list)?;
+            list
+        }
+    };
+    Ok((lock, list))
+}
+
+fn write(data: &Path, list: &[Project]) -> io::Result<()> {
+    let records = serde_json::to_vec_pretty(&Records {
+        projects: list.to_vec(),
+    })?;
+    write_atomic(&data.join("projects.json"), &records)
 }
 
 /// Changes the records under `projects.lock`, so the CLI and the daemon never lose each other's
@@ -61,22 +89,9 @@ fn change<T>(
     data: &Path,
     f: impl FnOnce(&mut Vec<Project>) -> io::Result<T>,
 ) -> io::Result<(Vec<Project>, T)> {
-    fs::create_dir_all(data)?;
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(data.join("projects.lock"))?;
-    lock.lock()?;
-    let mut list = match read(data)? {
-        Some(list) => list,
-        None => migrated(data),
-    };
+    let (_lock, mut list) = locked(data)?;
     let out = f(&mut list)?;
-    let records = serde_json::to_vec_pretty(&Records {
-        projects: list.clone(),
-    })?;
-    write_atomic(&data.join("projects.json"), &records)?;
+    write(data, &list)?;
     Ok((list, out))
 }
 
@@ -240,15 +255,14 @@ pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
 /// Removes a project with no sessions. Removing one with sessions deletes them, under its own
 /// dialog, which 1w builds [D172, D179]; until then it's refused.
 pub fn remove(data: &Path, id: &str) -> io::Result<()> {
-    let projects = list(data)?;
-    let mut roots = Roots::default();
-    let sessions = ids(data)
-        .iter()
-        .filter_map(|s| load(data, s).ok())
-        .filter(|spec| of(spec, &projects, &mut roots).as_deref() == Some(id))
-        .count();
     change(data, |list| {
         let name = find(list, id)?.name.clone();
+        let mut roots = Roots::default();
+        let sessions = ids(data)
+            .iter()
+            .filter_map(|s| load(data, s).ok())
+            .filter(|spec| of(spec, list, &mut roots).as_deref() == Some(id))
+            .count();
         if sessions > 0 {
             return err(format!(
                 "\"{name}\" still has {sessions} session(s): delete them first"

@@ -103,9 +103,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
             // A project's session runs in its folder [D165].
+            let (projects_lock, projects) = core::projects::locked(data)?;
             let project = flag(args, "--project")
                 .map(|p| {
-                    let found = core::projects::list(data)?.into_iter().find(|r| r.id == p);
+                    let found = projects.into_iter().find(|r| r.id == p);
                     found.ok_or_else(|| io::Error::other(format!("no project {p}")))
                 })
                 .transpose()?;
@@ -129,6 +130,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::create(data, &spec)?
             };
+            drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
                 Some(text) => send(data, &spec, text, flag(args, "--cid"), None),
