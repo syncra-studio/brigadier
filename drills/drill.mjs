@@ -548,9 +548,13 @@ async function catalogue() {
     for (const [kind, text, wait] of [['before', 'slow:3000 say:1', 300], ['mid', 'tree:30', 800], ['after', 'say:1', 150]]) {
       cli(['send', 'st', `${cid()} ${text}`])
       await sleep(wait)
+      const agent = agentsOf('st')[0]?.pid
       const s = cli(['stop', 'st'])
       const st = status(['st']).st
-      const ok = s.out.ok === true && ['stopped', 'idle'].includes(st.state) && agentsOf('st').length === 0
+      const agents = agentsOf('st')
+      const ok = s.out.ok === true && (s.out.how === 'interrupt'
+        ? st.state === 'stopped' && st.turn === null && st.helpers === 0 && agents.length === 1 && agents[0].pid === agent
+        : ['stopped', 'idle'].includes(st.state) && agents.length === 0)
       stops[kind].push(ok ? Math.round(s.ms) : `fail:${st.state}:${JSON.stringify(s.out)}`)
     }
   }
