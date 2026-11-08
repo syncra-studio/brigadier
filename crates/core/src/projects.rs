@@ -1,0 +1,281 @@
+//! Projects [D165, D171]: Brigadier's own record of each repository sessions run in, kept in
+//! `projects.json` in the data folder (proposed). Later steps only add fields: the trust answer's
+//! use (1h), worktrees (1l), project settings (1r).
+
+use crate::adapters::{home_path, setup};
+use crate::{Spec, check_id, ids, load, write_atomic};
+use brigadier_frames::log::now_ms;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fs::{self, OpenOptions};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Proposed: a name is at most this many characters.
+const NAME_CHARS: usize = 80;
+/// Proposed: a git that hangs (a stalled network folder) never holds up an add.
+const GIT_SECS: u64 = 5;
+
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Debug)]
+#[serde(default)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    /// The top folder of the repository's main checkout, canonical.
+    pub folder: String,
+    /// None until the owner answers "Trust this folder?" [D166, D167].
+    pub trusted: Option<bool>,
+    pub added: u64,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(default)]
+struct Records {
+    projects: Vec<Project>,
+}
+
+fn err<T>(message: String) -> io::Result<T> {
+    Err(io::Error::other(message))
+}
+
+fn read(data: &Path) -> io::Result<Option<Vec<Project>>> {
+    match fs::read(data.join("projects.json")) {
+        Ok(bytes) => Ok(Some(serde_json::from_slice::<Records>(&bytes)?.projects)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Every project, oldest first. The first read moves `profile.json`'s plain paths over, once.
+pub fn list(data: &Path) -> io::Result<Vec<Project>> {
+    match read(data)? {
+        Some(list) => Ok(list),
+        None => change(data, |_| Ok(())).map(|(list, ())| list),
+    }
+}
+
+/// Changes the records under `projects.lock`, so the CLI and the daemon never lose each other's
+/// writes, and writes them; returns the list and what `f` gave.
+fn change<T>(
+    data: &Path,
+    f: impl FnOnce(&mut Vec<Project>) -> io::Result<T>,
+) -> io::Result<(Vec<Project>, T)> {
+    fs::create_dir_all(data)?;
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join("projects.lock"))?;
+    lock.lock()?;
+    let mut list = match read(data)? {
+        Some(list) => list,
+        None => migrated(data),
+    };
+    let out = f(&mut list)?;
+    let records = serde_json::to_vec_pretty(&Records {
+        projects: list.clone(),
+    })?;
+    write_atomic(&data.join("projects.json"), &records)?;
+    Ok((list, out))
+}
+
+/// `profile.json`'s plain paths as records (proposed): each resolved to its main checkout, or
+/// kept as it was when git can't, so no project silently goes.
+fn migrated(data: &Path) -> Vec<Project> {
+    let profile: Value = fs::read(data.join("profile.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let now = now_ms();
+    let mut list: Vec<Project> = vec![];
+    for path in profile["projects"].as_array().into_iter().flatten() {
+        let Some(path) = path.as_str().map(Path::new) else {
+            continue;
+        };
+        let folder = root(path).unwrap_or_else(|| path.to_path_buf());
+        let folder = folder.display().to_string();
+        if !list.iter().any(|p| p.folder == folder) {
+            let id = format!("p-{now:x}-{}", list.len());
+            list.push(record(id, &folder, None, now));
+        }
+    }
+    list
+}
+
+fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
+    let base = Path::new(folder).file_name().map(|n| n.to_string_lossy());
+    let name = name.map_or_else(|| base.unwrap_or_default().into_owned(), String::from);
+    Project {
+        id,
+        name,
+        folder: folder.into(),
+        trusted: None,
+        added,
+    }
+}
+
+fn clean(name: &str) -> io::Result<String> {
+    let name: String = name.trim().chars().take(NAME_CHARS).collect();
+    if name.is_empty() {
+        return err("A project needs a name.".into());
+    }
+    Ok(name)
+}
+
+/// The top folder of the main checkout of the repository `dir` is in, canonical: a linked
+/// worktree gives its main checkout's, so every worktree of one repository is one project.
+pub fn root(dir: &Path) -> Option<PathBuf> {
+    let git = |args: &[&str]| {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(dir).args(args);
+        let out = setup::run(&mut command, GIT_SECS).ok()?;
+        out.status.success().then_some(out.stdout)
+    };
+    let top = git(&["rev-parse", "--show-toplevel"])?;
+    let top = String::from_utf8_lossy(&top)
+        .trim_end_matches('\n')
+        .to_string();
+    // The first entry is the main checkout, unless the repository is bare.
+    let worktrees = git(&["worktree", "list", "--porcelain", "-z"]).unwrap_or_default();
+    let worktrees = String::from_utf8_lossy(&worktrees);
+    let first: Vec<&str> = worktrees
+        .split('\0')
+        .take_while(|f| !f.is_empty())
+        .collect();
+    let main = first
+        .first()
+        .and_then(|f| f.strip_prefix("worktree "))
+        .filter(|_| !first.contains(&"bare"));
+    fs::canonicalize(main.unwrap_or(&top)).ok()
+}
+
+/// Refuses a folder no project may be in: Brigadier's own data folder or one inside it.
+fn own(data: &Path, dir: &Path) -> io::Result<()> {
+    if fs::canonicalize(data).is_ok_and(|d| dir.starts_with(d)) {
+        return err("That folder belongs to Brigadier itself.".into());
+    }
+    Ok(())
+}
+
+/// The guards for a folder that isn't a repository yet, as the old app had them: Brigadier's own
+/// folder, and the home folder or one above it. For making or cloning one there (1g).
+pub fn plain(data: &Path, dir: &Path) -> io::Result<()> {
+    let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    own(data, &dir)?;
+    let home = fs::canonicalize(home_path("")).unwrap_or_else(|_| home_path(""));
+    if home.starts_with(&dir) {
+        return err("Brigadier won't make a repository of your home folder or a folder above it. Choose a folder inside it.".into());
+    }
+    Ok(())
+}
+
+/// What adding `path` would add: its repository's main checkout, after every guard. Writes
+/// nothing, so a step can ask before it touches the disk.
+pub fn check(data: &Path, path: &str) -> io::Result<PathBuf> {
+    match fs::metadata(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return err(format!("{path} does not exist"));
+        }
+        Err(e) => return err(format!("{path}: {e}")),
+        Ok(m) if !m.is_dir() => return err("That's a file. Choose a folder.".into()),
+        Ok(_) => {}
+    }
+    let Some(folder) = root(Path::new(path)) else {
+        plain(data, Path::new(path))?;
+        return err(format!("{path} is not in a git repository"));
+    };
+    own(data, &folder)?;
+    taken(&list(data)?, &folder)?;
+    Ok(folder)
+}
+
+fn taken(list: &[Project], folder: &Path) -> io::Result<()> {
+    match list.iter().find(|p| Path::new(&p.folder) == folder) {
+        Some(p) => err(format!(
+            "{} is already the project \"{}\"",
+            p.folder, p.name
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Adds the repository `path` is in, under `id` when the app made one to show it at once [D30].
+pub fn add(data: &Path, path: &str, id: Option<&str>, name: Option<&str>) -> io::Result<Project> {
+    let folder = check(data, path)?;
+    let name = name.map(clean).transpose()?;
+    let added = now_ms();
+    let id = id.map_or_else(|| format!("p-{added:x}"), String::from);
+    check_id(&id).or_else(|_| err(format!("invalid project id {id:?}")))?;
+    let (_, project) = change(data, |list| {
+        // Checked again under the lock: another add may have landed since.
+        taken(list, &folder)?;
+        if list.iter().any(|p| p.id == id) {
+            return err(format!("project id {id} is taken"));
+        }
+        let folder = folder.display().to_string();
+        list.push(record(id, &folder, name.as_deref(), added));
+        Ok(list.last().unwrap().clone())
+    })?;
+    Ok(project)
+}
+
+fn find<'a>(list: &'a mut [Project], id: &str) -> io::Result<&'a mut Project> {
+    match list.iter_mut().find(|p| p.id == id) {
+        Some(p) => Ok(p),
+        None => err(format!("no project {id}")),
+    }
+}
+
+pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
+    let name = clean(name)?;
+    let (_, project) = change(data, |list| {
+        let p = find(list, id)?;
+        p.name = name;
+        Ok(p.clone())
+    })?;
+    Ok(project)
+}
+
+/// Removes a project with no sessions. Removing one with sessions deletes them, under its own
+/// dialog, which 1w builds [D172, D179]; until then it's refused.
+pub fn remove(data: &Path, id: &str) -> io::Result<()> {
+    let projects = list(data)?;
+    let mut roots = Roots::default();
+    let sessions = ids(data)
+        .iter()
+        .filter_map(|s| load(data, s).ok())
+        .filter(|spec| of(spec, &projects, &mut roots).as_deref() == Some(id))
+        .count();
+    change(data, |list| {
+        let name = find(list, id)?.name.clone();
+        if sessions > 0 {
+            return err(format!(
+                "\"{name}\" still has {sessions} session(s): delete them first"
+            ));
+        }
+        list.retain(|p| p.id != id);
+        Ok(())
+    })?;
+    Ok(())
+}
+
+/// Each session folder's repository, by its cwd, so a list asks git once per folder.
+pub type Roots = std::collections::HashMap<String, Option<String>>;
+
+/// The project a session is in: the one it was started in, or, for one started without
+/// (before 1a, or from the CLI with only a folder), the project whose main checkout its folder
+/// belongs to (proposed). Reads only; `session.json` is never written.
+pub fn of(spec: &Spec, projects: &[Project], roots: &mut Roots) -> Option<String> {
+    if spec.project.is_some() {
+        return spec.project.clone();
+    }
+    let found = roots
+        .entry(spec.cwd.clone())
+        .or_insert_with(|| root(Path::new(&spec.cwd)).map(|r| r.display().to_string()));
+    let found = found.as_deref()?;
+    projects
+        .iter()
+        .find(|p| p.folder == found)
+        .map(|p| p.id.clone())
+}

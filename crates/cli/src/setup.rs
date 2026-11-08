@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::adapters::{self, Adapter, setup};
-use brigadier_core::{self as core, SETUP, Spec, session_dir};
+use brigadier_core::{self as core, SETUP, Spec, projects, session_dir};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -87,11 +87,35 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "profile" => profile(data, args),
         "projects" => {
-            // A folder picked with Add folder…: its repository, shown ticked and added at the finish.
+            // A folder picked with Add folder…: what adding it would add, after every guard;
+            // nothing is written [D165].
             if let Some(path) = flag(args, "--check") {
-                return Ok(json!({"ok": true, "repo": repo_of(path)?}));
+                let repo = projects::check(data, path)?;
+                let name = repo.file_name().map(|n| n.to_string_lossy().into_owned());
+                return Ok(json!({"ok": true, "repo": repo, "name": name}));
             }
-            let taken = read_profile(data)["projects"].clone();
+            // Each answers with the record, after the daemon has sent the change [D30, D40].
+            let arg = |i: usize| args.get(i).map_or("", String::as_str);
+            match arg(1) {
+                "add" => {
+                    let (id, name) = (flag(args, "--id"), flag(args, "--name"));
+                    let project = projects::add(data, arg(2), id, name)?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "rename" => {
+                    let project = projects::rename(data, arg(2), arg(3))?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
+                "remove" => {
+                    projects::remove(data, arg(2))?;
+                    return Ok(json!({"ok": true}));
+                }
+                _ => {}
+            }
+            let taken: Vec<String> = projects::list(data)?
+                .into_iter()
+                .map(|p| p.folder)
+                .collect();
             let found = thread::scope(|s| {
                 let all = adapters::all().map(|a| s.spawn(move || a.projects()));
                 all.into_iter()
@@ -103,7 +127,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .iter()
                 .filter_map(|p| setup::repo(p))
                 .map(|p| p.display().to_string())
-                .filter(|p| !taken.as_array().into_iter().flatten().any(|t| t == p))
+                .filter(|p| !taken.contains(p))
                 .filter(|p| seen.insert(p.clone()))
                 .take(30)
                 .collect();
@@ -328,27 +352,21 @@ pub fn close(data: &Path, id: &str) -> io::Result<()> {
     }
 }
 
-/// The top folder of the git repository `path` is in.
-fn repo_of(path: &str) -> io::Result<String> {
-    setup::repo(Path::new(path))
-        .filter(|r| r.is_dir())
-        .map(|r| r.display().to_string())
-        .ok_or_else(|| io::Error::other(format!("{path} is not in a git repository")))
-}
-
 fn read_profile(data: &Path) -> Value {
     let p: Value = fs::read(data.join("profile.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     json!({"name": p["name"].as_str().unwrap_or(""), "intro_seen": p["intro_seen"] == true,
-        "onboarded": p["onboarded"] == true, "projects": p["projects"].as_array().cloned().unwrap_or_default()})
+        "onboarded": p["onboarded"] == true})
 }
 
-/// `profile [--name N] [--intro] [--done] [--add P] [--remove P]`: what onboarding keeps, in
-/// `profile.json`. A project is the top folder of a git repository [D45].
+/// `profile [--name N] [--intro] [--done]`: what onboarding keeps, in `profile.json`. Projects
+/// are records of their own (`projects`); a write here drops the plain paths they moved from.
 fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
     let _one = PROFILE.lock().unwrap();
+    // The plain paths move to the records before a write here drops them.
+    projects::list(data)?;
     let mut p = read_profile(data);
     if let Some(name) = flag(args, "--name") {
         p["name"] = name.trim().chars().take(80).collect::<String>().into();
@@ -359,16 +377,6 @@ fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     if has("--done") {
         p["onboarded"] = true.into();
-    }
-    let list = p["projects"].as_array_mut().unwrap();
-    if let Some(path) = flag(args, "--add") {
-        let repo = repo_of(path)?;
-        if !list.iter().any(|x| *x == repo) {
-            list.push(repo.into());
-        }
-    }
-    if let Some(path) = flag(args, "--remove") {
-        list.retain(|x| x != path);
     }
     if args.len() > 1 {
         fs::create_dir_all(data)?;

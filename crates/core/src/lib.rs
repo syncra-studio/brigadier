@@ -5,6 +5,7 @@ mod account;
 pub mod adapters;
 pub mod fold;
 pub mod norm;
+pub mod projects;
 mod send;
 mod session;
 pub mod switch;
@@ -34,6 +35,8 @@ pub struct Spec {
     /// "pipe" for the chat view, "pty" for a real terminal.
     pub mode: String,
     pub cwd: String,
+    /// The project it was started in [D165]; None before 1a, or when started with only a folder.
+    pub project: Option<String>,
     pub model: Option<String>,
     #[serde(default)]
     pub opts: BTreeMap<String, String>,

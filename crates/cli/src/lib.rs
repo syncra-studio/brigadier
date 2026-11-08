@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{env, process, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--cwd D] [--model M] [--opt K=V] [--text T]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pty] [--project P] [--cwd D] [--model M] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B]
        brigadier status [<id>...|--all]
        brigadier stop <id> | recover <id> | delete <id> | owner <id> | up <id>...
@@ -27,7 +27,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--mode pipe|pt
        brigadier index [--cold] | transcript <id> | thread <id>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] [--add P] [--remove P] | projects [--check P]
+       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
        brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -102,10 +102,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .filter_map(|w| w[1].split_once('='))
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
+            // A project's session runs in its folder [D165].
+            let project = flag(args, "--project")
+                .map(|p| {
+                    let found = core::projects::list(data)?.into_iter().find(|r| r.id == p);
+                    found.ok_or_else(|| io::Error::other(format!("no project {p}")))
+                })
+                .transpose()?;
             let cwd = flag(args, "--cwd")
                 .map(String::from)
+                .or_else(|| project.as_ref().map(|p| p.folder.clone()))
                 .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
             let spec = Spec {
+                project: project.map(|p| p.id),
                 id: id.into(),
                 backend: backend.into(),
                 mode: flag(args, "--mode").unwrap_or("pipe").into(),
