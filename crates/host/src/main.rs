@@ -4,13 +4,20 @@
 //!
 //! A watchdog (this binary with `--watchdog`) outlives a killed host just long enough to stop the
 //! child groups it was told about, so nothing runs unsupervised.
+//!
+//! An app update replaces this binary on disk. A host that holds no process then re-execs itself
+//! onto the new one (same pid); one with work keeps its old build until the work ends [D60].
 
 use brigadier_frames::runner::{Groups, Runner};
 use brigadier_frames::{procs, take_lock, wire};
 use serde_json::{Value, json};
+use std::fs::File;
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{env, fs, process, thread};
@@ -24,8 +31,17 @@ fn main() -> io::Result<()> {
         args.first()
             .ok_or_else(|| io::Error::other("usage: brigadier-host <session dir>"))?,
     );
-    let Some(_lock) = take_lock(&dir.join("owner.lock"))? else {
-        return Ok(());
+    // Noted first, so an update landing while this host starts still counts as a change.
+    let exe = env::current_exe()?;
+    let born = stamp(&exe);
+    // A host moving to a new build hands its session lock through exec, still held, so no other
+    // host can take the session in between.
+    let lock = match args.get(1).and_then(|a| a.strip_prefix("--lock-fd=")) {
+        Some(fd) => adopt(fd.parse().map_err(io::Error::other)?)?,
+        None => match take_lock(&dir.join("owner.lock"))? {
+            Some(lock) => lock,
+            None => return Ok(()),
+        },
     };
     let me = procs::info(process::id() as i32).map_or(0, |p| p.start_us);
     fs::write(
@@ -33,37 +49,102 @@ fn main() -> io::Result<()> {
         json!({"pid": process::id(), "start_us": me, "build": wire::build()}).to_string(),
     )?;
 
-    // The watchdog sits in its own process group, so stopping the agent's groups never hits it.
-    let mut dog = Command::new(env::current_exe()?);
-    std::os::unix::process::CommandExt::process_group(&mut dog, 0);
-    let dog = dog
-        .arg("--watchdog")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let pipe = Mutex::new(dog.stdin.expect("piped"));
-    let watch = move |groups: &Groups| {
-        let line: Vec<String> = groups.iter().map(|(g, s)| format!("{g}:{s}")).collect();
-        let _ = writeln!(pipe.lock().unwrap(), "{}", line.join(" "));
+    let dog = Arc::new(Mutex::new(Some(spawn_watchdog(&exe)?)));
+    let watch = {
+        let dog = dog.clone();
+        move |groups: &Groups| {
+            let line: Vec<String> = groups.iter().map(|(g, s)| format!("{g}:{s}")).collect();
+            if let Some(d) = dog.lock().unwrap().as_mut()
+                && let Some(pipe) = d.stdin.as_mut()
+            {
+                let _ = writeln!(pipe, "{}", line.join(" "));
+            }
+        }
     };
 
     let runner = Runner::open(&dir, Box::new(watch))?;
     let listener = wire::bind(&dir.join("s"))?;
+    {
+        let (runner, fd) = (runner.clone(), lock.as_raw_fd());
+        thread::spawn(move || {
+            let mut born = born;
+            loop {
+                thread::sleep(Duration::from_secs(1));
+                let now = stamp(&exe);
+                if now.is_none() || now == born {
+                    continue;
+                }
+                // Spawns wait on this guard, so nothing can start (or inherit the lock) from here on.
+                let Some(_op) = runner.retire() else {
+                    continue;
+                };
+                // Nothing runs: an empty list and EOF let the watchdog exit at once, and it's reaped.
+                if let Some(mut d) = dog.lock().unwrap().take() {
+                    if let Some(mut pipe) = d.stdin.take() {
+                        let _ = writeln!(pipe);
+                    }
+                    let _ = d.wait();
+                }
+                unsafe { libc::fcntl(fd, libc::F_SETFD, 0) };
+                let error = Command::new(&exe)
+                    .arg(&dir)
+                    .arg(format!("--lock-fd={fd}"))
+                    .exec();
+                // Still the old image: carry on as it, with a fresh watchdog, until the file changes again.
+                unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+                let _ = runner.note(&json!({"event": "move_failed", "error": error.to_string()}));
+                match spawn_watchdog(&exe) {
+                    Ok(d) => *dog.lock().unwrap() = Some(d),
+                    Err(_) => process::exit(1),
+                }
+                born = now;
+            }
+        });
+    }
     let handler = move |req: &Value| match req["op"].as_str() {
         // Leaves only when nothing runs, so a session is never left unsupervised by a request.
-        Some("exit") if !runner.busy() && runner.groups().is_empty() => {
-            thread::spawn(|| {
-                thread::sleep(Duration::from_millis(50));
-                process::exit(0)
-            });
-            json!({"ok": true})
-        }
-        Some("exit") => json!({"ok": false, "error": "busy"}),
+        Some("exit") => match runner.retire() {
+            Some(op) => {
+                std::mem::forget(op);
+                thread::spawn(|| {
+                    thread::sleep(Duration::from_millis(50));
+                    process::exit(0)
+                });
+                json!({"ok": true})
+            }
+            None => json!({"ok": false, "error": "busy"}),
+        },
         _ => runner.handle(req),
     };
     wire::serve(listener, Arc::new(handler));
+    drop(lock);
     Ok(())
+}
+
+/// The watchdog sits in its own process group, so stopping the agent's groups never hits it.
+fn spawn_watchdog(exe: &Path) -> io::Result<Child> {
+    Command::new(exe)
+        .process_group(0)
+        .arg("--watchdog")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
+/// Takes over the session lock a moving host passed through exec, still held.
+fn adopt(fd: i32) -> io::Result<File> {
+    if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+/// The executable file's identity: an update that replaces it changes this.
+fn stamp(exe: &Path) -> Option<(u64, i64, i64)> {
+    fs::metadata(exe)
+        .ok()
+        .map(|m| (m.ino(), m.mtime(), m.mtime_nsec()))
 }
 
 /// Reads the latest group list from the host. When the host is gone (EOF), stops those groups:

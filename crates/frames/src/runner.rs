@@ -8,17 +8,20 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::os::fd::{FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 // TIOCSCTTY isn't exported by libc for Apple targets; _IO('t', 97).
 const TIOCSCTTY: libc::c_ulong = 0x2000_7461;
+/// The gate's pipe in the child, and the shell that waits on it and then becomes the agent ($0).
+const GATE_FD: i32 = 3;
+const GATE: &str = r#"IFS= read -r go <&3 || exit 1; exec 3<&-; exec "$0" "$@""#;
 
 pub type Groups = Vec<(i32, u64)>;
 
@@ -33,6 +36,7 @@ pub struct Runner {
     cids: Mutex<HashMap<String, bool>>,
     child: Mutex<Option<Child>>,
     groups: Mutex<Groups>,
+    /// Held by spawn and input, and by `retire` while the host leaves.
     op: Mutex<()>,
     /// Counts stops, so a spawn that was under way during one can tell and honour it.
     stops: AtomicU64,
@@ -110,6 +114,19 @@ impl Runner {
 
     pub fn groups(&self) -> Groups {
         self.groups.lock().unwrap().clone()
+    }
+
+    /// Some when nothing of this session runs. While the guard lives, every spawn and input waits,
+    /// so the caller can exit or exec without leaving work unsupervised.
+    pub fn retire(&self) -> Option<MutexGuard<'_, ()>> {
+        let op = self.op.lock().unwrap();
+        if self.busy() {
+            return None;
+        }
+        let all = procs::all();
+        let mut groups = self.groups.lock().unwrap();
+        groups.retain(|&(g, s)| !procs::group(&all, g, s).is_empty());
+        groups.is_empty().then_some(op)
     }
 
     pub fn handle(self: &Arc<Self>, req: &Value) -> Value {
@@ -204,11 +221,28 @@ impl Runner {
         let Some((program, args)) = argv.split_first() else {
             return fail("empty argv");
         };
-        let mut command = Command::new(program);
+        // The child waits at a gate until its group is logged and the watchdog knows it, so no work
+        // ever runs untracked: if this host dies first, the gate reads EOF and nothing runs [D60].
+        let (gate, mut go) = match io::pipe() {
+            Ok(p) => p,
+            Err(e) => return fail(format!("spawn failed: {e}")),
+        };
+        let gate_fd = gate.as_raw_fd();
+        let mut command = Command::new("/bin/sh");
         command
+            .args(["-c", GATE, *program])
             .args(args)
             .env_clear()
             .current_dir(req["cwd"].as_str().unwrap_or("/"));
+        unsafe {
+            command.pre_exec(move || {
+                // dup2 is a no-op for a pipe already at 3, so close-on-exec is cleared either way.
+                if libc::dup2(gate_fd, GATE_FD) < 0 || libc::fcntl(GATE_FD, libc::F_SETFD, 0) < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
         for (k, v) in req["env"].as_object().into_iter().flatten() {
             command.env(k, v.as_str().unwrap_or(""));
         }
@@ -225,6 +259,15 @@ impl Runner {
                 return json!({"ok": false, "cid": cid, "result": "logged", "error": format!("spawn failed: {e}")});
             }
         };
+        // Drill hook: die between starting the child and logging its group.
+        if std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| {
+            cid.is_some_and(|c| {
+                at.strip_prefix("after_fork:")
+                    .is_some_and(|p| c.starts_with(p))
+            })
+        }) {
+            std::process::abort();
+        }
         let pid = child.id() as i32;
         let start_us = procs::info(pid).map_or(0, |p| p.start_us);
         let record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": argv, "backend": req["backend"], "cli_version": req["cli_version"],
@@ -244,6 +287,8 @@ impl Runner {
             let _ = self.append(log::EXITED, exited.to_string().as_bytes(), false);
             return json!({"ok": false, "cid": cid, "result": "logged", "error": "stopped while starting"});
         }
+        // Open the gate. A child that already died is seen by the wait below.
+        let _ = go.write_all(b"\n");
         let (done, pumped) = mpsc::channel();
         let pumps = outputs.len();
         for (kind, stream) in outputs {

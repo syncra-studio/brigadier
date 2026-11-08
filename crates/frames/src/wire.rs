@@ -1,6 +1,11 @@
-//! The skeleton's socket protocol, unchanged: owner-only socket, peer uid check, a 4-byte version
-//! handshake, then length-prefixed JSON frames. After the handshake each request frame gets exactly
-//! one reply frame. Unknown fields are ignored, so old and new builds can talk.
+//! The host protocol, frozen [D60]: owner-only socket, peer uid check, a 4-byte version handshake,
+//! then length-prefixed JSON frames. After the handshake each request frame gets exactly one reply
+//! frame. Unknown fields are ignored, so old and new builds can talk.
+//!
+//! Hosts outlive app updates, so a client must speak every version a live host could still be on,
+//! v1 and its exact-match handshake included, for as long as such a host can be alive [D60]. A
+//! change adds ops and fields only; an old host answers an unknown op with an error. How many
+//! versions back a build keeps is not settled (proposed: current and previous).
 
 use serde_json::{Value, json};
 use std::fs::{self, Permissions};
