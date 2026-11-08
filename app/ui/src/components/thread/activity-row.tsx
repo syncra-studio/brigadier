@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-import { ChevronRightAlt, EditPencil, File, Globe, MagnifyingGlassSmSearch, Terminal, Tools } from "../../icons";
+import { ChevronRightAlt, EditPencil, File, Globe, MagnifyingGlassSmSearch, RobotHead, Terminal, Tools } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
@@ -32,7 +32,7 @@ const ICONS: Record<StepKind, ComponentType<IconProps>> = {
   search: MagnifyingGlassSmSearch,
   run: Terminal,
   web: Globe,
-  agent: Tools,
+  agent: RobotHead,
   other: Tools,
 };
 
