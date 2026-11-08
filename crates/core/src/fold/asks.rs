@@ -5,6 +5,13 @@ use super::Fold;
 use serde_json::Value;
 
 impl Fold {
+    /// A lost host ends delivered turns; unproven inputs stay available for explicit recovery.
+    pub(crate) fn interrupt(&mut self, reason: Value, ts: u64) {
+        while self.turns.first().is_some_and(|t| t.delivered.is_some()) {
+            self.close("interrupted", reason.clone(), ts);
+        }
+    }
+
     /// A request the agent made: pending in its turn until answered, withdrawn or ended.
     pub(super) fn ask(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("");

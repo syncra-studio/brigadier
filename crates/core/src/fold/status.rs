@@ -4,6 +4,7 @@
 use super::{Fold, Live};
 use crate::adapters;
 use serde_json::{Value, json};
+use std::borrow::Cow;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Owner {
@@ -15,6 +16,11 @@ pub enum Owner {
 
 pub fn status(fold: &Fold, live: &Live) -> Value {
     let (state, reason) = state(fold, live);
+    let mut fold = Cow::Borrowed(fold);
+    if state == "interrupted" && !fold.turns.is_empty() {
+        fold.to_mut().interrupt(reason.clone(), live.now);
+    }
+    let fold = fold.as_ref();
     let turn = fold.turns.first().map(|t| json!({"cid": t.cid, "origin": t.origin, "backend": t.backend, "delivered": t.delivered.is_some(), "began": t.began, "tools": t.tools.len()}));
     let undelivered: Vec<_> = fold
         .turns
