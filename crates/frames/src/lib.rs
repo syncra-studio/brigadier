@@ -4,6 +4,7 @@
 pub mod log;
 pub mod procs;
 pub mod runner;
+pub mod spawn;
 pub mod wire;
 
 use std::fs::{File, OpenOptions, TryLockError};
