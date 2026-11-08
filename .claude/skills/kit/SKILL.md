@@ -44,6 +44,7 @@ How slices 1–4 were built. AGENTS.md binds over all of this.
 - Every focusable shows `focus-visible:focus-ring`.
 - A row keeps its hover look while the pointer is on an icon inside it. The icon gets its own hover on top (D62).
 - Notices go in the composer strip. There's no Banner (D64).
+- Every error line in the kit is drawn by `ErrorLine`, so all errors look the same. An errored user bubble is an `ErrorLine` on one line with an ⓘ tooltip for the whole reason and Try again, and Discard is a trash icon in its always-visible actions row (D87, D88).
 - Text in a checkbox row is centred vertically on the box (D61). Settings keep the old look (D68).
 - Thread rows: a turn's work header shows "worked/waited for" (D73, D76). Approval reads like a question: "Asking for approval · waiting / denied / allowed" (D75). A running subagent stands out with a spinner, a ticking timer and its current step shimmering (D77). Wording is assuring and commanding, never alarming: "Saving context · nothing will be lost" (D78).
 
