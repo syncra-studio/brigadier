@@ -19,9 +19,6 @@ use std::{fs, io};
 const INTENT: &str = "lifecycle.json";
 /// When the session was archived (ms).
 const ARCHIVED: &str = "archived";
-/// O27, proposed and switchable: a restore in a trusted project runs its setup script again
-/// before the next turn, since the worktree's ignored files (node_modules…) went with it [D180].
-const RESTORE_RERUNS_SETUP: bool = true;
 
 fn intent(dir: &Path) -> Option<Value> {
     serde_json::from_slice(&fs::read(dir.join(INTENT)).ok()?).ok()
@@ -120,8 +117,8 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         }
         return Err(e);
     }
-    // Only after the worktree is back, never on an ordinary respawn [D8, D16].
-    if RESTORE_RERUNS_SETUP && project.is_some_and(|p| p.trusted == Some(true)) {
+    // Restore always re-runs setup in trusted projects before the next turn [D263].
+    if project.is_some_and(|p| p.trusted == Some(true)) {
         for name in ["setup.started", "setup.exit", "setup.log"] {
             clear(&spec.dir, name)?;
         }
