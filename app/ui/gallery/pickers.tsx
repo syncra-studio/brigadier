@@ -65,18 +65,18 @@ export function PickersGallery() {
           <PermissionPicker value="ask" onChange={noop} />
         </State>
         <State label="Accept edits">
-          <PermissionPicker value="acceptEdits" onChange={noop} />
+          <PermissionPicker value="auto" onChange={noop} />
         </State>
         <State label="Full access">
           <PermissionPicker value="full" onChange={noop} />
         </State>
         <State label="Hover" frozen="hover">
-          <PermissionPicker value="acceptEdits" onChange={noop} />
+          <PermissionPicker value="auto" onChange={noop} />
         </State>
       </Row>
       <Row name="Permission menu">
         <State label="Open">
-          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="acceptEdits" onChange={noop} held={box} />}</Held>
+          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="auto" onChange={noop} held={box} />}</Held>
         </State>
         <State label="An agent with two levels">
           <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="ask" levels={["ask", "full"]} onChange={noop} held={box} />}</Held>

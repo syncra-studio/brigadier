@@ -164,13 +164,15 @@ export function ModelPicker({
                   Effort
                   <span className="opacity-75"> · {model.name}</span>
                 </div>
-                <Segmented
-                  label="Effort"
-                  value={value.effort ?? ""}
-                  options={model.efforts.map((level) => ({ value: level, label: effortLabel(level) }))}
-                  onChange={(level) => onChange({ ...value, effort: level })}
-                  className="shrink-0"
-                />
+                <div className="shrink-0">
+                  <Segmented
+                    label="Effort"
+                    value={value.effort ?? ""}
+                    options={model.efforts.map((level) => ({ value: level, label: effortLabel(level) }))}
+                    onChange={(level) => onChange({ ...value, effort: level })}
+                    fill
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -223,11 +225,11 @@ export function SwitchAgentDialog({
 }
 
 /** How the agent's actions are approved. The words are the UI's; the level is Rust's. */
-export type PermissionLevel = "ask" | "acceptEdits" | "full";
+export type PermissionLevel = "ask" | "auto" | "full";
 
 const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
   { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
-  { level: "acceptEdits", label: "Auto", detail: "Edits files freely, asks before other commands", Icon: ShieldTerminal },
+  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", Icon: ShieldTerminal },
   { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
 ];
 
