@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "../src/components/button";
 import { NoticeRow, SwitchDivider } from "../src/components/thread/cards";
+import { StartedLine, type StartedStatus } from "../src/components/thread/started";
 import { AssistantMessage, UserBubble } from "../src/components/thread/message";
 import type { Item } from "../src/thread/item";
 import { Row, Section } from "./parts";
@@ -86,8 +87,29 @@ function Column({ label, width, children }: { label: string; width: string; chil
   );
 }
 
+const TITLE = "Fix the flaky login test";
+
+/** The send-as-new line's states (D204, D206), as a session's thread shows them. */
+const STARTED: [string, ReactNode][] = [
+  ["starting", <StartedLine key="s" title={TITLE} starting />],
+  ...(["working", "needs", "done", "failed"] as const).map((status): [string, ReactNode] => [status, <StartedLine key={status} title={TITLE} base="main" status={status} onOpen={noop} />]),
+  ["its session deleted", <StartedLine key="d" title={TITLE} base="main" />],
+  ["couldn't start", <StartedLine key="e" title={TITLE} error="The branch main is gone." onPutBack={noop} />],
+];
+
+/** Starting, then the new session's status as its row changes. */
+function useStartedCycle(): { starting: boolean; status?: StartedStatus } {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setN((k) => (k + 1) % 4), 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return n === 0 ? { starting: true } : { starting: false, status: (["working", "needs", "done"] as const)[n - 1] };
+}
+
 export function Notices() {
   const live = useCycle();
+  const started = useStartedCycle();
   return (
     <Section title="Thread · notice lines">
       {WIDTHS.map(([name, width]) => (
@@ -106,6 +128,16 @@ export function Notices() {
           </Column>
           <Column label="other notices, current (wrap fixed)" width={width}>
             <Exchange row={<NoticeRow level="info" text={LONG} />} />
+          </Column>
+        </Row>
+      ))}
+      {WIDTHS.map(([name, width]) => (
+        <Row key={`started-${name}`} name={`${name}: send as new · each state · live, in a thread`}>
+          <Column label={STARTED.map(([label]) => label).join(" · ")} width={width}>
+            <div className="flex flex-col gap-1">{STARTED.map(([, line]) => line)}</div>
+          </Column>
+          <Column label="live: starting → working → needs you → done" width={width}>
+            <Exchange row={<StartedLine title={TITLE} base={started.starting ? undefined : "main"} starting={started.starting} status={started.status} onOpen={noop} />} />
           </Column>
         </Row>
       ))}

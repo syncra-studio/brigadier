@@ -212,6 +212,9 @@ export function ComposerGallery() {
             <SendButton keys={false} empty={false} running={false} canStop={false} onSend={noop} onStop={noop} />
           </State>
         ))}
+        <State label="⌘ held in a project session: ↗ starts a new session">
+          <SendButton keys={false} asNew empty={false} running={false} canStop={false} onSend={noop} onSendNew={noop} onStop={noop} />
+        </State>
       </Row>
       <Row name="Edit and resend">
         <State label="Editing a sent message">

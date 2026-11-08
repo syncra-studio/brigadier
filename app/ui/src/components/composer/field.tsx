@@ -55,11 +55,14 @@ const SIZES = {
 
 const MAC = navigator.userAgent.includes("Mac");
 
-/** ⏎ sends, ⌥⏎ (and ⌘⏎) send the other way, ⇧⏎ is a new line; Ctrl on a Mac (the Windows key elsewhere) isn't ours. */
-function enterAction(event: KeyboardEvent): "send" | "other" | null {
+/**
+ * ⏎ sends, ⌥⏎ (and ⌘⏎) send the other way, ⌥⌘⏎ starts it as a new session [D183], ⇧⏎ is a new line; Ctrl on a Mac
+ * (the Windows key elsewhere) isn't ours.
+ */
+function enterAction(event: KeyboardEvent): "send" | "other" | "new" | null {
   if ((MAC ? event.ctrlKey : event.metaKey) || event.shiftKey) return null;
   const mod = MAC ? event.metaKey : event.ctrlKey;
-  if (event.altKey) return mod ? null : "other";
+  if (event.altKey) return mod ? "new" : "other";
   return mod ? "other" : "send";
 }
 
@@ -197,6 +200,8 @@ type FieldProps = {
   onChange?: (parts: Parts) => void;
   /** Enter: `other` when ⌥ (or ⌘) asked for the other way. Without it Enter is a new line. */
   onSubmit?: (other: boolean) => void;
+  /** ⌥⌘⏎: start the message as a new session; without it ⌥⌘⏎ does nothing. */
+  onSubmitNew?: () => void;
   /** Esc in the field; without it Esc is left to the page (the send button's stop). */
   onEscape?: () => void;
   /** ↑ in an empty field, before the prompts: pulls the last queued message back; true when it did. */
@@ -286,6 +291,7 @@ function Keys({
   prompts = [],
   onChange,
   onSubmit,
+  onSubmitNew,
   onEscape,
   onPullQueued,
   onAttach,
@@ -298,9 +304,10 @@ function Keys({
   const submit = useEffectEvent((event: KeyboardEvent | null) => {
     if (!event || event.isComposing || !onSubmit) return false;
     const action = enterAction(event);
-    if (!action) return false;
+    if (!action || (action === "new" && !onSubmitNew)) return false;
     event.preventDefault();
-    onSubmit(action === "other");
+    if (action === "new") onSubmitNew?.();
+    else onSubmit(action === "other");
     return true;
   });
   const escape = useEffectEvent((event: KeyboardEvent) => {
