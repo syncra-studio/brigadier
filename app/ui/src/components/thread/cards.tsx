@@ -1,12 +1,14 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
-import type { ApprovalAction, Progress, StepKind } from "../../thread/item";
+import type { ApprovalAction, Item, Progress, StepKind } from "../../thread/item";
 import { duration, useSecond } from "../../thread/words";
+import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { LabeledDivider } from "../labeled-divider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { ToolBox, VERBS } from "./tool";
 
@@ -199,15 +201,112 @@ export function CompactionDivider({ progress = "done" }: { progress?: Progress }
   );
 }
 
-/** Something the app or agent wants seen: an error's sentence in red; a warning or note with its icon. */
+/** Something the app or agent wants seen: an error's sentence in red; a warning or note with its icon, centred. */
 export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"; text: string }) {
   if (level === "error") return <ErrorLine size="sm" error={text} className="wrap-anywhere" />;
   return (
-    <p className={cx(ROW, "flex-wrap")}>
-      {level === "warning" && <Warning className="size-4 shrink-0 text-warning" />}
-      {level === "info" && <Info className="size-4 shrink-0" />}
-      <span className="min-w-0 wrap-anywhere">{text}</span>
+    // Centred, wrapped lines too (D150). The icon is inline before the first word, so it stays beside the words,
+    // centred on its capitals (D151).
+    <p className="text-center text-sm leading-5.25 wrap-anywhere text-row-foreground">
+      <span className="me-1.5 w-4 cap-box">
+        {level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4" />}
+      </span>
+      {text}
     </p>
+  );
+}
+
+type Switch = Extract<Item, { kind: "switch" }>;
+const SWITCH_STATES = ["limit", "switching", "switched", "failed", "over"] as const;
+
+/** An ⓘ whose tooltip says the rest, on hover or focus. */
+function InfoTip({ text }: { text: string }) {
+  return (
+    // Centred on the capitals of the line it sits on.
+    <span className="ms-1.5 w-icon-sm cap-box">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span role="img" tabIndex={0} aria-label={text} className="flex rounded-control hover:text-foreground focus-visible:focus-ring">
+              <Info className="size-icon-sm" />
+            </span>
+          }
+        />
+        <TooltipContent>{text}</TooltipContent>
+      </Tooltip>
+    </span>
+  );
+}
+
+/** Words, then an ⓘ that never wraps onto a line alone: it holds to the last word. */
+function WithTip({ words, tip }: { words: string; tip: string }) {
+  const cut = words.lastIndexOf(" ") + 1;
+  return (
+    <span>
+      {words.slice(0, cut)}
+      <span className="whitespace-nowrap">
+        {words.slice(cut)}
+        <InfoTip text={tip} />
+      </span>
+    </span>
+  );
+}
+
+/** One state's line of a switch divider. */
+function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined): ReactNode {
+  const to = change.model ? `${change.to} · ${change.model}` : (change.to ?? "");
+  const refused = change.reason === "unresumable";
+  const hit = refused ? `${from} couldn’t resume this conversation` : `Usage limit on ${from}`;
+  switch (state) {
+    case "limit":
+      return (
+        <>
+          <span>{hit}</span>
+          {actions}
+        </>
+      );
+    case "switching":
+      // Under way, it shimmers as compaction's running line does (D59).
+      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}` : `Switching to ${to}`}</span>;
+    case "switched":
+      // A switch logged before the shape has only Rust's sentence.
+      if (!change.to) return <span>{change.text}</span>;
+      return <WithTip words={refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`} tip={hit} />;
+    case "failed":
+      return (
+        <>
+          {change.error ? <WithTip words={`Couldn’t switch to ${to} · the thread is unchanged`} tip={change.error} /> : <span>Couldn’t switch to {to} · the thread is unchanged</span>}
+          {onRetry && (
+            <Button variant="link-blue" size={null} onClick={onRetry}>
+              Try again
+            </Button>
+          )}
+        </>
+      );
+    case "over":
+      return <span>{hit}</span>;
+  }
+}
+
+/**
+ * A usage limit, or a refused resume, and the switch past it: one divider whose state changes in place, like
+ * compaction's (D132, D134). Every state's divider sits in the same grid cell and only the current one shows, so
+ * the row keeps the height of its tallest state and nothing below it moves. `from` names the side that hit it while Rust
+ * hasn't yet (at the limit); `actions` follow the limit's words (its links, a short note): pass them in every state,
+ * so they keep their room after the row moves on. `onRetry` is the failed switch's Try again.
+ */
+export function SwitchDivider({ change, from, actions, onRetry }: { change: Switch; from?: string; actions?: ReactNode; onRetry?: () => void }) {
+  const side = change.from || from || (change.reason === "unresumable" ? "The agent" : "this account");
+  return (
+    <div role="status" className="grid">
+      {SWITCH_STATES.map((state) => (
+        <LabeledDivider key={state} className={cx("col-start-1 row-start-1", state !== change.state && "invisible")}>
+          <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 text-center wrap-break-word">
+            {switchLine(change, state, side, actions, onRetry)}
+          </span>
+        </LabeledDivider>
+      ))}
+    </div>
   );
 }
 
