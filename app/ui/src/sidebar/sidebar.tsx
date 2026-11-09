@@ -390,8 +390,9 @@ function ViewMenu({ grouping, onGrouping }: { grouping: Grouping; onGrouping: (n
 function Strip({ onNewSession }: { onNewSession: () => void }) {
   const { setOpen } = useSidebar();
   return (
-    <div className="flex flex-col items-center gap-1 pt-3">
-      <TooltipIconButton tooltip="Show sidebar" look="strip" data-sidebar-peek-trigger side="right" onClick={() => setOpen(true)}>
+    <div className="flex flex-col items-center gap-1 pt-2.75">
+      {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
+      <TooltipIconButton tooltip="Show sidebar" look="strip" data-sidebar-peek-trigger side="right" className="z-50" onClick={() => setOpen(true)}>
         <BrigadierMark className="size-5" />
       </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>

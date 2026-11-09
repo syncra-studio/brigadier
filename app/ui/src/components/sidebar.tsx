@@ -261,8 +261,8 @@ export function SidebarProvider({
 /**
  * The panel: its column's top (the titlebar strip) drags the window, the rest is the panel's own surface.
  * The expanded contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is
- * shared by both, below them. Collapsed, the expanded contents can peek beside the strip, or at the
- * window's start while hidden (with the foot too, since no strip shows it).
+ * shared by both, below them. Collapsed or hidden, the expanded contents can peek at the window's start,
+ * with the foot, over the strip.
  */
 export function SidebarPanel({
   strip,
@@ -308,7 +308,7 @@ export function SidebarPanel({
       </div>
       {open && <SidebarResizeHandle />}
       {peek !== "closed" && (
-        <SidebarPeek closing={peek === "closing"} hidden={hidden} foot={hidden ? foot : null}>
+        <SidebarPeek closing={peek === "closing"} hidden={hidden} foot={foot}>
           {children}
         </SidebarPeek>
       )}
@@ -372,9 +372,9 @@ function SidebarResizeHandle() {
 }
 
 /**
- * The collapsed panel peeking: its expanded contents over the content, which never moves for it, carried
- * on from the strip (or, hidden, on a card at the window's start). It floats in from the start and fades
- * back out (at once with Reduce Motion).
+ * The collapsed panel peeking: its expanded contents over the strip and the content, which never moves for
+ * it, each exactly where it sits expanded (or, hidden, on a card at the window's start). It fades in and
+ * out without moving, so the mark stays put (at once with Reduce Motion).
  */
 function SidebarPeek({ closing, hidden, foot, children }: { closing: boolean; hidden: boolean; foot: ReactNode; children: ReactNode }) {
   const context = useSidebar();
@@ -387,9 +387,9 @@ function SidebarPeek({ closing, hidden, foot, children }: { closing: boolean; hi
         data-sidebar-peek-panel
         className={cx(
           "sidebar-panel-width absolute top-titlebar bottom-0 z-40 flex flex-col overflow-hidden bg-background text-foreground shadow-overlay motion-reduce:animate-none",
-          // Beside the strip it is the strip's own panel carried on: flush against it, its edge and shadow
-          // on the far side only. Hidden, it is a card.
-          hidden ? "start-0 rounded-surface ring-1 ring-border" : "peek-edge start-sidebar-strip rounded-e-surface border-e border-border",
+          // Over the strip it is the expanded panel, its edge and shadow on the far side only. Hidden, it is a card.
+          "start-0 rounded-surface",
+          hidden ? "ring-1 ring-border" : "peek-edge border-e border-border",
           closing ? "pointer-events-none animate-peek-out" : "animate-peek-in",
         )}
       >

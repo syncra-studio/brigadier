@@ -383,17 +383,15 @@
   }
   --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
   --animate-peek-out: peek-out var(--duration-peek-out) var(--ease-sidebar) forwards;
-  /* The collapsed sidebar peeking: it floats in from the start, and fades back out drifting half as far. */
+  /* The collapsed sidebar peeking: it only fades, so the mark never moves. */
   @keyframes peek-in {
     from {
       opacity: 0;
-      translate: calc(var(--spacing) * -1.5) 0;
     }
   }
   @keyframes peek-out {
     to {
       opacity: 0;
-      translate: calc(var(--spacing) * -0.75) 0;
     }
   }
   /* The jump button's three dots while a reply streams: each rises in turn. */
