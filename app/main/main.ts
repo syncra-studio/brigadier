@@ -140,6 +140,8 @@ function openWindow(): void {
   window.on("enter-full-screen", tellFullScreen);
   window.on("leave-full-screen", tellFullScreen);
   window.webContents.on("did-finish-load", tellFullScreen);
+  // A reload starts with no tab bar until the new page says so.
+  window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, themeBackground, introColours);
   void window.loadURL(`${ORIGIN}/`);
 }
@@ -162,11 +164,15 @@ async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: s
 }
 ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
 ipcMain.on("text-undo", (event) => event.sender.undo());
+// The windows whose ⌘W closes a tab (the tab bar says so) [D360].
+const closesTab = new WeakSet<Electron.WebContents>();
+ipcMain.on("closes-tab", (event, on: boolean) => void (on ? closesTab.add(event.sender) : closesTab.delete(event.sender)));
 
 // The standard menus plus File › New Session (⌘N) [D184] and Add project's: File › Open Folder… (⌘O, the
 // picker, several at once) and View › Add project…, each told to the page, which does the rest [D165].
 function setMenu(): void {
   const tell = (window: BrowserWindow | undefined, command: string, paths?: string[]) => window?.webContents.send("menu", command, paths);
+  const closeTabOrWindow = (window: BrowserWindow | undefined) => (window && closesTab.has(window.webContents) ? tell(window, "close-tab") : window?.close());
   const openFolder = async (window: BrowserWindow | undefined) => {
     const paths = await pickFolders(window ?? null, { multi: true });
     if (paths.length > 0) tell(window, "open-folders", paths);
@@ -181,7 +187,9 @@ function setMenu(): void {
           { type: "separator" },
           { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
           { type: "separator" },
-          { role: process.platform === "darwin" ? "close" : "quit" },
+          // A window with a tab to close says so; anywhere else (Accounts, onboarding, Home's Chat tab) ⌘W closes the window.
+          { label: "Close", accelerator: "CmdOrCtrl+W", click: (_item, window) => closeTabOrWindow(window as BrowserWindow | undefined) },
+          ...(process.platform === "darwin" ? [] : [{ role: "quit" as const }]),
         ],
       },
       {
@@ -223,7 +231,8 @@ function setMenu(): void {
           { label: "Forward", accelerator: "CmdOrCtrl+]", click: (_item, window) => tell(window as BrowserWindow | undefined, "forward") },
         ],
       },
-      { role: "windowMenu" },
+      // Off macOS the stock Window menu has its own Close on the same key.
+      process.platform === "darwin" ? { role: "windowMenu" as const } : { label: "Window", submenu: [{ role: "minimize" as const }, { role: "zoom" as const }] },
     ]),
   );
 }

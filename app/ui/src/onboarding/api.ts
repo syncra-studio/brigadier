@@ -18,6 +18,7 @@ declare global {
       pickFolders(options?: { at?: string; multi?: boolean }): Promise<string[]>;
       /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
+      closesTab(on: boolean): void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;
