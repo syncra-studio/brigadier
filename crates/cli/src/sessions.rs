@@ -16,9 +16,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = core::load(data, id)?;
     match args[0].as_str() {
-        "archive" => session::archive(&spec, || {
-            let _ = stop(data, id, "archive");
-        })?,
+        "archive" => session::archive(&spec, || stop(data, id, "archive"))?,
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {

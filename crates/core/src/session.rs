@@ -69,13 +69,17 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<File> {
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
-pub fn archive(spec: &Spec, stop: impl FnOnce()) -> io::Result<()> {
+pub fn archive(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
         return Ok(());
     }
     record(&spec.dir, &json!({"op": "archive"}))?;
-    stop();
+    // A host that won't exit may still be working in the worktree: nothing goes, nothing is left to finish.
+    if let Err(e) = stop() {
+        clear(&spec.dir, INTENT)?;
+        return Err(e);
+    }
     finish_archive(&spec.dir)
 }
 
