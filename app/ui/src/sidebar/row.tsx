@@ -113,14 +113,14 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
+                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
                 onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
               />
             }
           >
             {badged && project && <ProjectBadge name={project.name} />}
             <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{title}</span>
-            <span className={cx("flex shrink-0 empty:hidden group-has-focus-visible/row:invisible group-hover/row:invisible group-has-aria-expanded/row:invisible", offline && "opacity-disabled")}>
+            <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>
           </TooltipTrigger>

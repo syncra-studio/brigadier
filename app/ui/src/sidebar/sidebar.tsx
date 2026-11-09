@@ -177,7 +177,12 @@ export function AppSidebar({
   return (
     <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot}>
       <NavHeader
-        title="Brigadier"
+        title={
+          <span className="-ms-0.5 flex items-center gap-2">
+            <BrigadierMark className="size-5 shrink-0" />
+            Brigadier
+          </span>
+        }
         actions={
           <TooltipIconButton tooltip="Search" shortcut="⌘K" look="toolbar" side="bottom" onClick={openSearch}>
             <MagnifyingGlassSmSearch />
@@ -301,7 +306,7 @@ function ProjectRow({
   return (
     <li data-project-id={project.id} className="flex flex-col">
       <div className="group/row relative">
-        <NavRow aria-expanded={open} onClick={() => onOpenChange(!open)}>
+        <NavRow aria-expanded={open} className="pe-16" onClick={() => onOpenChange(!open)}>
           {open ? <FolderOpen /> : <Folder />}
           <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{project.name}</span>
         </NavRow>
