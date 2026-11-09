@@ -65,6 +65,9 @@ pub struct Spec {
     /// The command id of the input being built, for an agent whose reply names it [D222].
     #[serde(skip)]
     pub cid: Option<String>,
+    /// The entry in its CLI's record to resume at, after a rewind that cut there [D384].
+    #[serde(skip)]
+    pub resume_at: Option<String>,
 }
 
 pub fn data_dir() -> PathBuf {

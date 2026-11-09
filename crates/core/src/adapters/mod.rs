@@ -5,9 +5,11 @@ mod codex;
 mod fake;
 mod files;
 mod opencode;
+mod rewind;
 pub mod setup;
 mod shell;
 
+pub use rewind::{Cut, Failed, Landing, Rewound};
 pub use shell::{shell_step, unwrap_shell};
 
 pub use files::{change, counts, drop_lines, sha1, uuid};
@@ -69,6 +71,12 @@ pub enum Event {
     /// "running" or "done".
     Compaction(&'static str),
     Usage(Value),
+    /// Where this turn sits in the CLI's own record, for a later cut: its first entry and its
+    /// latest, as far as this line says.
+    Mark {
+        start: Option<String>,
+        end: Option<String>,
+    },
     Unknown(String),
 }
 
@@ -321,6 +329,18 @@ pub trait Adapter: Sync {
     /// order, as (path, unified diff) per file. None when there's no such record or turn.
     fn diffs(&self, _resume: &str, _turn: u64) -> Option<Vec<Vec<(String, String)>>> {
         None
+    }
+    /// Whether this cut names a place in its record exactly; only those are offered [D384].
+    fn can_cut(&self, _cut: &Cut) -> bool {
+        false
+    }
+    /// Cuts the conversation `resume` at `cut`.
+    fn rewind(&self, _spec: &Spec, _resume: &str, _cut: &Cut) -> Result<Rewound, Failed> {
+        Err(Failed::Refused("This agent can't rewind.".into()))
+    }
+    /// What the CLI's own record shows of a cut begun at `at` (ms) whose outcome wasn't heard.
+    fn landed(&self, _spec: &Spec, _resume: &str, _cut: &Cut, _at: u64) -> Landing {
+        Landing::NotApplied
     }
 }
 

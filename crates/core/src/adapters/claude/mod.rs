@@ -8,8 +8,8 @@ mod tools;
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing,
-    base_env, classify, home_path, probe_as, s, version,
+    Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Launch, ModelInfo, Retune,
+    Rewound, Timing, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -158,6 +158,12 @@ impl Adapter for Claude {
         }
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
+            // shortcut: this flag isn't in the CLI reference, only Anthropic's open-source SDK; replace it if the CLI documents another.
+            argv.extend(
+                spec.resume_at
+                    .iter()
+                    .map(|at| format!("--resume-session-at={at}")),
+            );
         }
         let input = text.map(|t| self.encode(spec, t));
         Launch {
@@ -204,7 +210,16 @@ impl Adapter for Claude {
         };
         // A subagent's own steps stream here too, under the Agent call that runs it [D78].
         let parent = v["parent_tool_use_id"].as_str().map(String::from);
-        match (s(&v, &["type"]), s(&v, &["subtype"])) {
+        let kind = s(&v, &["type"]);
+        // The main chain's latest entry: the resume point SDK docs say to cut at, not only replies.
+        let mark = (parent.is_none() && matches!(kind, "assistant" | "user"))
+            .then(|| v["uuid"].as_str())
+            .flatten()
+            .map(|id| Event::Mark {
+                start: None,
+                end: Some(id.into()),
+            });
+        let mut events: Vec<Event> = match (kind, s(&v, &["subtype"])) {
             ("system", "init") => [
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
                 Some(Event::TurnStart),
@@ -265,7 +280,9 @@ impl Adapter for Claude {
                 events
             }
             _ => vec![Event::Unknown(line.into())],
-        }
+        };
+        events.extend(mark);
+        events
     }
 
     fn timing(&self) -> Timing {
@@ -273,6 +290,33 @@ impl Adapter for Claude {
             silent_ms: 20_000,
             stall_ms: 120_000,
             no_start_ms: 30_000,
+        }
+    }
+
+    /// In one conversation, cut at a transcript entry; before the first turn, a new one.
+    fn can_cut(&self, cut: &Cut) -> bool {
+        cut.kept
+            .is_none_or(|k| k.end.is_some() && k.conv == cut.dropped.conv)
+    }
+
+    /// Nothing changes in its record now: the next launch loads only up to the entry, as the
+    /// SDK's `resume_session_at` does, and a turn's new entries branch from there.
+    fn rewind(&self, spec: &Spec, resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
+        let Some(entry) = cut.kept.and_then(|k| k.end.as_deref()) else {
+            return Ok(Rewound {
+                fresh: true,
+                ..Rewound::default()
+            });
+        };
+        let path = project_dir(spec).join(format!("{resume}.jsonl"));
+        match std::fs::read_to_string(path) {
+            Ok(text) if text.contains(entry) => Ok(Rewound {
+                pin: Some(entry.into()),
+                ..Rewound::default()
+            }),
+            _ => Err(Failed::Refused(
+                "Claude's record of this conversation no longer has that point.".into(),
+            )),
         }
     }
 

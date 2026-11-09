@@ -59,6 +59,13 @@ fn completed(p: &Value) -> Vec<Event> {
             refused(message).unwrap_or(Event::Unknown(message.into()))
         });
     }
+    if status == "completed" {
+        let id = turn["id"].as_str().map(String::from);
+        events.push(Event::Mark {
+            start: None,
+            end: id,
+        });
+    }
     events.push(Event::TurnEnd(status == "completed"));
     events
 }

@@ -95,6 +95,12 @@ impl Norm {
                 if !v.is_object() {
                     v = json!({"raw": String::from_utf8_lossy(&frame.data)});
                 }
+                // Past a rewind a CLI may name the same conversation again: that's news.
+                if v["event"] == "rewound"
+                    && let Some(b) = v["backend"].as_str()
+                {
+                    self.announced.remove(b);
+                }
                 v["kind"] = "note".into();
                 emit(self, v);
             }
@@ -221,6 +227,7 @@ impl Norm {
                 Event::Answer(id, t) => json!({"kind": "answer", "id": id, "text": t}),
                 Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
+                Event::Mark { start, end } => json!({"kind": "mark", "start": start, "end": end}),
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
             };
             items.push(item);

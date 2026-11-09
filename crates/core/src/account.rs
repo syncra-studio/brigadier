@@ -38,6 +38,7 @@ pub fn as_run(spec: &Spec, f: &Fold, backend: &str, account: Option<&str>) -> Sp
         run.model = None;
     }
     run.grants = f.grants.clone();
+    run.resume_at = f.pin.get(backend).cloned();
     if let Some(e) = f.efforts.get(backend) {
         run.effort = Some(e.clone());
     } else if backend != spec.backend {

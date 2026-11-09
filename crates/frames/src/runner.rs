@@ -35,7 +35,7 @@ struct Child {
 }
 
 /// What this host can do beyond the first frozen ops, so a client asks before it relies on any.
-pub const CAPS: [&str; 2] = ["switch", "control"];
+pub const CAPS: [&str; 3] = ["switch", "control", "rewind"];
 /// How long a final drain may take.
 const DRAIN: Duration = Duration::from_secs(10);
 
@@ -123,6 +123,18 @@ impl Runner {
         self.append(log::NOTE, data.to_string().as_bytes(), true)
     }
 
+    /// A note, only if the log is still where the caller judged it (`if_len`), in one lock.
+    fn noted(&self, req: &Value) -> Value {
+        let appended = {
+            let mut log = self.log.lock().unwrap();
+            if req["if_len"].as_u64().is_some_and(|len| len != log.len) {
+                return fail("changed");
+            }
+            log.append(log::NOTE, req["data"].to_string().as_bytes(), true)
+        };
+        appended.map_or_else(fail, |seq| json!({"ok": true, "seq": seq}))
+    }
+
     pub fn busy(&self) -> bool {
         self.child.lock().unwrap().is_some()
     }
@@ -155,9 +167,7 @@ impl Runner {
                 req["by"].as_str().unwrap_or("user"),
                 req["grace_ms"].as_u64().unwrap_or(2000),
             ),
-            "note" => self
-                .note(&req["data"])
-                .map_or_else(fail, |seq| json!({"ok": true, "seq": seq})),
+            "note" => self.noted(req),
             other => fail(format!("unknown op {other:?}")),
         }
     }

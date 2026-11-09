@@ -6,8 +6,10 @@ use crate::adapters;
 
 mod asks;
 mod live;
+mod rewind;
 mod status;
 pub use live::{Live, live, live_groups};
+pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub use status::{Owner, mark, status, switchable, works};
@@ -45,6 +47,14 @@ pub struct Turn {
     /// Its input starts a child that no `spawned` record has named yet.
     #[serde(default)]
     pub spawning: bool,
+    /// Its input came while another turn ran: no clean boundary of its own.
+    #[serde(default)]
+    pub mid: bool,
+    /// Its place in the CLI's own record, for a rewind: first entry, latest entry.
+    #[serde(default)]
+    pub start: Option<String>,
+    #[serde(default)]
+    pub end: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -137,6 +147,18 @@ pub struct Fold {
     /// Inputs written to an agent that acks, not yet applied by its reply [D222].
     #[serde(default)]
     pub acking: BTreeSet<String>,
+    /// Every finished turn still in the conversation, oldest first [D384].
+    #[serde(default)]
+    pub boundaries: Vec<Boundary>,
+    /// Counts switches: a rewind stays on this side of the latest.
+    #[serde(default)]
+    pub generation: u64,
+    /// The record's entry each backend must resume at after a rewind, moving with its turns.
+    #[serde(default)]
+    pub pin: BTreeMap<String, String>,
+    /// Rewinds done, by the app's op id: one is never done twice [D54].
+    #[serde(default)]
+    pub rewinds: BTreeSet<String>,
 }
 
 impl Fold {
@@ -172,8 +194,9 @@ impl Fold {
             });
             self.turns.remove(0);
             self.finished = ts;
+            self.bound(&turn);
             self.last = Some(
-                json!({"cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
+                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
             );
         }
@@ -234,6 +257,7 @@ impl Fold {
                 // A switch takes effect with the input that continues it, in the same frame [D51].
                 let switch = &item["switch"];
                 if let Some(to) = switch["to"]["backend"].as_str() {
+                    self.generation += 1;
                     let account = switch["to"]["account"].as_str().unwrap_or("");
                     match account {
                         "" => self.accounts.remove(to),
@@ -250,6 +274,7 @@ impl Fold {
                     // For delete, `convs` keeps the old conversation, or the same one's new account.
                     if switch["fresh"] == true {
                         self.resume.remove(to);
+                        self.pin.remove(to);
                     } else if let Some(id) = self.resume.get(to) {
                         self.convs.insert((to.into(), account.into(), id.clone()));
                     }
@@ -271,7 +296,9 @@ impl Fold {
                     self.sent = ts;
                 }
                 let retry_of = item["retry_of"].as_str().map(String::from);
+                let mid = !self.turns.is_empty();
                 self.turns.push(Turn {
+                    mid,
                     id: cid.clone(),
                     cid: Some(cid),
                     origin: str_of("origin"),
@@ -350,6 +377,7 @@ impl Fold {
                 };
                 self.close(outcome, Value::Null, ts);
             }
+            "mark" => self.mark(item),
             "tool" => {
                 if let Some(t) = self.turns.first_mut() {
                     if t.tools.is_empty() {
@@ -423,6 +451,7 @@ impl Fold {
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
+                Some("rewound") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);
