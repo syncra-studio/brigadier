@@ -57,7 +57,7 @@ export function ProjectBadge({ name, tone }: { name: string | null; tone: number
 }
 
 /** How long a pointer rests on a row before its card shows; on to the next row it shows at once. */
-const CARD_DELAY_MS = 300;
+export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
 
 /**
@@ -122,7 +122,7 @@ export function SessionRowItem({
             }
           >
             {badged && project && <ProjectBadge name={project.name} tone={tone} />}
-            <span className={cx("mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
+            <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>

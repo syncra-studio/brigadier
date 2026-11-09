@@ -931,10 +931,6 @@
   }
 }
 
-@utility mask-fade-end {
-  mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);
-}
-
 /* A scroll view's edges: what scrolls under them fades into the background. Raised, the bottom one
    reaches over a floating button too. */
 @utility fade-top {

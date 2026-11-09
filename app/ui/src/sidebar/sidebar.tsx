@@ -21,7 +21,7 @@ import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
-import { SessionRowItem } from "./row";
+import { CARD_DELAY_MS, SessionRowItem } from "./row";
 import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { Project, SessionRow } from "./words";
 
@@ -123,6 +123,10 @@ export function AppSidebar({
     if (keys.some((key) => !isOpen(key))) setFolded(folded.filter((key) => !keys.includes(key)));
     requestAnimationFrame(() => list.current?.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
   };
+  // Opening a session unfolds what holds its row, as the old app's openConversation did.
+  useEffect(() => {
+    if (activeRow) reveal(activeRow.id);
+  }, [activeRow?.id]);
   // ⌥⌘A: the next session waiting on you below the open one, wrapping once [D185].
   const nextNeedingYou = () => {
     const at = order.findIndex((each) => each.id === active);
@@ -314,13 +318,20 @@ function ProjectRow({
   onOpenChange: (open: boolean) => void;
   children: ReactNode[];
 }) {
+  const label = useRef<HTMLSpanElement>(null);
+  // Its name in a tip only when the row cuts it.
+  const [cut, setCut] = useState(false);
+  const measure = () => setCut((label.current?.scrollWidth ?? 0) > (label.current?.clientWidth ?? 0));
   return (
     <li data-project-id={project.id} className="flex flex-col">
       <div className="group/row relative">
-        <NavRow aria-expanded={open} className="pe-16" onClick={() => onOpenChange(!open)}>
-          {open ? <FolderOpen /> : <Folder />}
-          <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{project.name}</span>
-        </NavRow>
+        <Tooltip>
+          <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-expanded={open} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => onOpenChange(!open)} />}>
+            {open ? <FolderOpen /> : <Folder />}
+            <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
+          </TooltipTrigger>
+          {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
+        </Tooltip>
         <RowActionsSlot>
           <DropdownMenu modal={false}>
             <Tooltip>

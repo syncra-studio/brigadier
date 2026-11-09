@@ -56,7 +56,7 @@ function ShowRow({ name, checked, onChange, mark, count, none }: { name: string;
     <label className={ROW}>
       <Checkbox aria-label={name} checked={checked} onCheckedChange={(next) => onChange(next)} />
       {mark}
-      <span className={cx("mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap", empty && "text-muted-foreground")}>{name}</span>
+      <span title={name} className={cx("min-w-0 flex-1 truncate", empty && "text-muted-foreground")}>{name}</span>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{empty ? none : count}</span>
     </label>
   );

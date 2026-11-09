@@ -59,7 +59,7 @@ function Line({ row, nested = false, pick, active, offline, onOpen }: Rows & { r
   return (
     <li>
       <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className={cx("pe-1.5", nested && "ps-8")} onClick={() => pick(() => onOpen(row.id))}>
-        <span className={cx("mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
+        <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
         <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
           <RowMark mark={markOf(row, active)} label={words ?? ""} />
         </span>
@@ -95,7 +95,7 @@ export function ProjectsFlyout({ projects, sessions, ...rows }: Rows & { project
               <li key={project.id} className="flex flex-col">
                 <NavRow title={`New session in ${project.name}`} onClick={() => pick(() => newSessionIn(project.id))}>
                   <Folder />
-                  <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{project.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 </NavRow>
                 <NavList className="pt-px pb-1">
                   {sessions
