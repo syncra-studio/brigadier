@@ -1,7 +1,7 @@
 // Add project on Fake data [D165, D168, D202]: each view and state frozen, plus a live copy.
 import { Button } from "../src/components/button";
 import { Dialog, DialogContent } from "../src/components/dialog";
-import { ADD_PROJECT_FRAME, AddProject, AddProjectDialog, type GitHubIn, type View } from "../src/projects/add-project";
+import { ADD_PROJECT_FRAME, AddProject, AddProjectDialog, type View } from "../src/projects/add-project";
 import { DEFAULT_PARENT, type GitHub, openAddProject, openFolders, type Repo, type Source } from "../src/projects/store";
 import { Held, Row, Section, State } from "./parts";
 
@@ -45,14 +45,14 @@ const LONG = fake({
   github: async () => ({ repos: [{ name: `you/${LONG_NAME}`, description: "A repository with a long name", private: true }] }),
 });
 
-function Frozen({ label, source, start, githubIn, offline = false }: { label: string; source: Source; start?: View; githubIn?: GitHubIn; offline?: boolean }) {
+function Frozen({ label, source, start, offline = false }: { label: string; source: Source; start?: View; offline?: boolean }) {
   return (
     <State label={label}>
       <Held className="h-152 w-196 overflow-hidden rounded-surface">
         {(box) => (
           <Dialog open modal={false}>
             <DialogContent container={box} initialFocus={false} frame={ADD_PROJECT_FRAME}>
-              <AddProject source={source} offline={offline} start={start} githubIn={githubIn} />
+              <AddProject source={source} offline={offline} start={start} />
             </DialogContent>
           </Dialog>
         )}
@@ -84,7 +84,7 @@ export function ProjectsGallery() {
         <Frozen label="error" source={fake({ find: async () => Promise.reject(new Error("Couldn't read ~/code: permission denied")) })} />
         <Frozen label="disconnected" source={LOADING} offline />
       </Row>
-      <Row name="clone from URL (recommended: your GitHub repositories under the field) · O17">
+      <Row name="clone from URL: your GitHub repositories under the field">
         <Frozen label="GitHub list" source={FOUND} start={{ kind: "clone" }} />
         <Frozen label="owner/name typed" source={FOUND} start={{ kind: "clone", url: "you/inv" }} />
         <Frozen label="Cloning…" source={FOUND} start={{ kind: "clone", url: "you/invoice-service", cloning: true }} />
@@ -92,11 +92,6 @@ export function ProjectsGallery() {
         <Frozen label="git's error" source={FOUND} start={{ kind: "clone", url: "https://github.com/you/gone.git", error: "Repository not found." }} />
         <Frozen label="gh not installed" source={fake({ github: async () => ({ gh: "missing" }) })} start={{ kind: "clone" }} />
         <Frozen label="gh signed out" source={fake({ github: async () => ({ gh: "signed-out" }) })} start={{ kind: "clone" }} />
-        <Frozen label="no GitHub list (Pick has it)" source={FOUND} start={{ kind: "clone", url: "you/invoice-service" }} githubIn="pick" />
-      </Row>
-      <Row name="alternative: On GitHub in Pick · O17">
-        <Frozen label="On GitHub" source={FOUND} githubIn="pick" />
-        <Frozen label="gh signed out" source={fake({ find: async () => REPOS, github: async () => ({ gh: "signed-out" }) })} githubIn="pick" />
       </Row>
       <Row name="new repository: empty · git's reason under the field">
         <Frozen label="empty" source={FOUND} start={{ kind: "new", parent: DEFAULT_PARENT, name: "" }} />
@@ -108,7 +103,6 @@ export function ProjectsGallery() {
       </Row>
       <Row name="long repository names: 100 characters · no sideways scroll">
         <Frozen label="Clone from URL · long name" source={LONG} start={{ kind: "clone" }} />
-        <Frozen label="On this Mac and On GitHub · long names" source={LONG} githubIn="pick" />
       </Row>
     </Section>
   );

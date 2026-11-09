@@ -80,13 +80,11 @@ export function CloneView({
   source,
   offline,
   start,
-  github,
   onBack,
 }: {
   source: Source;
   offline: boolean;
   start: Extract<View, { kind: "clone" }>;
-  github: boolean;
   onBack: () => void;
 }) {
   const id = useId();
@@ -106,7 +104,7 @@ export function CloneView({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    const reason = !url.trim() ? "Paste the repository's URL." : !folder ? "That URL doesn't name a repository." : null;
+    const reason = !folder ? "That URL doesn't name a repository." : null;
     setInvalid(Boolean(reason));
     if (reason) return clone.setError(reason);
     void cloneInto(clone, source, cloneUrl(url), parent, folder);
@@ -139,12 +137,10 @@ export function CloneView({
             />
           </div>
         </div>
-        {github && (
-          <div className="flex flex-col gap-2">
-            <FieldLabel label="Your GitHub repositories" aside="Click one to clone it" />
-            <GitHubRepos source={source} filter={/[:@]/.test(url) ? "" : url} clone={clone} parent={parent} />
-          </div>
-        )}
+        <div className="flex flex-col gap-2">
+          <FieldLabel label="Your GitHub repositories" aside="Click one to clone it" />
+          <GitHubRepos source={source} filter={/[:@]/.test(url) ? "" : url} clone={clone} parent={parent} />
+        </div>
         <SaveTo parent={parent} name={folder} aside="Named after the repository" disabled={busy} source={source} onParent={setParent} onError={clone.setError} />
         <div className="flex flex-col gap-1">
           <ErrorLine error={error} />
@@ -153,7 +149,7 @@ export function CloneView({
       </div>
       <Footer>
         <CancelButton label={busy ? "Close" : "Cancel"} />
-        <Button size="sm" type="submit" disabled={busy}>
+        <Button size="sm" type="submit" disabled={busy || !url.trim()}>
           {busy && <Spinner className="animate-spin" />}
           {busy ? "Cloning…" : "Clone and add"}
         </Button>
@@ -243,14 +239,11 @@ export function GitHubRepos({
   filter,
   clone,
   parent,
-  short = false,
 }: {
   source: Source;
   filter: string;
   clone: Add;
   parent: string;
-  /** About three rows high, under Pick's own list. */
-  short?: boolean;
 }) {
   const [list, setList] = useState<GitHub | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -265,7 +258,7 @@ export function GitHubRepos({
     };
   }, [source]);
 
-  const height = short ? "max-h-32" : "h-add-project-list";
+  const height = "h-add-project-list";
   const line = (text: string) => <p className={cx("shrink-0 overflow-y-auto px-3 text-sm text-muted-foreground", height)}>{text}</p>;
   if (error) return <div className={cx("shrink-0 overflow-y-auto px-3", height)}><ErrorLine error={error} /></div>;
   if (!list) return line("Looking for your repositories…");

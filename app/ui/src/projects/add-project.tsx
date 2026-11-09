@@ -9,7 +9,7 @@ import { Input } from "../components/input";
 import { showToast } from "../components/toast";
 import { ArrowLeft, Check, Folder, FolderOpen, Link, Plus, Spinner } from "../icons";
 import { errorText } from "../onboarding/api";
-import { CloneView, GitHubRepos, NewRepoView, useAdd } from "./clone";
+import { CloneView, NewRepoView, useAdd } from "./clone";
 import { newProjectId } from "./projects";
 import { useDaemon } from "../daemon";
 import { closeAddProject, daemonSource, DEFAULT_PARENT, type FolderCheck, type Repo, showProject, type Source, useAddProject } from "./store";
@@ -21,9 +21,6 @@ import { closeAddProject, daemonSource, DEFAULT_PARENT, type FolderCheck, type R
 
 /** The card's own width and layout: the views pad themselves. */
 export const ADD_PROJECT_FRAME = "project-dialog max-w-add-project gap-0 p-0";
-
-/** Where your GitHub repositories show: under Clone from URL's field, or as On GitHub in the list (O17). */
-export type GitHubIn = "clone" | "pick";
 
 /** Mounted once; opened by `openAddProject` from anywhere. `offline` while the daemon is away. */
 export function AddProjectDialog({ source, offline }: { source: Source; offline: boolean }) {
@@ -51,13 +48,11 @@ export function AddProject({
   offline,
   initialPath = "",
   start = { kind: "pick" },
-  githubIn = "clone",
 }: {
   source: Source;
   offline: boolean;
   initialPath?: string;
   start?: View;
-  githubIn?: GitHubIn;
 }) {
   const [view, setView] = useState<View>(start);
   // The repositories found, kept for the list's return from Clone or New repository.
@@ -71,13 +66,12 @@ export function AddProject({
           offline={offline}
           initialPath={initialPath}
           found={found}
-          github={githubIn === "pick"}
           onClone={() => setView({ kind: "clone" })}
           onNew={(parent = DEFAULT_PARENT, name = "") => setView({ kind: "new", parent, name })}
         />
       );
     case "clone":
-      return <CloneView source={source} offline={offline} start={view} github={githubIn === "clone"} onBack={back} />;
+      return <CloneView source={source} offline={offline} start={view} onBack={back} />;
     case "new":
       return <NewRepoView source={source} offline={offline} start={view} onBack={back} />;
   }
@@ -138,7 +132,6 @@ function PickView({
   offline,
   initialPath,
   found,
-  github,
   onClone,
   onNew,
 }: {
@@ -146,7 +139,6 @@ function PickView({
   offline: boolean;
   initialPath: string;
   found: RefObject<Repo[] | null>;
-  github: boolean;
   onClone: () => void;
   onNew: (parent?: string, name?: string) => void;
 }) {
@@ -156,7 +148,7 @@ function PickView({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // A folder git starts in, or a GitHub repository cloning (O17's alternative).
+  // A folder git starts in.
   const adding = useAdd();
   const busy = adding.running !== null;
 
@@ -289,18 +281,8 @@ function PickView({
             </p>
           )}
         </div>
-        <ErrorLine error={error ?? (github ? null : adding.error)} className="px-3" />
-        {!github && <OfflineLine offline={offline && busy} />}
-        {github && (
-          <div className="flex flex-col gap-2 pt-3">
-            <span className="px-3 text-xs text-muted-foreground">On GitHub</span>
-            <GitHubRepos source={source} filter={query} clone={adding} parent={DEFAULT_PARENT} short />
-            <div className="flex flex-col gap-1 px-3">
-              <ErrorLine error={adding.error} />
-              <OfflineLine offline={offline && busy} />
-            </div>
-          </div>
-        )}
+        <ErrorLine error={error ?? adding.error} className="px-3" />
+        <OfflineLine offline={offline && busy} />
       </div>
       <Footer
         start={
