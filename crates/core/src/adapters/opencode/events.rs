@@ -4,6 +4,19 @@
 use super::super::{Done, Event, Tool, change, classify, counts, question, s, shell_step};
 use serde_json::{Value, json};
 
+/// An error of its API as an event, by the whole error, telling the user its message, not its JSON.
+pub fn refusal(error: &Value) -> Option<Event> {
+    let said = (error["message"]
+        .as_str()
+        .or(error["data"]["message"].as_str()))
+    .map_or_else(|| error.to_string(), String::from);
+    Some(match classify(&error.to_string())? {
+        Event::Limited(_, resets) => Event::Limited(said, resets),
+        Event::SignIn(_) => Event::SignIn(said),
+        e => e,
+    })
+}
+
 /// A line from the helper: the server's event, or the result of a request it sent. None: a line
 /// of `run`.
 pub fn server(v: &Value) -> Option<Vec<Event>> {
@@ -47,8 +60,7 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         "session.execution.succeeded" => vec![Event::TurnEnd(true)],
         "session.execution.interrupted" => vec![Event::TurnEnd(false)],
         "session.execution.failed" => {
-            let error = d["error"].to_string();
-            let said = match classify(&error) {
+            let said = match refusal(&d["error"]) {
                 // A reset OpenCode names, never a guessed one [D74].
                 Some(Event::Limited(m, _)) => {
                     let after = d["error"]["retryAfterMs"].as_u64();

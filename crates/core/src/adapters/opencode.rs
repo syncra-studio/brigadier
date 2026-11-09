@@ -10,8 +10,8 @@ mod server;
 
 use super::setup::run as bounded;
 use super::{
-    Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, classify,
-    home_path, probe, s, sha1, uuid, version,
+    Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, home_path,
+    probe, s, sha1, uuid, version,
 };
 use crate::Spec;
 use control::{answers, denied, model, model_ref, rules};
@@ -298,8 +298,9 @@ impl Adapter for OpenCode {
             "step_finish" => {}
             "text" => events.push(Event::Text(s(part, &["text"]).into())),
             "tool_use" => events.extend(tool_use(part)),
-            "error" => events
-                .push(classify(&v["error"].to_string()).unwrap_or(Event::Unknown(line.into()))),
+            "error" => {
+                events.push(events::refusal(&v["error"]).unwrap_or(Event::Unknown(line.into())))
+            }
             _ => events.push(Event::Unknown(line.into())),
         }
         events

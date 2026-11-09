@@ -191,6 +191,9 @@ impl Norm {
                 Event::Limited(m, resets) => {
                     json!({"kind": "limited", "message": m, "resets": resets})
                 }
+                // The old app's words for it: nothing to wait for, so no time [D411].
+                Event::OutOfCredits => json!({"kind": "limited", "credits": true,
+                    "message": "Out of credits. Continue after credits are available."}),
                 Event::SignIn(m) => json!({"kind": "sign_in", "message": m}),
                 Event::Unresumable(m) => json!({"kind": "unresumable", "message": m}),
                 // A question row shows its first item; the request goes with it whole [D177, D209].

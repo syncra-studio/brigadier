@@ -36,6 +36,8 @@ pub enum Event {
     Resume(String),
     /// A usage limit: the CLI's message, and when it resets (ms) if the CLI says; never guessed [D74].
     Limited(String, Option<u64>),
+    /// The account has no credits left: no limit, it never comes back by itself.
+    OutOfCredits,
     SignIn(String),
     /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
     Unresumable(String),
@@ -428,9 +430,23 @@ pub fn s<'a>(v: &'a Value, path: &[&str]) -> &'a str {
     path.iter().fold(v, |v, k| &v[*k]).as_str().unwrap_or("")
 }
 
-/// Classifies an error message the way every backend needs: a limit, a sign-in, or neither.
+/// Classifies an error message the way every backend needs: no credits, a limit, a sign-in, or
+/// neither.
 pub fn classify(message: &str) -> Option<Event> {
     let m = message.to_lowercase();
+    let credits = [
+        "insufficient account funds",
+        "insufficient funds",
+        "insufficient credit",
+        "insufficient_quota",
+        "credit balance",
+        "out of credits",
+        "billing_error",
+        "payment required",
+    ];
+    if credits.iter().any(|k| m.contains(k)) {
+        return Some(Event::OutOfCredits);
+    }
     let limit = [
         "429",
         "rate limit",

@@ -36,6 +36,7 @@ const STATE_WORDS: Record<string, string | null> = {
   silent: "Working",
   idle_jobs: "Working · background job",
   failed: "Failed",
+  out_of_credits: "Out of credits",
   interrupted: "Interrupted",
   undelivered: "Couldn't send your message",
   uncertain: "Couldn't confirm your message arrived",

@@ -178,6 +178,10 @@ impl Agent {
                 emit(json!({"t": "error", "code": 429, "message": "usage limit reached"}));
                 return emit(json!({"t": "done", "ok": false}));
             }
+            if words.contains(&"nofunds") {
+                emit(json!({"t": "error", "code": 402, "message": "Insufficient account funds"}));
+                return emit(json!({"t": "done", "ok": false}));
+            }
             emit(json!({"t": "turn"}));
             // A changed setup shows on the turn it reached, as a CLI's own banner would.
             if !self.told {

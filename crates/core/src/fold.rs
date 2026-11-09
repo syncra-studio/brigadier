@@ -74,6 +74,9 @@ pub struct Fold {
     /// When the limit resets (ms), if its CLI said [D74].
     #[serde(default)]
     pub resets: Option<u64>,
+    /// The limit is an account out of credits, which no reset lifts.
+    #[serde(default)]
+    pub credits: bool,
     pub sign_in: Option<String>,
     /// The CLI refused to resume the conversation on this account (D90 Q4).
     #[serde(default)]
@@ -385,6 +388,7 @@ impl Fold {
             }
             "limited" => {
                 self.limit = Some(str_of("message"));
+                self.credits = item["credits"] == true;
                 // A second limit line that gives no time keeps the one the first gave [D74].
                 self.resets = item["resets"].as_u64().or(self.resets);
                 self.close("limited", item["message"].clone(), ts);

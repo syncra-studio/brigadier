@@ -301,7 +301,7 @@ function WithTip({ words, tip }: { words: string; tip: string }) {
 function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined): ReactNode {
   const to = change.model ? `${change.to} · ${change.model}` : (change.to ?? "");
   const refused = change.reason === "unresumable";
-  const hit = refused ? `${from} couldn’t resume this conversation` : `Usage limit on ${from}`;
+  const hit = refused ? `${from} couldn’t resume this conversation` : change.reason === "credits" ? `Out of credits on ${from}` : `Usage limit on ${from}`;
   switch (state) {
     case "limit":
       return (

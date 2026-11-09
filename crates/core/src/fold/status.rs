@@ -90,11 +90,13 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
         "logged" | "starting" | "working" | "silent" | "idle_jobs" => Some("working"),
-        "limited" | "unresumable" if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS => {
+        "limited" | "out_of_credits" | "unresumable"
+            if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS =>
+        {
             Some("working")
         }
         "failed" | "interrupted" | "undelivered" | "uncertain" | "unresumable" | "limited"
-        | "stalled" | "unresponsive" | "no_turn_started" => Some("amber"),
+        | "out_of_credits" | "stalled" | "unresponsive" | "no_turn_started" => Some("amber"),
         // The user's own stop: nothing to tell them, as in the old app.
         "stopped" => None,
         _ if fold.finished > seen => Some("unread"),
@@ -112,7 +114,14 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
-            _ if fold.limit.is_some() => ("limited", fold.limit.clone().into()),
+            _ if fold.limit.is_some() => (
+                if fold.credits {
+                    "out_of_credits"
+                } else {
+                    "limited"
+                },
+                fold.limit.clone().into(),
+            ),
             _ if fold.refused.is_some() => ("unresumable", fold.refused.clone().into()),
             _ if outcome == "interrupted" => (
                 "interrupted",
