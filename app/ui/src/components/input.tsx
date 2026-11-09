@@ -9,7 +9,7 @@ export function Input({ className, ...props }: Omit<BaseInput.Props, "className"
       data-slot="input"
       className={cx(
         "h-control-md w-full min-w-0 rounded-capsule border border-transparent bg-fill px-3.5 py-1 text-sm transition-colors",
-        "placeholder:text-muted-foreground focus-visible:bg-background focus-visible:focus-ring",
+        "placeholder:text-muted-foreground focus-ring-fades focus-visible:bg-background focus-visible:focus-ring",
         "cursor-text disabled:cursor-not-allowed disabled:bg-input-disabled disabled:opacity-disabled",
         "aria-invalid:border-invalid aria-invalid:ring aria-invalid:ring-invalid-ring",
         className,
