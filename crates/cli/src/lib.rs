@@ -77,6 +77,9 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
 
 pub use switching::{switch_settings, wants};
 
+/// Home's unsent words have no session to live in; this can't be a session id.
+const HOME_DRAFT: &str = "@home";
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     // Every session id this command names, checked before any path is built from it.
@@ -86,7 +89,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         | "switching" | "models" | "title" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
-    for id in ids.iter().filter(|a| *a != "--all") {
+    for id in ids
+        .iter()
+        .filter(|a| *a != "--all" && !(cmd == "draft" && *a == HOME_DRAFT))
+    {
         core::check_id(id)?;
     }
     match cmd {
@@ -219,8 +225,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         // What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
         "draft" => {
             let id = arg(args, 1)?;
-            // Home's unsent words have no session to live in; "@home" can't be a session id.
-            let path = if id == "@home" {
+            let path = if id == HOME_DRAFT {
                 data.join("home-draft")
             } else {
                 core::load(data, id)?;
