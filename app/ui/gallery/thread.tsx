@@ -426,7 +426,7 @@ export function Thread() {
         <Row name="Context saving and notices">
           <Wide label="context saving">
             <div className="flex w-full flex-col">
-              {(["pending", "running", "done", "failed"] as const).map((progress) => (
+              {(["running", "done", "failed"] as const).map((progress) => (
                 <div key={String(progress)}>{item({ ...base(`m-${String(progress)}`), kind: "compaction", summary: null, progress })}</div>
               ))}
             </div>
