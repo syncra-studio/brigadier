@@ -4,7 +4,6 @@ import { useState } from "react";
 import { type ApprovalDecision, ApprovalSlot, type PendingApproval } from "../src/components/composer/approval";
 import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/components/composer/composer";
 import { ComposerField } from "../src/components/composer/field";
-import { ComposerRail } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { ModelPill } from "./composer";
 import { QuestionGallery } from "./questions";
@@ -29,10 +28,9 @@ const ALL: PendingApproval[] = [
 ];
 
 const later = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
-/** Approvals coming, answered, Reply… and back: Rust's stand-in takes each answer a moment later. */
+/** Approvals coming and answered: Rust's stand-in takes each answer a moment later. */
 function Live() {
   const [approvals, setApprovals] = useState(ALL);
-  const [replying, setReplying] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const answer = async (id: string, decision: ApprovalDecision, reason?: string) => {
     await later(500);
@@ -40,8 +38,7 @@ function Live() {
     setLog((lines) => [...lines.slice(-3), `${decision}${reason ? ` “${reason}”` : ""} · ${id}`]);
   };
   const again = () => setApprovals((list) => [...list, ...ALL.map((each) => ({ ...each, id: crypto.randomUUID() }))]);
-  const slot = approvals.length > 0 && !replying;
-  if (replying && approvals.length === 0) setReplying(false);
+  const slot = approvals.length > 0;
   return (
     <div className="flex w-reading flex-col gap-3">
       <ol className="flex flex-col gap-1 text-sm text-muted-foreground">
@@ -55,8 +52,7 @@ function Live() {
         </li>
       </ol>
       <div>
-        <ComposerRail>{replying && <ApprovalSlot placement="rail" approvals={approvals} onAnswer={answer} />}</ComposerRail>
-        {slot && <ApprovalSlot approvals={approvals} onAnswer={answer} onReply={() => setReplying(true)} />}
+        {slot && <ApprovalSlot approvals={approvals} onAnswer={answer} />}
         {/* Kept while an approval has its place, so the draft and its caret stay. */}
         <ComposerCard className={slot ? "hidden" : undefined}>
           <ComposerField placeholder="Do anything" />

@@ -1,4 +1,4 @@
-// An approval waiting for the user: in the composer's place (D96), or on the rail after Reply….
+// An approval waiting for the user, in the composer's place (D96).
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
@@ -7,8 +7,7 @@ import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
-import { RailItem } from "./rail";
-import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, ReplyButton, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
+import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
 import { ComposerField } from "./field";
 
@@ -146,8 +145,7 @@ function grantWords({ scope, pattern }: NonNullable<PendingApproval["grant"]>): 
   return { scope: pattern, tip: `Allow commands that start with ${pattern} in this chat. ${kept}` };
 }
 
-// Deny reasons typed, by approval id, outside any slot: paging away and back, or Reply… moving the card to the
-// rail, keeps them. Read as each card mounts, so not state.
+// Deny reasons typed, by approval id, outside any card: paging away and back keeps them. Read as each card mounts, so not state.
 // shortcut: module-wide and never cleared; scope it per session and drop an id once it's answered when real sessions arrive.
 const reasons = new Map<string, string>();
 
@@ -170,8 +168,6 @@ export function ApprovalCard({
   reason = "",
   onReason,
   step,
-  onReply,
-  footer,
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -182,9 +178,6 @@ export function ApprovalCard({
   reason?: string;
   onReason?: (text: string) => void;
   step?: ApprovalStep;
-  /** In the composer's place: brings the message field back. */
-  onReply?: () => void;
-  footer?: ReactNode;
 }) {
   const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
@@ -250,15 +243,7 @@ export function ApprovalCard({
           />
         </div>
       )}
-      <ActionCardActions
-        leading={
-          <>
-            {/* Not while an answer goes: the card would move to the rail without it. */}
-            {onReply && <ReplyButton disabled={busy} onClick={onReply} />}
-            <ErrorLine error={error} className="me-auto" />
-          </>
-        }
-      >
+      <ActionCardActions leading={<ErrorLine error={error} className="me-auto" />}>
         {!shown.noDeny && (
           <button type="button" className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")} disabled={busy} onClick={deny}>
             {shown.deny ?? "Deny"}
@@ -305,28 +290,22 @@ export function ApprovalCard({
           )}
         </button>
       </ActionCardActions>
-      {footer}
     </ActionCard>
   );
 }
 
 /**
- * The approvals waiting, oldest first, one at a time. `placement` "composer": in the composer's place, as the
- * composer card, with "Reply…" to bring the field back (D96); "rail": on the rail above the field, like any
- * other decision, with how many more wait. Answering one shows the next.
+ * The approvals waiting, oldest first, one at a time, in the composer's place as the composer card (D96).
+ * Answering one shows the next.
  */
 export function ApprovalSlot({
   approvals,
-  placement = "composer",
   onAnswer,
-  onReply,
   denyReason = true,
 }: {
   approvals: readonly PendingApproval[];
-  placement?: "composer" | "rail";
   /** `reason`: what to do instead, typed with a deny. */
   onAnswer: (id: string, decision: ApprovalDecision, reason?: string) => Promise<void>;
-  onReply?: () => void;
   /** The deny reason field (D192). */
   denyReason?: boolean;
 }) {
@@ -350,30 +329,18 @@ export function ApprovalSlot({
       .catch((cause: unknown) => setErrors((map) => new Map(map).set(id, cause instanceof Error ? cause.message : String(cause))))
       .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
   };
-  const card = (
-    <ApprovalCard
-      key={id}
-      approval={approval}
-      onAnswer={answer}
-      busy={sending.has(id)}
-      error={errors.get(id) ?? null}
-      reason={reasons.get(id)}
-      onReason={denyReason ? (text) => reasons.set(id, text) : undefined}
-      step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
-      onReply={placement === "composer" ? onReply : undefined}
-      footer={placement === "rail" && <MoreWaiting more={approvals.length - 1} />}
-    />
-  );
-  if (placement === "rail") {
-    return (
-      <RailItem variant="decision" label="Waiting for you">
-        {card}
-      </RailItem>
-    );
-  }
   return (
     <div data-slot="approval-slot" className={cx("relative w-full rounded-composer bg-composer shadow-hairline", opens && "motion-safe:animate-rail-open")}>
-      {card}
+      <ApprovalCard
+        key={id}
+        approval={approval}
+        onAnswer={answer}
+        busy={sending.has(id)}
+        error={errors.get(id) ?? null}
+        reason={reasons.get(id)}
+        onReason={denyReason ? (text) => reasons.set(id, text) : undefined}
+        step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
+      />
     </div>
   );
 }

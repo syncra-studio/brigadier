@@ -1,7 +1,7 @@
 // The parts approval and question cards share (the old app's action card, tool box, step counter, card keys).
 import { type ComponentProps, Fragment, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { ArrowRight, ChevronRight, Pencil, Reply, X } from "../../icons";
+import { ArrowRight, ChevronRight, Pencil, X } from "../../icons";
 import { Badge } from "../badge";
 import { cx } from "../cx";
 import { TooltipIconButton } from "../icon-button";
@@ -197,7 +197,7 @@ export function actionButton(variant: "primary" | "outline", className?: string)
   );
 }
 
-/** A card's buttons, pushed to the end; `leading` (Reply…, an error) at the start. Narrow, they stack full width. */
+/** A card's buttons, pushed to the end; `leading` (an error) at the start. Narrow, they stack full width. */
 export function ActionCardActions({ leading, children }: { leading?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-4 pt-2 pb-4 @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
@@ -206,22 +206,6 @@ export function ActionCardActions({ leading, children }: { leading?: ReactNode; 
         {children}
       </div>
     </div>
-  );
-}
-
-/** An approval's "Reply…" in the composer's place: brings the message field back. */
-export function ReplyButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      data-slot="approval-reply"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-code text-reply transition-all enabled:hover:bg-fill enabled:hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled motion-safe:enabled:active:scale-press-button"
-    >
-      <Reply className="size-icon-sm" />
-      Reply…
-    </button>
   );
 }
 
