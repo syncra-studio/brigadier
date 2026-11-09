@@ -136,7 +136,7 @@ export function Titlebar({ offline, row }: { offline: boolean; row?: SessionRow 
             <DotsHorizontal />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <RowMenuItems row={row} active onRename={() => setRenaming(true)} />
+            <RowMenuItems row={row} onRename={() => setRenaming(true)} />
           </DropdownMenuContent>
         </DropdownMenu>
       )}

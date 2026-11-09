@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { Check, Copy } from "../icons";
 import { TooltipIconButton, type TooltipIconButtonProps } from "./icon-button";
+import { showToast } from "./toast";
+
+/** Copies `text` from a menu, which has no button to show a check on: a toast says how it went. */
+export function copyWithToast(text: string, what: string): void {
+  navigator.clipboard.writeText(text).then(
+    () => showToast(`Copied ${what}`),
+    () => showToast(`Failed to copy ${what}`, { tone: "error" }),
+  );
+}
 
 /**
  * Copies `text`, then shows a check and says `copiedTooltip` for `copiedDuration` ms. Any other button

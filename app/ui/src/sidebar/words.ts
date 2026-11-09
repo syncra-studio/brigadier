@@ -22,7 +22,7 @@ export type SessionRow = {
   project: string | null;
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle">;
 
-export type Project = { id: string; name: string };
+export type Project = { id: string; name: string; folder: string };
 
 // Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
 const STATE_WORDS: Record<string, string | null> = {

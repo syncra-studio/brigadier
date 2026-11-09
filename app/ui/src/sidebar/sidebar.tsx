@@ -17,7 +17,7 @@ import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
-import { markUnread, pin, rename, useShown } from "./actions";
+import { pin, rename, useShown } from "./actions";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { SessionRowItem } from "./row";
@@ -135,7 +135,6 @@ export function AppSidebar({
         "⌥KeyA": nextNeedingYou,
         "⌥KeyP": activeRow && (() => pin(activeRow, !activeRow.pinned)),
         "⌥KeyR": activeRow && (() => setRenaming(activeRow)),
-        "⇧KeyU": activeRow && (() => markUnread(activeRow, true)),
       }[key];
       if (!action) return;
       event.preventDefault();

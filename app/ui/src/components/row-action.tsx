@@ -9,7 +9,7 @@ export function RowAction({ className, ...props }: ComponentProps<"button">) {
       type="button"
       className={cx(
         "flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-xs text-muted-foreground transition-all",
-        "hover:text-foreground focus-visible:focus-ring motion-safe:active:scale-press svg:size-icon-md",
+        "hover:text-foreground aria-expanded:text-foreground focus-visible:focus-ring motion-safe:active:scale-press svg:size-icon-md",
         className,
       )}
       {...props}

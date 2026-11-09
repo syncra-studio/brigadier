@@ -9,9 +9,9 @@ import { type Project, type SessionRow, statusWords } from "../src/sidebar/words
 import { Held, Row, Section, State } from "./parts";
 
 export const PROJECTS: Project[] = [
-  { id: "p1", name: "brigadier" },
-  { id: "p2", name: "landing-site" },
-  { id: "p3", name: "Old prototypes" },
+  { id: "p1", name: "brigadier", folder: "/Users/demo/code/brigadier" },
+  { id: "p2", name: "landing-site", folder: "/Users/demo/code/landing-site" },
+  { id: "p3", name: "Old prototypes", folder: "/Users/demo/code/old-prototypes" },
 ];
 
 const at = (h: number, m: number) => new Date(2026, 10, 8, h, m).getTime();

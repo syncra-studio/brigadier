@@ -4,14 +4,22 @@ import { Button } from "../components/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
-import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
-import { Mail, Pencil, Pin, Unpin } from "../icons";
+import { copyWithToast } from "../components/copy-button";
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "../components/menu";
+import { Copy, Pencil, Pin, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
-import { markUnread, pin } from "./actions";
+import { pin } from "./actions";
 import type { SessionRow } from "./words";
 
-/** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded them [D185]. */
-export function RowMenuItems({ row, active, onRename }: { row: SessionRow; active: boolean; onRename: () => void }) {
+/** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
+export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () => void }) {
   const pinned = Boolean(row.pinned);
   return (
     <>
@@ -25,11 +33,17 @@ export function RowMenuItems({ row, active, onRename }: { row: SessionRow; activ
         Rename
         <DropdownMenuShortcut>⌥⌘R</DropdownMenuShortcut>
       </DropdownMenuItem>
-      <DropdownMenuItem disabled={row.mark === "unread"} onClick={() => markUnread(row, active)}>
-        <Mail />
-        Mark as unread
-        <DropdownMenuShortcut>⇧⌘U</DropdownMenuShortcut>
-      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <Copy />
+          Copy
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>
+          <DropdownMenuItem onClick={() => copyWithToast(row.id, "session id")}>Copy session id</DropdownMenuItem>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+      <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
     </>
   );

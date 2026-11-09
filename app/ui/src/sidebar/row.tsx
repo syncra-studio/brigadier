@@ -102,7 +102,7 @@ export function SessionRowItem({
   const words = statusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
-  const items = menu ?? <RowMenuItems row={row} active={active} onRename={() => onRename(row)} />;
+  const items = menu ?? <RowMenuItems row={row} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/row relative" />}>
@@ -113,7 +113,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
+                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
                 onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
               />
             }

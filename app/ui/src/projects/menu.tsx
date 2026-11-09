@@ -1,7 +1,8 @@
 import { newSession } from "../home/start";
+import { copyWithToast } from "../components/copy-button";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { showToast } from "../components/toast";
-import { ComposeEditSquare, FolderOpen, SettingsCog, Trash } from "../icons";
+import { ComposeEditSquare, Copy, FolderOpen, SettingsCog, Trash } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "./projects";
 import { openRemoveProject } from "./remove";
@@ -9,9 +10,9 @@ import { openProjectSettings } from "./settings";
 
 /**
  * A project's menu, the core four as the old app had them [D171, D212]: New session, Project settings…,
- * Reveal in Finder and Remove project… (1w). The sidebar's project row puts these in its ⋯ menu.
+ * Reveal in Finder and Remove project… (1w), plus Copy path. The sidebar's project row puts these in its ⋯ menu.
  */
-export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "name"> }) {
+export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "name" | "folder"> }) {
   return (
     <>
       <DropdownMenuItem onClick={() => newSessionIn(project.id)}>
@@ -27,6 +28,10 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
       >
         <FolderOpen />
         Reveal in Finder
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => copyWithToast(project.folder, "path")}>
+        <Copy />
+        Copy path
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" onClick={() => openRemoveProject(project.id)}>

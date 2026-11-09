@@ -26,7 +26,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P] [
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
-       brigadier rename <id> <title> | pin <id> [--off] | unread <id>
+       brigadier rename <id> <title> | pin <id> [--off]
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -198,13 +198,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if at > old {
                 core::write_atomic(&dir.join("seen"), at.to_string().as_bytes())?;
             }
-            // Opening it reads it, whatever Mark as unread said [D185].
-            remove(&dir.join("unread"))?;
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
         // The user's own marks, one small file each in the session's folder [D185, D186]. Each
         // answers the folder's time after the write: the row that shows it has `touched` as late.
-        "rename" | "pin" | "unread" => {
+        "rename" | "pin" => {
             let id = arg(args, 1)?;
             core::load(data, id)?;
             let dir = core::session_dir(data, id);
@@ -213,11 +211,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let name = title::clean(arg(args, 2)?).map_err(io::Error::other)?;
                     core::write_atomic(&dir.join("title"), name.as_bytes())?;
                 }
-                "pin" if has(args, "--off") => remove(&dir.join("pinned"))?,
-                cmd => {
-                    let name = if cmd == "pin" { "pinned" } else { "unread" };
-                    core::write_atomic(&dir.join(name), log::now_ms().to_string().as_bytes())?
-                }
+                _ if has(args, "--off") => remove(&dir.join("pinned"))?,
+                _ => core::write_atomic(&dir.join("pinned"), log::now_ms().to_string().as_bytes())?,
             }
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }

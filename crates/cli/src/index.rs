@@ -53,7 +53,6 @@ struct Marks {
     at: u64,
     title: Option<String>,
     pinned: Option<u64>,
-    unread: bool,
     seen: u64,
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     archived: Option<u64>,
@@ -71,7 +70,6 @@ impl Marks {
             at,
             title: text("title").filter(|t| !t.is_empty()),
             pinned: ms("pinned"),
-            unread: dir.join("unread").exists(),
             seen: ms("seen").unwrap_or(0),
             archived,
             lifecycle,
@@ -204,11 +202,7 @@ impl Index {
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let mark = match &e.error {
                 Some(_) => Some("amber"),
-                // A later end than the user last saw, or their own Mark as unread [D173, D185].
-                None => match fold::mark(&f.fold, &live, e.marks.seen, auto) {
-                    None if e.marks.unread => Some("unread"),
-                    mark => mark,
-                },
+                None => fold::mark(&f.fold, &live, e.marks.seen, auto),
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
