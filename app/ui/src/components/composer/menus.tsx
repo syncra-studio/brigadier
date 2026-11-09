@@ -1,7 +1,7 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, MenuOption, type MenuRenderFn, type MenuTextMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { $createTextNode, $isTextNode, COMMAND_PRIORITY_HIGH, type LexicalNode, type TextNode } from "lexical";
-import { type ComponentProps, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Paperclip } from "../../icons";
@@ -165,6 +165,8 @@ function useCard(): HTMLElement | null {
   const [editor] = useLexicalComposerContext();
   const [card, setCard] = useState<HTMLElement | null>(null);
   useEffect(() => editor.registerRootListener((root) => setCard(root?.closest<HTMLElement>("[data-slot=composer-card]") ?? null)), [editor]);
+  // Lexical mounts its menu's empty role=listbox at once and adds it back on open: left in, it reads as an open menu to everything that yields to one (Esc Esc, a card's keys).
+  useLayoutEffect(() => card?.querySelectorAll(":scope > [role=listbox]:empty").forEach((anchor) => anchor.remove()), [card]);
   return card;
 }
 
