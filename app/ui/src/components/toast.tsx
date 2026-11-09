@@ -29,6 +29,8 @@ function ToastList() {
       <Toast.Root
         key={toast.id}
         toast={toast}
+        // Base UI's default is "dialog", which every "is a dialog open?" check would take this for, ⌘Z's Undo included.
+        role="group"
         swipeDirection="up"
         data-slot="toast"
         className={cx(
