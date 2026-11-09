@@ -185,8 +185,8 @@ const COMPACTION: Record<Progress, string> = {
   pending: "Waiting to save context",
   running: "Saving context · nothing will be lost",
   done: "Context saved · the full thread is still here",
-  failed: "Couldn’t compact · the conversation is unchanged",
-  cancelled: "Couldn’t compact · the conversation is unchanged",
+  failed: "Couldn’t save context · the conversation is unchanged",
+  cancelled: "Couldn’t save context · the conversation is unchanged",
 };
 
 /** The agent shortening its context, as a divider across the column. */

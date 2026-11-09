@@ -366,7 +366,7 @@ export function Thread() {
               <button
                 type="button"
                 aria-label="Jump to the latest"
-                className="group/jump flex size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+                className="group/jump flex cursor-pointer size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
               >
                 <JumpSign running={running} />
               </button>
@@ -374,7 +374,7 @@ export function Thread() {
           ))}
         </Row>
       </Section>
-      <Section title="Approvals, questions, subagents, compaction, notices">
+      <Section title="Approvals, questions, subagents, context saving, notices">
         <Row
           name="Approval row"
         >
@@ -423,10 +423,10 @@ export function Thread() {
             </div>
           </Wide>
         </Row>
-        <Row name="Compaction and notices">
-          <Wide label="compaction">
+        <Row name="Context saving and notices">
+          <Wide label="context saving">
             <div className="flex w-full flex-col">
-              {(["pending", "running", "done", "failed", undefined] as const).map((progress) => (
+              {(["pending", "running", "done", "failed"] as const).map((progress) => (
                 <div key={String(progress)}>{item({ ...base(`m-${String(progress)}`), kind: "compaction", summary: null, progress })}</div>
               ))}
             </div>

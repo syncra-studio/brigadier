@@ -327,7 +327,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           type="button"
           aria-label="Jump to the latest"
           onClick={toBottom}
-          className="group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+          className="group/jump absolute cursor-pointer bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
         >
           <JumpSign running={turnList?.at(-1)?.status === "running"} />
         </button>
