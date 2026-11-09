@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AccountsPage } from "./accounts/page";
@@ -150,7 +150,8 @@ function FirstLoad({ error }: { error?: string }) {
 function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
   const title = row?.title;
   const thread = useRef<ThreadHandle>(null);
-  useEffect(() => openThread(id), [id]);
+  // Before the paint, and the Thread waits for it below: a new one never starts on the last session's rows.
+  useLayoutEffect(() => openThread(id), [id]);
   const state = useThread();
   const sending = useSending(id);
   const sides = useSidePending(id);
@@ -176,7 +177,7 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
               <div className="min-h-0 flex-1">
                 {shown ? (
                   <StartingThread id={id} />
-                ) : (
+                ) : state?.id === id && (
                 <SessionOfThread value={{ id, offline }}>
                   <Thread
                     key={id}

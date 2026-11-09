@@ -274,7 +274,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     return () => observer.disconnect();
   }, [lastId, last, away, hasFooter, fit]);
 
-  if (!session) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</p>;
+  // Words here would flash on every open; the column stays empty for the moment it takes.
+  if (!session) return <span role="status" className="sr-only">Loading conversation</span>;
   if (rows.length === 0) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
   return (
     <div

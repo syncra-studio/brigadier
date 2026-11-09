@@ -67,6 +67,10 @@ let itemAt = new Map<string, number>();
 let before: number | null = null;
 let olderRe = 0;
 const threadListeners = new Set<() => void>();
+// The sessions last left, as Rust last sent them: one opened again paints at once, and its snapshot then replaces the
+// rows by id [D30].
+const KEPT_THREADS = 10;
+const left = new Map<string, Session>();
 
 function set(next: Partial<View>): void {
   view = { ...view, ...next };
@@ -114,7 +118,13 @@ function watch(): void {
 /** Opens a session's thread; the last one's rows go at once, so no other session flashes in. */
 export function openThread(id: string): void {
   if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
-  setThread({ id, status: "loading" }, null);
+  // Older pages aren't kept: the snapshot starts at the newest page, so it would take those rows away under the view.
+  if (thread?.status === "ready" && session && before === session.before) {
+    left.delete(thread.id);
+    left.set(thread.id, session);
+    if (left.size > KEPT_THREADS) left.delete(left.keys().next().value!);
+  }
+  setThread({ id, status: "loading" }, left.get(id) ?? null);
   watch();
 }
 
@@ -249,7 +259,8 @@ export const threadSource: Source = {
   },
   get: () => session,
   older() {
-    if (thread && session && before !== null && !olderRe && view.daemon) olderRe = send({ op: "thread_older", session: thread.id, before });
+    // `before` is only this session's once its snapshot is in.
+    if (thread && session && threadN !== undefined && before !== null && !olderRe && view.daemon) olderRe = send({ op: "thread_older", session: thread.id, before });
   },
 };
 

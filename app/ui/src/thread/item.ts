@@ -11,6 +11,8 @@ import type { PendingQuestion } from "../components/composer/question";
 export type Session = {
   id: string;
   title: string;
+  /** The `n` of the first row sent, or null when the whole history came. */
+  before?: number | null;
   turns: Turn[];
   /** Every item of every turn, oldest first: the rows of the thread. */
   items: Item[];
