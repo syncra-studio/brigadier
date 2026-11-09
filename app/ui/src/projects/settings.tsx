@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 
 import { Button } from "../components/button";
+import { CodeEditor } from "../components/code-editor";
 import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
@@ -46,7 +47,7 @@ export function ProjectSettingsHost() {
   return (
     <>
     <Dialog open={project !== undefined} onOpenChange={(open) => !open && opened.set(null)}>
-      <DialogContent frame="max-w-project-dialog gap-7 p-6">
+      <DialogContent frame="project-dialog max-w-project-dialog gap-7 p-6">
         {project && <ProjectSettings key={project.id} project={project} source={daemonSettings} onClose={() => opened.set(null)} />}
       </DialogContent>
     </Dialog>
@@ -137,9 +138,9 @@ export function ProjectSettings({
   };
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="flex min-w-0 flex-col gap-7">
-      <div className="flex flex-col gap-5.5">
-        <DialogTitle>Project settings</DialogTitle>
+    <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-7">
+      <DialogTitle>Project settings</DialogTitle>
+      <div className="-mx-6 flex min-h-0 flex-col gap-5.5 overflow-y-auto px-6 py-1">
         <Field label="Name" htmlFor={`${id}-name`}>
           <Input id={`${id}-name`} value={name} autoFocus maxLength={80} onChange={(event) => setName(event.target.value)} />
         </Field>
@@ -156,19 +157,11 @@ export function ProjectSettings({
         {folder === project.folder && <TrustRow project={project} source={source} />}
         <Files project={project} source={source} files={files} onFiles={setFiles} />
         <Field label="Setup script" aside="Runs in each new worktree before its first turn, only while the folder is trusted" htmlFor={`${id}-setup`}>
-          <textarea
-            id={`${id}-setup`}
-            value={setup}
-            rows={3}
-            spellCheck={false}
-            placeholder="pnpm install"
-            className="min-h-control-md w-full resize-y rounded-control bg-fill px-3.5 py-2 font-mono text-xs placeholder:text-muted-foreground focus-visible:bg-background focus-visible:focus-ring"
-            onChange={(event) => setSetup(event.target.value)}
-          />
+          <CodeEditor id={`${id}-setup`} value={setup} onChange={setSetup} language="bash" label="Setup script" placeholder="pnpm install" className="h-29 shrink-0 rounded-control bg-fill" />
         </Field>
         <ErrorLine error={error} />
       </div>
-      <div className="flex justify-end gap-2">
+      <div className="flex shrink-0 justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
