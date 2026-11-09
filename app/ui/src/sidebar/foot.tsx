@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -7,7 +7,7 @@ import { Segmented } from "../components/segmented";
 import { useSidebar } from "../components/sidebar";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
-import { spacingPx } from "../components/tooltip";
+import { spacingPx, tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
 import { UpdatesRow } from "./updates";
@@ -108,40 +108,60 @@ function UsageMenu() {
 /** Glides the foot's icons between the row and the stack with the sidebar's own motion, the same elements throughout. */
 function useGlide(open: boolean) {
   const foot = useRef<HTMLDivElement>(null);
-  const spots = useRef(new Map<HTMLElement, [number, number]>());
+  const seen = useRef(open);
+  const from = useRef(new Map<Element, [number, number]>());
+  // Read while rendering, before React moves them: where they are now, whatever changed since the last toggle, and mid-glide too.
+  if (seen.current !== open && foot.current) {
+    seen.current = open;
+    const box = foot.current.getBoundingClientRect();
+    from.current = new Map(
+      [...foot.current.children].map((item) => {
+        const at = item.getBoundingClientRect();
+        return [item, [at.left - box.left, at.top - box.bottom]];
+      }),
+    );
+  }
   useLayoutEffect(() => {
     const box = foot.current!;
     const css = getComputedStyle(box);
-    const glide = { duration: parseFloat(css.getPropertyValue("--duration-fold")), easing: css.getPropertyValue("--ease-sidebar") };
-    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const glide = { duration: tokenMs("--duration-fold"), easing: css.getPropertyValue("--ease-sidebar") };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const item of box.children as HTMLCollectionOf<HTMLElement>) {
+      const was = from.current.get(item);
       // From the bottom: that edge stays put while the box changes height.
-      const now: [number, number] = [item.offsetLeft, item.offsetTop - box.clientHeight];
-      const was = spots.current.get(item);
-      if (was && !calm && (was[0] !== now[0] || was[1] !== now[1])) item.animate({ translate: [`${was[0] - now[0]}px ${was[1] - now[1]}px`, "0 0"] }, glide);
-      spots.current.set(item, now);
+      const dx = was ? was[0] - item.offsetLeft : 0;
+      const dy = was ? was[1] - (item.offsetTop - box.clientHeight) : 0;
+      if (dx || dy) item.animate({ translate: [`${dx}px ${dy}px`, "0 0"] }, glide);
     }
   }, [open]);
   return foot;
 }
 
 /**
- * The icons at the sidebar's foot. Expanded they make one row, Settings first; collapsed they stack in the
- * strip, Settings last, so Settings stays in the corner either way.
+ * The icons at the sidebar's foot. Expanded they make one row, Settings first. In the strip the same elements
+ * stack from the bottom, so they read Archived, updates, Usage, Keep awake, Settings [D211], and Settings stays
+ * in the corner either way. `archived` is the strip's Archived icon.
  */
-export function SidebarFoot() {
+export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   const { open } = useSidebar();
   const foot = useGlide(open);
   // The row's height always, the stack rising over the strip from it, so the list above never resizes on a toggle.
+  // The row is its final width from the start, or it would wrap while the panel widens.
   return (
     <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} className={cx("flex px-2 py-2", open ? "relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col gap-px")}>
-        <TooltipIconButton look="strip" side={open ? "top" : "right"} tooltip="Settings" className={open ? undefined : "order-last"} onClick={() => (window.location.hash = "#accounts")}>
+      <div ref={foot} className={cx("flex px-2 py-2", open ? "sidebar-panel-width relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col-reverse gap-px")}>
+        <TooltipIconButton look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => (window.location.hash = "#accounts")}>
           <Settings />
         </TooltipIconButton>
         <KeepAwakeMenu />
         <UsageMenu />
         <UpdatesRow />
+        {/* Always here, fading as the strip's own contents do; out of the row's way when expanded. */}
+        {archived && (
+          <div inert={open} className={cx("flex transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
+            {archived}
+          </div>
+        )}
       </div>
     </div>
   );

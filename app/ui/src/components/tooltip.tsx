@@ -32,6 +32,13 @@ export function spacingPx(): number {
   return parseFloat(root.getPropertyValue("--spacing")) * parseFloat(root.fontSize);
 }
 
+/** A time token ("2.2s", "450ms") in milliseconds. */
+export function tokenMs(name: string): number {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const amount = Number.parseFloat(value);
+  return value.endsWith("ms") ? amount : amount * 1000;
+}
+
 type TooltipContentProps = Omit<BaseTooltip.Popup.Props, "className"> &
   Pick<BaseTooltip.Positioner.Props, "side" | "align" | "collisionAvoidance"> & {
     className?: string;

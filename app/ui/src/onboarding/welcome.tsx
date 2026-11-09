@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { ErrorLine } from "../components/error-line";
+import { tokenMs } from "../components/tooltip";
 import { errorText, intro } from "./api";
 import { IntroCanvas, WINDOW_SHAPED } from "./intro-canvas";
 import { BrigadierMark } from "./mark";
@@ -14,13 +15,6 @@ const STAGE_PAINT_MS = 50;
 /** The desktop's dim fading out, early (Escape, the window ending it). */
 const QUICK_LIFT_MS = 300;
 const TITLE = ["Brigadier,", "at your command."] as const;
-
-/** A time token ("2.2s", "450ms") in milliseconds. */
-function tokenMs(name: string): number {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const amount = Number.parseFloat(value);
-  return value.endsWith("ms") ? amount : amount * 1000;
-}
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
