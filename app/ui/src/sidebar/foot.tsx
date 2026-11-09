@@ -110,9 +110,11 @@ function useGlide(open: boolean) {
   const foot = useRef<HTMLDivElement>(null);
   const seen = useRef(open);
   const from = useRef(new Map<Element, [number, number]>());
+  const focused = useRef<HTMLElement | null>(null);
   // Read while rendering, before React moves them: where they are now, whatever changed since the last toggle, and mid-glide too.
   if (seen.current !== open && foot.current) {
     seen.current = open;
+    focused.current = foot.current.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
     const box = foot.current.getBoundingClientRect();
     from.current = new Map(
       [...foot.current.children].map((item) => {
@@ -122,6 +124,8 @@ function useGlide(open: boolean) {
     );
   }
   useLayoutEffect(() => {
+    // Reversing the icons drops focus from one React moved.
+    if (focused.current?.isConnected && document.activeElement !== focused.current) focused.current.focus({ preventScroll: true });
     const box = foot.current!;
     const css = getComputedStyle(box);
     const glide = { duration: tokenMs("--duration-fold"), easing: css.getPropertyValue("--ease-sidebar") };
@@ -139,29 +143,33 @@ function useGlide(open: boolean) {
 
 /**
  * The icons at the sidebar's foot. Expanded they make one row, Settings first. In the strip the same elements
- * stack from the bottom, so they read Archived, updates, Usage, Keep awake, Settings [D211], and Settings stays
- * in the corner either way. `archived` is the strip's Archived icon.
+ * reverse to read Archived, updates, Usage, Keep awake, Settings [D211], and Settings stays in the corner
+ * either way. `archived` is the strip's Archived icon.
  */
 export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   const { open } = useSidebar();
   const foot = useGlide(open);
+  // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
+  const icons = [
+    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => (window.location.hash = "#accounts")}>
+      <Settings />
+    </TooltipIconButton>,
+    <KeepAwakeMenu key="awake" />,
+    <UsageMenu key="usage" />,
+    <UpdatesRow key="updates" />,
+    // Always here, fading as the strip's own contents do; out of the row's way when expanded.
+    archived && (
+      <div key="archived" inert={open} className={cx("flex transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
+        {archived}
+      </div>
+    ),
+  ];
   // The row's height always, the stack rising over the strip from it, so the list above never resizes on a toggle.
   // The row is its final width from the start, or it would wrap while the panel widens.
   return (
     <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} className={cx("flex px-2 py-2", open ? "sidebar-panel-width relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col-reverse gap-px")}>
-        <TooltipIconButton look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => (window.location.hash = "#accounts")}>
-          <Settings />
-        </TooltipIconButton>
-        <KeepAwakeMenu />
-        <UsageMenu />
-        <UpdatesRow />
-        {/* Always here, fading as the strip's own contents do; out of the row's way when expanded. */}
-        {archived && (
-          <div inert={open} className={cx("flex transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
-            {archived}
-          </div>
-        )}
+      <div ref={foot} className={cx("flex px-2 py-2", open ? "sidebar-panel-width relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col gap-px")}>
+        {open ? icons : icons.toReversed()}
       </div>
     </div>
   );
