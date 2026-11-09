@@ -60,17 +60,21 @@ pub(super) fn landed(
         match server.request("GET", &format!("{at}/message/{message}"), &Value::Null) {
             Ok((404, _)) => Landing::Applied(Rewound::default()),
             Ok((code, _)) if code < 300 => match server.request("GET", &at, &Value::Null) {
-                Ok((_, body)) => {
+                Ok((code, body)) if code < 300 => {
                     let v: Value = serde_json::from_str(&body).unwrap_or_default();
-                    if v["data"]["revert"].is_object()
-                        && server
-                            .request("DELETE", &format!("{at}/revert"), &Value::Null)
-                            .is_err()
-                    {
-                        return Landing::Unknown("its staged revert couldn't be undone".into());
+                    if !v["data"].is_object() {
+                        return Landing::Unknown(said("session", code, &body));
+                    }
+                    if v["data"]["revert"].is_object() {
+                        match server.request("DELETE", &format!("{at}/revert"), &Value::Null) {
+                            Ok((code, _)) if code < 300 => {}
+                            Ok((code, body)) => return Landing::Unknown(said("undo", code, &body)),
+                            Err(e) => return Landing::Unknown(e.to_string()),
+                        }
                     }
                     Landing::NotApplied
                 }
+                Ok((code, body)) => Landing::Unknown(said("session", code, &body)),
                 Err(e) => Landing::Unknown(e.to_string()),
             },
             Ok((code, body)) => Landing::Unknown(said("message", code, &body)),
