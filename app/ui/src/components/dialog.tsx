@@ -6,7 +6,9 @@ import { Button } from "./button";
 import { cx } from "./cx";
 
 export const Dialog = BaseDialog.Root;
-export const DialogTrigger = BaseDialog.Trigger;
+export function DialogTrigger(props: BaseDialog.Trigger.Props) {
+  return <BaseDialog.Trigger data-dialog-trigger {...props} />;
+}
 export const DialogClose = BaseDialog.Close;
 
 /**
