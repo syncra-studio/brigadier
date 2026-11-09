@@ -36,6 +36,22 @@ protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: t
 
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
 // older one, which may answer but refuse this app.
+// The first open panel of a run loads its frameworks, about half a second. Paid once, off the
+// user's click, so Choose folder and Change open at once (the old app's warm_folder_picker) [D389].
+let panelWarmed = false;
+function warmFolderPanel(): void {
+  if (panelWarmed || process.platform !== "darwin") return;
+  panelWarmed = true;
+  const file = app.isPackaged ? path.join(process.resourcesPath, "bin/libbrigadier_panel.dylib") : path.join(__dirname, "../../../target/debug/libbrigadier_panel.dylib");
+  setTimeout(() => {
+    try {
+      process.dlopen({ exports: {} } as NodeJS.Module, file);
+    } catch (error) {
+      console.error("Could not ready the folder picker:", error);
+    }
+  }, 1500);
+}
+
 function startDaemon(): void {
   const daemon = spawn(daemonPath, daemonArgs, { detached: true, stdio: "ignore" });
   daemon.once("error", (error) => console.error("Could not start the daemon:", error));
@@ -112,6 +128,7 @@ function openWindow(): void {
   };
   fork();
   window.webContents.on("did-finish-load", wire);
+  window.webContents.once("did-finish-load", warmFolderPanel);
   // A crash leaves the window blank; reloading draws it again and reconnects to the daemon.
   // shortcut: a page that crashes on every load reloads forever; add a backoff if that ever happens.
   window.webContents.on("render-process-gone", (_event, details) => {

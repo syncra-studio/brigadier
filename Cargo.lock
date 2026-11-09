@@ -59,6 +59,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "brigadier-panel"
+version = "0.1.0"
+
+[[package]]
 name = "brigadierd"
 version = "0.1.0"
 dependencies = [

@@ -10,7 +10,7 @@ BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build --release --locked
 pnpm build
 rm -rf target/bin
 mkdir target/bin
-cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake} target/bin/
+cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,libbrigadier_panel.dylib} target/bin/
 node --input-type=module <<'EOF'
 import { packager } from "@electron/packager";
 // Electron's own checksums, as its installer uses: a cached zip needs no network.
