@@ -68,14 +68,17 @@ function useModHeld(on: boolean): boolean {
   const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!on) return;
-    const check = (event: KeyboardEvent) => setHeld(MAC ? event.metaKey : event.ctrlKey);
+    const check = (event: KeyboardEvent | PointerEvent) => setHeld(MAC ? event.metaKey : event.ctrlKey);
     const off = () => setHeld(false);
     window.addEventListener("keydown", check);
     window.addEventListener("keyup", check);
+    // A ⌘ let go where no key-up reached us shows up as soon as the pointer moves.
+    window.addEventListener("pointermove", check);
     window.addEventListener("blur", off);
     return () => {
       window.removeEventListener("keydown", check);
       window.removeEventListener("keyup", check);
+      window.removeEventListener("pointermove", check);
       window.removeEventListener("blur", off);
       setHeld(false);
     };
@@ -127,7 +130,7 @@ export function SendButton({
   const armed = useEscToStop(keys, stoppable, onStop, button) || frozenArmed;
   const state = armed || (stoppable && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
   const modHeld = useModHeld(keys && onSendNew !== undefined);
-  const asNew = state === "send" && onSendNew !== undefined && (modHeld || frozenNew);
+  const asNew = state === "send" && onSendNew !== undefined && ((modHeld && !empty) || frozenNew);
   const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";
   const tip =
     state === "stop"
