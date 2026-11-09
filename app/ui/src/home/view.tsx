@@ -7,6 +7,7 @@ import { ComposerField, type ComposerFieldHandle } from "../components/composer/
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
 import { ComposerRail, NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
+import { showToast } from "../components/toast";
 import { BrigadierMark } from "../onboarding/mark";
 import { BranchPicker, type RepoState } from "./branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
@@ -85,7 +86,9 @@ export function HomeView(props: HomeProps) {
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : undefined;
   const send = (parts: Draft["parts"]) => {
-    if (blocked || isEmpty({ parts, attachmentIds: [] })) return;
+    if (isEmpty({ parts, attachmentIds: [] })) return;
+    // Said in a toast: text under the composer would move it [D388].
+    if (blocked) return void showToast(blocked);
     props.onSend(plainText(parts).trim());
   };
   const field = useRef<ComposerFieldHandle>(null);

@@ -105,7 +105,7 @@ export function Titlebar({ offline, row }: { offline: boolean; row?: SessionRow 
   return (
     <header className="app-drag titlebar-clear flex h-titlebar shrink-0 items-center gap-1 pe-1">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
-        {row?.title && <Folder className="size-icon-md shrink-0 text-muted-foreground" />}
+        {row?.title && row.project && <Folder className="size-icon-md shrink-0 text-muted-foreground" />}
         {row?.title &&
           (archived ? (
             <span className="truncate font-medium">{row.title}</span>
