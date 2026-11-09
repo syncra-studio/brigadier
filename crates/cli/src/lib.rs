@@ -127,7 +127,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let worktree = project.is_some() && !has(args, "--local");
             // A chat with no project works in a folder of its own, gone with the session [D35, D388].
-            let scratch = has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
+            let scratch =
+                has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
             let cwd = flag(args, "--cwd")
                 .map(String::from)
                 .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
