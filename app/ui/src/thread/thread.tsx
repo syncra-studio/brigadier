@@ -152,6 +152,17 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   }, [all]);
   const space = useMemo(spaceStore, []);
   const pin = useRef<{ id: string; released: boolean } | null>(null);
+  // A card waiting on the user brings its live row into view, unless they've scrolled by hand since sending.
+  const asking = session?.approvals?.[0]?.id ?? session?.questions?.[0]?.id;
+  const askingNow = useRef(asking);
+  askingNow.current = asking;
+  const sentAt = useRef(0);
+  const toCard = useCallback(() => {
+    if (!askingNow.current || pin.current || byHand.current >= sentAt.current) return;
+    stuck.current = true;
+    setAway(false);
+    list.current?.scrollToIndex(current.current.length - 1, { align: "end" });
+  }, []);
   const fit = useCallback(() => {
     const handle = list.current;
     const viewport = box.current;
@@ -187,6 +198,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
       pin.current = null;
       space.set(0);
       setAway(true);
+      toCard();
     };
     // Our own move isn't the user scrolling up.
     const move = () => {
@@ -205,7 +217,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     if (need === 0) return filled();
     space.set(need);
     if (Math.abs(drift) > 1) move();
-  }, [space]);
+  }, [space, toCard]);
   const seen = useRef(newest);
   const mine = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -244,6 +256,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     },
     sent: (id) => {
       mine.current = id;
+      sentAt.current = performance.now();
     },
   }), [last]);
 
@@ -252,6 +265,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     else fit();
     fill();
   }, [data, last, fit]);
+  useLayoutEffect(toCard, [asking, toCard]);
 
   // A growing last row or footer is measured after the effect above, and the viewport can shrink (window, composer),
   // so follow the bottom again on any. Coming back to the bottom (away turns false) finds them remounted.
