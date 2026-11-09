@@ -234,7 +234,7 @@ pub fn inspect(data: &Path, path: &str) -> io::Result<Value> {
     {
         return Ok(json!({"kind": "repo", "repo": folder, "name": p.name, "project_id": p.id}));
     }
-    Ok(match projects::check(data, path) {
+    Ok(match projects::check(data, &dir.to_string_lossy()) {
         Ok(repo) => {
             let name = repo.file_name().map(|n| n.to_string_lossy().into_owned());
             json!({"kind": "repo", "repo": repo, "name": name, "project_id": null})
