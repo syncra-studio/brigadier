@@ -282,9 +282,21 @@ fn resets(limits: &HashMap<String, Value>) -> Option<u64> {
         .map(|secs| secs * 1000)
 }
 
+/// Whether Codex marks the account out of credits, which no reset lifts. Only its main bucket
+/// carries the mark, read fresh once a limited turn ends. A spend cap is another value and stays a limit.
+fn out_of_credits(limits: &HashMap<String, Value>) -> bool {
+    matches!(
+        limits
+            .get("codex")
+            .and_then(|s| s["rateLimitReachedType"].as_str()),
+        Some("workspace_owner_credits_depleted" | "workspace_member_credits_depleted")
+    )
+}
+
 fn flush(st: &mut State) {
     if let Some(mut end) = st.held.take() {
-        end["params"]["brigadier"] = json!({"resets": resets(&st.limits)});
+        end["params"]["brigadier"] =
+            json!({"resets": resets(&st.limits), "credits": out_of_credits(&st.limits)});
         say(end);
     }
 }

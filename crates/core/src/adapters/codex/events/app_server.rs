@@ -49,7 +49,9 @@ fn completed(p: &Value) -> Vec<Event> {
     let mut events = vec![];
     if status == "failed" {
         let message = s(turn, &["error", "message"]);
-        events.push(if limited(turn) {
+        events.push(if p["brigadier"]["credits"] == true {
+            Event::OutOfCredits
+        } else if limited(turn) {
             Event::Limited(message.into(), p["brigadier"]["resets"].as_u64())
         } else if s(turn, &["error", "codexErrorInfo"]) == "unauthorized" {
             Event::SignIn(message.into())
