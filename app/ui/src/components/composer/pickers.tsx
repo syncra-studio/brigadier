@@ -1,10 +1,9 @@
 import { type KeyboardEvent, useRef, useState } from "react";
 
 import { Check, ChevronDown, Dock, Folder, Globe, HandRaised, ShieldExclamation, ShieldTerminal, Terminal, Warning } from "../../icons";
-import { Button } from "../button";
 import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
+import { Dialog, DialogContent } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { Segmented } from "../segmented";
@@ -245,7 +244,6 @@ export function PermissionPicker({
   onChange,
   levels = ALL_LEVELS,
   untrusted = false,
-  onLearnMore,
   held,
 }: {
   value: PermissionLevel;
@@ -253,8 +251,6 @@ export function PermissionPicker({
   /** The levels the agent has, from its adapter; one it lacks isn't offered. */
   levels?: readonly PermissionLevel[];
   untrusted?: boolean;
-  /** Opens the permission levels' help; without it there is no "Learn more". */
-  onLearnMore?: () => void;
   /** The gallery's box to hold the menu open in. */
   held?: HTMLElement;
 }) {
@@ -285,14 +281,7 @@ export function PermissionPicker({
           collisionAvoidance={held ? STILL : undefined}
           className="w-125 max-w-full p-1.5"
         >
-          <div className="flex items-end justify-between gap-6 px-2 pt-1 pb-1.5 text-sm">
-            <p className="text-muted-foreground">How should the agent’s actions be approved?</p>
-            {onLearnMore && (
-              <button type="button" className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground focus-visible:focus-ring" onClick={onLearnMore}>
-                Learn more
-              </button>
-            )}
-          </div>
+          <p className="px-2 pt-1 pb-1.5 text-sm text-muted-foreground">How should the agent’s actions be approved?</p>
           {untrusted && (
             // As wide as the menu, never widening it.
             <p className="w-0 min-w-full px-2 pb-1.5 text-xs text-muted-foreground">
@@ -332,7 +321,6 @@ export function PermissionPicker({
       </DropdownMenu>
       <FullAccessDialog
         open={confirming}
-        onLearnMore={onLearnMore}
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false);
@@ -343,25 +331,23 @@ export function PermissionPicker({
   );
 }
 
-/** What Full access lets the agent do, in the confirmation's card. */
-const POWERS = [
-  { Icon: Folder, tone: "text-link", title: "Files and folders", line: "Read, create, modify, or delete files anywhere on this computer" },
-  { Icon: Dock, tone: "text-muted-foreground", title: "Terminal commands", line: "Run commands, install software, and change system settings" },
-  { Icon: Globe, tone: "text-link", title: "Internet", line: "Access websites and send data" },
+/** What Full Access reaches. */
+const REACHES = [
+  { Icon: Folder, label: "Files" },
+  { Icon: Dock, label: "Commands" },
+  { Icon: Globe, label: "Internet" },
 ];
 
-/** "Turn on Full Access?": what the agent could do without asking, and the risks. Only Confirm changes the level. */
+/** "Turn on Full Access?" in one sentence and what it reaches (D172). Only Confirm changes the level; Cancel takes the focus. */
 export function FullAccessDialog({
   open,
   onCancel,
   onConfirm,
-  onLearnMore,
   held,
 }: {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  onLearnMore?: () => void;
   /** The gallery's box to hold it open in, not modal and not taking focus. */
   held?: HTMLElement;
 }) {
@@ -369,45 +355,29 @@ export function FullAccessDialog({
   return (
     <Dialog open={open} modal={!held} onOpenChange={(next) => !next && onCancel()}>
       <DialogContent showCloseButton={false} container={held} initialFocus={held ? false : cancel}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Warning className="size-icon-md" />
-            Turn on Full Access?
-          </DialogTitle>
-          <DialogDescription>
-            Brigadier’s agents will be able to run commands, use the internet, and create and edit files anywhere on this computer without your
-            permission. This includes but is not limited to:
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="divide-y divide-border rounded-surface bg-fill-subtle px-3">
-          {POWERS.map(({ Icon, tone, title, line }) => (
-            <li key={title} className="flex items-center gap-3 py-2.5">
-              <Icon className={cx("size-icon-lg shrink-0", tone)} />
-              <span className="flex min-w-0 flex-col">
-                <span className="font-medium">{title}</span>
-                <span className="text-xs text-muted-foreground">{line}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-muted-foreground">
-          Agents run commands like your own terminal, without asking. This comes with risks like loss or exposure of sensitive data and prompt
-          injection. You can turn this off.{" "}
-          {onLearnMore && (
-            <button type="button" className="cursor-pointer text-link hover:underline focus-visible:focus-ring" onClick={onLearnMore}>
-              Learn more
-            </button>
-          )}
-        </p>
-        <DialogFooter>
-          <Button ref={cancel} variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="soft-destructive" onClick={onConfirm}>
-            <Warning />
-            Confirm
-          </Button>
-        </DialogFooter>
+        <ConfirmForm
+          title={
+            <span className="flex items-center gap-2">
+              <Warning className="size-icon-md" />
+              Turn on Full Access?
+            </span>
+          }
+          description="Agents can use all of these without asking."
+          confirm="Turn on Full Access"
+          destructive
+          cancelRef={cancel}
+          onCancel={onCancel}
+          onConfirm={onConfirm}
+        >
+          <ul className="flex gap-4 text-sm text-muted-foreground">
+            {REACHES.map(({ Icon, label }) => (
+              <li key={label} className="flex items-center gap-1.5">
+                <Icon className="size-icon-sm" />
+                {label}
+              </li>
+            ))}
+          </ul>
+        </ConfirmForm>
       </DialogContent>
     </Dialog>
   );
