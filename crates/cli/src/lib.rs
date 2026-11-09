@@ -11,6 +11,7 @@ mod sessions;
 mod setup;
 mod side;
 mod switching;
+mod tabs;
 mod title;
 
 use brigadier_core::fold::{self, Owner};
@@ -22,11 +23,12 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T] [--carry-tabs]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off]
+       brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -91,7 +93,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     for id in ids
         .iter()
-        .filter(|a| *a != "--all" && !(cmd == "draft" && *a == HOME_DRAFT))
+        .filter(|a| *a != "--all" && !(matches!(cmd, "draft" | "tabs") && *a == HOME_DRAFT))
     {
         core::check_id(id)?;
     }
@@ -162,6 +164,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::load(data, id)?
             };
+            // The tabs are extras: a failure here never stops the session from starting.
+            if fresh && has(args, "--carry-tabs") {
+                let _ = tabs::carry(data, id);
+            }
             if let Some(dir) = &scratch {
                 fs::create_dir_all(dir)?;
             }
@@ -262,6 +268,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "stop" => queue::stop(data, arg(args, 1)?),
         "side" => side::run(data, args),
+        "tabs" => tabs::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;
