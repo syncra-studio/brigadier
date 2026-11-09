@@ -392,7 +392,7 @@ function Strip({ onNewSession }: { onNewSession: () => void }) {
   return (
     <div className="flex flex-col items-center gap-1 pt-3">
       <TooltipIconButton tooltip="Show sidebar" look="strip" data-sidebar-peek-trigger side="right" onClick={() => setOpen(true)}>
-        <BrigadierMark />
+        <BrigadierMark className="size-5" />
       </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>
         <ComposeEditSquare />

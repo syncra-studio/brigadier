@@ -207,7 +207,7 @@
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
   --spacing-icon-lg: 1.25rem;
-  --spacing-titlebar: 2.75rem;
+  --spacing-titlebar: 2.5rem;
   --spacing-traffic-lights: 4.75rem;
   /* Back, Forward and the sidebar toggle: Back's centre 26px past the traffic lights, 6px apart. */
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);

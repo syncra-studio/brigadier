@@ -72,7 +72,8 @@ function openWindow(): void {
     backgroundColor: hold ? introColours.clear : themeBackground,
     ...(hold ? { transparent: true, show: false } : {}),
     titleBarStyle: "hidden",
-    trafficLightPosition: { x: 16, y: 15 },
+    // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar).
+    trafficLightPosition: { x: 16, y: 13 },
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       sandbox: true,
