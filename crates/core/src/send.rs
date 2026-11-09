@@ -147,7 +147,7 @@ pub fn send(
             req["op"] = "input".into();
             let run = Spec {
                 cid: Some(cid.into()),
-                ..spec.clone()
+                ..run.clone()
             };
             bytes += &a.encode(&run, text);
             req["bytes"] = bytes.into();
