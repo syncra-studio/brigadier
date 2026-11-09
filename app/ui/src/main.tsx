@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
-import { TooltipIconButton } from "./components/icon-button";
-import { NavRow } from "./components/nav";
-import { SidebarProvider, useSidebar } from "./components/sidebar";
+import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
@@ -28,6 +26,7 @@ import { PendingSideLines, useSidePending } from "./session/side";
 import { Titlebar, TitlebarNav } from "./shell/titlebar";
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
+import { SidebarFoot } from "./sidebar/foot";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
 import "./theme.css";
@@ -100,8 +99,7 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
           // ⌘N's too: Home in the open session's project [D184].
           onNewSession={() => newSession(rows?.find((row) => row.id === active)?.project)}
-          // Until wave 3's Settings holds them.
-          foot={<AccountsFoot />}
+          foot={<SidebarFoot />}
         />
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
         <TitlebarNav active={active} rows={rows} />
@@ -109,26 +107,6 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
       <ProjectSettingsHost />
-    </div>
-  );
-}
-
-// Only the collapsed strip is too narrow for the label; a peek while hidden still has the full width.
-function AccountsFoot() {
-  const { open, hidden } = useSidebar();
-  const go = () => (window.location.hash = "#accounts");
-  return (
-    <div className="px-2 pb-2">
-      {open || hidden ? (
-        <NavRow onClick={go}>
-          <Key />
-          Accounts
-        </NavRow>
-      ) : (
-        <TooltipIconButton tooltip="Accounts" look="strip" side="right" onClick={go}>
-          <Key />
-        </TooltipIconButton>
-      )}
     </div>
   );
 }

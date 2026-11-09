@@ -29,6 +29,8 @@ export type Row = {
   updated: number;
   items: number;
   error: string | null;
+  /** An agent is working in it now: what keeps the computer awake "while agents work". */
+  works?: boolean;
 };
 
 export type View = {

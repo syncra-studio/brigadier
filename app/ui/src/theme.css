@@ -382,6 +382,19 @@
       scale: 0.75;
     }
   }
+  --animate-foot-row: foot-row 150ms ease-out;
+  --animate-foot-stack: foot-stack 150ms ease-out;
+  /* A foot icon fading in where it lands; two names for one fade, so it restarts on each turn. */
+  @keyframes foot-row {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes foot-stack {
+    from {
+      opacity: 0;
+    }
+  }
   --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
   --animate-peek-out: peek-out var(--duration-peek-out) var(--ease-sidebar) forwards;
   /* The collapsed sidebar peeking: it only fades, so the mark never moves. */
@@ -833,6 +846,25 @@
   color: oklch(0.88 0.1 var(--tone-hue));
 }
 
+/* Something on a bar or in a list that is only sometimes there: it grows along data-axis while data-open. */
+@utility bar-item {
+  display: grid;
+  grid-template-columns: 0fr;
+  opacity: 0;
+  transition: grid-template-columns 200ms var(--ease-standard), grid-template-rows 200ms var(--ease-standard), opacity 200ms var(--ease-standard);
+  &[data-axis="y"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 0fr;
+  }
+  &[data-open] {
+    grid-template-columns: 1fr;
+    opacity: 1;
+  }
+  &[data-axis="y"][data-open] {
+    grid-template-rows: 1fr;
+  }
+}
+
 /* A line too long for its row fades out at its end (a sidebar row's title). */
 @utility mask-fade-end {
   mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);
@@ -1170,4 +1202,9 @@
   display: grid;
   gap: calc(var(--spacing) * 3);
   grid-template-columns: repeat(auto-fill, minmax(min(var(--spacing-setup-card), 100%), 1fr));
+}
+
+/* What opens a menu, picker or popover doesn't press in (D174); what opens a dialog still does. Unlayered, to beat the utilities. */
+[aria-haspopup]:not([data-dialog-trigger]) {
+  scale: none;
 }

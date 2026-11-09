@@ -12,7 +12,7 @@ const TOOLBAR = cx(
 
 // A sidebar strip or foot icon: a row tall, filled while hovered, pressed or while its menu is open.
 const STRIP = cx(
-  "relative flex h-7.5 min-w-8 gap-1.5 rounded-icon-button text-strip-foreground transition-all motion-safe:active:scale-press",
+  "relative flex h-7.5 min-w-8 gap-1.5 text-strip-foreground transition-all motion-safe:active:scale-press",
   "hover:bg-fill hover:text-foreground aria-expanded:bg-fill aria-expanded:text-foreground",
   "aria-pressed:bg-fill aria-pressed:text-foreground",
 );
@@ -24,10 +24,11 @@ export type TooltipIconButtonProps = ButtonProps & {
   shortcut?: string;
   side?: "top" | "bottom" | "left" | "right";
   /**
-   * `ghost`: a quiet icon in a card, row or composer; its tip shows at once. `toolbar` and `strip`
-   * take their tip timing from the provider around them (TitlebarTips, the sidebar).
+   * `ghost`: a quiet icon in a card, row or composer; its tip shows at once. `toolbar`, `strip` and `chip`
+   * (the strip's look, outlined and round-ended, for the foot's update pills) take their tip timing from
+   * the provider around them (TitlebarTips, the sidebar).
    */
-  look?: "ghost" | "toolbar" | "strip";
+  look?: "ghost" | "toolbar" | "strip" | "chip";
   /** Switched on (aria-pressed). */
   pressed?: boolean;
   /** A small dot on the icon, in this background class ("bg-warning"). */
@@ -51,16 +52,19 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   const ghost = look === "ghost";
+  const flat = look === "strip" || look === "chip";
   const button = (
     <Button
-      variant={look === "strip" ? null : (variant ?? "ghost")}
-      size={look === "strip" ? null : (size ?? (ghost ? "icon-sm" : "icon-md"))}
+      variant={flat ? null : (variant ?? "ghost")}
+      size={flat ? null : (size ?? (ghost ? "icon-sm" : "icon-md"))}
       aria-label={tooltip}
       aria-pressed={pressed}
       className={cx(
         ghost && (variant ?? "ghost") === "ghost" && "aria-expanded:bg-fill",
         look === "toolbar" && TOOLBAR,
-        look === "strip" && STRIP,
+        flat && STRIP,
+        look === "strip" && "rounded-icon-button",
+        look === "chip" && "rounded-capsule border border-border px-2",
         className,
       )}
       {...props}
