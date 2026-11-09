@@ -46,6 +46,7 @@ export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
   setHomeDraft({ ...(project && { project, chat: false }), focus: draft.get().focus + 1 });
+  selectTab(HOME_DRAFT, CHAT);
   window.location.hash = "";
 }
 
