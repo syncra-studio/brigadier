@@ -324,8 +324,9 @@ fn forget_thread(codex: &Codex, spec: &Spec, id: &str) -> Result<(), String> {
 }
 
 /// What Codex's own delete leaves naming the thread. Its import record's path goes, not the row:
-/// without the row Codex would import every rollout again [D371, D382]. A busy or changed
-/// database keeps it, and delete still finishes.
+/// without the row Codex would import every rollout again [D371, D382]. Its log rows go too: ones
+/// from before the thread had started carry its id only in their text, which Codex's delete, by
+/// the id column, misses. A busy or changed database keeps them, and delete still finishes.
 fn clear_records(spec: &Spec, id: &str) {
     let run = |file: &str, sql: &str, like: String| {
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE;
@@ -338,5 +339,10 @@ fn clear_records(spec: &Spec, id: &str) {
         "state_5.sqlite",
         "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
         format!("-{id}.jsonl"),
+    );
+    run(
+        "logs_2.sqlite",
+        "DELETE FROM logs WHERE instr(feedback_log_body, ?1) > 0",
+        id.to_string(),
     );
 }
