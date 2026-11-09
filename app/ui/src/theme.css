@@ -624,15 +624,6 @@
   box-shadow: none;
 }
 
-/* A ring that fades out with its control's fill, so the control never vanishes between them: on at once, off in step. */
-@utility focus-ring-fades {
-  outline: var(--focus-ring-width) solid transparent;
-  outline-offset: calc(var(--focus-ring-width) * -1);
-  &:focus-visible {
-    transition-property: background-color;
-  }
-}
-
 /* A popup's way in (faded, smaller, shifted toward its trigger) and out (faded, smaller). Base UI sets
    --transform-origin. */
 @utility popup-motion {
