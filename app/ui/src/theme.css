@@ -317,6 +317,7 @@
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
+  --duration-input-focus: 80ms;
   --blur-material: 24px;
   /* A list folding open or shut, the sidebar's spring; the peek's way out. */
   --duration-fold: 300ms;
@@ -622,6 +623,15 @@
   outline: var(--focus-ring-width) solid var(--color-ring);
   outline-offset: calc(var(--focus-ring-width) * -1);
   box-shadow: none;
+}
+
+/* An input's focus: ring and fill fade as one, so either can turn back mid-way. Only the ring's colour ever changes. */
+@utility input-focus {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: calc(var(--focus-ring-width) * -1);
+  transition-property: background-color, outline-color;
+  transition-duration: var(--duration-input-focus);
+  transition-timing-function: var(--default-transition-timing-function);
 }
 
 /* A popup's way in (faded, smaller, shifted toward its trigger) and out (faded, smaller). Base UI sets

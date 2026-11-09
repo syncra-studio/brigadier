@@ -3,18 +3,18 @@ import { Input as BaseInput } from "@base-ui/react/input";
 import { cx } from "./cx";
 
 /**
- * Fills its container's width: size it by its container (cx doesn't merge a caller's width). Focus changes at
- * once, on purpose: a fade of the ring and fill flickers when focus returns mid-fade.
+ * Fills its container's width: size it by its container (cx doesn't merge a caller's width). Its ring stays in
+ * its error colour when invalid: a grey one over the red border reads as the border thinning.
  */
 export function Input({ className, ...props }: Omit<BaseInput.Props, "className"> & { className?: string }) {
   return (
     <BaseInput
       data-slot="input"
       className={cx(
-        "h-control-md w-full min-w-0 rounded-capsule border border-transparent bg-fill px-3.5 py-1 text-sm",
+        "h-control-md w-full min-w-0 rounded-capsule border border-transparent bg-fill px-3.5 py-1 text-sm input-focus",
         "placeholder:text-muted-foreground focus-visible:bg-background focus-visible:focus-ring",
         "cursor-text disabled:cursor-not-allowed disabled:bg-input-disabled disabled:opacity-disabled",
-        "aria-invalid:border-invalid aria-invalid:ring aria-invalid:ring-invalid-ring",
+        "aria-invalid:border-invalid aria-invalid:ring aria-invalid:ring-invalid-ring aria-invalid:focus-visible:outline-invalid",
         className,
       )}
       {...props}
