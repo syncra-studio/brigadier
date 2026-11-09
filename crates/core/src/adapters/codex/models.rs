@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{ModelInfo, base_env};
+use super::super::{Failed, ModelInfo, base_env};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -111,6 +111,44 @@ pub fn delete(spec: &Spec, exe: &Path, cwd: &Path, thread: &str) -> Result<(), S
         None => Err(format!(
             "Codex's server didn't start, so thread {thread} can't be removed."
         )),
+    }
+}
+
+/// A new thread holding `conv` up to its completed turn `turn`, inclusive; `conv` itself is left
+/// as it was, so the same message can be rewound to again [D384]. No answer can't say it wasn't made.
+pub fn fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, turn: &str) -> Result<String, Failed> {
+    let params = json!({"threadId": conv, "lastTurnId": turn, "excludeTurns": true});
+    let made = short_lived(spec, exe, cwd, 30, |call| {
+        call("thread/fork", params).map_err(|e| (e.starts_with("Codex didn't answer"), e))
+    });
+    match made {
+        Some(Ok(v)) => (v["thread"]["id"].as_str().map(String::from))
+            .ok_or_else(|| Failed::Uncertain("Codex's fork named no thread".into())),
+        Some(Err((true, e))) => Err(Failed::Uncertain(e)),
+        Some(Err((false, e))) => Err(Failed::Refused(e)),
+        None => Err(Failed::Refused("Codex's server didn't start".into())),
+    }
+}
+
+/// A fork that was never heard about goes, so nothing is left behind unrecorded [D35]. The original
+/// is untouched either way; a list that fails can leave one fork, which nothing resumes.
+pub fn drop_fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, resume: &str, at: u64) {
+    let found = short_lived(spec, exe, cwd, 30, |call| {
+        let page = call("thread/list", json!({"limit": 50})).ok()?;
+        let made = (page["data"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter())
+        .filter(|t| t["forkedFromId"] == conv && t["id"] != resume)
+        .filter(|t| t["createdAt"].as_u64().is_some_and(|s| s >= at / 1000));
+        for thread in made {
+            let _ = call("thread/delete", json!({"threadId": thread["id"]}));
+        }
+        Some(())
+    });
+    if found.flatten().is_none() {
+        eprintln!("Codex: couldn't list threads to clear a fork of {conv}");
     }
 }
 

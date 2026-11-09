@@ -276,6 +276,15 @@ impl Thread {
         }
     }
 
+    /// The messages a rewind can go back to, when they changed [D384].
+    pub(super) fn send_points(&mut self, out: &mut Value) {
+        let points = self.fold.points();
+        if points != self.points {
+            out["rewind"] = points.clone().into();
+            self.points = points;
+        }
+    }
+
     /// Adds a step's row under the open group, starting one when none is open.
     fn step(&mut self, row: Value) -> usize {
         let Some(o) = self.open.as_mut() else {

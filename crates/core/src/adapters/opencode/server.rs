@@ -88,6 +88,52 @@ pub(super) fn start(
     Ok((server, state, lease))
 }
 
+/// A server for one bounded job, in the session's environment and folder, ended when it returns.
+pub(super) fn oneshot<T>(
+    exe: &std::path::Path,
+    env: Vec<(String, String)>,
+    cwd: &str,
+    job: impl FnOnce(&Server) -> T,
+) -> Result<T, String> {
+    use std::os::unix::process::CommandExt;
+    let password = super::super::uuid();
+    let mut child = Command::new(exe)
+        .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
+        .env_clear()
+        .envs(env)
+        .env("OPENCODE_PASSWORD", &password)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| format!("OpenCode didn't start: {e}"))?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let mut first = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut first);
+        let _ = tx.send(first);
+    });
+    let first = rx.recv_timeout(Duration::from_secs(60));
+    let answered = first.map_err(|_| "OpenCode's server didn't start".to_string());
+    let out = answered.and_then(|first| {
+        let url: Value =
+            serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
+        let server = Server {
+            addr: super::super::s(&url, &["url"])
+                .trim_start_matches("http://")
+                .into(),
+            auth: base64(format!("opencode:{password}").as_bytes()),
+        };
+        Ok(job(&server))
+    });
+    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    let _ = child.wait();
+    out
+}
+
 /// One line from the adapter. A failed `must` line (the setup before a first message) ends the
 /// helper, so no message runs on a setup it didn't take [D222].
 pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
@@ -156,6 +202,11 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
     };
     if let Some(id) = id {
         say(json!({"type": "brigadier.reply", "data": {"id": id, "error": error}}));
+    }
+    // Its id for this message is where a later rewind cuts [D384].
+    if let (Ok((_, out)), None, true) = (&result, &error, c["prompt"].is_object()) {
+        let v: Value = serde_json::from_str(out).unwrap_or_default();
+        say(json!({"type": "brigadier.mark", "data": {"start": v["data"]["id"]}}));
     }
     if let Some(e) = error {
         if c["must"] == true {

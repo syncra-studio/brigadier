@@ -1,8 +1,8 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
 use super::{
-    Accounts, Adapter, Can, Check, Delivery, Done, Event, Launch, ModelInfo, Retune, Timing, Tool,
-    base_env, s,
+    Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
+    Retune, Rewound, Timing, Tool, base_env, s,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -148,6 +148,10 @@ impl Adapter for Fake {
                 ok: true,
                 ..Default::default()
             })],
+            "mark" => vec![Event::Mark {
+                start: v["start"].as_str().map(String::from),
+                end: v["end"].as_str().map(String::from),
+            }],
             "beat" | "child" => vec![],
             "done" => vec![Event::TurnEnd(v["ok"].as_bool().unwrap_or(true))],
             "ask" if v["items"].is_array() => vec![Event::Question(
@@ -185,6 +189,42 @@ impl Adapter for Fake {
         let count = |k: &str| text.lines().filter(|l| l.starts_with(k)).count() as u64;
         Some((count("say "), count("tool ")))
     }
+
+    fn can_cut(&self, cut: &Cut) -> bool {
+        cut.dropped.start.is_some()
+    }
+
+    /// Its record is one line per turn: the cut keeps the lines before the first turn dropped.
+    fn rewind(&self, spec: &Spec, resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
+        let path = conv(spec, resume);
+        let keep = turns_before(cut);
+        let text = std::fs::read_to_string(&path).map_err(|e| Failed::Refused(e.to_string()))?;
+        let kept: String = text.lines().take(keep).map(|l| format!("{l}\n")).collect();
+        std::fs::write(&path, kept).map_err(|e| Failed::Uncertain(e.to_string()))?;
+        Ok(Rewound::default())
+    }
+
+    fn landed(&self, spec: &Spec, resume: &str, cut: &Cut, _at: u64) -> Landing {
+        match std::fs::read_to_string(conv(spec, resume)) {
+            Ok(text) if text.lines().count() == turns_before(cut) => {
+                Landing::Applied(Rewound::default())
+            }
+            Ok(_) => Landing::NotApplied,
+            Err(e) => Landing::Unknown(e.to_string()),
+        }
+    }
+}
+
+fn conv(spec: &Spec, resume: &str) -> PathBuf {
+    spec.dir.join("fake").join(format!("{resume}.conv"))
+}
+
+fn turns_before(cut: &Cut) -> usize {
+    cut.dropped
+        .start
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
 }
 
 /// The setup a turn runs with, as the fake agent reads it before the turn's message.

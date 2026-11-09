@@ -28,6 +28,10 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             error: d["error"].as_str().map(String::from),
             level: None,
         }],
+        "brigadier.mark" => vec![Event::Mark {
+            start: d["start"].as_str().map(String::from),
+            end: None,
+        }],
         "brigadier.gone" | "form.cancelled" => vec![Event::Resolved(id("id"))],
         // A command's output file: the server is this session's alone, so its shells are too.
         "shell.created" => vec![Event::External(s(d, &["info", "file"]).into())],

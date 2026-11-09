@@ -70,6 +70,7 @@ pub struct Thread {
     setup_at: Option<usize>,
     setup: Value,
     setup_changed: bool,
+    points: Vec<String>,
 }
 
 /// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
@@ -253,7 +254,7 @@ impl Thread {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(
                 json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
-                "origin": origin, "sentAt": t.ts}),
+                "origin": origin, "sentAt": t.ts, "cid": t.id}),
             );
             if let Some(o) = self.open.as_mut() {
                 o.input = true;
@@ -431,6 +432,7 @@ impl Thread {
         } else if items.is_empty() && turns.is_empty() && work.is_empty() && !setup_changed {
             return None;
         }
+        self.send_points(&mut out);
         Some(out)
     }
 
@@ -442,6 +444,7 @@ impl Thread {
         page["id"] = id.into();
         page["title"] = title.into();
         page["setup"] = self.setup.clone();
+        page["rewind"] = self.fold.points().into();
         for (k, v) in self.requests().as_object().unwrap() {
             page[k] = v.clone();
         }

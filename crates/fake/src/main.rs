@@ -76,6 +76,15 @@ impl Agent {
         emit(json!({"t": "say", "text": text}));
     }
 
+    /// What it remembers of this conversation, one line per turn: what a rewind cuts.
+    fn conv(&self) -> Vec<String> {
+        fs::read_to_string(self.home.join(format!("{}.conv", self.sid)))
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
+    }
+
     /// Runs `cmd` as a tool for up to `secs`, with a heartbeat each second unless `quiet`. Progress
     /// is saved, so a resumed session continues what is left rather than starting over.
     /// False when the user stopped the turn inside it.
@@ -183,6 +192,8 @@ impl Agent {
                 return emit(json!({"t": "done", "ok": false}));
             }
             emit(json!({"t": "turn"}));
+            emit(json!({"t": "mark", "start": self.conv().len().to_string()}));
+            append(&self.home.join(format!("{}.conv", self.sid)), text);
             // A changed setup shows on the turn it reached, as a CLI's own banner would.
             if !self.told {
                 self.told = true;
@@ -206,6 +217,7 @@ impl Agent {
         } else {
             self.say(&format!("ok {first}"));
         }
+        emit(json!({"t": "mark", "end": self.conv().len().to_string()}));
         emit(json!({"t": "done"}));
     }
 
@@ -214,6 +226,13 @@ impl Agent {
         let left = n.saturating_sub(done_before);
         match name {
             "say" => (0..n).for_each(|i| self.say(&format!("line {i}"))),
+            "recall" => self.say(&format!("I remember: {}", self.conv().join(" | "))),
+            "write" => {
+                let file = word.split_once(':').map_or("", |w| w.1);
+                let turn = self.conv().len();
+                let _ = fs::write(file, format!("written in turn {turn}\n"));
+                self.say(&format!("wrote {file}"));
+            }
             "tree" => {
                 let cmd = format!("sleep {left} & sleep {left} & wait");
                 if !self.tool(word, n, done_before, false, &cmd) {

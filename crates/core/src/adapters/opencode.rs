@@ -6,12 +6,13 @@ mod control;
 mod events;
 mod grants;
 mod http;
+mod rewind;
 mod server;
 
 use super::setup::run as bounded;
 use super::{
-    Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env, home_path,
-    probe, s, sha1, uuid, version,
+    Adapter, Can, Check, Cut, Delivery, Event, Failed, Landing, Launch, ModelInfo, Retune, Rewound,
+    Timing, base_env, home_path, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
 use control::{answers, denied, model, model_ref, rules};
@@ -370,6 +371,18 @@ impl Adapter for OpenCode {
             Err(e) if !e.contains("Session not found") => Err(format!("OpenCode: {}", e.trim())),
             _ => Ok(()),
         }
+    }
+
+    fn can_cut(&self, cut: &Cut) -> bool {
+        cut.dropped.start.is_some()
+    }
+
+    fn rewind(&self, spec: &Spec, resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
+        rewind::cut(self.exe(), self.env(spec), spec, resume, cut)
+    }
+
+    fn landed(&self, spec: &Spec, resume: &str, cut: &Cut, _at: u64) -> Landing {
+        rewind::landed(self.exe(), self.env(spec), spec, resume, cut)
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

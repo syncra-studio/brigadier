@@ -2,8 +2,8 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Can, Check, Delivery, Event, Launch, ModelInfo, Retune, Timing, base_env,
-    cli_home, drop_lines, home_path, probe_as, s, version,
+    Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Landing, Launch, ModelInfo,
+    Retune, Rewound, Timing, base_env, cli_home, drop_lines, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use rusqlite::{Connection, OpenFlags};
@@ -221,6 +221,40 @@ impl Adapter for Codex {
                     .any(|v| v["payload"]["item"]["client_id"] == cid)
             })
         })
+    }
+
+    fn can_cut(&self, cut: &Cut) -> bool {
+        cut.kept.is_none_or(|k| k.end.is_some())
+    }
+
+    /// Before the first turn, a new thread; otherwise a fork that ends at the last turn kept.
+    fn rewind(&self, spec: &Spec, _resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
+        let Some(kept) = cut.kept else {
+            return Ok(Rewound {
+                fresh: true,
+                ..Rewound::default()
+            });
+        };
+        let exe = (self.exe()).ok_or_else(|| Failed::Refused("Codex is not installed".into()))?;
+        let id = models::fork(
+            spec,
+            &exe,
+            Path::new(&spec.cwd),
+            &kept.conv,
+            kept.end.as_deref().unwrap_or(""),
+        )?;
+        Ok(Rewound {
+            moved: Some(id),
+            ..Rewound::default()
+        })
+    }
+
+    /// Its original never changes: whether or not a fork was made, this cut didn't take.
+    fn landed(&self, spec: &Spec, resume: &str, cut: &Cut, at: u64) -> Landing {
+        if let (Some(kept), Some(exe)) = (cut.kept, self.exe()) {
+            models::drop_fork(spec, &exe, Path::new(&spec.cwd), &kept.conv, resume, at);
+        }
+        Landing::NotApplied
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

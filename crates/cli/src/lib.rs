@@ -306,7 +306,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let mut thread = core::thread::Thread::default();
             // A visible setup marker guarantees SPAWNED is logged before this read starts.
             let setup = core::worktrees::setup_state(&spec.dir, true);
-            core::read(&spec.dir, |item| thread.push(item))?;
+            core::rewind::read_active(&spec.dir, |item| thread.push(item))?;
             let f = thread.status_fold();
             let live = fold::live(f, owner::state(data, id), data, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
