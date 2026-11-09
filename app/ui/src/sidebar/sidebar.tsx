@@ -17,6 +17,7 @@ import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../session
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
 import { pin, rename, useShown } from "./actions";
+import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { SessionRowItem } from "./row";
@@ -70,7 +71,8 @@ export function AppSidebar({
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
-  foot?: ReactNode;
+  /** Given the strip's Archived icon, which only the sidebar has the rows for. */
+  foot?: (archived: ReactNode) => ReactNode;
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
@@ -160,6 +162,7 @@ export function AppSidebar({
     />
   );
   const view = <ViewTrigger projects={projects} show={show} />;
+  const listed = { active, offline, onOpen };
   // Add project shows a project already added here: grouped by project, unfolded, in view [D165].
   useEffect(() => {
     setShowProject((id, group) => {
@@ -175,7 +178,16 @@ export function AppSidebar({
     .filter((each) => each.id !== active && (each.mark === "needs" || each.mark === "amber"));
 
   return (
-    <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot} mark={<BrigadierMark className="size-5" />}>
+    <SidebarPanel
+      strip={
+        <Strip onNewSession={onNewSession}>
+          <ProjectsFlyout projects={byName} sessions={rest ?? []} {...listed} />
+          <ChatsFlyout pinned={pinned} chats={homeless} {...listed} />
+        </Strip>
+      }
+      foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
+      mark={<BrigadierMark className="size-5" />}
+    >
       <NavHeader
         title={
           <span className="-ms-0.5 flex items-center gap-2">
@@ -196,12 +208,6 @@ export function AppSidebar({
         }
       />
       <NavList className="mb-2 px-2">
-        <li>
-          <NavRow onClick={() => openFeedback()}>
-            <FeedbackGlyph />
-            Send Feedback
-          </NavRow>
-        </li>
         <li>
           <NavRow data-active={home || undefined} onClick={onNewSession}>
             <ComposeEditSquare />
@@ -258,18 +264,7 @@ export function AppSidebar({
                       {projects.length === 0 && (
                         <EmptyState
                           as="li"
-                          title={
-                            <span>
-                              Projects group sessions on a repository.{" "}
-                              <button
-                                type="button"
-                                className="cursor-pointer text-foreground underline-offset-link hover:underline"
-                                onClick={() => openAddProject()}
-                              >
-                                Add a project
-                              </button>
-                            </span>
-                          }
+                          title={<NoProjects onAdd={() => openAddProject()} />}
                         />
                       )}
                     </NavList>
@@ -353,8 +348,8 @@ function ProjectRow({
   );
 }
 
-/** The collapsed strip: the mark, which peeks the panel and opens it, New session and Search. */
-function Strip({ onNewSession }: { onNewSession: () => void }) {
+/** The collapsed strip: the mark, which peeks the panel and opens it, New session, Search and the lists (`children`). */
+function Strip({ onNewSession, children }: { onNewSession: () => void; children: ReactNode }) {
   const { setOpen } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-1 pt-2.75">
@@ -369,6 +364,7 @@ function Strip({ onNewSession }: { onNewSession: () => void }) {
       <TooltipIconButton tooltip="Search" shortcut="⌘K" look="strip" side="right" onClick={openSearch}>
         <MagnifyingGlassSmSearch />
       </TooltipIconButton>
+      {children}
     </div>
   );
 }
