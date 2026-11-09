@@ -32,7 +32,7 @@ export const ROWS: SessionRow[] = [
   row("2", "Rate limit the exports", "waiting_answer", "needs", "p1"),
   row("3", "Deploy the preview", "sign_in", "needs", "p2"),
   row("4", "Flaky login test on CI", "failed", "amber", "p1"),
-  row("5", "Translate the pricing page", "limited", "amber", "p2", { resets: at(14, 10) }),
+  row("5", "Translate the pricing page", "limited", "amber", "p2", { resets: Date.now() + 3_600_000 }),
   row("6", "Profile the thread view", "stalled", "amber", "p1"),
   row("7", "Greeting", "idle", "unread", "p2"),
   row("8", "Landing page hero copy", "idle", null, "p2"),

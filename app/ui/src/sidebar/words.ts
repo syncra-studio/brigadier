@@ -1,3 +1,5 @@
+import { useEffect, useReducer } from "react";
+
 import type { Row } from "../daemon";
 
 /** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, or nothing. */
@@ -55,18 +57,34 @@ const hhmm = (ms: number) => {
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 };
 
+/** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
+const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();
+
 /** What a row's mark means, in plain words ("Needs you · sign-in", "Usage limit · resets 14:10"); null for nothing. */
 export function statusWords(row: SessionRow): string | null {
   if (row.mark === "unread") return MARK_WORDS.unread;
   if (row.state === "limited") {
     // Spinning, an automatic switch waits it out [D51]; otherwise it's stuck until you act.
     const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";
-    return row.resets === null ? words : `${words} · resets ${hhmm(row.resets)}`;
+    return resetAhead(row.resets) ? `${words} · resets ${hhmm(row.resets)}` : words;
   }
   // A pending approval waits as a question does; only its reason says which [D173].
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
+}
+
+/** statusWords for a row left on screen: it draws again until the limit's reset time has passed [D379]. */
+export function useStatusWords(row: SessionRow): string | null {
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  const ahead = resetAhead(row.resets);
+  useEffect(() => {
+    if (!ahead) return;
+    // A poll, not one timeout to the reset: timers don't run while the Mac sleeps.
+    const timer = setInterval(redraw, 10_000);
+    return () => clearInterval(timer);
+  }, [ahead]);
+  return statusWords(row);
 }
 
 /** A project's initials for its badge: the first letters of its first two words, else its first two. */

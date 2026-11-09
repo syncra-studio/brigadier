@@ -10,7 +10,7 @@ import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
 import { RowMenuItems } from "./menu";
-import { type Mark, type Project, projectInitials, type SessionRow, statusWords } from "./words";
+import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
 const SLOT = "flex size-icon-lg shrink-0 items-center justify-center";
 
@@ -102,7 +102,7 @@ export function SessionRowItem({
   onClick?: (event: MouseEvent) => void;
 }) {
   const mark = active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark;
-  const words = statusWords(row);
+  const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
   const items = menu ?? <RowMenuItems row={row} onRename={() => onRename(row)} />;

@@ -11,7 +11,7 @@ import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
 import { newSessionIn } from "../projects/menu";
 import { openAddProject } from "../projects/store";
 import { RowMark } from "./row";
-import { type Project, type SessionRow, statusWords } from "./words";
+import { type Project, type SessionRow, useStatusWords } from "./words";
 
 /*
  * The strip's lists, each opening beside it to pick from without expanding the sidebar: Projects and Chats as
@@ -55,7 +55,7 @@ function Flyout({ label, icon, lit = false, children }: { label: string; icon: R
 /** A session in a list: its title and mark; picking it opens it. */
 function Line({ row, nested = false, pick, active, offline, onOpen }: Rows & { row: SessionRow; nested?: boolean; pick: Choose }) {
   const here = row.id === active;
-  const words = statusWords(row);
+  const words = useStatusWords(row);
   return (
     <li>
       <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className={cx("pe-1.5", nested && "ps-8")} onClick={() => pick(() => onOpen(row.id))}>
