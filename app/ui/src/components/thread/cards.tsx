@@ -1,13 +1,12 @@
 import type { ComponentType, ReactNode } from "react";
 
-import { Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
+import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { ApprovalAction, Item, Progress, StepKind } from "../../thread/item";
 import type { PendingQuestion, QuestionItem } from "../composer/question";
 import { duration, useSecond } from "../../thread/words";
 import { Button } from "../button";
 import { cx } from "../cx";
-import { ErrorLine } from "../error-line";
 import { LabeledDivider } from "../labeled-divider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
@@ -225,16 +224,17 @@ export function ChildAgentRow({
   );
 }
 
-const COMPACTION: Record<Progress, string> = {
-  pending: "Waiting to save context",
-  running: "Saving context · nothing will be lost",
-  done: "Context saved · the full thread is still here",
-  failed: "Couldn’t compact · the conversation is unchanged",
-  cancelled: "Couldn’t compact · the conversation is unchanged",
+const COMPACTION: Record<Exclude<Progress, "pending">, string> = {
+  running: "Optimizing conversation…",
+  done: "Conversation optimized",
+  failed: "Couldn’t optimize conversation · Nothing changed",
+  cancelled: "Couldn’t optimize conversation · Nothing changed",
 };
 
 /** The agent shortening its context, as a divider across the column. */
-export function CompactionDivider({ progress = "done" }: { progress?: Progress }) {
+export function CompactionDivider({ progress: reported = "done" }: { progress?: Progress }) {
+  // Never a line saying it's waiting (D186): one not yet started reads as under way.
+  const progress = reported === "pending" ? "running" : reported;
   return (
     <LabeledDivider>
       <TextShorterConcise className="size-icon-sm shrink-0" />
@@ -245,15 +245,15 @@ export function CompactionDivider({ progress = "done" }: { progress?: Progress }
   );
 }
 
-/** Something the app or agent wants seen: an error's sentence in red; a warning or note with its icon, centred. */
+/** Something the app or agent wants seen, centred after its icon; an error in red, announced as it comes. */
 export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"; text: string }) {
-  if (level === "error") return <ErrorLine size="sm" error={text} className="wrap-anywhere" />;
+  const error = level === "error";
   return (
     // Centred, wrapped lines too (D150). The icon is inline before the first word, so it stays beside the words,
     // centred on its capitals (D151).
-    <p className="text-center text-sm leading-5.25 wrap-anywhere text-row-foreground">
+    <p role={error ? "alert" : undefined} className={cx("text-center text-sm leading-5.25 wrap-anywhere", error ? "whitespace-pre-wrap text-destructive" : "text-row-foreground")}>
       <span className="me-1.5 w-4 cap-box">
-        {level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4" />}
+        {error ? <ExclamationMarkCircle className="size-4" /> : level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4" />}
       </span>
       {text}
     </p>

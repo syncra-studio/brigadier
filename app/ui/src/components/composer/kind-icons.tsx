@@ -17,18 +17,18 @@ const GLYPHS: [RegExp, typeof File, string][] = [
  * A file's icon in a menu: its kind's glyph in its colour, or for code and config a grey badge with its
  * extension ("TS", "JSON"); a file with no extension, a plain page.
  */
-export function FileBadge({ name }: { name: string }) {
+export function FileBadge({ name, className }: { name: string; className?: string }) {
   const extension = extensionOf(name);
   const glyph = GLYPHS.find(([pattern]) => pattern.test(extension));
   if (glyph) {
     const [, Icon, tone] = glyph;
-    return <Icon aria-hidden className={tone} />;
+    return <Icon aria-hidden className={cx(tone, className)} />;
   }
-  if (!extension) return <File aria-hidden className="text-muted-foreground" />;
+  if (!extension) return <File aria-hidden className={cx("text-muted-foreground", className)} />;
   const letters = extension.slice(0, 4).toUpperCase();
   // Drawn in the icon's own box, the letters shrinking to fit four.
   return (
-    <svg viewBox="0 0 16 16" aria-hidden className="size-icon-md">
+    <svg viewBox="0 0 16 16" aria-hidden className={className ?? "size-icon-md"}>
       <rect x="0.5" y="2.5" width="15" height="11" rx="3" className="fill-fill-active" />
       <text x="8" y="10.4" textAnchor="middle" fontSize={letters.length > 3 ? 5 : letters.length > 2 ? 5.75 : 6.75} className="fill-foreground font-sans font-semibold">
         {letters}
@@ -37,11 +37,14 @@ export function FileBadge({ name }: { name: string }) {
   );
 }
 
-/** A mention row's icon: a file's badge, a folder, a chat. */
-export function MentionKindIcon({ type, label }: { type: "file" | "folder" | "chat"; label: string }) {
-  if (type === "chat") return <Chat aria-hidden className="text-muted-foreground" />;
-  if (type === "folder") return <Folder aria-hidden className="text-muted-foreground" />;
-  return <FileBadge name={label} />;
+/** A file's colour, where its kind's glyph has one: for its chip's name, as a command's chip takes its kind's. */
+export const fileTone = (name: string) => GLYPHS.find(([pattern]) => pattern.test(extensionOf(name)))?.[2];
+
+/** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat. `className` sizes it (a menu row's own size otherwise). */
+export function MentionKindIcon({ type, label, className }: { type: "file" | "folder" | "chat"; label: string; className?: string }) {
+  if (type === "chat") return <Chat aria-hidden className={cx("text-muted-foreground", className)} />;
+  if (type === "folder") return <Folder aria-hidden className={cx("text-muted-foreground", className)} />;
+  return <FileBadge name={label} className={className} />;
 }
 
 /** A command's colour by kind, for its icon and its chip's name. */

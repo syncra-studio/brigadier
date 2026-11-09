@@ -3,10 +3,11 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Body } from "../src/components/thread/body";
-import { JumpSign, UserBubble } from "../src/components/thread/message";
+import { AssistantMessage, JumpSign, UserBubble } from "../src/components/thread/message";
 import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work";
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
+import { Markdown } from "../src/thread/markdown";
 import "../src/thread/markdown.css";
 import { Row, Section, State } from "./parts";
 import { SetupGallery } from "./setup";
@@ -168,8 +169,8 @@ export function Thread() {
   return (
     <>
       <SetupGallery tick={tick} />
-      <Section title="Thread · work header · group · working line">
-        <Row name="working (ticking) · waiting (ticking) · worked, shut · worked and waited · open · hover · focus">
+      <Section title="Work header, group, working line">
+        <Row name="Work header">
           <Wide label="running">
             <WorkHeader turn={RUNNING} work={undefined} open={null} onToggle={noop} />
           </Wide>
@@ -192,7 +193,7 @@ export function Thread() {
             <WorkHeader turn={DONE} work={WORK} open={false} onToggle={noop} />
           </Wide>
         </Row>
-        <Row name="group: shut · open · hover · focus · live (its running step, changing each second)">
+        <Row name="Group">
           <State label="shut">
             <GroupRow item={GROUP} live={undefined} open={false} onToggle={noop} />
           </State>
@@ -209,7 +210,7 @@ export function Thread() {
             <GroupRow item={GROUP} live={LIVE_STEPS[tick % LIVE_STEPS.length]} open={false} onToggle={noop} />
           </State>
         </Row>
-        <Row name="working line: live · stalled · interrupted · disconnected · thinking · thinking with a heading">
+        <Row name="Working line">
           <State label="live">
             <WorkingLine state="live">Thinking</WorkingLine>
           </State>
@@ -226,8 +227,8 @@ export function Thread() {
           <State label="heading">{item({ ...base("r2", RUNNING), kind: "reasoning", text: "", streaming: true, heading: "Checking the row recipe" }, RUNNING)}</State>
         </Row>
       </Section>
-      <Section title="Thread · tool steps · shell box">
-        <Row name="steps by kind: read · search · web · subagent · other · failed · stopped · waiting · in an opened group">
+      <Section title="Tool steps and shell box">
+        <Row name="Tool steps">
           <Wide label="done, by kind; hover; focus">
             <div className="flex flex-col gap-1">
               {item(tool("k-read", "read", "read", "src/thread/blocks.ts", "done", { output: "…" }))}
@@ -250,7 +251,7 @@ export function Thread() {
           </Wide>
         </Row>
         <Row
-          name="shell box: success · exit code · running (output growing) · stopped · no output · 900 lines"
+          name="Shell box"
         >
           <Wide label="success" open>
             {item(tool("sh-ok", "run", "shell", "pnpm test --filter thread", "done", { exitCode: 0, output: OUTPUT }))}
@@ -272,9 +273,9 @@ export function Thread() {
           </Wide>
         </Row>
       </Section>
-      <Section title="Thread · file changes · diff card">
+      <Section title="File changes and diff card">
         <Row
-          name="edited · created · deleted · renamed · counts not reported · editing · waiting · rejected · failed · open"
+          name="File change"
         >
           <Wide label="by change; hover shows the counts' colours">
             <div className="flex flex-col gap-1">
@@ -299,8 +300,8 @@ export function Thread() {
           </Wide>
         </Row>
       </Section>
-      <Section title="Thread · messages">
-        <Row name="user: first (dated) · hover (time, copy) · long (Show more) · markdown · code block across the cut · opened · system line">
+      <Section title="Messages">
+        <Row name="User message">
           <Wide label="dated (first, or over an hour after the last): today · last week">
             <Body item={{ ...base("u0"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 3 * 60_000 }} turn={DONE} step={false} dated />
             <Body item={{ ...base("u0b"), kind: "message", role: "user", text: USER, streaming: false, sentAt: NOW - 4 * 86_400_000 }} turn={DONE} step={false} dated />
@@ -314,40 +315,47 @@ export function Thread() {
           <Wide label="long, opened" open>{item({ ...base("u2o"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
           <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
         </Row>
-        <Row name="user: sending · not sent · unconfirmed · dimmed (owner's own states, D59/D84-D88: no old equivalent)">
+        <Row name="User message: delivery">
           <Wide label="look only: the states session sets them">
             <Bubbles />
           </Wide>
         </Row>
-        <Row name="answer: streaming (live) · a turn: commentary, then its final answer (actions only under it) · a joined answer · latest (time always) · older (time on hover) · older, hover · long code block">
+        <Row name="Assistant message">
           <Wide label="streaming">{item({ ...base("a1", RUNNING), kind: "message", role: "assistant", text: streamed, streaming: true }, RUNNING)}</Wide>
           <Wide label="a turn: commentary (no actions) · its final answer">
             {/* The thread's space between a turn's parts (pt-4). */}
             <div className="flex flex-col gap-4">
               {item({ ...base("a0"), kind: "message", role: "assistant", text: "I'll check how the list draws while a reply streams.", streaming: false })}
               {item({ ...base("a0b"), kind: "message", role: "assistant", text: "Found it: every block draws again. Fixing that now.", streaming: false })}
-              <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+              <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
             </div>
           </Wide>
           <Wide label="a turn: an answer a follow-up joined (copy, time on hover) · its final answer">
             <div className="flex flex-col gap-4">
               {item({ ...base("a0j"), kind: "message", role: "assistant", text: "Done: the list now draws only the block that changed.", streaming: false, joined: true, sentAt: NOW - 3 * 60_000 })}
               {item({ ...base("a0k"), kind: "message", role: "assistant", text: "Checking the code blocks too, as you asked.", streaming: false })}
-              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
+              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
             </div>
           </Wide>
-          <Wide label="latest">
-            <Body item={{ ...base("a2"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} latest />
-          </Wide>
-          <Wide label="older">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
-          <Wide label="older, hover" frozen="hover">
+          <Wide label="at rest">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
+          <Wide label="hover" frozen="hover">
             {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}
+          </Wide>
+          <Wide label="with Try again">
+            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
+              <Markdown text={REPLY} keep="a2d" />
+            </AssistantMessage>
+          </Wide>
+          <Wide label="with Try again, hover" frozen="hover">
+            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
+              <Markdown text={REPLY} keep="a2e" />
+            </AssistantMessage>
           </Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false, final: true })}</Wide>
         </Row>
       </Section>
-      <Section title="Thread · jump to the latest">
-        <Row name="idle · streaming (dots, live) · streaming, hover (↓) · streaming, focus">
+      <Section title="Jump to the latest">
+        <Row name="Jump button">
           {(
             [
               ["idle", false, undefined],
@@ -360,7 +368,7 @@ export function Thread() {
               <button
                 type="button"
                 aria-label="Jump to the latest"
-                className="group/jump flex size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+                className="group/jump flex cursor-pointer size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
               >
                 <JumpSign running={running} />
               </button>
@@ -368,9 +376,9 @@ export function Thread() {
           ))}
         </Row>
       </Section>
-      <Section title="Thread · approvals · questions · subagents · compaction · notices · unknown">
+      <Section title="Approvals, questions, subagents, conversation optimizing, notices">
         <Row
-          name="approval: waiting · allowed (open) · denied · withdrawn"
+          name="Approval row"
         >
           <Wide label="waiting · withdrawn">
             <div className="flex flex-col gap-1">
@@ -383,7 +391,7 @@ export function Thread() {
           </Wide>
           <Wide label="denied">{item({ ...base("p3"), kind: "approval", request: { id: "approval-edit", reason: null, paths: ["~/.zshrc"], action: "edit" }, decision: "denied" })}</Wide>
         </Row>
-        <Row name="question: waiting · answered (open) · withdrawn">
+        <Row name="Question row">
           <Wide label="question">
             <div className="flex flex-col gap-1">
               {item({ ...base("q1", RUNNING), kind: "question", question: "Which branch?", options: ["main", "ui/kit"], answer: null }, RUNNING)}
@@ -395,7 +403,7 @@ export function Thread() {
           </Wide>
         </Row>
         <Row
-          name="subagent: waiting · running (live) · done (open) · failed · stopped · without its step and count"
+          name="Subagent row"
         >
           <Wide label="waiting · running (its step changes each second)">
             <div className="flex flex-col gap-1">
@@ -417,10 +425,10 @@ export function Thread() {
             </div>
           </Wide>
         </Row>
-        <Row name="compaction: waiting · running · done · failed · not reported · notices: note · warning · error · unknown (shut, open)">
-          <Wide label="compaction">
+        <Row name="Conversation optimizing and notices">
+          <Wide label="conversation optimizing">
             <div className="flex w-full flex-col">
-              {(["pending", "running", "done", "failed", undefined] as const).map((progress) => (
+              {(["running", "done", "failed"] as const).map((progress) => (
                 <div key={String(progress)}>{item({ ...base(`m-${String(progress)}`), kind: "compaction", summary: null, progress })}</div>
               ))}
             </div>

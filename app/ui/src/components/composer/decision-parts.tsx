@@ -1,7 +1,7 @@
 // The parts approval and question cards share (the old app's action card, tool box, step counter, card keys).
 import { type ComponentProps, Fragment, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { ArrowRight, ChevronRight, Pencil, Reply, X } from "../../icons";
+import { ArrowRight, ChevronRight, Pencil, X } from "../../icons";
 import { Badge } from "../badge";
 import { cx } from "../cx";
 import { TooltipIconButton } from "../icon-button";
@@ -38,9 +38,10 @@ export const inField = (target: EventTarget | null) => target instanceof Element
  * `enter` Enter is left alone; with `within` it answers only from inside that element (the focused card), and
  * neither key answers from inside another card.
  */
-export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape: () => void }, within?: RefObject<HTMLElement | null>) {
+export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape?: () => void }, within?: RefObject<HTMLElement | null>) {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.key !== "Enter" && event.key !== "Escape") return;
+    if (event.key === "Escape" && !keys.escape) return;
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const target = event.target instanceof Element ? event.target : null;
@@ -57,7 +58,7 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter") keys.enter?.();
-    else keys.escape();
+    else keys.escape?.();
   });
   useEffect(() => {
     if (!enabled) return;
@@ -197,7 +198,7 @@ export function actionButton(variant: "primary" | "outline", className?: string)
   );
 }
 
-/** A card's buttons, pushed to the end; `leading` (Reply…, an error) at the start. Narrow, they stack full width. */
+/** A card's buttons, pushed to the end; `leading` (a deny reason) at the start. Narrow, they stack full width. */
 export function ActionCardActions({ leading, children }: { leading?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-4 pt-2 pb-4 @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
@@ -224,22 +225,6 @@ export const cardKey = (session: string, id: string) => `${session}\n${id}`;
 /** Drops a session's cached cards that are no longer waiting, settled or gone. */
 export function forgetCards(cache: Map<string, unknown>, session: string, keep: ReadonlySet<string>): void {
   for (const key of cache.keys()) if (key.startsWith(`${session}\n`) && !keep.has(key.slice(session.length + 1))) cache.delete(key);
-}
-
-/** An approval's "Reply…" in the composer's place: brings the message field back. */
-export function ReplyButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      data-slot="approval-reply"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-code text-reply transition-all enabled:hover:bg-fill enabled:hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled motion-safe:enabled:active:scale-press-button"
-    >
-      <Reply className="size-icon-sm" />
-      Reply…
-    </button>
-  );
 }
 
 /** A question card's header: a few words over the question (a round's title), the question, `aside` (the round's pager), then ✕. */

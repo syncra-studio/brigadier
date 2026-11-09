@@ -22,6 +22,8 @@ type ConfirmFormProps = {
   onCancel: () => void;
   /** The confirm button, to focus it on open. */
   confirmRef?: Ref<HTMLButtonElement>;
+  /** The other button, to focus it on open. */
+  cancelRef?: Ref<HTMLButtonElement>;
 };
 
 /** A confirm's inside: its title and line, then Cancel and the action. */
@@ -37,6 +39,7 @@ export function ConfirmForm({
   onConfirm,
   onCancel,
   confirmRef,
+  cancelRef,
 }: ConfirmFormProps) {
   return (
     <>
@@ -47,7 +50,7 @@ export function ConfirmForm({
       {children}
       {/* Marks the card as a confirm's, for its rounder corners. */}
       <DialogFooter data-confirm>
-        <Button variant="ghost" disabled={busy} onClick={onCancel}>
+        <Button ref={cancelRef} variant="ghost" disabled={busy} onClick={onCancel}>
           {cancel}
         </Button>
         <Button ref={confirmRef} variant={destructive ? "destructive" : "default"} disabled={busy || disabled} onClick={onConfirm}>

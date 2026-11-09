@@ -1,4 +1,4 @@
-// Slice 3's layout and shared parts in every state. The first copy in each row is live.
+// Slice 3's layout and shared parts: the sidebar frame live, the rest in their states.
 import { useId, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -7,7 +7,7 @@ import { EmptyState } from "../src/components/empty-state";
 import { ErrorLine } from "../src/components/error-line";
 import { TooltipIconButton } from "../src/components/icon-button";
 import { LabeledDivider } from "../src/components/labeled-divider";
-import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../src/components/nav";
+import { NavHeader, NavList, NavRow, NavSection } from "../src/components/nav";
 import { ProgressLine } from "../src/components/progress-line";
 import { RowAction, RowActionsSlot } from "../src/components/row-action";
 import { Section as KitSection } from "../src/components/section";
@@ -88,42 +88,27 @@ function ToggleButton() {
   );
 }
 
-/** A sidebar in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
-function SidebarDemo({ start = true, collapse = "strip", live }: { start?: boolean; collapse?: SidebarCollapse; live?: boolean }) {
-  const [open, setOpen] = useState(start);
+/** The kit's sidebar frame in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
+function SidebarDemo() {
+  const [open, setOpen] = useState(true);
   const [width, setWidth] = useState<number | null>(null);
+  const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
   return (
-    <div className="relative h-96 w-160 transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider
-        open={open}
-        onOpenChange={live ? setOpen : () => {}}
-        width={width}
-        onWidthChange={setWidth}
-        collapse={collapse}
-      >
+    <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse}>
         <SidebarPanel strip={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
         <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-titlebar text-sm text-muted-foreground">
-          {live && <ToggleButton />}
-          <span>{live ? "Drag the panel's edge to resize; below half its least width it collapses." : "The content."}</span>
+          <ToggleButton />
+          <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
+            Collapses to: {collapse}
+          </Button>
+          <span>Drag the panel's edge to resize; below half its least width it collapses. Collapsed, rest on the dot or the start edge to peek.</span>
+          <span>The frame only: its rows are samples.</span>
           {width !== null && <span>Width {width}px</span>}
         </div>
       </SidebarProvider>
-    </div>
-  );
-}
-
-function FoldDemo() {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="w-60">
-      <Button size="xs" variant="soft" onClick={() => setOpen(!open)}>
-        {open ? "Fold" : "Open"}
-      </Button>
-      <NavFold open={open}>
-        <Rows />
-      </NavFold>
     </div>
   );
 }
@@ -155,70 +140,21 @@ const STEPS = { title: "Downloading the model", done: 3, total: 8, meta: "until 
 export function Panes() {
   return (
     <>
-      <Section title="Sidebar (live once: it listens to the whole window)">
-        <Row name="live · expanded, strip, hidden">
-          <State label="live (strip when collapsed)">
-            <SidebarDemo live />
-          </State>
-          <State label="collapsed to a strip (rest on the dot to peek)">
-            <SidebarDemo start={false} />
-          </State>
-          <State label="hidden (rest on the box's start edge to peek)">
-            <SidebarDemo start={false} collapse="hidden" />
-          </State>
-        </Row>
+      <Section title="Sidebar frame and nav rows">
+        <SidebarDemo />
       </Section>
-      <Section title="Nav parts · Row action">
-        <Row name="rows (one current) · hover · focus · a section folding · row actions on hover">
-          <State label="live">
-            <div className="w-60">
-              <Rows />
-            </div>
-          </State>
-          <State label="hover" frozen="hover">
-            <div className="w-60">
-              <NavRow>
-                <Dot />
-                Hovered row
-              </NavRow>
-            </div>
-          </State>
-          <State label="focus" frozen="focus">
-            <div className="w-60">
-              <NavRow>
-                <Dot />
-                Focused row
-              </NavRow>
-            </div>
-          </State>
-          <State label="fold (live)">
-            <FoldDemo />
-          </State>
-          <State label="row action · hover · focus">
-            <RowAction aria-label="Archive">
-              <X />
-            </RowAction>
-            <span data-frozen="hover">
-              <RowAction aria-label="Archive">
-                <X />
-              </RowAction>
-            </span>
-            <span data-frozen="focus">
-              <RowAction aria-label="Archive">
-                <X />
-              </RowAction>
-            </span>
-          </State>
-        </Row>
-      </Section>
-      <Section title="Error line · Empty state">
-        <Row name="error line · empty state: line, sm, card, centered">
-          <State label="error line">
+      <Section title="Error line">
+        <Row>
+          <State label="default">
             <ErrorLine error="Couldn't save: the disk is full." />
           </State>
-          <State label="error line, sm">
+          <State label="sm">
             <ErrorLine size="sm" error="The run failed · the provider closed the stream." />
           </State>
+        </Row>
+      </Section>
+      <Section title="Empty state">
+        <Row>
           <State label="line">
             <div className="w-60">
               <EmptyState title="No sessions yet" />
@@ -236,8 +172,8 @@ export function Panes() {
           </State>
         </Row>
       </Section>
-      <Section title="Copy button · Labeled divider · Section · State dot">
-        <Row name="copy (live: click it) · hover · focus · divider · section · dots">
+      <Section title="Copy button">
+        <Row>
           <State label="live">
             <CopyButton text="brigadier --version" />
           </State>
@@ -247,16 +183,20 @@ export function Panes() {
           <State label="focus" frozen="focus">
             <CopyButton text="brigadier --version" />
           </State>
-          <State label="labeled divider">
-            <div className="w-72">
-              <LabeledDivider>Usage limit reset · 9:39 PM</LabeledDivider>
-            </div>
-          </State>
-          <State label="section">
-            <KitSection title="Where it works">
-              <span className="text-sm">~/Development/brigadier</span>
-            </KitSection>
-          </State>
+        </Row>
+      </Section>
+      <Section title="Labeled divider">
+        <div className="w-72">
+          <LabeledDivider>Usage limit reset · 9:39 PM</LabeledDivider>
+        </div>
+      </Section>
+      <Section title="Settings section">
+        <KitSection title="Where it works">
+          <span className="text-sm">~/Development/brigadier</span>
+        </KitSection>
+      </Section>
+      <Section title="State dot">
+        <Row>
           <State label="ready · needs · off · new reply">
             <StateDot tone="ready" />
             <StateDot tone="needs" />
@@ -266,7 +206,7 @@ export function Panes() {
         </Row>
       </Section>
       <Section title="Settings card · Settings row · Row text">
-        <Row name="rows split by hairlines · a row with an error · padded">
+        <Row>
           <State label="card">
             <SettingsDemo />
           </State>
@@ -282,7 +222,7 @@ export function Panes() {
         </Row>
       </Section>
       <Section title="Progress line">
-        <Row name="running · done · partly done · failed · cancelled">
+        <Row>
           <State label="running">
             <div className="w-72">
               <ProgressLine {...STEPS} />

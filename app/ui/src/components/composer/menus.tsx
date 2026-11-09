@@ -7,8 +7,10 @@ import { createPortal } from "react-dom";
 import { Paperclip } from "../../icons";
 import { cx } from "../cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow, menuSurface } from "../menu";
+import type { ComposerFieldHandle } from "./field";
 import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
 import { ChipNode } from "./chip";
+import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
 
 /** A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title). PROPOSED. */
@@ -363,15 +365,55 @@ export function SlashPlugin({ commands, onRun }: Commands) {
   );
 }
 
+/** The chats the + lists, as the old app's menu kept them to a few. */
+const CHAT_ROWS = 5;
+
 /**
  * The + ("Add files and more"): a menu as wide as the composer card, just above it (over the rail, hidden
- * meanwhile), "Add" then Files, which opens the system's file picker. Closed, the keyboard goes back to typing.
+ * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's skills and MCP prompts
+ * and the `@` menu's chats in their own rows, each picked into the end of the text. Closed, the keyboard goes
+ * back to typing.
  */
-export function PlusMenu({ onFiles }: { onFiles: (files: File[]) => void }) {
+export function PlusMenu({
+  onFiles,
+  field: composerField,
+  commands,
+  chats,
+}: {
+  onFiles: (files: File[]) => void;
+  field: RefObject<ComposerFieldHandle | null>;
+  commands: Commands;
+  chats: readonly Mention[];
+}) {
   const trigger = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [card, setCard] = useState<HTMLElement | null>(null);
   const field = () => card?.querySelector<HTMLElement>("[contenteditable]") ?? null;
+  const add = (chip: Chip) => {
+    const parts = composerField.current!.parts();
+    const last = parts.at(-1);
+    const apart = last !== undefined && !(typeof last === "string" && /\s$/.test(last));
+    composerField.current!.set([...parts, ...(apart ? [" "] : []), chip, " "]);
+  };
+  const kind = (wanted: "skill" | "mcp") => {
+    const listed = commands.commands?.filter((command) => command.kind === wanted) ?? [];
+    return (
+      listed.length > 0 && (
+        <>
+          <DropdownMenuLabel variant="heading">{KIND_HEADINGS[wanted]}</DropdownMenuLabel>
+          {listed.map((command) => (
+            <DropdownMenuItem
+              key={command.id}
+              disabled={command.disabled}
+              onClick={() => (command.instant ? commands.onRun(command) : add({ kind: "command", id: command.id, type: command.kind, label: command.label }))}
+            >
+              <CommandRow command={command} query="" />
+            </DropdownMenuItem>
+          ))}
+        </>
+      )
+    );
+  };
   return (
     <>
       <DropdownMenu onOpenChange={(open) => setCard(open ? (trigger.current?.closest<HTMLElement>("[data-slot=composer-card]") ?? null) : card)}>
@@ -381,6 +423,14 @@ export function PlusMenu({ onFiles }: { onFiles: (files: File[]) => void }) {
           <DropdownMenuItem onClick={() => input.current?.click()}>
             <MenuRow icon={<Paperclip />} title="Files" />
           </DropdownMenuItem>
+          {kind("skill")}
+          {kind("mcp")}
+          {chats.length > 0 && <DropdownMenuLabel variant="heading">Chats</DropdownMenuLabel>}
+          {chats.slice(0, CHAT_ROWS).map((chat) => (
+            <DropdownMenuItem key={chat.id} onClick={() => add({ kind: "mention", id: chat.id, type: chat.type, label: chat.label })}>
+              <MentionRow item={chat} query="" />
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       <input

@@ -11,7 +11,7 @@ import "./markdown.css";
 
 const GAPS: Record<Gap, string> = { first: "pt-8", turn: "pt-6", part: "pt-4", step: "pt-1" };
 
-export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean; latest?: boolean };
+export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean };
 
 /**
  * The one place a line becomes a row component: the kit's thread rows plug in here. The list owns the column and
@@ -23,7 +23,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       {props.type === "setup" ? (
         <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
-        <AnswerMarks text={props.item.text} time={props.item.sentAt} latest={props.latest} />
+        <AnswerMarks text={props.item.text} time={props.item.sentAt} />
       ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
@@ -33,7 +33,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.item.kind === "started" ? (
         <SideLine item={props.item} />
       ) : (
-        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} latest={props.latest} actions={!(props.item.kind === "message" && props.item.final)} />
+        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} actions={props.item.kind !== "message" || !props.item.final || props.actions === true} />
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 // The composer's question cards (slice 4b): every state, frozen, plus one live copy on the rail.
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { MoreWaiting } from "../src/components/composer/approval";
 import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/components/composer/composer";
@@ -7,9 +7,9 @@ import { ComposerField } from "../src/components/composer/field";
 import { type PendingQuestion, QuestionCard } from "../src/components/composer/question";
 import { ComposerRail, RailItem, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
-import { ApprovalRow, QuestionRow } from "../src/components/thread/cards";
+import { QuestionRow } from "../src/components/thread/cards";
 import { ModelPill } from "./composer";
-import { Row, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const MANAGER = { text: "Which package manager should the scripts use?", options: [{ label: "pnpm" }, { label: "npm" }, { label: "yarn" }], recommended: null, multiSelect: false };
 const STORAGE = {
@@ -28,30 +28,7 @@ const NAME = { text: "What should the new command be called?", options: [], reco
 const ask = (id: string, items: PendingQuestion["items"], title?: string): PendingQuestion => ({ id, title, items });
 const ROUND = ask("round", [MANAGER, CHECKS, NAME], "Release setup");
 
-const never = () => new Promise<void>(() => {});
-const refuse = () => Promise.reject(new Error("The session ended before the answer reached it"));
 const later = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
-
-/** Does something to the card as it mounts (presses a key, clicks an answer, types), to hold a state still. */
-function Act({ run, children }: { run: (card: HTMLElement) => void; children: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => run(box.current!.querySelector<HTMLElement>("[data-action=question]")!), []);
-  return <div ref={box}>{children}</div>;
-}
-const key = (card: HTMLElement, name: string) => card.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true }));
-const click = (card: HTMLElement, selector: string, at = 0) => card.querySelectorAll<HTMLElement>(selector)[at]?.click();
-/** A card as it waits on the rail. */
-function Card({ question, onAnswer = () => later(600), error, dismiss }: { question: PendingQuestion; onAnswer?: (answers: (string | null)[]) => Promise<void>; error?: string; dismiss?: () => void }) {
-  return (
-    <div className="w-reading">
-      <ComposerRail>
-        <RailItem variant="decision" label="Waiting for you">
-          <QuestionCard question={question} onAnswer={onAnswer} onDismiss={() => {}} error={error} dismiss={dismiss} />
-        </RailItem>
-      </ComposerRail>
-    </div>
-  );
-}
 
 function Composer() {
   return (
@@ -65,16 +42,6 @@ function Composer() {
         <SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />
       </ComposerFooter>
     </ComposerCard>
-  );
-}
-
-/** A decided card's thread row, and the composer back in its place. */
-function Decided({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex w-reading flex-col gap-3">
-      {children}
-      <Composer />
-    </div>
   );
 }
 
@@ -122,113 +89,22 @@ function Live() {
   );
 }
 
-export function QuestionRows() {
+export function QuestionGallery() {
   return (
     <>
-      <Row name="Question">
-        <State label="Plain">
-          <Card question={ask("q1", [MANAGER])} />
-        </State>
-        <State label="Recommended, with descriptions">
-          <Card question={ask("q2", [STORAGE])} />
-        </State>
-        <State label="Lit (2, from the keyboard)">
-          <Act run={(card) => key(card, "2")}>
-            <Card question={ask("q3", [STORAGE])} />
-          </Act>
-        </State>
-        <State label="The field alone">
-          <Card question={ask("q4", [NAME])} />
-        </State>
-      </Row>
-      <Row name="Answering">
-        <State label="Multi-select, two marked">
-          <Act
-            run={(card) => {
-              click(card, "[data-slot=action-option]", 0);
-              // After the first mark has rendered.
-              setTimeout(() => click(card, "[data-slot=action-option]", 2));
-            }}
-          >
-            <Card question={ask("q5", [CHECKS])} />
-          </Act>
-        </State>
-        <State label="A round: 2 of 3, after picking">
-          <Act run={(card) => click(card, "[data-slot=action-option]")}>
-            <Card question={ask("q7", [MANAGER, CHECKS, NAME], "Release setup")} />
-          </Act>
-        </State>
-      </Row>
-      <Row name="Sending, refused, put aside">
-        <State label="Sending">
-          <Act run={(card) => click(card, "button", 1)}>
-            <Card question={ask("q8", [MANAGER])} onAnswer={never} />
-          </Act>
-        </State>
-        <State label="Refused">
-          <Act run={(card) => click(card, "button", 1)}>
-            <Card question={ask("q9", [MANAGER])} onAnswer={refuse} />
-          </Act>
-        </State>
-        <State label="Put aside (Esc): one click away">
-          <div className="w-reading">
-            <ComposerRail>
-              <WaitingRow count={1} onShow={() => {}} />
-            </ComposerRail>
-            <Composer />
-          </div>
-        </State>
-      </Row>
-      <Row name="Once decided: the card goes, the thread keeps its row (open it)">
-        <State label="An approval allowed">
-          <Decided>
-            <ApprovalRow keep="decided-a1" action="command" title="Run the type checker to see what broke" detail="pnpm typecheck" decision="approved" waiting={false} />
-          </Decided>
-        </State>
-        <State label="An approval denied">
-          <Decided>
-            <ApprovalRow keep="decided-a2" action="edit" title="Allow editing these files?" detail="app/ui/src/theme.css" decision="denied" waiting={false} />
-          </Decided>
-        </State>
-        <State label="A question answered">
-          <Decided>
-            <QuestionRow keep="decided-q1" question={STORAGE.text} answer="In the session's folder" round={ask("decided-q1", [STORAGE])} answers={["In the session's folder"]} waiting={false} />
-          </Decided>
-        </State>
-      </Row>
-      <Row name="D209 for the owner: the round's row, proposed | plain">
-        <State label="Proposed: count and the round's title">
-          <QuestionRow keep="d209-p" question={MANAGER.text} answer="pnpm" round={ROUND} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
-        </State>
-        <State label="Plain: Asked N questions">
-          <QuestionRow keep="d209-n" question={MANAGER.text} answer="pnpm" round={{ ...ROUND, title: null }} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
-        </State>
-      </Row>
-      <Row name="A round in the thread (open the answered ones)">
-        <State label="Waiting">
-          <QuestionRow keep="round-w" question={MANAGER.text} answer={null} round={ROUND} waiting />
-        </State>
-        <State label="Answered, one skipped, multi-select">
-          <QuestionRow keep="round-a" question={MANAGER.text} answer={"pnpm\nTypecheck, `scripts/limits`"} round={ROUND} answers={["pnpm", "Typecheck, `scripts/limits`", null]} waiting={false} />
-        </State>
-        <State label="Answered in its own words">
-          <QuestionRow keep="round-o" question={MANAGER.text} answer="bun" round={ask("round-o", [MANAGER, STORAGE])} answers={["bun", "In the session's folder"]} waiting={false} />
-        </State>
-        <State label="Withdrawn">
-          <QuestionRow keep="round-x" question={MANAGER.text} answer={null} round={ROUND} waiting={false} />
-        </State>
-      </Row>
-      <Row name="Refused after it was hidden: back with its error">
-        <State label="Rust refused a stale answer">
-          <Card question={ask("q10", [MANAGER, CHECKS, NAME], "Release setup")} error="Already answered" dismiss={() => {}} />
-        </State>
-        <State label="Refused, still waiting: answer again">
-          <Card question={ask("q11", [MANAGER])} error="Brigadier isn't running" />
-        </State>
-      </Row>
-      <Row name="Questions live (Esc puts one aside)">
+      <Section title="Question card">
         <Live />
-      </Row>
+      </Section>
+      <Section title="A round's row in the thread (D209)">
+        <Row name="For the owner: proposed | plain">
+          <State label="Proposed: count and the round's title">
+            <QuestionRow keep="d209-p" question={MANAGER.text} answer="pnpm" round={ROUND} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
+          </State>
+          <State label="Plain: Asked N questions">
+            <QuestionRow keep="d209-n" question={MANAGER.text} answer="pnpm" round={{ ...ROUND, title: null }} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
+          </State>
+        </Row>
+      </Section>
     </>
   );
 }

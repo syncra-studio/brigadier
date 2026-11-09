@@ -5,7 +5,7 @@ import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { ScrollFade } from "../components/scroll-fade";
-import { JumpSign, messageMarks } from "../components/thread/message";
+import { JumpSign, datedMessages } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
@@ -78,7 +78,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   const work = useMemo(() => new Map(workList?.map((each) => [each.turnId, each])), [workList]);
   const items = session?.items;
   const lines = useMemo(lineMaker, []);
-  const marks = useMemo(() => messageMarks(items ?? []), [items]);
+  const dated = useMemo(() => datedMessages(items ?? []), [items]);
   const threadRows = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
   const setup = session?.setup;
   const all = useMemo(() => {
@@ -327,7 +327,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
               <Spacer space={space} />
             </div>
           ) : (
-            <LineRow key={line.id} {...line} dated={marks.dated.has(line.id)} latest={(line.type === "marks" ? line.item.id : line.id) === marks.latest} onToggle={toggle} />
+            <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />
           )
         }
       </VList>
@@ -339,7 +339,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
           type="button"
           aria-label="Jump to the latest"
           onClick={toBottom}
-          className="group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+          className="group/jump absolute cursor-pointer bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
         >
           <JumpSign running={turnList?.at(-1)?.status === "running"} />
         </button>

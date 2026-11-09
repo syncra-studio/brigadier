@@ -145,18 +145,15 @@ function useWaiting(id: string, source: Source) {
 }
 
 /**
- * The approvals waiting [D199, D203]: in the composer's place (`placement` "composer", the field kept hidden under
- * it), or on the rail after Reply…. Deny with what to do instead [D192], Allow … for this session from Rust's grant
+ * The approvals waiting [D199, D203, D317]: in the composer's place, the field kept hidden under it. Deny with what to do instead [D192], Allow … for this session from Rust's grant
  * structure [D65, D193], Allow once. Mounted while none waits, so a refusal that comes later finds its card's error.
  */
-export function SessionApprovals({ id, run, source, placement, onReply }: { id: string; run: Runner; source: Source; placement: "composer" | "rail"; onReply?: () => void }) {
+export function SessionApprovals({ id, run, source }: { id: string; run: Runner; source: Source }) {
   const { approvals, dismiss } = useWaiting(id, source);
   return (
     <ApprovalSlot
       session={id}
       approvals={approvals}
-      placement={placement}
-      onReply={onReply}
       dismiss={dismiss}
       onAnswer={(request, decision, reason) => {
         const found = approvals.find((each) => each.id === request);

@@ -3,12 +3,13 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
-import { ArrowCurvedRight, ChevronUpDown, DotsHorizontal, EditPencil, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { ArrowCurvedRight, ChevronUpDown, DotsHorizontal, EditPencil, Info, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { Draft } from "./draft";
 import { RailItem } from "./rail";
 
@@ -18,6 +19,8 @@ import { RailItem } from "./rail";
  * progress; `delivered`: the session has it, so it can't be pulled back to edit.
  */
 export type QueuedMessage = { id: string; draft: Draft; state: "local" | "queued" | "deciding" | "delivered" };
+
+type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
 
 /** The row's words: the text with each mention's and command's name in place. */
 function preview(draft: Draft): string {
@@ -61,6 +64,7 @@ export function QueueCard({
   steer = false,
   canEdit,
   error,
+  notSent,
   onResume,
   onSteer,
   onRemove,
@@ -77,6 +81,8 @@ export function QueueCard({
   canEdit: boolean;
   /** An action that failed. */
   error?: string | null;
+  /** A message that couldn't go, kept whole: a row at the end of the list. */
+  notSent?: HeldMessage | null;
   onResume: () => void;
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
@@ -94,7 +100,7 @@ export function QueueCard({
       .catch(() => {}) // the failure comes back as `error`
       .finally(() => setHeld((now) => (now && now.moving > 1 ? { ...now, moving: now.moving - 1 } : null)));
   };
-  if (items.length === 0) return null;
+  if (items.length === 0 && !notSent) return null;
   return (
     <RailItem label="Message queue">
       {paused && (
@@ -132,10 +138,65 @@ export function QueueCard({
               onMove={move}
             />
           ))}
+          {notSent && <HeldQueueRow {...notSent} />}
         </ol>
       </DragDropProvider>
       <ErrorLine error={error} className="px-3 pb-1" />
     </RailItem>
+  );
+}
+
+const ROW = "group/queue-item flex min-h-control-md items-center gap-2 rounded-control ps-1.5 pe-1 text-sm";
+
+/** The row's words, then what rides with them; with no words, only that. The message comes first: short of room, what follows gives way. */
+function Words({ draft }: { draft: Draft }) {
+  const text = preview(draft);
+  const files = attached(draft);
+  return (
+    <span className="min-w-0 flex-auto truncate" title={text || undefined}>
+      {text ? (
+        <>
+          {text}
+          {files && <span className="text-muted-foreground"> · {files}</span>}
+        </>
+      ) : (
+        <span className="text-muted-foreground">{files}</span>
+      )}
+    </span>
+  );
+}
+
+/** A message that couldn't go, in the list it waited in: Restore puts it back into the empty field, Discard lets it go. */
+function HeldQueueRow({ draft, reason, onRestore, onDiscard }: HeldMessage) {
+  return (
+    <li data-slot="queue-item" className={ROW}>
+      <span className="flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
+        <QueueGlyph className="size-icon-sm" />
+      </span>
+      <Words draft={draft} />
+      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        Not sent
+        <Tooltip>
+          {/* Focusable, so the tip opens from the keyboard too; it names the reason. */}
+          <TooltipTrigger
+            render={
+              <span role="img" tabIndex={0} aria-label={reason} className="flex shrink-0 rounded-control focus-visible:focus-ring svg:size-icon-sm">
+                <Info />
+              </span>
+            }
+          />
+          <TooltipContent>{reason}</TooltipContent>
+        </Tooltip>
+      </span>
+      <TooltipIconButton tooltip="Put it back in the field" side="top" size="xs" className="text-muted-foreground" onClick={onRestore}>
+        Restore
+      </TooltipIconButton>
+      <TooltipIconButton tooltip="Discard message" side="top" className="text-muted-foreground" onClick={onDiscard}>
+        <Trash />
+      </TooltipIconButton>
+      {/* Where a queued row has ⋯, so Restore and the trash line up with Steer and the trash above. */}
+      <span aria-hidden className="size-control-xs shrink-0" />
+    </li>
   );
 }
 
@@ -166,8 +227,6 @@ function QueueRow({
 }) {
   const local = item.state === "local";
   const deciding = item.state === "deciding";
-  const text = preview(item.draft);
-  const files = attached(item.draft);
   const { ref, handleRef, isDragging, isDropping } = useSortable({ id: item.id, index, disabled: !draggable });
   // Grabbed, the grip stays up until the drop or Esc has settled, wherever the pointer goes (D127).
   const grabbed = isDragging || isDropping;
@@ -181,7 +240,7 @@ function QueueRow({
       aria-busy={deciding || undefined}
       onAnimationEnd={(event) => event.target === event.currentTarget && setEntered(true)}
       className={cx(
-        "group/queue-item flex min-h-control-md items-center gap-2 rounded-control ps-1.5 pe-1 text-sm",
+        ROW,
         !entered && "motion-safe:animate-fade-in",
         isDragging && "bg-fill-hover",
       )}
@@ -219,17 +278,7 @@ function QueueRow({
           </span>
         )}
       </span>
-      {/* The message comes first: short of room, the note after it gives way. */}
-      <span className="min-w-0 flex-auto truncate" title={text || undefined}>
-        {text ? (
-          <>
-            {text}
-            {files && <span className="text-muted-foreground"> · {files}</span>}
-          </>
-        ) : (
-          <span className="text-muted-foreground">{files}</span>
-        )}
-      </span>
+      <Words draft={item.draft} />
       {deciding && (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding

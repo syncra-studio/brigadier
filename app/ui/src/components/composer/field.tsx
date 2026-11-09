@@ -18,12 +18,15 @@ import {
   COMMAND_PRIORITY_NORMAL,
   COPY_COMMAND,
   CUT_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   type LexicalEditor,
+  LineBreakNode,
   PASTE_COMMAND,
 } from "lexical";
 import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -46,11 +49,12 @@ export type ComposerFieldHandle = {
 };
 
 // The composer's field grows to a quarter of the window, then scrolls; the edit box to its bubble's limit; a
-// question card's answer to 8rem, a line tall at first.
+// question card's answer to 8rem, a line tall at first; an approval's reason stays one line and slides sideways.
 const SIZES = {
   composer: { box: "max-h-composer-max text-base", pad: "min-h-composer px-2 py-2.5" },
   edit: { box: "max-h-user-message text-base", pad: "min-h-composer px-2 py-1" },
   card: { box: "max-h-32 text-code", pad: "min-h-5" },
+  line: { box: "h-5 text-code", pad: "min-h-5" },
 };
 
 const MAC = navigator.userAgent.includes("Mac");
@@ -259,21 +263,23 @@ export function ComposerField({
         data-slot="composer-field"
         data-scrolled={scrolled || undefined}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-        className={cx("relative w-full cursor-text overflow-y-auto data-scrolled:mask-fade-top", box)}
+        className={cx("relative w-full cursor-text", size === "line" ? "overflow-hidden" : "overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
         <PlainTextPlugin
           contentEditable={
+            // Lexical sets white-space inline, so a line's no-wrap has to be important.
             <ContentEditable
               aria-label={label}
               aria-placeholder={placeholder}
               placeholder={<div className={cx("pointer-events-none absolute inset-0 truncate text-placeholder select-none", pad)}>{placeholder}</div>}
-              className={cx("break-words whitespace-pre-wrap caret-primary outline-none", pad)}
+              className={cx("caret-primary outline-none", size === "line" ? "whitespace-pre!" : "break-words whitespace-pre-wrap", pad)}
             />
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
       </div>
       <HistoryPlugin />
+      {size === "line" && <OneLine />}
       <Keys {...props} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
@@ -283,6 +289,33 @@ export function ComposerField({
     </ChipNumbers>
     </AttachmentsContext>
   );
+}
+
+/** Keeps a field to one line: no line breaks, any newline that gets in becomes a space, and it follows the caret sideways (Lexical only scrolls up and down). */
+function OneLine() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(
+    () =>
+      mergeRegister(
+        editor.registerCommand(INSERT_LINE_BREAK_COMMAND, () => true, COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(INSERT_PARAGRAPH_COMMAND, () => true, COMMAND_PRIORITY_NORMAL),
+        editor.registerNodeTransform(LineBreakNode, (node) => void node.replace($createTextNode(" "))),
+        editor.registerUpdateListener(() => {
+          const root = editor.getRootElement();
+          const box = root?.parentElement;
+          const selection = root?.ownerDocument.getSelection();
+          if (!root || !box || !selection?.rangeCount || !root.contains(selection.focusNode)) return;
+          const caret = selection.getRangeAt(0).getBoundingClientRect();
+          // An empty line has no caret box; the scroll is back at 0 by itself.
+          if (caret.height === 0) return;
+          const shown = box.getBoundingClientRect();
+          if (caret.right > shown.right) box.scrollLeft += caret.right - shown.right + 2;
+          else if (caret.left < shown.left) box.scrollLeft -= shown.left - caret.left;
+        }),
+      ),
+    [editor],
+  );
+  return null;
 }
 
 function Keys({
@@ -306,6 +339,8 @@ function Keys({
     const action = enterAction(event);
     if (!action || (action === "new" && !onSubmitNew)) return false;
     event.preventDefault();
+    // A held Enter is one press: it can't send twice or answer the next card.
+    if (event.repeat) return true;
     if (action === "new") onSubmitNew?.();
     else onSubmit(action === "other");
     return true;

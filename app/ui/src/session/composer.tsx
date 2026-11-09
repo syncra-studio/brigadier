@@ -106,10 +106,8 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
 export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source }) {
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
-  // An approval takes the composer's place until Reply… moves it to the rail [D199].
+  // An approval takes the composer's place [D199, D317].
   const approval = useApprovalWaiting(id, source);
-  const [replying, setReplying] = useState(false);
-  if (replying && !approval) setReplying(false);
   const [initial] = useState(() => draftOf(id));
   const [empty, setEmpty] = useState(() => isEmpty({ parts: initial ?? [], attachmentIds: [] }));
   const [ops, setOps] = useState<Op[]>([]);
@@ -276,11 +274,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           onMove={move}
         />
         <SessionQuestions id={id} run={run} source={source} />
-        {replying && <SessionApprovals id={id} run={run} source={source} placement="rail" />}
       </ComposerRail>
-      {!replying && <SessionApprovals id={id} run={run} source={source} placement="composer" onReply={() => setReplying(true)} />}
+      <SessionApprovals id={id} run={run} source={source} />
       {/* Kept while an approval has its place, so the draft and its caret stay. */}
-      <ComposerCard className={approval && !replying ? "hidden" : undefined}>
+      <ComposerCard className={approval ? "hidden" : undefined}>
         <ComposerField
           ref={field}
           initial={initial && { parts: initial, attachmentIds: [] }}

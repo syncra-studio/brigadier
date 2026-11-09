@@ -1,11 +1,9 @@
-// The composer's pickers (slice 3): the model and permission pills, their popups held open, the Full access confirm, plus live copies.
+// The composer's pickers (slice 3): the model and permission pickers, one live copy each.
 import { useState } from "react";
 
-import { type ModelChoice, type ModelGroup, ModelPicker, SwitchAgentDialog } from "../src/components/composer/model-picker";
-import { FullAccessDialog, type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
-import { Held, Row, Section, State } from "./parts";
-
-const noop = () => {};
+import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/components/composer/model-picker";
+import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
+import { Section } from "./parts";
 
 // Stand-in marks: no agent's real logo in gallery code (onboarding takes them from the adapters).
 const RING = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5.5"/></svg>';
@@ -32,104 +30,20 @@ const GROUPS: ModelGroup[] = [
 const LARGE: ModelChoice = { provider: "cloud", model: "large", effort: "high" };
 
 export function PickersGallery() {
-  return (
-    <Section title="Composer pickers">
-      <Row name="Model pill">
-        <State label="With a mark and effort">
-          <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} />
-        </State>
-        <State label="Hover" frozen="hover">
-          <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} />
-        </State>
-        <State label="No mark, no effort">
-          <ModelPicker groups={GROUPS} value={{ provider: "local", model: "llama", effort: null }} onChange={noop} />
-        </State>
-        <State label="Disabled">
-          <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} disabled />
-        </State>
-      </Row>
-      <Row name="Model picker">
-        <State label="Open: agents, models, effort">
-          <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} />}</Held>
-        </State>
-        <State label="A model without effort levels: no footer">
-          <Held className="flex h-100 w-140 items-end justify-end">
-            {(box) => <ModelPicker groups={GROUPS} value={{ provider: "cloud", model: "mini", effort: null }} onChange={noop} held={box} />}
-          </Held>
-        </State>
-      </Row>
-      <Row name="Model search">
-        <State label="Matches across agents">
-          <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} search="l" />}</Held>
-        </State>
-        <State label="No match">
-          <Held className="flex h-100 w-140 items-end justify-end">{(box) => <ModelPicker groups={GROUPS} value={LARGE} onChange={noop} held={box} search="gpt" />}</Held>
-        </State>
-      </Row>
-      <Row name="Agent not set up">
-        <State label="Not installed">
-          <Held className="flex h-100 w-140 items-end justify-end">
-            {(box) => <ModelPicker groups={GROUPS} value={{ provider: "absent", model: "Its last model", effort: null }} onChange={noop} onSetUp={noop} held={box} />}
-          </Held>
-        </State>
-        <State label="Not signed in">
-          <Held className="flex h-100 w-140 items-end justify-end">
-            {(box) => <ModelPicker groups={GROUPS} value={{ provider: "away", model: "Its last model", effort: null }} onChange={noop} onSetUp={noop} held={box} />}
-          </Held>
-        </State>
-      </Row>
-      <Row name="Switch to another agent">
-        <State label="Picked another agent's model">
-          <Held className="h-56 w-88 overflow-hidden rounded-surface">{(box) => <SwitchAgentDialog to="Other agent" onCancel={noop} onConfirm={noop} held={box} />}</Held>
-        </State>
-      </Row>
-      <Row name="Permission pill">
-        <State label="Ask">
-          <PermissionPicker value="ask" onChange={noop} />
-        </State>
-        <State label="Accept edits">
-          <PermissionPicker value="auto" onChange={noop} />
-        </State>
-        <State label="Full access">
-          <PermissionPicker value="full" onChange={noop} />
-        </State>
-        <State label="Hover" frozen="hover">
-          <PermissionPicker value="auto" onChange={noop} />
-        </State>
-      </Row>
-      <Row name="Permission menu">
-        <State label="Open">
-          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="auto" onChange={noop} held={box} />}</Held>
-        </State>
-        <State label="An agent with two levels">
-          <Held className="flex h-60 w-130 items-end">{(box) => <PermissionPicker value="ask" levels={["ask", "full"]} onChange={noop} held={box} />}</Held>
-        </State>
-        <State label="An untrusted folder: Ask only">
-          <Held className="flex h-68 w-130 items-end">{(box) => <PermissionPicker value="full" onChange={noop} untrusted held={box} />}</Held>
-        </State>
-      </Row>
-      <Row name="Full access confirm">
-        <State label="Open">
-          <Held className="h-140 w-104 overflow-hidden rounded-surface">
-            {(box) => <FullAccessDialog open onCancel={noop} onConfirm={noop} held={box} />}
-          </Held>
-        </State>
-      </Row>
-      <Row name="Live">
-        <Live />
-      </Row>
-    </Section>
-  );
-}
-
-/** Pick or search a model and effort (another agent's asks first), Set up an agent; Full access asks first. */
-function Live() {
   const [model, setModel] = useState(LARGE);
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   return (
-    <State label="Live">
-      <ModelPicker groups={GROUPS} value={model} onChange={setModel} onSetUp={noop} />
-      <PermissionPicker value={permission} onChange={setPermission} />
-    </State>
+    <>
+      <Section title="Model picker">
+        <div className="self-start">
+          <ModelPicker groups={GROUPS} value={model} onChange={setModel} />
+        </div>
+      </Section>
+      <Section title="Permission picker">
+        <div className="self-start">
+          <PermissionPicker value={permission} onChange={setPermission} />
+        </div>
+      </Section>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import { createContext, type MouseEventHandler, type ReactNode, useContext } from "react";
 
-import { Chat, File, FileCode, FileDocument, FileImage, Folder, Paperclip, Spinner, Warning, X } from "../../icons";
+import { File, FileCode, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../icons";
 import { cx } from "../cx";
 
 /**
@@ -36,13 +36,6 @@ export function FileTypeIcon({ name, className }: { name: string; className?: st
         ? File
         : FileCode;
   return <Icon aria-hidden className={className} />;
-}
-
-/** A mention's icon: a chat's, a folder's, or a file's by its type. */
-export function MentionIcon({ type, label, className }: { type: "file" | "folder" | "chat"; label: string; className?: string }) {
-  if (type === "chat") return <Chat aria-hidden className={className} />;
-  if (type === "folder") return <Folder aria-hidden className={className} />;
-  return <FileTypeIcon name={label} className={className} />;
 }
 
 /** "PDF", "PNG image", "Text": what a file's tile says under its name. */

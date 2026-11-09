@@ -19,7 +19,7 @@ const RailShown = createContext<number | null>(null);
 
 /**
  * The composer rail: a strip on the card's top edge, inset from its sides and tucked under it, so only its
- * top corners show. It holds notices, the queue, a held message and decisions; hidden while it holds nothing.
+ * top corners show. It holds notices, the queue and decisions; hidden while it holds nothing.
  * Placed right above `ComposerCard`, which draws over the tuck.
  */
 export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
@@ -210,23 +210,6 @@ export function Notices({ notices, onDismiss }: { notices: readonly Notice[]; on
 /** A quiet rail row: muted words, then its buttons. */
 function RailRow({ children }: { children: ReactNode }) {
   return <div className="flex min-h-control-md items-center gap-2 px-3 text-sm text-muted-foreground">{children}</div>;
-}
-
-/** A message that couldn't go, kept whole: Restore puts it back into the empty field, Discard lets it go. */
-export function HeldRow({ reason, onRestore, onDiscard }: { reason: string; onRestore: () => void; onDiscard: () => void }) {
-  return (
-    <RailItem label="Message not sent">
-      <RailRow>
-        <span className="min-w-0 flex-1 truncate">Not sent · {reason}</span>
-        <Button size="xs" variant="ghost" onClick={onRestore}>
-          Restore
-        </Button>
-        <Button size="xs" variant="ghost" onClick={onDiscard}>
-          Discard
-        </Button>
-      </RailRow>
-    </RailItem>
-  );
 }
 
 /** What a decision put aside with ✕ leaves on the rail, so it stays one click away. */

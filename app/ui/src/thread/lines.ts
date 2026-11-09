@@ -12,7 +12,7 @@ export type Line =
   /** A finished answer's actions, after the turn's rows. */
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
-  | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean }
+  | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
   /** A group row. `live`: its newest step while the turn runs, for the running step's words. */
   | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; live: Item | undefined }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
@@ -65,7 +65,10 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   let before: Item | undefined;
   let marks: Extract<Line, { type: "marks" }> | null = null;
   const end = () => {
-    if (marks) out.push(marks);
+    const last = out.at(-1);
+    // Straight under its reply it's part of that row, so hovering the reply shows the time [D297].
+    if (marks && last?.type === "item" && last.item === marks.item) last.actions = true;
+    else if (marks) out.push(marks);
     marks = null;
   };
   const push = (line: Line) => out.push(line);
