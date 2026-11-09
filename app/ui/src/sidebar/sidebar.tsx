@@ -149,6 +149,7 @@ export function AppSidebar({
       key={each.id}
       row={each}
       project={each.project === null ? undefined : projectOf.get(each.project)}
+      tone={projects.findIndex((project) => project.id === each.project)}
       active={each.id === active}
       offline={offline}
       onOpen={onOpen}

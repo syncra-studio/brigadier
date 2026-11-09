@@ -40,6 +40,8 @@ export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () 
           Copy
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
+          {/* Drawn only for now [D204]: the UI doesn't get a session's working folder yet. */}
+          <DropdownMenuItem disabled>Copy path</DropdownMenuItem>
           <DropdownMenuItem onClick={() => copyWithToast(row.id, "session id")}>Copy session id</DropdownMenuItem>
         </DropdownMenuSubContent>
       </DropdownMenuSub>

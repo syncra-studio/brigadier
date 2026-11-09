@@ -824,6 +824,14 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--spacing-control-sm));
 }
 
+/* A project's badge: its place in the list turned by the golden angle, so neighbours land far apart.
+   shortcut: hues stay at least 32° apart up to 8 projects and about 20° by 13, pick from a fixed set if people run more. */
+@utility project-tone {
+  --tone-hue: calc(20 + attr(data-tone type(<number>), 0) * 137.508);
+  background-color: oklch(0.36 0.08 var(--tone-hue));
+  color: oklch(0.88 0.1 var(--tone-hue));
+}
+
 /* A line too long for its row fades out at its end (a sidebar row's title). */
 @utility mask-fade-end {
   mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);

@@ -89,7 +89,7 @@ export function SidebarGallery() {
             <Held className="h-40 w-140">
               {(box) => (
                 <NavList className="w-60">
-                  <SessionRowItem row={each} project={PROJECTS.find((p) => p.id === each.project)} active={false} badged held={box} onOpen={() => {}} onRename={() => {}} />
+                  <SessionRowItem row={each} project={PROJECTS.find((p) => p.id === each.project)} tone={PROJECTS.findIndex((p) => p.id === each.project)} active={false} badged held={box} onOpen={() => {}} onRename={() => {}} />
                 </NavList>
               )}
             </Held>

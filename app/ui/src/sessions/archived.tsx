@@ -61,6 +61,7 @@ export function ArchivedSection({
                 key={row.id}
                 row={left ? { ...row, mark: "amber" } : row}
                 project={row.project === null ? undefined : projectOf.get(row.project)}
+                tone={projects.findIndex((project) => project.id === row.project)}
                 active={row.id === active}
                 offline={offline}
                 badged

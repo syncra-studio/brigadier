@@ -47,10 +47,10 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-/** A row's badge: its project's initials in grey. */
-export function ProjectBadge({ name }: { name: string }) {
+/** A row's badge: its project's initials, in that project's colour. `tone` is the project's place in Rust's list. */
+export function ProjectBadge({ name, tone }: { name: string; tone: number | undefined }) {
   return (
-    <span aria-hidden className="flex size-icon-md shrink-0 items-center justify-center rounded-xs bg-fill text-badge font-semibold text-marker-foreground">
+    <span aria-hidden data-tone={tone} className="project-tone flex size-icon-md shrink-0 items-center justify-center rounded-xs text-badge font-semibold">
       {projectInitials(name)}
     </span>
   );
@@ -69,6 +69,7 @@ const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip
 export function SessionRowItem({
   row,
   project,
+  tone,
   active,
   badged = false,
   nested = false,
@@ -82,6 +83,8 @@ export function SessionRowItem({
 }: {
   row: SessionRow;
   project: Project | undefined;
+  /** The project's place in the projects list, for its badge's colour. */
+  tone?: number;
   active: boolean;
   badged?: boolean;
   nested?: boolean;
@@ -118,7 +121,7 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && project && <ProjectBadge name={project.name} />}
+            {badged && project && <ProjectBadge name={project.name} tone={tone} />}
             <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{title}</span>
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
@@ -145,7 +148,7 @@ export function SessionRowItem({
                   <>
                     <div className="my-1.5 border-t border-divider" />
                     <div className={CARD_LINE}>
-                      <ProjectBadge name={project.name} />
+                      <ProjectBadge name={project.name} tone={tone} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>
                   </>
