@@ -49,7 +49,7 @@ export function NeedYouPill({ list, ids, waiting }: { list: RefObject<HTMLDivEle
     <button
       type="button"
       onClick={() => list.current?.querySelector(`[data-row-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
-      className="absolute start-1/2 bottom-2 z-10 flex h-7 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-popover ps-2 pe-2.5 text-sm whitespace-nowrap text-foreground shadow-tooltip hover:bg-muted focus-visible:focus-ring"
+      className="mx-auto my-1.5 flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-popover ps-2 pe-2.5 text-sm whitespace-nowrap text-foreground shadow-tooltip hover:bg-muted focus-visible:focus-ring"
     >
       {waiting ? (
         <SidebarQuestion aria-hidden className="size-icon-md shrink-0 text-link" />
