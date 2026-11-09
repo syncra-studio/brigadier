@@ -377,6 +377,7 @@ export function Pencil(props: IconProps) {
   );
 }
 export * from "./sidebar";
+export * from "./tab";
 
 export function Archive(props: IconProps) {
   return (

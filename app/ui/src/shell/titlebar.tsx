@@ -1,15 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { Badge } from "../components/badge";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { useDaemon } from "../daemon";
-import { ArrowLeft, ArrowRight, DotsHorizontal, Folder, Sidebar, SidebarFloatingLeft } from "../icons";
+import { ArrowLeft, ArrowRight, Sidebar, SidebarFloatingLeft } from "../icons";
 import { store } from "../onboarding/api";
-import { rename } from "../sidebar/actions";
-import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import type { SessionRow } from "../sidebar/words";
 
 // The old app's history (state/history.ts) [kit D170]: Back goes by where you are, never by how you got there, a
@@ -23,7 +18,7 @@ window.addEventListener("hashchange", () => {
 
 const MOUSE_BACK = 3;
 const MOUSE_FORWARD = 4;
-const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]') !== null;
+export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]') !== null;
 
 /** Back, Forward and the sidebar toggle at a fixed spot on the traffic lights' line; they stay put while the sidebar moves. */
 export function TitlebarNav({ active, rows }: { active: string | null; rows: SessionRow[] | undefined }) {
@@ -90,57 +85,5 @@ export function TitlebarNav({ active, rows }: { active: string | null; rows: Ses
         </TooltipIconButton>
       </TitlebarTips>
     </div>
-  );
-}
-
-/**
- * The window's top beside the sidebar, clear of Back, Forward and the toggle: the open session's folder icon, its
- * title (click to rename, blank until titled) and Archived, then Reconnecting… while the daemon is gone, and ⋯.
- */
-export function Titlebar({ offline, row }: { offline: boolean; row?: SessionRow | undefined }) {
-  const { projects } = useDaemon();
-  const [renaming, setRenaming] = useState(false);
-  const project = projects?.find((each) => each.id === row?.project)?.name;
-  const archived = Boolean(row?.archived);
-  return (
-    <header className="app-drag titlebar-clear flex h-titlebar shrink-0 items-center gap-1 pe-1">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
-        {row?.title && row.project && <Folder className="size-icon-md shrink-0 text-muted-foreground" />}
-        {row?.title &&
-          (archived ? (
-            <span className="truncate font-medium">{row.title}</span>
-          ) : (
-            <button
-              type="button"
-              title={project ? `${project} · Rename` : "Rename"}
-              onClick={() => setRenaming(true)}
-              className="app-no-drag min-w-0 cursor-pointer truncate font-medium transition-colors hover:text-action-hover focus-visible:focus-ring"
-            >
-              {row.title}
-            </button>
-          ))}
-        {archived && (
-          <Badge variant="outline" className="ms-1">
-            Archived
-          </Badge>
-        )}
-      </div>
-      {offline && (
-        <Badge variant="warning" role="status">
-          Reconnecting…
-        </Badge>
-      )}
-      {row && !archived && (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger render={<TooltipIconButton look="toolbar" tooltip="Session actions" className="app-no-drag" />}>
-            <DotsHorizontal />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <RowMenuItems row={row} onRename={() => setRenaming(true)} />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-      <RenameDialog row={renaming && row ? row : null} onClose={() => setRenaming(false)} onRename={(title) => row && rename(row, title)} />
-    </header>
   );
 }

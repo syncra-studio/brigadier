@@ -24,7 +24,10 @@ import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { answeringSource } from "./session/decisions";
 import { PendingSideLines, useSidePending } from "./session/side";
-import { Titlebar, TitlebarNav } from "./shell/titlebar";
+import { TabBar } from "./shell/tab-bar";
+import { HOME } from "./shell/tab-store";
+import { TabbedMain } from "./shell/tab-views";
+import { TitlebarNav } from "./shell/titlebar";
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
 import { SidebarFoot } from "./sidebar/foot";
@@ -117,10 +120,10 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
 function Home({ offline }: { offline: boolean }) {
   return (
     <>
-      <Titlebar offline={offline} />
-      <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
+      <TabBar key={HOME} owner={HOME} offline={offline} />
+      <TabbedMain owner={HOME} archived={false}>
         <HomeDraft />
-      </main>
+      </TabbedMain>
     </>
   );
 }
@@ -154,8 +157,8 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   const shown = useStartShown(id);
   return (
     <>
-      <Titlebar offline={offline} row={titled} />
-      <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
+      <TabBar key={id} owner={id} offline={offline} row={titled} />
+      <TabbedMain owner={id} archived={Boolean(row?.archived)}>
         <div className="flex min-h-0 flex-1">
           {missing ? (
             <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
@@ -192,7 +195,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
             </div>
           )}
         </div>
-      </main>
+      </TabbedMain>
     </>
   );
 }

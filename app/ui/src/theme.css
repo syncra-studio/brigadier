@@ -211,6 +211,15 @@
   --spacing-icon-md: 1rem;
   --spacing-icon-lg: 1.25rem;
   --spacing-titlebar: 2.5rem;
+  /* A tab's width in the bar, and the rule between two tabs in back. */
+  --spacing-session-tab-min: 5.625rem;
+  --spacing-session-tab-max: 15rem;
+  --spacing-session-tab-rule: 1px;
+  --spacing-session-tab-rule-height: 0.75rem;
+  --container-new-tab: 28rem;
+  --shadow-session-tab: inset 0 0 0 0.5px var(--color-fill), 0 1px 2px -1px oklch(0 0 0 / 8%);
+  --ease-session-tab: cubic-bezier(0.333, 0.667, 0.667, 1);
+  --session-tab-title-mask: linear-gradient(to right, #000 calc(100% - 1rem), transparent);
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
   /* Back, Forward and the sidebar toggle: Back's centre 26px past the traffic lights, 6px apart. */
@@ -286,6 +295,7 @@
   --spacing-model-picker-height: 22.25rem;
 
   --radius-sm: 0.375rem;
+  --radius-session-tab: 0.625rem;
   --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
@@ -341,6 +351,8 @@
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
+  --duration-session-tab: 200ms;
+  --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
   /* A list folding open or shut, the sidebar's spring; the peek's way out. */
@@ -427,6 +439,7 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
+  --opacity-tab-close: 60%;
   /* Back and Forward with nowhere to go. */
   --opacity-titlebar-nowhere: 40%;
   --opacity-switch-disabled: 60%;
@@ -1047,6 +1060,82 @@
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+}
+
+/* The tab bar [D360]: the old app's. It starts after a short rule, at the sidebar's edge or, with the sidebar folded,
+   after Back, Forward and the toggle. */
+@utility session-tab-bar {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-shown)));
+    top: calc((var(--spacing-titlebar) - var(--spacing) * 5) / 2);
+    height: calc(var(--spacing) * 5);
+    width: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+}
+
+/* The tabs share the bar's room, then scroll once they reach their least width. */
+@utility session-tab-list {
+  --session-tab-count: attr(data-count type(<number>), 1);
+  container-type: inline-size;
+  flex: 0 1 calc(var(--session-tab-count) * var(--spacing-session-tab-max));
+}
+
+@utility session-tab {
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  font-weight: 430;
+  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  transition:
+    flex-basis var(--duration-session-tab) var(--ease-session-tab),
+    padding var(--duration-session-tab) var(--ease-session-tab),
+    opacity var(--duration-session-tab) var(--ease-session-tab);
+  &[data-fresh] {
+    @starting-style {
+      flex-basis: 0;
+      padding-inline: 0;
+      opacity: 0;
+    }
+  }
+  &[data-closing] {
+    flex-basis: 0;
+    padding-inline: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition-duration: var(--duration-popup-fast);
+  }
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline-end: calc(var(--spacing) * -0.25 - var(--spacing-session-tab-rule) / 2);
+    height: var(--spacing-session-tab-rule-height);
+    width: var(--spacing-session-tab-rule);
+    background: var(--color-fill);
+    opacity: 0;
+    transition: opacity var(--duration-session-tab-rule);
+    pointer-events: none;
+  }
+  &[data-separator]::after {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &::after {
+      transition: none;
+    }
+  }
+}
+
+@utility session-tab-title {
+  mask-image: var(--session-tab-title-mask);
 }
 
 /* Home's mark brightening under the pointer. */

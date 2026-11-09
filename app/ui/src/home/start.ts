@@ -8,6 +8,7 @@ import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
 import { store } from "../onboarding/api";
 import { newId } from "../session/store";
+import { carryHome } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 
 /*
@@ -114,13 +115,14 @@ const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string): void {
   const id = sessionId();
   const cid = newId();
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
   if (model.effort) args.push("--effort", model.effort);
   if (level) args.push("--level", level);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
   keepDraft(daemonRun, HOME_DRAFT, []);
+  carryHome(id);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   runStart(entry);
 }
