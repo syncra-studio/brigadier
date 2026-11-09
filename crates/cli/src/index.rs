@@ -78,6 +78,11 @@ impl Marks {
     }
 }
 
+/// Whether search holds this item's words: the user's messages and the agent's text.
+fn searched(item: &Value) -> bool {
+    (item["kind"] == "input" && item["origin"] == "user") || item["kind"] == "text"
+}
+
 /// When a folder last changed (ms), or 0.
 pub fn touched(dir: &Path) -> u64 {
     fs::metadata(dir)
@@ -163,9 +168,11 @@ impl Index {
             if len != e.seen_len {
                 let mut texts = vec![];
                 let mut title = e.title.clone();
+                let mut rewound = false;
                 let folded = core::fold_from(&dir, e.done.clone(), |item| {
-                    let user = item["kind"] == "input" && item["origin"] == "user";
-                    if user || item["kind"] == "text" {
+                    rewound |= item["kind"] == "note" && item["event"] == "rewound";
+                    if searched(item) {
+                        let user = item["kind"] == "input";
                         let text = item["text"].as_str().unwrap_or("");
                         if user && title.is_empty() {
                             title = crate::title::from(text);
@@ -176,6 +183,16 @@ impl Index {
                 e.seen_len = len;
                 match folded {
                     Ok(f) if f.norm.clean() => {
+                        // A rewind takes its dropped words out of search, however late it's read.
+                        if rewound {
+                            texts.clear();
+                            let _ = core::rewind::read_active(&dir, |item| {
+                                if searched(item) {
+                                    texts.push(item["text"].as_str().unwrap_or("").to_string());
+                                }
+                            });
+                            resets.push(id.clone());
+                        }
                         e.title = title;
                         e.done = f;
                         e.ahead = None;

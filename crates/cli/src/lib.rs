@@ -7,6 +7,7 @@ pub mod index;
 mod models;
 pub mod owner;
 pub mod queue;
+pub mod rewind;
 mod sessions;
 mod setup;
 mod side;
@@ -29,6 +30,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off]
        brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
+       brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore]
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -267,6 +269,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(Value::Null)
         }
         "stop" => queue::stop(data, arg(args, 1)?),
+        "rewind" => rewind::run(data, args),
         "side" => side::run(data, args),
         "tabs" => tabs::run(data, args),
         "queue" => queue::run(data, args),
@@ -274,6 +277,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            rewind::settled(data, &spec)?;
             let _fence = core::session::fence(data, &spec)?;
             let f = core::fold(&spec.dir, true)?;
             let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
@@ -364,6 +368,7 @@ fn send(
     cid: Option<&str>,
     backend: Option<&str>,
 ) -> io::Result<Value> {
+    rewind::settled(data, spec)?;
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(control::new_cid, String::from);
     let call = call_fn(data, &spec.id);

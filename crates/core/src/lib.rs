@@ -7,6 +7,7 @@ pub mod fold;
 pub mod norm;
 pub mod projects;
 pub mod repos;
+pub mod rewind;
 mod send;
 pub mod session;
 pub mod switch;

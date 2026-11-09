@@ -169,7 +169,7 @@ pub fn picked(
 fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<String> {
     let (mut thread, mut asked, mut since) = (String::new(), vec![], 0);
     let mut said = false;
-    crate::read(&spec.dir, |item| {
+    crate::rewind::read_active(&spec.dir, |item| {
         let text = item["text"].as_str().unwrap_or("");
         match item["kind"].as_str().unwrap_or("") {
             // A message a switch sent again is the same message: counted once. A picked agent's

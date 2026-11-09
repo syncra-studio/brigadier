@@ -98,6 +98,7 @@ pub fn send(
     if let Some(change) = change {
         base["switch"] = change;
     }
+    crate::rewind::before(spec, f, cid);
     let running = child.is_some() && !picking;
     if a.acks() {
         base["ack"] = true.into();

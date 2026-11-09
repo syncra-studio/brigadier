@@ -78,6 +78,7 @@ fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
 pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     owner::ensure(data, &spec)?;
+    crate::rewind::settled(data, &spec)?;
     let _fence = core::session::fence(data, &spec)?;
     // The host's state first, then the fold: the host refuses if the log moved in between.
     let ping = owner::call(data, id, json!({"op": "ping"}))?;

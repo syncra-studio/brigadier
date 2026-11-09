@@ -3,10 +3,11 @@
 use brigadier_core::fold;
 use brigadier_core::norm::Norm;
 use brigadier_core::thread::Thread;
-use brigadier_core::{check_id, session_dir};
+use brigadier_core::{check_id, rewind, session_dir};
 use brigadier_frames::log::{Reader, now_ms};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
+use std::cell::Cell;
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
@@ -49,6 +50,11 @@ pub(super) fn watch(
     let mut reader: Option<Reader> = None;
     let (mut setup_at, mut setup) = (None, Value::Null);
     let log = dir.join("log");
+    let Ok(mut active) = rewind::Active::scan(&dir) else {
+        let _ = out.send(json!({"re": re, "ok": false, "error": "read"}).to_string());
+        return;
+    };
+    let rewound = Cell::new(false);
     let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
     let mut drain = |thread: &mut Thread| -> io::Result<()> {
         // Setup writes rename files in the session directory, so unchanged ticks need only a stat.
@@ -64,7 +70,10 @@ pub(super) fn watch(
         while let Some(frame) = reader.as_mut().map(Reader::frame).transpose()?.flatten() {
             norm.push(&frame, &mut items);
             for item in items.drain(..) {
-                thread.push(&item);
+                rewound.set(rewound.get() || active.newer(frame.seq, &item));
+                if active.keep(frame.seq, &item) {
+                    thread.push(&item);
+                }
             }
         }
         let alive = !thread.setup_running(&setup)
@@ -128,6 +137,11 @@ pub(super) fn watch(
         // A damaged frame stays damaged: say so once and stop following.
         if let Err(e) = drain(&mut thread) {
             let _ = out.send(tag(json!({"error": e.to_string()})));
+            return;
+        }
+        // A rewind's rows are gone from what was sent: the client asks for a fresh thread.
+        if rewound.get() {
+            let _ = out.send(tag(json!({"reset": true})));
             return;
         }
         if tick % 10 == 0 && thread.running() {

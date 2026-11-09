@@ -49,6 +49,7 @@ pub fn closed(dir: &Path) -> Option<&'static str> {
         Some("archive") => Some("This session is being archived."),
         Some("restore") => Some("This session is being restored."),
         Some(_) => Some("This session is being deleted."),
+        None if crate::rewind::pending(dir) => Some("A rewind of this session hasn't finished."),
         None => dir
             .join(ARCHIVED)
             .exists()
@@ -58,13 +59,18 @@ pub fn closed(dir: &Path) -> Option<&'static str> {
 
 /// Held by a turn's start from this check until its turn is logged, and by Remove project around
 /// its busy check, so a send that raced the marker is either seen as busy or refused here [D172].
-pub fn fence(data: &Path, spec: &Spec) -> io::Result<File> {
+/// The second lock keeps a turn from starting in a shared folder while a restore writes there.
+pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
     let lock = worktrees::lock(&spec.dir)?;
     let removing = projects::removing(data, spec).then_some("This project is being removed.");
-    match closed(&spec.dir).or(removing) {
-        Some(why) => Err(io::Error::other(why)),
-        None => Ok(lock),
+    if let Some(why) = closed(&spec.dir).or(removing) {
+        return Err(io::Error::other(why));
     }
+    let own = Path::new(&spec.cwd) == worktrees::path(data, &spec.id);
+    let shared = (!own)
+        .then(|| crate::rewind::checkout_lock(data, false))
+        .transpose()?;
+    Ok((lock, shared))
 }
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its

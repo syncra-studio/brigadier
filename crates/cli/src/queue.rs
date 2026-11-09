@@ -63,6 +63,18 @@ fn change<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Res
     locked(dir, f)
 }
 
+/// Holds the queue still until the guard drops, and says whether anything waits or is being edited.
+pub fn hold(dir: &Path) -> io::Result<(fs::File, bool)> {
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("queue.lock"))?;
+    lock.lock()?;
+    let q = read(dir)?;
+    Ok((lock, !q.items.is_empty() || q.editing.is_some()))
+}
+
 /// The same, for a caller that holds the lock.
 fn locked<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Result<T> {
     let was = read(dir)?;
@@ -284,6 +296,8 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
         return Ok(());
     };
+    let spec = core::load(data, id)?;
+    crate::rewind::settle_held(data, &spec)?;
     locked(&dir, |q| {
         let Some(item) = q
             .items
@@ -297,7 +311,6 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             q.items.remove(0);
             return Ok(());
         }
-        let spec = core::load(data, id)?;
         owner::ensure(data, &spec)?;
         let ping = owner::call(data, id, json!({"op": "ping"}))?;
         let Some(len) = ping["len"].as_u64() else {

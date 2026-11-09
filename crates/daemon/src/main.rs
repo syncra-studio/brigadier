@@ -91,6 +91,7 @@ fn main() -> io::Result<()> {
         None => return Ok(()),
     };
     brigadier_core::worktrees::sweep(&data);
+    brigadier::rewind::sweep(&data);
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
     let state = Shared::default();
@@ -107,12 +108,14 @@ fn main() -> io::Result<()> {
     // The limit each session was last looked at for, by its item count and the switching settings:
     // once per limit, and again when a setting or the accounts change [D51].
     let mut seen: HashMap<String, Value> = HashMap::new();
+    let mut finished: HashMap<String, u64> = HashMap::new();
     loop {
         match index.sync() {
             Ok((rows, gone)) => publish(&state, &data, rows, gone),
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         switch::auto_switch(&data, &index.rows, &mut seen);
+        brigadier::rewind::ends(&data, &index.rows, &mut finished);
         brigadier::queue::drain(&data, &index.rows);
         // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
         let on = match awake_mode(&data) {
