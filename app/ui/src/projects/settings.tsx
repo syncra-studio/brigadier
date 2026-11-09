@@ -212,7 +212,7 @@ export function PathRows({ files, onFiles }: FilesProps) {
   // Only a row just added takes focus, not the last one on open.
   const [added, setAdded] = useState(false);
   return (
-    <Field label="Secret files" aside="Copied into every worktree, never shown">
+    <Field label="Secret files" aside="Git-ignored files copied into every worktree, never shown">
       {files.length > 0 && (
         <ul className="flex flex-col gap-1.5" aria-label="Secret files">
           {files.map((file, index) => (
