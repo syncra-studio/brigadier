@@ -9,12 +9,14 @@ import { type ComposerRow, daemonRun, type Runner } from "./composer";
 import { putBack } from "./side";
 import { newId } from "./store";
 
-type Asking = { cid: string; text: string; preview: RewindPreview; error?: string };
+// One id for all of a confirmation's tries: a reply lost after the rewind landed is answered as already done.
+type Asking = { cid: string; op: string; text: string; preview: RewindPreview; error?: string };
 type Running = { cid: string; n: number | undefined; replied: boolean };
 
 const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
 
 function said(reply: Record<string, any>, restore: boolean): string {
+  if (reply.already) return "Rewound · check your files";
   if (!restore) return "Rewound · your files are as they were";
   const count = `${reply.restored} ${reply.restored === 1 ? "file" : "files"} restored`;
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
@@ -33,7 +35,7 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
     const queued = (row?.queue?.items.length ?? 0) > 0 || !!row?.queue?.editing;
     const blocked = offline ? "Reconnecting…" : running ? "Rewinding…" : row?.running ? "Stop the turn first" : queued ? "Send or remove the queued messages first" : undefined;
     const open = (cid: string, text: string) => {
-      setAsking({ cid, text, preview: { status: "loading" } });
+      setAsking({ cid, op: newId(), text, preview: { status: "loading" } });
       void run(["rewind", id, cid, "--preview"]).then((reply) => {
         const preview: RewindPreview = reply.ok ? { status: "ready", restore: reply.restore === true, why: reply.why, paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } : { status: "error", error: why(reply) };
         setAsking((now) => (now?.cid === cid ? { ...now, preview } : now));
@@ -48,19 +50,19 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   }, [session, running, offline, row?.running, row?.queue, id, run]);
   const go = (restore: boolean) => {
     if (!asking) return;
-    const { cid, text, preview } = asking;
+    const { cid, op, text, preview } = asking;
     const n = session?.items.find((item) => "cid" in item && item.cid === cid)?.n;
     setAsking(null);
     setRunning({ cid, n, replied: false });
-    void run(["rewind", id, cid, "--op", newId(), ...(restore ? ["--restore"] : [])]).then((reply) => {
+    void run(["rewind", id, cid, "--op", op, ...(restore ? ["--restore"] : [])]).then((reply) => {
       if (!reply.ok) {
         setRunning(null);
-        setAsking({ cid, text, preview, error: why(reply) });
+        setAsking({ cid, op, text, preview, error: why(reply) });
         return;
       }
       setRunning((now) => now && { ...now, replied: true });
       putBack(id, text, true);
-      showToast(said(reply, restore), { tone: restore && reply.complete === false ? "neutral" : "success" });
+      showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success" });
     });
   };
   return (
