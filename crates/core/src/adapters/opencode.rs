@@ -122,6 +122,19 @@ impl Adapter for OpenCode {
     /// Signed in means a saved account (`auth list`); usable means `models` lists something for
     /// this folder: a saved or variable key, a local server it found, or its free models.
     fn check(&self, _spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
+        let version = version(exe, cwd)?;
+        // Every command here takes flags version 2 added; an older one answers them with its help.
+        let major = version.trim_start_matches(|c: char| !c.is_ascii_digit());
+        if major
+            .split('.')
+            .next()
+            .and_then(|m| m.parse::<u32>().ok())
+            .is_some_and(|m| m < 2)
+        {
+            return Err(format!(
+                "This version of OpenCode ({version}) is too old. Brigadier needs OpenCode 2 or newer: update it, then check again."
+            ));
+        }
         let text = |args: &[&str]| -> Result<String, String> {
             let out = probe(exe, cwd, self.keys(), args, 30)?;
             let said = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -146,7 +159,7 @@ impl Adapter for OpenCode {
             .map(|l| ModelInfo::plain(l, LOCAL.iter().any(|p| l.starts_with(&format!("{p}/")))))
             .collect();
         Ok(Check {
-            version: version(exe, cwd)?,
+            version,
             signed_in: Some(!saved.is_empty()),
             how: saved.join(", "),
             models,
