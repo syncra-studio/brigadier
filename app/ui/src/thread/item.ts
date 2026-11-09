@@ -23,6 +23,8 @@ export type Session = {
   /** Requests still waiting on the user, replayed on reconnect and reconciled by CLI id. */
   approvals?: PendingApproval[];
   questions?: PendingQuestion[];
+  /** The user messages a rewind can go back to, by command id; Rust decides [D384]. */
+  rewind?: string[];
 };
 
 /** Rust owns the reached steps, their order, state and placement; the UI writes their words. */
@@ -105,7 +107,7 @@ export type Item = Base &
         origin?: "user" | "system";
         /** When it was sent, ms since the epoch. */
         sentAt?: number;
-        /** A steered message's command id, which the app's own copy settles by. */
+        /** The input's command id, which the app's own copy settles by and a rewind names. */
         cid?: string;
         /** Steered into the running turn: it sits inside that turn's work and starts no turn of its own. */
         steer?: boolean;

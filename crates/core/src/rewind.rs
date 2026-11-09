@@ -3,12 +3,16 @@
 //! own snapshots. Each phase is written down first, so one cut short finishes or rolls back on
 //! proof before anything else runs [D54, D300].
 
+mod active;
+mod plan;
 mod snap;
 
 use crate::adapters::{self, Cut, Failed, Landing, Rewound};
 use crate::fold::{Boundary, Fold, Live, Owner};
 use crate::{Call, Spec, as_run, session, session_dir, worktrees, write_atomic};
-use brigadier_frames::log::{self, Reader, now_ms};
+pub use active::{Active, read_active};
+use brigadier_frames::log::now_ms;
+use plan::{Files, plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use snap::{Record, Shot, Store};
@@ -88,63 +92,6 @@ fn ended(store: &Store, f: &Fold) {
         record.end = Some(end);
         let _ = store.save(id, &record);
     }
-}
-
-/// What a restore would do.
-struct Files {
-    pre: Shot,
-    target: String,
-    paths: BTreeSet<String>,
-    hand: Vec<String>,
-    left_out: Vec<String>,
-    commits: bool,
-}
-
-/// `Err` says why the folder can't go back. Only what the agent changed in these turns goes, and
-/// only where the user hasn't edited the same path since (proposed).
-fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static str> {
-    let unread = |_| "unreadable";
-    let shots: Option<Vec<(Shot, Shot)>> = (turns.iter())
-        .map(|t| {
-            let r = store.load(&t.cid)?;
-            Some((r.before, r.end?))
-        })
-        .collect();
-    let shots = shots.filter(|s| !s.is_empty()).ok_or("missing")?;
-    let pre = store.capture().map_err(unread)?;
-    let target = shots[0].0.clone();
-    let (mut agent, mut gaps) = (BTreeSet::new(), BTreeSet::new());
-    for (i, (before, end)) in shots.iter().enumerate() {
-        agent.extend(store.diff(before, end).map_err(unread)?);
-        let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
-        gaps.extend(store.diff(end, next).map_err(unread)?);
-    }
-    let all = shots.iter().flat_map(|(b, e)| [b, e]).chain([&pre]);
-    let out: BTreeSet<String> = all.flat_map(|s| s.out.keys().cloned()).collect();
-    let moved = store.diff(&target, &pre).map_err(unread)?;
-    let mut hand: BTreeSet<String> = agent.intersection(&gaps).cloned().collect();
-    let wanted: BTreeSet<String> = (agent.intersection(&moved))
-        .filter(|p| !hand.contains(*p) && !out.contains(*p))
-        .cloned()
-        .collect();
-    let blocked: BTreeSet<String> = (wanted.iter())
-        .filter(|p| store.blocked(p, &wanted))
-        .cloned()
-        .collect();
-    let paths = wanted.difference(&blocked).cloned().collect();
-    hand.extend(blocked);
-    let left_out = (out.iter())
-        .filter(|p| target.out.get(*p) != pre.out.get(*p))
-        .cloned()
-        .collect();
-    Ok(Files {
-        commits: target.head != pre.head,
-        target: target.tree,
-        pre,
-        paths,
-        hand: hand.into_iter().collect(),
-        left_out,
-    })
 }
 
 fn local(data: &Path, spec: &Spec) -> bool {
@@ -507,72 +454,6 @@ pub fn settle(spec: &Spec, call: Call) -> io::Result<()> {
             Landing::Unknown(why) => Err(unsettled(uncertain(&why))),
         },
     }
-}
-
-/// Which of a log's items still stand: a rewind drops everything from its message to its note,
-/// but what ran stays known, for sweeping and delete [D35].
-#[derive(Default)]
-pub struct Active {
-    cuts: Vec<(String, u64)>,
-    until: u64,
-    last: u64,
-}
-
-impl Active {
-    pub fn scan(dir: &Path) -> io::Result<Active> {
-        let mut active = Active::default();
-        let path = dir.join("log");
-        if !path.exists() {
-            return Ok(active);
-        }
-        let mut reader = Reader::open(&path, 0, 0)?;
-        while let Some(frame) = reader.next_with(|k| k == log::NOTE)? {
-            let v: Value = serde_json::from_slice(&frame.data).unwrap_or(Value::Null);
-            if let (Some("rewound"), Some(to)) = (v["event"].as_str(), v["to"].as_str()) {
-                active.cuts.push((to.into(), frame.seq));
-                active.last = frame.seq;
-            }
-        }
-        Ok(active)
-    }
-
-    pub fn keep(&mut self, seq: u64, item: &Value) -> bool {
-        let kind = item["kind"].as_str().unwrap_or("");
-        if kind == "input" {
-            let found = self
-                .cuts
-                .iter()
-                .filter(|(to, at)| item["cid"] == to.as_str() && *at > seq);
-            self.until = found.map(|(_, at)| *at).max().unwrap_or(0).max(self.until);
-        }
-        seq > self.until
-            || matches!(
-                kind,
-                "spawned" | "exited" | "stopped" | "note" | "resume_id"
-            )
-    }
-
-    /// Whether this item is a rewind newer than the scan: what was read before it is stale.
-    pub fn newer(&self, seq: u64, item: &Value) -> bool {
-        item["kind"] == "note" && item["event"] == "rewound" && seq > self.last
-    }
-}
-
-/// Every item still standing, in order.
-pub fn read_active(dir: &Path, mut each: impl FnMut(&Value)) -> io::Result<()> {
-    let mut active = Active::scan(dir)?;
-    let mut norm = crate::Norm::default();
-    let mut reader = Reader::open(&dir.join("log"), 0, 0)?;
-    let mut items = vec![];
-    while let Some(frame) = reader.frame()? {
-        norm.push(&frame, &mut items);
-        for item in items.drain(..) {
-            if active.keep(frame.seq, &item) {
-                each(&item);
-            }
-        }
-    }
-    Ok(())
 }
 
 /// At the daemon's start: rewinds a crash cut short that no client has come back to.

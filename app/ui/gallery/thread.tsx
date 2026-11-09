@@ -468,6 +468,8 @@ function Bubbles() {
       </div>
       <UserBubble keep="look-unconfirmed" text="Ship the thread rows." unconfirmed />
       <UserBubble keep="look-dimmed" text="Ship the thread rows." dimmed />
+      <UserBubble keep="look-rewind" text="Ship the thread rows." time={NOW} rewind={{ open: noop }} />
+      <UserBubble keep="look-rewind-blocked" text="Ship the thread rows." time={NOW} rewind={{ blocked: "Stop the turn first", open: noop }} />
     </div>
   );
 }

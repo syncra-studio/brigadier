@@ -23,6 +23,7 @@ import { TrustHost } from "./projects/trust";
 import { ArchivedBar } from "./sessions/archived";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
+import { RewindProvider } from "./session/rewind";
 import { answeringSource } from "./session/decisions";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
@@ -177,6 +178,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                   <StartingThread id={id} />
                 ) : state?.id === id && (
                 <SessionOfThread value={{ id, offline }}>
+                  <RewindProvider key={id} id={id} row={row} offline={offline}>
                   <Thread
                     key={id}
                     ref={thread}
@@ -193,6 +195,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                       )
                     }
                   />
+                  </RewindProvider>
                 </SessionOfThread>
                 )}
               </div>

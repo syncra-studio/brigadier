@@ -1,3 +1,5 @@
+import { useContext } from "react";
+
 import type { Item, Turn } from "../../thread/item";
 import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
@@ -5,7 +7,13 @@ import { describe } from "../composer/approval";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
 import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./message";
+import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
+
+function UserRow({ id, cid, text, time, dated }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean }) {
+  const rewind = useContext(RewindContext);
+  return <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? rewind?.offer(cid, text) : undefined} />;
+}
 
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
@@ -17,7 +25,7 @@ export function Body({ item, turn, step, dated = false, actions = true }: { item
       return null;
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
-      if (item.role === "user") return <UserBubble keep={item.id} text={item.text} time={item.sentAt} dated={dated} />;
+      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} />;
       return (
         <AssistantMessage
           text={item.text}

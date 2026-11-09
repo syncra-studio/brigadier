@@ -3,6 +3,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import type { Item } from "../../thread/item";
 
 import { ChevronRightAlt, Regenerate, Trash } from "../../icons";
+import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
 import { CopyButton } from "../copy-button";
@@ -66,6 +67,7 @@ export function UserBubble({
   failed,
   onRetry,
   onDiscard,
+  rewind,
   unconfirmed = false,
   dimmed = false,
   dated = false,
@@ -80,6 +82,8 @@ export function UserBubble({
   failed?: string;
   onRetry?: () => void;
   onDiscard?: () => void;
+  /** Going back to this message, where it's offered [D384]. */
+  rewind?: RewindOffer;
   /** Sent, but its delivery can't be proven until reconnected. */
   unconfirmed?: boolean;
   dimmed?: boolean;
@@ -149,6 +153,11 @@ export function UserBubble({
           >
             {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
+            {rewind && (
+              <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
+                <Regenerate />
+              </TooltipIconButton>
+            )}
             {failed && onDiscard && (
               <TooltipIconButton tooltip="Discard message" onClick={onDiscard}>
                 <Trash />

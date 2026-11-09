@@ -1,7 +1,8 @@
-import { memo } from "react";
+import { memo, useContext } from "react";
 
 import { AnswerMarks } from "../components/thread/message";
 import { Body } from "../components/thread/body";
+import { RewindContext } from "../components/thread/rewind";
 import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
@@ -18,8 +19,10 @@ export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean
  * the space above each row; a row draws only its content. Rows draw again only when one of their props changes.
  */
 export const LineRow = memo(function LineRow(props: LineProps) {
+  const rewind = useContext(RewindContext);
+  const gone = rewind?.gone("item" in props ? props.item.n : undefined, "turn" in props ? props.turn?.id : undefined);
   return (
-    <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]}`} data-item={props.id}>
+    <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
       {props.type === "setup" ? (
         <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (

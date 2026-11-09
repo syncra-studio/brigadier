@@ -214,8 +214,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (held || isEmpty({ parts: rest, attachmentIds: [] })) return;
     sendAsNew(id, plainText(rest), take()?.qid);
   };
-  usePutBack(id, (message) => {
-    field.current?.set([message]);
+  usePutBack(id, (message, above) => {
+    // A rewound message goes above what's already being typed, never over it [D363].
+    const typed = above ? (field.current?.parts() ?? []) : [];
+    field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? [message] : [`${message}\n\n`, ...typed]);
     setEmpty(!message.trim());
     field.current?.focus();
   });

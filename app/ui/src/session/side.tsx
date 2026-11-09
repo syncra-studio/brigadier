@@ -50,15 +50,15 @@ export function sendAsNew(source: string, text: string, qid?: string): void {
 }
 
 // Put back: the text goes to the composer of the session it came from.
-const back = store<{ source: string; text: string; n: number } | null>(null);
-const putBack = (source: string, text: string) => back.set({ source, text, n: (back.get()?.n ?? 0) + 1 });
+const back = store<{ source: string; text: string; n: number; above: boolean } | null>(null);
+export const putBack = (source: string, text: string, above = false) => back.set({ source, text, above, n: (back.get()?.n ?? 0) + 1 });
 
 /** Fills session `id`'s composer when one of its lines puts a message back. */
-export function usePutBack(id: string, fill: (text: string) => void): void {
+export function usePutBack(id: string, fill: (text: string, above: boolean) => void): void {
   const asked = back.use();
   useEffect(() => {
     if (asked?.source !== id) return;
-    fill(asked.text);
+    fill(asked.text, asked.above);
     // Taken once: the composer mounts again each time its session opens.
     back.set(null);
   }, [asked?.n]);
