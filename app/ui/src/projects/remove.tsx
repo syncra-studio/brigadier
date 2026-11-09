@@ -212,11 +212,12 @@ function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview
     onDrops(next);
   };
   const all = dropped === branches.length;
+  const fate = all ? "All of them will be deleted." : dropped > 0 ? `${dropped} will be deleted, the rest kept.` : "All of them are kept.";
   return (
     <Collapsible className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 text-xs text-muted-foreground">
-          {branches.length} branches have work that never landed. {dropped > 0 ? `${dropped} will be deleted, the rest kept.` : "All of them are kept."}
+          {branches.length} branches have work that never landed. {fate}
         </p>
         <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="shrink-0" />}>Review {branches.length} branches</CollapsibleTrigger>
       </div>
