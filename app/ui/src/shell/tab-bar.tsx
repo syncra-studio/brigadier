@@ -132,9 +132,9 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
 
 const nameOf = (tab: Tab) => (tab.kind === "new" ? "New tab" : "Terminal");
 
-/** A tab it opened: the kind's icon, its name and ×. The tab itself is the drag handle; Alt+←/→ moves it from the keyboard. */
+/** A tab it opened: the kind's icon, its name and ×. Its button is the drag handle, as a button inside a sortable won't start one otherwise; Alt+←/→ moves it from the keyboard. */
 function OtherTab({ owner, tab, index, last, selected, separator, closing, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; separator: boolean; closing: boolean; order: string[]; onClose: () => void }) {
-  const { ref, isDragging } = useSortable({ id: tab.id, index, disabled: closing });
+  const { ref, handleRef, isDragging } = useSortable({ id: tab.id, index, disabled: closing });
   const [fresh] = useState(() => justOpened(tab.id));
   const name = nameOf(tab);
   return (
@@ -156,6 +156,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
         }
       >
         <button
+          ref={handleRef}
           type="button"
           role="tab"
           aria-selected={selected}
