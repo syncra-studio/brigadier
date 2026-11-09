@@ -246,7 +246,7 @@ export function CompactionDivider({ progress: reported = "done" }: { progress?: 
 }
 
 /** Something the app or agent wants seen, centred after its icon; an error in red, announced as it comes. */
-export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"; text: string }) {
+export function NoticeRow({ level, text, link }: { level: "info" | "warning" | "error"; text: string; link?: ReactNode }) {
   const error = level === "error";
   return (
     // Centred, wrapped lines too (D150). The icon is inline before the first word, so it stays beside the words,
@@ -256,6 +256,7 @@ export function NoticeRow({ level, text }: { level: "info" | "warning" | "error"
         {error ? <ExclamationMarkCircle className="size-4" /> : level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4" />}
       </span>
       {text}
+      {link}
     </p>
   );
 }

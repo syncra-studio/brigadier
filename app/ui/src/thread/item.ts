@@ -158,6 +158,8 @@ export type Item = Base &
     | { kind: "notice"; level: "info" | "warning" | "error"; text: string }
     /** A notice Rust sends as structure, its words written here: `untrusted`, trust taken back holds this turn to Ask [D166]. */
     | { kind: "notice"; reason: "untrusted" }
+    /** The agent's own sign-in error, its line linking to where sign-in lives [D381]. */
+    | { kind: "notice"; reason: "sign-in"; text: string }
     /**
      * A usage limit (or a refused resume) and the switch past it: one row Rust changes in place [D51, D132], in the
      * kit's switch shape (D133). Rust sends `limit`, `switched`, and `over` for a limit no switch took (a Stop, a new

@@ -76,8 +76,20 @@ export function Body({ item, turn, step, dated = false, actions = true }: { item
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;
     case "notice":
-      if ("reason" in item) return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
-      return <NoticeRow level={item.level} text={item.text} />;
+      if (!("reason" in item)) return <NoticeRow level={item.level} text={item.text} />;
+      if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
+      // Sign-in lives on the Accounts page today, the one the Settings gear opens [D347, D381].
+      return (
+        <NoticeRow
+          level="error"
+          text={item.text}
+          link={
+            <a href="#accounts" className="ms-1.5 whitespace-nowrap text-link hover:underline">
+              Open Accounts
+            </a>
+          }
+        />
+      );
     case "unknown":
       return <UnknownRow keep={item.id} raw={item.raw} />;
     // The app draws it (its switch needs the session); see thread/rows.tsx.

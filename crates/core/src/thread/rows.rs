@@ -205,7 +205,7 @@ impl Thread {
             }
             "sign_in" => {
                 self.break_group();
-                self.add(json!({"kind": "notice", "level": "error", "text": item["message"]}));
+                self.add(json!({"kind": "notice", "reason": "sign-in", "text": item["message"]}));
             }
             "compaction" => {
                 self.break_group();
