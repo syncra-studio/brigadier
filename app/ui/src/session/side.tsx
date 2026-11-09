@@ -57,7 +57,10 @@ const putBack = (source: string, text: string) => back.set({ source, text, n: (b
 export function usePutBack(id: string, fill: (text: string) => void): void {
   const asked = back.use();
   useEffect(() => {
-    if (asked?.source === id) fill(asked.text);
+    if (asked?.source !== id) return;
+    fill(asked.text);
+    // Taken once: the composer mounts again each time its session opens.
+    back.set(null);
   }, [asked?.n]);
 }
 

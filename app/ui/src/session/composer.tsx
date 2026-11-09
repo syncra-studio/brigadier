@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText, sendMode } from "../components/composer/draft";
@@ -13,6 +13,7 @@ import type { Source } from "../thread/thread";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
+import { draftOf, keepDraft, loadDraft } from "./draft";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 
@@ -91,6 +92,9 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   );
 }
 
+/** The composer being left had the keyboard: the session opened in its place takes it. */
+let hadKeyboard = false;
+
 /** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
 type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; at?: number; done?: () => void };
 
@@ -106,24 +110,42 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const approval = useApprovalWaiting(id, source);
   const [replying, setReplying] = useState(false);
   if (replying && !approval) setReplying(false);
-  const [empty, setEmpty] = useState(true);
+  const [initial] = useState(() => draftOf(id));
+  const [empty, setEmpty] = useState(() => isEmpty({ parts: initial ?? [], attachmentIds: [] }));
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
   // A queued message pulled back to edit, which Rust keeps meanwhile (`queue.editing`): sending puts it back in its
   // slot under its id, emptying the field puts the original back.
   const editing = useRef<{ qid: string; slot: number; text: string } | null>(null);
-  // A send into the paused queue, asked about first.
-  const [asking, setAsking] = useState<{ message: string; pulled: typeof editing.current } | null>(null);
+  // A send into the paused queue, asked about first; its words stay in the field meanwhile.
+  const [asking, setAsking] = useState<string | null>(null);
+  useLayoutEffect(() => () => void (hadKeyboard = document.activeElement?.closest("[data-slot=composer-field]") != null), []);
+  useEffect(() => {
+    if (hadKeyboard) field.current?.focus();
+    hadKeyboard = false;
+  }, []);
   const kept = row?.queue?.editing;
-  // Reopened (or after a restart), the message being edited is in the field again.
+  // Reopened (or after a restart), the message being edited is in the field again: as last typed if its draft came back.
   useEffect(() => {
     const now = field.current;
-    if (!kept || editing.current?.qid === kept.id || !now || !isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
+    if (!kept || editing.current?.qid === kept.id || !now) return;
     editing.current = { qid: kept.id, slot: kept.slot, text: kept.text };
+    if (!isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
     now.set([kept.text]);
     setEmpty(!kept.text.trim());
   }, [kept?.id]);
+  // After a restart the draft is Rust's alone: it comes back unless something was typed first.
+  useEffect(() => {
+    void loadDraft(run, id).then((saved) => {
+      const now = field.current;
+      if (!saved || !now) return;
+      const parts = now.parts();
+      if (!isEmpty({ parts, attachmentIds: [] }) && plainText(parts) !== editing.current?.text) return;
+      now.set(saved);
+      setEmpty(false);
+    });
+  }, []);
 
   const running = row?.running === true;
   const canSteer = row?.steer === true;
@@ -180,15 +202,19 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
 
   // Send as new, from a project session only: ⌥⌘⏎, ⌘-click on Send, or the /new chip in the text [D183, D204].
   const inProject = Boolean(row?.project);
-  const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
-  const submitNew = () => {
-    const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
-    if (held || isEmpty({ parts: rest, attachmentIds: [] })) return;
+  /** Empties the field for a message that's going, and answers the queued message it was edited from. */
+  const take = () => {
     const pulled = editing.current;
     editing.current = null;
     field.current?.set([]);
     setEmpty(true);
-    sendAsNew(id, plainText(rest), pulled?.qid);
+    return pulled;
+  };
+  const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
+  const submitNew = () => {
+    const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
+    if (held || isEmpty({ parts: rest, attachmentIds: [] })) return;
+    sendAsNew(id, plainText(rest), take()?.qid);
   };
   usePutBack(id, (message) => {
     field.current?.set([message]);
@@ -206,13 +232,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       return;
     }
     const message = plainText(parts);
-    const pulled = editing.current;
-    editing.current = null;
-    field.current?.set([]);
-    setEmpty(true);
     const mode = sendMode(running, "queue", other, canSteer);
+    if (mode === "now" && paused && items.length > 0) return setAsking(message);
+    const pulled = take();
     if (mode === "queue") return queue(message, pulled?.qid, pulled?.slot);
-    if (mode === "now" && paused && items.length > 0) return setAsking({ message, pulled });
     sendNow(message, pulled, mode === "steer");
   };
   // Sent at once or steered, an edited message's kept copy goes.
@@ -260,8 +283,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerCard className={approval && !replying ? "hidden" : undefined}>
         <ComposerField
           ref={field}
+          initial={initial && { parts: initial, attachmentIds: [] }}
           placeholder="Do anything"
-          onChange={(parts) => changed(isEmpty({ parts, attachmentIds: [] }))}
+          onChange={(parts) => {
+            keepDraft(run, id, parts);
+            changed(isEmpty({ parts, attachmentIds: [] }));
+          }}
           onSubmit={submit}
           onSubmitNew={inProject ? submitNew : undefined}
           commands={inProject ? { commands: [NEW_SESSION], onRun: () => {} } : undefined}
@@ -283,18 +310,18 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <PausedSendDialog
         waiting={asking === null ? null : items.length}
         onSendNow={() => {
-          if (asking) sendNow(asking.message, asking.pulled);
+          if (asking !== null) sendNow(asking, take());
           setAsking(null);
         }}
         onKeepPaused={() => {
-          if (asking) queue(asking.message, asking.pulled?.qid, asking.pulled?.slot);
+          if (asking !== null) {
+            const pulled = take();
+            queue(asking, pulled?.qid, pulled?.slot);
+          }
           setAsking(null);
         }}
         onClose={() => {
           if (asking === null) return;
-          field.current?.set([asking.message]);
-          editing.current = asking.pulled;
-          setEmpty(false);
           setAsking(null);
           field.current?.focus();
         }}

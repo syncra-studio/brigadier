@@ -188,7 +188,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                 )}
               </div>
               {/* A follow-up waits for the start to land, never sent to a session Rust hasn't made [D30]. */}
-              {!row?.archived && <SessionComposer onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
+              {!row?.archived && <SessionComposer key={id} onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
             </div>
           )}
         </div>

@@ -216,6 +216,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
+        // What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
+        "draft" => {
+            let id = arg(args, 1)?;
+            core::load(data, id)?;
+            let path = core::session_dir(data, id).join("draft");
+            match args.get(2).map(String::as_str) {
+                None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),
+                Some("") => remove(&path)?,
+                Some(parts) => core::write_atomic(&path, parts.as_bytes())?,
+            }
+            Ok(json!({"ok": true}))
+        }
         "status" => {
             let all = procs::all();
             let ids: Vec<String> = if has(args, "--all") {
