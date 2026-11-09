@@ -2,6 +2,7 @@
 import { type RefObject, useEffect, useRef } from "react";
 
 import { Choices } from "./choices";
+import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
 import { AidsGallery } from "./aids";
@@ -10,6 +11,7 @@ import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
 import { Notices } from "./notices";
 import { Panes } from "./panes";
+import { Area } from "./parts";
 import { Popups } from "./popups";
 import { Thread } from "./thread";
 import "./gallery.css";
@@ -66,52 +68,42 @@ function useKeptScroll(scroller: RefObject<HTMLDivElement | null>) {
   }, [scroller]);
 }
 
-/**
- * A held-open menu or select takes focus as it mounts (and again later); give it back unless the user
- * just clicked or typed, so the page rests as the app does and the sidebar's peek isn't held off.
- */
-function useNoHeldFocus() {
-  useEffect(() => {
-    let actedAt = -Infinity;
-    const acted = () => (actedAt = performance.now());
-    const onFocus = (event: FocusEvent) => {
-      const target = event.target as HTMLElement;
-      if (performance.now() - actedAt > 500 && target.closest?.("[data-held]")) target.blur();
-    };
-    addEventListener("pointerdown", acted, true);
-    addEventListener("keydown", acted, true);
-    addEventListener("focusin", onFocus, true);
-    if ((document.activeElement as HTMLElement | null)?.closest("[data-held]")) (document.activeElement as HTMLElement).blur();
-    return () => {
-      removeEventListener("pointerdown", acted, true);
-      removeEventListener("keydown", acted, true);
-      removeEventListener("focusin", onFocus, true);
-    };
-  }, []);
-}
-
 function GalleryPage() {
   const scroller = useRef<HTMLDivElement>(null);
   useKeptScroll(scroller);
-  useNoHeldFocus();
   return (
-    <div ref={scroller} className="fixed inset-0 overflow-y-auto">
-      <header className="app-drag sticky top-0 z-10 flex h-titlebar items-center border-b border-divider bg-background ps-traffic-lights">
+    <div className="fixed inset-0 flex flex-col">
+      <header className="app-drag flex h-titlebar shrink-0 items-center border-b border-divider bg-background ps-traffic-lights">
         <h1 className="ps-2 text-sm font-medium">Components</h1>
       </header>
-      <main className="isolate flex flex-col gap-10 px-8 py-8">
-        <ComposerGallery />
-        <RailGallery />
-        <AidsGallery />
-        <PickersGallery />
-        <DecisionsGallery />
-        <Thread />
-        <Notices />
-        <Choices />
-        <Panes />
-        <Popups />
-        <Kit />
-      </main>
+      <div className="flex min-h-0 flex-1">
+        <Contents scroller={scroller} />
+        <div ref={scroller} className="min-w-0 flex-1 overflow-y-auto">
+          <main className="isolate flex flex-col gap-16 px-8 py-8">
+            <Area name="Composer">
+              <ComposerGallery />
+              <RailGallery />
+              <AidsGallery />
+              <PickersGallery />
+              <DecisionsGallery />
+            </Area>
+            <Area name="Thread">
+              <Thread />
+              <Notices />
+            </Area>
+            <Area name="Controls">
+              <Kit />
+              <Choices />
+            </Area>
+            <Area name="Popups and status">
+              <Popups />
+            </Area>
+            <Area name="Layout">
+              <Panes />
+            </Area>
+          </main>
+        </div>
+      </div>
     </div>
   );
 }

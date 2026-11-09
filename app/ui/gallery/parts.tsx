@@ -4,45 +4,33 @@ import { type ReactElement, type ReactNode, useState } from "react";
 import { cx } from "../src/components/cx";
 import { Kbd } from "../src/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
-import * as Current from "./current";
 
-/** Slice 2's components, as the kit has them. */
-export type KitSet = typeof Current;
-
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+/** One area of the page: its name, then its components' blocks. */
+export function Area({ name, children }: { name: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-6 border-t border-divider pt-6 first:border-0 first:pt-0">
-      <h2 className="font-display text-xl font-semibold">{title}</h2>
+    <div data-area={name} className="flex flex-col gap-6">
+      <h2 className="font-display text-xl font-semibold">{name}</h2>
       {children}
-    </section>
-  );
-}
-
-/** One component's row: each state side by side. */
-export function Row({ name, children }: { name: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-label text-muted-foreground">{name}</h3>
-      <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
     </div>
   );
 }
 
-/** One component's row, given the kit's slice 2 set. */
-export function KitRow({ name, children }: { name: string; children: (k: KitSet) => ReactNode }) {
-  return <Row name={name}>{children(Current)}</Row>;
+/** One component's block, bounded, its name staying on top while the block is on screen. */
+export function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section data-block={title} className="scroll-mt-4 rounded-surface border border-border">
+      <h3 className="sticky top-0 z-10 rounded-t-surface border-b border-divider bg-card px-5 py-3 text-sm font-semibold">{title}</h3>
+      <div className="flex flex-col gap-8 p-5">{children}</div>
+    </section>
+  );
 }
 
-/**
- * A box a frozen popup is held open in, so it shows in the page beside its trigger instead of over it.
- * `transform-gpu` makes it the frame a dialog's fixed position measures from.
- */
-export function Held({ className, children }: { className: string; children: (box: HTMLDivElement) => ReactNode }) {
-  // The box must exist before the popup mounts, or Base UI places it in the page body instead.
-  const [box, setBox] = useState<HTMLDivElement | null>(null);
+/** A set of states side by side; `name` titles it where its block holds more than one. */
+export function Row({ name, children }: { name?: string; children: ReactNode }) {
   return (
-    <div ref={setBox} data-held className={cx("relative transform-gpu", className)}>
-      {box && children(box)}
+    <div data-row={name} className="flex scroll-mt-16 flex-col gap-3 not-first:border-t not-first:border-divider not-first:pt-8">
+      {name && <h4 className="text-label font-medium">{name}</h4>}
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4">{children}</div>
     </div>
   );
 }

@@ -52,9 +52,9 @@ function CheckboxRowDemo({ note, disabled }: { note?: string; disabled?: boolean
   );
 }
 
-function CollapsibleDemo({ open }: { open?: boolean }) {
+function CollapsibleDemo() {
   return (
-    <Collapsible defaultOpen={open} className="w-64">
+    <Collapsible className="w-64">
       <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 text-sm focus-visible:focus-ring">
         Ran 3 commands
         <ChevronDown className="size-icon-sm transition-all group-data-panel-open:rotate-180" />
@@ -75,7 +75,7 @@ export function Choices() {
   return (
     <>
       <Section title="Segmented">
-        <Row name="pills · on a track (fill) · icons with tips · a choice with a reason · disabled">
+        <Row>
           <State label="live">
             <SegmentedDemo />
           </State>
@@ -99,8 +99,8 @@ export function Choices() {
           </State>
         </Row>
       </Section>
-      <Section title="Radio · Checkbox row">
-        <Row name="radio · checkbox row">
+      <Section title="Radio">
+        <Row>
           <State label="live">
             <RadioDemo />
           </State>
@@ -110,7 +110,11 @@ export function Choices() {
           <State label="disabled">
             <RadioDemo disabled />
           </State>
-          <State label="checkbox row">
+        </Row>
+      </Section>
+      <Section title="Checkbox row">
+        <Row>
+          <State label="live">
             <CheckboxRowDemo />
           </State>
           <State label="with a note, disabled">
@@ -118,32 +122,25 @@ export function Choices() {
           </State>
         </Row>
       </Section>
-      <Section title="Collapsible · Skeleton · Scroll fade">
-        <Row name="collapsible · skeleton · scroll fade (top, bottom raised)">
-          <State label="closed (live)">
-            <CollapsibleDemo />
-          </State>
-          <State label="open">
-            <CollapsibleDemo open />
-          </State>
-          <State label="skeleton">
-            <div className="flex w-56 flex-col gap-2">
-              <Skeleton className="h-4 w-4/5" />
-              <Skeleton className="h-4 w-3/5" />
-            </div>
-          </State>
-          <State label="scroll fade">
-            <div className="relative h-56 w-56 overflow-hidden rounded-surface border border-divider">
-              <ScrollFade edge="top" />
-              <div className="h-full overflow-y-auto px-3 py-5 text-sm text-muted-foreground">
-                {Array.from({ length: 14 }, (_, i) => (
-                  <p key={i}>Line {i + 1} of the thread</p>
-                ))}
-              </div>
-              <ScrollFade edge="bottom" raised />
-            </div>
-          </State>
-        </Row>
+      <Section title="Collapsible">
+        <CollapsibleDemo />
+      </Section>
+      <Section title="Skeleton">
+        <div className="flex w-56 flex-col gap-2">
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="h-4 w-3/5" />
+        </div>
+      </Section>
+      <Section title="Scroll fade">
+        <div className="relative h-56 w-56 overflow-hidden rounded-surface border border-divider">
+          <ScrollFade edge="top" />
+          <div className="h-full overflow-y-auto px-3 py-5 text-sm text-muted-foreground">
+            {Array.from({ length: 14 }, (_, i) => (
+              <p key={i}>Line {i + 1} of the thread</p>
+            ))}
+          </div>
+          <ScrollFade edge="bottom" raised />
+        </div>
       </Section>
     </>
   );

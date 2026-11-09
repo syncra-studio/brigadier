@@ -89,9 +89,9 @@ function Column({ label, width, children }: { label: string; width: string; chil
 export function Notices() {
   const live = useCycle();
   return (
-    <Section title="Thread · notice lines">
+    <Section title="Notice lines">
       {WIDTHS.map(([name, width]) => (
-        <Row key={name} name={`${name}: switch row · each state, per case · live, in a thread · other notices`}>
+        <Row key={name} name={`Switch row, ${name}`}>
           {CASES.map(([label, s, states, actions, from]) => (
             <Column key={label} label={`${label}: ${states.join(" · ")}`} width={width}>
               <div className="flex flex-col gap-1">

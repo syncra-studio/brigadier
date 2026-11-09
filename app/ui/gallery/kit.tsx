@@ -155,93 +155,103 @@ function IconButtons() {
 
 function Fields() {
   return (
-    <Section title="Kbd · Input · Checkbox · Switch · Badge">
-      <Row name="kbd">
-        <State label="key">
-          <Kbd>⌘</Kbd>
-          <Kbd>K</Kbd>
-          <Kbd>Esc</Kbd>
-        </State>
-        <State label="chip">
-          <span className="text-sm text-muted-foreground">
-            Press <Kbd variant="chip">⌘↵</Kbd> to send
-          </span>
-        </State>
-      </Row>
-      <Row name="input">
-        <State label="live">
-          <div className="w-52">
-            <Input placeholder="Search settings" />
-          </div>
-        </State>
-        <State label="focus" frozen="focus">
-          <div className="w-52">
-            <Input placeholder="Search settings" />
-          </div>
-        </State>
-        <State label="filled">
-          <div className="w-52">
-            <Input defaultValue="~/Development/brigadier" />
-          </div>
-        </State>
-        <State label="disabled">
-          <div className="w-52">
-            <Input placeholder="Search settings" disabled />
-          </div>
-        </State>
-        <State label="error">
-          <div className="w-52">
-            <Input defaultValue="not a url" aria-invalid />
-          </div>
-        </State>
-      </Row>
-      <Row name="checkbox">
-        <State label="live">
-          <Checkbox aria-label="Live" />
-        </State>
-        <State label="checked">
-          <Checkbox aria-label="Checked" defaultChecked />
-        </State>
-        <State label="mixed">
-          <Checkbox aria-label="Mixed" indeterminate />
-        </State>
-        <State label="focus" frozen="focus">
-          <Checkbox aria-label="Focus" />
-          <Checkbox aria-label="Focus checked" defaultChecked />
-        </State>
-        <State label="disabled">
-          <Checkbox aria-label="Disabled" disabled />
-          <Checkbox aria-label="Disabled checked" disabled defaultChecked />
-        </State>
-        <State label="mark (look only)">
-          <CheckboxMark checked={false} />
-          <CheckboxMark checked />
-        </State>
-      </Row>
-      <Row name="switch">
-        <State label="live">
-          <Switch aria-label="Live" />
-        </State>
-        <State label="on">
-          <Switch aria-label="On" defaultChecked />
-        </State>
-        <State label="focus" frozen="focus">
-          <Switch aria-label="Focus" />
-          <Switch aria-label="Focus on" defaultChecked />
-        </State>
-        <State label="disabled">
-          <Switch aria-label="Disabled" disabled />
-          <Switch aria-label="Disabled on" disabled defaultChecked />
-        </State>
-      </Row>
-      <Row name="badge">
-        {(["default", "secondary", "outline", "warning", "success", "destructive"] as const).map((variant) => (
-          <State key={variant} label={variant}>
-            <Badge variant={variant}>{variant === "default" ? "New" : variant}</Badge>
+    <>
+      <Section title="Kbd">
+        <Row>
+          <State label="key">
+            <Kbd>⌘</Kbd>
+            <Kbd>K</Kbd>
+            <Kbd>Esc</Kbd>
           </State>
-        ))}
-      </Row>
-    </Section>
+          <State label="chip">
+            <span className="text-sm text-muted-foreground">
+              Press <Kbd variant="chip">⌘↵</Kbd> to send
+            </span>
+          </State>
+        </Row>
+      </Section>
+      <Section title="Input">
+        <Row>
+          <State label="live">
+            <div className="w-52">
+              <Input placeholder="Search settings" />
+            </div>
+          </State>
+          <State label="focus" frozen="focus">
+            <div className="w-52">
+              <Input placeholder="Search settings" />
+            </div>
+          </State>
+          <State label="filled">
+            <div className="w-52">
+              <Input defaultValue="~/Development/brigadier" />
+            </div>
+          </State>
+          <State label="disabled">
+            <div className="w-52">
+              <Input placeholder="Search settings" disabled />
+            </div>
+          </State>
+          <State label="error">
+            <div className="w-52">
+              <Input defaultValue="not a url" aria-invalid />
+            </div>
+          </State>
+        </Row>
+      </Section>
+      <Section title="Checkbox">
+        <Row>
+          <State label="live">
+            <Checkbox aria-label="Live" />
+          </State>
+          <State label="checked">
+            <Checkbox aria-label="Checked" defaultChecked />
+          </State>
+          <State label="mixed">
+            <Checkbox aria-label="Mixed" indeterminate />
+          </State>
+          <State label="focus" frozen="focus">
+            <Checkbox aria-label="Focus" />
+            <Checkbox aria-label="Focus checked" defaultChecked />
+          </State>
+          <State label="disabled">
+            <Checkbox aria-label="Disabled" disabled />
+            <Checkbox aria-label="Disabled checked" disabled defaultChecked />
+          </State>
+          <State label="mark (look only)">
+            <CheckboxMark checked={false} />
+            <CheckboxMark checked />
+          </State>
+        </Row>
+      </Section>
+      <Section title="Switch">
+        <Row>
+          <State label="live">
+            <Switch aria-label="Live" />
+          </State>
+          <State label="on">
+            <Switch aria-label="On" defaultChecked />
+          </State>
+          <State label="focus" frozen="focus">
+            <Switch aria-label="Focus" />
+            <Switch aria-label="Focus on" defaultChecked />
+          </State>
+          <State label="disabled">
+            <Switch aria-label="Disabled" disabled />
+            <Switch aria-label="Disabled on" disabled defaultChecked />
+          </State>
+        </Row>
+      </Section>
+      <Section title="Badge">
+        <Row>
+          {(["default", "secondary", "outline", "warning", "success", "destructive"] as const).map((variant) => (
+            <State key={variant} label={variant}>
+              <Badge variant={variant}>{variant === "default" ? "New" : variant}</Badge>
+            </State>
+          ))}
+        </Row>
+      </Section>
+    </>
   );
 }
 
