@@ -29,7 +29,7 @@ await packager({
   extraResource: ["target/bin", "THIRD_PARTY_NOTICES.md"],
   extendInfo: { NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task." },
   // Only what the app reads at run time: the UI is bundled, so no node_modules.
-  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist)|\/ui($|\/dist|\/src($|\/theme\.css$))))/,
+  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist)|\/ui($|\/dist($|\/)|\/src($|\/theme\.css$))))/,
   osxSign: {
     identity: "-",
     identityValidation: false,
