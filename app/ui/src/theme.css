@@ -648,6 +648,8 @@
 @custom-variant svg (& :where(svg:not([class*="size-"])));
 /* A part placed in another: a key hint on a button or in a tooltip. */
 @custom-variant in-button (:where([data-slot="button"]) &);
+/* The strip's mark button hovered or focused: the logo drawn over it gives way. */
+@custom-variant strip-mark-lit (:where([data-slot="sidebar-panel"]:has([data-strip-mark]:is(:hover, :focus-visible))) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */

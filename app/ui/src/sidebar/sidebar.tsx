@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
@@ -8,7 +9,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { openFeedback } from "../feedback/dialog";
@@ -186,7 +187,7 @@ export function AppSidebar({
         </Strip>
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
-      mark={<BrigadierMark className="size-5" />}
+      mark={<BrigadierMark className="size-5 strip-mark-lit:invisible" />}
     >
       <NavHeader
         title={
@@ -350,14 +351,17 @@ function ProjectRow({
 
 /** The collapsed strip: the mark, which peeks the panel and opens it, New session, Search and the lists (`children`). */
 function Strip({ onNewSession, children }: { onNewSession: () => void; children: ReactNode }) {
-  const { setOpen } = useSidebar();
+  const { setOpen, peek } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-1 pt-2.75">
-      {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
-      <TooltipIconButton tooltip="Show sidebar" look="strip" data-sidebar-peek-trigger side="right" className="z-50" onClick={() => setOpen(true)}>
-        {/* The panel draws the logo over this space. */}
-        <span className="size-5" />
-      </TooltipIconButton>
+      {/* Resting on its row peeks the panel, which stands in for a tooltip. */}
+      <div data-sidebar-peek-trigger className="flex w-full justify-center">
+        {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
+        <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" data-strip-mark className={cx("group/mark z-50", peek === "open" && "bg-fill text-foreground")} onClick={() => setOpen(true)}>
+          {/* The panel draws the logo over this space; hovered or focused, it gives way to this. */}
+          <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
+        </TooltipIconButton>
+      </div>
       <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>
         <ComposeEditSquare />
       </TooltipIconButton>
