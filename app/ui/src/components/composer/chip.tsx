@@ -3,9 +3,9 @@ import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type Seri
 import { createContext, type ReactNode, useContext } from "react";
 
 import { cx } from "../cx";
-import { InlineAttachment, MentionIcon } from "./attachments";
+import { InlineAttachment } from "./attachments";
 import type { Chip } from "./draft";
-import { COMMAND_TONES, CommandKindIcon } from "./kind-icons";
+import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon } from "./kind-icons";
 import type { SlashCommand } from "./menus";
 
 /** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
@@ -17,7 +17,8 @@ export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string)
 });
 
 /**
- * A chip as the text shows it: a mention's icon and blue name; a command's icon and name in its kind's colour;
+ * A chip as the text shows it, with its menu row's icon: a command's name in its kind's colour, a file's in its
+ * glyph's where that has one, otherwise blue;
  * an image's thumbnail or a pasted text, with ✕. A click opens what it names.
  */
 export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }) {
@@ -48,11 +49,11 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
     </>
   ) : (
     <>
-      <MentionIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
+      <MentionKindIcon type={chip.type} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
       {chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
     </>
   );
-  const tone = command ? COMMAND_TONES[chip.type] : "text-link";
+  const tone = command ? COMMAND_TONES[chip.type] : ((chip.type === "file" && fileTone(chip.label)) || "text-link");
   // A button where it opens, so Tab reaches it and Enter or Space opens it (the field leaves those to buttons).
   return open ? (
     <button type="button" data-slot="composer-chip" onClick={open} className={cx("inline cursor-pointer rounded-xs focus-visible:focus-ring", tone)}>

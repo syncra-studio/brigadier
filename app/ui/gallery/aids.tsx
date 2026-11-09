@@ -52,10 +52,34 @@ export function search(query: string): MentionGroup[] {
   ];
 }
 
+const mention = (id: string, type: "file" | "folder" | "chat", label: string) => ({ kind: "mention", id, type, label }) as const;
+const command = (id: string, type: "command" | "skill" | "mcp", label: string) => ({ kind: "command", id, type, label }) as const;
+/** Every kind a chip can name, so they read side by side from the start. */
+const EVERY_KIND = draft(
+  command("review", "command", "/review"),
+  " ",
+  command("skill-docs", "skill", "/docs"),
+  " ",
+  command("mcp-triage", "mcp", "/issues:triage"),
+  " ",
+  mention("f1", "file", "app/ui/src/components/composer/field.tsx"),
+  " ",
+  mention("f4", "file", "../brigadier-plan/PLAN.md"),
+  " ",
+  mention("f6", "file", "docs/spec.pdf"),
+  " ",
+  mention("f7", "file", "data/usage.csv"),
+  " ",
+  mention("f3", "folder", "app/ui/src/components/composer"),
+  " ",
+  mention("c1", "chat", "Fix the queue's drag order"),
+  " ",
+);
+
 /** The live copy: `@` and `/` open their menus, a pasted image or long text becomes a chip, + adds files. */
 function Live() {
   const field = useRef<ComposerFieldHandle>(null);
-  const [empty, setEmpty] = useState(true);
+  const [empty, setEmpty] = useState(false);
   const [results, setResults] = useState<Mentions["results"]>(null);
   const [attachments, setAttachments] = useState<ReadonlyMap<string, Attachment>>(new Map());
   const [tiles, setTiles] = useState<string[]>([]);
@@ -68,6 +92,7 @@ function Live() {
     if (!inText) setTiles((list) => [...list, id]);
     setTimeout(() => put({ ...base, state: "ready", url: file.type.startsWith("image/") ? picture : undefined }), 900);
   };
+  const commands = { commands: COMMANDS, onRun: (command: SlashCommand) => setLog((list) => [...list, `ran ${command.label}`]) };
   const send = () => {
     const parts = field.current!.parts();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
@@ -90,11 +115,12 @@ function Live() {
         </AttachmentsContext>
         <ComposerField
           ref={field}
+          initial={EVERY_KIND}
           placeholder="Type @ or /, or paste an image"
           attachments={attachments}
           // Rust's stand-in answers a moment later, echoing the query.
           mentions={{ results, onQuery: (query) => query !== null && setTimeout(() => setResults({ query, groups: search(query) }), 120) }}
-          commands={{ commands: COMMANDS, onRun: (command) => setLog((list) => [...list, `ran ${command.label}`]) }}
+          commands={commands}
           onAttach={attach}
           onOpen={openChip}
           onChange={(parts) => setEmpty(isEmpty(draft(...parts)))}
@@ -102,7 +128,7 @@ function Live() {
         />
         <ComposerFooter>
           <ComposerTools>
-            <PlusMenu onFiles={(files) => files.forEach((file) => attach(crypto.randomUUID(), file, false))} />
+            <PlusMenu field={field} commands={commands} chats={CHATS} onFiles={(files) => files.forEach((file) => attach(crypto.randomUUID(), file, false))} />
           </ComposerTools>
           <ModelPill />
           <SendButton empty={empty && tiles.length === 0} running={false} canStop={false} onSend={send} onStop={noop} />
