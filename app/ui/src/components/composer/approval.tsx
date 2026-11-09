@@ -9,7 +9,7 @@ import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, inField, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
-import { ComposerField } from "./field";
+import { ComposerField, type ComposerFieldHandle } from "./field";
 
 /** An approval as Rust sends it (msgs/w18-fields-4.md, boss D177). Agent text (`reason`, `body`) passes as is. */
 export type PendingApproval = {
@@ -152,12 +152,19 @@ const reasons = new Map<string, string>();
 /** Where a card stands among the approvals waiting: "1 of 3", with ‹ › to step between them. */
 export type ApprovalStep = { index: number; total: number; onStep: (index: number) => void };
 
+// A button making way for a typed reason: its width eases to nothing, or its height where the buttons stack, and
+// the row's gap goes with it.
+const MAKES_WAY =
+  "makes-way grid @min-card-narrow/approval-card:data-gone:w-0 @min-card-narrow/approval-card:data-gone:-ms-2 @max-card-narrow/approval-card:data-gone:h-0 @max-card-narrow/approval-card:data-gone:-mt-2";
+
 /**
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
  * session] [Allow once]. Esc denies from anywhere in the view; allowing takes a click, or Enter on an Allow the
  * user moved to: a stray Enter never allows. A message to another session is the exception: the card takes
- * focus, and Enter on it sends (its ⏎ shows while it has focus). With `onReason` a field above the buttons takes
- * what the agent should do instead (D192): Deny sends it, Enter in it denies with it, empty it denies as before.
+ * focus, and Enter on it sends (its ⏎ shows while it has focus). With `onReason` a field beside the buttons takes
+ * what the agent should do instead (D192). With words in it the card turns to refusing (D182): Deny and the session
+ * grant make way, Allow becomes Send, which denies with the words and never allows. Esc clears the words and
+ * brings the card back (D183); only with the field empty does it deny.
  * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card.
  */
 export function ApprovalCard({
@@ -184,15 +191,24 @@ export function ApprovalCard({
     if (!busy) onAnswer(decision, decision === "deny" ? typed.trim() || undefined : undefined);
   };
   const deny = () => answer("deny");
+  const shown = describe(approval);
+  const asksReason = Boolean(onReason) && !shown.noDeny;
+  const refusing = asksReason && typed.trim() !== "";
+  const primary = () => answer(refusing ? "deny" : "allow");
   const message = approval.action === "message";
   const plan = approval.action === "plan";
+  const field = useRef<ComposerFieldHandle>(null);
+  const escape = () => {
+    if (busy) return;
+    if (refusing) field.current?.set([]);
+    else if (!plan) deny();
+  };
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
     if (message && !inField(document.activeElement)) card.current?.focus({ preventScroll: true });
   }, [message]);
-  useCardKeys(!busy && !plan, message ? { enter: () => answer("allow"), escape: deny } : { escape: deny }, card);
+  useCardKeys(!busy && !plan, message ? { enter: primary, escape } : { escape }, card);
 
-  const shown = describe(approval);
   const grant = approval.grant ? grantWords(approval.grant) : null;
   return (
     <ActionCard ref={card} tabIndex={message ? 0 : undefined} aria-label="Approval" data-action="approval" className="group/approval">
@@ -219,40 +235,46 @@ export function ApprovalCard({
         </div>
       </div>
       {shown.body}
-      {onReason && !shown.noDeny && (
-        <div className="px-2 pt-2">
-          <ActionFreeText
-            field={
-              <div className="min-w-0 flex-1">
-                <ComposerField
-                  size="card"
-                  label="What to do instead"
-                  placeholder="Tell the agent what to do instead"
-                  initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
-                  onChange={(parts) => {
-                    const text = plainText(parts);
-                    setTyped(text);
-                    onReason(text);
-                  }}
-                  onSubmit={() => typed.trim() && deny()}
-                  // Esc leaves the field; the next one denies, as anywhere else.
-                  onEscape={() => document.activeElement instanceof HTMLElement && document.activeElement.blur()}
-                />
-              </div>
-            }
-          />
-        </div>
-      )}
-      <ActionCardActions leading={<ErrorLine error={error} className="me-auto" />}>
+      <ErrorLine error={error} className="px-4 pt-2" />
+      <ActionCardActions
+        leading={
+          asksReason && (
+            <ActionFreeText
+              className="-ms-2 min-w-40 flex-1"
+              field={
+                <div className="min-w-0 flex-1">
+                  <ComposerField
+                    ref={field}
+                    size="line"
+                    label="What to do instead"
+                    placeholder="Tell the agent what to do instead"
+                    initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
+                    onChange={(parts) => {
+                      const text = plainText(parts);
+                      setTyped(text);
+                      onReason?.(text);
+                    }}
+                    onSubmit={() => typed.trim() && deny()}
+                    onEscape={escape}
+                  />
+                </div>
+              }
+            />
+          )
+        }
+      >
         {!shown.noDeny && (
-          <button type="button" className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")} disabled={busy} onClick={deny}>
-            {shown.deny ?? "Deny"}
-            <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-              Esc
-            </Kbd>
-          </button>
+          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
+            <button type="button" className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")} disabled={busy} onClick={deny}>
+              {shown.deny ?? "Deny"}
+              <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+                Esc
+              </Kbd>
+            </button>
+          </div>
         )}
         {grant && (
+          <div data-gone={refusing || undefined} inert={refusing} className={cx(MAKES_WAY, "max-w-full")}>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -273,21 +295,34 @@ export function ApprovalCard({
             </TooltipTrigger>
             <TooltipContent>{grant.tip}</TooltipContent>
           </Tooltip>
+          </div>
         )}
         <button
           type="button"
           className={actionButton("primary", "max-w-full @max-card-narrow/approval-card:justify-center")}
           disabled={busy}
-          onClick={() => answer("allow")}
+          onClick={primary}
         >
-          <span className="truncate">{shown.allow ?? "Allow once"}</span>
-          {message && (
-            <span className="hidden group-focus-within/approval:contents">
-              <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-                ⏎
-              </Kbd>
+          <span className="flex min-w-0 items-center">
+            <span data-gone={refusing || undefined} aria-hidden={refusing || undefined} className="makes-way flex items-center gap-1 data-gone:w-0">
+              <span className="truncate">{shown.allow ?? "Allow once"}</span>
+              {message && (
+                <span className="hidden group-focus-within/approval:contents">
+                  <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+                    ⏎
+                  </Kbd>
+                </span>
+              )}
             </span>
-          )}
+            {asksReason && (
+              <span data-gone={refusing ? undefined : true} aria-hidden={refusing ? undefined : true} className="makes-way flex items-center gap-1 data-gone:w-0">
+                {message ? "Send instead" : "Send"}
+                <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+                  ⏎
+                </Kbd>
+              </span>
+            )}
+          </span>
         </button>
       </ActionCardActions>
     </ActionCard>

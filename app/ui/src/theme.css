@@ -491,6 +491,21 @@
   }
 }
 
+/* What makes way on an approval card while a reason is typed (approval.tsx): its size, set where it's used, eases to nothing as it fades. */
+@utility makes-way {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  min-width: 0;
+  &[data-gone] {
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    transition-property: width, height, margin, opacity;
+    transition-duration: var(--duration-fold);
+    transition-timing-function: var(--ease-enter);
+  }
+}
+
 /* dnd-kit's drag styles (the queue, queue.tsx). It injects them as a <style> element, which our CSP (default-src
    'self') blocks, so they live here instead: copied from @dnd-kit/dom 0.5.3, pinned; compare them on any upgrade. */
 :is(:root, :host) [data-dnd-dragging] {

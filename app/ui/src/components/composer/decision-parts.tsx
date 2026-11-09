@@ -197,7 +197,7 @@ export function actionButton(variant: "primary" | "outline", className?: string)
   );
 }
 
-/** A card's buttons, pushed to the end; `leading` (an error) at the start. Narrow, they stack full width. */
+/** A card's buttons, pushed to the end; `leading` (a deny reason) at the start. Narrow, they stack full width. */
 export function ActionCardActions({ leading, children }: { leading?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-4 pt-2 pb-4 @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
