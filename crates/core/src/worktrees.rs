@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod copy;
-pub use copy::ignored;
 use copy::include;
 
 const RECORD: &str = "worktree.json";

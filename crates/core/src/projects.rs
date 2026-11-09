@@ -322,8 +322,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
             taken(list, &folder)?;
             let p = find(list, id)?;
             if count > 0 {
+                let sessions = if count == 1 { "session" } else { "sessions" };
                 return err(format!(
-                    "\"{}\" has {count} session(s), so its folder can't change.",
+                    "\"{}\" has {count} {sessions}, so its folder can't change.",
                     p.name
                 ));
             }

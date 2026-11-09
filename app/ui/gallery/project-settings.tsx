@@ -1,15 +1,13 @@
 // Trust this folder?, Project settings and the project menu on Fake data [D166, D167, D171, D178, D201, D202, D212].
 import type { ReactNode } from "react";
-
 import { Button } from "../src/components/button";
 import { Dialog, DialogContent } from "../src/components/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../src/components/menu";
 import { DotsHorizontal } from "../src/icons";
-import { DiscoveredFiles } from "../src/projects/files";
 import { ProjectMenuItems } from "../src/projects/menu";
 import type { Project } from "../src/projects/projects";
 import { type Preview, RemoveFlow, Removed } from "../src/projects/remove";
-import { type FilesProps, PathRows, ProjectSettings, type SettingsSource } from "../src/projects/settings";
+import { ProjectSettings, type SettingsSource } from "../src/projects/settings";
 import { TrustForm } from "../src/projects/trust";
 import { Held, Row, Section, State } from "./parts";
 
@@ -17,11 +15,6 @@ const PROJECT: Project = { id: "p-1", name: "invoice-service", folder: "/Users/y
 const LONG: Project = { ...PROJECT, folder: "/Users/you/Development/clients/acme-corporation/platform/services/billing/invoice-service" };
 const SET: Project = { ...PROJECT, trusted: true, include: [".env", "config/local.json"], setup: "pnpm install" };
 
-const LISTED: Record<string, string[]> = {
-  "": [".env", ".env.local", "certs/", "node_modules/", "tmp/"],
-  "certs/": ["certs/dev.pem", "certs/dev.key"],
-  "node_modules/": ["node_modules/.pnpm/", "node_modules/react/"],
-};
 const after = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
 function fake(with_: Partial<SettingsSource> = {}): SettingsSource {
@@ -29,7 +22,6 @@ function fake(with_: Partial<SettingsSource> = {}): SettingsSource {
     pick: () => after(0, "/Users/you/code/invoice-service-v2"),
     check: (path) => after(100, { kind: "repo", repo: path, name: path.split("/").at(-1)!, project_id: null }),
     save: () => after(400, undefined),
-    ignored: (_, dir) => after(300, { entries: LISTED[dir] ?? [], copied: dir ? [] : [".env.local"] }),
     ...with_,
   };
 }
@@ -57,9 +49,9 @@ export function Frozen({ label, frame, tall, children }: { label: string; frame:
   );
 }
 
-const Settings = ({ label, project = SET, source = FAKE, Files }: { label: string; project?: Project; source?: SettingsSource; Files?: (props: FilesProps) => ReactNode }) => (
+const Settings = ({ label, project = SET, source = FAKE }: { label: string; project?: Project; source?: SettingsSource }) => (
   <Frozen label={label} frame="project-dialog max-w-project-dialog gap-7 p-6" tall>
-    <ProjectSettings project={project} source={source} onClose={() => {}} Files={Files} />
+    <ProjectSettings project={project} source={source} onClose={() => {}} />
   </Frozen>
 );
 
@@ -123,14 +115,8 @@ export function ProjectSettingsGallery() {
           <Removed name={SET.name} repo={SET.folder} kept={["brigadier/s-2"]} onClose={() => {}} />
         </Frozen>
       </Row>
-      <Row name="Files to copy, O20: (a) the old app's path rows (wired) · (b) the repo's ignored files to tick">
-        <Settings label="(a) path rows" Files={PathRows} />
-        <Settings label="(b) ignored files, a folder opens by its arrow" Files={DiscoveredFiles} />
-      </Row>
-      <Row name="Project settings: unanswered with a long path · nothing to copy yet · listing failed">
+      <Row name="Project settings: unanswered with a long path">
         <Settings label="unanswered, long path, empty" project={LONG} />
-        <Settings label="(b) nothing ignored" project={PROJECT} source={fake({ ignored: () => after(100, { entries: [], copied: [] }) })} Files={DiscoveredFiles} />
-        <Settings label="(b) disconnected" project={PROJECT} source={fake({ ignored: () => Promise.reject(new Error("disconnected")) })} Files={DiscoveredFiles} />
       </Row>
     </Section>
   );

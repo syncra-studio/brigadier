@@ -7,10 +7,11 @@ import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { Switch } from "../components/switch";
 import { Plus, Trash } from "../icons";
+import { useDaemon } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, setProject, useProjects } from "./projects";
-import { RemoveProjectHost } from "./remove";
+import { plural, RemoveProjectHost } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
 
 /*
@@ -25,15 +26,12 @@ export type SettingsSource = {
   check(path: string): Promise<FolderCheck>;
   /** `projects set <id> …args`, with `change` shown meanwhile; throws Rust's reason. */
   save(project: Project, change: Partial<Project>, args: string[]): Promise<void>;
-  /** The ignored entries in `dir` of the project's folder, and those its `.worktreeinclude` copies. */
-  ignored(id: string, dir: string): Promise<{ entries: string[]; copied: string[] }>;
 };
 
 export const daemonSettings: SettingsSource = {
   pick: daemonSource.pick,
   check: daemonSource.check,
   save: setProject,
-  ignored: async (id, dir) => (await run(["projects", "ignored", id, ...(dir ? ["--in", dir] : [])])) as { entries: string[]; copied: string[] },
 };
 
 const opened = store<string | null>(null);
@@ -72,25 +70,21 @@ function Field({ label, aside, htmlFor, children }: { label: string; aside?: str
   );
 }
 
-/** Ignored files to copy into worktrees: what the form keeps, and the look that edits it. */
-export type FilesProps = { project: Project; source: SettingsSource; files: string[]; onFiles: (files: string[]) => void };
-
 export function ProjectSettings({
   project,
   source,
   onClose,
-  Files = PathRows,
 }: {
   project: Project;
   source: SettingsSource;
   onClose: () => void;
-  /** The files' look, until the owner picks one (O20). */
-  Files?: (props: FilesProps) => ReactNode;
 }) {
   const id = useId();
   const [name, setName] = useState(project.name);
   const [folder, setFolder] = useState(project.folder);
   const [folderError, setFolderError] = useState<string | null>(null);
+  // Rust refuses a new folder while the project has sessions (D234 P11): don't lead there.
+  const sessions = useDaemon().rows?.filter((row) => row.project === project.id).length ?? 0;
   const [files, setFiles] = useState(project.include);
   const [setup, setSetup] = useState(project.setup);
   const [error, setError] = useState<string | null>(null);
@@ -147,15 +141,16 @@ export function ProjectSettings({
         <Field label="Folder">
           <div className="flex h-control-md items-center gap-2 rounded-capsule bg-fill ps-3.5 pe-1">
             <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{shortPath(folder)}</span>
-            <Button variant="ghost" size="sm" onClick={() => void change()}>
+            <Button variant="ghost" size="sm" disabled={sessions > 0} onClick={() => void change()}>
               Change
             </Button>
           </div>
+          {sessions > 0 && <p className="text-xs text-muted-foreground">This project has {plural(sessions, "session", "sessions")}, so its folder can't change.</p>}
           {folder !== project.folder && <p className="text-xs text-muted-foreground">A new folder is asked about trust again.</p>}
           <ErrorLine error={folderError} />
         </Field>
         {folder === project.folder && <TrustRow project={project} source={source} />}
-        <Files project={project} source={source} files={files} onFiles={setFiles} />
+        <PathRows files={files} onFiles={setFiles} />
         <Field label="Setup script" aside="Runs in each new worktree before its first turn, only while the folder is trusted" htmlFor={`${id}-setup`}>
           <CodeEditor id={`${id}-setup`} value={setup} onChange={setSetup} language="bash" label="Setup script" placeholder="pnpm install" className="h-29 shrink-0 rounded-control bg-fill" />
         </Field>
@@ -200,8 +195,8 @@ function TrustRow({ project, source }: { project: Project; source: SettingsSourc
   );
 }
 
-/** Look (a), the old app's: a path a row, typed, with Add file [D178]. */
-export function PathRows({ files, onFiles }: FilesProps) {
+/** The old app's: a path a row, typed, with Add file [D178]. */
+function PathRows({ files, onFiles }: { files: string[]; onFiles: (files: string[]) => void }) {
   // Only a row just added takes focus, not the last one on open.
   const [added, setAdded] = useState(false);
   return (

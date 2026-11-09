@@ -102,13 +102,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let failed = core::trust::sync(data, &project.id, None);
                     return Ok(json!({"ok": true, "project": project, "trust_errors": failed}));
                 }
-                // Project settings' files to copy: the ignored entries in a folder [D178].
-                "ignored" => {
-                    let folder = projects::get(data, arg(2))?.folder;
-                    let dir = flag(args, "--in").unwrap_or("");
-                    let (entries, copied) = core::worktrees::ignored(Path::new(&folder), dir)?;
-                    return Ok(json!({"ok": true, "entries": entries, "copied": copied}));
-                }
                 "branches" => {
                     let folder = projects::get(data, arg(2))?.folder;
                     let repo = core::worktrees::branches(data, Path::new(&folder))?;
