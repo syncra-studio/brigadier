@@ -7,7 +7,7 @@ use crate::{flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::Fold;
 use brigadier_core::{self as core, as_run};
-use brigadier_frames::log;
+use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -173,10 +173,37 @@ pub fn steer(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result
 
 /// How long a clean stop may take before the kill (proposed).
 const STOP_WAIT: Duration = Duration::from_secs(3);
+/// How long the command an agent's own stop ended gets to go.
+const COMMAND_WAIT: Duration = Duration::from_secs(1);
+
+/// Whether what's below the child and started since `since` (ms) outlives this wait. An agent's
+/// stop can end its turn and leave the command it was running [D222]; the old app closed the CLI.
+fn command_left(dir: &Path, since: u64) -> io::Result<bool> {
+    let started = Instant::now();
+    loop {
+        let fold = core::fold(dir, true)?.fold;
+        let child = (fold.child.as_ref())
+            .filter(|c| !c.exited)
+            .and_then(|c| procs::same(c.pid, c.start_us));
+        let left = child.is_some_and(|c| {
+            procs::descendants(&procs::all(), c.pid)
+                .iter()
+                .any(|p| p.start_us / 1000 >= since)
+        });
+        if !left || started.elapsed() >= COMMAND_WAIT {
+            return Ok(left);
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
 
 /// Stops the running turn through the adapter's own stop, the process staying alive. None when it
-/// can't or the turn didn't end in time: the caller kills instead [D159].
+/// can't, the turn didn't end in time, or the turn's command outlived it: the caller kills
+/// instead, and the next message resumes [D159, D222].
 pub fn interrupt(data: &Path, id: &str) -> io::Result<Option<Value>> {
+    let dir = core::session_dir(data, id);
+    let turn = core::fold(&dir, true)?.fold.turns.into_iter().next();
+    let tool_since = turn.filter(|t| !t.tools.is_empty()).map(|t| t.ts);
     let req = json!({"cid": new_cid(), "control": {"kind": "interrupt"}});
     let reply = deliver(data, id, req, false, |f| {
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().stop);
@@ -188,10 +215,14 @@ pub fn interrupt(data: &Path, id: &str) -> io::Result<Option<Value>> {
     if reply["result"] != "delivered" {
         return Ok(None);
     }
-    let dir = core::session_dir(data, id);
     let started = Instant::now();
     while started.elapsed() < STOP_WAIT {
         if core::fold(&dir, true)?.fold.turns.is_empty() {
+            if let Some(since) = tool_since
+                && command_left(&dir, since)?
+            {
+                return Ok(None);
+            }
             return Ok(Some(
                 json!({"ok": true, "how": "interrupt", "ms": started.elapsed().as_millis() as u64}),
             ));
