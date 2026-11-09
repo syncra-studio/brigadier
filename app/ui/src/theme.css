@@ -209,6 +209,9 @@
   --spacing-icon-lg: 1.25rem;
   --spacing-titlebar: 2.75rem;
   --spacing-traffic-lights: 4.75rem;
+  /* Back, Forward and the sidebar toggle: Back's centre 26px past the traffic lights, 6px apart. */
+  --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
+  --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
   /* A menu's least width, and a select's longest list and widest menu. */
   --spacing-menu: 8rem;
@@ -420,6 +423,8 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
+  /* Back and Forward with nowhere to go. */
+  --opacity-titlebar-nowhere: 40%;
   --opacity-switch-disabled: 60%;
   --opacity-spinner-track: 25%;
   --opacity-dialog-close: 70%;
@@ -871,9 +876,7 @@
    kept in its range and leaving the content beside it room. */
 @utility sidebar-width-source {
   --sidebar-width: attr(data-width px, var(--spacing-sidebar));
-}
-@utility sidebar-panel-width {
-  width: clamp(
+  --sidebar-open-width: clamp(
     var(--spacing-sidebar-min),
     var(--sidebar-width, var(--spacing-sidebar)),
     max(
@@ -881,6 +884,14 @@
       min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
     )
   );
+  /* How wide the panel shows beside the content: what the title bar keeps clear of. */
+  --sidebar-shown: var(--spacing-sidebar-strip);
+  &[data-state="expanded"] {
+    --sidebar-shown: var(--sidebar-open-width);
+  }
+}
+@utility sidebar-panel-width {
+  width: var(--sidebar-open-width);
 }
 /* The peeking sidebar beside the strip: a hairline down its start edge, and nothing painted past it. */
 @utility peek-edge {
@@ -910,6 +921,40 @@
     background: var(--color-divider);
     pointer-events: none;
     z-index: 1;
+  }
+}
+
+/* Full screen takes the traffic lights away, and Back moves to the titlebar's start. */
+:root[data-fullscreen] {
+  --spacing-titlebar-start: calc(var(--spacing) * 2);
+}
+
+/* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
+@utility titlebar-nav {
+  --opacity-disabled: var(--opacity-titlebar-nowhere);
+}
+
+/* A top bar's start: its own 12px, or more where Back, Forward and the toggle reach past the sidebar's edge,
+   so its first control starts 8px after them. It moves with the sidebar. */
+@utility titlebar-clear {
+  padding-inline-start: max(
+    calc(var(--spacing) * 3),
+    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-shown))
+  );
+  transition-property: padding-inline-start;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* Home's mark brightening under the pointer. */
+@utility hero-mark {
+  transition-property: opacity;
+  transition-duration: var(--duration-fold);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 }
 

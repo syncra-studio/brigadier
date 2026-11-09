@@ -117,6 +117,11 @@ function openWindow(): void {
     console.error("The page's renderer is gone:", new Date().toISOString(), details);
     if (!window.isDestroyed()) window.webContents.reload();
   });
+  // The traffic lights go in full screen, so the titlebar's buttons move to its start (theme.css).
+  const tellFullScreen = (): void => window.webContents.send("full-screen", window.isFullScreen());
+  window.on("enter-full-screen", tellFullScreen);
+  window.on("leave-full-screen", tellFullScreen);
+  window.webContents.on("did-finish-load", tellFullScreen);
   if (hold) holdForIntro(window, themeBackground, introColours);
   void window.loadURL(`${ORIGIN}/`);
 }
@@ -194,6 +199,10 @@ function setMenu(): void {
           { role: "zoomOut" },
           { type: "separator" },
           { role: "togglefullscreen" },
+          { type: "separator" },
+          { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+B", click: (_item, window) => tell(window as BrowserWindow | undefined, "toggle-sidebar") },
+          { label: "Back", accelerator: "CmdOrCtrl+[", click: (_item, window) => tell(window as BrowserWindow | undefined, "back") },
+          { label: "Forward", accelerator: "CmdOrCtrl+]", click: (_item, window) => tell(window as BrowserWindow | undefined, "forward") },
         ],
       },
       { role: "windowMenu" },

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
 import { NavRow } from "./components/nav";
-import { SidebarProvider, useSidebar } from "./components/sidebar";
+import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
@@ -24,6 +24,8 @@ import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { answeringSource } from "./session/decisions";
 import { PendingSideLines, useSidePending } from "./session/side";
+import { Titlebar, TitlebarNav } from "./shell/titlebar";
+import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
@@ -66,13 +68,13 @@ function App() {
   if (open !== null) {
     return (
       <Shell hash={hash} active={open} rows={rows}>
-        <SessionThread id={open} row={rows?.find((row) => row.id === open)} offline={daemon === null} />
+        <SessionThread id={open} rows={rows} offline={daemon === null} />
       </Shell>
     );
   }
   return (
     <Shell hash={hash} active={null} rows={rows}>
-      <Home />
+      <Home offline={daemon === null} />
     </Shell>
   );
 }
@@ -85,6 +87,8 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
   useSeen(rows?.find((row) => row.id === active));
   return (
     <div className="fixed inset-0 bg-chrome">
+      {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
+      <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
       <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
         <AppSidebar
           rows={rows}
@@ -106,6 +110,7 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
           }
         />
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
+        <TitlebarNav active={active} rows={rows} />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
@@ -114,22 +119,11 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
   );
 }
 
-// The window's top beside the sidebar; collapsed, it keeps clear of the traffic lights.
-function Titlebar({ children }: { children?: ReactNode }) {
-  const { open } = useSidebar();
-  return (
-    <header className="flex h-titlebar shrink-0 items-center gap-3 px-3 text-sm">
-      {!open && <div className="app-drag h-full w-traffic-lights shrink-0" />}
-      <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">{children}</span>
-    </header>
-  );
-}
-
 // Home is a new session's draft [D161].
-function Home() {
+function Home({ offline }: { offline: boolean }) {
   return (
     <>
-      <Titlebar />
+      <Titlebar offline={offline} />
       <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
         <HomeDraft />
       </main>
@@ -147,8 +141,10 @@ function FirstLoad({ error }: { error?: string }) {
 }
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
-function SessionThread({ id, row, offline }: { id: string; row: Row | undefined; offline: boolean }) {
-  const title = row?.title;
+function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefined; offline: boolean }) {
+  const row = rows?.find((each) => each.id === id);
+  // The title bar shows a rename or an archive at once [D30].
+  const titled = useShown(rows)?.find((each) => each.id === id);
   const thread = useRef<ThreadHandle>(null);
   // Before the paint, and the Thread waits for it below: a new one never starts on the last session's rows.
   useLayoutEffect(() => openThread(id), [id]);
@@ -164,9 +160,8 @@ function SessionThread({ id, row, offline }: { id: string; row: Row | undefined;
   const shown = useStartShown(id);
   return (
     <>
-      <Titlebar>{title || id}</Titlebar>
+      <Titlebar offline={offline} row={titled} />
       <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
-        {offline && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
         <div className="flex min-h-0 flex-1">
           {missing ? (
             <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>

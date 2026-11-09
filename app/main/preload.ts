@@ -14,6 +14,8 @@ ipcRenderer.on("menu", (_event, command) => {
 });
 
 // What the page asks of main (main.ts): the native folder pickers, the menu's commands, and the intro's window staging (intro.ts).
+ipcRenderer.on("full-screen", (_event, on: boolean) => document.documentElement.toggleAttribute("data-fullscreen", on));
+
 contextBridge.exposeInMainWorld("brigadier", {
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFolders: (options?: { at?: string; multi?: boolean }) => ipcRenderer.invoke("pick-folders", options),
