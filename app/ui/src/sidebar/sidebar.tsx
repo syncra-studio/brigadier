@@ -113,8 +113,9 @@ export function AppSidebar({
           [["none"], homeless],
         ];
   const order = sections.flatMap(([, each]) => each);
-  const activeRow = order.find((each) => each.id === active);
-  useArchiveKeys(order, active, onNewSession);
+  // The open session's keys work even with its project left out by View.
+  const activeRow = shown?.find((each) => each.id === active);
+  useArchiveKeys(shown ?? [], active, onNewSession);
 
   // Unfolds what holds a row, then brings it into view.
   const reveal = (id: string) => {
@@ -168,6 +169,7 @@ export function AppSidebar({
   useEffect(() => {
     setShowProject((id, group) => {
       if (group) setGrouping("project");
+      show.setHiddenProjects([...show.hiddenProjects].filter((each) => each !== id));
       setFolded(folded.filter((key) => key !== "projects" && key !== id));
       requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
     });
