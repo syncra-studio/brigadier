@@ -95,13 +95,10 @@ export function QuestionGallery() {
       <Section title="Question card">
         <Live />
       </Section>
-      <Section title="A round's row in the thread (D209)">
-        <Row name="For the owner: proposed | plain">
-          <State label="Proposed: count and the round's title">
+      <Section title="A round's row in the thread">
+        <Row name="count and the round's title">
+          <State label="answered">
             <QuestionRow keep="d209-p" question={MANAGER.text} answer="pnpm" round={ROUND} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
-          </State>
-          <State label="Plain: Asked N questions">
-            <QuestionRow keep="d209-n" question={MANAGER.text} answer="pnpm" round={{ ...ROUND, title: null }} answers={["pnpm", "Typecheck", "release"]} waiting={false} />
           </State>
         </Row>
       </Section>
