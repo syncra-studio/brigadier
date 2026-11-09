@@ -8,7 +8,7 @@ import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
 import { store } from "../onboarding/api";
 import { newId } from "../session/store";
-import { carryHome } from "../shell/tab-store";
+import { carryHome, CHAT, rereadHome, selectTab } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 
 /*
@@ -93,6 +93,7 @@ function land(id: string, reply: Record<string, any>): void {
   }
   if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
   put(id, { asking: false, unknown: false, error: reason(reply) });
+  rereadHome();
 }
 
 function runStart(entry: Starting): void {
@@ -122,9 +123,8 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   starting.set(new Map(starting.get()).set(id, entry));
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
   keepDraft(daemonRun, HOME_DRAFT, []);
-  carryHome(id);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
-  runStart(entry);
+  carryHome(id, () => runStart(entry));
 }
 
 /** Again: Rust's recover for a message logged but not delivered; otherwise the same start under the same ids. */

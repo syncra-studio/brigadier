@@ -18,7 +18,7 @@ export type TabKind = "new" | "terminal";
 export type Tab = { id: string; kind: TabKind; opener: string };
 export type Tabs = { tabs: Tab[]; active: string };
 
-type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean };
+type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
 type Slot = { rev: number | null; rust: Tabs; pending: Action[]; shown: Tabs };
 
 const NONE: Tabs = { tabs: [], active: CHAT };
@@ -56,6 +56,12 @@ function pump(owner: string): void {
   const slot = slotOf(owner);
   const action = slot.pending[0];
   if (!action || action.out) return;
+  if (action.run) {
+    slot.pending.shift();
+    action.run();
+    draw(slot);
+    return pump(owner);
+  }
   action.out = true;
   ask({ op: "run", args: ["tabs", owner, ...action.args] }, (reply) => {
     if (slot.pending[0] !== action) return;
@@ -192,14 +198,27 @@ export function selectNumber(owner: string, number: number): void {
   if (id) selectTab(owner, id);
 }
 
-/** Home's tabs show on the session at once; `start --carry-tabs` moves them in Rust. Its rev 0 yields to Rust's first answer after. */
-export function carryHome(to: string): void {
+/**
+ * Home's tabs show on the session at once; `start --carry-tabs` moves what Rust has, so `start` waits its turn behind
+ * Home's changes still out. The session's rev 0 yields to Rust's first answer after.
+ */
+export function carryHome(to: string, start: () => void): void {
   const home = slotOf(HOME);
-  if (home.shown.tabs.length === 0) return;
   slots.set(to, { rev: 0, rust: home.shown, pending: [], shown: home.shown });
-  home.rust = NONE;
-  home.pending = [];
-  draw(home);
+  act(HOME, {
+    args: [],
+    change: () => NONE,
+    run: () => {
+      home.rust = NONE;
+      start();
+    },
+  });
+}
+
+/** A refused start may have moved nothing: Rust's Home counts again, even at the rev it had. */
+export function rereadHome(): void {
+  slotOf(HOME).rev = null;
+  read(HOME);
 }
 
 /** The gallery's fixed tabs; Infinity so no answer from Rust replaces them. */
