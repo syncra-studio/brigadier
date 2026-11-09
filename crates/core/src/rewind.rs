@@ -24,8 +24,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const OP: &str = "rewind.json";
-/// How long after a turn ends its folder still counts as its result (proposed).
-pub const GRACE_MS: u64 = 10_000;
+/// How long after a turn ends its folder still counts as its result (proposed): covers the daemon's
+/// pass and a queued message going at once, and is too short for an edit by hand and a send.
+pub const GRACE_MS: u64 = 2_000;
 const STOP_WAIT: Duration = Duration::from_secs(5);
 
 /// The operation under way, rewritten at each phase.
