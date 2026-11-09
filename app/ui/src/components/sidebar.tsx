@@ -261,16 +261,17 @@ export function SidebarProvider({
 /**
  * The panel: its column's top (the titlebar strip) drags the window, the rest is the panel's own surface.
  * The expanded contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is
- * shared by both, below them. Collapsed or hidden, the expanded contents can peek at the window's start,
+ * shared by both, below them. `mark` is the one logo above them all, so it never fades or remounts with them. Collapsed or hidden, the expanded contents can peek at the window's start,
  * with the foot, over the strip.
  */
 export function SidebarPanel({
   strip,
   foot,
+  mark,
   className,
   children,
   ...props
-}: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
+}: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode; mark?: ReactNode }) {
   const { open, hidden, resizing, peek } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
@@ -311,6 +312,12 @@ export function SidebarPanel({
         <SidebarPeek closing={peek === "closing"} hidden={hidden} foot={foot}>
           {children}
         </SidebarPeek>
+      )}
+      {/* Outside the panel's clip, above a peek, and through a click on the strip's button under it. */}
+      {mark && (
+        <div className={cx("pointer-events-none absolute start-3.5 top-titlebar z-50 mt-4 flex size-5 text-foreground transition-opacity motion-reduce:transition-none", hidden && peek !== "open" && "opacity-0")}>
+          {mark}
+        </div>
       )}
       {/* Hidden, the window's start edge peeks it. */}
       {hidden && <div aria-hidden data-sidebar-peek-trigger className="fixed start-0 top-titlebar bottom-0 z-20 w-sidebar-peek-edge" />}

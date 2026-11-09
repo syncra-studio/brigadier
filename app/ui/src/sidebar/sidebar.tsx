@@ -175,11 +175,12 @@ export function AppSidebar({
     .filter((each) => each.id !== active && (each.mark === "needs" || each.mark === "amber"));
 
   return (
-    <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot}>
+    <SidebarPanel strip={<Strip onNewSession={onNewSession} />} foot={foot} mark={<BrigadierMark className="size-5" />}>
       <NavHeader
         title={
           <span className="-ms-0.5 flex items-center gap-2">
-            <BrigadierMark className="size-5 shrink-0" />
+            {/* The panel draws the logo over this space. */}
+            <span className="size-5 shrink-0" />
             Brigadier
           </span>
         }
@@ -393,7 +394,8 @@ function Strip({ onNewSession }: { onNewSession: () => void }) {
     <div className="flex flex-col items-center gap-1 pt-2.75">
       {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
       <TooltipIconButton tooltip="Show sidebar" look="strip" data-sidebar-peek-trigger side="right" className="z-50" onClick={() => setOpen(true)}>
-        <BrigadierMark className="size-5" />
+        {/* The panel draws the logo over this space. */}
+        <span className="size-5" />
       </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>
         <ComposeEditSquare />
