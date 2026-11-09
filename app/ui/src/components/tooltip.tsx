@@ -16,12 +16,26 @@ export function TitlebarTips({ children }: { children: ReactNode }) {
   return <TooltipProvider delay={TITLEBAR_TIP_DELAY_MS}>{children}</TooltipProvider>;
 }
 
+let tabbed = false;
+addEventListener("keydown", (event) => (tabbed = event.key === "Tab"), true);
+addEventListener("pointerdown", () => (tabbed = false), true);
+
 /**
  * A tip closes once the pointer leaves its control: a hoverable one stayed open on the way to it and
  * hid the next control's own tip.
  */
-export function Tooltip(props: BaseTooltip.Root.Props) {
-  return <BaseTooltip.Root disableHoverablePopup {...props} />;
+export function Tooltip({ onOpenChange, ...props }: BaseTooltip.Root.Props) {
+  return (
+    <BaseTooltip.Root
+      disableHoverablePopup
+      onOpenChange={(open, details) => {
+        // Focus handed back by a closed dialog or menu isn't the user going there.
+        if (open && details.reason === "trigger-focus" && !tabbed) return details.cancel();
+        onOpenChange?.(open, details);
+      }}
+      {...props}
+    />
+  );
 }
 
 export const TooltipTrigger = BaseTooltip.Trigger;
