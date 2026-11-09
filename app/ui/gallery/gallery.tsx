@@ -5,6 +5,7 @@ import { Choices } from "./choices";
 import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
+import { TabsGallery } from "./tabs";
 import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
 import { HomeGallery } from "./home";
@@ -115,6 +116,7 @@ function GalleryPage() {
               <Popups />
             </Area>
             <Area name="Layout">
+              <TabsGallery />
               <Panes />
             </Area>
           </main>
