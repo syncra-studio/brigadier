@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "../components/button";
+import { TooltipIconButton } from "../components/icon-button";
 import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem } from "../components/menu";
 import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
-import { RowAction } from "../components/row-action";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
 import { ArrowUpRight, Trash, Unarchive } from "../icons";
@@ -57,10 +57,10 @@ export function ArchivedSection({
         actions={
           <>
             <span className="me-1 text-xs text-faint-foreground tabular-nums">{rows.length}</span>
-            {/* Drawn only: the page it opened, Settings › Archived, doesn't exist yet. */}
-            <RowAction disabled aria-label="Open Settings › Archived">
-              <ArrowUpRight className="size-icon-sm" />
-            </RowAction>
+            {/* No click yet: the page it opens, Settings › Archived, doesn't exist. */}
+            <TooltipIconButton tooltip="Open Settings › Archived" className="text-muted-foreground">
+              <ArrowUpRight />
+            </TooltipIconButton>
           </>
         }
       >

@@ -8,9 +8,10 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
+import { openFeedback } from "../feedback/dialog";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
@@ -184,12 +185,23 @@ export function AppSidebar({
           </span>
         }
         actions={
-          <TooltipIconButton tooltip="Search" shortcut="⌘K" look="toolbar" side="bottom" onClick={openSearch}>
-            <MagnifyingGlassSmSearch />
-          </TooltipIconButton>
+          <>
+            <TooltipIconButton tooltip="Send Feedback" look="toolbar" side="bottom" onClick={() => openFeedback()}>
+              <FeedbackGlyph />
+            </TooltipIconButton>
+            <TooltipIconButton tooltip="Search" shortcut="⌘K" look="toolbar" side="bottom" onClick={openSearch}>
+              <MagnifyingGlassSmSearch />
+            </TooltipIconButton>
+          </>
         }
       />
       <NavList className="mb-2 px-2">
+        <li>
+          <NavRow onClick={() => openFeedback()}>
+            <FeedbackGlyph />
+            Send Feedback
+          </NavRow>
+        </li>
         <li>
           <NavRow data-active={home || undefined} onClick={onNewSession}>
             <ComposeEditSquare />
@@ -209,66 +221,65 @@ export function AppSidebar({
                     <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
                   </NavSection>
                 )}
-                {grouping === "none" ? (
-                  <NavSection title="Open" open={isOpen("open")} onOpenChange={(open) => setOpen("open", open)} steadyEnd={view}>
+                {/* One section for both layouts: the View button in its header stays mounted, so an open menu keeps its place. */}
+                <NavSection
+                  title={grouping === "none" ? "Open" : "Projects"}
+                  open={isOpen(grouping === "none" ? "open" : "projects")}
+                  onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
+                  steadyEnd={view}
+                  actions={
+                    grouping === "project" && (
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Add project</TooltipContent>
+                      </Tooltip>
+                    )
+                  }
+                >
+                  {grouping === "none" ? (
                     <NavList className="gap-1">
                       {rest.map((each) => row(each, { badged: true }))}
                       {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
                     </NavList>
+                  ) : (
+                    <NavList>
+                      {byName.map((project) => (
+                        <ProjectRow
+                          key={project.id}
+                          project={project}
+                          open={isOpen(project.id)}
+                          onOpenChange={(open) => setOpen(project.id, open)}
+                        >
+                          {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                        </ProjectRow>
+                      ))}
+                      {projects.length === 0 && (
+                        <EmptyState
+                          as="li"
+                          title={
+                            <span>
+                              Projects group sessions on a repository.{" "}
+                              <button
+                                type="button"
+                                className="cursor-pointer text-foreground underline-offset-link hover:underline"
+                                onClick={() => openAddProject()}
+                              >
+                                Add a project
+                              </button>
+                            </span>
+                          }
+                        />
+                      )}
+                    </NavList>
+                  )}
+                </NavSection>
+                {/* Sessions with no project (made before projects were records) [D224]. */}
+                {grouping === "project" && homeless.length > 0 && (
+                  <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                    <NavList>{homeless.map((each) => row(each, {}))}</NavList>
                   </NavSection>
-                ) : (
-                  <>
-                    <NavSection
-                      title="Projects"
-                      open={isOpen("projects")}
-                      onOpenChange={(open) => setOpen("projects", open)}
-                      steadyEnd={view}
-                      actions={
-                        <Tooltip>
-                          <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
-                            <Plus />
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Add project</TooltipContent>
-                        </Tooltip>
-                      }
-                    >
-                      <NavList>
-                        {byName.map((project) => (
-                          <ProjectRow
-                            key={project.id}
-                            project={project}
-                            open={isOpen(project.id)}
-                            onOpenChange={(open) => setOpen(project.id, open)}
-                          >
-                            {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                          </ProjectRow>
-                        ))}
-                        {projects.length === 0 && (
-                          <EmptyState
-                            as="li"
-                            title={
-                              <span>
-                                Projects group sessions on a repository.{" "}
-                                <button
-                                  type="button"
-                                  className="cursor-pointer text-foreground underline-offset-link hover:underline"
-                                  onClick={() => openAddProject()}
-                                >
-                                  Add a project
-                                </button>
-                              </span>
-                            }
-                          />
-                        )}
-                      </NavList>
-                    </NavSection>
-                    {/* Sessions with no project (made before projects were records) [D224]. */}
-                    {homeless.length > 0 && (
-                      <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
-                        <NavList>{homeless.map((each) => row(each, {}))}</NavList>
-                      </NavSection>
-                    )}
-                  </>
                 )}
               </>
             )}

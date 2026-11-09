@@ -1,8 +1,7 @@
-import { type ReactNode, useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
 import { useSidebar } from "../components/sidebar";
@@ -10,8 +9,8 @@ import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { spacingPx } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { BarChart, ChevronRight, Comment, HelpIcon, Keyboard, Lightbulb, Settings } from "../icons";
-import { AppUpdatePill, UpdatesRow } from "./updates";
+import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
+import { UpdatesRow } from "./updates";
 
 /** Where a foot menu opens: up from the row, or beside the strip. */
 export const footPlacement = (expanded: boolean) =>
@@ -106,64 +105,44 @@ function UsageMenu() {
   );
 }
 
-/** Help: both items wait for their pages, so they are drawn and greyed. */
-function HelpMenu() {
-  const { open: expanded } = useSidebar();
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger render={<TooltipIconButton look="strip" side={expanded ? "top" : "right"} tooltip="Help" />}>
-        <HelpIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent {...(expanded ? ({ side: "top", align: "end" } as const) : footPlacement(false))} className="w-60">
-        <DropdownMenuItem disabled>
-          <Comment />
-          Send feedback…
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled>
-          <Keyboard />
-          Keyboard shortcuts
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/** A foot icon that moves between the row and the stack: it fades in where it lands. */
-function Moving({ open, end = false, children }: { open: boolean; end?: boolean; children: ReactNode }) {
-  // Two names for one fade, so it starts again on each turn.
-  return <div className={cx("flex motion-reduce:animate-none", open && end && "ms-auto", open ? "animate-foot-row" : "animate-foot-stack")}>{children}</div>;
+/** Glides the foot's icons between the row and the stack with the sidebar's own motion, the same elements throughout. */
+function useGlide(open: boolean) {
+  const foot = useRef<HTMLDivElement>(null);
+  const spots = useRef(new Map<HTMLElement, [number, number]>());
+  useLayoutEffect(() => {
+    const box = foot.current!;
+    const css = getComputedStyle(box);
+    const glide = { duration: parseFloat(css.getPropertyValue("--duration-fold")), easing: css.getPropertyValue("--ease-sidebar") };
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    for (const item of box.children as HTMLCollectionOf<HTMLElement>) {
+      // From the bottom: that edge stays put while the box changes height.
+      const now: [number, number] = [item.offsetLeft, item.offsetTop - box.clientHeight];
+      const was = spots.current.get(item);
+      if (was && !calm && (was[0] !== now[0] || was[1] !== now[1])) item.animate({ translate: [`${was[0] - now[0]}px ${was[1] - now[1]}px`, "0 0"] }, glide);
+      spots.current.set(item, now);
+    }
+  }, [open]);
+  return foot;
 }
 
 /**
- * The icons at the sidebar's foot. Expanded they make one row, Settings first and Help at the far right;
- * collapsed they stack in the strip, Settings last, so Settings stays in the corner either way.
+ * The icons at the sidebar's foot. Expanded they make one row, Settings first; collapsed they stack in the
+ * strip, Settings last, so Settings stays in the corner either way.
  */
 export function SidebarFoot() {
   const { open } = useSidebar();
-  const settings = (
-    <TooltipIconButton look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => (window.location.hash = "#accounts")}>
-      <Settings />
-    </TooltipIconButton>
-  );
+  const foot = useGlide(open);
+  // The row's height always, the stack rising over the strip from it, so the list above never resizes on a toggle.
   return (
-    <div className={cx("flex shrink-0 px-2 py-2", open ? "flex-row flex-wrap items-center gap-1" : "flex-col gap-px")}>
-      {open && settings}
-      <Moving open={open}>
+    <div className="relative min-h-11.5 shrink-0">
+      <div ref={foot} className={cx("flex px-2 py-2", open ? "relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col gap-px")}>
+        <TooltipIconButton look="strip" side={open ? "top" : "right"} tooltip="Settings" className={open ? undefined : "order-last"} onClick={() => (window.location.hash = "#accounts")}>
+          <Settings />
+        </TooltipIconButton>
         <KeepAwakeMenu />
-      </Moving>
-      <Moving open={open}>
         <UsageMenu />
-      </Moving>
-      <Moving open={open}>
         <UpdatesRow />
-      </Moving>
-      <Moving open={open}>
-        <AppUpdatePill />
-      </Moving>
-      <Moving open={open} end>
-        <HelpMenu />
-      </Moving>
-      {!open && settings}
+      </div>
     </div>
   );
 }

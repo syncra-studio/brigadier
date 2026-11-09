@@ -37,7 +37,9 @@ export function NavHeader({ title, actions }: { title: ReactNode; actions?: Reac
   );
 }
 
-const TITLE = "text-sm font-medium text-faint-foreground opacity-nav-title";
+const TITLE = "text-sm font-medium";
+// The title's rest look: faint, its hover (as the thread's work header) white.
+const FAINT = "text-faint-foreground opacity-nav-title";
 // Shown while the section is hovered or holds focus.
 const ON_HOVER = "opacity-0 group-focus-within/section:opacity-100 group-hover/section:opacity-100";
 
@@ -82,19 +84,21 @@ export function NavSection({
               type="button"
               aria-expanded={open}
               onClick={() => onOpenChange(!open)}
-              className={cx("flex min-w-0 cursor-pointer items-center gap-1 rounded-xs focus-visible:focus-ring", TITLE)}
+              className={cx("group/title flex min-w-0 cursor-pointer items-center gap-1 rounded-xs focus-visible:focus-ring", TITLE)}
             >
-              <span className="truncate">{title}</span>
-              <ChevronDown
-                className={cx(
-                  "size-icon-sm shrink-0 transition-all motion-reduce:transition-none",
-                  !open && "-rotate-90",
-                  open && !steadyChevron && ON_HOVER,
-                )}
-              />
+              <span className={cx("truncate transition-all group-hover/title:text-foreground group-hover/title:opacity-100 group-focus-visible/title:text-foreground group-focus-visible/title:opacity-100", FAINT)}>{title}</span>
+              <span className={cx("flex", FAINT)}>
+                <ChevronDown
+                  className={cx(
+                    "size-icon-sm shrink-0 transition-all motion-reduce:transition-none",
+                    !open && "-rotate-90",
+                    open && !steadyChevron && ON_HOVER,
+                  )}
+                />
+              </span>
             </button>
           ) : (
-            <h2 id={id} className={cx("truncate", TITLE)}>
+            <h2 id={id} className={cx("truncate", TITLE, FAINT)}>
               {title}
             </h2>
           )}

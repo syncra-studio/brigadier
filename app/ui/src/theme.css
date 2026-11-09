@@ -43,6 +43,9 @@
   --color-fill-subtle: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   --color-fill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
   --color-fill-hover: color-mix(in oklab, var(--color-foreground) 10%, transparent);
+  /* The old feedback note's field, and its words while they're written up. */
+  --color-feedback-field: color-mix(in oklab, var(--color-muted) 60%, transparent);
+  --color-feedback-working: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   --color-fill-active: color-mix(in oklab, var(--color-foreground) 16%, transparent);
   --color-toolbar-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
   --color-strip-foreground: color-mix(in oklab, var(--color-foreground) 85%, transparent);
@@ -197,6 +200,7 @@
   --tracking-tight: -0.025em;
   --tracking-wide: 0.025em;
   --tracking-wider: 0.05em;
+  --tracking-widest: 0.1em;
 
   --spacing: 0.25rem;
   --spacing-control-xs: 1.5rem;
@@ -224,6 +228,7 @@
   /* Trust this folder? and Project settings (the old app's). */
   --container-trust: 26.25rem;
   --container-project-dialog: 35rem;
+  --container-feedback: 37.5rem;
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
@@ -380,19 +385,6 @@
     from {
       opacity: 0;
       scale: 0.75;
-    }
-  }
-  --animate-foot-row: foot-row 150ms ease-out;
-  --animate-foot-stack: foot-stack 150ms ease-out;
-  /* A foot icon fading in where it lands; two names for one fade, so it restarts on each turn. */
-  @keyframes foot-row {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes foot-stack {
-    from {
-      opacity: 0;
     }
   }
   --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);

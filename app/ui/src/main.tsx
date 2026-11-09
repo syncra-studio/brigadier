@@ -16,6 +16,7 @@ import { Onboarding } from "./onboarding/onboarding";
 import { GlobalSearch } from "./palette/palette";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
+import { FeedbackDialog } from "./feedback/dialog";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
 import { ArchivedBar } from "./sessions/archived";
@@ -107,6 +108,7 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
       <ProjectSettingsHost />
+      <FeedbackDialog />
     </div>
   );
 }

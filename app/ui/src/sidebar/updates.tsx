@@ -14,8 +14,9 @@ import { store } from "../onboarding/api";
 import { footPlacement } from "./foot";
 
 /*
- * The update pills at the sidebar's foot, drawn as the old app's. Nothing on this branch checks for updates,
- * so these stay empty and the pills stay away until a backend fills them; Update and Skip have nothing to call.
+ * The update pill at the sidebar's foot: one, whatever kinds of update there are, and what to update is chosen
+ * in its list. Nothing on this branch checks for updates, so it stays away until a backend fills it; Update
+ * and Skip have nothing to call.
  */
 
 export type UpdateItem = {
@@ -26,13 +27,10 @@ export type UpdateItem = {
   mark: string | null;
   current: string;
   latest: string;
-  action: { type: "run" } | { type: "download" } | { type: "manual"; command: string };
+  action: { type: "run" } | { type: "download" } | { type: "restart" } | { type: "manual"; command: string };
   progress: { type: "available" } | { type: "updating" } | { type: "updated" } | { type: "failed"; error: string };
 };
-export type AppUpdate = { state: "available" | "updating" | "failed" | "ready"; version: string };
-
 export const updates = store<UpdateItem[]>([]);
-export const appUpdate = store<AppUpdate | null>(null);
 
 /** How long an item takes to grow in or shrink away. */
 const ITEM_MS = 200;
@@ -80,6 +78,7 @@ function rowLabel(items: readonly UpdateItem[]) {
   const names = all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
   if (items.some((item) => item.progress.type === "updating")) return `Updating ${names}`;
   if (items.every((item) => item.progress.type === "updated")) return `${names} updated`;
+  if (items.every((item) => item.action.type === "restart")) return "Restart to update";
   return `${names} ${items.length > 1 ? "updates" : "update"} available`;
 }
 
@@ -105,7 +104,7 @@ function UpdateRow({ item }: { item: UpdateItem }) {
           <>
             {action.type !== "manual" && (
               <Button size="sm" variant="outline">
-                {action.type === "download" ? "Download" : progress.type === "failed" ? "Try again" : "Update"}
+                {action.type === "restart" ? "Restart" : action.type === "download" ? "Download" : progress.type === "failed" ? "Try again" : "Update"}
               </Button>
             )}
             <TooltipIconButton tooltip="Skip this version" side="top" aria-label={`Skip ${item.name} ${item.latest}`}>
@@ -132,7 +131,7 @@ function UpdateRow({ item }: { item: UpdateItem }) {
   );
 }
 
-/** Updates at the foot, there only while something has a newer version: a chip of marks in the row, an icon with a dot on the strip. */
+/** The foot's one update pill, there only while something has a newer version: a chip of marks, lying along the row or standing up in the strip. A click always opens the list. */
 export function UpdatesRow() {
   const items = updates.use();
   const { open: expanded } = useSidebar();
@@ -143,7 +142,7 @@ export function UpdatesRow() {
   const shown = items.length > 0 ? items : last;
   const busy = shown.some((item) => item.progress.type === "updating");
   const finished = shown.length > 0 && shown.every((item) => item.progress.type === "updated");
-  const only = shown.length === 1 && shown[0]!.target !== "app" && shown[0]!.action.type === "run" && shown[0]!.progress.type === "available" ? shown[0]! : null;
+  const restart = shown.length > 0 && shown.every((item) => item.action.type === "restart");
   const empty = items.length === 0;
   // The list closes once its last row has shrunk away.
   useEffect(() => {
@@ -155,18 +154,16 @@ export function UpdatesRow() {
     <BarItem show={!empty || open} axis={expanded ? "x" : "y"}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
-          render={<TooltipIconButton look={expanded ? "chip" : "strip"} side={expanded ? "top" : "right"} tooltip={only ? `Update ${only.name} to ${only.latest}` : rowLabel(shown)} dot={expanded || busy || finished ? undefined : "bg-foreground"} />}
+          render={<TooltipIconButton look={expanded ? "chip" : "chip-tall"} side={expanded ? "top" : "right"} tooltip={rowLabel(shown)} />}
         >
-          {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : <DownloadSimple aria-hidden />}
-          {expanded && (
-            <span className="flex items-center">
-              {shown.map((item) => (
-                <BarItem key={item.target} show={items.includes(item)}>
-                  <Glyph item={item} className="mx-0.5 size-icon-sm shrink-0" />
-                </BarItem>
-              ))}
-            </span>
-          )}
+          {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
+          <span className={cx("flex items-center", !expanded && "flex-col")}>
+            {shown.map((item) => (
+              <BarItem key={item.target} show={items.includes(item)} axis={expanded ? "x" : "y"}>
+                <Glyph item={item} className={cx("size-icon-sm shrink-0", expanded ? "mx-0.5" : "my-0.5")} />
+              </BarItem>
+            ))}
+          </span>
         </PopoverTrigger>
         <PopoverContent {...footPlacement(expanded)} padded={false} className="flex w-96 flex-col p-1.5">
           {shown.map((item) => (
@@ -183,25 +180,3 @@ export function UpdatesRow() {
   );
 }
 
-const TIPS: Record<AppUpdate["state"], (version: string) => string> = {
-  available: (version) => `Update Brigadier to ${version}`,
-  updating: () => "Updating Brigadier",
-  failed: () => "Couldn't update Brigadier. Click to try again",
-  ready: () => "Restart to update",
-};
-
-/** Brigadier's own update, as the agents' pill: only the icon changes between its states, so it keeps its place and size. */
-export function AppUpdatePill() {
-  const update = appUpdate.use();
-  const { open: expanded } = useSidebar();
-  const state = update?.state ?? "available";
-  const busy = state === "updating";
-  return (
-    <BarItem show={update !== null} axis={expanded ? "x" : "y"}>
-      <TooltipIconButton look={expanded ? "chip" : "strip"} side={expanded ? "top" : "right"} tooltip={TIPS[state](update?.version ?? "")} aria-busy={busy || undefined} dot={expanded || busy ? undefined : "bg-foreground"}>
-        {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : state === "ready" ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
-        {expanded && <BrigadierMark aria-hidden className="mx-0.5 size-icon-sm shrink-0" />}
-      </TooltipIconButton>
-    </BarItem>
-  );
-}
