@@ -419,20 +419,21 @@ impl Thread {
             .collect();
         let work = self.work[self.sent_work..].to_vec();
         self.sent_work = self.work.len();
+        let quiet = items.is_empty() && turns.is_empty() && work.is_empty();
         let mut out = json!({"items": items, "turns": turns, "work": work});
         let setup_changed = std::mem::take(&mut self.setup_changed);
         if setup_changed {
             out["setup"] = self.setup.clone();
         }
+        let points_changed = self.send_points(&mut out);
         // What waits on the user goes whole whenever it changed, to replace what the view holds.
         if std::mem::take(&mut self.pending_changed) {
             for (k, v) in self.requests().as_object().unwrap() {
                 out[k] = v.clone();
             }
-        } else if items.is_empty() && turns.is_empty() && work.is_empty() && !setup_changed {
+        } else if quiet && !setup_changed && !points_changed {
             return None;
         }
-        self.send_points(&mut out);
         Some(out)
     }
 
