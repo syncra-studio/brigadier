@@ -18,7 +18,7 @@ mod models;
 mod record;
 mod server;
 mod trust;
-use record::{diff, rollouts, thread_files};
+use record::{diff, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
@@ -187,20 +187,7 @@ impl Adapter for Codex {
     }
 
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
-        let mut ids = BTreeSet::from([resume.to_string()]);
-        let mut backend = String::new();
-        let _ = crate::read(&spec.dir, |item| {
-            if let Some(b) = item["backend"].as_str() {
-                backend = b.into();
-            }
-            if backend == self.name() && item["kind"] == "tool" && item["name"] == "spawn_agent" {
-                ids.insert(s(item, &["id"]).into());
-            }
-        });
-        let names: Vec<String> = ids
-            .into_iter()
-            .filter(|id| crate::check_id(id).is_ok())
-            .collect();
+        let names = spawned(self, spec, resume);
         let mut paths = rollouts(
             &cli_home(spec, ".codex", ""),
             &names
@@ -212,29 +199,14 @@ impl Adapter for Codex {
         paths
     }
 
-    /// Its prompt history by thread id, and a writer lock a killed process left; one a live
-    /// writer holds stays, by Codex's own rule [D35].
+    /// The thread and the Auto reviewers that worked for it, each by its own id; the thread goes
+    /// last, so a retry after a failure can still find them [D35].
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
-        delete_thread(self, spec, resume)?;
-        clear_watermark(spec, resume);
-        drop_lines(
-            &cli_home(spec, ".codex", "history.jsonl"),
-            "session_id",
-            resume,
-        )
-        .map_err(|e| e.to_string())?;
-        // Its thread names, by thread id.
-        drop_lines(
-            &cli_home(spec, ".codex", "session_index.jsonl"),
-            "id",
-            resume,
-        )
-        .map_err(|e| e.to_string())?;
-        let lock = cli_home(spec, ".codex", "thread-writer-locks").join(format!("{resume}.lock"));
-        if let Ok(f) = std::fs::File::open(&lock)
-            && f.try_lock().is_ok()
-        {
-            let _ = std::fs::remove_file(&lock);
+        let home = cli_home(spec, ".codex", "");
+        let mut ids = helpers(&home, &spawned(self, spec, resume));
+        ids.push(resume.to_string());
+        for id in &ids {
+            forget_thread(self, spec, id)?;
         }
         Ok(())
     }
@@ -314,16 +286,57 @@ fn delete_thread(codex: &Codex, spec: &Spec, resume: &str) -> Result<(), String>
     }
 }
 
-/// Codex's import record can still name this thread's rollout after its own delete. Only the path
-/// goes: without the row Codex would import every rollout again [D371, D382]. A busy or changed
-/// database keeps the path, which D371 accepts, and delete still finishes.
-fn clear_watermark(spec: &Spec, resume: &str) {
-    let path = cli_home(spec, ".codex", "state_5.sqlite");
-    if let Ok(db) = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE) {
-        let _ = db.busy_timeout(Duration::from_secs(2));
-        let _ = db.execute(
-            "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
-            [format!("-{resume}.jsonl")],
-        );
+/// The thread and the agents it spawned, by the ids its log holds.
+fn spawned(codex: &Codex, spec: &Spec, resume: &str) -> Vec<String> {
+    let mut ids = BTreeSet::from([resume.to_string()]);
+    let mut backend = String::new();
+    let _ = crate::read(&spec.dir, |item| {
+        if let Some(b) = item["backend"].as_str() {
+            backend = b.into();
+        }
+        if backend == codex.name() && item["kind"] == "tool" && item["name"] == "spawn_agent" {
+            ids.insert(s(item, &["id"]).into());
+        }
+    });
+    ids.into_iter()
+        .filter(|id| crate::check_id(id).is_ok())
+        .collect()
+}
+
+/// One thread: Codex's delete, then its prompt history and name by thread id, and a writer lock a
+/// killed process left; one a live writer holds stays, by Codex's own rule [D35].
+fn forget_thread(codex: &Codex, spec: &Spec, id: &str) -> Result<(), String> {
+    delete_thread(codex, spec, id)?;
+    clear_records(spec, id);
+    for (file, key) in [
+        ("history.jsonl", "session_id"),
+        ("session_index.jsonl", "id"),
+    ] {
+        drop_lines(&cli_home(spec, ".codex", file), key, id).map_err(|e| e.to_string())?;
     }
+    let lock = cli_home(spec, ".codex", "thread-writer-locks").join(format!("{id}.lock"));
+    if let Ok(f) = std::fs::File::open(&lock)
+        && f.try_lock().is_ok()
+    {
+        let _ = std::fs::remove_file(&lock);
+    }
+    Ok(())
+}
+
+/// What Codex's own delete leaves naming the thread. Its import record's path goes, not the row:
+/// without the row Codex would import every rollout again [D371, D382]. A busy or changed
+/// database keeps it, and delete still finishes.
+fn clear_records(spec: &Spec, id: &str) {
+    let run = |file: &str, sql: &str, like: String| {
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE;
+        if let Ok(db) = Connection::open_with_flags(cli_home(spec, ".codex", file), flags) {
+            let _ = db.busy_timeout(Duration::from_secs(2));
+            let _ = db.execute(sql, [like]);
+        }
+    };
+    run(
+        "state_5.sqlite",
+        "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
+        format!("-{id}.jsonl"),
+    );
 }

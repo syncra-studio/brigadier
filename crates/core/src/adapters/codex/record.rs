@@ -51,6 +51,33 @@ pub(super) fn rollouts(home: &Path, names: &[String]) -> Vec<PathBuf> {
     found
 }
 
+/// The ids of Codex's own helper threads (its Auto reviewer) working for `parents`. Unlike a spawned
+/// agent they're no edge in its database: only the parent id in their first line links them [D35].
+/// shortcut: a compressed rollout isn't read, so a reviewer Codex archived itself stays; unzip it
+/// here if that ever shows up.
+pub(super) fn helpers(home: &Path, parents: &[String]) -> Vec<String> {
+    use std::io::BufRead;
+    let first = |path: &PathBuf| -> Option<Value> {
+        let mut line = String::new();
+        std::io::BufReader::new(std::fs::File::open(path).ok()?)
+            .read_line(&mut line)
+            .ok()?;
+        serde_json::from_str(&line).ok()
+    };
+    rollouts(home, &[".jsonl".to_string()])
+        .iter()
+        .filter_map(first)
+        .filter(|v| {
+            !s(v, &["payload", "source", "subagent", "other"]).is_empty()
+                && parents
+                    .iter()
+                    .any(|p| p == s(v, &["payload", "parent_thread_id"]))
+        })
+        .map(|v| s(&v, &["payload", "id"]).to_string())
+        .filter(|id| crate::check_id(id).is_ok())
+        .collect()
+}
+
 /// A rollout's change to one file as a unified diff: an update's own, or a whole added or deleted file.
 pub(super) fn diff(c: &Value) -> String {
     let lines = |sign: char| {
