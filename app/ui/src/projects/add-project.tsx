@@ -258,17 +258,17 @@ function PickView({
   };
 
   return (
-    <div className="flex min-w-0 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-col">
       <Header title="Add project" line="Pick a git repository for your sessions to work in." />
-      <div className="flex items-center gap-2.5 px-7">
+      <div className="flex shrink-0 items-center gap-2.5 px-7">
         <Input aria-label="Search repositories" placeholder="Search repositories" value={query} autoFocus onChange={(event) => setQuery(event.target.value)} onKeyDown={onSearchKey} />
         <Button variant="outline" onClick={choose}>
           <FolderOpen />
           Choose folder…
         </Button>
       </div>
-      <div className="flex flex-col gap-2 px-4 pt-5.5 pb-4">
-        <div className="flex items-center justify-between px-3 text-xs text-muted-foreground">
+      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto px-4 pt-5.5 pb-4">
+        <div className="flex shrink-0 items-center justify-between px-3 text-xs text-muted-foreground">
           <span>On this Mac</span>
           <span>Most recent first</span>
         </div>
