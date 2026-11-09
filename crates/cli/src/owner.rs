@@ -23,7 +23,7 @@ fn host_exe() -> io::Result<PathBuf> {
 pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
     let dir = session_dir(data, &spec.id);
     // Archived, or being archived, restored or deleted: no new work [D180].
-    if let Some(why) = brigadier_core::session::closed(&dir) {
+    if let Some(why) = brigadier_core::session::retired(&dir) {
         return Err(io::Error::other(why));
     }
     // Its project being removed: no new work either [D172, D179].

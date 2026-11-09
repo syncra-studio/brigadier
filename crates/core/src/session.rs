@@ -45,11 +45,17 @@ pub fn lifecycle(dir: &Path) -> (Option<u64>, Value) {
 
 /// Why the session takes no new work now (a start, send or recover), if it doesn't.
 pub fn closed(dir: &Path) -> Option<&'static str> {
+    let unsettled =
+        crate::rewind::pending(dir).then_some("A rewind of this session hasn't finished.");
+    retired(dir).or(unsettled)
+}
+
+/// Why it can't have a host at all. A rewind cut short needs one to finish.
+pub fn retired(dir: &Path) -> Option<&'static str> {
     match intent(dir).as_ref().and_then(|i| i["op"].as_str()) {
         Some("archive") => Some("This session is being archived."),
         Some("restore") => Some("This session is being restored."),
         Some(_) => Some("This session is being deleted."),
-        None if crate::rewind::pending(dir) => Some("A rewind of this session hasn't finished."),
         None => dir
             .join(ARCHIVED)
             .exists()

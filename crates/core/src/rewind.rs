@@ -242,11 +242,15 @@ fn write(spec: &Spec, op: &mut Op, phase: &str) -> Result<(), Value> {
     op.phase = phase.into();
     let bytes = serde_json::to_vec(op).map_err(|e| refused("write", e.to_string()))?;
     write_atomic(&spec.dir.join(OP), &bytes).map_err(|e| refused("write", e.to_string()))?;
-    // Drill hook: a rewind that dies just after writing this phase.
-    if std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == format!("rewind:{phase}")) {
+    crash_at(phase);
+    Ok(())
+}
+
+/// Drill hook: a rewind that dies just after this step.
+fn crash_at(step: &str) {
+    if std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == format!("rewind:{step}")) {
         std::process::abort();
     }
-    Ok(())
 }
 
 fn clear(spec: &Spec) -> io::Result<()> {
@@ -458,7 +462,9 @@ fn run(
     }
     write(spec, &mut record, "conversation")?;
     let run = as_run(spec, &f, &backend, None);
-    Ok(match adapter.rewind(&run, &resume, &cut(&record)) {
+    let outcome = adapter.rewind(&run, &resume, &cut(&record));
+    crash_at("cut");
+    Ok(match outcome {
         Ok(done) => finish(spec, &mut record, done, call),
         Err(Failed::Refused(why)) => rolled_back(spec, &record, why),
         Err(Failed::Uncertain(why)) => match landed(spec, &f, &record) {
