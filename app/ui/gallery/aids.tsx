@@ -141,7 +141,10 @@ function Live() {
 export function AidsGallery() {
   return (
     <Section title="Typing aids: @ and / menus, chips, attachments">
-      <Live />
+      {/* Its fields keep an empty menu anchor open: held, so an approval card elsewhere on the page keeps its keys. */}
+      <div data-held className="contents">
+        <Live />
+      </div>
       <Toaster />
     </Section>
   );

@@ -38,9 +38,10 @@ export const inField = (target: EventTarget | null) => target instanceof Element
  * `enter` Enter is left alone; with `within` it answers only from inside that element (the focused card), and
  * neither key answers from inside another card.
  */
-export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape: () => void }, within?: RefObject<HTMLElement | null>) {
+export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape?: () => void }, within?: RefObject<HTMLElement | null>) {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.key !== "Enter" && event.key !== "Escape") return;
+    if (event.key === "Escape" && !keys.escape) return;
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const target = event.target instanceof Element ? event.target : null;
@@ -57,7 +58,7 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter") keys.enter?.();
-    else keys.escape();
+    else keys.escape?.();
   });
   useEffect(() => {
     if (!enabled) return;

@@ -503,6 +503,10 @@
     transition-property: width, height, margin, opacity;
     transition-duration: var(--duration-fold);
     transition-timing-function: var(--ease-enter);
+    /* Coming back it fades in once there's room, so its words aren't uncovered from the edge. */
+    &:not([data-gone]) {
+      transition-delay: 0s, 0s, 0s, var(--duration-popup-fast);
+    }
   }
 }
 

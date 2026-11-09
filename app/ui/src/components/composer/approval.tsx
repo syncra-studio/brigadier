@@ -157,11 +157,41 @@ export type ApprovalStep = { index: number; total: number; onStep: (index: numbe
 const MAKES_WAY =
   "makes-way grid @min-card-narrow/approval-card:data-gone:w-0 @min-card-narrow/approval-card:data-gone:-ms-2 @max-card-narrow/approval-card:data-gone:h-0 @max-card-narrow/approval-card:data-gone:-mt-2";
 
+const ENTER_KEY = (
+  <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+    ⏎
+  </Kbd>
+);
+
+/** One label becoming another: the width eases between them while the labels crossfade over it whole, so neither is uncovered from an edge. */
+function Morph({ from, to, morphed }: { from: ReactNode; to: ReactNode; morphed: boolean }) {
+  const faces = [
+    { face: from, gone: morphed || undefined },
+    { face: to, gone: !morphed || undefined },
+  ];
+  return (
+    <span className="relative flex items-center">
+      {faces.map(({ face, gone }, at) => (
+        <span key={at} aria-hidden data-gone={gone} className="makes-way invisible flex items-center gap-1 data-gone:w-0">
+          {face}
+        </span>
+      ))}
+      <span className="absolute inset-0 grid place-content-center place-items-center">
+        {faces.map(({ face, gone }, at) => (
+          <span key={at} aria-hidden={gone} data-gone={gone} className="col-start-1 row-start-1 flex items-center gap-1 transition-opacity motion-reduce:transition-none data-gone:opacity-0">
+            {face}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 /**
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
- * session] [Allow once]. Esc denies from anywhere in the view; allowing takes a click, or Enter on an Allow the
- * user moved to: a stray Enter never allows. A message to another session is the exception: the card takes
- * focus, and Enter on it sends (its ⏎ shows while it has focus). With `onReason` a field beside the buttons takes
+ * session] [Allow once `⏎`]. Esc denies from anywhere in the view. The card takes focus as it comes, unless the user
+ * is typing elsewhere, and Enter anywhere in it answers with its main button (D186); a held Enter counts once, so it
+ * can't answer the next card. With `onReason` a field beside the buttons takes
  * what the agent should do instead (D192). With words in it the card turns to refusing (D182): Deny and the session
  * grant make way, Allow becomes Send, which denies with the words and never allows. Esc clears the words and
  * brings the card back (D183); only with the field empty does it deny.
@@ -196,22 +226,22 @@ export function ApprovalCard({
   const refusing = asksReason && typed.trim() !== "";
   const primary = () => answer(refusing ? "deny" : "allow");
   const message = approval.action === "message";
-  const plan = approval.action === "plan";
   const field = useRef<ComposerFieldHandle>(null);
   const escape = () => {
     if (busy) return;
     if (refusing) field.current?.set([]);
-    else if (!plan) deny();
+    else deny();
   };
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (message && !inField(document.activeElement)) card.current?.focus({ preventScroll: true });
-  }, [message]);
-  useCardKeys(!busy && !plan, message ? { enter: primary, escape } : { escape }, card);
+    if (!inField(document.activeElement)) card.current?.focus({ preventScroll: true });
+  }, []);
+  useCardKeys(!busy, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
 
   const grant = approval.grant ? grantWords(approval.grant) : null;
+  const allow = shown.allow ?? "Allow once";
   return (
-    <ActionCard ref={card} tabIndex={message ? 0 : undefined} aria-label="Approval" data-action="approval" className="group/approval">
+    <ActionCard ref={card} tabIndex={0} aria-label="Approval" data-action="approval">
       <div className="flex min-w-0 flex-col gap-2 px-4 pt-3.5 pb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-code leading-5 text-card-kind svg:size-4.5 svg:shrink-0">
           {shown.icon}
@@ -254,7 +284,9 @@ export function ApprovalCard({
                       setTyped(text);
                       onReason?.(text);
                     }}
-                    onSubmit={() => typed.trim() && deny()}
+                    onSubmit={(other) => {
+                      if (refusing || !other) primary();
+                    }}
                     onEscape={escape}
                   />
                 </div>
@@ -303,26 +335,28 @@ export function ApprovalCard({
           disabled={busy}
           onClick={primary}
         >
-          <span className="flex min-w-0 items-center">
-            <span data-gone={refusing || undefined} aria-hidden={refusing || undefined} className="makes-way flex items-center gap-1 data-gone:w-0">
-              <span className="truncate">{shown.allow ?? "Allow once"}</span>
-              {message && (
-                <span className="hidden group-focus-within/approval:contents">
-                  <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-                    ⏎
-                  </Kbd>
-                </span>
-              )}
-            </span>
-            {asksReason && (
-              <span data-gone={refusing ? undefined : true} aria-hidden={refusing ? undefined : true} className="makes-way flex items-center gap-1 data-gone:w-0">
-                {message ? "Send instead" : "Send"}
-                <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-                  ⏎
-                </Kbd>
-              </span>
-            )}
-          </span>
+          {asksReason ? (
+            <Morph
+              morphed={refusing}
+              from={
+                <>
+                  {allow}
+                  {ENTER_KEY}
+                </>
+              }
+              to={
+                <>
+                  {message ? "Send instead" : "Send"}
+                  {ENTER_KEY}
+                </>
+              }
+            />
+          ) : (
+            <>
+              {allow}
+              {ENTER_KEY}
+            </>
+          )}
         </button>
       </ActionCardActions>
     </ActionCard>

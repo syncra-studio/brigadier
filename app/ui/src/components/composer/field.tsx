@@ -333,7 +333,8 @@ function Keys({
     const action = enterAction(event);
     if (!action) return false;
     event.preventDefault();
-    onSubmit(action === "other");
+    // A held Enter is one press: it can't send twice or answer the next card.
+    if (!event.repeat) onSubmit(action === "other");
     return true;
   });
   const escape = useEffectEvent((event: KeyboardEvent) => {
