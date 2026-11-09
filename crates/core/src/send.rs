@@ -71,11 +71,7 @@ pub fn send(
     let level = match level(spec, a, held) {
         Ok(level) => level,
         Err(_) if held => {
-            let e = format!(
-                "This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.",
-                a.label()
-            );
-            return json!({"ok": false, "result": "refused", "error": e});
+            return json!({"ok": false, "result": "refused", "error": cant_hold(a)});
         }
         Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
     };
@@ -344,6 +340,14 @@ pub fn level(
             .map(Some)
             .ok_or_else(|| format!("{} can't run at the {want:?} permission level", a.label())),
     }
+}
+
+/// Why a turn in a held project can't run on an agent that can't enforce Ask [D166, D222].
+pub(crate) fn cant_hold(a: &dyn adapters::Adapter) -> String {
+    format!(
+        "This folder isn't trusted, so its sessions run under Ask, which {} can't do yet. Trust the folder in Project settings to run it.",
+        a.label()
+    )
 }
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and

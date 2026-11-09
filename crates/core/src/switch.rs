@@ -48,6 +48,22 @@ pub fn switch(
     let Some(a) = adapters::get(to.backend) else {
         return json!({"ok": false, "error": format!("unknown backend {}", to.backend)});
     };
+    let mut run = as_run(spec, f, to.backend, Some(to.account));
+    // A switched turn passes the gate of any turn start: the target's CLI has the trust answer
+    // first, and a held project runs under Ask or not at all [D166, D182, D222].
+    if let Err(e) = crate::trust::ensure(&run, a) {
+        return json!({"ok": false, "error": e.clone(), "message": e});
+    }
+    let held = crate::projects::held(&crate::data_of(spec), spec);
+    if held {
+        match crate::send::level(spec, a, true) {
+            Ok(level) => run.level = level.map(String::from),
+            Err(_) => {
+                let e = crate::send::cant_hold(a);
+                return json!({"ok": false, "error": e.clone(), "message": e});
+            }
+        }
+    }
     let last = f.last.clone().unwrap_or_default();
     let from = if f.backend.is_empty() {
         spec.backend.as_str()
@@ -91,9 +107,12 @@ pub fn switch(
         "to": {"backend": to.backend, "account": to.account, "model": to.model},
         "auto": auto, "fresh": fresh, "why": why, "note": note,
         "from_label": to.from, "to_label": to.label});
-    let mut run = as_run(spec, f, to.backend, Some(to.account));
     if let Some(m) = to.model {
         run.model = Some(m.into());
+    }
+    let mut setup = adapters::setup(&run);
+    if held {
+        setup["held"] = true.into();
     }
     let resume = (!fresh)
         .then(|| f.resume.get(to.backend).map(String::as_str))
@@ -102,7 +121,7 @@ pub fn switch(
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
-        "backend": to.backend, "retry_of": last["cid"], "switch": switch, "argv": launch.argv, "env": env,
+        "backend": to.backend, "retry_of": last["cid"], "switch": switch, "setup": setup, "argv": launch.argv, "env": env,
         "cwd": spec.cwd, "keep_stdin": launch.keep_stdin, "input": launch.input,
         "cli_version": cli_version(spec, a), "replace": true, "if_len": ping["len"]});
     if !still() {
