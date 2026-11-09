@@ -7,9 +7,10 @@ import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem } from "../components/menu";
 import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
+import { RowAction } from "../components/row-action";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { Trash, Unarchive } from "../icons";
+import { ArrowUpRight, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
 import { restore } from "../sidebar/actions";
@@ -45,13 +46,23 @@ export function ArchivedSection({
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   if (rows.length === 0 && !asking) return null;
   return (
-    <div className="flex max-h-2/5 min-h-0 shrink-0 flex-col border-t border-border px-2 pt-2">
+    <div className="flex max-h-2/5 min-h-0 shrink-0 flex-col px-2 pt-1 pb-2">
       <NavSection
         title="Archived"
         open={open}
         onOpenChange={setOpen}
         scrollList
-        steadyEnd={<span className="text-xs text-muted-foreground tabular-nums">{rows.length}</span>}
+        steadyChevron
+        steadyActions
+        actions={
+          <>
+            <span className="me-1 text-xs text-faint-foreground tabular-nums">{rows.length}</span>
+            {/* Drawn only: the page it opened, Settings › Archived, doesn't exist yet. */}
+            <RowAction disabled aria-label="Open Settings › Archived">
+              <ArrowUpRight className="size-icon-sm" />
+            </RowAction>
+          </>
+        }
       >
         <NavList className="gap-1">
           {rows.map((row) => {

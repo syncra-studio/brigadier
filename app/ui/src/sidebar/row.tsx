@@ -122,7 +122,7 @@ export function SessionRowItem({
             }
           >
             {badged && project && <ProjectBadge name={project.name} tone={tone} />}
-            <span className="mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap">{title}</span>
+            <span className={cx("mask-fade-end min-w-0 flex-1 overflow-hidden whitespace-nowrap", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>
