@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "../components/button";
+import { CheckboxRow } from "../components/checkbox-row";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
@@ -174,7 +176,8 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
           </ul>
         )}
         {preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
-        {preview.branches.map(({ id, branch }) => (
+        {preview.branches.length > 1 && <ManyBranches branches={preview.branches} titleOf={titleOf} drops={drops} onDrops={setDrops} />}
+        {preview.branches.length === 1 && preview.branches.map(({ id, branch }) => (
           <div key={id} className="flex flex-col gap-2.5">
             <p className="text-xs text-muted-foreground">
               “{titleOf(id)}”: its branch <code className="font-mono text-foreground">{branch}</code> has work that never landed.
@@ -201,6 +204,34 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
         </div>
       </div>
     </ConfirmForm>
+  );
+}
+
+/** Several branches with work that never landed: all kept unless reviewed, instead of one question each [D181]. */
+function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview["branches"]; titleOf: (id: string) => string; drops: ReadonlySet<string>; onDrops: (next: ReadonlySet<string>) => void }) {
+  const dropped = branches.filter(({ id }) => drops.has(id)).length;
+  const toggle = (id: string, on: boolean) => {
+    const next = new Set(drops);
+    if (on) next.add(id);
+    else next.delete(id);
+    onDrops(next);
+  };
+  return (
+    <Collapsible className="flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 text-xs text-muted-foreground">
+          {branches.length} branches have work that never landed. {dropped > 0 ? `${dropped} will be deleted, the rest kept.` : "All of them are kept."}
+        </p>
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="shrink-0" />}>Review {branches.length} branches</CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        <div className="flex flex-col gap-2">
+          {branches.map(({ id, branch }) => (
+            <CheckboxRow key={id} label={`Delete ${branch} too`} note={`“${titleOf(id)}”`} checked={drops.has(id)} onCheckedChange={(on) => toggle(id, on)} />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
