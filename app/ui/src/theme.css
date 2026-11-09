@@ -611,6 +611,13 @@
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
 
 /* The keyboard focus ring, inside the control's edge. */
+/* The ring's colour at rest too: a colour transition would otherwise fade a focus ring in from the text's near-white (D190). */
+@layer base {
+  * {
+    outline-color: var(--color-ring);
+  }
+}
+
 @utility focus-ring {
   outline: var(--focus-ring-width) solid var(--color-ring);
   outline-offset: calc(var(--focus-ring-width) * -1);
