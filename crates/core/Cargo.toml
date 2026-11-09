@@ -9,4 +9,5 @@ brigadier-frames = { path = "../frames" }
 libc.workspace = true
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json.workspace = true
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
 toml_edit = "=0.25.19"

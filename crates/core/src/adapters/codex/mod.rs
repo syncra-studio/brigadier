@@ -6,9 +6,11 @@ use super::{
     cli_home, drop_lines, home_path, probe_as, s, version,
 };
 use crate::Spec;
+use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 mod control;
 mod events;
@@ -214,6 +216,7 @@ impl Adapter for Codex {
     /// writer holds stays, by Codex's own rule [D35].
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         delete_thread(self, spec, resume)?;
+        clear_watermark(spec, resume);
         drop_lines(
             &cli_home(spec, ".codex", "history.jsonl"),
             "session_id",
@@ -308,5 +311,19 @@ fn delete_thread(codex: &Codex, spec: &Spec, resume: &str) -> Result<(), String>
             Err("Codex isn't installed, so its record of this thread can't be removed.".into())
         }
         None => Ok(()),
+    }
+}
+
+/// Codex's import record can still name this thread's rollout after its own delete. Only the path
+/// goes: without the row Codex would import every rollout again [D371, D382]. A busy or changed
+/// database keeps the path, which D371 accepts, and delete still finishes.
+fn clear_watermark(spec: &Spec, resume: &str) {
+    let path = cli_home(spec, ".codex", "state_5.sqlite");
+    if let Ok(db) = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE) {
+        let _ = db.busy_timeout(Duration::from_secs(2));
+        let _ = db.execute(
+            "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
+            [format!("-{resume}.jsonl")],
+        );
     }
 }
