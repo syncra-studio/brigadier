@@ -6,7 +6,7 @@ import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/
 import { type Draft, isEmpty } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
-import { ComposerRail, HeldRow, Notices, PausedSendDialog } from "../src/components/composer/rail";
+import { ComposerRail, Notices, PausedSendDialog } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { ModelPill } from "./composer";
 import { Section } from "./parts";
@@ -120,6 +120,18 @@ function Live() {
             paused={paused}
             steer
             canEdit={empty}
+            notSent={
+              held && {
+                draft: held,
+                reason: "the session ended before it went",
+                onRestore: () => {
+                  if (!fieldEmpty()) return say("clear the field to restore it");
+                  field.current!.set(held.parts);
+                  setHeld(null);
+                },
+                onDiscard: () => setHeld(null),
+              }
+            }
             onResume={() => setPaused(false)}
             onSteer={(id) => {
               say(`steered · ${words(queue.find((each) => each.id === id)!.draft)}`);
@@ -135,17 +147,6 @@ function Live() {
               })
             }
           />
-          {held && (
-            <HeldRow
-              reason="the session ended before it went"
-              onRestore={() => {
-                if (!fieldEmpty()) return say("clear the field to restore it");
-                field.current!.set(held.parts);
-                setHeld(null);
-              }}
-              onDiscard={() => setHeld(null)}
-            />
-          )}
         </ComposerRail>
         <ComposerCard>
           <ComposerField
