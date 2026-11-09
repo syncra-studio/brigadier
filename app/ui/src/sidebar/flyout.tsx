@@ -7,7 +7,7 @@ import { DropdownMenuLabel } from "../components/menu";
 import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
-import { Archive, Chats, Folder, Folders } from "../icons";
+import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
 import { newSessionIn } from "../projects/menu";
 import { openAddProject } from "../projects/store";
 import { RowMark } from "./row";
@@ -148,16 +148,39 @@ export function ChatsFlyout({ pinned, chats, ...rows }: Rows & { pinned: Session
   );
 }
 
+/** How many are archived, and the arrow to Settings › Archived. */
+export function ArchivedActions({ count }: { count: number }) {
+  return (
+    <>
+      <span className="me-1 text-xs text-faint-foreground tabular-nums">{count}</span>
+      {/* No click yet: the page it opens, Settings › Archived, doesn't exist. */}
+      <TooltipIconButton tooltip="Open Settings › Archived" className="text-muted-foreground">
+        <ArrowUpRight />
+      </TooltipIconButton>
+    </>
+  );
+}
+
 /** The archived sessions, opened read-only as from the Archived section. */
 export function ArchivedFlyout({ archived, ...rows }: Rows & { archived: SessionRow[] }) {
   return (
     <Flyout label="Archived" icon={<Archive />}>
       {(pick) => (
-        <NavList>
-          {archived.map((row) => (
-            <Line key={row.id} row={row} pick={pick} {...rows} />
-          ))}
-        </NavList>
+        <section>
+          <div className="flex items-center justify-between">
+            <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
+              Archived
+            </DropdownMenuLabel>
+            <span className="flex items-center">
+              <ArchivedActions count={archived.length} />
+            </span>
+          </div>
+          <NavList>
+            {archived.map((row) => (
+              <Line key={row.id} row={row} pick={pick} {...rows} />
+            ))}
+          </NavList>
+        </section>
       )}
     </Flyout>
   );
