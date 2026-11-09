@@ -2,14 +2,15 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cx } from "./cx";
 
-/** An icon button on a row's end, shown while the row (marked `group/row`) is hovered or keyboard-focused. Name it with `aria-label`. */
-export function RowAction({ className, ...props }: ComponentProps<"button">) {
+/** An icon button on a row's end, shown while the row (marked `group/row`) is hovered or keyboard-focused. Name it with `aria-label`. `header`: a section header's larger one. */
+export function RowAction({ header = false, className, ...props }: ComponentProps<"button"> & { header?: boolean }) {
   return (
     <button
       type="button"
       className={cx(
-        "flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-xs text-muted-foreground transition-all",
-        "hover:text-foreground aria-expanded:text-foreground focus-visible:focus-ring motion-safe:active:scale-press svg:size-icon-md",
+        "flex shrink-0 cursor-pointer items-center justify-center rounded-xs text-muted-foreground transition-all",
+        "hover:text-foreground aria-expanded:text-foreground focus-visible:focus-ring motion-safe:active:scale-press",
+        header ? "size-icon-button-sm svg:size-icon-sm" : "size-5 svg:size-icon-md",
         className,
       )}
       {...props}

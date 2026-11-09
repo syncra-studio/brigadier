@@ -1,16 +1,14 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
-import { Radio, RadioGroup } from "../components/radio";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, SettingsSlider } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
@@ -21,6 +19,7 @@ import { pin, rename, useShown } from "./actions";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { SessionRowItem } from "./row";
+import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { Project, SessionRow } from "./words";
 
 /*
@@ -30,7 +29,6 @@ import type { Project, SessionRow } from "./words";
  * so a row never moves while it works. Layout and folds are this window's view, kept in localStorage.
  */
 
-type Grouping = "none" | "project";
 
 /** A view choice kept across launches. */
 export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
@@ -49,7 +47,6 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
 const LIST = "scroll-edge-fade edge-fade-sidebar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
-const MENU_ROW = "flex h-control-sm cursor-pointer items-center gap-2 rounded-menu-item px-2 text-sm hover:bg-fill has-focus-visible:bg-fill";
 
 export function AppSidebar({
   rows,
@@ -90,13 +87,15 @@ export function AppSidebar({
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
   const { live: shown, archived } = useArchiveSplit(useShown(rows));
+  const show = useShowFilter(storeKey, projects);
+  const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
-  const pinned = shown?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
-  const rest = shown?.filter((each) => !each.pinned).toSorted(byLastSend);
+  const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
+  const rest = kept?.filter((each) => !each.pinned).toSorted(byLastSend);
   const homeless = rest?.filter((each) => each.project === null || !projectOf.has(each.project)) ?? [];
-  const byName = projects.toSorted((a, b) => a.name.localeCompare(b.name));
+  const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   // Each section's rows top to bottom, keyed by what folds them: the order ⌥⌘A goes in and the pill counts.
   const sections: [string[], SessionRow[]][] =
     grouping === "none"
@@ -159,7 +158,7 @@ export function AppSidebar({
       {...layout}
     />
   );
-  const view = <ViewMenu grouping={grouping} onGrouping={setGrouping} />;
+  const view = <ViewTrigger projects={projects} show={show} />;
   // Add project shows a project already added here: grouped by project, unfolded, in view [D165].
   useEffect(() => {
     setShowProject((id, group) => {
@@ -198,83 +197,85 @@ export function AppSidebar({
           </NavRow>
         </li>
       </NavList>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={list} className={LIST}>
-          {rest === undefined ? (
-            <Loading />
-          ) : (
-            <>
-              {pinned.length > 0 && (
-                <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
-                  <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
-                </NavSection>
-              )}
-              {grouping === "none" ? (
-                <NavSection title="Open" open={isOpen("open")} onOpenChange={(open) => setOpen("open", open)} steadyEnd={view}>
-                  <NavList className="gap-1">
-                    {rest.map((each) => row(each, { badged: true }))}
-                    {shown?.length === 0 && <EmptyState as="li" title="Sessions you start appear here." />}
-                  </NavList>
-                </NavSection>
-              ) : (
-                <>
-                  <NavSection
-                    title="Projects"
-                    open={isOpen("projects")}
-                    onOpenChange={(open) => setOpen("projects", open)}
-                    steadyEnd={view}
-                    actions={
-                      <Tooltip>
-                        <TooltipTrigger render={<RowAction aria-label="Add project" onClick={() => openAddProject()} />}>
-                          <Plus />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Add project</TooltipContent>
-                      </Tooltip>
-                    }
-                  >
-                    <NavList>
-                      {byName.map((project) => (
-                        <ProjectRow
-                          key={project.id}
-                          project={project}
-                          open={isOpen(project.id)}
-                          onOpenChange={(open) => setOpen(project.id, open)}
-                        >
-                          {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                        </ProjectRow>
-                      ))}
-                      {projects.length === 0 && (
-                        <EmptyState
-                          as="li"
-                          title={
-                            <span>
-                              Projects group sessions on a repository.{" "}
-                              <button
-                                type="button"
-                                className="cursor-pointer text-foreground underline-offset-link hover:underline"
-                                onClick={() => openAddProject()}
-                              >
-                                Add a project
-                              </button>
-                            </span>
-                          }
-                        />
-                      )}
+      <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div ref={list} className={LIST}>
+            {rest === undefined ? (
+              <Loading />
+            ) : (
+              <>
+                {pinned.length > 0 && (
+                  <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                    <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
+                  </NavSection>
+                )}
+                {grouping === "none" ? (
+                  <NavSection title="Open" open={isOpen("open")} onOpenChange={(open) => setOpen("open", open)} steadyEnd={view}>
+                    <NavList className="gap-1">
+                      {rest.map((each) => row(each, { badged: true }))}
+                      {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
                     </NavList>
                   </NavSection>
-                  {/* Sessions with no project (made before projects were records) [D224]. */}
-                  {homeless.length > 0 && (
-                    <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
-                      <NavList>{homeless.map((each) => row(each, {}))}</NavList>
+                ) : (
+                  <>
+                    <NavSection
+                      title="Projects"
+                      open={isOpen("projects")}
+                      onOpenChange={(open) => setOpen("projects", open)}
+                      steadyEnd={view}
+                      actions={
+                        <Tooltip>
+                          <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                            <Plus />
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Add project</TooltipContent>
+                        </Tooltip>
+                      }
+                    >
+                      <NavList>
+                        {byName.map((project) => (
+                          <ProjectRow
+                            key={project.id}
+                            project={project}
+                            open={isOpen(project.id)}
+                            onOpenChange={(open) => setOpen(project.id, open)}
+                          >
+                            {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                          </ProjectRow>
+                        ))}
+                        {projects.length === 0 && (
+                          <EmptyState
+                            as="li"
+                            title={
+                              <span>
+                                Projects group sessions on a repository.{" "}
+                                <button
+                                  type="button"
+                                  className="cursor-pointer text-foreground underline-offset-link hover:underline"
+                                  onClick={() => openAddProject()}
+                                >
+                                  Add a project
+                                </button>
+                              </span>
+                            }
+                          />
+                        )}
+                      </NavList>
                     </NavSection>
-                  )}
-                </>
-              )}
-            </>
-          )}
+                    {/* Sessions with no project (made before projects were records) [D224]. */}
+                    {homeless.length > 0 && (
+                      <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                        <NavList>{homeless.map((each) => row(each, {}))}</NavList>
+                      </NavSection>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+          <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
         </div>
-        <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
-      </div>
+      </ViewMenu>
       <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />
     </SidebarPanel>
@@ -338,52 +339,6 @@ function ProjectRow({
         </NavList>
       </NavFold>
     </li>
-  );
-}
-
-/** View: Group by None (one list) or Project, on the list's header whichever shows. */
-function ViewMenu({ grouping, onGrouping }: { grouping: Grouping; onGrouping: (next: Grouping) => void }) {
-  const heading = useId();
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger render={<PopoverTrigger render={<RowAction aria-label="View" />} />}>
-          <SettingsSlider />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">View</TooltipContent>
-      </Tooltip>
-      <PopoverContent side="bottom" align="end" className="w-60">
-        <div id={heading} className="px-2 py-1.5 text-sm text-muted-foreground">
-          Group by
-        </div>
-        <RadioGroup aria-labelledby={heading} value={grouping} onValueChange={(next) => onGrouping(next as Grouping)}>
-          {(
-            [
-              ["none", "None"],
-              ["project", "Project"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className={MENU_ROW}>
-              <Radio value={value} />
-              {label}
-            </label>
-          ))}
-        </RadioGroup>
-        <div className="my-1 border-t border-divider" />
-        <button
-          type="button"
-          className={`${MENU_ROW} w-full text-start`}
-          onClick={() => {
-            setOpen(false);
-            openAddProject();
-          }}
-        >
-          <Plus className="size-icon-md text-muted-foreground" />
-          Add project…
-        </button>
-      </PopoverContent>
-    </Popover>
   );
 }
 
