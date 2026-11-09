@@ -109,6 +109,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let (entries, copied) = core::worktrees::ignored(Path::new(&folder), dir)?;
                     return Ok(json!({"ok": true, "entries": entries, "copied": copied}));
                 }
+                "branches" => {
+                    let folder = projects::get(data, arg(2))?.folder;
+                    let repo = core::worktrees::branches(data, Path::new(&folder))?;
+                    return Ok(json!({"ok": true, "repo": repo}));
+                }
                 "reveal" => {
                     let folder = projects::get(data, arg(2))?.folder;
                     let status = std::process::Command::new("open").arg(&folder).status()?;

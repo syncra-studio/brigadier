@@ -105,7 +105,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return set(data, args);
     }
     let (cwd, held) = cwd_of(data, args)?;
-    let mut ask = vec!["agents".to_string(), "--cwd".into(), cwd];
+    let mut ask = vec!["agents".to_string()];
+    // No folder (a chat with no project): the home folder's check.
+    if !cwd.is_empty() {
+        ask.extend(["--cwd".into(), cwd]);
+    }
     if !args.iter().any(|a| a == "--fresh") {
         ask.push("--cached".into());
     }

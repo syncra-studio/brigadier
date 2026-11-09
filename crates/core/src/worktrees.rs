@@ -125,6 +125,34 @@ pub fn ensure(
     Ok(())
 }
 
+/// Home's branch pill [D388, D392]: the checked-out branch, the local branches, and the other worktrees a session
+/// can work in. A worktree Brigadier made for a session isn't offered: deleting that session would delete it.
+pub fn branches(data: &Path, repo: &Path) -> io::Result<serde_json::Value> {
+    let current = git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"]).ok();
+    let names = git(
+        repo,
+        &["for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads"],
+    )?;
+    let listed = git(repo, &["worktree", "list", "--porcelain"])?;
+    let sessions = data
+        .canonicalize()
+        .unwrap_or_else(|_| data.into())
+        .join("sessions");
+    // The first entry is the repository's own folder, which is Local checkout's.
+    let worktrees: Vec<_> = (listed.split("\n\n").skip(1))
+        .filter(|entry| !entry.lines().any(|line| line.starts_with("prunable")))
+        .filter_map(|entry| {
+            let field = |key: &str| entry.lines().find_map(|line| line.strip_prefix(key));
+            let path = field("worktree ")?;
+            let branch = field("branch refs/heads/");
+            (!Path::new(path).starts_with(&sessions))
+                .then(|| serde_json::json!({"path": path, "branch": branch}))
+        })
+        .collect();
+    let branches: Vec<_> = names.lines().collect();
+    Ok(serde_json::json!({"current": current, "branches": branches, "worktrees": worktrees}))
+}
+
 /// Makes the session's worktree from `base`, else the project's current branch, with its files to copy. A failure undoes what
 /// it made; one it can't undo stays recorded for the daemon to retry.
 pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> io::Result<()> {

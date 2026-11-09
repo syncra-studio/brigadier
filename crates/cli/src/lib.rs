@@ -22,7 +22,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -126,10 +126,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 return Err(io::Error::other("This project is being removed."));
             }
             let worktree = project.is_some() && !has(args, "--local");
+            // A chat with no project works in a folder of its own, gone with the session [D35, D388].
+            let scratch = has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
             let cwd = flag(args, "--cwd")
                 .map(String::from)
                 .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
                 .or_else(|| project.as_ref().map(|p| p.folder.clone()))
+                .or_else(|| scratch.as_ref().map(|d| d.display().to_string()))
                 .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
             let spec = Spec {
                 project: project.as_ref().map(|p| p.id.clone()),
@@ -158,6 +161,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::load(data, id)?
             };
+            if let Some(dir) = &scratch {
+                fs::create_dir_all(dir)?;
+            }
             // Only a session made for its worktree: a Local checkout one, started again, never gets one.
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
