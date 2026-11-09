@@ -1,6 +1,7 @@
 node_modules/
 target/
 dist/
+dist-gallery/
 .DS_Store
 .claude/settings.local.json
 out/

@@ -15,7 +15,7 @@ const APP_ID = "sh.brigadier.app";
 const ORIGIN = `app://${APP_ID}`;
 
 const uiDir = path.join(__dirname, "../../ui");
-const uiDist = path.join(uiDir, "dist");
+const uiDist = path.join(uiDir, process.env.BRIGADIER_UI_DIST ?? "dist");
 // BRIGADIER_DATA points the app and its daemon at another data folder, as it does for the CLI.
 const dataDir = process.env.BRIGADIER_DATA ?? path.join(app.getPath("appData"), APP_NAME);
 const socketPath = path.join(dataDir, "daemon.sock");

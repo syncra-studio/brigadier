@@ -13,4 +13,4 @@ const buildStamp: Plugin = {
   },
 };
 
-export default defineConfig(({ mode }) => ({ plugins: [react(), tailwindcss(), mode === "gallery" && buildStamp] }));
+export default defineConfig(({ mode }) => ({ plugins: [react(), tailwindcss(), mode === "gallery" && buildStamp], ...(mode === "gallery" && { build: { outDir: "dist-gallery" } }) }));

@@ -2,11 +2,14 @@
 # Opens the component gallery in Electron and rebuilds it on every save; the window reloads itself.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
+# Its window and daemon stay off the real app data unless a folder is given.
+export BRIGADIER_DATA="${BRIGADIER_DATA:-/tmp/brigadier-gallery}"
+mkdir -p "$BRIGADIER_DATA"
 pnpm exec tsc -p app/main
 # The window opens once the first build has stamped itself.
-rm -f app/ui/dist/build-id.js
+rm -f app/ui/dist-gallery/build-id.js
 node_modules/.bin/vite build app/ui --mode gallery --watch &
 watcher=$! # the shim execs node, so this is the watcher itself
 trap 'kill "$watcher"' EXIT
-until [ -f app/ui/dist/build-id.js ]; do sleep 0.2; done
-scripts/electron . "$@"
+until [ -f app/ui/dist-gallery/build-id.js ]; do sleep 0.2; done
+BRIGADIER_UI_DIST=dist-gallery scripts/electron . "$@"
