@@ -85,10 +85,14 @@ pub fn answer(spec: &Spec, msg: &Value) -> Result<Value, String> {
     Ok(line)
 }
 
-/// A round's answers by question id; a skipped question stays out.
+/// A round's answers by question id, or the user's own message as the first one; a skipped
+/// question stays out.
 fn answers(cli: &Value, msg: &Value) -> Value {
     let ids = cli["ids"].as_array().cloned().unwrap_or_default();
-    let given = msg["answers"].as_array().cloned().unwrap_or_default();
+    let given = match msg["reply"].as_str() {
+        Some(reply) => vec![reply.into()],
+        None => msg["answers"].as_array().cloned().unwrap_or_default(),
+    };
     let mut out = serde_json::Map::new();
     for (id, a) in ids.iter().zip(&given) {
         if let (Some(id), Some(a)) = (id.as_str(), a.as_str()) {
