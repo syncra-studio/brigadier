@@ -9,7 +9,7 @@ import { ErrorLine } from "../components/error-line";
 import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Branch, Chats, Folder, Spinner } from "../icons";
+import { Branch, Chats, ChevronRightAlt, Folder, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, useProjects } from "./projects";
@@ -57,7 +57,7 @@ export function RemoveProjectHost() {
   );
 }
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 const MB = 1024 * 1024;
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < MB ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * MB ? `${(bytes / MB).toFixed(1)} MB` : `${(bytes / (1024 * MB)).toFixed(1)} GB`;
@@ -217,9 +217,14 @@ function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview
     <Collapsible className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 text-xs text-muted-foreground">
-          {branches.length} branches have work that never landed. {fate}
+          {/* Each on its own line, so a longer outcome can't wrap and move the rows below. */}
+          <span className="block">{branches.length} branches have work that never landed.</span>
+          <span className="block">{fate}</span>
         </p>
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="shrink-0" />}>Review {branches.length} branches</CollapsibleTrigger>
+        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group shrink-0" />}>
+          Review {branches.length} branches
+          <ChevronRightAlt className="size-icon-xs! chevron-motion group-aria-expanded:rotate-90" />
+        </CollapsibleTrigger>
       </div>
       <CollapsibleContent>
         <div className="flex flex-col gap-2">
@@ -280,7 +285,7 @@ export function Removed({ name, repo, kept, onClose }: { name: string; repo: str
           {kept.map((branch) => (
             <li key={branch} className="flex min-w-0 flex-col gap-0.5">
               <span className="leading-4.25">{branch}</span>
-              <code tabIndex={0} className="overflow-x-auto text-xs leading-4.25 whitespace-nowrap text-muted-foreground outline-none select-text focus-visible:focus-ring">{`git -C ${repo} branch -D ${branch}`}</code>
+              <code className="text-xs leading-4.25 wrap-anywhere text-muted-foreground select-text">{`git -C ${repo} branch -D ${branch}`}</code>
             </li>
           ))}
         </ul>
