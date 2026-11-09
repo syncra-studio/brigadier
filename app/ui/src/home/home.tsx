@@ -10,6 +10,8 @@ import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
+import { daemonRun } from "../session/composer";
+import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { asGroups } from "../session/model";
 import { SetUpAgentDialog } from "../session/set-up";
@@ -110,7 +112,11 @@ export function HomeDraft() {
         modelError={listError}
         offline={!daemon}
         initial={draft.text}
-        onDraft={(text) => setHomeDraft({ text })}
+        onDraft={(text) => {
+          setHomeDraft({ text });
+          keepDraft(daemonRun, HOME_DRAFT, text.parts);
+        }}
+        loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
         onSend={(text) => project && model && start(project.id, draft.workIn, model, text, pick ?? agent?.level ?? undefined)}
       />

@@ -27,7 +27,7 @@ export type ComposerRow = Row & {
 
 /** Runs a brigadier command and answers its whole reply, a refusal included. */
 export type Runner = (args: string[]) => Promise<Record<string, any>>;
-const daemonRun: Runner = (args) => new Promise((resolve) => ask({ op: "run", args }, resolve));
+export const daemonRun: Runner = (args) => new Promise((resolve) => ask({ op: "run", args }, resolve));
 
 const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running" : String(reply.message ?? reply.error ?? "Refused"));
 

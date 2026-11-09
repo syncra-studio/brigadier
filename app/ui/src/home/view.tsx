@@ -52,6 +52,8 @@ export type HomeProps = {
   /** The draft's text as last left. */
   initial?: Draft;
   onDraft?: (draft: Draft) => void;
+  /** The words Rust kept across a restart, if any. */
+  loadDraft?: () => Promise<Draft["parts"] | null>;
   onSend: (text: string) => void;
   /** Changed to put the cursor back in the field (⌘N on Home). */
   focus?: number;
@@ -77,6 +79,15 @@ export function HomeView(props: HomeProps) {
   };
   const field = useRef<ComposerFieldHandle>(null);
   useEffect(() => field.current?.focus(), [props.focus]);
+  // After a restart the draft is Rust's alone: it comes back unless something was typed first.
+  useEffect(() => {
+    void props.loadDraft?.().then((saved) => {
+      const now = field.current;
+      if (!saved || !now || !isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
+      now.set(saved);
+      setEmpty(false);
+    });
+  }, []);
   const setUp = props.groups?.find((group) => group.unavailable);
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">

@@ -5,8 +5,9 @@ type Parts = Draft["parts"];
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
- * the session; this copy is what brings them back at once on a switch. Home's draft is its own (home/start.ts).
+ * the session; this copy is what brings them back at once on a switch. Home's words go the same way, under HOME_DRAFT.
  */
+export const HOME_DRAFT = "@home";
 const SAVE_MS = 400;
 const drafts = new Map<string, Parts>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();

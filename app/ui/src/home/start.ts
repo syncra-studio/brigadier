@@ -1,6 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
+import { daemonRun } from "../session/composer";
+import { HOME_DRAFT, keepDraft } from "../session/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
@@ -9,8 +11,8 @@ import { newId } from "../session/store";
 import type { WorkIn } from "./pills";
 
 /*
- * Home's draft and the sessions it starts [D30, D161]. The draft lives in memory only: nothing is written for one
- * left unsent. A send makes the session's id and its message's command id here, opens the session at once and
+ * Home's draft and the sessions it starts [D30, D161]. Its project and model live in memory; its words are kept by
+ * Rust, like a session's draft. A send makes the session's id and its message's command id here, opens the session at once and
  * runs `start` behind it. Until Rust's row exists the row shows from here, under the short title Rust gives the
  * message [D186]; the message shows until Rust says how it went, by its command id [D54]:
  * - delivered: done, once the open thread has its turn;
@@ -109,6 +111,7 @@ export function start(project: string, workIn: WorkIn, model: ModelChoice, text:
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
   setHomeDraft({ text: undefined, model, project });
+  keepDraft(daemonRun, HOME_DRAFT, []);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   runStart(entry);
 }
@@ -133,6 +136,7 @@ export function discard(id: string): void {
     if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
     put(id, null);
     setHomeDraft({ project: entry.project, text: { parts: [entry.text], attachmentIds: [] } });
+    keepDraft(daemonRun, HOME_DRAFT, [entry.text]);
     if (isOpen(id)) window.location.hash = "";
   });
 }
