@@ -16,6 +16,7 @@ import { LevelPicker } from "../session/level";
 import { asGroups } from "../session/model";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, retry, setHomeDraft, start, useHomeDraft, useStarting } from "./start";
+import { useRepo } from "./branch";
 import { HomeView } from "./view";
 
 /** A `models --project` group: the agent's levels, the one a new session there starts on, and whether it's held. */
@@ -42,11 +43,11 @@ export function HomeDraft() {
   useEffect(() => {
     if (!added) return;
     before.current = null;
-    setHomeDraft({ project: added.id });
+    setHomeDraft({ project: added.id, chat: false });
   }, [added]);
-  const project = projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null;
+  const project = draft.chat ? null : (projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null);
 
-  const [listed, setListed] = useState<{ project: string; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
+  const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [setUp, setSetUp] = useState<string | null>(null);
   const asked = useRef(0);
@@ -56,19 +57,25 @@ export function HomeDraft() {
     enterProject(id ?? null);
   }, [id]);
   const trusted = savedProjects?.find((each) => each.id === id)?.trusted;
+  const repo = useRepo(id, Boolean(daemon));
+  const spot = draft.spot?.project === id ? draft.spot : undefined;
+  const known = <T,>(picked: string | undefined, list: T[] | undefined, same: (each: T) => boolean) => (picked && (!list || list.some(same)) ? picked : null);
+  // A pick the repository no longer has falls back; until it's read, the pick stands.
+  const base = known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
+  const worktree = known(spot?.worktree, repo.info?.worktrees, (each) => each.path === spot?.worktree);
   const groups = listed && listed.project === id ? listed.groups : null;
   const fresh = listed?.project === id && listed?.fresh;
   const load = () => {
-    if (!id) return;
     const mine = ++asked.current;
     const land = (reply: Record<string, any>, fresh: boolean) => {
       if (mine !== asked.current) return;
       // Cache fills an empty picker or updates trust; otherwise the list already shown wins.
-      setListed((now) => !fresh && now?.project === id && now.trusted === trusted ? now : { project: id, trusted, groups: asGroups(reply.groups) as LevelGroup[], fresh });
+      setListed((now) => !fresh && now && now.project === id && now.trusted === trusted ? now : { project: id, trusted, groups: asGroups(reply.groups) as LevelGroup[], fresh });
       if (fresh) setListError(null);
     };
-    run(["models", "--project", id]).then((reply) => land(reply, false), () => {});
-    run(["models", "--project", id, "--fresh"]).then((reply) => land(reply, true), (cause) => mine === asked.current && setListError(errorText(cause)));
+    const models = id ? ["models", "--project", id] : ["models"];
+    run(models).then((reply) => land(reply, false), () => {});
+    run([...models, "--fresh"]).then((reply) => land(reply, true), (cause) => mine === asked.current && setListError(errorText(cause)));
   };
   useEffect(() => {
     if (daemon) load();
@@ -97,13 +104,19 @@ export function HomeDraft() {
         name={name}
         projects={projects}
         project={project}
-        onProject={(id) => setHomeDraft({ project: id })}
+        onProject={(id) => setHomeDraft({ project: id, chat: false })}
+        onNoProject={() => setHomeDraft({ chat: true })}
         onAddProject={(path) => {
           before.current = new Set(projects?.map((each) => each.id));
           openAddProject(path);
         }}
         workIn={draft.workIn}
         onWorkIn={(workIn) => setHomeDraft({ workIn })}
+        repo={repo}
+        base={base}
+        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined } })}
+        worktree={worktree}
+        onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path } })}
         groups={groups}
         model={model}
         onModel={(choice) => setHomeDraft({ model: choice })}
@@ -118,7 +131,7 @@ export function HomeDraft() {
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text) => project && model && start(project.id, draft.workIn, model, text, pick ?? agent?.level ?? undefined)}
+        onSend={(text) => model && start(id ?? null, { workIn: draft.workIn, base, worktree }, model, text, pick ?? agent?.level ?? undefined)}
       />
       <SetUpAgentDialog
         name={setUp}

@@ -25,7 +25,11 @@ import type { WorkIn } from "./pills";
 export type HomeDraft = {
   /** The project picked here; null: the last one used. */
   project: string | null;
+  /** "Don't work in a project" was picked: a chat [D388]. */
+  chat: boolean;
   workIn: WorkIn;
+  /** The base branch or existing worktree picked here, for that project only. */
+  spot?: { project: string; base?: string; worktree?: string };
   /** A model picked here; null: the project's last one. */
   model: ModelChoice | null;
   /** The permission level picked here (1t's LevelPicker); unset: Rust's default for the project. */
@@ -34,13 +38,13 @@ export type HomeDraft = {
   /** Bumped to put the cursor in the field. */
   focus: number;
 };
-const draft = store<HomeDraft>({ project: null, workIn: "worktree", model: null, focus: 0 });
+const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
 export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft.get(), ...change });
 
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
-  setHomeDraft({ ...(project && { project }), focus: draft.get().focus + 1 });
+  setHomeDraft({ ...(project && { project, chat: false }), focus: draft.get().focus + 1 });
   window.location.hash = "";
 }
 
@@ -48,7 +52,7 @@ export function newSession(project?: string | null): void {
 export type Starting = {
   id: string;
   cid: string;
-  project: string;
+  project: string | null;
   text: string;
   title: string;
   args: string[];
@@ -100,17 +104,22 @@ function runStart(entry: Starting): void {
 /** A new session's id, made here so its row and thread show before Rust has it [D30]. */
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-/** Starts a session from the draft and opens it at once; the draft's text goes. */
-export function start(project: string, workIn: WorkIn, model: ModelChoice, text: string, level?: string): void {
+/** Where a project's session works: `base` for a new worktree, `worktree` for an existing one. */
+export type Place = { workIn: WorkIn; base: string | null; worktree: string | null };
+
+const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
+  workIn === "local" ? ["--local"] : workIn === "existing" ? ["--local", "--cwd", worktree!] : base ? ["--base", base] : [];
+
+/** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
+export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string): void {
   const id = sessionId();
   const cid = newId();
-  const args = ["start", id, "--backend", model.provider, "--project", project, "--model", model.model, "--text", text, "--cid", cid];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid];
   if (model.effort) args.push("--effort", model.effort);
-  if (workIn === "local") args.push("--local");
   if (level) args.push("--level", level);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
-  setHomeDraft({ text: undefined, model, project });
+  setHomeDraft({ text: undefined, model, ...(project && { project }) });
   keepDraft(daemonRun, HOME_DRAFT, []);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   runStart(entry);
@@ -135,7 +144,7 @@ export function discard(id: string): void {
     const gone = reply.ok || /os error 2\b/.test(String(reply.error));
     if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
     put(id, null);
-    setHomeDraft({ project: entry.project, text: { parts: [entry.text], attachmentIds: [] } });
+    setHomeDraft({ ...(entry.project ? { project: entry.project, chat: false } : { chat: true }), text: { parts: [entry.text], attachmentIds: [] } });
     keepDraft(daemonRun, HOME_DRAFT, [entry.text]);
     if (isOpen(id)) window.location.hash = "";
   });

@@ -5,11 +5,11 @@ import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../compon
 import { type Draft, isEmpty, plainText } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
-import { ComposerRail, RailItem } from "../components/composer/rail";
+import { ComposerRail, NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
-import { ErrorLine } from "../components/error-line";
 import { BrigadierMark } from "../onboarding/mark";
-import { type DraftProject, ProjectPicker, type WorkIn, WorkInPicker } from "./pills";
+import { BranchPicker, type RepoState } from "./branch";
+import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
 
 /** "Good morning" from five until noon, "Good afternoon" until six, else "Good evening" (the old app's). */
 function greeting(now: number): string {
@@ -37,8 +37,18 @@ export type HomeProps = {
   onProject: (id: string) => void;
   /** Opens Add project, on a typed folder if any. */
   onAddProject: (path: string) => void;
+  /** "Don't work in a project": the draft becomes a chat [D388]. */
+  onNoProject: () => void;
   workIn: WorkIn;
   onWorkIn: (next: WorkIn) => void;
+  /** The project's branches and worktrees. */
+  repo: RepoState;
+  /** The base branch picked here; null: the checked-out one [D392]. */
+  base: string | null;
+  onBase: (branch: string) => void;
+  /** The existing worktree picked here. */
+  worktree: string | null;
+  onWorktree: (path: string) => void;
   /** null while the first list loads. */
   groups: ModelGroup[] | null;
   model: ModelChoice | null;
@@ -58,21 +68,22 @@ export type HomeProps = {
   /** Changed to put the cursor back in the field (⌘N on Home). */
   focus?: number;
   /** The gallery's box to hold a picker open in. */
-  held?: { box: HTMLElement; picker: "project" | "workIn" | "heading" };
+  held?: { box: HTMLElement; picker: "project" | "workIn" | "heading" | "branch" };
 };
 
 /**
  * Home: a new session's draft [D161]. The old app's hero ("What should we build in {project}?", the name a
- * picker) over the composer, whose rail holds the project and Work in pills [D160]; the model pill sits in its
- * footer. With no project yet it asks for one first. Nothing is made until Send.
+ * picker) over the composer, whose rail holds the project, Work in and branch pills [D160, D388]; the model pill
+ * sits in its footer. With no project it starts a chat. Nothing is made until Send. What needs saying goes on the
+ * rail, never under the card, so the composer doesn't move [D388].
  */
 export function HomeView(props: HomeProps) {
   const { name, projects, project, offline, held } = props;
   const salutation = useGreeting(Boolean(name));
   const [empty, setEmpty] = useState(() => !props.initial || isEmpty(props.initial));
-  const none = projects?.length === 0;
   const noModel = props.groups !== null && !props.model;
-  const blocked = offline ? "Reconnecting…" : !project ? "Choose a project first" : !props.model ? "Pick a model first" : undefined;
+  const noWorktree = project && props.workIn === "existing" && !props.worktree;
+  const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : undefined;
   const send = (parts: Draft["parts"]) => {
     if (blocked || isEmpty({ parts, attachmentIds: [] })) return;
     props.onSend(plainText(parts).trim());
@@ -103,28 +114,53 @@ export function HomeView(props: HomeProps) {
           {project && projects ? (
             <>
               What should we build in{" "}
-              <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} held={held?.picker === "heading" ? held.box : undefined} />?
+              <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "heading" ? held.box : undefined} />?
             </>
           ) : (
             "What should we build?"
           )}
         </h1>
-        {none && (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-sm text-muted-foreground">Add a project to start a session in it.</p>
-            <Button onClick={() => props.onAddProject("")}>Add a project</Button>
-          </div>
-        )}
       </div>
       <div className="flex grow basis-0 flex-col justify-end">
-      {projects && !none && (
         <Composer>
           <ComposerRail>
+            {props.modelError && (
+              <RailItem label="Notices">
+                <ul aria-live="polite">
+                  <NoticeRow level="error">{props.modelError}</NoticeRow>
+                </ul>
+              </RailItem>
+            )}
+            {!props.modelError && noModel && (
+              <RailItem label="Notices">
+                <ul aria-live="polite">
+                  <NoticeRow
+                    level="info"
+                    action={
+                      setUp &&
+                      props.onSetUp && (
+                        <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
+                          Set up {setUp.label}
+                        </Button>
+                      )
+                    }
+                  >
+                    No model is available.
+                  </NoticeRow>
+                </ul>
+              </RailItem>
+            )}
             <RailItem variant="controls" label="Composer utility bar">
-              <div className="flex items-center gap-2 px-1 py-1.25">
-                <ProjectPicker projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} held={held?.picker === "project" ? held.box : undefined} />
-                {project && <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} held={held?.picker === "workIn" ? held.box : undefined} />}
-              </div>
+              {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
+              <UtilityBar className={projects ? undefined : "invisible"}>
+                <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "project" ? held.box : undefined} />
+                {project && (
+                  <>
+                    <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} held={held?.picker === "workIn" ? held.box : undefined} />
+                    <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} held={held?.picker === "branch" ? held.box : undefined} />
+                  </>
+                )}
+              </UtilityBar>
             </RailItem>
           </ComposerRail>
           <ComposerCard>
@@ -146,19 +182,7 @@ export function HomeView(props: HomeProps) {
               <SendButton empty={empty} running={false} canStop={false} blocked={blocked} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
             </ComposerFooter>
           </ComposerCard>
-          <ErrorLine error={props.modelError} className="px-2 pt-2 text-xs" />
-          {!props.modelError && noModel && (
-            <p className="flex items-center gap-2 px-2 pt-2 text-xs text-muted-foreground">
-              No model is available.
-              {setUp && props.onSetUp && (
-                <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
-                  Set up {setUp.label}
-                </Button>
-              )}
-            </p>
-          )}
         </Composer>
-      )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 import { type ReactNode, useState } from "react";
 
 import type { ModelChoice, ModelGroup } from "../src/components/composer/model-picker";
+import type { RepoState } from "../src/home/branch";
 import type { DraftProject, WorkIn } from "../src/home/pills";
 import { type HomeProps, HomeView } from "../src/home/view";
 import { Held, Row, Section, State } from "./parts";
@@ -21,14 +22,26 @@ const GROUPS: ModelGroup[] = [
 ];
 const LARGE: ModelChoice = { provider: "cloud", model: "large", effort: "medium" };
 
+const REPO: RepoState = {
+  info: { current: "main", branches: ["main", "feat/invoices", "fix/rounding"], worktrees: [{ path: "/Users/you/code/todo-review", branch: "review" }] },
+  loading: false,
+  refresh: noop,
+};
+
 const BASE: HomeProps = {
   name: "Sam",
   projects: PROJECTS,
   project: PROJECTS[0]!,
   onProject: noop,
   onAddProject: noop,
+  onNoProject: noop,
   workIn: "worktree",
   onWorkIn: noop,
+  repo: REPO,
+  base: null,
+  onBase: noop,
+  worktree: null,
+  onWorktree: noop,
   groups: GROUPS,
   model: LARGE,
   onModel: noop,
@@ -78,14 +91,9 @@ export function HomeGallery() {
             <HomeView {...BASE} />
           </Frame>
         </State>
-        <State label="No project yet: Add a project first">
+        <State label="No project: a chat">
           <Frame>
-            <HomeView {...BASE} projects={[]} project={null} model={null} />
-          </Frame>
-        </State>
-        <State label="Projects loading">
-          <Frame>
-            <HomeView {...BASE} projects={undefined} project={null} />
+            <HomeView {...BASE} projects={[]} project={null} />
           </Frame>
         </State>
         <State label="Local checkout, no name, models loading">
@@ -118,6 +126,9 @@ export function HomeGallery() {
         </State>
         <State label="The heading's project">
           <HeldHome picker="heading" />
+        </State>
+        <State label="Base branch">
+          <HeldHome picker="branch" />
         </State>
       </Row>
       <Row name="Live">

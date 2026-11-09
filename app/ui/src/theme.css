@@ -903,6 +903,10 @@
 }
 
 /* A line too long for its row fades out at its end (a sidebar row's title). */
+@utility hide-scrollbar {
+  scrollbar-width: none;
+}
+
 @utility mask-fade-end {
   mask-image: linear-gradient(to right, black calc(100% - var(--spacing-control-sm)), transparent);
 }

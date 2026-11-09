@@ -88,7 +88,7 @@ const NOTICE_ICONS = {
  * icon, the words, its action (Retry) and ✕. An error's words are the kit's one error line (D87). Words past
  * one line are cut with an ellipsis, and the chevron after them opens the whole text in place (D122).
  */
-function NoticeRow({
+export function NoticeRow({
   level,
   action,
   pager,
