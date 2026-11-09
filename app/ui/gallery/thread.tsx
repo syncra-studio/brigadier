@@ -374,7 +374,7 @@ export function Thread() {
           ))}
         </Row>
       </Section>
-      <Section title="Approvals, questions, subagents, context saving, notices">
+      <Section title="Approvals, questions, subagents, conversation optimizing, notices">
         <Row
           name="Approval row"
         >
@@ -423,8 +423,8 @@ export function Thread() {
             </div>
           </Wide>
         </Row>
-        <Row name="Context saving and notices">
-          <Wide label="context saving">
+        <Row name="Conversation optimizing and notices">
+          <Wide label="conversation optimizing">
             <div className="flex w-full flex-col">
               {(["running", "done", "failed"] as const).map((progress) => (
                 <div key={String(progress)}>{item({ ...base(`m-${String(progress)}`), kind: "compaction", summary: null, progress })}</div>

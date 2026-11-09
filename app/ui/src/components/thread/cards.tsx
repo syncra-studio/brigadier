@@ -181,10 +181,10 @@ export function ChildAgentRow({
 }
 
 const COMPACTION: Record<Exclude<Progress, "pending">, string> = {
-  running: "Saving context · nothing will be lost",
-  done: "Context saved · the full thread is still here",
-  failed: "Couldn’t save context · the conversation is unchanged",
-  cancelled: "Couldn’t save context · the conversation is unchanged",
+  running: "Optimizing conversation…",
+  done: "Conversation optimized",
+  failed: "Couldn’t optimize conversation · Nothing changed",
+  cancelled: "Couldn’t optimize conversation · Nothing changed",
 };
 
 /** The agent shortening its context, as a divider across the column. */
