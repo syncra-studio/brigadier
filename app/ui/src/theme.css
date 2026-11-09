@@ -817,6 +817,10 @@
   max-height: calc(100% - --spacing(8));
   scroll-margin-top: --spacing(4);
   overflow-y: auto;
+  /* A view that's one form scrolls its own body, so its footer stays in a short window. */
+  &:has(> form) {
+    grid-template-rows: minmax(0, 1fr);
+  }
 }
 
 /* A toast's way in (faded, from above) and out (faded). */

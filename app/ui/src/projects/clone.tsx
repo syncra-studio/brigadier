@@ -194,9 +194,9 @@ export function NewRepoView({
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col">
+    <form onSubmit={submit} className="flex min-h-0 flex-col">
       <Header title="New repository" line="Name it and choose where it goes. Brigadier starts git in it and adds it." onBack={busy ? undefined : onBack} />
-      <div className="flex flex-col gap-5.5 px-7 pt-1 pb-7">
+      <div className="flex min-h-0 flex-col gap-5.5 overflow-y-auto px-7 pt-1 pb-7">
         <div className="flex flex-col gap-2">
           <FieldLabel htmlFor={`${id}-name`} label="Name" />
           <div className={BOX}>
