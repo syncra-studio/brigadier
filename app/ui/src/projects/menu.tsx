@@ -21,7 +21,7 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => openProjectSettings(project.id)}>
         <SettingsCog />
-        Project settings…
+        Project settings
       </DropdownMenuItem>
       <DropdownMenuItem
         onClick={() => void run(["projects", "reveal", project.id]).catch((cause) => showToast(`Couldn't reveal ${project.name}: ${errorText(cause)}`, { tone: "error" }))}
@@ -36,7 +36,7 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" onClick={() => openRemoveProject(project.id)}>
         <Trash />
-        Remove project…
+        Remove project
       </DropdownMenuItem>
     </>
   );

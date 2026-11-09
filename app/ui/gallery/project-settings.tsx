@@ -37,7 +37,7 @@ const FAKE = fake();
 
 const PREVIEW: Preview = { sessions: ["s-1", "s-2", "s-3"], working: [], worktrees: 2, bytes: 48_300_000, merged: 1, branches: [] };
 const BRANCHES: Preview = { ...PREVIEW, branches: [{ id: "s-2", branch: "brigadier/s-2" }, { id: "s-3", branch: "brigadier/s-3" }] };
-const REMOVE = "max-w-project-dialog gap-5 p-6";
+const REMOVE = "project-dialog max-w-project-dialog gap-5 p-6";
 const ready = (preview: Preview) => ({ state: "ready" as const, preview });
 
 /** A dialog held open in its own box, as the app shows it. */
@@ -58,7 +58,7 @@ export function Frozen({ label, frame, tall, children }: { label: string; frame:
 }
 
 const Settings = ({ label, project = SET, source = FAKE, Files }: { label: string; project?: Project; source?: SettingsSource; Files?: (props: FilesProps) => ReactNode }) => (
-  <Frozen label={label} frame="max-w-project-dialog gap-7 p-6" tall>
+  <Frozen label={label} frame="project-dialog max-w-project-dialog gap-7 p-6" tall>
     <ProjectSettings project={project} source={source} onClose={() => {}} Files={Files} />
   </Frozen>
 );
@@ -93,7 +93,7 @@ export function ProjectSettingsGallery() {
           </Held>
         </State>
       </Row>
-      <Row name="Remove project…: looking · nothing made · what goes · branches to ask about · one working · partly failed · lost the connection · removed, branches kept">
+      <Row name="Remove project: looking · nothing made · what goes · branches to ask about · one working · partly failed · lost the connection · removed, branches kept">
         <Frozen label="looking" frame={REMOVE}>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: { state: "looking" } }} />
         </Frozen>

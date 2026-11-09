@@ -122,17 +122,32 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   if (phase.at === "removed") return <Removed name={project.name} repo={phase.repo} kept={phase.kept} onClose={onClose} />;
   if (phase.at === "watching") {
     return (
-      <Waiting title={`Remove “${project.name}”?`} spin onClose={onClose}>
+      <Waiting title={`Remove “${project.name}”?`} onClose={onClose}>
         {daemon ? `Removing “${project.name}”…` : `Lost the connection while removing “${project.name}”. Checking again when it's back.`}
       </Waiting>
     );
   }
-  if (look.state !== "ready") {
-    return (
-      <Waiting title={`Remove “${project.name}”?`} spin={look.state === "looking"} onClose={onClose}>
-        {look.state === "looking" ? (
-          `Looking at what “${project.name}” has…`
-        ) : (
+  // One view from the start: the facts open into it, and Remove waits for them [D391].
+  const preview = look.state === "ready" ? look.preview : null;
+  const sessions = preview?.sessions.length ?? 0;
+  const anything = sessions > 0 || (preview?.worktrees ?? 0) > 0 || (preview?.merged ?? 0) > 0;
+  const working = (preview?.working ?? []).map((id) => `“${titleOf(id)}”`);
+  const one = working.length === 1;
+  const blocked = working.length ? `${working.join(", ")} ${one ? "is" : "are"} working. Stop ${one ? "it" : "them"} or let ${one ? "it" : "them"} finish first.` : null;
+  return (
+    <ConfirmForm
+      title={`Remove “${project.name}”?`}
+      description={`The repository at ${shortPath(project.folder)} stays exactly as it is.`}
+      confirm={phase.at === "removing" ? "Removing…" : "Remove"}
+      destructive
+      busy={phase.at === "removing"}
+      disabled={preview === null || blocked !== null}
+      onConfirm={confirm}
+      onCancel={onClose}
+    >
+      <Collapsible open={look.state !== "looking"} className="-mx-6 min-h-0 overflow-y-auto px-6">
+        <CollapsibleContent className="flex flex-col gap-5">
+        {look.state === "failed" && (
           <span className="flex items-center gap-2">
             <ErrorLine error={`Couldn't look at what it has: ${look.error}`} />
             <Button variant="ghost" size="sm" onClick={() => setAttempt(attempt + 1)}>
@@ -140,29 +155,8 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
             </Button>
           </span>
         )}
-      </Waiting>
-    );
-  }
-
-  const { preview } = look;
-  const sessions = preview.sessions.length;
-  const anything = sessions > 0 || preview.worktrees > 0 || preview.merged > 0;
-  const working = preview.working.map((id) => `“${titleOf(id)}”`);
-  const one = working.length === 1;
-  const blocked = working.length ? `${working.join(", ")} ${one ? "is" : "are"} working. Stop ${one ? "it" : "them"} or let ${one ? "it" : "them"} finish first.` : null;
-  return (
-    <ConfirmForm
-      title={`Remove “${project.name}”?`}
-      description={`The repository at ${shortPath(project.folder)} stays exactly as it is.${anything ? " Only what Brigadier made for this project is deleted:" : ""}`}
-      confirm={phase.at === "removing" ? "Removing…" : "Remove"}
-      destructive
-      busy={phase.at === "removing"}
-      disabled={blocked !== null}
-      onConfirm={confirm}
-      onCancel={onClose}
-    >
-      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto">
-        {anything && (
+        {anything && <p className="text-sm text-muted-foreground">Only what Brigadier made for this project is deleted:</p>}
+        {preview && anything && (
           <ul aria-label="What is deleted" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
             {sessions > 0 && <SummaryRow icon={<Chats />} label={plural(sessions, "session", "sessions")} detail="Can't be undone" />}
             {preview.worktrees > 0 && <SummaryRow icon={<Folder />} label={plural(preview.worktrees, "worktree", "worktrees")} detail={formatBytes(preview.bytes)} />}
@@ -175,9 +169,9 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
             )}
           </ul>
         )}
-        {preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
-        {preview.branches.length > 1 && <ManyBranches branches={preview.branches} titleOf={titleOf} drops={drops} onDrops={setDrops} />}
-        {preview.branches.length === 1 && preview.branches.map(({ id, branch }) => (
+        {preview && preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
+        {preview && preview.branches.length > 1 && <ManyBranches branches={preview.branches} titleOf={titleOf} drops={drops} onDrops={setDrops} />}
+        {preview?.branches.length === 1 && preview.branches.map(({ id, branch }) => (
           <div key={id} className="flex flex-col gap-2.5">
             <p className="text-xs text-muted-foreground">
               “{titleOf(id)}”: its branch <code className="font-mono text-foreground">{branch}</code> has work that never landed.
@@ -202,7 +196,8 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
         <div role="alert">
           <ErrorLine error={error} />
         </div>
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
     </ConfirmForm>
   );
 }
@@ -216,6 +211,7 @@ function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview
     else next.delete(id);
     onDrops(next);
   };
+  const all = dropped === branches.length;
   return (
     <Collapsible className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
@@ -226,6 +222,9 @@ function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview
       </div>
       <CollapsibleContent>
         <div className="flex flex-col gap-2">
+          <div className="border-b border-divider pb-2">
+            <CheckboxRow label={`Delete all ${branches.length} branches too`} checked={all} indeterminate={dropped > 0 && !all} onCheckedChange={() => onDrops(new Set(all ? [] : branches.map(({ id }) => id)))} />
+          </div>
           {branches.map(({ id, branch }) => (
             <CheckboxRow key={id} label={`Delete ${branch} too`} note={`“${titleOf(id)}”`} checked={drops.has(id)} onCheckedChange={(on) => toggle(id, on)} />
           ))}
@@ -246,15 +245,15 @@ function SummaryRow({ icon, label, detail }: { icon: ReactNode; label: string; d
   );
 }
 
-/** Looking, or waiting on how a removal ended: its line and Cancel. */
-function Waiting({ title, spin, children, onClose }: { title: string; spin: boolean; children: ReactNode; onClose: () => void }) {
+/** Waiting on how a removal ended: its line and Cancel. */
+function Waiting({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
     <>
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription render={<div />}>{children}</DialogDescription>
       </DialogHeader>
-      {spin && <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
+      <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>
           Cancel
