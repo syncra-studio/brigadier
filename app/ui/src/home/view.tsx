@@ -79,9 +79,10 @@ export function HomeView(props: HomeProps) {
   useEffect(() => field.current?.focus(), [props.focus]);
   const setUp = props.groups?.find((group) => group.unavailable);
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 select-none">
-        <BrigadierMark className="size-16 text-foreground opacity-60 transition-opacity hover:opacity-100" />
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* The hero ends a little above the middle and the composer sits at the bottom; each takes half the height. */}
+      <div className="flex min-h-fit grow basis-0 flex-col items-center justify-end gap-6 px-4 pb-11 select-none">
+        <BrigadierMark spinOnHover className="hero-mark size-16 text-foreground opacity-60 hover:opacity-100" />
         {name && (
           <p className="-mb-3 text-center text-base text-muted-foreground">
             {salutation}, {name}
@@ -104,6 +105,7 @@ export function HomeView(props: HomeProps) {
           </div>
         )}
       </div>
+      <div className="flex grow basis-0 flex-col justify-end">
       {projects && !none && (
         <Composer>
           <ComposerRail>
@@ -146,6 +148,7 @@ export function HomeView(props: HomeProps) {
           )}
         </Composer>
       )}
+      </div>
     </div>
   );
 }
