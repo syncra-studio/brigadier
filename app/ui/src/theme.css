@@ -915,6 +915,15 @@
   }
 }
 
+/* Space held for the scrollbar whether or not it's needed, so nothing moves when a view starts to scroll. */
+@utility scroll-gutter {
+  scrollbar-gutter: stable;
+}
+/* The same on both sides, for a column centred over or under something outside its scroller (the composer). */
+@utility scroll-gutter-both {
+  scrollbar-gutter: stable both-edges;
+}
+
 /* A line too long for its row fades out at its end (a sidebar row's title). */
 @utility hide-scrollbar {
   &::-webkit-scrollbar {

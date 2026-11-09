@@ -312,7 +312,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
         data={data}
         shift={shift}
         bufferSize={3200}
-        className="h-full"
+        className="scroll-gutter-both h-full"
         onScrollEnd={letGo}
         onResize={fill}
         onScroll={(offset) => {

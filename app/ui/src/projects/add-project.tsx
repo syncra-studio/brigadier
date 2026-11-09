@@ -273,7 +273,7 @@ function PickView({
           <span>Most recent first</span>
         </div>
         {/* While the scan runs the list holds its five rows' room. */}
-        <div role="radiogroup" aria-label="On this Mac" className={cx("flex max-h-add-project-list flex-col gap-0.5 overflow-y-auto", repos === null && "min-h-add-project-list")}>
+        <div role="radiogroup" aria-label="On this Mac" className={cx("scroll-gutter -me-2.5 flex max-h-add-project-list flex-col gap-0.5 overflow-y-auto", repos === null && "min-h-add-project-list")}>
           {rows.map((row) => (
             <RepoRow key={row.path} row={row} chosen={row === current} onPick={() => setSelected(row.path)} onAdd={() => add(row)} />
           ))}

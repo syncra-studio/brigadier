@@ -49,7 +49,7 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 }
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
-const LIST = "scroll-edge-fade edge-fade-sidebar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2";
+const LIST = "scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2";
 
 export function AppSidebar({
   rows,

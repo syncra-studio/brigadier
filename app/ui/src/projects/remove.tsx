@@ -145,7 +145,7 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
       onConfirm={confirm}
       onCancel={onClose}
     >
-      <Collapsible open={look.state !== "looking"} className="-mx-6 min-h-0 overflow-y-auto px-6">
+      <Collapsible open={look.state !== "looking"} className="scroll-gutter -mx-6 min-h-0 overflow-y-auto ps-6 pe-3.5">
         <CollapsibleContent className="flex flex-col gap-5">
         {look.state === "failed" && (
           <span className="flex items-center gap-2">

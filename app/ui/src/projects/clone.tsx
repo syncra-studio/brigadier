@@ -115,7 +115,7 @@ export function CloneView({
   return (
     <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col">
       <Header title="Clone from URL" line="Paste a link to a git repository. We'll copy it to your Mac and add it." onBack={busy ? undefined : onBack} />
-      <div className="flex min-h-0 flex-col gap-5.5 overflow-y-auto px-7 pt-1 pb-7">
+      <div className="scroll-gutter flex min-h-0 flex-col gap-5.5 overflow-y-auto ps-7 pe-4.5 pt-1 pb-7">
         <div className="flex flex-col gap-2">
           <FieldLabel htmlFor={`${id}-url`} label="Repository URL" />
           <div className={BOX}>
@@ -196,7 +196,7 @@ export function NewRepoView({
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-col">
       <Header title="New repository" line="Name it and choose where it goes. Brigadier starts git in it and adds it." onBack={busy ? undefined : onBack} />
-      <div className="flex min-h-0 flex-col gap-5.5 overflow-y-auto px-7 pt-1 pb-7">
+      <div className="scroll-gutter flex min-h-0 flex-col gap-5.5 overflow-y-auto ps-7 pe-4.5 pt-1 pb-7">
         <div className="flex flex-col gap-2">
           <FieldLabel htmlFor={`${id}-name`} label="Name" />
           <div className={BOX}>

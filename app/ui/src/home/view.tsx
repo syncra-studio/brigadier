@@ -101,7 +101,7 @@ export function HomeView(props: HomeProps) {
   }, []);
   const setUp = props.groups?.find((group) => group.unavailable);
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div className="scroll-gutter-both flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* The hero ends a little above the middle and the composer sits at the bottom; each takes half the height. */}
       <div className="flex min-h-fit grow basis-0 flex-col items-center justify-end gap-6 px-4 pb-11 select-none">
         <BrigadierMark spinOnHover className="hero-mark size-16 text-foreground opacity-60 hover:opacity-100" />

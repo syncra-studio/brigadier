@@ -140,7 +140,7 @@ export function ProjectSettings({
   return (
     <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-7">
       <DialogTitle>Project settings</DialogTitle>
-      <div className="-mx-6 flex min-h-0 flex-col gap-5.5 overflow-y-auto px-6 py-1">
+      <div className="scroll-gutter -mx-6 flex min-h-0 flex-col gap-5.5 overflow-y-auto ps-6 pe-3.5 py-1">
         <Field label="Name" htmlFor={`${id}-name`}>
           <Input id={`${id}-name`} value={name} autoFocus maxLength={80} onChange={(event) => setName(event.target.value)} />
         </Field>

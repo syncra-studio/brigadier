@@ -263,7 +263,7 @@ export function ComposerField({
         data-slot="composer-field"
         data-scrolled={scrolled || undefined}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-        className={cx("relative w-full cursor-text", size === "line" ? "overflow-hidden" : "overflow-y-auto data-scrolled:mask-fade-top", box)}
+        className={cx("relative w-full cursor-text", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
         <PlainTextPlugin
           contentEditable={
