@@ -11,6 +11,9 @@ use std::sync::mpsc::channel;
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// The name Codex records as a thread's originator.
+const CLIENT: &str = "brigadier";
+
 /// One request's result, or the server's error message; the same for no answer in time.
 type Call<'a> = &'a mut dyn FnMut(&str, Value) -> Result<Value, String>;
 
@@ -69,7 +72,7 @@ fn short_lived<T>(
             };
         }
     };
-    let client = json!({"clientInfo": {"name": "brigadier", "version": env!("CARGO_PKG_VERSION")}});
+    let client = json!({"clientInfo": {"name": CLIENT, "version": env!("CARGO_PKG_VERSION")}});
     let done = call("initialize", client).ok().map(|_| work(&mut call));
     let _ = child.kill();
     let _ = child.wait();
@@ -130,8 +133,9 @@ pub fn fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, turn: &str) -> Resu
     }
 }
 
-/// A fork that was never heard about goes, so nothing is left behind unrecorded [D35]. The original
-/// is untouched either way; a list that fails can leave one fork, which nothing resumes.
+/// A fork that was never heard about goes, so nothing is left behind unrecorded [D35]. Only what
+/// Brigadier forked goes: a fork made elsewhere isn't ours to delete. The original is untouched
+/// either way; a list that fails, or names no originator, can leave one fork, which nothing resumes.
 pub fn drop_fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, resume: &str, at: u64) {
     let found = short_lived(spec, exe, cwd, 30, |call| {
         let page = call("thread/list", json!({"limit": 50})).ok()?;
@@ -140,7 +144,7 @@ pub fn drop_fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, resume: &str, 
             .cloned()
             .unwrap_or_default()
             .into_iter())
-        .filter(|t| t["forkedFromId"] == conv && t["id"] != resume)
+        .filter(|t| t["forkedFromId"] == conv && t["id"] != resume && t["originator"] == CLIENT)
         .filter(|t| t["createdAt"].as_u64().is_some_and(|s| s >= at / 1000));
         for thread in made {
             let _ = call("thread/delete", json!({"threadId": thread["id"]}));
