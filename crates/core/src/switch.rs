@@ -55,13 +55,11 @@ pub fn switch(
         return json!({"ok": false, "error": e.clone(), "message": e});
     }
     let held = crate::projects::held(&crate::data_of(spec), spec);
-    if held {
-        match crate::send::level(spec, a, true) {
-            Ok(level) => run.level = level.map(String::from),
-            Err(_) => {
-                let e = crate::send::cant_hold(a);
-                return json!({"ok": false, "error": e.clone(), "message": e});
-            }
+    match crate::send::level(spec, a, held) {
+        Ok(level) => run.level = level.map(String::from),
+        Err(e) => {
+            let e = if held { crate::send::cant_hold(a) } else { e };
+            return json!({"ok": false, "error": e.clone(), "message": e});
         }
     }
     let last = f.last.clone().unwrap_or_default();

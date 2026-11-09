@@ -319,8 +319,9 @@ fn idle(spec: &Spec, call: Call, needs_child: bool) -> Result<(u64, Fold), Value
 }
 
 /// The level a turn runs at: Ask while its project holds it [D166], else the spec's, or (proposed)
-/// the agent's most restrictive when it names none. One the agent can't enforce refuses the turn,
-/// never runs weaker [D129, D170]. The session's row shows the same answer.
+/// the agent's most restrictive when it names none. One the agent doesn't have falls back to its
+/// most restrictive, if that is stricter [D222]; otherwise the turn is refused, never run weaker
+/// [D129, D170]. The session's row shows the same answer.
 pub fn level(
     spec: &Spec,
     a: &dyn adapters::Adapter,
@@ -333,12 +334,16 @@ pub fn level(
         spec.level.as_deref()
     } {
         None => Ok(levels.first().copied()),
-        Some(want) => levels
-            .iter()
-            .find(|l| **l == want)
-            .copied()
-            .map(Some)
-            .ok_or_else(|| format!("{} can't run at the {want:?} permission level", a.label())),
+        Some(want) => {
+            let rank = |l: &str| ["ask", "auto", "full"].iter().position(|o| *o == l);
+            levels
+                .iter()
+                .find(|l| **l == want)
+                .or(levels.first().filter(|l| rank(l) < rank(want)))
+                .copied()
+                .map(Some)
+                .ok_or_else(|| format!("{} can't run at the {want:?} permission level", a.label()))
+        }
     }
 }
 
