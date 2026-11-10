@@ -36,11 +36,15 @@ export const dropChips = (session: string, ids: readonly string[]) => set(sessio
 export const restoreChips = (session: string, back: readonly Chip[]) =>
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
 
-/** The chips as the agent reads them, after the user's own words: each comment's place, its first line and what it says. */
+/**
+ * The chips as the agent reads them, after the user's own words: each comment's place (on a removed line, the old
+ * file's; on a commit's diff, that commit's), its first line and what it says.
+ */
 export function withChips(message: string, sent: readonly Chip[]): string {
-  const blocks = sent.map(({ comment }) => {
+  const blocks = sent.map(({ on, comment }) => {
     const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
-    return `${comment.path}:${lines}\n> ${comment.excerpt}\n${comment.text}`;
+    const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
+    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n> ${comment.excerpt}\n${comment.text}`;
   });
   return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
 }

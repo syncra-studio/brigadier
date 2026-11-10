@@ -3,7 +3,7 @@
 //! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103], and a
 //! session's commits since its base and one commit's diff [D1041].
 
-use super::{arg, flag, has};
+use super::{arg, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
@@ -15,10 +15,12 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 
+/// Whose checkout: `--project <id>` only right after the command, so a search or a replacement
+/// that reads `--project` stays text.
 fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
-    Ok(match flag(args, "--project") {
-        Some(project) => (Target::Project(project), 3),
-        None => (Target::Session(arg(args, 1)?), 2),
+    Ok(match arg(args, 1)? {
+        "--project" => (Target::Project(arg(args, 2)?), 3),
+        session => (Target::Session(session), 2),
     })
 }
 

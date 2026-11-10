@@ -67,7 +67,8 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
           );
         });
     },
-    [key],
+    // A new callback once reconnected, so the tree asks again for folders opened meanwhile.
+    [key, daemon],
   );
   // shortcut: the listing (for a new ignored folder, which changes no status) and opened ignored folders are read again
   // every few seconds while shown; a watch of their own would be instant.
