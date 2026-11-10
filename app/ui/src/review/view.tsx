@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ask, useDaemon } from "../daemon";
+import { addChip, dropChips, useChips } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
 import { openFile } from "../shell/tab-store";
 import { ReviewTab } from "./review-tab";
@@ -9,8 +10,9 @@ import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, Rev
 /**
  * The Review tab on Rust's git [D1035, D1036]: the scope's files and counts first, then each file's patch, a large
  * one's when it's opened. Every watch read that changed something reads it again. Stage, unstage and revert go
- * through the same Rust moves as Source's, by hunk id or path [D1043]. Branch since base and comments come with
- * 2.18. `target`: the file it opened on, scrolled to once it's there.
+ * through the same Rust moves as Source's, by hunk id or path [D1043]. Branch since base is read again when the base
+ * moves, which the watch doesn't see [D1035]. A comment waits as a chip above the composer and leaves the diff once
+ * it's sent [D1040]. `target`: the file it opened on, scrolled to once it's there.
  */
 export function ReviewView({ owner, target }: { owner: string; target?: string }) {
   const git = useGit();
@@ -28,6 +30,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
   const scrolled = useRef<string | null>(null);
   const checkout = git.target;
   const key = checkout && JSON.stringify(checkout);
+  const chips = useChips(owner);
 
   const setState = (id: string, state: RequestState | null) =>
     setStates((now) => {
@@ -65,6 +68,18 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
     });
   }, [key, daemon, scope, git.version, tick]);
 
+  // shortcut: Branch since base asks every few seconds, while the window shows, whether the base moved; a watch of
+  // the base's ref would be instant.
+  const since = scope === "branch" ? review?.since : undefined;
+  useEffect(() => {
+    if (!checkout || !daemon || !since) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      ask({ op: "run", args: sourceArgs(checkout, "since") }, (reply) => reply.ok && reply.since !== since && setTick((n) => n + 1));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [key, daemon, since]);
+
   // Once the opened-on file is drawn (a large one folded, with no contents), it comes into view.
   useEffect(() => {
     const file = review?.files.find((each) => each.path === target);
@@ -100,9 +115,9 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       states={states}
       onRequest={request}
       onOpenIn={(path) => openFile(owner, path, { preview: false })}
-      comments={[]}
-      onComment={() => {}}
-      onRemoveComment={() => {}}
+      comments={chips.map((chip) => chip.comment)}
+      onComment={(comment) => addChip(owner, { kind: "comment", id: comment.id, comment })}
+      onRemoveComment={(id) => dropChips(owner, [id])}
       />
     </div>
   );

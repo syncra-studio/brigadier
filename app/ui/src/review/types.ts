@@ -1,5 +1,5 @@
 /**
- * What the Review tab draws, as Rust will send it (PROPOSED for step 2.18): the file list with counts first, then
+ * What the Review tab draws, as Rust sends it: the file list with counts first, then
  * each file's contents (D1036). Rust parses git's patches; the UI only draws them (D71).
  */
 
@@ -48,6 +48,8 @@ export type Review = {
   scope: ReviewScope;
   /** The branch Branch since base compares against. */
   base: string | null;
+  /** Where the branch left it: Branch since base starts there. */
+  since?: string;
   /** The commit a commit review shows: its full id, subject and time (D1041). */
   commit?: { sha: string; subject: string; atMs: number };
   files: readonly ReviewFile[];

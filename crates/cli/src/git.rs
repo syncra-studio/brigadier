@@ -102,6 +102,11 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
                 diff::file(&checkout, Scope::parse(word(1)?)?, word(2)?, from(3), &stop)?;
             json!({"ok": true, "contents": contents})
         }
+        // Where the branch left its base now: Review looks again when it moves, which the watch doesn't see.
+        "since" => {
+            let (base, since) = since(data, &target, &checkout, &stop)?;
+            json!({"ok": true, "base": base, "since": since})
+        }
         // The Files tree, an ignored folder opened in it, and the filename search [D1002].
         "files" => json!({"ok": true, "list": files::list(&checkout, &stop)?}),
         "folder" => json!({"ok": true, "entries": files::folder(&checkout, word(1)?)?}),
