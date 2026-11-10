@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, Globe } from "../icons";
+import { Clock, Compare, Dock, Document, Globe } from "../icons";
 import { PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
@@ -24,10 +24,13 @@ export const TAB_KINDS = {
   conflict: { name: "Conflict", icon: Document },
   pr: { name: "Pull request", icon: PullRequestOpen },
   review: { name: "Review", icon: Compare },
+  history: { name: "History", icon: Clock },
+  // One commit's diff, a Review tab on that commit [D1041].
+  commit: { name: "Review", icon: Compare },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file or conflict tab's path, a PR tab's number [D1014]. A file tab also has the line last asked for, and
+ * `target`: a file or conflict tab's path, a PR tab's number, a commit tab's full id [D1014, D1041]. A file tab also has the line last asked for, and
  * whether it's the preview the next file takes.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean };
@@ -138,8 +141,8 @@ export const justOpened = (id: string): boolean => opened.delete(id);
 
 const has = (now: Tabs, id: string) => id === CHAT || now.tabs.some((tab) => tab.id === id);
 
-/** Kinds a session has one of, as Rust's `ONE` [D478]. */
-const ONE: readonly TabKind[] = ["review"];
+/** Kinds a session has one of, as Rust's `ONE` [D478, D1114]. */
+const ONE: readonly TabKind[] = ["history", "review"];
 const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && tab.target === target));
 
 export function openTab(owner: string, kind: TabKind, target?: string): void {

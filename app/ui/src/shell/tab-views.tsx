@@ -6,6 +6,8 @@ import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
+import { CommitReview } from "../history/commit-review";
+import { HistoryTab } from "../history/history-tab";
 import { FileViewer } from "../files/viewer";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
@@ -112,6 +114,10 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               <FileTab key={tab.target} tab={tab} active={tab.id === active} />
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} />
+            ) : tab.kind === "history" ? (
+              <HistoryTab owner={owner} />
+            ) : tab.kind === "commit" ? (
+              <CommitReview key={tab.target} owner={owner} sha={tab.target ?? ""} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}

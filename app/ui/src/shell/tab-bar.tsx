@@ -131,7 +131,8 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
 }
 
 /** A file or conflict tab is named by its file, a PR tab by its number. */
-const nameOf = (tab: Tab) => (tab.target === undefined ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : baseName(tab.target));
+const nameOf = (tab: Tab) =>
+  tab.target === undefined ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : tab.kind === "commit" ? tab.target.slice(0, 7) : baseName(tab.target);
 
 function TabIcon({ tab }: { tab: Tab }) {
   if ((tab.kind === "file" || tab.kind === "conflict") && tab.target !== undefined) return <FileIcon name={tab.target} size="sm" />;

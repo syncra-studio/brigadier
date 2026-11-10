@@ -14,15 +14,18 @@ use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a conflicted file and a pull
-/// request, each with its target, a path or a PR number; the Review diff [D1014, D1032].
-const KINDS: [&str; 5] = ["new", "terminal", "conflict", "pr", "review"];
+/// request, each with its target, a path or a PR number; the Review diff [D1014, D1032]; History, and
+/// one commit's diff by its full id [D1041].
+const KINDS: [&str; 7] = [
+    "new", "terminal", "conflict", "pr", "review", "history", "commit",
+];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
 const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
-/// Kinds a session has one of: opening one again brings it to the front, on its new target [D478].
-const ONE: [&str; 1] = ["review"];
+/// Kinds a session has one of: opening one again brings it to the front, on its new target [D478, D1114].
+const ONE: [&str; 2] = ["history", "review"];
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {
@@ -172,9 +175,9 @@ fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
     }
 }
 
-/// A file, conflict and PR tab need their target, a Review tab may have one (its file), every other kind refuses one.
-/// A file's or conflict's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one PR
-/// is one tab [D1032].
+/// A file, conflict, PR and commit tab need their target, a Review tab may have one (its file), every other kind
+/// refuses one. A file's or conflict's is its file, relative and staying in the session's checkout; a PR's is its
+/// number, written plainly so one PR is one tab [D1032]; a commit's its full id [D1041].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     let ok = match (kind, target) {
         // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
@@ -186,7 +189,12 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
         ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
-        ("file" | "conflict" | "pr", None) => false,
+        // A full commit id, SHA-1 or SHA-256, so one commit is one tab whatever git abbreviates it to.
+        ("commit", Some(sha)) => {
+            matches!(sha.len(), 40 | 64)
+                && sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        }
+        ("file" | "conflict" | "pr" | "commit", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {
@@ -338,7 +346,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let (tab, kind) = (arg(args, 3)?, kind()?);
             // A New tab becomes what was picked on it: a kind with no target.
             check_target(&kind, None)?;
-            if let Some(at) = now.at(tab)
+            // A kind there's one of, already open, comes to the front and the New tab stays.
+            if let Some(same) = now.same(&kind, &None) {
+                now.active = same;
+            } else if let Some(at) = now.at(tab)
                 && now.tabs[at].kind == NEW
             {
                 now.tabs[at].kind = kind;
