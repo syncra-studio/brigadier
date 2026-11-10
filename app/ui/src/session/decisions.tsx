@@ -80,7 +80,7 @@ export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, 
     if (from !== memo.from || mine !== memo.mine) memo = { from, mine, out: from && overlay(from, mine) };
     return memo.out;
   },
-  older: () => threadSource.older(),
+  older: (through) => threadSource.older(through),
   findOlder: (query, limit) => threadSource.findOlder(query, limit),
 };
 

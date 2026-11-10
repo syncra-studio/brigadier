@@ -407,7 +407,7 @@ impl Thread {
     /// as sent.
     pub fn session(&mut self, id: &str, title: &str) -> Value {
         self.take();
-        let mut page = self.page(self.items.len());
+        let mut page = self.page(self.items.len(), self.items.len());
         page["id"] = id.into();
         page["title"] = title.into();
         page["setup"] = self.setup.clone();
@@ -419,15 +419,18 @@ impl Thread {
         page
     }
 
-    /// The page of rows just older than row `before` (an `n`), for a view scrolling up [D97].
-    pub fn older(&self, before: u64) -> Value {
-        self.page((before.saturating_sub(1) as usize).min(self.items.len()))
+    /// The page of rows just older than row `before` (an `n`), for a view scrolling up [D97], and
+    /// on down to row `through` when given: find going to a match there, in one page.
+    pub fn older(&self, before: u64, through: Option<u64>) -> Value {
+        let end = (before.saturating_sub(1) as usize).min(self.items.len());
+        let floor = through.map_or(end, |n| n.saturating_sub(1) as usize);
+        self.page(end, floor)
     }
 
-    /// Whole turns ending at row index `end`, newest first, up to about `PAGE` rows and at least
-    /// one turn, with their turns and work, and `before`: the `n` of its first row, or null when
-    /// nothing is older.
-    fn page(&self, end: usize) -> Value {
+    /// Whole turns ending at row index `end`, newest first, down to row index `floor` and then up
+    /// to about `PAGE` rows and at least one turn, with their turns and work, and `before`: the `n`
+    /// of its first row, or null when nothing is older.
+    fn page(&self, end: usize, floor: usize) -> Value {
         let turn = |at: usize| &self.items[at]["turnId"];
         let mut start = end;
         while start > 0 {
@@ -435,7 +438,7 @@ impl Thread {
             while from > 0 && turn(from - 1) == turn(start - 1) {
                 from -= 1;
             }
-            if start < end && end - from > PAGE {
+            if start < end && start <= floor && end - from > PAGE {
                 break;
             }
             start = from;

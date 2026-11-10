@@ -14,8 +14,9 @@
 //! `{"id", "op": "peek", "session"}` answers the same snapshot and follows nothing, so a session the
 //! pointer is on opens at once while the open thread stays followed [D477].
 //! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
-//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
-//! answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that [D97, D98].
+//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before",
+//! "through"?}` answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that,
+//! reaching down to row `through` when given [D97, D98].
 //! `{"id", "op": "thread_find", "session", "before", "query", "limit"}` answers `{"re", "ok",
 //! "matches": [{"n", "count"}], "more"}`: find in the conversation for the rows not loaded [D470].
 //!

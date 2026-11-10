@@ -46,6 +46,9 @@ export type View = {
 let view: View = { daemon: undefined };
 let port: MessagePort | undefined;
 let bytes = new Uint8Array();
+// Chunks come after `bytes`; `held` counts both.
+let chunks: Uint8Array[] = [];
+let held = 0;
 let nextId = 0;
 let listId = 0;
 // The list at N, then each update N+1, N+2… in order [D40]. A gap asks for a fresh list.
@@ -257,13 +260,31 @@ function onFrame(frame: Record<string, any>): void {
   }
 }
 
+/** `bytes` with the chunks after it, in one buffer. */
+function join(): void {
+  const all = new Uint8Array(held);
+  all.set(bytes);
+  let at = bytes.length;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.length;
+  }
+  bytes = all;
+  chunks = [];
+}
+
+// A page of older history comes in many chunks: they're joined once its frame is whole, not as each comes.
 function receive(chunk: Uint8Array): void {
-  bytes = new Uint8Array([...bytes, ...chunk]);
-  while (bytes.length >= 4) {
-    const end = 4 + new DataView(bytes.buffer).getUint32(0);
-    if (bytes.length < end) return;
+  chunks.push(chunk);
+  held += chunk.length;
+  while (held >= 4) {
+    if (bytes.length < 4) join();
+    const end = 4 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(0);
+    if (held < end) return;
+    if (bytes.length < end) join();
     onFrame(JSON.parse(new TextDecoder().decode(bytes.subarray(4, end))));
-    bytes = bytes.slice(end);
+    bytes = bytes.subarray(end);
+    held -= end;
   }
 }
 
@@ -274,10 +295,10 @@ const STARTING_MS = 5000;
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.data !== "daemon-port") return;
   [port] = event.ports;
-  bytes = new Uint8Array();
+  [bytes, chunks, held] = [new Uint8Array(), [], 0];
   port.onmessage = ({ data }: MessageEvent<Uint8Array | null>) => {
     if (data) return receive(data);
-    bytes = new Uint8Array();
+    [bytes, chunks, held] = [new Uint8Array(), [], 0];
     n = undefined;
     // The open thread keeps its rows while disconnected; reconnecting asks for a fresh snapshot.
     threadN = undefined;
@@ -301,18 +322,18 @@ export const useDaemon = (): View =>
   );
 
 /** The open thread as the view's source: null while it loads. */
-export const threadSource: Omit<Source, "older"> & { older(): Promise<Paged>; findOlder(query: string, limit: number): Promise<Older> } = {
+export const threadSource: Omit<Source, "older"> & { older(through?: number): Promise<Paged>; findOlder(query: string, limit: number): Promise<Older> } = {
   subscribe(listener) {
     threadListeners.add(listener);
     return () => threadListeners.delete(listener);
   },
   get: () => session,
-  older() {
+  older(through) {
     // `before` is only this session's once its snapshot is in.
     if (!thread || !session || threadN === undefined) return Promise.resolve({ ok: false, error: "loading" });
     if (before === null) return Promise.resolve({ ok: true, before: null });
     if (!olderRe && !view.daemon) return Promise.resolve({ ok: false, error: "disconnected" });
-    if (!olderRe) olderRe = send({ op: "thread_older", session: thread.id, before });
+    if (!olderRe) olderRe = send({ op: "thread_older", session: thread.id, before, through });
     return new Promise((done) => olderDone.push(done));
   },
   findOlder(query, limit) {

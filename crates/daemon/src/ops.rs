@@ -152,7 +152,7 @@ pub(super) fn serve(
                 let locked = thread.as_ref().map(|t| t.lock().unwrap());
                 let reply = match &locked {
                     Some(thread) => {
-                        let mut page = thread.older(before);
+                        let mut page = thread.older(before, req["through"].as_u64());
                         page["re"] = re;
                         page["ok"] = true.into();
                         page

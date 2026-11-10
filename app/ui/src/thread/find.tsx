@@ -13,11 +13,11 @@ import type { Item, Session } from "./item";
  * next, ⇧Enter, ⇧⌘G and ‹ the one before, Esc closes. Rows the list hasn't drawn are found in what they showed when
  * last drawn, or else their words (find-text.ts); a closed work fold or group counts its steps' words, and going to
  * one (a step, never typing) opens it. Rows not loaded are counted by Rust ahead of the thread's own; going to one
- * loads the pages down to it. Proposed: a line beside the count says while those can't be counted.
+ * loads down to it in one page. Proposed: a line beside the count says while those can't be counted.
  */
 
 /** What find reads and asks of the source: the session, its older pages, and Rust's count of the rows not loaded. */
-export type FindSource = { get(): Session | null; older?(): Promise<Paged> | void; findOlder?(query: string, limit: number): Promise<Older> };
+export type FindSource = { get(): Session | null; older?(through?: number): Promise<Paged> | void; findOlder?(query: string, limit: number): Promise<Older> };
 
 const RERUN_MS = 150;
 const OLDER_MS = 150;
@@ -226,7 +226,7 @@ export function Find(props: FindProps) {
     }
   };
 
-  /** Goes to match `index`, one in the rows not loaded: the pages down to its row load, then it is found in that row. */
+  /** Goes to match `index`, one in the rows not loaded: one page down to its row loads, then it is found in that row. */
   const loadTo = async (index: number, found: Found) => {
     const target = olderAt(found, index);
     const page = now.current.source.older;
@@ -239,7 +239,7 @@ export function Find(props: FindProps) {
     for (let pages = 0; pages < OLDER_PAGES; pages++) {
       const held = now.current.source.get()?.before ?? null;
       if (held === null || held <= target.n) break;
-      const paged = await page();
+      const paged = await page(target.n);
       if (!live()) return void done();
       if (!paged || !paged.ok) {
         setOlderState("failed");
