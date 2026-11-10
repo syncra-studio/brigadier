@@ -356,10 +356,15 @@ impl Adapter for OpenCode {
                 && name.ends_with(".out")
                 && shell == Some("shell".as_ref())
         });
-        if spec.dir.join("worktree.json").exists() {
+        // The worktree its record holds, its own or one handed on to it [D1080].
+        let made = (spec.dir.join("worktree.json").exists()).then(|| {
+            std::fs::canonicalize(&spec.dir)
+                .unwrap_or(spec.dir.clone())
+                .join("worktree")
+        });
+        if let Some(worktree) = crate::worktrees::folder(&spec.dir).or(made) {
             // Named by the SHA-1 of the worktree's real path, under each project's folder.
-            let dir = std::fs::canonicalize(&spec.dir).unwrap_or(spec.dir.clone());
-            let name = sha1(dir.join("worktree").to_string_lossy().as_bytes());
+            let name = sha1(worktree.to_string_lossy().as_bytes());
             let projects = std::fs::read_dir(home_path(".local/share/opencode/snapshot"));
             files.extend(
                 projects

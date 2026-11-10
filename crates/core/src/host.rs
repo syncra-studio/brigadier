@@ -5,7 +5,7 @@
 use crate::adapters::setup;
 use crate::git::{self, Checkout, Target, push};
 use crate::repos::{failed, tool};
-use crate::{load, projects, session_dir, worktrees};
+use crate::{load, projects};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
@@ -176,8 +176,7 @@ pub struct Pr {
 pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let checkout = git::checkout(data, &Target::Session(id))?;
     // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
-    let holder = crate::share::holder(data, &crate::load(data, id)?);
-    let Some(base) = worktrees::base(&holder.map_or(session_dir(data, id), |h| h.dir)) else {
+    let Some(base) = crate::share::base(data, &crate::load(data, id)?) else {
         return err("This session has no base to open a PR into.");
     };
     let never = AtomicBool::new(false);

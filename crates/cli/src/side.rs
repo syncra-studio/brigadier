@@ -138,7 +138,7 @@ fn start_args(
         "--level",
         src.level.clone().filter(|l| l != "full" && !held),
     );
-    push("--base", core::worktrees::base(&src.dir));
+    push("--base", core::share::base(data, src));
     push("--text", Some(text.into()));
     push("--cid", Some(cid.into()));
     Ok(args)

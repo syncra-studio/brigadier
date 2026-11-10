@@ -43,6 +43,11 @@ pub fn holder(data: &Path, spec: &Spec) -> Option<Spec> {
     })
 }
 
+/// The base its worktree started from: its folder's holder's for a "here" fork [D1082].
+pub fn base(data: &Path, spec: &Spec) -> Option<String> {
+    worktrees::base(&holder(data, spec).map_or_else(|| spec.dir.clone(), |h| h.dir))
+}
+
 /// The first session of a line of "here" forks; a session in no line is its own.
 pub fn root(spec: &Spec) -> String {
     fork::record(&spec.dir)

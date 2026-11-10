@@ -144,7 +144,6 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
     // A shared worktree comes back for any of its users, from its holder's record [D1080].
     let (others, _held) = sharers(spec)?;
     let holder = holder(spec, &others);
-    let own = holder == spec.dir;
     let was = worktrees::present(&holder);
     let project = spec
         .project
@@ -162,8 +161,8 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         return Err(e);
     }
     // Restore always re-runs setup in trusted projects before the next turn [D263]; a shared
-    // worktree's, only when this brought it back.
-    if project.is_some_and(|p| p.trusted == Some(true)) && (own || !was) {
+    // worktree's, only when this brought it back: another user may be running it now.
+    if project.is_some_and(|p| p.trusted == Some(true)) && (others.is_empty() || !was) {
         for name in ["setup.started", "setup.exit", "setup.log"] {
             clear(&holder, name)?;
         }
