@@ -60,9 +60,13 @@ export type RowActions = {
  * Open File, Stage or Unstage, and Discard. `pending`: moved at once, waiting for Rust's answer [D30].
  * `held`: the gallery holds its menu open there.
  */
-export function FileRow({ file, staged = false, selected = false, locked = false, pending = false, actions = {}, held }: {
+export function FileRow({ file, staged = false, unstaged = !staged, committed = false, selected = false, locked = false, pending = false, actions = {}, held }: {
   file: SourceFile;
+  /** Some of its changes are staged, some not, or both (then it offers Stage and Unstage). */
   staged?: boolean;
+  unstaged?: boolean;
+  /** Committed since the base, nothing left in the working tree: only Open File. */
+  committed?: boolean;
   selected?: boolean;
   locked?: boolean;
   pending?: boolean;
@@ -76,7 +80,7 @@ export function FileRow({ file, staged = false, selected = false, locked = false
   const row = useRef<HTMLLIElement>(null);
   return (
     <li ref={row}>
-      <ContextMenu {...(held && { open: true })}>
+      <ContextMenu disabled={committed && file.status === "deleted"} {...(held && { open: true })}>
         <ContextMenuTrigger
           render={
             <button
@@ -112,13 +116,24 @@ export function FileRow({ file, staged = false, selected = false, locked = false
         </ContextMenuTrigger>
         <ContextMenuContent {...(held && { container: held, anchor: row, side: "bottom", align: "start", collisionAvoidance: { side: "none", align: "none" } as const })}>
           {file.status !== "deleted" && <ContextMenuItem onClick={actions.onOpenFile}>Open File</ContextMenuItem>}
-          <ContextMenuItem disabled={off} onClick={staged ? actions.onUnstage : actions.onStage}>
-            {staged ? "Unstage" : "Stage"}
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem disabled={off} onClick={actions.onDiscard}>
-            Discard Changes…
-          </ContextMenuItem>
+          {!committed && (
+            <>
+              {unstaged && (
+                <ContextMenuItem disabled={off} onClick={actions.onStage}>
+                  Stage
+                </ContextMenuItem>
+              )}
+              {staged && (
+                <ContextMenuItem disabled={off} onClick={actions.onUnstage}>
+                  Unstage
+                </ContextMenuItem>
+              )}
+              <ContextMenuSeparator />
+              <ContextMenuItem disabled={off} onClick={actions.onDiscard}>
+                Discard Changes…
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenuContent>
       </ContextMenu>
     </li>

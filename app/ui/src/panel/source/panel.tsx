@@ -49,6 +49,9 @@ Uploads that fail now retry three times with a growing wait, and the tray shows 
 
 type Picker = "branch" | "rename" | "create" | null;
 
+/** One entry for a path that is partly staged: its staged and unstaged lines together. */
+const sum = (file: SourceFile, other?: SourceFile): SourceFile => (other ? { ...file, added: file.added + other.added, removed: file.removed + other.removed } : file);
+
 /** Messages typed and not committed, by checkout: they outlive the view, as the old CommitBox's did. */
 const unsent = new Map<string, string>();
 
@@ -94,7 +97,8 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
   const staged = state?.staged ?? [];
   const stagedPaths = new Set(staged.map((file) => file.path));
   // One list [D1110]: a file both staged and changed shows once, with its ✓.
-  const uncommitted = [...staged, ...(state?.changes.filter((file) => !stagedPaths.has(file.path)) ?? [])];
+  const unstagedPaths = new Set(state?.changes.map((file) => file.path));
+  const uncommitted = [...staged.map((file) => sum(file, state?.changes.find((other) => other.path === file.path))), ...(state?.changes.filter((file) => !stagedPaths.has(file.path)) ?? [])];
   const merged = uncommitted.filter((file) => !conflicted.includes(file));
   const listed = uncommitted.length > 0 ? uncommitted : (state?.sinceBase ?? []);
   const clean = state !== null && uncommitted.length === 0 && !resolving;
@@ -114,13 +118,21 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
   const move = (paths: string[], to: "staged" | "changes") =>
     setLocal((now) => {
       if (!now) return now;
-      const from = to === "staged" ? now.changes : now.staged;
-      const moving = from.filter((file) => paths.includes(file.path)).map((file): SourceFile => (file.status === "conflicted" ? { ...file, status: "modified" } : file));
+      const [from, into] = to === "staged" ? [now.changes, now.staged] : [now.staged, now.changes];
+      // A path already on the other side (partly staged) joins it as one entry.
+      const moving = from
+        .filter((file) => paths.includes(file.path))
+        .map((file): SourceFile => sum(file.status === "conflicted" ? { ...file, status: "modified" } : file, into.find((other) => other.path === file.path)));
       const left = from.filter((file) => !paths.includes(file.path));
-      return to === "staged" ? { ...now, changes: left, staged: [...now.staged, ...moving] } : { ...now, staged: left, changes: [...now.changes, ...moving] };
+      const kept = [...into.filter((file) => !paths.includes(file.path)), ...moving];
+      return to === "staged" ? { ...now, changes: left, staged: kept } : { ...now, staged: left, changes: kept };
     });
-  const drop = (files: SourceFile[], scope: Discarding["scope"]) =>
-    setLocal((now) => now && (scope === "staged" ? { ...now, staged: now.staged.filter((file) => !files.includes(file)) } : { ...now, changes: now.changes.filter((file) => !files.includes(file)) }));
+  // Discarding staged changes loses the path's unstaged ones too, as its confirm says.
+  const drop = (files: SourceFile[], scope: Discarding["scope"]) => {
+    const paths = files.map((file) => file.path);
+    const keep = (list: SourceFile[]) => list.filter((file) => !paths.includes(file.path));
+    setLocal((now) => now && (scope === "staged" ? { ...now, staged: keep(now.staged), changes: keep(now.changes) } : { ...now, changes: keep(now.changes) }));
+  };
 
   const commit = () => {
     if (!state || locked || clean) return;
@@ -223,18 +235,20 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
   );
 
   // A click opens the file's diff in a Review tab, Open File the file in its own tab: both wired with the tabs (2.16).
-  const row = (file: SourceFile, isStaged: boolean) => (
+  const row = (file: SourceFile, committed = false) => (
     <FileRow
       key={file.path}
       file={file}
-      staged={isStaged}
+      staged={stagedPaths.has(file.path)}
+      unstaged={unstagedPaths.has(file.path)}
+      committed={committed}
       selected={selected === file.path}
       locked={locked}
       pending={pending.has(file.path)}
       actions={{
         onStage: () => (file.status === "conflicted" ? setStagingConflicts({ paths: [file.path], marked: 1 }) : move([file.path], "staged")),
         onUnstage: () => move([file.path], "changes"),
-        onDiscard: () => setDiscarding({ scope: isStaged ? "staged" : "unstaged", files: [file] }),
+        onDiscard: () => setDiscarding({ scope: stagedPaths.has(file.path) ? "staged" : "unstaged", files: [file] }),
       }}
     />
   );
@@ -287,17 +301,17 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
         {state && (conflicted.length > 0 ? (
           <div className="flex flex-col gap-1 border-t border-divider pt-2">
             <Heading title="Conflicts" count={conflicted.length} />
-            <ul className="flex flex-col">{conflicted.map((file) => row(file, false))}</ul>
+            <ul className="flex flex-col">{conflicted.map((file) => row(file))}</ul>
             {merged.length > 0 && (
               <Group title="Merged cleanly" count={merged.length} defaultOpen={false}>
-                {merged.map((file) => row(file, stagedPaths.has(file.path)))}
+                {merged.map((file) => row(file))}
               </Group>
             )}
           </div>
         ) : listed.length > 0 ? (
           <div className="flex flex-col gap-1 border-t border-divider pt-2">
             <Heading title={uncommitted.length > 0 ? "Files" : `Changed since ${base ?? "the base"}`} count={listed.length} />
-            <ul className="flex flex-col">{listed.map((file) => row(file, stagedPaths.has(file.path)))}</ul>
+            <ul className="flex flex-col">{listed.map((file) => row(file, uncommitted.length === 0))}</ul>
           </div>
         ) : (
           !resolving && <p className="text-xs text-muted-foreground">What the agent changes shows here.</p>
@@ -313,7 +327,7 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
 
       <DiscardDialog
         discarding={discarding}
-        unstagedPaths={new Set(changes.map((file) => file.path))}
+        unstagedPaths={unstagedPaths}
         onCancel={() => setDiscarding(null)}
         onConfirm={() => {
           if (discarding) drop(discarding.files, discarding.scope);

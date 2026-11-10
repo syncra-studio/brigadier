@@ -144,6 +144,24 @@ export function SourceGallery() {
             )}
           </Held>
         </State>
+        <State label="Right-click: partly staged">
+          <Held className="h-48 w-80">
+            {(box) => (
+              <ul className="w-80">
+                <FileRow file={file("src/upload/client.ts", "modified", 25, 3)} staged unstaged held={box} />
+              </ul>
+            )}
+          </Held>
+        </State>
+        <State label="Right-click: committed, since main">
+          <Held className="h-48 w-80">
+            {(box) => (
+              <ul className="w-80">
+                <FileRow file={file("src/upload/retry.test.ts", "added", 42)} committed held={box} />
+              </ul>
+            )}
+          </Held>
+        </State>
         <State label="Right-click: a staged file's">
           <Held className="h-48 w-80">
             {(box) => (
