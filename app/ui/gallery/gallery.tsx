@@ -9,6 +9,7 @@ import { TabsGallery } from "./tabs";
 import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
 import { RewindGallery } from "./rewind";
+import { FindGallery } from "./find";
 import { HomeGallery } from "./home";
 import { PickersGallery } from "./pickers";
 import { Kit } from "./kit";
@@ -108,6 +109,7 @@ function GalleryPage() {
             <Area name="Thread">
               <Thread />
               <RewindGallery />
+              <FindGallery />
               <Notices />
             </Area>
             <Area name="Controls">
