@@ -397,6 +397,9 @@
   --ease-popup: ease;
   /* The sidebar opening and closing: a spring. */
   --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1.001, 1.001, 1.002, 1.001, 1.001, 1);
+  /* The summary card's motion, the old app's springs: the thread's column moving aside, the card easing in and out. */
+  --ease-summary-shift: linear(0, 0.055, 0.177, 0.322, 0.463, 0.589, 0.694, 0.779, 0.844, 0.893, 0.929, 0.954, 0.972, 0.983, 0.991, 0.996, 1);
+  --ease-summary-card: linear(0, 0.109, 0.309, 0.503, 0.658, 0.773, 0.852, 0.906, 0.941, 0.963, 0.978, 0.986, 0.992, 0.995, 0.997, 0.998, 1);
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;

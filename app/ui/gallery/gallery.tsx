@@ -1,6 +1,7 @@
 // Dev-only: every kit component in every state (D2). Opened by `pnpm gallery`.
 import { type RefObject, useEffect, useRef } from "react";
 
+import { CardGallery } from "./card";
 import { ChangesGallery } from "./changes";
 import { Choices } from "./choices";
 import { ConflictsGallery } from "./conflicts";
@@ -148,6 +149,7 @@ function GalleryPage() {
             <Area name="Right panel">
               <RightPanelGallery />
               <SourceGallery />
+              <CardGallery />
               <CommitGallery />
               <BranchGallery />
             </Area>

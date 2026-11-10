@@ -28,7 +28,7 @@ const TABS: { view: PanelView; title: string; shortcut: string }[] = [
 ];
 
 /** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
-function useHasPanel(owner: string): boolean {
+export function useHasPanel(owner: string): boolean {
   const draft = useHomeDraft();
   const projects = useProjects();
   const row = useDaemon().rows?.find((each) => each.id === owner);

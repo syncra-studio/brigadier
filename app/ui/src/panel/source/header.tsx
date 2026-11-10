@@ -73,7 +73,7 @@ export function HistoryMenu({ commits, base, error, held, onCommit, onOpen, onMe
   );
 }
 
-function PrGlyph({ pr }: { pr: Pr }) {
+export function PrGlyph({ pr }: { pr: Pr }) {
   const tone = TEXT[prWords(pr).tone];
   if (pr.state === "merged") return <PullRequestMerged className={tone} />;
   if (pr.state === "closed") return <PullRequestClosed className={tone} />;
