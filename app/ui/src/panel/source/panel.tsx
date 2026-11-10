@@ -127,6 +127,8 @@ export function SourcePanel({
   const [mergingPr, setMergingPr] = useState(false);
   const [forcing, setForcing] = useState<ForcePush | null>(null);
   const pr = useCreatePr(session);
+  // shortcut: the host module's one read of the branch's PRs until 2.27's watch sends them in `data.prs`.
+  const prs = data.prs ?? pr.prs;
 
   const state = ops ? data.source : local;
   const step = data.step;
@@ -238,7 +240,7 @@ export function SourcePanel({
 
   const top = state && (
     <div className="flex flex-col gap-3">
-      <StatusLine status={statusWords(state, step, uncommitted.length, data.prs ?? [])} files={resolving ? uncommitted : listed} />
+      <StatusLine status={statusWords(state, step, uncommitted.length, prs)} files={resolving ? uncommitted : listed} />
       {(uncommitted.length > 0 || resolving) && (
         <CommitBox
           message={message}
@@ -313,7 +315,7 @@ export function SourcePanel({
         ) : (
           state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />
         )}
-        {(data.prs?.length ?? 0) > 0 && <PrMenu prs={data.prs ?? []} watch={data.watch ?? null} nowMs={nowMs} />}
+        {prs.length > 0 && <PrMenu prs={prs} watch={data.watch ?? null} nowMs={nowMs} />}
         <MoreButton locked={locked || state === null} menu={more} />
       </SourceHeader>
       {picker === "branch" && state && (

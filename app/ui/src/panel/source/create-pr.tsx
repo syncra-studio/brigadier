@@ -10,6 +10,7 @@ import { Textarea } from "../../components/textarea";
 import { showToast, toastManager } from "../../components/toast";
 import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
+import type { Pr } from "../types";
 import type { ActionPick } from "./action-menus";
 import { Confirm, type Held } from "./dialogs";
 
@@ -17,7 +18,7 @@ import { Confirm, type Held } from "./dialogs";
  * A session's PR facts as the host module reads them [D1030]: the host's name (null for one it doesn't know), whether
  * its CLI can make the PR, the base and branch, and the text to start from.
  */
-export type HostInfo = { host: string | null; cli: boolean; base: string; branch: string; title: string; body: string };
+export type HostInfo = { host: string | null; cli: boolean; base: string; branch: string; title: string; body: string; prs?: Pr[] | null };
 
 /** What the action menu offers for a PR [D1030]: Create PR through the host's CLI, its page, neither, or not known yet. */
 export type PrWay = "cli" | "page" | "none" | "loading";
@@ -106,11 +107,11 @@ const EMPTY: Text = { title: "", body: "", draft: false };
  * One session's PR work, kept here rather than in the view, so a create or push that outlives Source (the panel
  * closed, another session opened) still lands its answer and shows it on return [D30]. `info` is undefined until Rust
  * reads it and null for no known host; `text` null until edited, so it follows Rust's; `uncertain`: a create went out
- * and lost its answer, so the host is asked before another.
+ * and lost its answer, so the host is asked before another. `prs`: the branch's PRs as last read, a made one added at once.
  */
-type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean };
+type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean; prs: Pr[] };
 
-const NONE: Op = { info: null, readError: null, text: null, open: false, busy: null, error: null, uncertain: false };
+const NONE: Op = { info: null, readError: null, text: null, open: false, busy: null, error: null, uncertain: false, prs: [] };
 const ops = new Map<string, Op>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -138,7 +139,8 @@ const run = (session: string, args: string[], onReply: (reply: Record<string, an
 function read(session: string) {
   run(session, ["info"], (reply) => {
     if (reply.error === "disconnected") return;
-    if (reply.ok) return put(session, { info: reply.info, readError: null });
+    // Null PRs: gh couldn't say, so the last ones stay.
+    if (reply.ok) return put(session, { info: reply.info, readError: null, ...(reply.info.prs && { prs: reply.info.prs }) });
     // A failed read keeps what was read before; with nothing before, no PR rows [D1030] and the dialog says why.
     const before = opOf(session).info;
     put(session, { info: before === undefined ? null : before, readError: reply.error });
@@ -146,7 +148,11 @@ function read(session: string) {
 }
 
 function made(session: string, pr: { number: number | null; url: string }) {
-  put(session, { uncertain: false, text: null, busy: null, open: false, error: null });
+  const op = opOf(session);
+  // Shown in Source's PR icon at once, then read again for its real state.
+  const shown: Pr[] = pr.number ? [{ number: pr.number, title: textOf(op).title, state: "open", health: "running", failed: 0 }] : [];
+  put(session, { uncertain: false, text: null, busy: null, open: false, error: null, prs: [...shown, ...op.prs.filter((each) => each.number !== pr.number)] });
+  read(session);
   // Proposed words.
   showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", stays: true, actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
 }
@@ -229,5 +235,5 @@ export function useCreatePr(session: string | null) {
   );
   // A read that failed with nothing before it still offers Create PR…, whose dialog says why and tries again [D30].
   const way: PrWay = !session || (op.info === null && op.readError) ? "cli" : prWay(op.info);
-  return { way, onPick, dialog };
+  return { way, onPick, dialog, prs: op.prs };
 }
