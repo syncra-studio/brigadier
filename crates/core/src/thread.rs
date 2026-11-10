@@ -285,6 +285,10 @@ impl Thread {
                 self.add(json!({"kind": "line", "reason": "limit-reset", "at": at}));
             }
         }
+        // A message sent again in place of a failed attempt says so before it [D487, D492].
+        if t.retry_of.is_some() && t.origin == "user" {
+            self.add(json!({"kind": "line", "reason": "retried"}));
+        }
         if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(

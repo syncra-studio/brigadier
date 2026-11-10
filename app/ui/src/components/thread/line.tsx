@@ -65,6 +65,8 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
           The automatic reviewer ended this turn
         </ThreadLine>
       );
+    case "retried":
+      return <ThreadLine icon={ArrowRotateCw}>Sent again · it replaces the attempt above</ThreadLine>;
     case "continued":
       return (
         <ThreadLine icon={Chat}>

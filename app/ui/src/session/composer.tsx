@@ -273,7 +273,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   return (
     <Composer>
       <ComposerRail>
-        <SessionNotices id={id} offline={offline} source={source} />
+        <SessionNotices id={id} offline={offline} source={source} run={run} />
         <QueueCard
           items={items}
           paused={paused}

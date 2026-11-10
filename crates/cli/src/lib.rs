@@ -182,7 +182,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
-                Some(text) => send(data, &spec, text, flag(args, "--cid"), None),
+                Some(text) => send(data, &spec, text, flag(args, "--cid"), None, None),
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
@@ -202,6 +202,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 text,
                 flag(args, "--cid"),
                 flag(args, "--backend"),
+                // A failed turn's message again, after its rewind: it replaces that attempt [D492].
+                flag(args, "--retry-of"),
             )
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
@@ -367,6 +369,7 @@ fn send(
     text: &str,
     cid: Option<&str>,
     backend: Option<&str>,
+    retry_of: Option<&str>,
 ) -> io::Result<Value> {
     rewind::settled(data, spec)?;
     let _fence = core::session::fence(data, spec)?;
@@ -376,7 +379,7 @@ fn send(
         let f = core::fold(&spec.dir, true)?;
         let running = child(data, &spec.id);
         Ok(core::send(
-            spec, &f.fold, running, &call, &cid, "user", text, backend, None,
+            spec, &f.fold, running, &call, &cid, "user", text, backend, retry_of,
         ))
     };
     let mut reply = go()?;

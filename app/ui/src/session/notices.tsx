@@ -1,4 +1,4 @@
-import { type Key, useState, useSyncExternalStore } from "react";
+import { type Key, type ReactNode, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import { type Notice, Notices } from "../components/composer/rail";
@@ -7,25 +7,29 @@ import type { RailNotice, SetupStep } from "../thread/item";
 import { retry, useStart } from "../home/start";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
+import type { Runner } from "./composer";
+import { newId } from "./store";
 
-/** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. */
-function said(notice: RailNotice): Notice {
+/** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. `again` resends its turn. */
+function said(notice: RailNotice, again: ReactNode): Notice {
   const tail = notice.text ? ` ${notice.text}` : "";
   switch (notice.reason) {
     case "turn-failed":
-      // shortcut: no Retry yet; it rewinds to the turn's message and resends it once rewind is on main (D492).
       return notice.cause === "capacity"
-        ? { id: notice.id, level: "warning", text: `The model’s servers are busy, so this turn didn’t finish. Send it again in a moment.${tail}` }
-        : { id: notice.id, level: "error", text: `This turn didn’t finish.${tail}` };
+        ? { id: notice.id, level: "warning", text: `The model’s servers are busy, so this turn didn’t finish.${tail}`, action: again }
+        : { id: notice.id, level: "error", text: `This turn didn’t finish.${tail}`, action: again };
     case "model-unavailable":
       return {
         id: notice.id,
         level: "warning",
         text: `This model isn’t available.${tail}`,
         action: (
-          <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => askModel.dispatchEvent(new Event("ask"))}>
-            Choose another model
-          </Button>
+          <>
+            <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => askModel.dispatchEvent(new Event("ask"))}>
+              Choose another model
+            </Button>
+            {again}
+          </>
         ),
       };
     case "ended-for-safety":
@@ -64,13 +68,33 @@ const STEP: Record<SetupStep["kind"], string> = { worktree: "the worktree", setu
  * thread that couldn't load (with Retry), the app's own connection, a setup that didn't finish. ✕ hides one for
  * this view only.
  */
-export function SessionNotices({ id, offline, source }: { id: string; offline: boolean; source: Source }) {
+export function SessionNotices({ id, offline, source, run }: { id: string; offline: boolean; source: Source; run: Runner }) {
   const thread = useThread();
   const session = useSyncExternalStore(source.subscribe, source.get);
   const [gone, setGone] = useState<ReadonlySet<Key>>(new Set());
   const retiring = useRetiring(id);
   const notices: Notice[] = retiring ? [retiringNotice(retiring)] : [];
-  if (session?.id === id) notices.push(...(session.notices ?? []).map(said));
+  // Retry: back to the failed turn's message, files kept, and it again in that attempt's place (D492). Only where
+  // Rust offers a rewind to it; shown at once as under way, its refusal said in the notice's place [D30].
+  const [retrying, setRetrying] = useState<{ turn: string; error?: string } | null>(null);
+  const again = (turn: string) => {
+    const message = session?.items.find((item) => item.kind === "message" && item.role === "user" && item.turnId === turn);
+    if (offline || !message || message.kind !== "message" || !session?.rewind?.includes(turn)) return null;
+    if (retrying?.turn === turn && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
+    const go = async () => {
+      setRetrying({ turn });
+      const back = await run(["rewind", id, turn, "--op", newId()]);
+      const sent = back.ok ? await run(["send", id, message.text, "--cid", newId(), "--retry-of", turn]) : back;
+      setRetrying(sent.ok || sent.result === "logged" ? null : { turn, error: String(sent.message ?? sent.error ?? "Refused") });
+    };
+    return (
+      <Button variant="link-blue" size="xs" className="-my-0.5" onClick={go}>
+        Retry
+      </Button>
+    );
+  };
+  if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => said(notice, again(notice.turnId))));
+  if (retrying?.error) notices.push({ id: "retry", level: "error", text: `Couldn’t retry: ${retrying.error}` });
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });
   if (thread?.id === id && thread.status === "error") {
