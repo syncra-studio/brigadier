@@ -116,6 +116,13 @@ export function runningWords(step: Step): { label: string; line: string } {
       return { label: "Syncing…", line: `Pulling, then pushing ${step.branch}` };
     case "publish":
       return { label: "Publishing…", line: `Publishing ${step.branch} to ${step.remote}` };
+    // Resolve with agent and Fix with agent hand the work to the agent [D1019, D1044].
+    case "continue":
+      return step.left > 0
+        ? { label: "Handing it to the agent…", line: `Handing ${plural(step.left, "conflict")} to the agent` }
+        : { label: "Continuing…", line: `Finishing the catch-up with ${step.base}` };
+    case "fixPr":
+      return { label: "Handing it to the agent…", line: `Handing #${step.pr} to the agent` };
     default:
       return { label: "Committing…", line: "Committing" };
   }
