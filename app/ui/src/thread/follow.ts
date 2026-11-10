@@ -360,6 +360,7 @@ export class Follow {
     if (intent && performance.now() - intent.at > INTENT_MS) this.intent = null;
     else if (intent && (now > before ? "away" : now < before ? "toward" : null) === intent.way) {
       intent.at = performance.now();
+      this.restore = null;
       if (now > before && el.scrollTop <= OLDER) this.hooks.older();
       this.stick = now < before && now <= AT_END;
       this.byUser(now, before);
@@ -415,7 +416,8 @@ export class Follow {
   private bringBack() {
     const want = this.restore!;
     this.setDistance(want);
-    if (Math.abs(this.distance() - want) <= AT_END) this.restore = null;
+    // There, or as far up as it goes.
+    if (Math.abs(this.distance() - want) <= AT_END || this.el!.scrollTop === 0) this.restore = null;
   }
   /** The latest turn grew: followed, or taken from the space; the work that outgrows the view starts being followed. */
   private grew() {
