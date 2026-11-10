@@ -4,7 +4,7 @@ import { Button } from "../../components/button";
 import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
-import type { Branch, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
+import type { Branch, Commit, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
 import { statusWords } from "../words";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
@@ -19,6 +19,11 @@ import { StatusLine } from "./status-line";
 
 /** What the Source panel shows: Rust's, once wired (2.14 on); fake until then. */
 export type SourceData = {
+  /**
+   * The History icon's commits from Rust and what its menu opens (2.29) [D1041, D1114]; without it, the fake state's
+   * (the gallery). Hidden with no base or no commits.
+   */
+  history?: { commits: Commit[]; base: string | null; onCommit: (sha: string) => void; onOpen: () => void; onMenu: () => void };
   /** Null while the first read is under way. */
   source: SourceState | null;
   step: Step | null;
@@ -296,7 +301,11 @@ export function SourcePanel({
   return (
     <div className={cx("relative flex min-h-0 flex-1 flex-col", offline && "opacity-disabled")} inert={offline}>
       <SourceHeader>
-        {state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />}
+        {data.history ? (
+          data.history.base && data.history.commits.length > 0 && <HistoryMenu {...data.history} base={data.history.base} />
+        ) : (
+          state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />
+        )}
         {(data.prs?.length ?? 0) > 0 && <PrMenu prs={data.prs ?? []} watch={data.watch ?? null} nowMs={nowMs} />}
         <MoreButton locked={locked || state === null} menu={more} />
       </SourceHeader>

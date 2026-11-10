@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, setGitHandler, useDaemon } from "../daemon";
+import { refreshHistory } from "../history/store";
 import { useHomeProject } from "../home/start";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
@@ -16,7 +17,7 @@ import type { PanelHint, SourceFile, SourceState } from "./types";
  */
 
 type Entry = { path: string; old: string | null; staged: FileStatus | null; changes: FileStatus | null };
-type Head = { branch: string | null; upstream: string | null; ahead: number; behind: number; hint: PanelHint | null };
+type Head = { branch: string | null; head: string | null; upstream: string | null; ahead: number; behind: number; hint: PanelHint | null };
 type Counts = Map<string, { insertions: number; deletions: number }>;
 /** A move sent and not yet seen in a read. `done`: Rust answered, the next read settles it. */
 type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone"; done?: boolean };
@@ -79,12 +80,18 @@ function landed(): void {
   count();
 }
 
+/** A new commit, or the first read after a (re)subscribe: History reads again (2.29) [D1041, D1130]. */
+function moved(head: Head): void {
+  if (git.target && "session" in git.target && head.head !== git.head?.head) refreshHistory(git.target.session);
+}
+
 function watch(target: Target): void {
   n = 0;
   re = ask({ op: "git", ...target }, (reply) => {
     if (git.target !== target) return;
     if (!reply.ok) return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
     n = reply.n;
+    moved(reply.git.head);
     set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])) });
     landed();
   });
@@ -98,6 +105,7 @@ setGitHandler((frame) => {
   const files = new Map(git.files);
   for (const each of frame.files as Entry[]) files.set(each.path, each);
   for (const path of frame.gone as string[]) files.delete(path);
+  moved(frame.head);
   set({ head: frame.head, files });
   landed();
 });

@@ -47,11 +47,11 @@ function OpenTab({ onClick, children }: { onClick?: () => void; children: ReactN
 
 /**
  * The session's last five commits since its base, a click opening that commit's diff in a Review tab; then Open
- * history, the History tab (2.29) [D1041, D1111, D1114]. Both open once those tabs land.
+ * history, the History tab (2.29) [D1041, D1111, D1114]. Opening the menu reads the list again (`onMenu`).
  */
-export function HistoryMenu({ commits, base, held, onCommit, onOpen }: { commits: Commit[]; base: string; held?: HTMLElement; onCommit?: (sha: string) => void; onOpen?: () => void }) {
+export function HistoryMenu({ commits, base, held, onCommit, onOpen, onMenu }: { commits: Commit[]; base: string; held?: HTMLElement; onCommit?: (sha: string) => void; onOpen?: () => void; onMenu?: () => void }) {
   return (
-    <DropdownMenu modal={false} {...(held && { open: true })}>
+    <DropdownMenu modal={false} {...(held && { open: true })} onOpenChange={(open) => open && onMenu?.()}>
       <DropdownMenuTrigger render={<TooltipIconButton tooltip="History" size="icon-sm" />}>
         <Clock />
       </DropdownMenuTrigger>
@@ -61,7 +61,7 @@ export function HistoryMenu({ commits, base, held, onCommit, onOpen }: { commits
         </DropdownMenuLabel>
         {commits.slice(0, 5).map((commit) => (
           <DropdownMenuItem key={commit.sha} onClick={() => onCommit?.(commit.sha)}>
-            <MenuRow title={commit.subject} hint={commit.sha} mono />
+            <MenuRow title={commit.subject} hint={commit.sha.slice(0, 7)} mono />
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
