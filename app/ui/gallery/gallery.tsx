@@ -24,6 +24,7 @@ import { Popups } from "./popups";
 import { ArchiveGallery } from "./archive";
 import { ProjectSettingsGallery } from "./project-settings";
 import { ProjectsGallery } from "./projects";
+import { ReviewGallery } from "./review";
 import { SessionGallery } from "./session";
 import { SidebarGallery } from "./sidebar";
 import { Thread } from "./thread";
@@ -122,6 +123,9 @@ function GalleryPage() {
             </Area>
             <Area name="Popups and status">
               <Popups />
+            </Area>
+            <Area name="Review">
+              <ReviewGallery />
             </Area>
             <Area name="Layout">
               <TabsGallery />

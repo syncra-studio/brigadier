@@ -1,0 +1,165 @@
+import { type ReactNode, useState } from "react";
+
+import { ChevronDown, ChevronDownUp, ChevronUpDown, Compare, Reload, Text } from "../icons";
+import { cx } from "../components/cx";
+import { ErrorLine } from "../components/error-line";
+import { TooltipIconButton } from "../components/icon-button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
+import { Skeleton } from "../components/skeleton";
+import { useKept } from "../thread/kept";
+import { FileSection, type OpenIn } from "./file-section";
+import { type Asking, actionable, Counts, RevertConfirm } from "./hunks";
+import type { DiffComment, FileContents, HunkAction, RequestState, Review, ReviewFile, ReviewHunk, ReviewRequest, ReviewScope } from "./types";
+
+/**
+ * The Review tab (old ReviewTab), a main-area tab (D1032): a scope's diffs, each file under a sticky header, unified
+ * by default with split and wrap. Unwired: what it shows and what it asks come through props (D388).
+ */
+
+export type ReviewTabProps = {
+  scope: ReviewScope;
+  onScope: (scope: ReviewScope) => void;
+  /** The scope's file list with counts; null until it first arrives. */
+  review: Review | null;
+  /** Each file's contents as they arrive, after the list (D1036), or why one couldn't be read. */
+  contents: ReadonlyMap<string, FileContents | { error: string }>;
+  /** Why the list couldn't be read. The last list stays under it. */
+  error: string | null;
+  /** A read in flight: Refresh spins. */
+  loading: boolean;
+  /** The daemon is there: off, the diff stays and its actions wait (D30). */
+  connected: boolean;
+  onRefresh: () => void;
+  /** Ask for a large file's contents, when it's opened (D1036). */
+  onLoad: (path: string) => void;
+  /** Stage, unstage and revert in flight or failed, by hunk id or file path. */
+  states: ReadonlyMap<string, RequestState>;
+  /** Asked at once for Stage and Unstage, after its confirm for Revert. */
+  onRequest: (request: ReviewRequest) => void;
+  onOpenIn: (path: string, where: OpenIn) => void;
+  comments: readonly DiffComment[];
+  onComment: (comment: DiffComment) => void;
+  onRemoveComment: (id: string) => void;
+};
+
+const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] = [
+  { value: "uncommitted", label: () => "Uncommitted changes" },
+  { value: "staged", label: () => "Staged Changes" },
+  { value: "unstaged", label: () => "Changes" },
+  { value: "branch", label: (base) => `Branch since ${base ?? "base"}` },
+];
+
+export function ReviewTab(props: ReviewTabProps) {
+  const { scope, review, contents, error, loading, connected } = props;
+  // How diffs are drawn, kept while the app runs (the old review options).
+  const [wrap, setWrap] = useKept("review-wrap");
+  const [split, setSplit] = useKept("review-split");
+  // A large file starts folded until opened; any other only once folded.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const files = review?.files ?? [];
+  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || (file.large && !opened.has(file.path));
+  const allCollapsed = files.length > 0 && files.every(isCollapsed);
+  const open = (shown: readonly ReviewFile[]) => {
+    setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
+    setFolded((current) => new Set([...current].filter((path) => !shown.some((file) => file.path === path))));
+    for (const file of shown) if (file.large && !contents.has(file.path)) props.onLoad(file.path);
+  };
+  const act = (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => {
+    const request = { action, path: file.path, hunk: hunk?.id ?? null };
+    if (action === "revert") setAsking({ request, file, hunk });
+    else props.onRequest(request);
+  };
+  const label = SCOPES.find((entry) => entry.value === scope)!.label(review?.base ?? null);
+
+  return (
+    <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
+      <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2">
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
+            {label}
+            <ChevronDown className="size-icon-xs" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
+              {SCOPES.map((entry) => (
+                <DropdownMenuRadioItem key={entry.value} value={entry.value}>
+                  {entry.label(review?.base ?? null)}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {review && review.files.length > 0 && <Counts insertions={review.insertions} deletions={review.deletions} />}
+        {!connected && <span className="px-1.5 text-xs text-muted-foreground">Reconnecting…</span>}
+        <div className="flex-1" />
+        <TooltipIconButton tooltip="Refresh" size="icon-sm" disabled={!connected} onClick={props.onRefresh}>
+          <Reload className={cx(loading && "animate-spin motion-reduce:animate-none")} />
+        </TooltipIconButton>
+        <Toggle tooltip={wrap ? "Disable word wrap" : "Enable word wrap"} on={wrap} onClick={() => setWrap(!wrap)}>
+          <Text />
+        </Toggle>
+        <TooltipIconButton
+          tooltip={allCollapsed ? "Expand all diffs" : "Collapse all diffs"}
+          size="icon-sm"
+          disabled={files.length === 0}
+          onClick={() => (allCollapsed ? open(files) : setFolded(new Set(files.map((file) => file.path))))}
+        >
+          {allCollapsed ? <ChevronUpDown /> : <ChevronDownUp />}
+        </TooltipIconButton>
+        <Toggle tooltip={split ? "Switch to unified diff" : "Switch to split diff"} on={split} onClick={() => setSplit(!split)}>
+          <Compare />
+        </Toggle>
+      </div>
+      <div data-slot="review-diffs" className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <ErrorLine size="sm" error={error} className="px-4 py-3" />
+        {!review ? (
+          !error && <ListLoading />
+        ) : review.files.length === 0 ? (
+          <p className="p-4 text-sm text-muted-foreground">No changes</p>
+        ) : (
+          review.files.map((file) => (
+            <FileSection
+              key={file.path}
+              file={file}
+              contents={contents.get(file.path)}
+              look={{ numbered: true, split, wrap, words: true }}
+              collapsed={isCollapsed(file)}
+              onToggle={() => (isCollapsed(file) ? open([file]) : setFolded((current) => new Set([...current, file.path])))}
+              actions={actionable(scope)}
+              connected={connected}
+              states={props.states}
+              onAction={act}
+              onRetry={() => props.onLoad(file.path)}
+              onOpenIn={props.onOpenIn}
+              comments={props.comments.filter((comment) => comment.path === file.path)}
+              onComment={props.onComment}
+              onRemoveComment={props.onRemoveComment}
+            />
+          ))
+        )}
+      </div>
+      <RevertConfirm scope={scope} asking={asking} onClose={() => setAsking(null)} onConfirm={props.onRequest} />
+    </div>
+  );
+}
+
+function Toggle({ tooltip, on, onClick, children }: { tooltip: string; on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <TooltipIconButton tooltip={tooltip} size="icon-sm" pressed={on} className="aria-pressed:bg-muted aria-pressed:text-foreground" onClick={onClick}>
+      {children}
+    </TooltipIconButton>
+  );
+}
+
+/** Before the first list arrives: three file headers' worth of grey. */
+function ListLoading() {
+  return (
+    <div data-slot="review-loading" className="flex flex-col gap-3 p-3">
+      {[0, 1, 2].map((index) => (
+        <Skeleton key={index} className="h-control-xs w-1/2" />
+      ))}
+    </div>
+  );
+}

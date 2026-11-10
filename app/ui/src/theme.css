@@ -1462,3 +1462,12 @@
 [aria-haspopup]:not([data-dialog-trigger]) {
   scale: none;
 }
+
+/* The Review diff's type and spacing from the thread's tokens (old PierreDiff's LOOK); its syntax colours are pierre-dark's (D1042). */
+@utility diff-look {
+  --diffs-font-family: var(--font-mono);
+  --diffs-header-font-family: var(--font-sans);
+  --diffs-font-size: var(--text-diff);
+  --diffs-line-height: var(--text-diff--line-height);
+  --diffs-tab-size: 2;
+}
