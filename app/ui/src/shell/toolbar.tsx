@@ -4,8 +4,9 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { justStarted, useHomeDraft } from "../home/start";
-import { SidebarFloatingLeft, Tasks } from "../icons";
+import { Tasks } from "../icons";
 import { useProjects } from "../projects/projects";
+import { RightPanelToggle } from "./right-panel";
 import { HOME } from "./tab-store";
 
 /** A control whose feature isn't built yet [D388]: drawn and named only. A disabled button hears no pointer, so its tip hangs on what holds it. */
@@ -43,9 +44,7 @@ export function Toolbar({ owner }: { owner: string }) {
       )}
       {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}
       {panel && (
-        <Drawn tooltip="Right sidebar" className={enter}>
-          <SidebarFloatingLeft className="-scale-x-100" />
-        </Drawn>
+        <RightPanelToggle owner={owner} className={enter} />
       )}
     </TitlebarTips>
   );

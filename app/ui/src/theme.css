@@ -157,6 +157,8 @@
   --color-file-grey: #6d8086;
   --color-file-white: #d4d7d6;
   --color-file-ignore: #41535b;
+  /* The line between a split button's halves (the old border-background/40). */
+  --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
   /* The composer card, and a field's placeholder in it. */
   --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
@@ -279,6 +281,8 @@
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
+  /* The Source panel's Git Output dialog. */
+  --container-git-output: 42rem;
   /* The ⌘K search palette's card (the old app's). */
   --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
@@ -296,6 +300,8 @@
   /* The window's start edge that peeks the hidden sidebar, and the panel's grab area. */
   --spacing-sidebar-peek-edge: 0.5rem;
   --spacing-resize-handle: 1rem;
+  /* The right panel's row of view icons. */
+  --spacing-page-toolbar: 2.875rem;
   /* A window narrower than this folds the sidebar by itself. */
   --spacing-narrow-window: 60rem;
   /* The page surface's gap to the window's sides. */
@@ -1061,6 +1067,35 @@
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
+/* The right panel's width: where it was dragged (data-width on the panel, right-panel.tsx) or the default, kept in its
+   range and leaving the chat its least room beside the left sidebar (the old workspace-pane-width). */
+@utility right-panel-width-source {
+  --right-panel-width: attr(data-width px, var(--spacing-sidebar));
+}
+@utility right-panel-width {
+  width: clamp(
+    var(--spacing-sidebar-min),
+    var(--right-panel-width, var(--spacing-sidebar)),
+    max(
+      var(--spacing-sidebar-min),
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px))
+    )
+  );
+}
+/* The right panel's start edge: the old app's hairline, fading with its slide. */
+@utility start-hairline {
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
 /* The peeking sidebar beside the strip: a hairline down its start edge, and nothing painted past it. */
 @utility peek-edge {
   clip-path: inset(calc(var(--spacing) * -12) calc(var(--spacing) * -12) calc(var(--spacing) * -12) 0);

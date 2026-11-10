@@ -108,7 +108,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           </div>
         ))}
       </div>
-      <RightPanelSlot />
+      <RightPanelSlot owner={owner} />
     </main>
   );
 }
