@@ -21,6 +21,8 @@ const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
 const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
+/// Kinds a session has one of: opening one again brings it to the front, on its new target [D478].
+const ONE: [&str; 1] = ["review"];
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {
@@ -100,13 +102,14 @@ impl Tabs {
         id == CHAT || self.at(id).is_some()
     }
 
-    /// The tab already showing this file or PR, so one never gets two tabs.
+    /// The tab already showing this file or PR, or the session's one tab of its kind, so one never
+    /// gets two tabs.
     fn same(&self, kind: &str, target: &Option<String>) -> Option<String> {
-        target.as_ref()?;
-        let tab = self
-            .tabs
-            .iter()
-            .find(|t| t.kind == kind && t.target == *target)?;
+        let one = ONE.contains(&kind);
+        if !one {
+            target.as_ref()?;
+        }
+        let tab = (self.tabs.iter()).find(|t| t.kind == kind && (one || t.target == *target))?;
         Some(tab.id.clone())
     }
 
@@ -150,13 +153,33 @@ impl Tabs {
     }
 }
 
-/// A file, conflict and PR tab need their target, every other kind refuses one. A file's or conflict's is its file,
-/// relative and staying in the session's checkout; a PR's is its number, written plainly so one PR
+/// A thread row's path may be absolute: a Review tab keeps it relative to the session's checkout [D1038].
+fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
+    let path = Path::new(&target);
+    if !path.is_absolute() {
+        return Ok(target);
+    }
+    let root = core::git::checkout(data, &core::git::Target::Session(id))?.root;
+    // The checkout's root is canonical; a deleted file's folder still resolves.
+    let real = (path.parent().and_then(|dir| fs::canonicalize(dir).ok()))
+        .zip(path.file_name())
+        .map_or_else(|| path.to_path_buf(), |(dir, name)| dir.join(name));
+    match real.strip_prefix(&root) {
+        Ok(rel) => Ok(rel.to_string_lossy().into_owned()),
+        Err(_) => Err(io::Error::other(format!(
+            "{target} isn't in this session's checkout"
+        ))),
+    }
+}
+
+/// A file, conflict and PR tab need their target, a Review tab may have one (its file), every other kind refuses one.
+/// A file's or conflict's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one PR
 /// is one tab [D1032].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     let ok = match (kind, target) {
         // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
-        ("file" | "conflict", Some(path)) => {
+        // A Review tab may open on one file [D1032, D1038].
+        ("file" | "conflict" | "review", Some(path)) => {
             !path.contains('\0')
                 && path
                     .split('/')
@@ -227,10 +250,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "open" => {
             let (tab, kind) = (arg(args, 3)?, kind()?);
-            let target = args.get(5).cloned();
+            let mut target = args.get(5).cloned();
             core::check_id(tab)?;
+            if kind == "review" && !home {
+                target = target.map(|t| relative(data, id, t)).transpose()?;
+            }
             check_target(&kind, target.as_deref())?;
             if let Some(same) = now.same(&kind, &target) {
+                // In place, keeping its id, so the bar doesn't flicker [D419, D424].
+                if let Some(at) = now.at(&same) {
+                    now.tabs[at].target = target;
+                }
                 now.active = same;
             } else {
                 if !now.exists(tab) {

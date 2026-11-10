@@ -1,3 +1,5 @@
+import { useDaemon, useThread } from "../../daemon";
+import { openReview } from "../../panel/open";
 import type { FileChange, Progress } from "../../thread/item";
 import { CodeBlock } from "../../thread/code";
 import { CopyButton } from "../copy-button";
@@ -72,18 +74,22 @@ function Counts({ added, removed, quiet = false }: { added: number; removed: num
 }
 
 /**
- * A file's diff: its name, counts and copy over the lines, added green, removed red. The thread's code block
+ * A file's diff: its name, which opens it in the Review tab, counts and copy over the lines, added green, removed red. The thread's code block
  * draws it (coloured once it settles, folded past 14 lines), in the diff card's frame.
  */
 export function DiffCard({ keep, change, diff: text }: { keep: string; change: FileChange; diff: string }) {
   const { added, removed } = change;
   const diff = text.replace(/\n$/, "");
   const count = diff ? diff.split("\n", MAX_DIFF_LINES + 1).length : 0;
+  const id = useThread()?.id;
+  // A chat with no project has no checkout to review in.
+  const session = useDaemon().rows?.find((row) => row.id === id)?.project ? id : undefined;
+  // Its name opens the file's diff in the Review tab [D1038].
   const title = (
     <>
-      <span title={change.path} className="min-w-0 truncate">
+      <button type="button" title={`Review ${change.path}`} disabled={!session} onClick={() => session && openReview(session, change.path)} className="min-w-0 cursor-pointer truncate rounded-control hover:underline focus-visible:focus-ring disabled:cursor-default disabled:no-underline">
         {fileName(change.path)}
-      </span>
+      </button>
       {added !== null && removed !== null && <Counts added={added} removed={removed} />}
     </>
   );

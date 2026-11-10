@@ -138,15 +138,20 @@ export const justOpened = (id: string): boolean => opened.delete(id);
 
 const has = (now: Tabs, id: string) => id === CHAT || now.tabs.some((tab) => tab.id === id);
 
+/** Kinds a session has one of, as Rust's `ONE` [D478]. */
+const ONE: readonly TabKind[] = ["review"];
+const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && tab.target === target));
+
 export function openTab(owner: string, kind: TabKind, target?: string): void {
   const id = `t-${newId()}`;
-  // A file or PR already open comes to the front, as Rust does, so no tab of this id ever shows.
-  if (target === undefined || !tabsOf(owner).tabs.some((tab) => tab.kind === kind && tab.target === target)) opened.add(id);
+  // A file or PR already open, or the one tab of its kind, comes to the front as Rust does, so no tab of this id ever shows.
+  if (!tabsOf(owner).tabs.some((tab) => isSame(tab, kind, target))) opened.add(id);
   act(owner, {
     args: ["open", id, kind, ...(target === undefined ? [] : [target])],
     change: (now) => {
-      const same = target !== undefined && now.tabs.find((tab) => tab.kind === kind && tab.target === target);
-      if (same) return { ...now, active: same.id };
+      const same = now.tabs.find((tab) => isSame(tab, kind, target));
+      // In place, keeping its id, on its new target [D419, D424].
+      if (same) return { tabs: now.tabs.map((tab) => (tab === same ? { ...tab, target } : tab)), active: same.id };
       if (has(now, id)) return { ...now, active: id };
       const at = now.tabs.findIndex((tab) => tab.id === now.active) + 1;
       return { tabs: now.tabs.toSpliced(at, 0, { id, kind, opener: now.active, ...(target === undefined ? {} : { target }) }), active: id };

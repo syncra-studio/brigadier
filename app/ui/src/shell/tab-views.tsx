@@ -6,8 +6,9 @@ import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
-import { fakeRead } from "../files/fake";
 import { FileViewer } from "../files/viewer";
+import { useFileRead } from "../panel/git";
+import { ReviewView } from "../review/view";
 import { RightPanelSlot } from "./right-panel";
 import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
@@ -86,6 +87,12 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
   );
 }
 
+/** A checkout file, read by Rust [D1002]. Reveal in Finder comes with 2.17. */
+function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
+  const path = tab.target ?? "";
+  return <FileViewer path={path} read={useFileRead(path)} line={tab.line ?? null} reveal={revealOf(tab.id)} active={active} />;
+}
+
 /**
  * The page under the tab bar: the chat, which stays as it was (scrolled, its draft typed) under the open tabs, each
  * keeping its place too, with only the one in front showing. Beside it, the right panel's mount point.
@@ -102,8 +109,9 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
             {/* Each kind until it's wired: the conflict and PR views come with 2.23 and 2.27 [D1014, D1044, D1017]. */}
             {tab.kind === "file" ? (
-              // shortcut: fake contents until Rust reads the file (step 2.17); Reveal in Finder is wired then too.
-              <FileViewer key={tab.target} path={tab.target ?? ""} read={fakeRead(tab.target ?? "")} line={tab.line ?? null} reveal={revealOf(tab.id)} active={tab.id === active} />
+              <FileTab key={tab.target} tab={tab} active={tab.id === active} />
+            ) : tab.kind === "review" ? (
+              <ReviewView owner={owner} target={tab.target} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}

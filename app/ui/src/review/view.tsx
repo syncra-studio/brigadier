@@ -23,7 +23,9 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
   const [states, setStates] = useState<ReadonlyMap<string, RequestState>>(new Map());
   const [tick, setTick] = useState(0);
   const read = useRef(0);
-  const scrolled = useRef(false);
+  const panel = useRef<HTMLDivElement>(null);
+  // The file it was last brought to: a new target brings its file into view again.
+  const scrolled = useRef<string | null>(null);
   const checkout = git.target;
   const key = checkout && JSON.stringify(checkout);
 
@@ -63,12 +65,13 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
     });
   }, [key, daemon, scope, git.version, tick]);
 
-  // Once the opened-on file is drawn, it comes into view.
+  // Once the opened-on file is drawn (a large one folded, with no contents), it comes into view.
   useEffect(() => {
-    if (scrolled.current || !target || !contents.has(target)) return;
-    scrolled.current = true;
-    document.querySelector(`[data-slot="review-file"][data-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: "start" });
-  }, [contents, target]);
+    const file = review?.files.find((each) => each.path === target);
+    if (!target || scrolled.current === target || !file || (!file.large && !contents.has(target))) return;
+    scrolled.current = target;
+    panel.current?.querySelector(`[data-slot="review-file"][data-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: "start" });
+  }, [review, contents, target]);
 
   const request = ({ action, path, hunk }: ReviewRequest) => {
     if (!checkout) return;
@@ -80,7 +83,8 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
   };
 
   return (
-    <ReviewTab
+    <div ref={panel} className="flex min-h-0 flex-1 flex-col">
+      <ReviewTab
       scope={scope}
       onScope={setScope}
       review={review}
@@ -99,6 +103,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       comments={[]}
       onComment={() => {}}
       onRemoveComment={() => {}}
-    />
+      />
+    </div>
   );
 }

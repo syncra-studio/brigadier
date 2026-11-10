@@ -10,6 +10,7 @@ import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
 import { PrChip, prList } from "../landing/pr-chip";
+import { openPr } from "../panel/open";
 import { RowMenuItems } from "./menu";
 import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -118,7 +119,13 @@ export function SessionRowItem({
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
                 className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
-                onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
+                onClick={(event) => {
+                  if (onClick) onClick(event);
+                  else onOpen(row.id);
+                  // The chip opens the PR that needs you on top [D1013, D1018]; ⌘ and ⇧ pick rows instead.
+                  const pr = row.pr && (event.target as Element).closest('[data-slot="row-pr"]') && row.pr.prs.find((each) => each.mark === row.pr?.chip);
+                  if (pr && !event.metaKey && !event.shiftKey) openPr(row.id, pr.number);
+                }}
               />
             }
           >
