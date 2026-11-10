@@ -55,15 +55,14 @@ export function datedMessages(items: readonly Item[]): ReadonlySet<string> {
 /**
  * The user's message, on the right, its Markdown with every line break kept. Hovered or focused, its time
  * and a copy button show under it; past 20 lines it folds with "Show more". `dated` puts when it was sent above it, centred. A message on its
- * way shows "Sending…"; one whose delivery can't be proven yet is `unconfirmed`. One that failed keeps its
- * actions in view, with Discard, and says why on an ErrorLine with Try again. `dimmed` greys it (a message the
- * turn hasn't reached).
+ * way looks sent at once [D449]; one whose delivery can't be proven yet is `unconfirmed` and says so in place of
+ * its time [D300]. One that failed keeps its actions in view, with Discard, and says why on an ErrorLine with Try
+ * again. `dimmed` greys it (a message the turn hasn't reached).
  */
 export function UserBubble({
   keep,
   text,
   time,
-  sending,
   failed,
   onRetry,
   onDiscard,
@@ -77,7 +76,6 @@ export function UserBubble({
   text: string;
   /** When it was sent (ms). */
   time?: number;
-  sending?: boolean;
   /** Why it wasn't sent. */
   failed?: string;
   onRetry?: () => void;
@@ -121,7 +119,7 @@ export function UserBubble({
     <div className="group/user flex flex-col items-end gap-y-1">
       {dated && time !== undefined && <TimeSeparator at={time} />}
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
-        <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", (dimmed || sending || unconfirmed) && "opacity-row-disabled")}>
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             <Markdown text={text} keep={keep} breaks />
           </div>
@@ -137,35 +135,33 @@ export function UserBubble({
             </button>
           )}
         </div>
-        {sending ? (
-          <p className="text-xs text-muted-foreground">Sending…</p>
-        ) : unconfirmed ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            Not confirmed · it's checked once reconnected
-          </p>
-        ) : (
-          // Hover-only, its space kept so nothing shifts; a failed message's stay in view.
-          <div
-            className={cx(
-              "-mt-1 flex items-center gap-1 text-muted-foreground",
-              !failed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
-            )}
-          >
-            {time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>}
-            <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
-            {rewind && (
-              <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
-                <Undo />
-              </TooltipIconButton>
-            )}
-            {failed && onDiscard && (
-              <TooltipIconButton tooltip="Discard message" onClick={onDiscard}>
-                <Trash />
-              </TooltipIconButton>
-            )}
-          </div>
-        )}
-        {!sending && !unconfirmed && (
+        {/* Hover-only, its space kept so nothing shifts; a failed or unconfirmed message's stay in view. */}
+        <div
+          className={cx(
+            "-mt-1 flex items-center gap-1 text-muted-foreground",
+            !failed && !unconfirmed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
+          )}
+        >
+          {unconfirmed ? (
+            <span role="status" className="pe-1 text-xs">
+              Not confirmed yet · checked once reconnected
+            </span>
+          ) : (
+            time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>
+          )}
+          <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
+          {rewind && (
+            <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
+              <Undo />
+            </TooltipIconButton>
+          )}
+          {failed && onDiscard && (
+            <TooltipIconButton tooltip="Discard message" onClick={onDiscard}>
+              <Trash />
+            </TooltipIconButton>
+          )}
+        </div>
+        {!unconfirmed && (
           <ErrorLine
             size="sm"
             error={failed && `Not sent · ${failed}`}

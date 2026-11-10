@@ -444,7 +444,6 @@ export function Thread() {
 function Bubbles() {
   return (
     <div className="flex flex-col gap-4">
-      <UserBubble keep="look-sending" text="Ship the thread rows." sending />
       <UserBubble keep="look-failed" text="Ship the thread rows." time={NOW} failed="the daemon isn't reachable" onRetry={noop} onDiscard={noop} />
       <div className="w-72 self-end">
         <UserBubble

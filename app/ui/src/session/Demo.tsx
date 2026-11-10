@@ -118,7 +118,6 @@ function EntryView({ session, entryKey, wait }: { session: DemoSession; entryKey
       keep={entryKey}
       text={item.text}
       time={item.sentAt}
-      sending={state === "pending" && slow}
       failed={failed}
       onRetry={() => session.retry(entryKey)}
       onDiscard={() => session.discard(entryKey)}

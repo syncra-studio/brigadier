@@ -36,7 +36,7 @@ const failure = (reply: Record<string, any>) => (reply.error === "disconnected" 
  * it again can't send it twice (the host drops a repeated id). It settles when Rust's thread has it under that id: a
  * sent one's turn, a steer's message. A refusal stays, with Try again.
  */
-type Sent = { cid: string; text: string; steer: boolean; error?: string };
+type Sent = { cid: string; text: string; steer: boolean; at: number; error?: string };
 let sent = new Map<string, Sent[]>();
 const sentListeners = new Set<() => void>();
 function setSent(id: string, change: (list: Sent[]) => Sent[]): void {
@@ -78,7 +78,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
           key={each.cid}
           keep={each.cid}
           text={each.text}
-          sending={!each.error}
+          time={each.at}
           failed={each.error}
           onRetry={() => {
             const again = { ...each, error: undefined };
@@ -180,7 +180,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const queue = (message: string, qid = newId(), slot?: number) =>
     act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]);
   const now = (message: string, steer = false) => {
-    const entry: Sent = { cid: newId(), text: message, steer };
+    const entry: Sent = { cid: newId(), text: message, steer, at: Date.now() };
     onSent?.(entry.cid);
     setSent(id, (list) => [...list, entry]);
     deliver(run, id, entry);

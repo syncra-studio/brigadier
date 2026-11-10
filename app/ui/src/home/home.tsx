@@ -146,7 +146,7 @@ export function HomeDraft() {
 
 /**
  * A session started from Home: its first message under the thread until Rust says how it went [D30, D54]. Sent:
- * shown sending (unconfirmed while the link is down). Refused: the kit's failed bubble, with Try again and Discard.
+ * shown sent at once (unconfirmed while the link is down). Refused: the kit's failed bubble, with Try again and Discard.
  * Logged but not delivered: the thread already shows the message, so only the line saying so, with the same two.
  */
 export function StartingBubble({ id }: { id: string }) {
@@ -178,7 +178,7 @@ export function StartingBubble({ id }: { id: string }) {
     <UserBubble
       keep={entry.cid}
       text={entry.text}
-      sending={!entry.error && !entry.unknown}
+      time={entry.sent}
       unconfirmed={entry.unknown}
       failed={entry.error}
       onRetry={entry.asking ? undefined : () => retry(id)}
