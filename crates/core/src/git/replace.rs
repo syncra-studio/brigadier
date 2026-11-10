@@ -52,9 +52,7 @@ pub fn replace(
     let _exclusive = lock(checkout, true, stop)?;
     // A run cut short before this one is put right first: its record is about to be reused.
     if !super::recover::settle(record) {
-        return Err(io::Error::other(
-            "An earlier Replace all left files it couldn't put back; Brigadier tries again when it starts.",
-        ));
+        return Err(io::Error::other(super::recover::LEFT));
     }
     let eligible: HashSet<String> = listed(checkout, stop)?.into_iter().collect();
     let (mut skipped, mut unrestored) = (vec![], vec![]);

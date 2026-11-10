@@ -18,6 +18,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args[0].as_str() {
         // Settled first too: an archived session gets no host to settle with.
         "archive" => crate::rewind::settled(data, &spec)
+            .and_then(|()| core::git::recover::settled(data, id))
             .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
@@ -39,6 +40,8 @@ fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
     crate::rewind::settled(data, &spec)?;
+    // A Replace all cut short too: its record goes with the folder.
+    core::git::recover::settled(data, id)?;
     stop(data, id, by)?;
     let f = core::fold(&spec.dir, false)?;
     Ok(session::delete(&spec, &f.fold, drop))

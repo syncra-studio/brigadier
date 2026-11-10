@@ -5,6 +5,7 @@ use super::search::hash;
 use super::{Checkout, Target, lock};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
@@ -39,18 +40,34 @@ pub fn sweep(data: &Path) {
         .into_iter()
         .map(|id| crate::session_dir(data, &id).join(RECORD))
         .chain(projects.map(|dir| dir.path().join(RECORD)));
-    let never = AtomicBool::new(false);
     for path in records {
-        let Some(run) = read(&path) else { continue };
-        let checkout = Checkout {
-            root: run.root,
-            git_dir: run.git_dir,
-        };
-        // A run still going from the CLI holds it, and settles or removes its record itself.
-        if let Ok(_exclusive) = lock(&checkout, true, &never) {
-            settle(&path);
-        }
+        locked(&path);
     }
+}
+
+/// Before a session's archive or delete takes its folder and the record in it [D35].
+pub fn settled(data: &Path, id: &str) -> io::Result<()> {
+    match locked(&crate::session_dir(data, id).join(RECORD)) {
+        true => Ok(()),
+        false => Err(io::Error::other(LEFT)),
+    }
+}
+
+pub(super) const LEFT: &str =
+    "An earlier Replace all left files it couldn't put back; Brigadier tries again when it starts.";
+
+/// `settle` under the checkout's lock: a run still going holds it, and settles its record itself.
+/// A checkout gone has nothing left to put back.
+fn locked(path: &Path) -> bool {
+    let Some(run) = read(path) else {
+        return true;
+    };
+    let checkout = Checkout {
+        root: run.root,
+        git_dir: run.git_dir,
+    };
+    let _exclusive = lock(&checkout, true, &AtomicBool::new(false));
+    settle(path)
 }
 
 fn read(path: &Path) -> Option<Record> {
@@ -75,8 +92,17 @@ pub(super) fn settle(path: &Path) -> bool {
             eprintln!("brigadier: replace {}: {why}", file.full.display());
         }
     }
+    // Left to try again: a file still missing, a rollback whose rewrite is still in place, or an
+    // old copy not yet removed. A copy kept because something else changed the file is done.
     let gone = |p: &Path| fs::symlink_metadata(p).is_err();
-    run.files.retain(|f| gone(&f.full) && !gone(&f.aside));
+    let holds = |p: &Path, h: &str| fs::read(p).is_ok_and(|bytes| hash(&bytes) == h);
+    let placed = run.placed;
+    run.files.retain(|f| {
+        !gone(&f.aside)
+            && (gone(&f.full)
+                || (!placed && holds(&f.full, &f.new_hash))
+                || (placed && holds(&f.aside, &f.hash)))
+    });
     if !run.files.is_empty() {
         let _ = serde_json::to_vec(&run).map(|bytes| crate::write_atomic(path, &bytes));
         return false;
