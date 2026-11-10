@@ -275,7 +275,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             step::set_style(data, &target, word(1)?)?;
             done
         }
-        "land" | "squash-message" => {
+        "land" | "squash" => {
             let Target::Session(id) = target else {
                 return Err(io::Error::other(super::USAGE));
             };
@@ -286,7 +286,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                         land::land(data, id, word(1)?, flag(args, "--message"), at, &stop)?;
                     json!({"ok": true, "landed": landed})
                 }
-                _ => json!({"ok": true, "message": land::squash_message(data, id)?}),
+                _ => json!({"ok": true, "squash": land::squash(data, id, (word(1)?, word(2)?))?}),
             }
         }
         _ => return Err(io::Error::other(super::USAGE)),

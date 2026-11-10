@@ -36,7 +36,10 @@ type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone";
  * Rust's next step for the checkout [D1015, D1152]: the step, the toolbar's dot [D1025], how the project lands
  * [D1028], and the commits it was worked out on, which a landing pins [D1049].
  */
-type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: { head: string; base: string } | null };
+type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null };
+
+/** The session's HEAD and its base's commit a step was worked out on. */
+export type StepAt = { head: string; base: string };
 
 /** Whose checkout, as Rust's commands name it: a session's, or a project's folder. */
 export type Target = { session: string } | { project: string };
@@ -115,10 +118,9 @@ export function refreshStep(fresh = false, then?: () => void): void {
   });
 }
 
-/** Lands the session's branch into its base, pinned to the commits its step showed [D1028, D1049]: `done` gets Rust's refusal, or null. */
-export function landBranch(style: MergeStyle, message: string | null, done: (error: string | null) => void): void {
+/** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]: `done` gets Rust's refusal, or null. */
+export function landBranch(style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void): void {
   const target = git.target;
-  const at = git.step?.at;
   if (!target || !at) return done("Nothing to merge yet.");
   ask({ op: "run", args: sourceArgs(target, "land", style, at.head, at.base, ...(message === null ? [] : ["--message", message])) }, (reply) => {
     // A landing stays pending until the step it led to shows [D30].
@@ -136,11 +138,11 @@ export function setMergeStyle(style: MergeStyle): void {
   ask({ op: "run", args: sourceArgs(target, "style", style) }, () => refreshStep());
 }
 
-/** A squash's first message, from Rust. */
-export function squashMessage(done: (message: string | null) => void): void {
+/** What squashing at `at` takes in, from Rust: its commits and a first message. */
+export function squashOf(at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void): void {
   const target = git.target;
   if (!target) return done(null);
-  ask({ op: "run", args: sourceArgs(target, "squash-message") }, (reply) => done(reply.ok ? reply.message : null));
+  ask({ op: "run", args: sourceArgs(target, "squash", at.head, at.base) }, (reply) => done(reply.ok ? reply.squash : null));
 }
 
 /** A new commit, or the first read after a (re)subscribe: History reads again (2.29) [D1041, D1130]. */

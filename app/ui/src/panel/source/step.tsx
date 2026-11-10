@@ -1,7 +1,7 @@
 import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, useGit, writeMessage } from "../git";
-import type { ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
+import { commitFiles, type StepAt, useGit, writeMessage } from "../git";
+import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
 import { laterWords } from "../words";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
@@ -57,6 +57,25 @@ function useWork(key: string | undefined): [Work, (next: Partial<Work>) => void]
 
 const LOST = "Brigadier isn't connected.";
 
+/**
+ * A landing under way or refused, by checkout: Source and the card show the same one, and it outlives the view
+ * [D30]. `on`: the step it ran from; its refusal shows while that step does.
+ */
+type Landing = { running: boolean; error: StepError | null; on: Step["kind"] | null };
+const STILL: Landing = { running: false, error: null, on: null };
+const landings = new Map<string, Landing>();
+
+function useLanding(key: string | undefined): [Landing, (next: Landing) => void] {
+  const [own, setOwn] = useState(STILL);
+  const landing = useSyncExternalStore(subscribe, () => (key ? (landings.get(key) ?? STILL) : own));
+  const set = (next: Landing) => {
+    if (!key) return setOwn(next);
+    landings.set(key, next);
+    for (const listener of listeners) listener();
+  };
+  return [landing, set];
+}
+
 /** Per session, the view whose Create PR… opened the dialog: its open state is the session's, so one view draws it. */
 const asked = new Map<string, string>();
 
@@ -91,10 +110,12 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const live = ops !== undefined;
   const [ownStyle, setOwnStyle] = useState<MergeStyle>("merge");
   const mergeStyle = data.merge ?? ownStyle;
-  const [landing, setLanding] = useState(false);
-  const [landError, setLandError] = useState<StepError | null>(null);
+  const [landed, setLanded] = useLanding(draftKey);
   const [askingStageAll, setAskingStageAll] = useState(false);
   const [squashing, setSquashing] = useState(false);
+  // The commits a squash confirm showed, and what it lands: pinned when it opened [D1049].
+  const [squashAt, setSquashAt] = useState<StepAt | null>(null);
+  const [squashCommits, setSquashCommits] = useState<Commit[] | null>(null);
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
   const [mergingPr, setMergingPr] = useState(false);
   const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
@@ -122,7 +143,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   // On real data a step whose click comes later is off, saying so [D1143].
   const wired = ops?.land !== undefined;
   const later = wired && step ? laterWords(step.kind) : null;
-  useEffect(() => setLandError(null), [step?.kind]);
+  const landing = landed.running;
+  const landError = landed.on === step?.kind ? landed.error : null;
   // A PR made or pushed here shows in the button's step at once, not at the next PR read [D1143].
   const prKey = prs.map((each) => `${each.number}:${each.state}`).join();
   useEffect(() => void (wired && ops?.refreshStep?.()), [prKey]);
@@ -187,23 +209,35 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     setTimeout(() => put({ writing: false, failed: true }), 1500);
   };
   /** Lands through Rust: "Merging…" at once, until the step it led to shows; a refusal stays on the line [D30, D1049]. */
-  const land = (style: MergeStyle, text: string | null) => {
-    if (!ops?.land) return;
-    setLanding(true);
-    setLandError(null);
-    ops.land(style, text, (error) => {
-      setLanding(false);
-      if (error) setLandError({ kind: "merge", reason: error });
-    });
+  const land = (style: MergeStyle, text: string | null, at: StepAt | null) => {
+    if (!ops?.land || !step) return;
+    const on = step.kind;
+    setLanded({ running: true, error: null, on });
+    ops.land(style, text, at, (error) => setLanded({ running: false, error: error ? { kind: "merge", reason: error } : null, on }));
   };
   const mergeLocally = () => {
-    if (mergeStyle !== "squash") return land("merge", null);
+    if (mergeStyle !== "squash") return land("merge", null, data.at ?? null);
     setSquashing(true);
-    if (!live) return;
-    // The writer writes the squash's message, else it's the branch's commits; until it's in, the user may type one [D1028, D1029].
+    const at = data.at ?? null;
+    if (!ops?.squashOf || !at) return;
+    setSquashAt(at);
+    setSquashCommits(null);
     setSquashMessage("");
-    const subjects = () => ops?.squashMessage?.((first) => first !== null && setSquashMessage((now) => now || first));
-    writeMessage("squash", false, (reply) => (reply.ok ? setSquashMessage((now) => now || String(reply.text)) : subjects()));
+    // The writer writes the message; if it can't, it's the commits' own. Until then the user may type one [D1028, D1029].
+    let subjects: string | null = null;
+    let wrote: boolean | null = null;
+    ops.squashOf(at, (squash) => {
+      if (!squash) return;
+      setSquashCommits(squash.commits.map((each) => ({ ...each, atMs: 0, added: 0, removed: 0 })));
+      subjects = squash.message;
+      if (wrote === false) setSquashMessage((now) => now || squash.message);
+    });
+    const sent = writeMessage("squash", false, (reply) => {
+      wrote = Boolean(reply.ok);
+      const text = reply.ok ? String(reply.text) : subjects;
+      if (text) setSquashMessage((now) => now || text);
+    });
+    if (!sent) wrote = false;
   };
   const run = () => {
     if (!step) return;
@@ -262,13 +296,13 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           open={squashing}
           branch={state.branch ?? "…"}
           base={step.base}
-          commits={state.commits}
+          commits={squashCommits ?? (ops?.squashOf ? [] : state.commits)}
           message={squashMessage}
           onMessage={setSquashMessage}
           onCancel={() => setSquashing(false)}
           onConfirm={() => {
             setSquashing(false);
-            land("squash", squashMessage);
+            land("squash", squashMessage, squashAt);
           }}
         />
       )}

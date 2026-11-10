@@ -26,8 +26,8 @@ pub(super) enum Merge {
     Conflicts(Vec<String>),
 }
 
-/// Pre-check results by base commit, merge base and tree.
-static MERGES: Mutex<Vec<([String; 3], Merge)>> = Mutex::new(Vec::new());
+/// Pre-check results by checkout, base commit, merge base and tree.
+static MERGES: Mutex<Vec<([String; 4], Merge)>> = Mutex::new(Vec::new());
 static TEMP: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn git(dir: &Path, args: &[&str], stop: &AtomicBool) -> io::Result<String> {
@@ -73,7 +73,13 @@ pub(super) fn merge(
     tree: &str,
     stop: &AtomicBool,
 ) -> io::Result<Merge> {
-    let key = [base.to_string(), merge_base.to_string(), tree.to_string()];
+    // Keyed by the checkout too: the merged tree is only in the repository it ran in.
+    let key = [
+        dir.display().to_string(),
+        base.into(),
+        merge_base.into(),
+        tree.into(),
+    ];
     if let Some((_, merged)) = MERGES.lock().unwrap().iter().find(|(k, _)| *k == key) {
         return Ok(merged.clone());
     }

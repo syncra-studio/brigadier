@@ -5,6 +5,7 @@ import { copyWithToast } from "../../components/copy-button";
 import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
+import type { StepAt } from "../git";
 import type { Branch, Commit, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
 import { statusWords } from "../words";
 import { ActionButton } from "./action";
@@ -31,6 +32,8 @@ export type SourceData = {
   step: Step | null;
   /** How the project lands, from Rust [D1028]; the gallery's own pick without it. */
   merge?: MergeStyle | null;
+  /** The commits Rust's step was worked out on: a landing is pinned to them [D1049]. */
+  at?: StepAt | null;
   /** The read failed: shown over the last read, if any, which stays read-only. */
   error?: string | null;
   /** The daemon is out of reach: what was last read shows, read-only. */
@@ -83,9 +86,9 @@ export type SourceOps = {
   retry: () => void;
   branch?: BranchOps;
   /** Rust's step moves (2.22): landing, the merge style, a squash's first message. Without them the button is the gallery's. */
-  land?: (style: MergeStyle, message: string | null, done: (error: string | null) => void) => void;
+  land?: (style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void) => void;
   setStyle?: (style: MergeStyle) => void;
-  squashMessage?: (done: (message: string | null) => void) => void;
+  squashOf?: (at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void) => void;
   /** Reads the step again now, the branch's PRs too. */
   refreshStep?: () => void;
 };

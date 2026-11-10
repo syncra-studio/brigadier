@@ -4,7 +4,7 @@ import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
-import { landBranch, moveFiles, refreshStep, retryGit, setMergeStyle, squashMessage, type Target, useGit } from "../git";
+import { landBranch, moveFiles, refreshStep, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
 import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
@@ -59,6 +59,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       source: git.source,
       step: git.step?.step ?? null,
       merge: git.step?.merge ?? null,
+      at: git.step?.at ?? null,
       error: git.error,
       offline: offline && git.source !== null,
       pending: git.pending,
@@ -76,7 +77,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       branch: git.target ? branchOps(git.target, owner, project, branch ?? "the branch") : undefined,
       land: landBranch,
       setStyle: setMergeStyle,
-      squashMessage,
+      squashOf,
       refreshStep: () => refreshStep(true),
     },
   };

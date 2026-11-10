@@ -21,36 +21,43 @@ fn ms_now() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// A squash's first message: the branch's commits, as `gh pr create --fill` writes them.
-// shortcut (proposed): until 2.19's writer writes squash messages [D1029]; then the UI asks it.
-pub fn squash_message(data: &Path, id: &str) -> io::Result<String> {
-    let dir = session_dir(data, id);
-    let Some(lands) = worktrees::lands(&dir)? else {
+/// What a squash of the pair `(head, base)` takes in: the commits it squashes, oldest first, and a
+/// first message from them, as `gh pr create --fill` writes it. Pinned like the landing, so its
+/// confirm lists exactly what it lands.
+// shortcut (proposed): the message until 2.19's writer writes squash messages [D1029].
+pub fn squash(data: &Path, id: &str, (head, base): (&str, &str)) -> io::Result<Value> {
+    let Some(lands) = worktrees::lands(&session_dir(data, id))? else {
         return err("This session has no base.");
     };
     let checkout = checkout(data, &Target::Session(id))?;
-    let range = format!("{}..HEAD", lands.base);
     let never = AtomicBool::new(false);
+    let from = merge_base(&checkout.root, &lands, base, head, &never)?;
+    let range = format!("{from}..{head}");
+    let format = "--format=%h%x00%s%x00%b%x00";
     let out = read(
         &checkout.root,
-        &["log", "--reverse", "--format=%s%x00%b%x00", &range, "--"],
+        &["log", "--reverse", format, &range, "--"],
         &never,
     )?;
     let text = String::from_utf8_lossy(&out);
     let parts: Vec<&str> = text.split('\0').map(str::trim).collect();
-    let commits: Vec<(&str, &str)> = (parts.chunks(2))
-        .filter(|c| c.len() == 2 && !c[0].is_empty())
-        .map(|c| (c[0], c[1]))
+    let commits: Vec<(&str, &str, &str)> = (parts.chunks(3))
+        .filter(|c| c.len() == 3 && !c[0].is_empty())
+        .map(|c| (c[0], c[1], c[2]))
         .collect();
-    Ok(match &commits[..] {
+    let message = match &commits[..] {
         [] => String::new(),
-        [(subject, "")] => subject.to_string(),
-        [(subject, body)] => format!("{subject}\n\n{body}"),
-        [(first, _), ..] => {
-            let list: Vec<String> = commits.iter().map(|(s, _)| format!("- {s}")).collect();
+        [(_, subject, "")] => subject.to_string(),
+        [(_, subject, body)] => format!("{subject}\n\n{body}"),
+        [(_, first, _), ..] => {
+            let list: Vec<String> = commits.iter().map(|(_, s, _)| format!("- {s}")).collect();
             format!("{first}\n\n{}", list.join("\n"))
         }
-    })
+    };
+    let commits: Vec<Value> = (commits.iter())
+        .map(|(sha, subject, _)| json!({"sha": sha, "subject": subject}))
+        .collect();
+    Ok(json!({"message": message, "commits": commits}))
 }
 
 /// Lands the session's branch into its base [D1015, D1028, D1047, D1049], pinned to the commits
@@ -81,6 +88,19 @@ pub fn land(
     }
     let session = checkout(data, &Target::Session(id))?;
     let root = &session.root;
+    // One landing at a time per repository: the main checkout's own lock, always taken first, then
+    // the session's checkout, then the base's, so two landings never wait on each other.
+    let common = git(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        stop,
+    )?;
+    let common = Checkout {
+        root: lands.repo.clone(),
+        git_dir: fs::canonicalize(common)?,
+        worktree: false,
+    };
+    let _repo = lock(&common, true, stop)?;
     let _mine = lock(&session, true, stop)?;
     // The checkout's lock is held, so this reads git as it is, not through `status`.
     let dirty = read(
@@ -126,18 +146,6 @@ pub fn land(
             lands.branch.as_deref().unwrap_or("HEAD")
         ),
     };
-    // One landing at a time per repository: the main checkout's own lock.
-    let common = git(
-        root,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        stop,
-    )?;
-    let common = Checkout {
-        root: lands.repo.clone(),
-        git_dir: fs::canonicalize(common)?,
-        worktree: false,
-    };
-    let _repo = lock(&common, true, stop)?;
     let mut args = vec!["commit-tree", merged.as_str(), "-p", tip.as_str()];
     if !squash {
         args.extend(["-p", now.as_str()]);
@@ -203,19 +211,21 @@ fn move_base(
         return Ok(());
     };
     let folder = holder.root.display();
-    if git(&holder.root, &["symbolic-ref", "--quiet", "HEAD"], stop)
-        .ok()
-        .as_deref()
-        != Some(full)
-    {
-        return err(format!(
-            "{base} is being rebased in {folder}. Finish that first."
-        ));
-    }
     let _theirs = match holder.git_dir == common.git_dir {
         true => None,
         false => Some(lock(&holder, true, stop)?),
     };
+    // Checked under its lock and again just before the merge, which goes to whatever it has out.
+    let on_base = || match git(&holder.root, &["symbolic-ref", "--quiet", "HEAD"], stop) {
+        Ok(now) if now == full => Ok(()),
+        Ok(_) => err(format!(
+            "{folder} switched to another branch. Look again, then merge."
+        )),
+        Err(_) => err(format!(
+            "{base} is being rebased in {folder}. Finish that first."
+        )),
+    };
+    on_base()?;
     if midway(&holder.git_dir) {
         return err(format!(
             "{folder} is in the middle of a merge or rebase. Finish that first."
@@ -231,6 +241,7 @@ fn move_base(
     if tip()? != old {
         return moved();
     }
+    on_base()?;
     let args = [
         "-c",
         "merge.autoStash=false",
