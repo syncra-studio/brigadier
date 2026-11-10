@@ -195,32 +195,27 @@ pub fn commit(checkout: &Checkout, sha: &str, stop: &AtomicBool) -> io::Result<V
     }))
 }
 
-/// One of the commit's files whole on both sides, an absent side empty; no hunks, as a commit has
-/// no actions [D1041]. Refused unless the file is one the commit changed.
+/// One of the commit's files whole on both sides, an absent side (added, deleted) empty; no hunks,
+/// as a commit has no actions [D1041]. `from` is a rename's old path, from the list. Each file is
+/// read alone, so a wide commit isn't diffed again per file.
 pub fn contents(
     checkout: &Checkout,
     sha: &str,
     path: &str,
+    from: Option<&str>,
     stop: &AtomicBool,
 ) -> io::Result<Value> {
     let _shared = lock(checkout, false, stop)?;
     commit_of(checkout, sha, stop)?;
     let parent = parent(checkout, sha, stop)?;
-    let list = changes(checkout, &parent, sha, stop)?;
-    let Some(change) = list.iter().find(|c| c.path == path) else {
-        return err(format!("{path} isn't changed in {sha}"));
-    };
     let side = |rev: &str, path: &str| -> io::Result<String> {
+        if read(&checkout.root, &["ls-tree", "-z", rev, "--", path], stop)?.is_empty() {
+            return Ok(String::new());
+        }
         let out = read(&checkout.root, &["show", &format!("{rev}:{path}")], stop)?;
         Ok(String::from_utf8_lossy(&out).into_owned())
     };
-    let before = match change.status {
-        "added" => String::new(),
-        _ => side(&parent, change.from.as_deref().unwrap_or(path))?,
-    };
-    let after = match change.status {
-        "deleted" => String::new(),
-        _ => side(sha, path)?,
-    };
+    let before = side(&parent, from.unwrap_or(path))?;
+    let after = side(sha, path)?;
     Ok(json!({"before": before, "after": after, "hunks": []}))
 }

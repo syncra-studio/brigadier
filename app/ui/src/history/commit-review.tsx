@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ask, useDaemon } from "../daemon";
 import { ReviewTab } from "../review/review-tab";
-import type { DiffComment, FileContents, Review } from "../review/types";
+import type { DiffComment, FileContents, Review, ReviewFile } from "../review/types";
 import { openFile } from "../shell/tab-store";
 
 const NO_STATES = new Map();
@@ -23,10 +23,10 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
   // Bumped by each read, so an older read's answers are dropped.
   const run = useRef(0);
 
-  const load = (path: string, mine = run.current) =>
-    ask({ op: "run", args: ["git", owner, "--commit", sha, "--file", path] }, (reply) => {
+  const load = (file: ReviewFile, mine = run.current) =>
+    ask({ op: "run", args: ["git", owner, "--commit", sha, "--file", file.path, ...(file.from ? ["--from", file.from] : [])] }, (reply) => {
       if (mine !== run.current || reply.error === "disconnected") return;
-      setContents((now) => new Map(now).set(path, reply.ok ? reply.contents : { error: String(reply.error) }));
+      setContents((now) => new Map(now).set(file.path, reply.ok ? reply.contents : { error: String(reply.error) }));
     });
 
   const read = () => {
@@ -41,13 +41,16 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
       setError(null);
       setReview(next);
       setContents(new Map());
-      for (const file of next.files) if (!file.large && !file.binary) load(file.path, mine);
+      for (const file of next.files) if (!file.large && !file.binary) load(file, mine);
     });
   };
 
-  // A commit never changes: read when the tab first shows, and again after a reconnect if it didn't arrive.
+  // A commit never changes: read when the tab first shows; after a reconnect, only what didn't arrive. A large file
+  // not opened yet stays unread; opening it asks.
   useEffect(() => {
-    if (daemon && !review) read();
+    if (!daemon) return;
+    if (!review) return read();
+    for (const file of review.files) if (!file.large && !file.binary && !contents.has(file.path)) load(file);
   }, [owner, sha, daemon?.pid]);
 
   return (
@@ -60,7 +63,10 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
       loading={loading}
       connected={!!daemon}
       onRefresh={read}
-      onLoad={(path) => load(path)}
+      onLoad={(path) => {
+        const file = review?.files.find((entry) => entry.path === path);
+        if (file) load(file);
+      }}
       states={NO_STATES}
       onRequest={() => {}}
       // shortcut: only "in a tab" opens for now; in the app and in Finder come with Review's own wiring (2.18).

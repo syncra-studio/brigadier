@@ -34,7 +34,7 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         if let Some(sha) = flag(args, "--commit") {
             return Ok(match flag(args, "--file") {
                 Some(path) => {
-                    json!({"ok": true, "contents": history::contents(&checkout, sha, path, &never)?})
+                    json!({"ok": true, "contents": history::contents(&checkout, sha, path, flag(args, "--from"), &never)?})
                 }
                 None => json!({"ok": true, "review": history::commit(&checkout, sha, &never)?}),
             });
