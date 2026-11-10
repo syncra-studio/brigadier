@@ -193,7 +193,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   }
   const text = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
 
-  const act = (op: Omit<Op, "key">, args: string[], fail?: () => void) => {
+  const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void) => {
     const key = newId();
     setOps((now) => [...now, { ...op, key }]);
     setError(null);
@@ -201,15 +201,16 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       if (reply.ok) return setOps((now) => now.map((each) => (each.key === key ? { ...each, at: reply.at ?? 0 } : each)));
       setOps((now) => now.filter((each) => each.key !== key));
       setError(failure(reply));
-      fail?.();
+      fail?.(reply);
     });
   };
-  const queue = (message: string, qid = newId(), slot?: number, fail?: () => void) =>
+  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void) =>
     act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)], fail);
-  /** The chips a message carries leave with it, and come back if it isn't queued. */
+  /** The chips a message carries leave with it, and come back if Rust refused to queue it; a lost connection may have
+   * queued it, so they stay in its message rather than go twice. */
   const carry = (sent: readonly Chip[]) => {
     dropChips(id, sent.map((chip) => chip.id));
-    return () => restoreChips(id, sent);
+    return (reply: Record<string, any>) => reply.error !== "disconnected" && restoreChips(id, sent);
   };
   const now = (message: string, steer = false) => {
     const entry: Sent = { cid: newId(), text: message, steer, at: Date.now() };
