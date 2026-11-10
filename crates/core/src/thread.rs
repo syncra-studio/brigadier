@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod asks;
+mod find;
 mod rows;
 
 /// The turn on screen: the status fold's first turn, from when it became first.

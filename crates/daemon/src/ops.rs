@@ -158,6 +158,30 @@ pub(super) fn serve(
                 };
                 let _ = out.send(reply.to_string());
             }
+            "thread_find" => {
+                let id = req["session"].as_str().unwrap_or("");
+                let (before, query) = (
+                    req["before"].as_u64().unwrap_or(0),
+                    req["query"].as_str().unwrap_or(""),
+                );
+                let limit = req["limit"].as_u64().unwrap_or(250) as usize;
+                let thread = shown
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .filter(|(s, _)| s == id)
+                    .map(|(_, t)| t.clone());
+                let reply = match thread {
+                    Some(thread) => {
+                        let mut found = thread.lock().unwrap().find(before, query, limit);
+                        found["re"] = re;
+                        found["ok"] = true.into();
+                        found
+                    }
+                    None => json!({"re": re, "ok": false, "error": "not_watching"}),
+                };
+                let _ = out.send(reply.to_string());
+            }
             "terminal" => {
                 let id = req["session"].as_str().unwrap_or("").to_string();
                 let mine = terming.fetch_add(1, Ordering::SeqCst) + 1;

@@ -16,6 +16,8 @@
 //! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
 //! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
 //! answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that [D97, D98].
+//! `{"id", "op": "thread_find", "session", "before", "query", "limit"}` answers `{"re", "ok",
+//! "matches": [{"n", "count"}], "more"}`: find in the conversation for the rows not loaded [D470].
 //!
 //! `{"id", "op": "terminal", "session"}` streams a sign-in's terminal (see `term`); `keys` and
 //! `resize` go to its host, named by the terminal's spawn id [D45].
