@@ -105,6 +105,7 @@ export function CodeBlock({
         <button
           type="button"
           aria-expanded={open}
+          data-kept={keep}
           onClick={() => setOpen(!open)}
           className="flex h-control-md w-full cursor-pointer items-center gap-1.5 border-t border-divider px-3 text-xs text-muted-foreground transition-colors hover:bg-fill-subtle hover:text-foreground focus-visible:focus-ring"
         >

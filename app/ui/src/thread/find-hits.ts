@@ -8,8 +8,11 @@ import type { Line } from "./lines";
 /** A row the list draws: a line, or the footer. */
 export type Row = Line | { type: "footer"; id: string };
 
-/** A match in a row not drawn, or in a closed fold's or group's `item`: which of its matches it is. */
-export type Away = { row: string; nth: number; item?: string };
+/**
+ * A match in a row not drawn: in `item` (the row's own, an opened group's step, or one a closed fold holds, `folded`),
+ * or in the row's own labels; `back` counts it from that one's last match, as drawn text and words keep the newest.
+ */
+export type Away = { row: string; back: number; item?: string; folded?: boolean };
 export type Hit = Range | Away;
 export const isRange = (hit: Hit | undefined): hit is Range => hit instanceof Range;
 export type Found = { ranges: Hit[]; more: boolean; before: number; older: readonly { n: number; count: number }[] };
@@ -44,15 +47,15 @@ export function covered(line: Row, items: readonly Item[]): Item[] {
   return out;
 }
 
-/** A row's own words while not drawn: its item's, or an opened group's steps'. */
-export function ownWords(line: Row): string {
-  if (line.type === "item") return words(line.item);
-  if (line.type === "group" && line.open) return line.steps.map((step) => words(step.item)).filter(Boolean).join("\n");
-  return "";
+/** The newest `cap` matches of `needle` in `text`, as `Away`s like `base`, oldest first. */
+function awayIn(text: string, needle: string, base: Omit<Away, "back">, cap: number): Away[] {
+  const at = positions(text, needle);
+  const count = Math.max(0, Math.min(at.length, cap));
+  return Array.from({ length: count }, (_, index) => ({ ...base, back: count - 1 - index }));
 }
 
 /** The newest `MAX_RESULTS` matches in the thread, oldest first; what each drawn row shows goes to `read`. */
-export function findInThread(root: Element, rows: readonly Row[], items: readonly Item[], needle: string, textOf: (line: Row) => string, read: Map<string, { text: string; line: Row }>) {
+export function findInThread(root: Element, rows: readonly Row[], items: readonly Item[], needle: string, textOf: (line: Row) => string | undefined, read: Map<string, { text: string; line: Row }>) {
   if (needle === "") return { ranges: [] as Hit[], more: false };
   const drawn = new Map<string, Element>();
   for (const row of root.querySelectorAll<HTMLElement>("[data-item]")) drawn.set(row.dataset.item!, row);
@@ -64,13 +67,26 @@ export function findInThread(root: Element, rows: readonly Row[], items: readonl
     if (line.type === "footer") continue;
     const hits: Hit[] = [];
     const row = drawn.get(line.id);
+    // Only as many as can still count (one past the cap says there are more).
+    const room = () => MAX_RESULTS + 1 - count - hits.length;
     if (row) {
       const found = findIn(row, needle);
       hits.push(...found.ranges);
       more = found.more;
       read.set(line.id, { text: found.text, line });
-    } else positions(textOf(line), needle).forEach((_, nth) => hits.push({ row: line.id, nth }));
-    for (const item of covered(line, items)) positions(words(item), needle).forEach((_, nth) => hits.push({ row: line.id, nth, item: item.id }));
+    } else if (line.type === "item") hits.push(...awayIn(textOf(line) ?? words(line.item), needle, { row: line.id, item: line.item.id }, room()));
+    else if (line.type === "group" && line.open) for (const step of line.steps) hits.push(...awayIn(words(step.item), needle, { row: line.id, item: step.id }, room()));
+    else hits.push(...awayIn(textOf(line) ?? "", needle, { row: line.id }, room()));
+    // What a closed fold holds: newest first, as the cap keeps the newest.
+    const folded: Away[][] = [];
+    let held = 0;
+    for (const item of covered(line, items).toReversed()) {
+      if (room() - held <= 0) break;
+      const away = awayIn(words(item), needle, { row: line.id, item: item.id, folded: true }, room() - held);
+      folded.push(away);
+      held += away.length;
+    }
+    hits.push(...folded.reverse().flat());
     count += hits.length;
     if (count > MAX_RESULTS) more = true;
     newest.push(hits);
@@ -88,20 +104,25 @@ export function withOlder(found: { ranges: Hit[]; more: boolean }, older: { need
   return { ranges: found.ranges, more: found.more || older.more || before < all, before, older: unloaded };
 }
 
-/** The row not loaded holding match `index` (one of the first `before`), counted from the newest. */
+/** The row not loaded holding match `index` (one of the first `before`), and which of its matches from its last. */
 export function olderAt(found: Found, index: number) {
   let left = found.before - 1 - index;
   for (const match of found.older.toReversed()) {
-    if (left < match.count) return match;
+    if (left < match.count) return { n: match.n, back: left };
     left -= match.count;
   }
   return null;
 }
 
-export const rowOf = (hit: Hit) => (isRange(hit) ? (hit.startContainer.parentElement?.closest<HTMLElement>("[data-item]")?.dataset.item ?? null) : hit.row);
+/** The item a match is in: an opened group's step, or its row's. */
+export function itemOf(hit: Hit): string | null {
+  if (!isRange(hit)) return hit.item ?? hit.row;
+  const at = hit.startContainer.parentElement;
+  return at?.closest<HTMLElement>("[data-step]")?.dataset.step ?? at?.closest<HTMLElement>("[data-item]")?.dataset.item ?? null;
+}
 export function sameHit(a: Hit, b: Hit): boolean {
   if (isRange(a) && isRange(b)) return a.startContainer === b.startContainer && a.startOffset === b.startOffset;
-  return !isRange(a) && !isRange(b) && a.row === b.row && a.nth === b.nth && a.item === b.item;
+  return !isRange(a) && !isRange(b) && a.row === b.row && a.back === b.back && a.item === b.item;
 }
 
 /** The first match from the view's top down. */
@@ -113,11 +134,14 @@ export function firstBelow(root: HTMLElement, rows: readonly Row[], hits: readon
   return first < 0 ? 0 : first;
 }
 
-/** The "Show more" whose cut hides `range` (a long user message, a folded code block), if one does. */
+const CLIPS = "[data-bubble], [data-find-clip]";
+/** A "Show more" whose cut hides `range` (a long user message, a folded code block, one inside the other), if one does. */
 export function clippedBy(range: Range): HTMLButtonElement | null {
-  const clip = range.startContainer.parentElement?.closest<HTMLElement>("[data-bubble], [data-find-clip]");
-  const holder = clip?.matches("[data-bubble]") ? clip.parentElement : clip?.closest("[data-look]");
-  const more = holder?.querySelector<HTMLButtonElement>(':scope > button[aria-expanded="false"]');
-  if (!clip || !more) return null;
-  return range.getBoundingClientRect().bottom > clip.getBoundingClientRect().bottom + 1 ? more : null;
+  const bottom = range.getBoundingClientRect().bottom;
+  for (let clip = range.startContainer.parentElement?.closest<HTMLElement>(CLIPS); clip; clip = clip.parentElement?.closest<HTMLElement>(CLIPS)) {
+    const holder = clip.matches("[data-bubble]") ? clip.parentElement : clip.closest("[data-look]");
+    const more = holder?.querySelector<HTMLButtonElement>(':scope > button[aria-expanded="false"]');
+    if (more && bottom > clip.getBoundingClientRect().bottom + 1) return more;
+  }
+  return null;
 }

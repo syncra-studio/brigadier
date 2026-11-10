@@ -46,6 +46,8 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const target = event.target instanceof Element ? event.target : null;
     if (inField(target)) return;
+    // The find bar's own keys: its Esc closes it (thread/find-bar.tsx).
+    if (target?.closest("[role=search]")) return;
     // Focus in another card (a question on the rail while an approval waits): its keys are its own.
     const card = target?.closest("[data-slot=action-card]");
     if (within && card && card !== within.current) return;

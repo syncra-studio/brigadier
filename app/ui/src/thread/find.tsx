@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import type { Older, Paged } from "../daemon";
 import { FindBar } from "./find-bar";
-import { clippedBy, covered, findInThread, firstBelow, isRange, NOTHING, olderAt, ownWords, rowOf, sameHit, withOlder, type Away, type Found, type Row } from "./find-hits";
+import { clippedBy, covered, findInThread, firstBelow, isRange, itemOf, NOTHING, olderAt, sameHit, withOlder, type Away, type Found, type Row } from "./find-hits";
 import { findLabel, lower, MAX_RESULTS, paint, startSearching, unpaint } from "./find-text";
+import { setKept } from "./kept";
 import type { Item, Session } from "./item";
 
 /*
@@ -66,8 +67,8 @@ export function Find(props: FindProps) {
   const bar = useRef<HTMLDivElement>(null);
   const before = useRef<Element | null>(null);
   const reveals = useRef(0);
-  /** "Show more"s find opened, folded back on closing unless the user toggled them since. */
-  const expanded = useRef(new Set<HTMLButtonElement>());
+  /** The kept keys of the "Show more"s find opened, folded back on closing unless the user toggled them since. */
+  const expanded = useRef(new Set<string>());
   const toggling = useRef(false);
   const texts = useRef(new Map<string, { text: string; line: Row }>());
   const older = useRef<({ needle: string } & Extract<Older, { ok: true }>) | null>(null);
@@ -81,9 +82,10 @@ export function Find(props: FindProps) {
     setActive(index);
   }, []);
   const rowsNow = () => now.current.rows;
+  /** What a row not drawn showed when last drawn, while it is the same row. */
   const textOf = (line: Row) => {
     const kept = texts.current.get(line.id);
-    return kept && kept.line === line ? kept.text : ownWords(line);
+    return kept && kept.line === line ? kept.text : undefined;
   };
 
   /** Searches for `text`; `fresh` (a new text) goes to the first match from the view's top, never opening anything. */
@@ -134,10 +136,10 @@ export function Find(props: FindProps) {
     if (!root) return;
     const seq = ++reveals.current;
     const live = () => seq === reveals.current && root.isConnected && match.startContainer.isConnected;
-    const more = clippedBy(match);
-    if (more) {
+    // A cut inside a cut (a folded code block in a long message): each opens in turn.
+    for (let more = clippedBy(match), tries = 0; more && tries < 3; more = clippedBy(match), tries++) {
       if (!opens) return;
-      expanded.current.add(more);
+      if (more.dataset.kept) expanded.current.add(more.dataset.kept);
       toggling.current = true;
       more.click();
       toggling.current = false;
@@ -189,10 +191,10 @@ export function Find(props: FindProps) {
   /** Goes to `hit` in a row not drawn or a closed fold: opened (a step only), drawn, still, then found there again. */
   const bring = async (hit: Away, opens: boolean) => {
     const root = now.current.scroller();
-    if (!root || (hit.item && !opens)) return;
+    if (!root || (hit.folded && !opens)) return;
     const seq = ++reveals.current;
     const live = () => seq === reveals.current && root.isConnected;
-    if (hit.item) {
+    if (hit.folded && hit.item) {
       const line = rowsNow().find((row) => row.id === hit.row);
       const target = now.current.items.find((item) => item.id === hit.item);
       const group = line && target ? covered(line, now.current.items).find((each) => each.kind === "group" && target.n !== undefined && target.n >= each.span[0] && target.n <= each.span[1]) : undefined;
@@ -210,31 +212,28 @@ export function Find(props: FindProps) {
       await nextFrame();
       const row = root.querySelector(selector);
       if (!row) continue;
-      const box = (hit.item && row.querySelector(`[data-step="${CSS.escape(hit.item)}"]`)) || row;
+      const box = (hit.item && hit.item !== rowsNow()[index]!.id && row.querySelector(`[data-step="${CSS.escape(hit.item)}"]`)) || row;
       const top = box.getBoundingClientRect().top;
       still = top === last ? still + 1 : 0;
       last = top;
       if (still < STILL_FRAMES - 1) continue;
       const found = research();
       const mine = found.ranges.filter((each): each is Range => isRange(each) && box.contains(each.startContainer));
-      const range = mine[Math.min(hit.nth, mine.length - 1)];
+      const range = mine[mine.length - 1 - hit.back] ?? mine[0];
       if (!range) return;
       choose(found.before + found.ranges.indexOf(range));
       return void reveal(range, opens);
     }
   };
 
-  /** Goes to match `index`, one in the rows not loaded: the pages down to it load, then it is found counting back. */
+  /** Goes to match `index`, one in the rows not loaded: the pages down to its row load, then it is found in that row. */
   const loadTo = async (index: number, found: Found) => {
     const target = olderAt(found, index);
     const page = now.current.source.older;
     if (!target || !page) return;
     const seq = ++reveals.current;
     const live = () => seq === reveals.current;
-    const all = found.before + found.ranges.length;
-    const back = found.before - 1 - index;
-    const anchor = found.ranges[0] ? rowOf(found.ranges[0]) : null;
-    const mine = { index, all };
+    const mine = { index, all: found.before + found.ranges.length };
     loading.current = mine;
     const done = () => loading.current === mine && (loading.current = null);
     for (let pages = 0; pages < OLDER_PAGES; pages++) {
@@ -247,14 +246,16 @@ export function Find(props: FindProps) {
         return void done();
       }
     }
-    // Once the thread counts as many matches as before, its own now; a count Rust got wrong waits no longer than this.
+    // Once the thread holds the row and finds its matches: the same one of them, counted from its last.
     for (let frames = 0; frames <= LAST_FRAME && live(); frames++) {
       await nextFrame();
+      const item = now.current.items.find((each) => each.n === target.n)?.id;
       const found = research();
-      if (found.before + found.ranges.length < all && frames < LAST_FRAME) continue;
-      const at = anchor ? found.ranges.findIndex((hit) => rowOf(hit) === anchor) : found.ranges.length;
+      const theirs = item ? found.ranges.filter((hit) => itemOf(hit) === item) : [];
+      if (theirs.length === 0 && frames < LAST_FRAME) continue;
       done();
-      return goTo(found.before + Math.max(0, (at < 0 ? found.ranges.length : at) - 1 - back), found, true);
+      const hit = theirs[theirs.length - 1 - target.back] ?? theirs[0];
+      return goTo(found.before + (hit ? found.ranges.indexOf(hit) : 0), found, true);
     }
     done();
   };
@@ -275,7 +276,7 @@ export function Find(props: FindProps) {
     if (count === 0) return;
     // The match typing went to is in the rows not loaded or a closed fold: this step goes there first.
     const current = found.ranges[at - found.before];
-    if ((at >= 0 && at < found.before) || (current && !isRange(current) && current.item)) goTo(at, found, true);
+    if ((at >= 0 && at < found.before) || (current && !isRange(current) && current.folded)) goTo(at, found, true);
     else goTo((at + by + count) % count, found, true);
   };
   const stepRef = useRef(step);
@@ -294,7 +295,11 @@ export function Find(props: FindProps) {
     const anchor = box && rows.find((row) => row.getBoundingClientRect().bottom > box.top);
     const was = anchor?.getBoundingClientRect().top;
     toggling.current = true;
-    for (const more of expanded.current) if (more.isConnected && more.getAttribute("aria-expanded") === "true") more.click();
+    for (const key of expanded.current) {
+      const more = root?.querySelector<HTMLButtonElement>(`button[data-kept="${CSS.escape(key)}"]`);
+      if (!more) setKept(key, false);
+      else if (more.getAttribute("aria-expanded") === "true") more.click();
+    }
     toggling.current = false;
     if (expanded.current.size > 0 && root && anchor && was !== undefined) {
       expanded.current.clear();
@@ -376,8 +381,8 @@ export function Find(props: FindProps) {
     observer.observe(root, { childList: true, subtree: true, characterData: true, attributeFilter: ["open"] });
     // A "Show more" the user folds back themselves stays so.
     const clicked = (event: MouseEvent) => {
-      const more = !toggling.current && event.target instanceof Element ? event.target.closest("button") : null;
-      if (more) expanded.current.delete(more);
+      const more = !toggling.current && event.target instanceof Element ? event.target.closest<HTMLElement>("button[data-kept]") : null;
+      if (more) expanded.current.delete(more.dataset.kept!);
     };
     root.addEventListener("click", clicked, true);
     return () => {
@@ -392,20 +397,22 @@ export function Find(props: FindProps) {
   // A text resting in the bar: Rust counts the rows not loaded, and the bar counts them with the thread's own. Out of
   // reach, it asks again once the session comes back.
   const ask = source.findOlder;
-  const whole = cursor === null;
-  const retry = olderState === "offline" ? props.items : null;
+  // Asked again when the rows held start elsewhere (a page loaded, a reconnect's snapshot), and after an answer that
+  // couldn't come once the session changes again.
+  const retry = olderState === "offline" || olderState === "failed" ? props.items : null;
   useEffect(() => {
-    if (!open || query === "" || !ask || whole) {
+    if (!open || query === "" || !ask || cursor === null) {
       older.current = null;
       setOlderState(null);
       return;
     }
     let current = true;
-    setOlderState("searching");
+    // A text already counted refreshes quietly.
+    if (older.current?.needle !== lower(query)) setOlderState("searching");
     const timer = setTimeout(() => {
       void ask(query, MAX_RESULTS).then((found) => {
         if (!current) return;
-        if (!found.ok) return setOlderState(found.error === "disconnected" || found.error === "stale" ? "offline" : "failed");
+        if (!found.ok) return setOlderState(["disconnected", "stale", "loading"].includes(found.error) ? "offline" : "failed");
         older.current = { needle: lower(query), ...found };
         setOlderState(null);
         later.current();
@@ -415,7 +422,7 @@ export function Find(props: FindProps) {
       current = false;
       clearTimeout(timer);
     };
-  }, [open, query, ask, whole, retry]);
+  }, [open, query, ask, cursor, retry]);
 
   // A text in the bar: folded code blocks draw all their lines, cut to their fold, to be found.
   const hasText = open && query !== "";

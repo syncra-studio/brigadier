@@ -131,6 +131,7 @@ export function UserBubble({
             <button
               type="button"
               aria-expanded={more}
+              data-kept={`${keep}:more`}
               onClick={() => setMore(!more)}
               className="flex cursor-pointer items-center gap-0.5 self-start rounded-control pt-1 text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring"
             >
