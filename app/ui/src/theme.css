@@ -1062,6 +1062,13 @@
   }
 }
 
+/* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
+@utility strip-rule {
+  height: 0.5px;
+  width: calc(var(--spacing) * 5);
+  background: var(--color-divider);
+}
+
 /* The tab bar [D360]: the old app's. It starts after a short rule, at the sidebar's edge or, with the sidebar folded,
    after Back, Forward and the toggle. */
 @utility session-tab-bar {

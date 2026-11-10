@@ -159,8 +159,10 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
     <UpdatesRow key="updates" />,
     // Always here, fading as the strip's own contents do; out of the row's way when expanded.
     archived && (
-      <div key="archived" inert={open} className={cx("flex transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
+      <div key="archived" inert={open} className={cx("flex flex-col items-center transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
         {archived}
+        {/* Set apart from the icons under it by the titlebar's rule, laid flat [D426]. */}
+        <span aria-hidden className="strip-rule my-1.5" />
       </div>
     ),
   ];
