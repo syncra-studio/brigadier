@@ -93,15 +93,20 @@ pub(super) fn settle(path: &Path) -> bool {
         }
     }
     // Left to try again: a file still missing, a rollback whose rewrite is still in place, or an
-    // old copy not yet removed. A copy kept because something else changed the file is done.
-    let gone = |p: &Path| fs::symlink_metadata(p).is_err();
+    // old copy not yet removed. A copy kept because something else changed the file is done. One
+    // that can't be looked at is kept too.
+    let gone =
+        |p: &Path| matches!(fs::symlink_metadata(p), Err(e) if e.kind() == io::ErrorKind::NotFound);
+    let unsure = |p: &Path| fs::symlink_metadata(p).is_err() && !gone(p);
     let holds = |p: &Path, h: &str| fs::read(p).is_ok_and(|bytes| hash(&bytes) == h);
     let placed = run.placed;
     run.files.retain(|f| {
-        !gone(&f.aside)
-            && (gone(&f.full)
-                || (!placed && holds(&f.full, &f.new_hash))
-                || (placed && holds(&f.aside, &f.hash)))
+        unsure(&f.full)
+            || unsure(&f.aside)
+            || !gone(&f.aside)
+                && (gone(&f.full)
+                    || (!placed && holds(&f.full, &f.new_hash))
+                    || (placed && holds(&f.aside, &f.hash)))
     });
     if !run.files.is_empty() {
         let _ = serde_json::to_vec(&run).map(|bytes| crate::write_atomic(path, &bytes));
