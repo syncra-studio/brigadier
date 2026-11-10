@@ -10,6 +10,7 @@ import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
 import type { Source } from "../thread/thread";
+import { sendFailed } from "../thread/follow";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
@@ -54,6 +55,7 @@ function deliver(run: Runner, id: string, message: Sent): void {
     // Logged: the thread shows the turn and how it ended, so the message has its place there.
     if (reply.ok || reply.result === "logged") return;
     setSent(id, (list) => list.map((each) => (each.cid === message.cid ? { ...each, error: failure(reply) } : each)));
+    sendFailed(message.cid);
   });
 }
 

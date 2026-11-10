@@ -10,7 +10,7 @@ import { store } from "../onboarding/api";
 import { newId } from "../session/store";
 import { carryHome, CHAT, rereadHome, selectTab } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
-import { placeOnOpen } from "../thread/follow";
+import { placeOnOpen, sendFailed } from "../thread/follow";
 
 /*
  * Home's draft and the sessions it starts [D30, D161]. Its project and model live in memory; its words are kept by
@@ -102,6 +102,7 @@ function land(id: string, reply: Record<string, any>): void {
   }
   if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
   put(id, { asking: false, unknown: false, error: reason(reply) });
+  sendFailed(get(id)!.cid);
   rereadHome();
 }
 
@@ -130,7 +131,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (level) args.push("--level", level);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
-  placeOnOpen(id);
+  placeOnOpen(id, cid);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
   keepDraft(daemonRun, HOME_DRAFT, []);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

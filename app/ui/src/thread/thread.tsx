@@ -125,9 +125,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   }, [all]);
   const newestRef = useRef(newest);
   newestRef.current = newest;
-  // A message sent here and not in the rows yet: its bubble is in the footer, so the footer is the turn's top.
-  const pending = useRef<string | null>(null);
-  if (pending.current && newest && [newest.id, newest.cid, newest.turnId].includes(pending.current)) pending.current = null;
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const space = useMemo(spaceStore, []);
@@ -137,12 +134,14 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       changed: () => setAway(made.shown()),
       anchor: () => {
         const user = newestRef.current;
-        if (pending.current || !user) return made.el?.querySelector("[data-footer]") ?? null;
+        // A message sent here and not in the rows yet has its bubble in the footer: the footer is the turn's top.
+        if (made.pending || !user) return made.el?.querySelector("[data-footer]") ?? null;
         return made.el?.querySelector(`[data-item="${CSS.escape(user.id)}"]`) ?? null;
       },
     });
     return made;
   }, [space]);
+  if (follow.pending && newest && [newest.id, newest.cid, newest.turnId].includes(follow.pending)) follow.pending = null;
 
   // Rows too few to scroll give no scroll to ask for older ones on: ask until there is more than a little to scroll.
   const fill = () => {
@@ -160,7 +159,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       list.current?.scrollBy(offset);
     },
     sent: (cid) => {
-      pending.current = cid;
+      follow.pending = cid;
       // Once the bubble is drawn in the footer.
       requestAnimationFrame(() => follow.place());
     },
@@ -175,7 +174,11 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     if (!el) return;
     follow.el = el;
     follow.open(id, running);
-    if (id !== undefined && takePlace(id)) requestAnimationFrame(() => follow.place());
+    const first = id === undefined ? undefined : takePlace(id);
+    if (first !== undefined) {
+      follow.pending = first;
+      requestAnimationFrame(() => follow.place());
+    }
     const on: [string, EventListener][] = [
       ["wheel", follow.wheel as EventListener],
       ["keydown", follow.key as EventListener],

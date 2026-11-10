@@ -49,16 +49,28 @@ export function spaceStore() {
 }
 export type Space = ReturnType<typeof spaceStore>;
 
-/** Sessions just started from Home: their thread gives the first message its space and glide once it opens. */
-const toPlace = new Set<string>();
-export const placeOnOpen = (id: string) => void toPlace.add(id);
-export const takePlace = (id: string) => toPlace.delete(id);
+/** Sessions just started from Home, by session id, with their first message's id: placed once the thread opens. */
+const toPlace = new Map<string, string>();
+export const placeOnOpen = (id: string, cid: string) => void toPlace.set(id, cid);
+export function takePlace(id: string): string | undefined {
+  const cid = toPlace.get(id);
+  toPlace.delete(id);
+  return cid;
+}
+
+/** The open threads, so a send that fails gives its space up (cleared on a send's error). */
+const live = new Set<Follow>();
+export function sendFailed(cid: string) {
+  for (const each of live) if (each.pending === cid) each.unplace();
+}
 
 /** Where each session was left, while the app runs: back to it, the view is where it was. */
 const left = new Map<string, { distance: number; mode: Mode; stick: boolean }>();
 
 export class Follow {
   el: HTMLElement | null = null;
+  /** A message sent here and not in the rows yet. */
+  pending: string | null = null;
   phase: Phase = "idle";
   private mode: Mode = "still";
   /** Following the end as content grows (the scroller's own, apart from the turn's mode). */
@@ -86,6 +98,7 @@ export class Follow {
 
   /** Opened: at the end, or where the session was left. */
   open(key: string | undefined, running: boolean) {
+    live.add(this);
     const was = key === undefined ? undefined : left.get(key);
     this.restore = was && was.distance > 0 ? was.distance : null;
     this.stick = was ? was.stick : true;
@@ -93,6 +106,7 @@ export class Follow {
   }
   /** Left: remember where, without the space. */
   leave(key: string | undefined) {
+    live.delete(this);
     this.stopPlacing();
     this.stopJump();
     if (key !== undefined && this.el) left.set(key, { distance: Math.max(0, this.distance() - this.space.get()), mode: this.mode, stick: this.stick });
@@ -186,6 +200,11 @@ export class Follow {
     };
     frame = requestAnimationFrame(step);
     this.placing = () => cancelAnimationFrame(frame);
+  }
+  /** The send failed: no glide, no space. */
+  unplace() {
+    this.stopPlacing();
+    this.clear();
   }
   /** A wheel, touch, press or key on the thread stops the glide where it is. */
   stopPlacing = () => {
