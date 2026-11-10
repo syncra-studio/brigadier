@@ -75,7 +75,8 @@ pub fn source(data: &Path, spec: &Spec, at: &str) -> io::Result<Source> {
     }
     let from = record(&spec.dir).and_then(|r| r["source"].as_str().map(String::from));
     match from.map(|id| crate::load(data, &id)) {
-        Some(Ok(src)) => source(data, &src, at),
+        // An archived or retired source counts as gone [D1079].
+        Some(Ok(src)) if session::retired(&src.dir).is_none() => source(data, &src, at),
         _ => Ok(Source { gone: true, ..mine }),
     }
 }

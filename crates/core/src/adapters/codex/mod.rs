@@ -252,8 +252,9 @@ impl Adapter for Codex {
         })
     }
 
+    // Off until the live checks pass (D494, D506): Codex forks from the hand-off meanwhile.
     fn forking(&self) -> Option<&dyn Fork> {
-        Some(self)
+        None
     }
 
     /// Its original never changes: whether or not a fork was made, this cut didn't take.
