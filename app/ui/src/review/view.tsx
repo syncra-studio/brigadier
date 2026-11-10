@@ -101,7 +101,13 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
     <div ref={panel} className="flex min-h-0 flex-1 flex-col">
       <ReviewTab
       scope={scope}
-      onScope={setScope}
+      onScope={(next) => {
+        // Another scope's diff isn't shown under this one's loading or error.
+        setScope(next);
+        setReview(null);
+        setContents(new Map());
+        setError(null);
+      }}
       review={review}
       contents={contents}
       error={error}

@@ -38,13 +38,14 @@ export const restoreChips = (session: string, back: readonly Chip[]) =>
 
 /**
  * The chips as the agent reads them, after the user's own words: each comment's place (on a removed line, the old
- * file's; on a commit's diff, that commit's), the lines it's on, quoted, and what it says.
+ * file's; on a commit's diff, that commit's), the lines it's on, quoted, then what it says after a blank line, so it
+ * isn't read as part of the quote.
  */
 export function withChips(message: string, sent: readonly Chip[]): string {
   const blocks = sent.map(({ on, comment }) => {
     const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
     const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
-    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n${comment.text}`;
+    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n\n${comment.text}`;
   });
   return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
 }

@@ -157,7 +157,7 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
           const side = metadata.range.side ?? "additions";
           const start = Math.min(metadata.range.start, metadata.range.end);
           const end = Math.max(metadata.range.start, metadata.range.end);
-          onComment?.({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: (sideLines(side)[start - 1] ?? "").trim(), text });
+          onComment?.({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: sideLines(side).slice(start - 1, end).join("\n"), text });
           setDraft(null);
         }}
       />
