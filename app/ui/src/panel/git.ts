@@ -3,7 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { showToast } from "../components/toast";
 import { ask, setGitHandler, useDaemon } from "../daemon";
 import { refreshHistory } from "../history/store";
-import { useHomeProject } from "../home/start";
+import { useHomeProject, useStart } from "../home/start";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
@@ -179,15 +179,18 @@ setGitHandler((frame) => {
 export function useGitWatch(owner: string | null): void {
   const { daemon } = useDaemon();
   const project = useHomeProject();
+  const starting = useStart(owner ?? "")?.asking === true;
   const target: Target | null = owner === null ? null : owner !== HOME ? { session: owner } : project ? { project: project.id } : null;
   const key = target && JSON.stringify(target);
   useEffect(() => {
     if (key !== git.key) {
+      re = 0;
       pending = [];
       set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null });
     }
-    if (daemon && target) watch(git.target!);
-  }, [key, daemon]);
+    // New sessions open before Rust has made their checkout.
+    if (daemon && target && !starting) watch(git.target!);
+  }, [key, daemon, starting]);
   useEffect(() => {
     const refresh = () => {
       ask({ op: "git_refresh" });
