@@ -41,7 +41,7 @@ function icon(step: Step): ReactNode {
  * [D1019, D1044].
  * `writing`: Commit pressed with a blank box, the message being written [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
   step: Step;
   nowMs: number;
   running?: boolean;
@@ -49,6 +49,9 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   /** Off for now (✨ is writing a message). */
   disabled?: boolean;
   error?: StepError | null;
+  /** Its click comes with a later step: off, and the line says so [D1143]. */
+  later?: string | null;
+  can?: (pick: ActionPick) => boolean;
   mergeStyle?: MergeStyle;
   rejected?: boolean;
   prWay?: PrWay;
@@ -60,14 +63,14 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   const words = stepWords(step, nowMs);
   const busy = running || writing || disabled;
   const label = writing ? "Writing message…" : running ? runningWords(step).label : words.label;
-  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : words.line;
-  const tone = running ? "quiet" : error ? "bad" : words.tone;
+  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (later ?? words.line);
+  const tone = running ? "quiet" : error ? "bad" : later ? "quiet" : words.tone;
   const variant = step.kind === "catchUp" ? "secondary" : "default";
   const menu = hasActionMenu(step);
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex" title={words.why}>
-        <Button size={null} variant={variant} disabled={busy || words.off} onClick={onRun} className={cx(SPLIT, "min-w-0 flex-1 rounded-s-capsule px-2.5")}>
+      <div className="flex" title={later ?? words.why}>
+        <Button size={null} variant={variant} disabled={busy || words.off || Boolean(later)} onClick={onRun} className={cx(SPLIT, "min-w-0 flex-1 rounded-s-capsule px-2.5")}>
           {running || writing ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon(step)}
           <span className="truncate">{label}</span>
           {step.kind === "sync" && !busy && (
@@ -97,11 +100,11 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
           >
             <ChevronDown />
           </DropdownMenuTrigger>
-          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} onMergeStyle={onMergeStyle} onPick={onPick} held={held} />}
+          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} can={can} onMergeStyle={onMergeStyle} onPick={onPick} held={held} />}
         </DropdownMenu>
       </div>
       <p className={cx("px-1 text-xs", TONE[tone])}>
-        {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
+        {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && !later && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
         {line}
       </p>
     </div>

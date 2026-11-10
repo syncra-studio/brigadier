@@ -21,11 +21,13 @@ pub mod diff;
 pub mod files;
 pub mod history;
 pub mod land;
+mod precheck;
 pub mod push;
 pub mod recover;
 pub mod replace;
 pub mod search;
 pub mod sync;
+pub mod step;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.

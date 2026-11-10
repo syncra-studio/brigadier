@@ -4,7 +4,7 @@ import type { MergeStyle, Step } from "../types";
 import type { PrWay } from "./create-pr";
 import { plural } from "../words";
 
-/** What a pick in the action button's menu asks for; until it's wired, each is a no-op. */
+/** What a pick in the action button's menu asks for. */
 export type ActionPick =
   | "commit" | "amend" | "commitPush" | "commitSync" | "commitMerge" | "commitPr"
   | "createPr" | "pushBranch" | "openPrPage" | "catchUp" | "catchUpMerge" | "catchUpRebase" | "catchUpAgent"
@@ -21,8 +21,10 @@ export function hasActionMenu(step: Step): boolean {
  * `rejected`: a push was just turned away, so Force Push is offered [D1034]. `prWay`: Create PR through the host's
  * CLI, else its PR page, else Push branch alone [D1030].
  */
-export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay = "cli", onMergeStyle, onPick, held }: {
+export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay = "cli", can, onMergeStyle, onPick, held }: {
   step: Step;
+  /** Whether a pick works here; every one does without it (the gallery). */
+  can?: (pick: ActionPick) => boolean;
   prWay?: PrWay;
   mergeStyle?: MergeStyle;
   rejected?: boolean;
@@ -30,18 +32,19 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
   onPick?: (pick: ActionPick) => void;
   held?: HTMLElement;
 }) {
-  const pick = (what: ActionPick) => () => onPick?.(what);
+  // A pick that isn't wired yet is off, never clickable and inert [D1143].
+  const item = (what: ActionPick, off = false) => ({ onClick: () => onPick?.(what), disabled: off || (can ? !can(what) : false) });
   const createPr = (title: string) =>
     prWay === "page" ? (
-      <DropdownMenuItem onClick={pick("openPrPage")}><MenuRow icon={<PullRequestOpen />} title="Open PR page ↗" /></DropdownMenuItem>
+      <DropdownMenuItem {...item("openPrPage")}><MenuRow icon={<PullRequestOpen />} title="Open PR page ↗" /></DropdownMenuItem>
     ) : (
-      prWay !== "none" && <DropdownMenuItem disabled={prWay === "loading"} onClick={pick("createPr")}><MenuRow icon={<PullRequestOpen />} title={title} /></DropdownMenuItem>
+      prWay !== "none" && <DropdownMenuItem {...item("createPr", prWay === "loading")}><MenuRow icon={<PullRequestOpen />} title={title} /></DropdownMenuItem>
     );
   const place = held && { container: held, collisionAvoidance: { side: "none", align: "none" } as const };
   const force = rejected && (
     <>
       <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={pick("forcePush")}>Force Push (with lease)…</DropdownMenuItem>
+      <DropdownMenuItem {...item("forcePush")}>Force Push (with lease)…</DropdownMenuItem>
     </>
   );
   // The pick's check leads its row, as the old mock drew it.
@@ -62,12 +65,12 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
     case "commit":
       items = (
         <>
-          <DropdownMenuItem onClick={pick("commit")}>Commit</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("amend")}>Commit (Amend)</DropdownMenuItem>
+          <DropdownMenuItem {...item("commit")}>Commit</DropdownMenuItem>
+          <DropdownMenuItem {...item("amend")}>Commit (Amend)</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("commitMerge")}>Commit &amp; Merge into {step.base}</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("commitPush")}>Commit &amp; Push</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("commitPr")}>Commit &amp; Create PR…</DropdownMenuItem>
+          <DropdownMenuItem {...item("commitMerge")}>Commit &amp; Merge into {step.base}</DropdownMenuItem>
+          <DropdownMenuItem {...item("commitPush")}>Commit &amp; Push</DropdownMenuItem>
+          <DropdownMenuItem {...item("commitPr")}>Commit &amp; Create PR…</DropdownMenuItem>
         </>
       );
       break;
@@ -78,20 +81,20 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
           {styles(false)}
           <DropdownMenuSeparator />
           {prWay !== "page" && createPr("Create PR…")}
-          <DropdownMenuItem onClick={pick("pushBranch")}><MenuRow icon={<Publish />} title="Push branch" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("pushBranch")}><MenuRow icon={<Publish />} title="Push branch" /></DropdownMenuItem>
           {prWay === "page" && createPr("Create PR…")}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("catchUp")}>Catch up with {step.base}</DropdownMenuItem>
+          <DropdownMenuItem {...item("catchUp")}>Catch up with {step.base}</DropdownMenuItem>
         </>
       );
       break;
     case "catchUp":
       items = (
         <>
-          <DropdownMenuItem onClick={pick("catchUpMerge")}>Catch up by merging {step.base}</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("catchUpRebase")}>Catch up by rebasing onto {step.base}</DropdownMenuItem>
+          <DropdownMenuItem {...item("catchUpMerge")}>Catch up by merging {step.base}</DropdownMenuItem>
+          <DropdownMenuItem {...item("catchUpRebase")}>Catch up by rebasing onto {step.base}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("catchUpAgent")}><MenuRow icon={<Sparkles />} title="Catch up, then resolve with agent" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("catchUpAgent")}><MenuRow icon={<Sparkles />} title="Catch up, then resolve with agent" /></DropdownMenuItem>
           {prWay !== "none" && (
             <>
               <DropdownMenuSeparator />
@@ -111,7 +114,7 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem onClick={pick("abortCatchUp")}>Abort catching up</DropdownMenuItem>
+          <DropdownMenuItem {...item("abortCatchUp")}>Abort catching up</DropdownMenuItem>
         </>
       );
       break;
@@ -121,7 +124,7 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
           <DropdownMenuLabel>Merge #{step.pr} as</DropdownMenuLabel>
           {styles(true)}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
+          <DropdownMenuItem {...item("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
         </>
       );
       break;
@@ -130,17 +133,17 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
       items = (
         <>
           <DropdownMenuLabel>Fix with agent</DropdownMenuLabel>
-          <DropdownMenuItem onClick={pick("fixChecks")}><MenuRow icon={<Sparkles />} title="Failing checks" /></DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("fixComments")}><MenuRow icon={<Sparkles />} title="Comments" /></DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("fixConflicts")}><MenuRow icon={<Sparkles />} title="Conflicts" /></DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("fixAll")}><MenuRow icon={<Sparkles />} title="Everything" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("fixChecks")}><MenuRow icon={<Sparkles />} title="Failing checks" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("fixComments")}><MenuRow icon={<Sparkles />} title="Comments" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("fixConflicts")}><MenuRow icon={<Sparkles />} title="Conflicts" /></DropdownMenuItem>
+          <DropdownMenuItem {...item("fixAll")}><MenuRow icon={<Sparkles />} title="Everything" /></DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
+          <DropdownMenuItem {...item("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
         </>
       );
       break;
     case "pushPr":
-      items = <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>;
+      items = <DropdownMenuItem {...item("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>;
       break;
     case "landed":
       return null;
@@ -148,11 +151,11 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
       // The user's own folder: the old CommitActionsMenu [D1045].
       items = (
         <>
-          <DropdownMenuItem onClick={pick("commit")}>Commit</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("amend")}>Commit (Amend)</DropdownMenuItem>
+          <DropdownMenuItem {...item("commit")}>Commit</DropdownMenuItem>
+          <DropdownMenuItem {...item("amend")}>Commit (Amend)</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("commitPush")}>Commit &amp; Push</DropdownMenuItem>
-          <DropdownMenuItem onClick={pick("commitSync")}>Commit &amp; Sync</DropdownMenuItem>
+          <DropdownMenuItem {...item("commitPush")}>Commit &amp; Push</DropdownMenuItem>
+          <DropdownMenuItem {...item("commitSync")}>Commit &amp; Sync</DropdownMenuItem>
         </>
       );
   }

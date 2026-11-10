@@ -53,8 +53,16 @@ export type PrWatch = {
   events: { atMs: number; pr: number; kind: "opened" | "checksFailed" | "checksPassed" | "changesAsked" | "commented" | "merged"; detail: string }[];
 };
 
-/** A pull request's checks, as the merge confirm shows them. */
-export type Checks = { passed: number; failed: number; running: number; approved: boolean };
+/** A pull request's checks, as the merge confirm shows them. `approved`: null when the host asks for no review. */
+export type Checks = { passed: number; failed: number; running: number; approved: boolean | null };
+
+/** Why the base can't take a landing now [D1047, D1082, D1161]: edits there in the way, a merge stopped there, not a local branch, or another session lands. */
+export type Blocked =
+  | { why: "busy"; folder: string; files: string[] }
+  | { why: "midway"; folder: string }
+  | { why: "remote" }
+  | { why: "commit" }
+  | { why: "shared"; with: string };
 
 /**
  * The action button's next step, which Rust works out from git all the time [D1015, D1019, D1045]. Each carries
@@ -62,13 +70,15 @@ export type Checks = { passed: number; failed: number; running: number; approved
  */
 export type Step =
   | { kind: "commit"; base: string; waiting: number; clean: boolean }
-  | { kind: "merge"; base: string; ready: number; moved: number; busy: string[] | null }
+  | { kind: "merge"; base: string; ready: number; moved: number; blocked: Blocked | null }
   | { kind: "catchUp"; base: string; conflicts: string[] }
   | { kind: "continue"; base: string; left: number }
-  | { kind: "landed"; base: string; atMs: number }
-  | { kind: "pushPr"; base: string; pr: number; ahead: number; host: string }
-  | { kind: "fixPr"; base: string; pr: number; why: "checks" | "changes"; detail: string }
-  | { kind: "mergePr"; base: string; pr: number; checks: Checks }
+  // No time when it landed outside Brigadier.
+  | { kind: "landed"; base: string; atMs: number | null }
+  | { kind: "pushPr"; base: string; pr: number; ahead: number; host: string | null }
+  | { kind: "fixPr"; base: string; pr: number; why: "checks" | "changes" | "conflicts"; failed: number }
+  // `mergeable`: null while the host hasn't said.
+  | { kind: "mergePr"; base: string; pr: number; checks: Checks; mergeable: boolean | null }
   // A folder's: VS Code's own [D1045].
   | { kind: "folderCommit"; branch: string; behind: number; ahead: number }
   | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number }

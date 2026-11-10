@@ -139,10 +139,11 @@ export function sync(target: Target, verb: "sync" | "publish", branch: string): 
   });
 }
 
-/** Rename, switch or create: the item shows `name` at once, until the watch reads it or Rust says no. */
-export function name(target: Target, args: string[], name: string): void {
+/** Rename, switch or create: the item shows `name` at once, until the watch reads it or Rust says no. `done`: after it's made. */
+export function name(target: Target, args: string[], name: string, done?: () => void): void {
   put(target, { naming: name });
   run(target, args, (reply) => {
+    if (reply.ok) done?.();
     // A read that never shows it (git took another name) doesn't hold it.
     if (reply.ok) return void setTimeout(() => opOf(target).naming === name && put(target, { naming: null }), 3000);
     put(target, { naming: null });

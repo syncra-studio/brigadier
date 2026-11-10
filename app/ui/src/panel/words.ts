@@ -1,4 +1,4 @@
-import type { PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
+import type { Blocked, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /* The right panel's words, written from what Rust sends [D65]. */
 
@@ -43,6 +43,32 @@ export type Tone = "quiet" | "good" | "warn" | "bad";
 
 const names = (paths: string[]) => paths.map(baseName).join(", ");
 
+/** Why the base can't take a landing now, on Merge's line [D1047, D1161]. */
+function blockedWords(base: string, blocked: Blocked): string {
+  switch (blocked.why) {
+    case "busy":
+      return `${base} is checked out in ${baseName(blocked.folder)} with changes to ${names(blocked.files)}`;
+    case "midway":
+      return `${base} is in the middle of a merge or rebase in ${baseName(blocked.folder)}`;
+    case "remote":
+      return `${base} is a remote branch · open a PR instead`;
+    case "commit":
+      return `${base} isn't a branch · open a PR instead`;
+    case "shared":
+      return `Landing stays with ${blocked.with}`;
+  }
+}
+
+/** Merge #N's line: what it waits for, or that it's ready. Nothing the host didn't say is taken as passed [D74, D1019]. */
+function mergePrWords(step: Extract<Step, { kind: "mergePr" }>): { line: string; off: boolean } {
+  const { pr, checks } = step;
+  if (checks.running > 0) return { line: `#${pr} · ${plural(checks.running, "check")} still running`, off: true };
+  if (step.mergeable === null) return { line: `#${pr} · the host is still checking whether it merges`, off: true };
+  if (checks.approved === false) return { line: `#${pr} · waiting for a review`, off: true };
+  const passed = checks.passed > 0 ? "checks passed" : "no checks";
+  return { line: [`#${pr}`, checks.approved && "approved", passed, "merges cleanly"].filter(Boolean).join(" · "), off: false };
+}
+
 /**
  * The action button's label, and its pre-check line: what clicking does and whether it will work [D1015]. `off`:
  * the button can't be clicked now, `why` its tip.
@@ -57,13 +83,13 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
     case "merge":
       return {
         label: `Merge into ${step.base}`,
-        line: step.busy
-          ? `${step.base} is checked out in your project folder with changes to ${names(step.busy)}`
+        line: step.blocked
+          ? blockedWords(step.base, step.blocked)
           : step.moved > 0
             ? `${step.base} moved ${plural(step.moved, "commit")} · still merges cleanly`
             : `${plural(step.ready, "commit")} ready · merges cleanly into ${step.base}`,
         tone: "quiet",
-        off: step.busy !== null,
+        off: step.blocked !== null,
       };
     case "catchUp":
       return { label: `Catch up with ${step.base}`, line: `Would conflict in ${names(step.conflicts)}`, tone: "warn" };
@@ -73,17 +99,24 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
         ? { label: "Resolve with agent", line: `Catching up with ${step.base} · ${plural(step.left, "conflict")} left`, tone: "warn" }
         : { label: "Continue", line: `Catching up with ${step.base} · conflicts resolved`, tone: "quiet" };
     case "landed":
-      return { label: "Commit", line: `Everything is in ${step.base} · merged ${ago(step.atMs, nowMs)}`, tone: "quiet", off: true };
+      return { label: "Commit", line: step.atMs === null ? `Everything is in ${step.base}` : `Everything is in ${step.base} · merged ${ago(step.atMs, nowMs)}`, tone: "quiet", off: true };
     case "pushPr":
-      return { label: `Push to #${step.pr}`, line: `#${step.pr} open · ${plural(step.ahead, "commit")} not on ${step.host} yet`, tone: "quiet" };
+      return { label: `Push to #${step.pr}`, line: `#${step.pr} open · ${plural(step.ahead, "commit")} not on ${step.host ?? "the remote"} yet`, tone: "quiet" };
     case "fixPr":
       return {
         label: "Fix with agent",
-        line: `${step.why === "checks" ? "Checks failed" : "Changes asked"} on #${step.pr} · ${step.detail}`,
-        tone: "bad",
+        line:
+          step.why === "checks"
+            ? `${plural(step.failed, "check")} failed on #${step.pr}`
+            : step.why === "conflicts"
+              ? `#${step.pr} conflicts with ${step.base}`
+              : `Changes asked on #${step.pr}`,
+        tone: step.why === "checks" ? "bad" : "warn",
       };
-    case "mergePr":
-      return { label: `Merge #${step.pr}`, line: `#${step.pr} approved · checks passed · merges cleanly`, tone: "good" };
+    case "mergePr": {
+      const { line, off } = mergePrWords(step);
+      return { label: `Merge #${step.pr}`, line, tone: off ? "quiet" : "good", off };
+    }
     case "folderCommit":
       return {
         label: "Commit",
@@ -105,7 +138,7 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
 export function runningWords(step: Step): { label: string; line: string } {
   switch (step.kind) {
     case "merge":
-      return { label: "Merging…", line: `Merging ${plural(step.ready, "commit")} into ${step.base}` };
+      return { label: "Merging…", line: step.ready > 0 ? `Merging ${plural(step.ready, "commit")} into ${step.base}` : `Merging into ${step.base}` };
     case "catchUp":
       return { label: "Catching up…", line: `Merging ${step.base} into this branch` };
     case "mergePr":
@@ -126,6 +159,12 @@ export function runningWords(step: Step): { label: string; line: string } {
     default:
       return { label: "Committing…", line: "Committing" };
   }
+}
+
+/** A step whose click comes with a later step of the plan: the button stays off and says so (proposed words) [D1143]. */
+export function laterWords(kind: Step["kind"]): string | null {
+  const later: Partial<Record<Step["kind"], string>> = { catchUp: "2.23", continue: "2.23", fixPr: "2.27", mergePr: "2.27" };
+  return later[kind] ? `Not wired yet · comes with step ${later[kind]}` : null;
 }
 
 /** What a step that failed says on the line: "Couldn't merge: …". */
@@ -172,6 +211,7 @@ export function statusWords(state: SourceState, step: Step | null, files: number
     case "fixPr": {
       const failed = prs.find((pr) => pr.number === step.pr)?.failed ?? 0;
       if (step.why === "changes") return { title: `Changes asked on #${step.pr}`, tone: "warn", icon: "pr" };
+      if (step.why === "conflicts") return { title: `Conflicts on #${step.pr}`, tone: "warn", icon: "pr" };
       return { title: failed > 0 ? `${plural(failed, "check")} failed` : "Checks failed", tone: "bad", icon: "pr" };
     }
     case "pushPr":

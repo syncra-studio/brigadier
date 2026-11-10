@@ -8,7 +8,7 @@ use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
     self, Checkout, Status, Target, branch, files, history, land, push::Rejected, recover, replace,
-    search, sync, watch::Watch,
+    search, step, sync, watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -268,11 +268,11 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         // The action button's next step, and landing [D1015, D1028, D1049].
         "step" => {
-            let step = land::step(data, &target, has(args, "--fresh"), &stop)?;
+            let step = step::step(data, &target, has(args, "--fresh"), &stop)?;
             json!({"ok": true, "step": step})
         }
         "style" => {
-            land::set_style(data, &target, word(1)?)?;
+            step::set_style(data, &target, word(1)?)?;
             done
         }
         "land" | "squash-message" => {

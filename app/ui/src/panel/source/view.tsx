@@ -4,7 +4,7 @@ import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
-import { moveFiles, retryGit, type Target, useGit } from "../git";
+import { landBranch, moveFiles, refreshStep, retryGit, setMergeStyle, squashMessage, type Target, useGit } from "../git";
 import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
@@ -16,13 +16,15 @@ function branchOps(target: Target, owner: string, project: string | null, branch
     read: (done) => readBranches(target, done),
     sync: () => sync(target, "sync", branch),
     publish: () => sync(target, "publish", branch),
-    rename: (to) => name(target, ["rename", to], to),
+    // The step reads the branch's PRs under its new name at once [D1143].
+    rename: (to) => name(target, ["rename", to], to, () => refreshStep(true)),
     switchTo: (to, remote) => name(target, ["switch", to, ...(remote ? ["--remote"] : [])], remote ? to.slice(to.indexOf("/") + 1) : to),
     create: (to, from) => name(target, ["create", to, ...(from ? ["--from", from] : [])], to),
-    // What follows the base reads it again at once: History and the PR's facts [D1143].
+    // What follows the base reads it again at once: History, the step and the PR's facts [D1143].
     setBase: (base) =>
       setBase(target, base, () => {
         refreshHistory(owner);
+        refreshStep(true);
         if (owner !== HOME) readPr(owner);
       }),
     newSession: (base) => {
@@ -37,7 +39,7 @@ function branchOps(target: Target, owner: string, project: string | null, branch
 /**
  * `owner`'s checkout as Source shows it, and Rust's moves on it: Source and the summary card read and act on the same
  * [D1145]. Stage, unstage and discard go through the same Rust moves as Review's [D1043, D1103]. The action button
- * waits for Rust's next step (2.19 on), the branch list and PRs for theirs.
+ * is Rust's next step, and lands through Rust (2.22) [D1152]; the branch list and PRs wait for theirs.
  */
 export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   const git = useGit();
@@ -55,7 +57,8 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   return {
     data: {
       source: git.source,
-      step: null,
+      step: git.step?.step ?? null,
+      merge: git.step?.merge ?? null,
       error: git.error,
       offline: offline && git.source !== null,
       pending: git.pending,
@@ -71,6 +74,10 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       openFile: (path) => openFile(owner, path, { preview: false }),
       retry: retryGit,
       branch: git.target ? branchOps(git.target, owner, project, branch ?? "the branch") : undefined,
+      land: landBranch,
+      setStyle: setMergeStyle,
+      squashMessage,
+      refreshStep: () => refreshStep(true),
     },
   };
 }

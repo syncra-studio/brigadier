@@ -16,7 +16,9 @@ use std::process::Command;
 mod branch;
 mod copy;
 pub use branch::{rename, set_base};
+mod landing;
 use copy::include;
+pub use landing::{Landing, Lands, landed, lands, set_landing, unlanded};
 
 const RECORD: &str = "worktree.json";
 /// Proposed: making or removing a worktree of a big repository can take a while.
@@ -41,26 +43,6 @@ struct Owned {
     renaming: Option<String>,
     /// The last landing into the base: it goes wherever this record goes [D1049, D1082].
     landing: Option<Landing>,
-}
-
-/// A landing into the base [D1028, D1049]: the session's HEAD it landed and the commit that
-/// landed it, so a squashed branch counts as landed while that commit is in the base and the
-/// session hasn't changed since.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Landing {
-    pub head: String,
-    pub commit: String,
-    pub style: String,
-    pub at_ms: u64,
-}
-
-/// What Land reads of a session's record: its main checkout, base, branch and last landing.
-pub struct Lands {
-    pub repo: PathBuf,
-    pub base: String,
-    pub base_commit: String,
-    pub branch: Option<String>,
-    pub landing: Option<Landing>,
 }
 
 fn err<T>(message: String) -> io::Result<T> {
@@ -137,38 +119,6 @@ fn write(dir: &Path, owned: &Owned) -> io::Result<()> {
 /// The branch (or commit) a session's worktree started from; none without one.
 pub fn base(dir: &Path) -> Option<String> {
     read(dir).ok().flatten().map(|owned| owned.base)
-}
-
-/// The session's record as Land reads it; none without a worktree.
-pub fn lands(dir: &Path) -> io::Result<Option<Lands>> {
-    Ok(read(dir)?.map(|o| Lands {
-        repo: PathBuf::from(o.repo),
-        base: o.base,
-        base_commit: o.base_commit,
-        branch: o.branch,
-        landing: o.landing,
-    }))
-}
-
-/// Records a landing in the session's record.
-pub fn set_landing(dir: &Path, landing: Landing) -> io::Result<()> {
-    let _one = lock(dir)?;
-    let Some(mut owned) = read(dir)? else {
-        return err("This session has no worktree.".into());
-    };
-    owned.landing = Some(landing);
-    write(dir, &owned)
-}
-
-/// Whether `landing` still holds: its commit is in the base, and the branch is still at the HEAD
-/// it landed. Anything git can't answer counts as not landed, so delete asks [D181, D1049].
-pub fn landed(repo: &Path, base: &str, tip: &str, landing: &Landing) -> bool {
-    tip == landing.head
-        && git(
-            repo,
-            &["merge-base", "--is-ancestor", &landing.commit, base],
-        )
-        .is_ok()
 }
 
 /// Where a session's worktree goes.
@@ -448,30 +398,6 @@ pub fn present(dir: &Path) -> bool {
 /// The session's branch while it exists: Remove project's preview counts the merged ones.
 pub fn branch(dir: &Path) -> io::Result<Option<String>> {
     Ok(read(dir)?.and_then(|o| o.branch.filter(|b| has_branch(Path::new(&o.repo), b))))
-}
-
-/// The session's branch when it holds work its base doesn't, uncommitted changes included: the
-/// delete confirm names it [D181]. A check git can't answer counts as unlanded, so it asks.
-pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
-    let Some(owned) = read(dir)? else {
-        return Ok(None);
-    };
-    let repo = Path::new(&owned.repo);
-    let Some(branch) = owned.branch.filter(|b| has_branch(repo, b)) else {
-        return Ok(None);
-    };
-    let dirty = owned
-        .path
-        .as_deref()
-        .map(Path::new)
-        .filter(|p| p.exists())
-        .is_some_and(|p| git(p, &["status", "--porcelain"]).map_or(true, |s| !s.is_empty()));
-    let landed = git(repo, &["merge-base", "--is-ancestor", &branch, &owned.base]).is_ok()
-        || (owned.landing.as_ref()).is_some_and(|l| {
-            git(repo, &["rev-parse", &format!("refs/heads/{branch}")])
-                .is_ok_and(|tip| landed(repo, &owned.base, &tip, l))
-        });
-    Ok((dirty || !landed).then_some(branch))
 }
 
 /// Takes a session's worktree away for delete [D35, D181]: freed as above, then its branch goes
