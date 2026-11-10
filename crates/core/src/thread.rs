@@ -6,15 +6,21 @@
 
 use crate::adapters;
 use crate::fold::{Fold, Turn};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod asks;
 mod find;
+mod page;
 mod rows;
+mod saved;
 mod turn;
 
+pub use saved::{Rows, Saved};
+
 /// The turn on screen: the status fold's first turn, from when it became first.
+#[derive(Clone, Serialize, Deserialize)]
 struct Open {
     id: String,
     backend: String,
@@ -40,23 +46,36 @@ struct Open {
     denied: usize,
 }
 
-#[derive(Default)]
+/// Saved whole with its rows apart (`saved`); what only says what changed since the last send isn't.
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Thread {
     fold: Fold,
-    pub items: Vec<Value>,
+    #[serde(skip)]
+    pub items: Rows,
     pub turns: Vec<Value>,
     pub work: Vec<Value>,
     open: Option<Open>,
     /// Status-fold turns already shown, by id.
     shown: HashSet<String>,
     /// (turn, tool or question id) → its row's index.
+    #[serde(with = "pairs")]
     keys: HashMap<(String, String), usize>,
     /// A step's row index → its group row's index.
     member: HashMap<usize, usize>,
     /// Subagents not yet ended, by tool id: one in the background may end turns later [D78].
     children: HashMap<String, usize>,
+    /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
+    /// rows' `cid`s, rows by a custom id, and each turn's first row.
+    cids: HashSet<String>,
+    named: HashMap<String, usize>,
+    first_rows: HashMap<String, usize>,
+    /// Turns ended so far: a checkpoint is saved when one ended since the last [D503].
+    closed: u64,
+    #[serde(skip)]
     changed_items: BTreeSet<usize>,
+    #[serde(skip)]
     changed_turns: BTreeSet<usize>,
+    #[serde(skip)]
     sent_work: usize,
     /// The switch row of a limit no switch has taken yet, by index.
     limit_row: Option<usize>,
@@ -66,11 +85,13 @@ pub struct Thread {
     ran: Option<(String, String)>,
     /// What the composer's rail says about the last turn's failure, and whether that changed [D487].
     notices: Vec<Value>,
+    #[serde(skip)]
     notices_changed: bool,
     /// The turn whose terminal failure was already shown (some CLIs repeat it in their result).
     failed: Option<String>,
     /// Rows of the requests still waiting on the user, oldest first, and whether that changed.
     pending: Vec<usize>,
+    #[serde(skip)]
     pending_changed: bool,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
@@ -81,7 +102,10 @@ pub struct Thread {
     startup: crate::worktrees::Startup,
     /// Where the latest setup ran when its input row was still held back.
     setup_at: Option<usize>,
+    /// Read from the session's folder, not the log: never saved.
+    #[serde(skip)]
     setup: Value,
+    #[serde(skip)]
     setup_changed: bool,
     points: Vec<String>,
 }
@@ -95,9 +119,6 @@ fn reason(why: Option<&str>) -> &'static str {
         _ => "usage-limit",
     }
 }
-
-/// About how many rows the snapshot and each older page carry [D98].
-const PAGE: usize = 2000;
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
 const CLOSES: [&str; 9] = [
@@ -117,9 +138,9 @@ impl Thread {
         if crate::worktree_setup::setup_launch(item) {
             // An earlier undelivered turn can hold this input's row back until after its launch.
             self.setup_at = Some(
-                self.items
-                    .iter()
-                    .position(|row| row["turnId"] == item["cid"])
+                item["cid"]
+                    .as_str()
+                    .and_then(|cid| self.first_rows.get(cid).copied())
                     .unwrap_or(self.items.len()),
             );
         }
@@ -225,6 +246,7 @@ impl Thread {
         let Some(o) = self.open.take() else {
             return;
         };
+        self.closed += 1;
         let status = match outcome {
             "done" => "done",
             "stopped" => "cancelled",
@@ -246,8 +268,7 @@ impl Thread {
                 self.children.retain(|_, &mut c| c != at);
             }
         }
-        let denied = self.items[o.from..]
-            .iter()
+        let denied = (self.items.range(o.from..self.items.len()))
             .filter(|r| r["kind"] == "approval" && r["decision"] == "denied")
             .count()
             + o.denied;
@@ -319,9 +340,17 @@ impl Thread {
     fn add_as(&mut self, mut row: Value, id: Option<String>) -> usize {
         let at = self.items.len();
         let n = at as u64 + 1;
+        if let Some(id) = &id {
+            self.named.insert(id.clone(), at);
+        }
         row["id"] = id.unwrap_or_else(|| format!("i{n}")).into();
-        row["turnId"] = self.turn_id().unwrap_or_default().into();
+        let turn = self.turn_id().unwrap_or_default();
+        self.first_rows.entry(turn.clone()).or_insert(at);
+        row["turnId"] = turn.into();
         row["n"] = n.into();
+        if let Some(cid) = row["cid"].as_str().filter(|_| row["kind"] == "message") {
+            self.cids.insert(cid.into());
+        }
         if let Some(o) = self.open.as_mut().filter(|o| o.input && o.first.is_none()) {
             o.first = Some(n);
         }
@@ -360,9 +389,9 @@ impl Thread {
     pub fn sync_setup(&mut self, setup: Value, alive: bool) {
         let (mut setup, cid) = self.startup.sync(setup, alive);
         if setup.is_object() {
-            setup["before"] = cid
-                .and_then(|cid| self.items.iter().find(|row| row["turnId"] == cid))
-                .or_else(|| self.setup_at.and_then(|at| self.items.get(at)))
+            setup["before"] = (cid.and_then(|cid| self.first_rows.get(cid).copied()))
+                .or(self.setup_at)
+                .and_then(|at| self.items.get(at))
                 .map_or(Value::Null, |row| row["id"].clone());
         }
         self.setup_changed |= setup != self.setup;
@@ -403,67 +432,30 @@ impl Thread {
         Some(out)
     }
 
-    /// The view's Session with only its newest page of rows [D97, D98]; what changed so far counts
-    /// as sent.
-    pub fn session(&mut self, id: &str, title: &str) -> Value {
-        self.take();
-        let mut page = self.page(self.items.len(), self.items.len());
-        page["id"] = id.into();
-        page["title"] = title.into();
-        page["setup"] = self.setup.clone();
-        page["rewind"] = self.fold.points().into();
-        page["notices"] = self.notices.clone().into();
-        for (k, v) in self.requests().as_object().unwrap() {
-            page[k] = v.clone();
-        }
-        page
+    /// Forgets what changed: a thread kept to copy from sends nothing itself.
+    pub fn settle(&mut self) {
+        self.changed_items.clear();
+        self.changed_turns.clear();
+        self.sent_work = self.work.len();
+        self.notices_changed = false;
+        self.pending_changed = false;
+    }
+}
+
+/// A map with pair keys, as JSON can hold it: a list of `[key, value]`.
+mod pairs {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::collections::HashMap;
+
+    type Keys = HashMap<(String, String), usize>;
+
+    pub fn serialize<S: Serializer>(keys: &Keys, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(keys.iter())
     }
 
-    /// The page of rows just older than row `before` (an `n`), for a view scrolling up [D97], and
-    /// on down to row `through` when given: find going to a match there, in one page.
-    pub fn older(&self, before: u64, through: Option<u64>) -> Value {
-        let end = (before.saturating_sub(1) as usize).min(self.items.len());
-        let floor = through.map_or(end, |n| n.saturating_sub(1) as usize);
-        self.page(end, floor)
-    }
-
-    /// Whole turns ending at row index `end`, newest first, down to row index `floor` and then up
-    /// to about `PAGE` rows and at least one turn, with their turns and work, and `before`: the `n`
-    /// of its first row, or null when nothing is older.
-    fn page(&self, end: usize, floor: usize) -> Value {
-        let turn = |at: usize| &self.items[at]["turnId"];
-        let mut start = end;
-        while start > 0 {
-            let mut from = start - 1;
-            while from > 0 && turn(from - 1) == turn(start - 1) {
-                from -= 1;
-            }
-            if start < end && start <= floor && end - from > PAGE {
-                break;
-            }
-            start = from;
-        }
-        // Its turns run from its first row's to the next page's, so a turn with no rows yet comes too.
-        let place = |at: usize| {
-            self.turns
-                .iter()
-                .position(|t| t["id"] == *turn(at))
-                .unwrap_or(self.turns.len())
-        };
-        let first = if start < end { place(start) } else { 0 };
-        let last = if end < self.items.len() {
-            place(end)
-        } else {
-            self.turns.len()
-        };
-        let turns = &self.turns[first.min(last)..last];
-        let ids: HashSet<&Value> = turns.iter().map(|t| &t["id"]).collect();
-        let work: Vec<&Value> = self
-            .work
-            .iter()
-            .filter(|w| ids.contains(&w["turnId"]))
-            .collect();
-        let before = (start > 0).then(|| self.items[start]["n"].clone());
-        json!({"turns": turns, "items": &self.items[start..end], "work": work, "before": before})
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Keys, D::Error> {
+        Ok(Vec::<((String, String), usize)>::deserialize(d)?
+            .into_iter()
+            .collect())
     }
 }

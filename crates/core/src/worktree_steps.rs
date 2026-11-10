@@ -35,7 +35,7 @@ pub fn read(dir: &Path) -> Option<Value> {
         })
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Startup {
     launches: Vec<Value>,
     backend: String,

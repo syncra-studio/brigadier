@@ -1,6 +1,7 @@
 //! The daemon's op table: one connection's handshake, then each request routed by its op.
 
 use super::git;
+use super::store::Store;
 use super::watch::{self, Shown};
 use super::{
     HANDSHAKE_TIMEOUT, PROTOCOL_VERSION, Shared, Sub, WRITE_TIMEOUT, publish, snapshot, term,
@@ -54,6 +55,7 @@ pub(super) fn serve(
     conn: u64,
     state: &Shared,
     data: &Path,
+    store: &Arc<Store>,
 ) -> io::Result<()> {
     if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
         return Ok(());
@@ -125,7 +127,7 @@ pub(super) fn serve(
                     0
                 };
                 let (out, data) = (out.clone(), PathBuf::from(data));
-                let (watching, shown) = (watching.clone(), shown.clone());
+                let (watching, shown, store) = (watching.clone(), shown.clone(), store.clone());
                 thread::spawn(move || {
                     watch::watch(
                         &data,
@@ -136,53 +138,47 @@ pub(super) fn serve(
                         follow.then_some(mine),
                         &watching,
                         &shown,
+                        &store,
                     )
                 });
             }
-            "thread_older" => {
+            // Read from the watched thread under its lock, so no update to a row in the page
+            // overtakes it. A saved row that can't be read fails the read; the watch then has the
+            // client ask for a fresh thread.
+            op @ ("thread_older" | "thread_around" | "thread_find") => {
                 let id = req["session"].as_str().unwrap_or("");
-                let before = req["before"].as_u64().unwrap_or(0);
                 let thread = shown
                     .lock()
                     .unwrap()
                     .as_ref()
                     .filter(|(s, _)| s == id)
                     .map(|(_, t)| t.clone());
-                // Sent under the thread's lock, so no update to a row in the page overtakes it.
                 let locked = thread.as_ref().map(|t| t.lock().unwrap());
-                let reply = match &locked {
-                    Some(thread) => {
-                        let mut page = thread.older(before, req["through"].as_u64());
-                        page["re"] = re;
-                        page["ok"] = true.into();
-                        page
+                let n = |key: &str| req[key].as_u64();
+                let mut reply = match &locked {
+                    Some(saved) => {
+                        let thread = &saved.thread;
+                        let found = match op {
+                            "thread_older" => thread.older(n("before").unwrap_or(0), n("after")),
+                            "thread_around" => thread.around(n("n").unwrap_or(0)),
+                            _ => thread.find(
+                                n("before").unwrap_or(0),
+                                req["gap"][0].as_u64().zip(req["gap"][1].as_u64()),
+                                req["query"].as_str().unwrap_or(""),
+                                n("limit").unwrap_or(250) as usize,
+                            ),
+                        };
+                        match thread.items.broken() {
+                            true => json!({"ok": false, "error": "read"}),
+                            false => found,
+                        }
                     }
-                    None => json!({"re": re, "ok": false, "error": "not_watching"}),
+                    None => json!({"ok": false, "error": "not_watching"}),
                 };
-                let _ = out.send(reply.to_string());
-            }
-            "thread_find" => {
-                let id = req["session"].as_str().unwrap_or("");
-                let (before, query) = (
-                    req["before"].as_u64().unwrap_or(0),
-                    req["query"].as_str().unwrap_or(""),
-                );
-                let limit = req["limit"].as_u64().unwrap_or(250) as usize;
-                let thread = shown
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .filter(|(s, _)| s == id)
-                    .map(|(_, t)| t.clone());
-                let reply = match thread {
-                    Some(thread) => {
-                        let mut found = thread.lock().unwrap().find(before, query, limit);
-                        found["re"] = re;
-                        found["ok"] = true.into();
-                        found
-                    }
-                    None => json!({"re": re, "ok": false, "error": "not_watching"}),
-                };
+                reply["re"] = re;
+                if reply["ok"].is_null() {
+                    reply["ok"] = true.into();
+                }
                 let _ = out.send(reply.to_string());
             }
             "terminal" => {
@@ -234,11 +230,17 @@ pub(super) fn serve(
                     .filter_map(|a| a.as_str().map(String::from))
                     .collect();
                 let (out, data, state) = (out.clone(), PathBuf::from(data), state.clone());
+                let store = store.clone();
                 // A start waits for its host to answer: never hold up this connection's reads.
                 thread::spawn(move || {
-                    let mut reply = match args.first() {
-                        Some(cmd) if ROUTED.contains(&cmd.as_str()) => brigadier::run(&data, &args)
-                            .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),
+                    let run = || {
+                        brigadier::run(&data, &args)
+                            .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+                    };
+                    let mut reply = match args.first().map(String::as_str) {
+                        // Holding its saved thread, so no save lands in what it removes [D35].
+                        Some("delete") => store.deleting(args.get(1).map_or("", |s| s), run),
+                        Some(cmd) if ROUTED.contains(&cmd) => run(),
                         _ => json!({"ok": false, "error": format!("not routed: {args:?}")}),
                     };
                     // A project change goes out before its reply, so the app's pending row can

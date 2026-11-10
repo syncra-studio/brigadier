@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 brigadier-frames = { path = "../frames" }
+crc32fast = "=1.5.4"
 libc.workspace = true
 notify = "=8.2.2"
 serde = { version = "=1.0.229", features = ["derive"] }

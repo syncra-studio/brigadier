@@ -25,6 +25,7 @@ name = "brigadier-core"
 version = "0.1.0"
 dependencies = [
  "brigadier-frames",
+ "crc32fast",
  "libc",
  "notify",
  "rusqlite",

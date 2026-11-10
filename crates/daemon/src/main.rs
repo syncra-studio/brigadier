@@ -14,11 +14,15 @@
 //! `{"id", "op": "peek", "session"}` answers the same snapshot and follows nothing, so a session the
 //! pointer is on opens at once while the open thread stays followed [D477].
 //! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
-//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before",
-//! "through"?}` answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that,
-//! reaching down to row `through` when given [D97, D98].
-//! `{"id", "op": "thread_find", "session", "before", "query", "limit"}` answers `{"re", "ok",
-//! "matches": [{"n", "count"}], "more"}`: find in the conversation for the rows not loaded [D470].
+//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
+//! answers `{"re", "ok", "items", "turns", "work", "before", "after"}`, the page before that
+//! [D97, D98]; with `"after"` instead, the page from that row on down. `{"id", "op":
+//! "thread_around", "session", "n"}` answers the same shape for the whole turns around row `n`,
+//! an island find goes to, `before` and `after` naming the rows not sent on each side [D503].
+//! `{"id", "op": "thread_find", "session", "before", "gap"?: [from, to], "query", "limit"}`
+//! answers `{"re", "ok", "matches": [{"n", "count"}], "more"}`: find in the conversation for the
+//! rows not loaded, older than `before` and in the gap under an island [D470].
+//! Threads are folded from each session's saved thread (`store`), saved as turns end [D503].
 //!
 //! `{"id", "op": "git", "session" | "project"}` follows that checkout's status the same way: a
 //! snapshot, then what changed by path (see `git`) [D71].
@@ -52,6 +56,7 @@ mod awake;
 mod git;
 mod install;
 mod ops;
+mod store;
 mod switch;
 mod term;
 mod watch;
@@ -104,23 +109,53 @@ fn main() -> io::Result<()> {
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
     let state = Shared::default();
+    let store = Arc::new(store::Store::default());
     {
-        let (state, data) = (state.clone(), data.clone());
+        let (state, data, store) = (state.clone(), data.clone(), store.clone());
         thread::spawn(move || {
             for (conn, stream) in (0u64..).zip(listener.incoming().flatten()) {
-                let (state, data) = (state.clone(), data.clone());
+                let (state, data, store) = (state.clone(), data.clone(), store.clone());
                 // A client that drops mid-handshake or mid-frame only ends its own connection.
-                thread::spawn(move || ops::serve(stream, conn, &state, &data));
+                thread::spawn(move || ops::serve(stream, conn, &state, &data, &store));
             }
         });
     }
+    // Saves each session's thread as its turns end, and at start every one not saved yet, the
+    // first time once [D503]: in the background, at the lowest priority, so it never holds up
+    // a live turn or the app.
+    let (ended, queue) = std::sync::mpsc::channel::<String>();
+    {
+        let (data, store) = (data.clone(), store.clone());
+        thread::spawn(move || {
+            unsafe {
+                libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_BACKGROUND, 0)
+            };
+            for id in queue {
+                store.catch_up(&data, &id);
+            }
+        });
+    }
+    let mut ends: HashMap<String, Value> = HashMap::new();
     // The limit each session was last looked at for, by its item count and the switching settings:
     // once per limit, and again when a setting or the accounts change [D51].
     let mut seen: HashMap<String, Value> = HashMap::new();
     let mut finished: HashMap<String, u64> = HashMap::new();
     loop {
         match index.sync() {
-            Ok((rows, gone)) => publish(&state, &data, rows, gone),
+            Ok((rows, gone)) => {
+                for row in &rows {
+                    let id = row["id"].as_str().unwrap_or("");
+                    if ends.insert(id.into(), row["finished"].clone()).as_ref()
+                        != Some(&row["finished"])
+                    {
+                        let _ = ended.send(id.into());
+                    }
+                }
+                for id in &gone {
+                    ends.remove(id);
+                }
+                publish(&state, &data, rows, gone)
+            }
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         switch::auto_switch(&data, &index.rows, &mut seen);

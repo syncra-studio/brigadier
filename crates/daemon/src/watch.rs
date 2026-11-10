@@ -1,16 +1,14 @@
 //! Following one session's thread: its snapshot, then what changed, until the client moves on.
 
+use super::store::Store;
 use brigadier_core::fold;
-use brigadier_core::norm::Norm;
-use brigadier_core::thread::Thread;
-use brigadier_core::{check_id, rewind, session_dir};
-use brigadier_frames::log::{Reader, now_ms};
+use brigadier_core::thread::{Saved, Thread};
+use brigadier_core::{check_id, session_dir};
+use brigadier_frames::log::now_ms;
 use brigadier_frames::procs;
 use serde_json::{Value, json};
-use std::cell::Cell;
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
@@ -21,15 +19,14 @@ use std::time::Duration;
 /// How often an open thread checks its log for new frames.
 const FOLLOW: Duration = Duration::from_millis(100);
 
-pub(super) type Shown = Arc<Mutex<Option<(String, Arc<Mutex<Thread>>)>>>;
+pub(super) type Shown = Arc<Mutex<Option<(String, Arc<Mutex<Saved>>)>>>;
 
-/// Folds a session's log into its thread, sends it, then follows the log and sends what changed,
-/// numbered on from the snapshot and tagged with this watch's request, until `watching` moves past
-/// `mine`. A host that died mid-turn writes no frame, so the live state ends such a turn [D60].
-/// The thread is locked while a change is taken and sent, so an older page never passes it.
+/// Sends a session's thread, from the store's copy folded to the log's end [D503], then follows
+/// the log and sends what changed, numbered on from the snapshot and tagged with this watch's
+/// request, until `watching` moves past `mine`. A host that died mid-turn writes no frame, so the
+/// live state ends such a turn [D60]; that end stays in this copy, never saved. The thread is
+/// locked while a change is taken and sent, so an older page never passes it.
 /// With no `mine` it's a peek: the snapshot only, nothing shown or followed.
-// shortcut: every open folds the whole log; add a thread checkpoint once long sessions make opening
-// slow.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn watch(
     data: &Path,
@@ -40,43 +37,23 @@ pub(super) fn watch(
     mine: Option<u64>,
     watching: &AtomicU64,
     shown: &Shown,
+    store: &Store,
 ) {
     let dir = session_dir(data, id);
     if check_id(id).is_err() || !dir.join("session.json").exists() {
         let _ = out.send(json!({"re": re, "ok": false, "error": "not_found"}).to_string());
         return;
     }
-    let (shared, mut norm, mut items) = (Arc::<Mutex<Thread>>::default(), Norm::default(), vec![]);
-    let mut thread = shared.lock().unwrap();
-    let mut reader: Option<Reader> = None;
     let (mut setup_at, mut setup) = (None, Value::Null);
-    let log = dir.join("log");
-    let Ok(mut active) = rewind::Active::scan(&dir) else {
-        let _ = out.send(json!({"re": re, "ok": false, "error": "read"}).to_string());
-        return;
-    };
-    let rewound = Cell::new(false);
-    let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
-    let mut drain = |thread: &mut Thread| -> io::Result<()> {
+    let mut drain = |saved: &mut Saved| -> io::Result<()> {
         // Setup writes rename files in the session directory, so unchanged ticks need only a stat.
         let at = fs::metadata(&dir).and_then(|m| m.modified()).ok();
         if at != setup_at {
             setup = brigadier_core::worktrees::setup_state(&dir, true);
             setup_at = at;
         }
-        // A session just created may have no log yet.
-        if reader.is_none() && log.exists() {
-            reader = Some(Reader::open(&log, 0, 0)?);
-        }
-        while let Some(frame) = reader.as_mut().map(Reader::frame).transpose()?.flatten() {
-            norm.push(&frame, &mut items);
-            for item in items.drain(..) {
-                rewound.set(rewound.get() || active.newer(frame.seq, &item));
-                if active.keep(frame.seq, &item) {
-                    thread.push(&item);
-                }
-            }
-        }
+        saved.advance(&dir, false)?;
+        let thread = &mut saved.thread;
         let alive = !thread.setup_running(&setup)
             || (thread
                 .status_fold()
@@ -94,12 +71,31 @@ pub(super) fn watch(
             thread.interrupt(now_ms());
         }
     };
-    if let Err(e) = drain(&mut thread) {
-        let _ = out.send(json!({"re": re, "ok": false, "error": e.to_string()}).to_string());
-        return;
-    }
-    interrupted(&mut thread);
     let title = title.as_str().unwrap_or("");
+    // A saved row that can't be read: what was saved goes, and it's folded once more from the log.
+    let mut tries = 0;
+    let (saved, session) = loop {
+        let mut saved = match store
+            .copy(data, id)
+            .and_then(|mut s| drain(&mut s).map(|()| s))
+        {
+            Ok(saved) => saved,
+            Err(e) => {
+                let _ =
+                    out.send(json!({"re": re, "ok": false, "error": e.to_string()}).to_string());
+                return;
+            }
+        };
+        interrupted(&mut saved.thread);
+        let session = saved.thread.session(id, title);
+        if !saved.thread.items.broken() || tries > 0 {
+            break (saved, session);
+        }
+        store.invalidate(data, id);
+        tries += 1;
+    };
+    let shared = Arc::new(Mutex::new(saved));
+    let thread = shared.lock().unwrap();
     // Shown before the snapshot goes, so its older pages can be asked for at once.
     if let Some(mine) = mine {
         let mut shown = shown.lock().unwrap();
@@ -107,7 +103,7 @@ pub(super) fn watch(
             *shown = Some((id.to_string(), shared.clone()));
         }
     }
-    let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
+    let snapshot = json!({"re": re, "ok": true, "n": 0, "session": session});
     let Some(mine) = mine else {
         let _ = out.send(snapshot.to_string());
         return;
@@ -121,36 +117,36 @@ pub(super) fn watch(
         frame["watch"] = re.clone();
         frame.to_string()
     };
-    let (mut opened, mut n) = (inode(&log), 0u64);
+    let mut n = 0u64;
     for tick in 1u64.. {
         thread::sleep(FOLLOW);
         if watching.load(Ordering::SeqCst) != mine {
             return;
         }
-        let mut thread = shared.lock().unwrap();
-        // Deleted: say so. Replaced (deleted and made again): the client asks for a fresh thread.
+        let mut saved = shared.lock().unwrap();
+        // Deleted: say so.
         if !dir.join("session.json").exists() {
             let _ = out.send(tag(json!({"error": "not_found"})));
             return;
         }
-        let now = inode(&log);
-        if opened.is_some() && now != opened {
-            let _ = out.send(tag(json!({"reset": true})));
-            return;
-        }
-        opened = now;
         // A damaged frame stays damaged: say so once and stop following.
-        if let Err(e) = drain(&mut thread) {
+        if let Err(e) = drain(&mut saved) {
             let _ = out.send(tag(json!({"error": e.to_string()})));
             return;
         }
-        // A rewind's rows are gone from what was sent: the client asks for a fresh thread.
-        if rewound.get() {
+        // A rewind's rows are gone from what was sent, a log made again under the same id isn't
+        // this one, and a saved row that couldn't be read leaves pages wrong: the client asks for a
+        // fresh thread.
+        if saved.rewound || saved.thread.items.broken() {
+            if saved.thread.items.broken() {
+                store.invalidate(data, id);
+            }
             let _ = out.send(tag(json!({"reset": true})));
             return;
         }
+        let thread = &mut saved.thread;
         if tick % 10 == 0 && thread.running() {
-            interrupted(&mut thread);
+            interrupted(thread);
         }
         if let Some(mut update) = thread.take() {
             n += 1;

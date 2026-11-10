@@ -77,12 +77,7 @@ impl Thread {
             }
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].
-        let replaced = t.retry_of.as_ref().is_some_and(|cid| {
-            !self
-                .items
-                .iter()
-                .any(|row| row["kind"] == "message" && row["cid"] == cid.as_str())
-        });
+        let replaced = (t.retry_of.as_ref()).is_some_and(|cid| !self.cids.contains(cid));
         if replaced && t.origin == "user" {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }

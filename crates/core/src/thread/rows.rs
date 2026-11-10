@@ -291,7 +291,7 @@ impl Thread {
             // result in place; never sent to the agent.
             "note" if item["event"] == "side" => {
                 let id = format!("side:{}", str_of("session"));
-                let at = match self.items.iter().rposition(|r| r["id"] == id.as_str()) {
+                let at = match self.named.get(&id).copied() {
                     Some(at) => at,
                     None => {
                         self.break_group();
