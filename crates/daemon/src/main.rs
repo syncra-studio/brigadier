@@ -224,12 +224,14 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         // A damaged file keeps the last list it read.
         Err(e) => eprintln!("brigadierd: projects: {e}"),
     }
-    // A turn's start or end reads its session's checkout again [D48].
+    // A turn's start or end reads its session's checkout again [D48]: `running` is whether the fold
+    // has a turn open, and `finished` moves at each end, so a turn begun and ended within one pass
+    // still counts.
     let turned: Vec<&str> = (rows.iter())
         .filter(|row| {
             let old = s.rows.get(row["id"].as_str().unwrap_or(""));
             old.is_none_or(|old| {
-                old["started"] != row["started"] || old["finished"] != row["finished"]
+                old["running"] != row["running"] || old["finished"] != row["finished"]
             })
         })
         .filter_map(|row| row["id"].as_str())

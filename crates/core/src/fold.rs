@@ -136,9 +136,6 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
-    /// When a turn last began (ms): with `finished`, a turn's start and end refresh the git panel [D48].
-    #[serde(default)]
-    pub started: u64,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
     /// delivered), withdrawn, or the outcome of the turn they ended with.
     #[serde(default)]
@@ -386,7 +383,6 @@ impl Fold {
                 }
             }
             "turn_start" => {
-                self.started = ts;
                 if self.turns.is_empty() {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
