@@ -7,6 +7,7 @@ import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
 import { SetupRow } from "../components/thread/setup";
+import { DrawBoundary } from "../components/thread/error-state";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -24,6 +25,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
   const gone = rewind?.gone("item" in props ? props.item.n : undefined, "turn" in props ? props.turn?.id : undefined);
   return (
     <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
+      {/* A row that throws while it's drawn leaves the rest of the thread standing (D490). */}
+      <DrawBoundary summary={props.type === "item" && props.item.kind === "message" ? "This message couldn’t be shown" : "This part couldn’t be shown"}>
       {props.type === "setup" ? (
         <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
@@ -52,6 +55,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : (
         <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} actions={props.item.kind !== "message" || !props.item.final || props.actions === true} />
       )}
+      </DrawBoundary>
     </div>
   );
 });

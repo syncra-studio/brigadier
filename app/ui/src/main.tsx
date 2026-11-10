@@ -6,6 +6,7 @@ import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
 import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
+import { DrawBoundary } from "./components/thread/error-state";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
@@ -183,13 +184,13 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
         <div className="flex min-h-0 flex-1">
           {missing ? (
             <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
-          ) : state?.status === "error" ? (
-            <p className="flex flex-1 items-center justify-center text-sm text-destructive">{state.error}</p>
           ) : (
             <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${offline ? "opacity-disabled" : ""}`}>
+              {/* A load error leaves the thread's place empty: its notice and Retry are on the composer's rail. */}
+              <DrawBoundary key={id} summary="This conversation couldn’t be shown" className="mx-auto min-h-0 w-full max-w-reading flex-1 px-6 pt-8">
               <div className="min-h-0 flex-1">
                 {/* Started from Home, the thread is there at once with the message in its footer [D458]. */}
-                {(starting || state?.id === id) && (
+                {state?.status !== "error" && (starting || state?.id === id) && (
                 <SessionOfThread value={{ id, offline }}>
                   <RewindProvider key={id} id={id} row={row} offline={offline}>
                   <Thread
@@ -213,6 +214,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                 </SessionOfThread>
                 )}
               </div>
+              </DrawBoundary>
               {/* A follow-up waits for the start to land, never sent to a session Rust hasn't made [D30]. */}
               {!row?.archived && <SessionComposer key={id} onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
             </div>
