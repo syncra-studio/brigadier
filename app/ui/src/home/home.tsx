@@ -117,7 +117,8 @@ export function HomeDraft() {
         onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined } })}
         worktree={worktree}
         onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path } })}
-        groups={groups}
+        // Only a fresh list can say no model is available: a cached one before any check offers none, so it reads as loading.
+        groups={fresh || model ? groups : null}
         model={model}
         onModel={(choice) => setHomeDraft({ model: choice })}
         onSetUp={setSetUp}
