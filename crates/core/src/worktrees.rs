@@ -50,8 +50,7 @@ pub(crate) fn command(dir: &Path) -> Command {
     command
 }
 
-/// `command` with the repository's own hooks: only for the user's own git actions in a trusted
-/// project, such as a push, whose pre-push hook (Git LFS's) must run.
+/// `command` with the repository's own hooks, for a trusted project's push (Git LFS's pre-push).
 pub(crate) fn with_hooks(dir: &Path) -> Command {
     let mut command = Command::new("git");
     for key in [
