@@ -97,10 +97,11 @@ export function QuickPick({ placeholder, items, off = null, onPick, onClose }: {
             >
               <span className="flex min-w-0 items-center gap-1.5 text-sm">
                 <span className="flex shrink-0 text-muted-foreground svg:size-icon-sm">{item.icon}</span>
-                <span className="min-w-0 truncate">{item.title}</span>
-                {item.hint && <span className="shrink-0 text-xs text-muted-foreground">{item.hint}</span>}
+                {/* The name gives way last: the time and the group's label truncate first. */}
+                <span className="max-w-full shrink-0 truncate">{item.title}</span>
+                {item.hint && <span className="min-w-0 truncate text-xs text-muted-foreground">{item.hint}</span>}
                 <span className="flex-1" />
-                {item.note && <span className="shrink-0 text-xs text-muted-foreground">{item.note}</span>}
+                {item.note && <span className="min-w-0 truncate text-xs text-muted-foreground">{item.note}</span>}
               </span>
               {item.detail && <span className="truncate text-xs text-muted-foreground">{item.detail}</span>}
             </div>

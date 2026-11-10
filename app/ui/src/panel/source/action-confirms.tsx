@@ -103,7 +103,8 @@ export function ForcePushDialog({ force, branch, held, onCancel, onConfirm }: { 
     <Confirm open={force !== null} onOpenChange={(next) => !next && onCancel()} held={held}>
       {force && (
         <ConfirmForm
-          title={force.movedTo ? `${force.remoteRef} moved. Force push anyway?` : `Force push ${branch}?`}
+          // Clear of the close button, a long ref wrapping onto a second line.
+          title={<span className="block pe-7 leading-5">{force.movedTo ? `${force.remoteRef} moved. Force push anyway?` : `Force push ${branch}?`}</span>}
           description={
             force.movedTo
               ? `It's at ${force.movedTo} now, not ${force.reviewed} as when you looked. Force pushing replaces those commits too.`

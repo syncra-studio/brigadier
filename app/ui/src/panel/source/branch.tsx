@@ -35,11 +35,8 @@ export function BranchItem({ state, locked, syncing = false, open = false, onBra
         )}
       >
         <Branch className="size-icon-sm shrink-0" />
-        <span className="min-w-0 truncate text-foreground">
-          {name}
-          {state.merging && " (merging)"}
-          {state.rebasing && " (rebasing)"}
-        </span>
+        <span className="min-w-0 truncate text-foreground">{name}</span>
+        {(state.merging || state.rebasing) && <span className="shrink-0 text-foreground">{state.merging ? "(merging)" : "(rebasing)"}</span>}
       </button>
       {(sync || publish) && (
         <button
