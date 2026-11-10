@@ -34,7 +34,8 @@ function useHasPanel(owner: string): boolean {
   const row = useDaemon().rows?.find((each) => each.id === owner);
   const starting = useStart(owner);
   if (owner === HOME) return !draft.chat && Boolean(projects?.some((each) => !each.pending));
-  return (row ?? starting)?.project != null;
+  // Hidden only once it's known to be in no project; an owner not listed yet keeps it, as the toolbar does.
+  return (row ?? starting)?.project !== null;
 }
 
 /** What the panel draws for `owner`: fake until step 2.15 wires it to Rust. */
@@ -229,6 +230,9 @@ function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizin
         const wanted = start.current.width - (event.clientX - start.current.x) * (rtl ? -1 : 1);
         const min = px("--spacing-sidebar-min");
         if (wanted < min / 2) {
+          // Closed by the drag, it keeps the width it had when the drag began, for when it opens again.
+          latest.current = Math.round(start.current.width);
+          event.currentTarget.parentElement?.setAttribute("data-width", String(latest.current));
           end(event);
           setPanelOpen(false);
           return;
