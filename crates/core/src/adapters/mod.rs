@@ -340,6 +340,12 @@ pub trait Adapter: Sync {
     fn forking(&self) -> Option<&dyn Fork> {
         None
     }
+    /// The cheapest of `models`, its last check's list, for the message writer, by its own
+    /// reading of them; `current` is the session's model. None: it can't tell, so the writer
+    /// uses the session's model (proposed, D1163) [D1029].
+    fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
+        None
+    }
 }
 
 pub fn all() -> [&'static dyn Adapter; 4] {

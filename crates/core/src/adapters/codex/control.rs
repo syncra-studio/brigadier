@@ -21,7 +21,9 @@ fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str
 /// `thread/start` or `thread/resume`'s settings.
 pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     let (policy, reviewer, sandbox, _) = level(spec);
-    let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox});
+    // The commit style the message writer follows, so the agent's own commits match [D1029].
+    let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox,
+        "developerInstructions": crate::writer::STYLE});
     if let Some(model) = &spec.model {
         open["model"] = model.as_str().into();
     }

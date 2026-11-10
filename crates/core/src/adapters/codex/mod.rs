@@ -203,6 +203,13 @@ impl Adapter for Codex {
 
     /// The thread and the Auto reviewers that worked for it, each by its own id; the thread goes
     /// last, so a retry after a failure can still find them [D35].
+    /// Its small model: the first its `model/list` names a mini, in the list's order [D1029].
+    fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
+        (models.iter())
+            .find(|m| m.id.split(['-', '.']).any(|w| w == "mini"))
+            .map(|m| m.id.clone())
+    }
+
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         let home = cli_home(spec, ".codex", "");
         let mut ids = helpers(&home, &spawned(self, spec, resume));

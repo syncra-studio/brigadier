@@ -156,6 +156,8 @@ impl Adapter for Claude {
             argv.push("--allowedTools".into());
             argv.extend(rules);
         }
+        // The commit style the message writer follows, so the agent's own commits match [D1029].
+        argv.extend(["--append-system-prompt".into(), crate::writer::STYLE.into()]);
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
             // shortcut: this flag isn't in the CLI reference, only Anthropic's open-source SDK; replace it if the CLI documents another.
@@ -362,6 +364,14 @@ impl Adapter for Claude {
 
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
         cleanup::external(spec, resume)
+    }
+
+    /// Its small model, by the alias its check lists [D1029].
+    fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
+        models
+            .iter()
+            .find(|m| m.id == "haiku")
+            .map(|m| m.id.clone())
     }
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {

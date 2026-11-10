@@ -47,6 +47,14 @@ impl OpenCode {
                     .to_string(),
             ),
         ]);
+        // The commit style the message writer follows, so the agent's own commits match [D1029]:
+        // an instructions file in the session's folder, given as inline config, which OpenCode
+        // merges with the user's own and loads beside AGENTS.md.
+        let style = spec.dir.join("commit-style.md");
+        if std::fs::write(&style, crate::writer::STYLE).is_ok() {
+            let config = json!({"instructions": [style.display().to_string()]});
+            env.push(("OPENCODE_CONFIG_CONTENT".into(), config.to_string()));
+        }
         env
     }
 
@@ -366,6 +374,17 @@ impl Adapter for OpenCode {
 
     /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
     /// as deleted. Never touches credentials or other sessions.
+    /// Its small model: on the session model's own provider, the first its list names by a
+    /// small model's word, in the list's order [D1029].
+    fn cheap(&self, current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
+        const SMALL: [&str; 6] = ["haiku", "mini", "nano", "flash", "lite", "small"];
+        let provider = current?.split_once('/')?.0;
+        (models.iter())
+            .filter(|m| m.id.split_once('/').is_some_and(|(p, _)| p == provider))
+            .find(|m| (m.id.split(['/', '-', '.', ':', '_'])).any(|w| SMALL.contains(&w)))
+            .map(|m| m.id.clone())
+    }
+
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         match self.run(spec, &["session", "delete", resume]) {
             Err(e) if !e.contains("Session not found") => Err(format!("OpenCode: {}", e.trim())),
