@@ -1,7 +1,8 @@
-import { PointerSensor } from "@dnd-kit/dom";
+import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
+import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
@@ -16,19 +17,19 @@ import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { useTabKeys } from "./tab-keys";
-import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, moveTab, openTab, selectTab, type Tab, tabOrder, tabsOf, useTabs, useTabsFromRust } from "./tab-store";
+import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, moveTab, openTab, selectTab, type Tab, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
-/** After a close, how long the pointer may be away from the tabs before they take the room back. */
-const CLOSE_LOCK_MS = 300;
-/** The closing slide; the tab itself is gone at once. */
-const CLOSING_MS = 100;
+/** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
+const CLOSING_MS = 200;
 
 const TAB = "session-tab app-no-drag group/tab relative flex h-control-md min-w-0 items-center gap-1 rounded-session-tab ps-2.5 pe-1.75 select-none";
 const LOOK = (active: boolean) => (active ? "bg-fill shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
 const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring";
-const TITLE = "session-tab-title min-w-0 flex-1 overflow-hidden text-start whitespace-nowrap";
+const TITLE = "session-tab-title min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
+// A press is a click until it moves: a drag that started on the press would take the click.
+const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 const CLOSE = (active: boolean) => cx("flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
@@ -53,7 +54,7 @@ function TabMenuItems({ owner, id, order, onClose }: { owner: string; id: string
   );
 }
 
-/** A chat or session's first tab, never moved: its title, its state, its ⋯, and × which only leaves it. */
+/** A chat or session's first tab, never moved: its title, its state and its ⋯. It has no × [D427]; ⌘W, middle-click and Close leave it. */
 function ChatTab({ owner, row, active, separator, order }: { owner: string; row: SessionRow; active: boolean; separator: boolean; order: string[] }) {
   const [renaming, setRenaming] = useState(false);
   const words = useStatusWords(row);
@@ -102,9 +103,6 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
             )}
           </span>
         )}
-        <button type="button" aria-label={`Close ${title} tab`} onClick={() => leave(row)} className={CLOSE(active)}>
-          <X className="size-icon-xs" />
-        </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <DropdownMenuItem disabled={!startRename} onClick={startRename}>
@@ -134,7 +132,7 @@ const nameOf = (tab: Tab) => (tab.kind === "new" ? "New tab" : "Terminal");
 
 /** A tab it opened: the kind's icon, its name and ×. Its button is the drag handle, as a button inside a sortable won't start one otherwise; Alt+←/→ moves it from the keyboard. */
 function OtherTab({ owner, tab, index, last, selected, separator, closing, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; separator: boolean; closing: boolean; order: string[]; onClose: () => void }) {
-  const { ref, handleRef, isDragging } = useSortable({ id: tab.id, index, disabled: closing });
+  const { ref, handleRef } = useSortable({ id: tab.id, index, disabled: closing });
   const [fresh] = useState(() => justOpened(tab.id));
   const name = nameOf(tab);
   return (
@@ -151,7 +149,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             inert={closing}
             data-separator={separator || undefined}
             data-active={selected || undefined}
-            className={cx(TAB, LOOK(selected), isDragging && "z-10 opacity-disabled")}
+            className={cx(TAB, LOOK(selected))}
           />
         }
       >
@@ -216,41 +214,6 @@ function useTabPresence(tabs: readonly Tab[]) {
   return state;
 }
 
-/** Keeps the tabs' widths after a close, so the next × comes under the pointer. Let go once the pointer has been away a moment, on a key or a scroll, or when the window loses focus. */
-function useCloseLock(alone: boolean) {
-  const [count, setCount] = useState<number | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const release = useCallback(() => {
-    clearTimeout(timer.current);
-    setCount(null);
-  }, []);
-  const locked = count !== null;
-  useEffect(() => {
-    if (!locked) return;
-    window.addEventListener("keydown", release, true);
-    window.addEventListener("wheel", release, true);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("keydown", release, true);
-      window.removeEventListener("wheel", release, true);
-      window.removeEventListener("blur", release);
-    };
-  }, [locked, release]);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  if (alone && locked) setCount(null);
-  return {
-    count,
-    release,
-    hold: (current: number) => setCount((held) => held ?? current),
-    stay: () => clearTimeout(timer.current),
-    leave: () => {
-      if (!locked) return;
-      clearTimeout(timer.current);
-      timer.current = setTimeout(release, CLOSE_LOCK_MS);
-    },
-  };
-}
-
 /**
  * The top of every chat, session and Home, the same bar for all of them [D360]: the Chat tab first, then the tabs it
  * opened, "+", and at the end the toolbar. Click shows, drag reorders, middle-click or Delete closes. It takes the
@@ -263,7 +226,14 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   const archived = Boolean(row?.archived);
   useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
-  const lock = useCloseLock(presence.tabs.length === 0);
+  // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
+  const read = useTabsRead(owner);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!read) return;
+    const frame = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(frame);
+  }, [read]);
   const order = tabOrder(now);
   const strip = useRef<HTMLDivElement>(null);
 
@@ -310,11 +280,6 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     return () => observer.disconnect();
   }, [gap]);
 
-  const close = (id: string) => {
-    // Only while they fill the bar: at full width the next × slides under the pointer anyway.
-    if (full) lock.hold(tabs.length + 1);
-    closeTab(owner, id);
-  };
   const onKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "tab") return;
@@ -337,35 +302,40 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   };
 
   return (
-    <header data-slot="session-tabs" className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
-      <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={lock.count ?? tabs.length + 1} className="session-tab-list flex min-w-0 items-center gap-0.5" onPointerEnter={lock.stay} onPointerLeave={lock.leave} onKeyDown={onKeys}>
-        {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
-        <div ref={strip} className="hide-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-          {/* shortcut: a dragged tab can drift up and down too, dnd-kit's axis lock isn't a direct dependency; add it if that looks wrong. */}
-          <DragDropProvider
-            sensors={[PointerSensor]}
-            onDragEnd={({ operation, canceled }) => {
-              const { source } = operation;
-              if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
-            }}
-          >
-            {presence.tabs.map((tab) => {
-              const index = tabs.findIndex((each) => each.id === tab.id);
-              const selected = tab.id === active;
-              return <OtherTab key={tab.id} owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={presence.closing.has(tab.id)} order={order} onClose={() => close(tab.id)} />;
-            })}
-          </DragDropProvider>
+    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
+      {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
+      <div className="session-tab-room flex min-w-0 flex-1 items-center gap-1 self-stretch">
+        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex min-w-0 items-center gap-0.5" onKeyDown={onKeys}>
+          {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
+          <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">
+            {/* Held inside the strip, which is a tab high: it moves along the row only. */}
+            <DragDropProvider
+              sensors={SENSORS}
+              modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
+              onDragEnd={({ operation, canceled }) => {
+                const { source } = operation;
+                if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
+              }}
+            >
+              {presence.tabs.map((tab) => {
+                const index = tabs.findIndex((each) => each.id === tab.id);
+                const selected = tab.id === active;
+                const closing = presence.closing.has(tab.id);
+                return <OtherTab key={tab.id} owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />;
+              })}
+            </DragDropProvider>
+          </div>
         </div>
+        <TooltipIconButton look="toolbar" tooltip="New tab" shortcut="⌘T" className="app-no-drag ms-0.5" onClick={() => openTab(owner, "new")}>
+          <Plus />
+        </TooltipIconButton>
+        {offline && (
+          <Badge variant="warning" role="status" className="shrink-0">
+            Reconnecting…
+          </Badge>
+        )}
+        <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
       </div>
-      <TooltipIconButton look="toolbar" tooltip="New tab" shortcut="⌘T" className="app-no-drag ms-0.5" onClick={() => { lock.release(); openTab(owner, "new"); }}>
-        <Plus />
-      </TooltipIconButton>
-      {offline && (
-        <Badge variant="warning" role="status" className="shrink-0">
-          Reconnecting…
-        </Badge>
-      )}
-      <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
       <span aria-hidden data-hidden={!full || undefined} className="mx-0.5 h-4 w-px shrink-0 bg-fill transition-opacity data-hidden:opacity-0 motion-reduce:transition-none" />
       <Toolbar owner={owner} />
     </header>

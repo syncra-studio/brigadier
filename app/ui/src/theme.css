@@ -1087,20 +1087,30 @@
       transition: none;
     }
   }
+  /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
+  &:not([data-settled]) .session-tab,
+  &:not([data-settled]) .session-tab::after {
+    transition: none;
+  }
+}
+
+/* The room the tabs and "+" share: the tabs' widths come from it, never from their own list, so "+" stays at their edge. */
+@utility session-tab-room {
+  container-type: inline-size;
 }
 
 /* The tabs share the bar's room, then scroll once they reach their least width. */
 @utility session-tab-list {
   --session-tab-count: attr(data-count type(<number>), 1);
-  container-type: inline-size;
-  flex: 0 1 calc(var(--session-tab-count) * var(--spacing-session-tab-max));
+  flex: 0 1 auto;
 }
 
 @utility session-tab {
   font-size: var(--text-label);
   line-height: var(--text-label--line-height);
   font-weight: 430;
-  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  /* The room less "+" (its size, its margin and the gaps either side of it) and the gaps between the tabs. */
+  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
@@ -1117,7 +1127,6 @@
     padding-inline: 0;
     opacity: 0;
     overflow: hidden;
-    transition-duration: var(--duration-popup-fast);
   }
   &::after {
     content: "";

@@ -100,6 +100,11 @@ export function useTabs(owner: string): Tabs {
   return useSyncExternalStore(subscribe, () => slots.get(owner)?.shown ?? NONE);
 }
 
+/** True once Rust has answered for `owner`, or its tabs came from Home's. */
+export function useTabsRead(owner: string): boolean {
+  return useSyncExternalStore(subscribe, () => (slots.get(owner)?.rev ?? null) !== null);
+}
+
 /** Asks Rust on opening and on every reconnect, and sends again what the link took. */
 export function useTabsFromRust(owner: string): void {
   const { daemon } = useDaemon();
