@@ -239,6 +239,9 @@ pub(super) fn serve(
                     let mut reply = match args.first().map(String::as_str) {
                         // Holding its saved thread, so no save lands in what it removes [D35].
                         Some("delete") => store.deleting(args.get(1).map_or("", |s| s), run),
+                        Some("archive") => {
+                            store.archiving(&data, args.get(1).map_or("", |s| s), run)
+                        }
                         Some(cmd) if ROUTED.contains(&cmd) => run(),
                         _ => json!({"ok": false, "error": format!("not routed: {args:?}")}),
                     };
