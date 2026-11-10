@@ -5,6 +5,7 @@ import type { PermissionLevel } from "../components/composer/pickers";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
+import { WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
@@ -191,3 +192,15 @@ export function StartingBubble({ id }: { id: string }) {
     />
   );
 }
+
+/** While its start is out and nothing's gone wrong, a shimmering line under the message (D487). */
+export function StartingLine({ id }: { id: string }) {
+  const entry = useStarting().get(id);
+  if (!entry || entry.error || entry.unknown || entry.outcome) return null;
+  return (
+    <div className="pt-4">
+      <WorkingLine state="live">Starting the conversation</WorkingLine>
+    </div>
+  );
+}
+

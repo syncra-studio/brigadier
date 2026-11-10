@@ -4,6 +4,7 @@ import { Button } from "../components/button";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
 import type { RailNotice, SetupStep } from "../thread/item";
+import { retry, useStart } from "../home/start";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
 
@@ -79,6 +80,17 @@ export function SessionNotices({ id, offline, source }: { id: string; offline: b
       </Button>
     );
     notices.push({ id: "load", level: "warning", text: "Couldn’t load messages", action: retry });
+  }
+  // A start from Home, as a card on the rail too (D487); "not confirmed" only while it truly isn't known [D300].
+  const start = useStart(id);
+  if (start?.unknown) notices.push({ id: "start", level: "info", text: "Not confirmed yet, so don’t send it again. It’s checked once Brigadier reconnects." });
+  else if (start?.error && !start.asking) {
+    const again = (
+      <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => retry(id)}>
+        Try again
+      </Button>
+    );
+    notices.push({ id: "start", level: "error", text: `Couldn’t start this conversation. ${start.error}`, action: again });
   }
   if (offline) notices.push({ id: "offline", level: "info", text: "Reconnecting to Brigadier…" });
   return <Notices notices={notices.filter((notice) => !gone.has(notice.id))} onDismiss={(key) => setGone(new Set(gone).add(key))} />;
