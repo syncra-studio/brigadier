@@ -197,8 +197,8 @@ export function useStartShown(id: string): boolean {
 /** A started session's thread before Rust has a turn in it: its message in the thread's column. */
 export function StartingThread({ id }: { id: string }) {
   return (
-    <div className="scroll-gutter-both h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-reading px-6 pt-4 pb-12">
+    <div className="scroll-gutter-both h-full overflow-y-auto text-sm antialiased">
+      <div className="mx-auto w-full max-w-reading px-6 pt-4 pb-8">
         <StartingBubble id={id} />
       </div>
     </div>

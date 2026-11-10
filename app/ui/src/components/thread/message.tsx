@@ -2,7 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { Item } from "../../thread/item";
 
-import { ChevronRightAlt, Trash, Undo } from "../../icons";
+import { ArrowDown, ChevronRightAlt, Trash, Undo } from "../../icons";
 import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
@@ -240,11 +240,11 @@ export function ThinkingLine({ heading }: { heading?: string | null }) {
 }
 
 /**
- * The jump-to-latest button's face: ↓, or three dots in a wave while the reply streams below it, ↓ again on hover
+ * The jump-to-latest button's face: an arrow, or three dots in a wave while the reply streams below it, the arrow again on hover
  * or focus (the old app's). Its button is `group/jump`.
  */
 export function JumpSign({ running }: { running: boolean }) {
-  if (!running) return "↓";
+  if (!running) return <ArrowDown className="size-icon-md" />;
   return (
     <>
       <span aria-hidden className="flex items-center justify-center gap-1 group-hover/jump:hidden group-focus-visible/jump:hidden">
@@ -252,7 +252,7 @@ export function JumpSign({ running }: { running: boolean }) {
         <span className="size-1 rounded-full bg-shell-foreground wave-dot" />
         <span className="size-1 rounded-full bg-shell-foreground wave-dot" />
       </span>
-      <span className="hidden group-hover/jump:inline group-focus-visible/jump:inline">↓</span>
+      <ArrowDown className="hidden size-icon-md group-hover/jump:block group-focus-visible/jump:block" />
     </>
   );
 }

@@ -166,7 +166,8 @@ export function Thread() {
     .slice(0, (tick % 24) + 1)
     .join("\n");
   return (
-    <>
+    // The thread's own type, as the app's thread sets it.
+    <div className="contents text-sm antialiased">
       <SetupGallery tick={tick} />
       <Section title="Work header, group, working line">
         <Row name="Work header">
@@ -357,7 +358,7 @@ export function Thread() {
               <button
                 type="button"
                 aria-label="Jump to the latest"
-                className="group/jump flex cursor-pointer size-control-md items-center justify-center rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
+                className="group/jump flex size-control-md cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground focus-visible:focus-ring"
               >
                 <JumpSign running={running} />
               </button>
@@ -435,7 +436,7 @@ export function Thread() {
           </Wide>
         </Row>
       </Section>
-    </>
+    </div>
   );
 }
 

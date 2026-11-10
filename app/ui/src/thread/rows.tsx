@@ -30,7 +30,17 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
-        <GroupRow item={props.item} live={props.live} open={props.open} onToggle={props.onToggle} />
+        <>
+          <GroupRow item={props.item} live={props.live} open={props.open} onToggle={props.onToggle} />
+          {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
+          {props.open && props.steps.length > 0 && (
+            <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
+              {props.steps.map((step) => (
+                <Body key={step.id} item={step.item} turn={step.turn} step={step.step} />
+              ))}
+            </div>
+          )}
+        </>
       ) : props.item.kind === "switch" ? (
         <SwitchRow item={props.item} />
       ) : props.item.kind === "started" ? (

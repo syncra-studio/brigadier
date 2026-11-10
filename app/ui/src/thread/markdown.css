@@ -11,13 +11,13 @@
     @apply first:mt-0 last:mb-0;
   }
   & h1 {
-    @apply mt-5 mb-2 text-xl font-semibold;
+    @apply mt-5 mb-2 font-display text-xl font-semibold tracking-hero;
   }
   & h2 {
-    @apply mt-5 mb-2 text-lg font-semibold;
+    @apply mt-5 mb-2 font-display text-lg font-semibold tracking-section;
   }
   & h3 {
-    @apply mt-4 mb-1.5 text-base font-semibold;
+    @apply mt-4 mb-1.5 font-display text-base font-semibold tracking-section;
   }
   & h4 {
     @apply mt-3.5 mb-1 text-base font-medium;

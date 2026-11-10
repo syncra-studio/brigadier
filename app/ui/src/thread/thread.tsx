@@ -5,6 +5,7 @@ import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { ScrollFade } from "../components/scroll-fade";
+import { cx } from "../components/cx";
 import { JumpSign, datedMessages } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
@@ -294,7 +295,8 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   return (
     <div
       ref={box}
-      className="relative h-full"
+      // The old app's thread type: 14px, smoothed; and its shorter top fade.
+      className="thread-fades relative h-full text-sm antialiased"
       // Anything the user opens in a row (a code block's "Show more" too) stays where it is instead of following the bottom.
       onClickCapture={(event) => {
         if ((event.target as Element).closest("[aria-expanded]")) stuck.current = false;
@@ -336,7 +338,7 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
       >
         {(line: Line | typeof FOOTER) =>
           line.type === "footer" ? (
-            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pb-12">
+            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pb-8">
               {hasFooter && <div className="pt-4 empty:hidden">{footer}</div>}
               <Spacer space={space} />
             </div>
@@ -347,17 +349,22 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
       </VList>
       {/* Over the scroller, not in it: rows fade out under the top bar and at the bottom edge. */}
       <ScrollFade edge="top" />
-      <ScrollFade edge="bottom" />
-      {away && (
-        <button
-          type="button"
-          aria-label="Jump to the latest"
-          onClick={toBottom}
-          className="group/jump absolute cursor-pointer bottom-6 left-1/2 z-20 flex size-control-md items-center justify-center -translate-x-1/2 rounded-capsule bg-popover text-foreground shadow-overlay focus-visible:focus-ring"
-        >
-          <JumpSign running={turnList?.at(-1)?.status === "running"} />
-        </button>
-      )}
+      {/* Raised over the jump button while it shows, so no text runs under it. */}
+      <ScrollFade edge="bottom" raised={away} />
+      {/* Kept in place and faded in and out (the old app's look). */}
+      <button
+        type="button"
+        aria-label="Jump to the latest"
+        aria-hidden={!away || undefined}
+        tabIndex={away ? undefined : -1}
+        onClick={away ? toBottom : undefined}
+        className={cx(
+          "group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md -translate-x-1/2 cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground transition-opacity focus-visible:focus-ring motion-reduce:transition-none",
+          !away && "pointer-events-none opacity-0",
+        )}
+      >
+        <JumpSign running={turnList?.at(-1)?.status === "running"} />
+      </button>
     </div>
   );
 }
