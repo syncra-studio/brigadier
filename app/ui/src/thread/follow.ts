@@ -16,8 +16,8 @@ const INTENT_MS = 1000;
 /** The jump to the end: an ease-out cubic over this long. */
 const JUMP_MS = 260;
 /** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second). */
-const PLACE_MS = 500;
-const PLACE_RATE = 18.5;
+const PLACE_MS = 100;
+const PLACE_RATE = 92.5;
 /** A touch moves this far before it says which way. */
 const TOUCH_SLOP = 8;
 
