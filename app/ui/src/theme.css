@@ -1142,6 +1142,10 @@
   &[data-separator]::after {
     opacity: 1;
   }
+  /* The last tab never shows its rule, and the rule would poke past the list and make the bar scroll [D431]. */
+  &:last-child::after {
+    content: none;
+  }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
     &::after {
