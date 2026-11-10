@@ -115,9 +115,11 @@ const DEFAULT: Kind = ["default", "text-file-white"];
 /** The glyph and tint a file's name calls for. */
 export function fileKind(path: string): Kind {
   const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
-  const named = NAMES[name] ?? PREFIXES.find(([prefix]) => name.startsWith(prefix))?.[1];
+  // hasOwn: a file named "constructor" or "__proto__" must not reach Object.prototype
+  const named = (Object.hasOwn(NAMES, name) ? NAMES[name] : undefined) ?? PREFIXES.find(([prefix]) => name.startsWith(prefix))?.[1];
   if (named) return named;
-  const kind = EXTENSIONS[name.slice(name.lastIndexOf(".") + 1)] ?? DEFAULT;
+  const ext = name.slice(name.lastIndexOf(".") + 1);
+  const kind = (Object.hasOwn(EXTENSIONS, ext) ? EXTENSIONS[ext] : undefined) ?? DEFAULT;
   return TESTS.test(name) ? [kind[0], "text-file-orange"] : kind;
 }
 
