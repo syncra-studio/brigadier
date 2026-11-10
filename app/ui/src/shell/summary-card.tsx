@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncEx
 
 import { cx } from "../components/cx";
 import { GitCard } from "../panel/card";
-import { useGit } from "../panel/git";
+import { useSource } from "../panel/source/view";
 import { useHasPanel } from "./right-panel";
 import { HOME } from "./tab-store";
 
@@ -153,8 +153,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
 /** The mount near the thread: sessions and project chats, where Source reads the same checkout [D1014, D1039]. */
 export function SummarySlot({ owner, children }: { owner: string; children: ReactNode }) {
   const has = useHasPanel(owner) && owner !== HOME;
-  const git = useGit();
-  const card = has ? <GitCard data={{ source: git.source, step: null, error: git.error }} nowMs={Date.now()} /> : null;
+  const { data, ops } = useSource(owner);
+  const card = has ? <GitCard data={data} draftKey={owner} ops={ops} nowMs={Date.now()} /> : null;
   return (
     <SummaryPane owner={owner} card={card}>
       {children}

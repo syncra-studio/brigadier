@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
-
 import { cx } from "../components/cx";
-import { ErrorLine } from "../components/error-line";
 import { Skeleton } from "../components/skeleton";
 import { ActionButton } from "./source/action";
 import { PrGlyph } from "./source/header";
-import type { SourceData } from "./source/panel";
+import { ReadError, type SourceData, type SourceOps } from "./source/panel";
 import { StatusLine } from "./source/status-line";
+import { useSourceStep } from "./source/step";
 import { prWords, statusWords, type Tone } from "./words";
 
 const TEXT: Record<Tone, string> = { quiet: "text-muted-foreground", good: "text-success", warn: "text-warning", bad: "text-destructive" };
@@ -15,25 +13,27 @@ const TEXT: Record<Tone, string> = { quiet: "text-muted-foreground", good: "text
  * The summary card's git section, direction C [D1048, D1095, D1098]: Source's status, smaller, and the same action
  * button with its pre-check line [D1075]; then the branch's pull requests, a row opening the Pull requests tab on
  * it (2.13) [D1017, D1116]. No branch line, PR clock or commits: those live in Source [D1092, D1095, D1114].
- * Unwired [D388]: `onPr` opens nothing yet, and a run only shows the button working.
+ * It reads Source's data and runs Source's own step and moves [D1145, D1148]; `onPr` opens nothing yet.
+ * Without `ops` (the gallery) it moves nothing; `running`: the gallery's button at work.
  */
-export function GitCard({ data, nowMs, onPr, running: held = false }: { data: SourceData; nowMs: number; onPr?: (number: number) => void; running?: boolean }) {
-  const { source, step } = data;
+export function GitCard({ data, nowMs, draftKey, ops, onPr, running = false }: {
+  data: SourceData;
+  nowMs: number;
+  draftKey?: string;
+  ops?: SourceOps;
+  onPr?: (number: number) => void;
+  running?: boolean;
+}) {
+  const { source } = data;
   const prs = data.prs ?? [];
   const offline = data.offline ?? false;
-  // shortcut: a fake run, until 2.15 wires the button to Rust's steps.
-  const [running, setRunning] = useState(held);
-  useEffect(() => {
-    if (!running || held) return;
-    const timer = setTimeout(() => setRunning(false), 1500);
-    return () => clearTimeout(timer);
-  }, [running, held]);
+  const { button, dialogs } = useSourceStep({ data, state: source, draftKey, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
 
-  if (!source || !step) {
+  if (!source) {
     return (
       <div className="px-4 pb-1">
         {data.error ? (
-          <ErrorLine error={`Couldn't read this checkout: ${data.error}`} />
+          <ReadError error={data.error} onRetry={ops?.retry} />
         ) : (
           <div aria-busy className="flex flex-col gap-2">
             <Skeleton className="h-5 w-1/2" />
@@ -47,13 +47,13 @@ export function GitCard({ data, nowMs, onPr, running: held = false }: { data: So
   const uncommitted = [...source.staged, ...source.changes];
   const resolving = source.merging != null || source.rebasing != null;
   const count = new Set(uncommitted.map((file) => file.path)).size;
-  // Nothing to commit and nothing further to do: no button, as in Source.
-  const idle = count === 0 && !resolving && (step.kind === "commit" || step.kind === "folderCommit" || step.kind === "landed");
   return (
     <div className={cx("flex flex-col gap-1", offline && "opacity-disabled")} inert={offline}>
       <div className="flex flex-col gap-2 px-4 pb-1">
-        <StatusLine small status={statusWords(source, step, count, prs)} files={count > 0 || resolving ? uncommitted : source.sinceBase} />
-        {!idle && <ActionButton step={step} nowMs={nowMs} running={running} error={data.stepError ?? null} rejected={data.rejected != null} onRun={() => setRunning(true)} />}
+        {/* A watch that failed after its first read: the last read stays under it, as in Source [D30]. */}
+        {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
+        <StatusLine small status={statusWords(source, data.step, count, prs)} files={count > 0 || resolving ? uncommitted : source.sinceBase} />
+        {button && <ActionButton nowMs={nowMs} running={running} {...button} />}
       </div>
       {prs.length > 0 && (
         <>
@@ -79,6 +79,7 @@ export function GitCard({ data, nowMs, onPr, running: held = false }: { data: So
           </ul>
         </>
       )}
+      {dialogs}
     </div>
   );
 }
