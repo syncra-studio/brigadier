@@ -14,13 +14,14 @@ export function SourceView({ owner }: { owner: string }) {
   const git = useGit();
   const offline = !useDaemon().daemon;
   // History is Rust's (2.29): the menu lists what the History tab does, and opens its commits and the tab [D1041, D1114].
-  const { history } = useHistory(owner);
+  const { history, error } = useHistory(owner);
   return (
     <SourcePanel
       data={{ source: git.source, step: null, error: git.error, offline: offline && git.source !== null, pending: git.pending,
         history: {
           commits: history?.commits ?? [],
           base: history?.base ?? null,
+          error,
           onCommit: (sha) => openTab(owner, "commit", sha),
           onOpen: () => openTab(owner, "history"),
           onMenu: () => refreshHistory(owner),

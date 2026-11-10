@@ -86,6 +86,15 @@ export function SourceGallery() {
             )}
           </Held>
         </State>
+        <State label="History: a read that failed, over the last list">
+          <Held className="h-96 w-80">
+            {(box) => (
+              <SourceHeader>
+                <HistoryMenu commits={COMMITS.slice(0, 2)} base="main" error="git log: unknown revision main" held={box} />
+              </SourceHeader>
+            )}
+          </Held>
+        </State>
         <State label="Pull requests: every PR, the watch">
           <Held className="h-96 w-80">
             {(box) => (

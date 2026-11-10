@@ -23,7 +23,7 @@ export type SourceData = {
    * The History icon's commits from Rust and what its menu opens (2.29) [D1041, D1114]; without it, the fake state's
    * (the gallery). Hidden with no base or no commits.
    */
-  history?: { commits: Commit[]; base: string | null; onCommit: (sha: string) => void; onOpen: () => void; onMenu: () => void };
+  history?: { commits: Commit[]; base: string | null; error: string | null; onCommit: (sha: string) => void; onOpen: () => void; onMenu: () => void };
   /** Null while the first read is under way. */
   source: SourceState | null;
   step: Step | null;
@@ -302,7 +302,7 @@ export function SourcePanel({
     <div className={cx("relative flex min-h-0 flex-1 flex-col", offline && "opacity-disabled")} inert={offline}>
       <SourceHeader>
         {data.history ? (
-          data.history.base && data.history.commits.length > 0 && <HistoryMenu {...data.history} base={data.history.base} />
+          (data.history.error || (data.history.base && data.history.commits.length > 0)) && <HistoryMenu {...data.history} />
         ) : (
           state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />
         )}

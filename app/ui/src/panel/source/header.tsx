@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Button } from "../../components/button";
+import { ErrorLine } from "../../components/error-line";
 import { TooltipIconButton } from "../../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, MenuRow } from "../../components/menu";
 import { Clock, DotsHorizontal, PullRequestClosed, PullRequestMerged, PullRequestOpen } from "../../icons";
@@ -47,18 +48,18 @@ function OpenTab({ onClick, children }: { onClick?: () => void; children: ReactN
 
 /**
  * The session's last five commits since its base, a click opening that commit's diff in a Review tab; then Open
- * history, the History tab (2.29) [D1041, D1111, D1114]. Opening the menu reads the list again (`onMenu`).
+ * history, the History tab (2.29) [D1041, D1111, D1114]. Opening the menu reads the list again (`onMenu`). A failed
+ * read marks the icon and shows its error over the last list [D1136].
  */
-export function HistoryMenu({ commits, base, held, onCommit, onOpen, onMenu }: { commits: Commit[]; base: string; held?: HTMLElement; onCommit?: (sha: string) => void; onOpen?: () => void; onMenu?: () => void }) {
+export function HistoryMenu({ commits, base, error, held, onCommit, onOpen, onMenu }: { commits: Commit[]; base: string | null; error?: string | null; held?: HTMLElement; onCommit?: (sha: string) => void; onOpen?: () => void; onMenu?: () => void }) {
   return (
     <DropdownMenu modal={false} {...(held && { open: true })} onOpenChange={(open) => open && onMenu?.()}>
-      <DropdownMenuTrigger render={<TooltipIconButton tooltip="History" size="icon-sm" />}>
+      <DropdownMenuTrigger render={<TooltipIconButton tooltip="History" size="icon-sm" {...(error && { dot: DOT.bad })} />}>
         <Clock />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72" {...place(held)}>
-        <DropdownMenuLabel>
-          {plural(commits.length, "commit")} since {base}
-        </DropdownMenuLabel>
+        <DropdownMenuLabel>{base ? `${plural(commits.length, "commit")} since ${base}` : "History"}</DropdownMenuLabel>
+        <ErrorLine error={error} className="px-2 pb-1" />
         {commits.slice(0, 5).map((commit) => (
           <DropdownMenuItem key={commit.sha} onClick={() => onCommit?.(commit.sha)}>
             <MenuRow title={commit.subject} hint={commit.sha.slice(0, 7)} mono />
