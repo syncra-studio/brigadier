@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Dock, Document, Globe } from "../icons";
+import { Compare, Dock, Document, Globe } from "../icons";
 import { PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
@@ -22,6 +22,7 @@ export const TAB_KINDS = {
   terminal: { name: "Terminal", icon: Dock },
   conflict: { name: "Conflict", icon: Document },
   pr: { name: "Pull request", icon: PullRequestOpen },
+  review: { name: "Review", icon: Compare },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /** `target`: a conflict tab's file path, a PR tab's number [D1014]. */

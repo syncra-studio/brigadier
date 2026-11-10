@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a conflicted file and a pull
-/// request, each with its target, a path or a PR number [D1014, D1032].
-const KINDS: [&str; 4] = ["new", "terminal", "conflict", "pr"];
+/// request, each with its target, a path or a PR number; the Review diff [D1014, D1032].
+const KINDS: [&str; 5] = ["new", "terminal", "conflict", "pr", "review"];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 const CLOSED_KEPT: usize = 20;
