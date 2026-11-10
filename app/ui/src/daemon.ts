@@ -227,6 +227,9 @@ function receive(chunk: Uint8Array): void {
   }
 }
 
+/** How long after the page loads a daemon that hasn't answered yet counts as still starting. */
+const STARTING_MS = 5000;
+
 // At module level, not in an effect: main posts the port once the page has loaded, maybe before React's first effect.
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.data !== "daemon-port") return;
@@ -240,7 +243,9 @@ window.addEventListener("message", (event) => {
     threadN = undefined;
     const waiting = [...replies.values()];
     replies.clear();
-    set({ daemon: null });
+    // Before the first connection a failed try is the daemon main just launched still starting: connecting, not
+    // disconnected. The socket tries every 250ms, so one that never comes up says so once this has passed [D476].
+    if (view.daemon !== undefined || performance.now() > STARTING_MS) set({ daemon: null });
     for (const reply of waiting) reply({ ok: false, error: "disconnected" });
   };
 });
