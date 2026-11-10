@@ -18,13 +18,13 @@ import type { ReplaceOutcome, ReplaceSkip, SearchQuery, SearchResults } from "./
  */
 
 /** What the fields hold. */
-export type SearchForm = Omit<SearchQuery, "text"> & { text: string; replace: string };
+export type SearchForm = Omit<SearchQuery, "text"> & { text: string; replace: string; /** Files to include and exclude shown. */ details: boolean };
 
-export const EMPTY_FORM: SearchForm = { text: "", replace: "", include: "", exclude: "", matchCase: false, wholeWord: false, regex: false };
+export const EMPTY_FORM: SearchForm = { text: "", replace: "", include: "", exclude: "", matchCase: false, wholeWord: false, regex: false, details: false };
 
-/** The query the fields ask for, or null with nothing to find. */
-export function searchQuery({ replace: _replace, ...query }: SearchForm): SearchQuery | null {
-  return query.text ? query : null;
+/** The query the fields ask for, or null with nothing to find. Hidden include and exclude don't count, as in the old app. */
+export function searchQuery({ replace: _replace, details, ...query }: SearchForm): SearchQuery | null {
+  return query.text ? { ...query, include: details ? query.include : "", exclude: details ? query.exclude : "" } : null;
 }
 
 const sameQuery = (a: SearchQuery, b: SearchQuery | null) => !!b && (Object.keys(a) as (keyof SearchQuery)[]).every((key) => a[key] === b[key]);
@@ -32,7 +32,7 @@ const sameQuery = (a: SearchQuery, b: SearchQuery | null) => !!b && (Object.keys
 const plural = (count: number, one: string, many = `${one}s`) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
 // shortcut: whether include and exclude show is kept in memory for the app's run; step 2.15 keeps it in Rust.
-let detailsShown = false;
+export let detailsShown = false;
 
 export function SearchPanel({
   form,
@@ -43,7 +43,6 @@ export function SearchPanel({
   onDismiss,
   onOpen,
   readOnly = false,
-  defaultDetails,
   defaultOutcome = null,
 }: {
   form: SearchForm;
@@ -58,11 +57,9 @@ export function SearchPanel({
   onOpen: OnOpenLine;
   /** Replace left out. */
   readOnly?: boolean;
-  defaultDetails?: boolean;
   /** What a Replace all did, shown at once (the gallery's frozen states). */
   defaultOutcome?: ReplaceOutcome | { error: string } | null;
 }) {
-  const [details, setDetails] = useState(defaultDetails ?? detailsShown);
   const query = useMemo(() => searchQuery(form), [form]);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = useCallback(
@@ -149,18 +146,18 @@ export function SearchPanel({
         )}
         <div className="flex items-center justify-end">
           <TooltipIconButton
-            tooltip={details ? "Hide files to include and exclude" : "Files to include and exclude"}
+            tooltip={form.details ? "Hide files to include and exclude" : "Files to include and exclude"}
             size="icon-xs"
-            aria-expanded={details}
+            aria-expanded={form.details}
             onClick={() => {
-              detailsShown = !details;
-              setDetails(!details);
+              detailsShown = !form.details;
+              set({ details: !form.details });
             }}
           >
             <DotsHorizontal />
           </TooltipIconButton>
         </div>
-        {details && (
+        {form.details && (
           <>
             <Glob label="files to include" placeholder="e.g. src/**, *.ts" value={form.include} onChange={(include) => set({ include })} />
             <Glob label="files to exclude" placeholder="e.g. *.test.ts, docs" value={form.exclude} onChange={(exclude) => set({ exclude })} />

@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ConfirmForm } from "../src/components/confirm-dialog";
 import { Dialog, DialogContent } from "../src/components/dialog";
 import { CAPPED, FILES, fakeRead, findFiles, IGNORED, LONG_FILE, MARKS, searchFake } from "../src/files/fake";
-import { EMPTY_FORM, replaceDescription, replaceTitle, SearchPanel, type SearchForm } from "../src/files/search";
+import { EMPTY_FORM, replaceDescription, replaceTitle, SearchPanel, searchQuery, type SearchForm } from "../src/files/search";
 import { FileTree } from "../src/files/tree";
 import type { SearchResults } from "../src/files/types";
 import { FileViewer } from "../src/files/viewer";
@@ -37,7 +37,7 @@ const tree = (scope: string, change: Partial<Parameters<typeof FileTree>[0]> = {
 );
 
 const form = (change: Partial<SearchForm>): SearchForm => ({ ...EMPTY_FORM, ...change });
-const found = (search: SearchForm, change: Partial<SearchResults> = {}): SearchResults => ({ ...searchFake({ ...search }), ...change });
+const found = (search: SearchForm, change: Partial<SearchResults> = {}): SearchResults => ({ ...searchFake(searchQuery(search)!), ...change });
 const RETRY = form({ text: "retry", replace: "withRetry" });
 const RETRY_FOUND = found(RETRY);
 const RETRY_MATCHES = RETRY_FOUND.files.reduce((sum, file) => sum + file.matches, 0);
@@ -45,7 +45,7 @@ const RETRY_MATCHES = RETRY_FOUND.files.reduce((sum, file) => sum + file.matches
 function search(label: string, fields: SearchForm, results: SearchResults | null, change: Partial<Parameters<typeof SearchPanel>[0]> = {}) {
   return (
     <Panel label={label}>
-      <SearchPanel form={fields} onForm={noop} results={results} onSearch={noop} onReplace={never} onDismiss={noop} onOpen={noop} defaultDetails={false} {...change} />
+      <SearchPanel form={fields} onForm={noop} results={results} onSearch={noop} onReplace={never} onDismiss={noop} onOpen={noop} {...change} />
     </Panel>
   );
 }
@@ -130,7 +130,7 @@ export function FilesGallery() {
         </Row>
         <Row name="Results · grouped by file, matches marked, files to include and exclude">
           {search("results", RETRY, found(RETRY))}
-          {search("include and exclude open, match case on", form({ text: "retry", matchCase: true, include: "src/upload" }), found(form({ text: "retry", matchCase: true, include: "src/upload" })), { defaultDetails: true })}
+          {search("include and exclude open, match case on", form({ text: "retry", matchCase: true, include: "src/upload", details: true }), found(form({ text: "retry", matchCase: true, include: "src/upload", details: true })))}
           {search("searching", form({ text: "upload" }), { query: { ...form({ text: "upload" }), text: "upload" }, files: [], done: null, error: null, filteredFiles: 0 })}
         </Row>
         <Row name="Replace all · confirm, done, refused">

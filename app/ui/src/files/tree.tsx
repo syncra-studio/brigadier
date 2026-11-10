@@ -189,7 +189,7 @@ export function FileTree({
           </div>
         ) : listing.state === "failed" ? (
           <ErrorLine size="sm" error={`Couldn't list the files: ${listing.error}`} className="p-2" />
-        ) : list!.files.length === 0 ? (
+        ) : rows.length === 0 ? (
           <EmptyState title="No files" className="p-2" />
         ) : found ? (
           found.length === 0 ? (

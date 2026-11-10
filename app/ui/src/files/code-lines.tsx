@@ -102,21 +102,23 @@ export function CodeLines({
     }
     return found;
   }, [lines, query, finding]);
+  // Held inside the matches: another file shown in the same view may have fewer.
+  const at = Math.min(current, Math.max(0, matches.length - 1));
   const byLine = useMemo(() => {
     const map = new Map<number, Range[]>();
     for (const [index, match] of matches.entries()) {
       const list = map.get(match.line) ?? [];
-      list.push({ start: match.start, end: match.end, current: index === current });
+      list.push({ start: match.start, end: match.end, current: index === at });
       map.set(match.line, list);
     }
     return map;
-  }, [matches, current]);
+  }, [matches, at]);
 
   // A link (again) at a line marks it and brings it into view.
   useLayoutEffect(() => {
     if (line !== null && line > 0) virtualizer.current?.scrollToIndex(line - 1, { align: "center" });
   }, [line, reveal]);
-  const match = matches[current];
+  const match = matches[at];
   useLayoutEffect(() => {
     if (match) virtualizer.current?.scrollToIndex(match.line - 1, { align: "center" });
   }, [match]);
@@ -145,7 +147,7 @@ export function CodeLines({
   }, [active]);
 
   const step = (by: 1 | -1) => {
-    if (matches.length) setCurrent((at) => (at + by + matches.length) % matches.length);
+    if (matches.length) setCurrent((at + by + matches.length) % matches.length);
   };
   const goTo = (value: string) => {
     const number = Number.parseInt(value, 10);
@@ -165,7 +167,7 @@ export function CodeLines({
           finding={finding}
           query={query}
           count={matches.length}
-          current={current}
+          current={at}
           lines={lines.length}
           inputRef={findInput}
           onQueryChange={(value) => {

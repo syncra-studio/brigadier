@@ -50,11 +50,19 @@ export function ResultList({
   const current = Math.max(0, Math.min(active, rows.length - 1));
   // A key moved the keyboard's row: it's brought into view, then focused once drawn.
   const focusing = useRef(false);
+  const focusRun = useRef(0);
   useLayoutEffect(() => {
     if (!focusing.current) return;
     focusing.current = false;
-    const next = scrollRef.current?.querySelector<HTMLElement>(`[data-index="${current}"] [data-row-button]`);
-    (next ?? scrollRef.current?.querySelector<HTMLElement>('[role="tree"]'))?.focus();
+    const run = ++focusRun.current;
+    const focus = (tries: number) => {
+      if (run !== focusRun.current) return;
+      const next = scrollRef.current?.querySelector<HTMLElement>(`[data-index="${current}"] [data-row-button]`);
+      (next ?? scrollRef.current?.querySelector<HTMLElement>('[role="tree"]'))?.focus();
+      // virtua hides a row until it's measured, and a hidden row can't take focus: try again next frame.
+      if (next && document.activeElement !== next && tries > 0) requestAnimationFrame(() => focus(tries - 1));
+    };
+    focus(10);
   });
   const move = (index: number) => {
     const next = Math.max(0, Math.min(index, rows.length - 1));

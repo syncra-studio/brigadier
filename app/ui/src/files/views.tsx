@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { FILES, findFiles, IGNORED, MARKS, replaceFake, searchFake } from "./fake";
-import { EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "./search";
+import { detailsShown, EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "./search";
 import { FileTree, type OnOpen } from "./tree";
 import type { FolderEntry, SearchResults } from "./types";
 
@@ -33,7 +33,7 @@ export function FilesView({ owner, onOpen = () => {} }: { owner: string; onOpen?
 }
 
 export function SearchView({ owner: _owner, onOpen = () => {} }: { owner: string; onOpen?: (path: string, line: number, keep: boolean) => void }) {
-  const [form, setForm] = useState<SearchForm>(EMPTY_FORM);
+  const [form, setForm] = useState<SearchForm>(() => ({ ...EMPTY_FORM, details: detailsShown }));
   const [results, setResults] = useState<SearchResults | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [asked, setAsked] = useState(0);
