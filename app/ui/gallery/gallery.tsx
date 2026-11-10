@@ -29,6 +29,10 @@ import { ReviewGallery } from "./review";
 import { SessionGallery } from "./session";
 import { SidebarGallery } from "./sidebar";
 import { Thread } from "./thread";
+import { RightPanelGallery } from "./right-panel";
+import { SourceGallery } from "./source";
+import { CommitGallery } from "./commit";
+import { BranchGallery } from "./branch";
 import "./gallery.css";
 
 const SCROLL_KEY = "gallery-scroll";
@@ -136,6 +140,12 @@ function GalleryPage() {
             <Area name="Landing the work">
               <ConflictsGallery />
               <PullRequestsGallery />
+            </Area>
+            <Area name="Right panel">
+              <RightPanelGallery />
+              <SourceGallery />
+              <CommitGallery />
+              <BranchGallery />
             </Area>
           </main>
         </div>

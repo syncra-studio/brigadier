@@ -1,7 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
-import { TooltipIconButton } from "../components/icon-button";
+import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
 import { TitlebarTips } from "../components/tooltip";
 import { useHomeDraft } from "../home/start";
 import { SidebarFloatingLeft } from "../icons";
@@ -41,9 +41,9 @@ function usePanelData(owner: string) {
 const DOT: Record<PanelHint["tone"], string> = { changes: "bg-link", ready: "bg-success", conflict: "bg-warning", failed: "bg-destructive" };
 
 /** The toggle as drawn: its dot and tip follow the most urgent state [D1022, D1025]. */
-export function PanelToggleButton({ hint, open, tip = true, onClick }: { hint: PanelHint | null; open: boolean; tip?: boolean; onClick?: () => void }) {
+export function PanelToggleButton({ hint, open, ...props }: { hint: PanelHint | null; open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip={hintWords(hint)} shortcut="⌥⌘B" tip={tip} pressed={open} dot={hint ? DOT[hint.tone] : undefined} aria-controls="right-panel-content" onClick={onClick}>
+    <TooltipIconButton look="toolbar" tooltip={hintWords(hint)} shortcut="⌥⌘B" pressed={open} dot={hint ? DOT[hint.tone] : undefined} aria-controls="right-panel-content" {...props}>
       {/* The left toggle's folded icon, mirrored. */}
       <SidebarFloatingLeft className="-scale-x-100" />
     </TooltipIconButton>

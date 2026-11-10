@@ -1,0 +1,150 @@
+// The commit box and the action button [D1008, D1015, D1019, D1028, D1029, D1034, D1045]: every state, menu and confirm.
+import type { ReactNode } from "react";
+
+import { BRANCH, COMMITS, STEPS } from "../src/panel/fake";
+import { ActionButton } from "../src/panel/source/action";
+import { ForcePushDialog, MergePrDialog, SquashDialog } from "../src/panel/source/action-confirms";
+import { CommitBox } from "../src/panel/source/commit-box";
+import { StageAllDialog } from "../src/panel/source/dialogs";
+import type { Step } from "../src/panel/types";
+import { Held, Row, Section, State } from "./parts";
+import { OldApp } from "./right-panel";
+import { Confirm } from "./source";
+
+const NOW = Date.now();
+const noop = () => undefined;
+const TYPED = "Retry failed uploads three times\n\nThe upload client retries with a growing wait.";
+
+/** The panel's top, at its width: the box, then the button. */
+function Top({ children }: { children: ReactNode }) {
+  return <div className="flex w-80 flex-col gap-2 rounded-surface border border-border bg-background p-2">{children}</div>;
+}
+
+const BUTTONS: [string, Step, Partial<Parameters<typeof ActionButton>[0]>?][] = [
+  ["1 · Commit", STEPS.commit],
+  ["2 · Commit, commits waiting", STEPS.commitWaiting],
+  ["3 · Merge into main", STEPS.merge],
+  ["4 · main moved, still clean", STEPS.mergeMoved],
+  ["5 · Would conflict: Catch up", STEPS.catchUp],
+  ["6 · Continue, conflicts left", STEPS.continue],
+  ["6 · Continue, resolved", { ...STEPS.continue, left: 0 }],
+  ["7 · main busy in your folder", STEPS.busy],
+  ["8 · Merging", STEPS.merge, { running: true }],
+  ["9 · Couldn't", STEPS.merge, { error: { kind: "merge", reason: "main moved while merging. Checked again: still clean, try once more." } }],
+  ["10 · Landed", STEPS.landed],
+  ["11 · Push to #12", STEPS.pushPr],
+  ["12 · Fix with agent: checks", STEPS.fixPr],
+  ["12 · Fix with agent: changes asked", STEPS.fixPrChanges],
+  ["13 · Merge #12", STEPS.mergePr],
+  ["Your folder · Commit", STEPS.folderCommit],
+  ["Your folder · Sync Changes", STEPS.sync],
+  ["Your folder · Publish Branch", STEPS.publish],
+  ["Your folder · Syncing", STEPS.sync, { running: true }],
+];
+
+const MENUS: [string, Step, boolean?][] = [
+  ["Commit", STEPS.commit],
+  ["Merge into main", STEPS.merge],
+  ["Catch up", STEPS.catchUp],
+  ["Continue", STEPS.continue],
+  ["Merge #12", STEPS.mergePr],
+  ["Push to #12", STEPS.pushPr],
+  ["Your folder", STEPS.folderCommit],
+  ["After a rejected push", STEPS.sync, true],
+];
+
+export function CommitGallery() {
+  return (
+    <Section title="Commit box and the action button">
+      <Row name="The commit box">
+        <State label="Blank: a message is written at commit">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite idle={false} />
+            <ActionButton step={STEPS.commit} nowMs={NOW} />
+          </Top>
+        </State>
+        <State label="Typed">
+          <Top>
+            <CommitBox message={TYPED} onMessage={noop} branch={BRANCH} canWrite idle={false} />
+            <ActionButton step={STEPS.commit} nowMs={NOW} />
+          </Top>
+        </State>
+        <State label="✨ writing">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite idle={false} writing busy />
+            <ActionButton step={STEPS.commit} nowMs={NOW} disabled />
+          </Top>
+        </State>
+        <State label="Commit with a blank box: Writing message…">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite idle={false} busy />
+            <ActionButton step={STEPS.commit} nowMs={NOW} writing />
+          </Top>
+        </State>
+        <State label="The write failed: nothing committed">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite idle={false} failed />
+            <ActionButton step={STEPS.commit} nowMs={NOW} />
+          </Top>
+        </State>
+        <State label="Nothing to commit: one line">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite={false} idle />
+            <ActionButton step={STEPS.landed} nowMs={NOW} />
+          </Top>
+        </State>
+        <State label="Rebasing: the stopped commit's message">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={null} rebaseMessage="Show upload progress in the tray" canWrite={false} idle={false} />
+            <ActionButton step={STEPS.continue} nowMs={NOW} />
+          </Top>
+        </State>
+        <Confirm label="Nothing staged: stage all?">{(held) => <StageAllDialog open held={held} onClose={noop} onAnswer={noop} />}</Confirm>
+      </Row>
+      <Row name="The action button: every step">
+        {BUTTONS.map(([label, step, more]) => (
+          <State key={label} label={label}>
+            <Top>
+              <ActionButton step={step} nowMs={NOW} {...more} />
+            </Top>
+          </State>
+        ))}
+      </Row>
+      <Row name="Its menus">
+        {MENUS.map(([label, step, rejected]) => (
+          <State key={label} label={label}>
+            <Held className="h-96 w-80">{(held) => <ActionButton step={step} nowMs={NOW} held={held} rejected={rejected ?? false} />}</Held>
+          </State>
+        ))}
+        <State label="Merge as Squash, picked">
+          <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.merge} nowMs={NOW} held={held} mergeStyle="squash" />}</Held>
+        </State>
+      </Row>
+      <Row name="Confirms">
+        <Confirm label="Squash, its message editable" tall>
+          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Squash, the message being written" tall>
+          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message="" writing onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Merge #12: ready">
+          {(held) => <MergePrDialog open pr={12} base="main" checks={STEPS.mergePr.checks} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Merge #12: not all green">
+          {(held) => <MergePrDialog open pr={12} base="main" checks={{ passed: 4, failed: 1, running: 1, approved: false }} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Force push with lease">
+          {(held) => <ForcePushDialog force={{ remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: null }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Force push: the remote moved, asks again">
+          {(held) => <ForcePushDialog force={{ remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: "d07b3f1" }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+      </Row>
+      <Row name="Old app">
+        <OldApp page="wave2-action" />
+        <OldApp page="wave2-commit" />
+        <OldApp page="wave2-merge-style" />
+      </Row>
+    </Section>
+  );
+}

@@ -34,11 +34,17 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
       <DropdownMenuItem onClick={pick("forcePush")}>Force Push (with lease)…</DropdownMenuItem>
     </>
   );
+  // The pick's check leads its row, as the old mock drew it.
+  const styleItem = (value: MergeStyle, title: string) => (
+    <DropdownMenuRadioItem value={value} indicator={<span />}>
+      <MenuRow icon={mergeStyle === value ? <Check /> : null} title={title} />
+    </DropdownMenuRadioItem>
+  );
   const styles = (pr: boolean) => (
     <DropdownMenuRadioGroup value={mergeStyle} onValueChange={(value: MergeStyle) => onMergeStyle?.(value)}>
-      <DropdownMenuRadioItem value="merge" indicator={<Check />}>Merge commit</DropdownMenuRadioItem>
-      <DropdownMenuRadioItem value="squash" indicator={<Check />}>{pr ? "Squash" : "Squash into one commit"}</DropdownMenuRadioItem>
-      {pr && <DropdownMenuRadioItem value="rebase" indicator={<Check />}>Rebase</DropdownMenuRadioItem>}
+      {styleItem("merge", "Merge commit")}
+      {styleItem("squash", pr ? "Squash" : "Squash into one commit")}
+      {pr && styleItem("rebase", "Rebase")}
     </DropdownMenuRadioGroup>
   );
   let items;
@@ -58,7 +64,7 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
     case "merge":
       items = (
         <>
-          <DropdownMenuLabel variant="heading">Merge as</DropdownMenuLabel>
+          <DropdownMenuLabel>Merge as</DropdownMenuLabel>
           {styles(false)}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={pick("createPr")}><MenuRow icon={<PullRequestOpen />} title="Create PR…" /></DropdownMenuItem>
@@ -92,7 +98,7 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
     case "mergePr":
       items = (
         <>
-          <DropdownMenuLabel variant="heading">Merge #{step.pr} as</DropdownMenuLabel>
+          <DropdownMenuLabel>Merge #{step.pr} as</DropdownMenuLabel>
           {styles(true)}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
@@ -118,7 +124,7 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
       );
   }
   return (
-    <DropdownMenuContent align="end" className="w-64" {...place}>
+    <DropdownMenuContent align="end" className="w-72" {...place}>
       {items}
       {force}
     </DropdownMenuContent>

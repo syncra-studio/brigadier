@@ -182,6 +182,7 @@ export function SourcePanel({ data, nowMs, selected, picker: initialPicker = nul
             step={step}
             nowMs={nowMs}
             writing={committing && !message.trim()}
+            disabled={writing}
             error={data.stepError ?? null}
             mergeStyle={mergeStyle}
             rejected={data.rejected != null}

@@ -42,6 +42,7 @@ export function SquashDialog({ open, branch, base, commits, message, writing = f
           </div>
           <textarea
             aria-label="Squash message"
+            placeholder={writing ? "Writing message…" : undefined}
             value={message}
             disabled={writing}
             onChange={(event) => onMessage(event.target.value)}

@@ -2,7 +2,7 @@ import { type ReactNode, useState } from "react";
 
 import { cx } from "../../components/cx";
 import { TooltipIconButton } from "../../components/icon-button";
-import { ChevronDown, ChevronRight, FileDocument, FileIcon, Minus, Plus, Undo } from "../../icons";
+import { ChevronDown, ChevronRight, FileDocument, FileIcon, Minus, Plus, Spinner, Undo } from "../../icons";
 import type { Commit, SourceFile } from "../types";
 import { LETTERS } from "../status";
 import { ago, baseName, dirName } from "../words";
@@ -90,8 +90,9 @@ export function FileRow({ file, group, selected = false, locked = false, pending
           </RowButton>
         )}
       </span>
-      <span title={status.label} className={cx("w-4 shrink-0 text-center font-mono text-xs font-medium", status.className)}>
-        {status.letter}
+      {/* Pending, the letter waits as the queue's rows do: a spinner in its place. */}
+      <span title={status.label} className={cx("flex w-4 shrink-0 justify-center font-mono text-xs font-medium", status.className)}>
+        {pending ? <Spinner className="size-icon-xs animate-spin text-muted-foreground motion-reduce:animate-none" /> : status.letter}
       </span>
     </li>
   );

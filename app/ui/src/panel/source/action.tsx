@@ -35,11 +35,13 @@ function icon(step: Step): ReactNode {
  * other way. Fix with agent only leaves a chip above the composer, sent when the user sends [D1019].
  * `writing`: Commit pressed with a blank box, the message being written [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, error = null, mergeStyle, rejected, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, mergeStyle, rejected, onMergeStyle, onRun, onPick, held }: {
   step: Step;
   nowMs: number;
   running?: boolean;
   writing?: boolean;
+  /** Off for now (✨ is writing a message). */
+  disabled?: boolean;
   error?: StepError | null;
   mergeStyle?: MergeStyle;
   rejected?: boolean;
@@ -49,7 +51,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, er
   held?: HTMLElement;
 }) {
   const words = stepWords(step, nowMs);
-  const busy = running || writing;
+  const busy = running || writing || disabled;
   const label = writing ? "Writing message…" : running ? runningWords(step).label : words.label;
   const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : words.line;
   const tone = running ? "quiet" : error ? "bad" : words.tone;
@@ -59,7 +61,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, er
     <div className="flex flex-col gap-1.5">
       <div className="flex" title={words.why}>
         <Button size="sm" variant={variant} disabled={busy || words.off} onClick={onRun} className="min-w-0 flex-1 rounded-e-none">
-          {busy ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon(step)}
+          {running || writing ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon(step)}
           <span className="truncate">{label}</span>
           {step.kind === "sync" && !busy && (
             <>
