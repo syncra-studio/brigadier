@@ -6,8 +6,10 @@ import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
+import { fakeRead } from "../files/fake";
+import { FileViewer } from "../files/viewer";
 import { RightPanelSlot } from "./right-panel";
-import { CHAT, HOME, replaceTab, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key or chevron along the top, its name under them. */
@@ -99,7 +101,10 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
         {tabs.map((tab) => (
           <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
             {/* Each kind until it's wired: the conflict and PR views come with 2.23 and 2.27 [D1014, D1044, D1017]. */}
-            {tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
+            {tab.kind === "file" ? (
+              // shortcut: fake contents until Rust reads the file (step 2.17); Reveal in Finder is wired then too.
+              <FileViewer key={tab.target} path={tab.target ?? ""} read={fakeRead(tab.target ?? "")} line={tab.line ?? null} reveal={revealOf(tab.id)} active={tab.id === active} />
+            ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}
       </div>

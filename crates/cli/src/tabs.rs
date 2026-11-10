@@ -18,17 +18,25 @@ const CHAT: &str = "chat";
 const KINDS: [&str; 5] = ["new", "terminal", "conflict", "pr", "review"];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
+/// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
+const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {
     id: String,
     kind: String,
     /// The tab it was opened from: where a close goes back to.
     opener: String,
-    /// What a conflict or PR tab shows: its file's path, or the PR's number.
+    /// What a file, conflict or PR tab shows: its file's path, or the PR's number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     target: Option<String>,
+    /// A file tab's line last asked for, and whether it's the preview the next file opened takes
+    /// the place of, as in the old app [D1002].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    preview: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -142,20 +150,20 @@ impl Tabs {
     }
 }
 
-/// A conflict and a PR tab need their target, every other kind refuses one. A conflict's is its file,
+/// A file, conflict and PR tab need their target, every other kind refuses one. A file's or conflict's is its file,
 /// relative and staying in the session's checkout; a PR's is its number, written plainly so one PR
 /// is one tab [D1032].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     let ok = match (kind, target) {
         // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
-        ("conflict", Some(path)) => {
+        ("file" | "conflict", Some(path)) => {
             !path.contains('\0')
                 && path
                     .split('/')
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
         ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
-        ("conflict" | "pr", None) => false,
+        ("file" | "conflict" | "pr", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {
@@ -168,8 +176,9 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     }
 }
 
-/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> | select <tab> | close <tab> |
-/// close-others <tab> | close-right <tab> | move <tab> <to> | reopen]`, for a session or Home.
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> | file <tab> <path> <line|-> <keep|preview> |
+/// keep <tab> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
+/// reopen]`, for a session or Home.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let path = file(data, id);
@@ -201,13 +210,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let mut now = was.clone();
     match op {
         "reopen" => {
-            if let Some(Closed { tab, index }) = now.closed.pop()
+            if let Some(Closed { mut tab, index }) = now.closed.pop()
                 && !now.exists(&tab.id)
                 && allowed(&tab.kind).is_ok()
             {
                 if let Some(same) = now.same(&tab.kind, &tab.target) {
                     now.active = same;
                 } else {
+                    // One preview at a time: a closed one comes back kept if another is open.
+                    tab.preview &= !now.tabs.iter().any(|t| t.preview);
                     now.active = tab.id.clone();
                     let index = index.min(now.tabs.len());
                     now.tabs.insert(index, tab);
@@ -233,10 +244,64 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                             kind,
                             opener,
                             target,
+                            ..Tab::default()
                         },
                     );
                 }
                 now.active = tab.into();
+            }
+        }
+        // A file already open comes to the front; else it opens beside, or in the preview's place.
+        "file" => {
+            let (tab, path) = (arg(args, 3)?, arg(args, 4)?);
+            core::check_id(tab)?;
+            check_target(FILE, Some(path))?;
+            let line = match arg(args, 5)? {
+                "-" => None,
+                line => Some(line.parse().map_err(|_| io::Error::other(USAGE))?),
+            };
+            let preview = match arg(args, 6)? {
+                "preview" => true,
+                "keep" => false,
+                _ => return Err(io::Error::other(USAGE)),
+            };
+            let target = Some(path.to_string());
+            if let Some(at) = now.same(FILE, &target).and_then(|id| now.at(&id)) {
+                let open = &mut now.tabs[at];
+                open.preview &= preview;
+                open.line = line.or(open.line);
+                now.active = open.id.clone();
+            } else {
+                let file = Tab {
+                    id: tab.into(),
+                    kind: FILE.into(),
+                    opener: now.active.clone(),
+                    target,
+                    line,
+                    preview,
+                };
+                // The preview keeps its id, so the bar doesn't grow a tab and shrink back [D419, D424].
+                now.active = match now.tabs.iter().position(|t| t.preview).filter(|_| preview) {
+                    Some(at) => {
+                        let Tab { id, opener, .. } = now.tabs[at].clone();
+                        now.tabs[at] = Tab {
+                            id: id.clone(),
+                            opener,
+                            ..file
+                        };
+                        id
+                    }
+                    None => {
+                        let index = now.at(&now.active).map_or(0, |at| at + 1);
+                        now.tabs.insert(index, file);
+                        tab.into()
+                    }
+                };
+            }
+        }
+        "keep" => {
+            if let Some(at) = now.at(arg(args, 3)?) {
+                now.tabs[at].preview = false;
             }
         }
         "replace" => {

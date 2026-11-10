@@ -20,13 +20,17 @@ export const HOME = HOME_DRAFT;
 export const TAB_KINDS = {
   new: { name: "New tab", icon: Globe },
   terminal: { name: "Terminal", icon: Dock },
+  file: { name: "File", icon: Document },
   conflict: { name: "Conflict", icon: Document },
   pr: { name: "Pull request", icon: PullRequestOpen },
   review: { name: "Review", icon: Compare },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
-/** `target`: a conflict tab's file path, a PR tab's number [D1014]. */
-export type Tab = { id: string; kind: TabKind; opener: string; target?: string };
+/**
+ * `target`: a file or conflict tab's path, a PR tab's number [D1014]. A file tab also has the line last asked for, and
+ * whether it's the preview the next file takes.
+ */
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean };
 export type Tabs = { tabs: Tab[]; active: string };
 
 type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
@@ -156,6 +160,40 @@ export function replaceTab(owner: string, id: string, kind: "new" | "terminal"):
     args: ["replace", id, kind],
     change: (now) => (now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind } : tab)), active: id } : now),
   });
+}
+
+const reveals = new Map<string, number>();
+/** How many times a file tab was asked to show its line: the viewer scrolls to it again on each. */
+export const revealOf = (id: string): number => reveals.get(id) ?? 0;
+
+/** Opens a checkout file as the old app did: one already open comes to the front, a preview takes the preview's place. */
+export function openFile(owner: string, path: string, { line, preview }: { line?: number; preview: boolean }): void {
+  const id = `t-${newId()}`;
+  const isOpen = (tab: Tab) => tab.kind === "file" && tab.target === path;
+  const { tabs } = tabsOf(owner);
+  if (!tabs.some(isOpen) && !(preview && tabs.some((tab) => tab.preview))) opened.add(id);
+  act(owner, {
+    args: ["file", id, path, line === undefined ? "-" : String(line), preview ? "preview" : "keep"],
+    change: (now) => {
+      const open = now.tabs.find(isOpen);
+      if (open) return { tabs: now.tabs.map((tab) => (tab === open ? { ...tab, preview: Boolean(tab.preview) && preview, line: line ?? tab.line } : tab)), active: open.id };
+      const file: Tab = { id, kind: "file", opener: now.active, target: path, ...(line === undefined ? {} : { line }), preview };
+      const at = preview ? now.tabs.findIndex((tab) => tab.preview) : -1;
+      // The preview keeps its id, so the bar doesn't grow a tab and shrink back [D419, D424].
+      const { id: kept, opener } = now.tabs[at] ?? file;
+      if (at >= 0) return { tabs: now.tabs.with(at, { ...file, id: kept, opener }), active: kept };
+      return { tabs: now.tabs.toSpliced(now.tabs.findIndex((tab) => tab.id === now.active) + 1, 0, file), active: id };
+    },
+  });
+  if (line !== undefined) {
+    const at = tabsOf(owner).active;
+    reveals.set(at, revealOf(at) + 1);
+  }
+}
+
+/** A preview file tab stays open for good. */
+export function keepTab(owner: string, id: string): void {
+  act(owner, { args: ["keep", id], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, preview: false } : tab)) }) });
 }
 
 export function selectTab(owner: string, id: string): void {

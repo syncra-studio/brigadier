@@ -9,6 +9,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../componen
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
+import { baseName } from "../files/tree";
 import { setHomeDraft } from "../home/start";
 import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
@@ -18,7 +19,7 @@ import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { useTabKeys } from "./tab-keys";
-import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
+import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -129,11 +130,11 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
   );
 }
 
-/** A conflict tab is named by its file, a PR tab by its number. */
-const nameOf = (tab: Tab) => (tab.target === undefined ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : tab.target.slice(tab.target.lastIndexOf("/") + 1));
+/** A file or conflict tab is named by its file, a PR tab by its number. */
+const nameOf = (tab: Tab) => (tab.target === undefined ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : baseName(tab.target));
 
 function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "conflict" && tab.target !== undefined) return <FileIcon name={tab.target} size="sm" />;
+  if ((tab.kind === "file" || tab.kind === "conflict") && tab.target !== undefined) return <FileIcon name={tab.target} size="sm" />;
   const Icon = TAB_KINDS[tab.kind].icon;
   return <Icon className="size-icon-sm shrink-0" />;
 }
@@ -177,6 +178,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             onClose();
           }}
           onClick={() => selectTab(owner, tab.id)}
+          onDoubleClick={() => tab.preview && keepTab(owner, tab.id)}
           onKeyDown={(event) => {
             if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
             event.preventDefault();
@@ -186,13 +188,19 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
           className={BUTTON}
         >
           <TabIcon tab={tab} />
-          <span className={TITLE}>{name}</span>
+          <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
         </button>
         <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>
           <X className="size-icon-xs" />
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {tab.preview && (
+          <>
+            <DropdownMenuItem onClick={() => keepTab(owner, tab.id)}>Keep open</DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <TabMenuItems owner={owner} id={tab.id} order={order} onClose={onClose} />
       </ContextMenuContent>
     </ContextMenu>
