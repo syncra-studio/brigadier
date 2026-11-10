@@ -3,6 +3,7 @@
 
 mod accounts;
 mod control;
+mod git;
 pub mod index;
 mod models;
 pub mod owner;
@@ -34,6 +35,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
+       brigadier git <id> | git --project P [--watch]
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
@@ -90,7 +92,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" | "models" | "title" => &[][..],
+        | "switching" | "models" | "title" | "git" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids
@@ -318,6 +320,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(thread.session(id, ""))
         }
         "index" => index(data, has(args, "--cold")),
+        "git" => git::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),

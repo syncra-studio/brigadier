@@ -19,6 +19,9 @@
 //! `{"id", "op": "thread_find", "session", "before", "query", "limit"}` answers `{"re", "ok",
 //! "matches": [{"n", "count"}], "more"}`: find in the conversation for the rows not loaded [D470].
 //!
+//! `{"id", "op": "git", "session" | "project"}` follows that checkout's status the same way: a
+//! snapshot, then what changed by path (see `git`) [D71].
+//!
 //! `{"id", "op": "terminal", "session"}` streams a sign-in's terminal (see `term`); `keys` and
 //! `resize` go to its host, named by the terminal's spawn id [D45].
 //!
@@ -45,6 +48,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod awake;
+mod git;
 mod install;
 mod ops;
 mod switch;
@@ -220,6 +224,17 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         // A damaged file keeps the last list it read.
         Err(e) => eprintln!("brigadierd: projects: {e}"),
     }
+    // A turn's start or end reads its session's checkout again [D48].
+    let turned: Vec<&str> = (rows.iter())
+        .filter(|row| {
+            let old = s.rows.get(row["id"].as_str().unwrap_or(""));
+            old.is_none_or(|old| {
+                old["started"] != row["started"] || old["finished"] != row["finished"]
+            })
+        })
+        .filter_map(|row| row["id"].as_str())
+        .collect();
+    git::turned(&turned);
     let delta =
         !rows.is_empty() || !gone.is_empty() || !projects.is_empty() || !projects_gone.is_empty();
     for row in &rows {

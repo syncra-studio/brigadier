@@ -1,5 +1,6 @@
 //! The daemon's op table: one connection's handshake, then each request routed by its op.
 
+use super::git;
 use super::watch::{self, Shown};
 use super::{
     HANDSHAKE_TIMEOUT, PROTOCOL_VERSION, Shared, Sub, WRITE_TIMEOUT, publish, snapshot, term,
@@ -83,6 +84,8 @@ pub(super) fn serve(
     let watching = Arc::new(AtomicU64::new(0));
     // The same for the terminal stream, and the bytes of it the app has drawn.
     let (terming, acked) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
+    // The same for the checkout this connection watches.
+    let gitting = Arc::new(AtomicU64::new(0));
     // The thread this connection watches, by session, for its older pages.
     let shown: Shown = Arc::default();
     let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
@@ -189,6 +192,15 @@ pub(super) fn serve(
                 let (terming, acked) = (terming.clone(), acked.clone());
                 thread::spawn(move || term::watch(&data, &id, re, &out, mine, &terming, &acked));
             }
+            "git" => {
+                let mine = gitting.fetch_add(1, Ordering::SeqCst) + 1;
+                let (out, data, gitting) = (out.clone(), PathBuf::from(data), gitting.clone());
+                thread::spawn(move || git::subscribe(&data, conn, &req, &out, mine, &gitting));
+            }
+            "git_refresh" => {
+                git::refresh(conn);
+                let _ = out.send(json!({"re": re, "ok": true}).to_string());
+            }
             "term_ack" => {
                 acked.fetch_add(req["bytes"].as_u64().unwrap_or(0), Ordering::SeqCst);
             }
@@ -248,6 +260,8 @@ pub(super) fn serve(
     }
     watching.fetch_add(1, Ordering::SeqCst);
     terming.fetch_add(1, Ordering::SeqCst);
+    gitting.fetch_add(1, Ordering::SeqCst);
+    git::leave(conn);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
 }
