@@ -7,6 +7,7 @@ import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
 import { store } from "../onboarding/api";
+import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
 import { carryHome, CHAT, rereadHome, selectTab } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
@@ -214,3 +215,13 @@ export const justStarted = (id: string): boolean => Boolean(get(id));
 
 /** The start of session `id` from Home, while it has anything to show. */
 export const useStart = (id: string): Starting | undefined => starting.use().get(id);
+
+/** Home's project: the one picked here, else the one last sent to, else the first added; null for a chat [D1039]. */
+export function useHomeProject(): Shown | null {
+  const draft = useHomeDraft();
+  const rows = useDaemon().rows ?? [];
+  const projects = useProjects()?.filter((each) => !each.pending);
+  if (draft.chat) return null;
+  const latest = rows.filter((row) => row.project).toSorted((a, b) => b.sent - a.sent)[0];
+  return projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest?.project) ?? projects?.[0] ?? null;
+}

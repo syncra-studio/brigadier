@@ -59,6 +59,7 @@ const listeners = new Set<() => void>();
 // One-off replies by request id (a command, the terminal's stream), and where terminal frames go.
 const replies = new Map<number, (frame: Record<string, any>) => void>();
 let onTerm: ((frame: Record<string, any>) => void) | undefined;
+let onGit: ((frame: Record<string, any>) => void) | undefined;
 
 /** The open thread's request: what the view shows beside the rows (loading, not found, an error). */
 export type ThreadState = { id: string; status: "loading" | "ready" | "missing" | "error"; error?: string };
@@ -101,6 +102,11 @@ export function ask(request: object, onReply?: (frame: Record<string, any>) => v
   const id = send(request);
   if (onReply) replies.set(id, onReply);
   return id;
+}
+
+/** Where the git watch's pushed frames go: one watch per connection [D71]. */
+export function setGitHandler(handler: typeof onGit): void {
+  onGit = handler;
 }
 
 /** Where a sign-in terminal's pushed frames go: one at a time [D45]. */
@@ -270,6 +276,7 @@ function onFrame(frame: Record<string, any>): void {
     return reply(frame);
   }
   if (frame.term !== undefined) return onTerm?.(frame);
+  if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
   if (frame.status === "running") {
     set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
     subscribe();

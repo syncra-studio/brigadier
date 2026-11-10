@@ -16,7 +16,7 @@ import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { asGroups } from "../session/model";
 import { SetUpAgentDialog } from "../session/set-up";
-import { discard, retry, setHomeDraft, start, useHomeDraft, useStarting } from "./start";
+import { discard, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 
@@ -46,7 +46,7 @@ export function HomeDraft() {
     before.current = null;
     setHomeDraft({ project: added.id, chat: false });
   }, [added]);
-  const project = draft.chat ? null : (projects?.find((each) => each.id === draft.project) ?? projects?.find((each) => each.id === latest()?.project) ?? projects?.[0] ?? null);
+  const project = useHomeProject();
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
