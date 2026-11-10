@@ -6,7 +6,7 @@ import { DiscardDialog, DropStashDialog, GitOutputDialog, StageConflictsDialog }
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "../src/panel/source/header";
 import { MoreMenu, type Submenu } from "../src/panel/source/more-menu";
 import { type SourceData, SourcePanel } from "../src/panel/source/panel";
-import { FileRow } from "../src/panel/source/rows";
+import { FileList, FileRow } from "../src/panel/source/rows";
 import type { SourceState } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
 import { PanelFrame } from "./right-panel";
@@ -147,36 +147,36 @@ export function SourceGallery() {
         <State label="Right-click: a file's menu">
           <Held className="h-48 w-80">
             {(box) => (
-              <ul className="w-80">
-                <FileRow file={file("src/upload/retry.ts", "modified", 62, 8)} held={box} />
-              </ul>
+              <FileList held={box}>
+                <FileRow file={file("src/upload/retry.ts", "modified", 62, 8)} />
+              </FileList>
             )}
           </Held>
         </State>
         <State label="Right-click: partly staged">
           <Held className="h-48 w-80">
             {(box) => (
-              <ul className="w-80">
-                <FileRow file={file("src/upload/client.ts", "modified", 25, 3)} staged unstaged held={box} />
-              </ul>
+              <FileList held={box}>
+                <FileRow file={file("src/upload/client.ts", "modified", 25, 3)} staged unstaged />
+              </FileList>
             )}
           </Held>
         </State>
         <State label="Right-click: committed, since main">
           <Held className="h-48 w-80">
             {(box) => (
-              <ul className="w-80">
-                <FileRow file={file("src/upload/retry.test.ts", "added", 42)} committed held={box} />
-              </ul>
+              <FileList held={box}>
+                <FileRow file={file("src/upload/retry.test.ts", "added", 42)} committed />
+              </FileList>
             )}
           </Held>
         </State>
         <State label="Right-click: a staged file's">
           <Held className="h-48 w-80">
             {(box) => (
-              <ul className="w-80">
-                <FileRow file={file("src/upload/client.ts", "added", 21)} staged held={box} />
-              </ul>
+              <FileList held={box}>
+                <FileRow file={file("src/upload/client.ts", "added", 21)} staged />
+              </FileList>
             )}
           </Held>
         </State>

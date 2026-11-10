@@ -13,7 +13,7 @@ import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type 
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { MoreMenu } from "./more-menu";
 import { BranchNameBox, folderItems, QuickPick, sessionItems } from "./quick-pick";
-import { FileRow, Group, Heading } from "./rows";
+import { FileList, FileRow, Group, Heading } from "./rows";
 import { StatusLine } from "./status-line";
 import { useSourceStep } from "./step";
 
@@ -287,7 +287,7 @@ export function SourcePanel({
         {state && (conflicted.length > 0 ? (
           <div className="flex flex-col gap-1 border-t border-divider pt-2">
             <Heading title="Conflicts" count={conflicted.length} />
-            <ul className="flex flex-col">{conflicted.map((file) => row(file))}</ul>
+            <FileList>{conflicted.map((file) => row(file))}</FileList>
             {merged.length > 0 && (
               <Group title="Merged cleanly" count={merged.length} defaultOpen={false}>
                 {merged.map((file) => row(file))}
@@ -297,7 +297,7 @@ export function SourcePanel({
         ) : listed.length > 0 ? (
           <div className="flex flex-col gap-1 border-t border-divider pt-2">
             <Heading title={uncommitted.length > 0 ? "Files" : `Changed since ${base ?? "the base"}`} count={listed.length} />
-            <ul className="flex flex-col">{listed.map((file) => row(file, uncommitted.length === 0))}</ul>
+            <FileList>{listed.map((file) => row(file, uncommitted.length === 0))}</FileList>
           </div>
         ) : (
           !resolving && <p className="text-xs text-muted-foreground">What the agent changes shows here.</p>
