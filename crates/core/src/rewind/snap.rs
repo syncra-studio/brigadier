@@ -142,6 +142,10 @@ impl Store {
     }
 
     fn init(&self) -> io::Result<()> {
+        // Written last, so it's there only once the store is whole.
+        if self.git.join("info/attributes").exists() {
+            return Ok(());
+        }
         let mut command = Command::new("git");
         command
             .args(["init", "-q", "--bare", "--template="])
