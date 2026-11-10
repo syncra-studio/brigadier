@@ -121,13 +121,15 @@ export function fileKind(path: string): Kind {
   return TESTS.test(name) ? [kind[0], "text-file-orange"] : kind;
 }
 
-/** A file's icon by its name, in its kind's colour. */
-export const FileIcon: FC<{ name: string; className?: string | undefined }> = ({ name, className }) => {
+const SIZES = { xs: "size-icon-xs", sm: "size-icon-sm", md: "size-icon-md" };
+
+/** A file's icon by its name, in its kind's colour; `size` sets it (cx doesn't merge a caller's size class). */
+export const FileIcon: FC<{ name: string; size?: keyof typeof SIZES; className?: string | undefined }> = ({ name, size = "md", className }) => {
   const [glyph, tint] = fileKind(name);
   const { viewBox, d, ...rest } = GLYPHS[glyph] as Glyph;
   return (
     <svg viewBox={viewBox} fill="currentColor" fillRule={rest.evenOdd ? "evenodd" : undefined} aria-hidden
-      className={cx("size-icon-md shrink-0", tint, className)}>
+      className={cx(SIZES[size], "shrink-0", tint, className)}>
       {d.map((path) => <path key={path} d={path} />)}
     </svg>
   );
