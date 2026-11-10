@@ -2,15 +2,13 @@
 //! the History tab and Source's History menu list, and what a commit's Review tab draws. Rust reads
 //! and parses; the UI writes the words [D65, D71].
 
+use super::diff::{LARGE_LINES, side};
 use super::{Checkout, err, lock, read};
 use crate::worktrees;
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-
-/// Proposed: a file whose change is longer than this arrives folded and is read when opened [D1036].
-const LARGE_LINES: u64 = 2000;
 
 /// The session's commits since its base, newest first, each its full id, subject, time and counts.
 /// First parent only (proposed), so catching up with the base is one merge row, not the base's
@@ -208,14 +206,17 @@ pub fn contents(
     let _shared = lock(checkout, false, stop)?;
     commit_of(checkout, sha, stop)?;
     let parent = parent(checkout, sha, stop)?;
-    let side = |rev: &str, path: &str| -> io::Result<String> {
-        if read(&checkout.root, &["ls-tree", "-z", rev, "--", path], stop)?.is_empty() {
-            return Ok(String::new());
-        }
-        let out = read(&checkout.root, &["show", &format!("{rev}:{path}")], stop)?;
-        Ok(String::from_utf8_lossy(&out).into_owned())
+    // A side git doesn't hold (an added or deleted file) is empty; one too big says why, as Review's do.
+    let before = side(
+        checkout,
+        Some(format!("{parent}:{}", from.unwrap_or(path))),
+        path,
+        stop,
+    )?;
+    let after = side(checkout, Some(format!("{sha}:{path}")), path, stop)?;
+    let (before, after) = match (before, after) {
+        (Ok(before), Ok(after)) => (before, after),
+        (Err(why), _) | (_, Err(why)) => return Ok(json!({"error": why})),
     };
-    let before = side(&parent, from.unwrap_or(path))?;
-    let after = side(sha, path)?;
     Ok(json!({"before": before, "after": after, "hunks": []}))
 }

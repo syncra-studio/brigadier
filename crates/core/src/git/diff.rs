@@ -12,7 +12,7 @@ use std::sync::atomic::AtomicBool;
 
 /// Proposed: a file changing more lines than this arrives folded, its contents read when it's
 /// opened [D1036].
-const LARGE_LINES: u64 = 1500;
+pub(super) const LARGE_LINES: u64 = 1500;
 /// Proposed: a side bigger than this isn't sent; the file says why instead.
 const SIDE_MAX: u64 = 4 * 1024 * 1024;
 /// A NUL in a file's first bytes makes it binary, as git and the old viewer decide.
@@ -366,7 +366,7 @@ pub(super) fn patch(
 }
 
 /// One side of a file: a blob git holds (`HEAD:path`, `:path`), or the file itself.
-fn side(
+pub(super) fn side(
     checkout: &Checkout,
     spec: Option<String>,
     path: &str,
