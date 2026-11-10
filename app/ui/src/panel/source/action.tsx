@@ -8,6 +8,8 @@ import type { MergeStyle, Step, StepError } from "../types";
 import { errorWords, runningWords, stepWords, type Tone } from "../words";
 import { ActionMenu, type ActionPick, hasActionMenu } from "./action-menus";
 
+/** Each half of the split button: the kit's small button, less its press scale [D1155]. */
+const SPLIT = "inline-flex h-control-sm gap-1 text-sm font-medium transition-all";
 const TONE: Record<Tone, string> = { quiet: "text-muted-foreground", good: "text-success", warn: "text-warning", bad: "text-destructive" };
 
 function icon(step: Step): ReactNode {
@@ -63,7 +65,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex" title={words.why}>
-        <Button size="sm" variant={variant} disabled={busy || words.off} onClick={onRun} className="min-w-0 flex-1 rounded-e-none">
+        <Button size={null} variant={variant} disabled={busy || words.off} onClick={onRun} className={cx(SPLIT, "min-w-0 flex-1 rounded-s-capsule px-2.5")}>
           {running || writing ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon(step)}
           <span className="truncate">{label}</span>
           {step.kind === "sync" && !busy && (
@@ -83,11 +85,11 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
           <DropdownMenuTrigger
             render={
               <Button
-                size="sm"
+                size={null}
                 variant={variant}
                 aria-label="More actions"
                 disabled={busy || !menu}
-                className="rounded-s-none border-s border-split-edge px-1.5"
+                className={cx(SPLIT, "rounded-e-capsule border-s border-split-edge px-1.5")}
               />
             }
           >
