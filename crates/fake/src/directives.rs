@@ -18,16 +18,19 @@ impl Agent {
                 let file = word.split_once(':').map_or("", |w| w.1);
                 let turn = self.conv().len();
                 // An edit step around the write, the way a real CLI reports a file change [D1134].
-                let id = format!("w{}", now());
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
                 let change = if fs::exists(file).unwrap_or(false) {
                     "modified"
                 } else {
                     "added"
                 };
+                self.note(&format!("tool {word}"));
                 emit(
                     json!({"t": "tool", "id": id, "name": "write", "path": file, "change": change}),
                 );
                 let ok = fs::write(file, format!("written in turn {turn}\n")).is_ok();
+                self.note(&format!("finished {word}"));
                 emit(json!({"t": "tool_done", "id": id, "ok": ok}));
                 self.say(&format!("wrote {file}"));
             }
