@@ -39,7 +39,8 @@ export type ReviewTabProps = {
   onRequest: (request: ReviewRequest) => void;
   onOpenIn: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
-  onComment: (comment: DiffComment) => void;
+  /** None where a comment couldn't reach the agent: no line picking then. */
+  onComment?: (comment: DiffComment) => void;
   onRemoveComment: (id: string) => void;
 };
 

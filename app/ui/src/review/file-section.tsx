@@ -33,7 +33,8 @@ export type FileProps = {
   onRetry: () => void;
   onOpenIn: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
-  onComment: (comment: DiffComment) => void;
+  /** None where a comment couldn't reach the agent: no line picking then. */
+  onComment?: (comment: DiffComment) => void;
   onRemoveComment: (id: string) => void;
 };
 
@@ -156,7 +157,7 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
           const side = metadata.range.side ?? "additions";
           const start = Math.min(metadata.range.start, metadata.range.end);
           const end = Math.max(metadata.range.start, metadata.range.end);
-          onComment({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: (sideLines(side)[start - 1] ?? "").trim(), text });
+          onComment?.({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: (sideLines(side)[start - 1] ?? "").trim(), text });
           setDraft(null);
         }}
       />
@@ -169,8 +170,8 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
         look={look}
         annotations={notes}
         renderAnnotation={render}
-        onGutterClick={pick}
-        onSelect={pick}
+        onGutterClick={onComment && pick}
+        onSelect={onComment && pick}
         selected={draft}
       />
     </>

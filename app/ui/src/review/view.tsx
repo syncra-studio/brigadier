@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ask, useDaemon } from "../daemon";
 import { addChip, dropChips, useChips } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
-import { openFile } from "../shell/tab-store";
+import { HOME, openFile } from "../shell/tab-store";
 import { ReviewTab } from "./review-tab";
 import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, ReviewScope } from "./types";
 
@@ -115,8 +115,9 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       states={states}
       onRequest={request}
       onOpenIn={(path) => openFile(owner, path, { preview: false })}
-      comments={chips.map((chip) => chip.comment)}
-      onComment={(comment) => addChip(owner, { kind: "comment", id: comment.id, comment })}
+      comments={chips.filter((chip) => chip.on === "review").map((chip) => chip.comment)}
+      // Home's composer starts a session and carries no chips, so its diff takes no comments.
+      onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
       />
     </div>

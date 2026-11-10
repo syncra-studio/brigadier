@@ -168,7 +168,11 @@ pub fn search(
         if !matcher.wants(&path) {
             continue;
         }
-        let Some((hash, text)) = searchable(&checkout.root.join(&path)) else {
+        // A tracked folder replaced by a link out of the checkout isn't followed.
+        let Some((hash, text)) = super::inside(checkout, &path)
+            .ok()
+            .and_then(|full| searchable(&full))
+        else {
             continue;
         };
         if let Some((count, found)) = search_file(matcher, &path, hash, &text, stop) {

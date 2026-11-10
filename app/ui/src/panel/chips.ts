@@ -8,7 +8,8 @@ import type { DiffComment } from "../review/types";
  * carried.
  */
 
-export type Chip = { kind: "comment"; id: string; comment: DiffComment };
+/** `on`: the diff it was made on (the Review tab, or a commit's), which alone draws it. */
+export type Chip = { kind: "comment"; id: string; on: string; comment: DiffComment };
 
 const NONE: readonly Chip[] = [];
 const chips = new Map<string, readonly Chip[]>();

@@ -215,7 +215,8 @@ export function useFileRead(path: string): FileRead {
   const [tick, setTick] = useState(0);
   // shortcut: the watch leaves ignored files out, so an ignored file's tab reads it again every few seconds while the
   // window shows; a watch of the file itself would be instant.
-  const ignored = read.state === "read" && read.file.ignored === true;
+  // Kept once seen, so a file a build deletes and writes again is still followed.
+  const [ignored, setIgnored] = useState(false);
   useEffect(() => {
     if (!ignored) return;
     const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), 3000);
@@ -227,6 +228,7 @@ export function useFileRead(path: string): FileRead {
     ask({ op: "run", args: sourceArgs(target, "file", path) }, (reply) => {
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setRead({ state: "failed", error: String(reply.error) });
+      if (reply.file.ignored) setIgnored(true);
       const next: FileRead = reply.file.gone ? { state: "gone", carried: false } : { state: "read", file: reply.file };
       // The same read keeps its object, so the viewer doesn't draw it again.
       setRead((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));

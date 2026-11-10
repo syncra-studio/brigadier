@@ -264,18 +264,27 @@ fn undo_place(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), S
 }
 
 /// Puts back a file `place` placed: its rewrite (if still as written) goes, and the file from
-/// before comes back. When something else is in its place, both stay: why, and where the text
-/// from before is.
+/// before comes back. What's in its place is moved off first and checked there, so a save that
+/// lands meanwhile is never deleted: when something else is in its place, both stay, and the
+/// reason says where the text from before is.
 fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
-    match fs::read(&file.full) {
-        Ok(bytes) if hash(&bytes) == file.new_hash => {
-            fs::remove_file(&file.full).map_err(|e| format!("couldn't undo it: {e}"))?;
+    let changed = || {
+        format!(
+            "it changed while the files were being replaced; its text from before is in {}",
+            kept(file).display()
+        )
+    };
+    let off = sibling(&file.full, "undone");
+    match fs::rename(&file.full, &off) {
+        Ok(()) if fs::read(&off).is_ok_and(|bytes| hash(&bytes) == file.new_hash) => {
+            let _ = fs::remove_file(&off);
         }
-        Ok(_) => {
-            return Err(format!(
-                "it changed while the files were being replaced; its text from before is in {}",
-                kept(file).display()
-            ));
+        // Someone else's save: it goes back where it was, unless yet another took the place.
+        Ok(()) => {
+            return Err(match rename_into(&off, &file.full) {
+                Ok(()) => changed(),
+                Err(_) => format!("{}; a newer save of it is in {}", changed(), off.display()),
+            });
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("couldn't undo it: {e}")),
@@ -300,6 +309,8 @@ fn restore(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), Stri
 
 /// Where a file's text from before stays when it can't go back: moved into `keep` (the session's
 /// folder, so delete takes it [D35]), else beside it.
+// shortcut: when the session's own folder can't take the copy, it stays beside the file, named in
+// the reason but recorded nowhere, as no record could be written there either.
 fn keep_aside(file: &Staged, keep: Option<&Path>) -> PathBuf {
     let Some(keep) = keep else {
         return file.aside.clone();

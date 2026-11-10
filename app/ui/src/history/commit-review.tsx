@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ask, useDaemon } from "../daemon";
+import { addChip, dropChips, useChips } from "../panel/chips";
 import { ReviewTab } from "../review/review-tab";
-import type { DiffComment, FileContents, Review, ReviewFile } from "../review/types";
+import type { FileContents, Review, ReviewFile } from "../review/types";
 import { openFile } from "../shell/tab-store";
 
 const NO_STATES = new Map();
@@ -18,8 +19,8 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // Comments stay on the diff for now; they become chips with the other scopes' (2.18) [D1040].
-  const [comments, setComments] = useState<readonly DiffComment[]>([]);
+  // A comment waits as a chip above the session's composer [D1040].
+  const chips = useChips(owner);
   // Bumped by each read, so an older read's answers are dropped.
   const run = useRef(0);
 
@@ -71,9 +72,9 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
       onRequest={() => {}}
       // shortcut: only "in a tab" opens for now; in the app and in Finder come with Review's own wiring (2.18).
       onOpenIn={(path, where) => where === "tab" && openFile(owner, path, { preview: false })}
-      comments={comments}
-      onComment={(comment) => setComments((now) => [...now, comment])}
-      onRemoveComment={(id) => setComments((now) => now.filter((comment) => comment.id !== id))}
+      comments={chips.filter((chip) => chip.on === sha).map((chip) => chip.comment)}
+      onComment={(comment) => addChip(owner, { kind: "comment", id: comment.id, on: sha, comment })}
+      onRemoveComment={(id) => dropChips(owner, [id])}
     />
   );
 }
