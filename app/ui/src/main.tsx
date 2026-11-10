@@ -13,7 +13,8 @@ import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble } from "./home/home";
 import { newChat, newSession, useStart, useStartingRows } from "./home/start";
-import { Key } from "./icons";
+import { Chat, Key } from "./icons";
+import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
 import { GlobalSearch } from "./palette/palette";
@@ -187,7 +188,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
       <TabbedMain owner={id} archived={Boolean(row?.archived)}>
         <div className="flex min-h-0 flex-1">
           {missing ? (
-            <p className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Session not found</p>
+            <EmptyState variant="centered" icon={Chat} title="This conversation isn’t available" detail="Brigadier has no conversation by this name. Pick another in the sidebar." className="m-auto" />
           ) : (
             <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${offline ? "opacity-disabled" : ""}`}>
               {/* A load error leaves the thread's place empty: its notice and Retry are on the composer's rail. */}

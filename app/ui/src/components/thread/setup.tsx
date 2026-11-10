@@ -42,7 +42,7 @@ export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
               <div key={step.kind} data-step={step.kind} data-state={step.state} className="flex min-w-0 flex-col">
                 <span className={ROW}>
                   <Icon className={cx("size-4 shrink-0", step.state === "running" && "animate-spin")} />
-                  <span className={cx("min-w-0 truncate", step.state === "failed" && "text-destructive")}>{words(step)}</span>
+                  <span className={cx("min-w-0 truncate", step.state === "failed" && "text-destructive", step.state === "running" && "shimmer")}>{words(step)}</span>
                 </span>
                 <ErrorLine error={error} size="sm" className="ps-5.5 break-words" />
               </div>
