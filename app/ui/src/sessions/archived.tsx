@@ -5,11 +5,12 @@ import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem } from "../components/menu";
+import { EmptyState } from "../components/empty-state";
 import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { Trash, Unarchive } from "../icons";
+import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
 import { restore } from "../sidebar/actions";
@@ -176,36 +177,42 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
   );
 }
 
-/** Restores from inside an archived session's thread, as the old app's bar did. */
-export function ArchivedBar({ row }: { row: SessionRow }) {
+/**
+ * An archived session in its thread's place (D487): what it is, and Restore, which brings back its worktree too
+ * [D180]; restoring, then the thread itself once Rust's row says it's back, or why it couldn't.
+ */
+export function ArchivedPage({ row }: { row: SessionRow }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = busy || row.lifecycle?.op === "restore";
   return (
-    <div className="flex flex-col items-center gap-1.5 px-4 py-3">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        Archived. Restore it to continue.
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() => {
-            setBusy(true);
-            setError(null);
-            run(["restore", row.id]).then(
-              () => setBusy(false),
-              (cause) => {
-                setBusy(false);
-                setError(errorText(cause));
-              },
-            );
-          }}
-        >
-          {pending ? "Restoring…" : "Restore"}
-        </Button>
-      </div>
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6">
+      <EmptyState
+        variant="centered"
+        icon={Archive}
+        title="This conversation is archived"
+        detail={pending ? "Restoring it and its worktree…" : "Restore it to read it and go on."}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          run(["restore", row.id]).then(
+            () => setBusy(false),
+            (cause) => {
+              setBusy(false);
+              setError(errorText(cause));
+            },
+          );
+        }}
+      >
+        {pending ? "Restoring…" : "Restore"}
+      </Button>
       <div role="alert">
-        <ErrorLine error={error} />
+        <ErrorLine error={error && `Couldn’t restore it: ${error}`} />
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 // Delete's confirm and the archived thread's bar on Fake data [D35, D180, D181, D198]: each state frozen.
-import { ArchivedBar, DeleteForm } from "../src/sessions/archived";
+import { ArchivedPage, DeleteForm } from "../src/sessions/archived";
 import type { SessionRow } from "../src/sidebar/words";
 import { Row, Section, State } from "./parts";
 import { Frozen } from "./project-settings";
@@ -24,12 +24,12 @@ export function ArchiveGallery() {
           <DeleteForm row={ROW} onClose={() => {}} check={{ state: "failed", error: "Brigadier isn't running" }} />
         </Frozen>
       </Row>
-      <Row name="archived thread's bar · restoring">
+      <Row name="archived page, in the thread’s place · restoring">
         <State label="archived">
-          <ArchivedBar row={ROW} />
+          <ArchivedPage row={ROW} />
         </State>
         <State label="restoring">
-          <ArchivedBar row={{ ...ROW, lifecycle: { op: "restore" } }} />
+          <ArchivedPage row={{ ...ROW, lifecycle: { op: "restore" } }} />
         </State>
       </Row>
     </Section>

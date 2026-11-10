@@ -22,7 +22,7 @@ import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
-import { ArchivedBar } from "./sessions/archived";
+import { ArchivedPage } from "./sessions/archived";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { RewindProvider } from "./session/rewind";
@@ -193,8 +193,10 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
               {/* A load error leaves the thread's place empty: its notice and Retry are on the composer's rail. */}
               <DrawBoundary key={id} summary="This conversation couldn’t be shown" className="mx-auto min-h-0 w-full max-w-reading flex-1 px-6 pt-8">
               <div className="min-h-0 flex-1">
-                {/* Started from Home, the thread is there at once with the message in its footer [D458]. */}
-                {state?.status !== "error" && (starting || state?.id === id) && (
+                {/* Archived, its page takes the thread's place; new sessions keep their pending message [D487, D458]. */}
+                {row?.archived ? (
+                  <ArchivedPage row={row} />
+                ) : state?.status === "error" ? null : (starting || state?.id === id) && (
                 <SessionOfThread value={{ id, offline }}>
                   <RewindProvider key={id} id={id} row={row} offline={offline}>
                   <Thread
@@ -203,8 +205,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      // Read-only while archived: its bar restores it [D180, D198].
-                      row?.archived ? <ArchivedBar row={row} /> : (line || sending || starting || sides) && (
+                      (line || sending || starting || sides) && (
                         <>
                           <StartingBubble id={id} />
                           {line}
