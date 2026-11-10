@@ -9,6 +9,8 @@ import { SendButton } from "../components/composer/send-button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
+import { type Chip, dropChips, restoreChips, useChips, withChips } from "../panel/chips";
+import { CommentChip } from "../review/comments";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
@@ -140,6 +142,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const editing = useRef<{ qid: string; slot: number; text: string } | null>(null);
   // A send into the paused queue, asked about first; its words stay in the field meanwhile.
   const [asking, setAsking] = useState<string | null>(null);
+  // What waits above the field for the agent, and the chips the message being asked about carries [D1040].
+  const chips = useChips(id);
+  const askingChips = useRef<readonly Chip[]>([]);
   useLayoutEffect(() => () => void (hadKeyboard = document.activeElement?.closest("[data-slot=composer-field]") != null), []);
   useEffect(() => {
     if (hadKeyboard) field.current?.focus();
@@ -199,8 +204,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       fail?.();
     });
   };
-  const queue = (message: string, qid = newId(), slot?: number) =>
-    act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]);
+  const queue = (message: string, qid = newId(), slot?: number, fail?: () => void) =>
+    act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)], fail);
+  /** The chips a message carries leave with it, and come back if it isn't queued. */
+  const carry = (sent: readonly Chip[]) => {
+    dropChips(id, sent.map((chip) => chip.id));
+    return () => restoreChips(id, sent);
+  };
   const now = (message: string, steer = false) => {
     const entry: Sent = { cid: newId(), text: message, steer, at: Date.now() };
     onSent?.(entry.cid);
@@ -233,8 +243,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
-    if (held || isEmpty({ parts: rest, attachmentIds: [] })) return;
-    sendAsNew(id, plainText(rest), take()?.qid);
+    if (held || (isEmpty({ parts: rest, attachmentIds: [] }) && chips.length === 0)) return;
+    sendAsNew(id, withChips(plainText(rest), chips), take()?.qid);
+    carry(chips);
   };
   usePutBack(id, (message, above) => {
     // A rewound message goes above what's already being typed, never over it [D363].
@@ -248,16 +259,21 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const parts = field.current?.parts() ?? [];
     if (held) return;
     if (inProject && parts.some(isNew)) return submitNew();
-    if (isEmpty({ parts, attachmentIds: [] })) {
+    if (isEmpty({ parts, attachmentIds: [] }) && chips.length === 0) {
       // ⌘⏎ with nothing typed steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued") steerQueued(items[0].id);
       return;
     }
-    const message = plainText(parts);
+    // The chips go after the words, and leave once it's sent or queued; a failed send keeps them in its message.
+    const message = withChips(plainText(parts), chips);
     const mode = sendMode(running, "queue", other, canSteer);
-    if (mode === "now" && paused && items.length > 0) return setAsking(message);
+    if (mode === "now" && paused && items.length > 0) {
+      askingChips.current = chips;
+      return setAsking(message);
+    }
     const pulled = take();
-    if (mode === "queue") return queue(message, pulled?.qid, pulled?.slot);
+    const back = carry(chips);
+    if (mode === "queue") return queue(message, pulled?.qid, pulled?.slot, back);
     sendNow(message, pulled, mode === "steer");
   };
   // Sent at once or steered, an edited message's kept copy goes.
@@ -303,6 +319,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <SessionApprovals id={id} run={run} source={source} />
       {/* Kept while an approval has its place, so the draft and its caret stay. */}
       <ComposerCard className={approval ? "hidden" : undefined}>
+        {chips.length > 0 && (
+          <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
+            {chips.map((chip) => (
+              <CommentChip key={chip.id} comment={chip.comment} onRemove={() => dropChips(id, [chip.id])} />
+            ))}
+          </div>
+        )}
         <ComposerField
           ref={field}
           initial={initial && { parts: initial, attachmentIds: [] }}
@@ -326,19 +349,22 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           <ComposerTools />
           <ErrorLine error={stopError} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton empty={empty} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
+          <SendButton empty={empty && chips.length === 0} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog
         waiting={asking === null ? null : items.length}
         onSendNow={() => {
-          if (asking !== null) sendNow(asking, take());
+          if (asking !== null) {
+            carry(askingChips.current);
+            sendNow(asking, take());
+          }
           setAsking(null);
         }}
         onKeepPaused={() => {
           if (asking !== null) {
             const pulled = take();
-            queue(asking, pulled?.qid, pulled?.slot);
+            queue(asking, pulled?.qid, pulled?.slot, carry(askingChips.current));
           }
           setAsking(null);
         }}
