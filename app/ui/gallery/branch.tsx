@@ -1,10 +1,10 @@
 // The branch and sync item and its quick picks [D1020, D1021]: every sync state, both lists and the name box.
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 
 import { BRANCH, BRANCHES, CHANGES, CLEAN, FOLDER, HOST, MERGING, REBASING } from "../src/panel/fake";
 import { BranchItem } from "../src/panel/source/branch";
-import { BranchNameBox, folderItems, QuickPick, sessionItems } from "../src/panel/source/quick-pick";
-import { Row, Section, State } from "./parts";
+import { BranchNameBox, folderItems, type Place, QuickPick, sessionItems } from "../src/panel/source/quick-pick";
+import { Held, Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const noop = () => undefined;
@@ -13,11 +13,21 @@ function Line({ children }: { children: ReactNode }) {
   return <div className="w-80 rounded-surface border border-border bg-background p-2">{children}</div>;
 }
 
-/** A pick over the panel's top; inert, so its field doesn't take the page's focus. */
-function Over({ children }: { children: ReactNode }) {
+/** A pick above the branch item it opens from; inert, so its field doesn't take the page's focus. */
+function Over({ children }: { children: (place: Place) => ReactNode }) {
+  const anchor = useRef<HTMLDivElement>(null);
   return (
-    <div inert className="relative h-96 w-80 rounded-surface border border-border bg-background">
-      {children}
+    <div inert>
+      <Held className="flex h-96 w-96 flex-col justify-end rounded-surface border border-border bg-background p-2">
+        {(held) => (
+          <>
+            <div ref={anchor}>
+              <BranchItem state={CHANGES} locked={false} open />
+            </div>
+            {children({ anchor, held })}
+          </>
+        )}
+      </Held>
     </div>
   );
 }
@@ -56,24 +66,22 @@ export function BranchGallery() {
       </Row>
       <Row name="Quick picks">
         <State label="A session: no switching">
-          <Over><QuickPick placeholder="This session works on its own branch" items={sessionItems("main", HOST)} onClose={noop} /></Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="This session works on its own branch" items={sessionItems("main", HOST)} onClose={noop} />}</Over>
         </State>
         <State label="Your own folder">
-          <Over><QuickPick placeholder="Select a branch to switch to" items={folderItems(BRANCHES, "main", NOW)} onClose={noop} /></Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="Select a branch to switch to" items={folderItems(BRANCHES, "main", NOW)} onClose={noop} />}</Over>
         </State>
         <State label="Off while the agent works">
-          <Over>
-            <QuickPick placeholder="Select a branch to switch to" items={folderItems(BRANCHES, "main", NOW)} off="Branches can't switch while the agent is working." onClose={noop} />
-          </Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="Select a branch to switch to" items={folderItems(BRANCHES, "main", NOW)} off="Branches can't switch while the agent is working." onClose={noop} />}</Over>
         </State>
         <State label="Loading">
-          <Over><QuickPick placeholder="Select a branch to switch to" items={null} onClose={noop} /></Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="Select a branch to switch to" items={null} onClose={noop} />}</Over>
         </State>
         <State label="No match">
-          <Over><QuickPick placeholder="Select a branch to switch to" items={[]} onClose={noop} /></Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="Select a branch to switch to" items={[]} onClose={noop} />}</Over>
         </State>
         <State label="Rename">
-          <Over><BranchNameBox placeholder="New name for the branch" hint={`Enter renames ${BRANCH}`} initial={BRANCH} onClose={noop} /></Over>
+          <Over>{(place) => <BranchNameBox place={place} placeholder="New name for the branch" hint={`Enter renames ${BRANCH}`} initial={BRANCH} onClose={noop} />}</Over>
         </State>
       </Row>
     </Section>

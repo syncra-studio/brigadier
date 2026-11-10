@@ -1,7 +1,8 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 
 import { cx } from "../../components/cx";
 import { Input } from "../../components/input";
+import { Popover, PopoverContent } from "../../components/popover";
 import { ArrowUpRight, Branch as BranchIcon, Copy, Pencil, Plus } from "../../icons";
 import type { Branch } from "../types";
 import { ago } from "../words";
@@ -9,20 +10,25 @@ import { ago } from "../words";
 /** One row of a quick pick: its icon and title, a grey hint after it and a note at its end, a second line, a rule above it. */
 export type PickItem = { id: string; icon: ReactNode; title: string; hint?: string; note?: string; detail?: string; rule?: boolean };
 
-/** The surface over the Source panel that a quick pick or the name box sits on, closing on a click outside. */
-function Surface({ onClose, children }: { onClose: () => void; children: ReactNode }) {
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const away = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) onClose();
-    };
-    addEventListener("pointerdown", away);
-    return () => removeEventListener("pointerdown", away);
-  }, [onClose]);
+/** Where a quick pick or the name box opens: over the branch item it came from; `held`, the gallery's box. */
+export type Place = { anchor: RefObject<Element | null>; held?: HTMLElement };
+
+/** The popover a quick pick or the name box sits on, above its branch item as Home's branch picker; a click outside or Escape closes it. */
+function Surface({ place, onClose, children }: { place: Place; onClose: () => void; children: ReactNode }) {
   return (
-    <div ref={root} className="absolute inset-x-2 top-1 z-20 flex max-h-96 flex-col rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-border">
-      {children}
-    </div>
+    <Popover open onOpenChange={(open) => !open && onClose()}>
+      <PopoverContent
+        anchor={place.anchor}
+        side="top"
+        align="start"
+        container={place.held}
+        collisionAvoidance={place.held ? { side: "none", align: "none" } : undefined}
+        initialFocus={place.held ? false : undefined}
+        className="flex max-h-96 w-80 max-w-full flex-col"
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -30,7 +36,8 @@ function Surface({ onClose, children }: { onClose: () => void; children: ReactNo
  * A quick pick over the Source panel (the old BranchPicker): typing narrows it, ↑ ↓ and Enter pick, Escape or a click
  * outside closes it. `items` null while they load. `off`: why nothing can be picked now (the agent is working).
  */
-export function QuickPick({ placeholder, items, off = null, onPick, onClose }: {
+export function QuickPick({ place, placeholder, items, off = null, onPick, onClose }: {
+  place: Place;
   placeholder: string;
   items: PickItem[] | null;
   off?: string | null;
@@ -51,9 +58,8 @@ export function QuickPick({ placeholder, items, off = null, onPick, onClose }: {
   }, [picked]);
   const choose = (item: PickItem | undefined) => item && !off && onPick?.(item);
   return (
-    <Surface onClose={onClose}>
+    <Surface place={place} onClose={onClose}>
       <Input
-        autoFocus
         autoComplete="off"
         spellCheck={false}
         value={query}
@@ -76,7 +82,7 @@ export function QuickPick({ placeholder, items, off = null, onPick, onClose }: {
         className="shrink-0"
       />
       {off && <p className="px-2 pt-1.5 text-xs text-muted-foreground">{off}</p>}
-      <div ref={list} id="quick-pick-list" role="listbox" aria-label={placeholder} aria-disabled={off !== null || undefined} className="min-h-0 overflow-y-auto">
+      <div ref={list} id="quick-pick-list" role="listbox" aria-label={placeholder} aria-disabled={off !== null || undefined} className="min-h-0 overflow-x-hidden overflow-y-auto">
         {items === null && <p className="px-2 py-1 text-sm text-muted-foreground">Loading…</p>}
         {items !== null && shown.length === 0 && <p className="px-2 py-1 text-sm text-muted-foreground">No matching branches</p>}
         {shown.map((item, index) => (
@@ -148,7 +154,8 @@ export function folderItems(branches: Branch[] | null, current: string | null, n
 }
 
 /** The name box in the quick pick's place: Create's new branch name and Rename's. Enter takes it, Escape closes it. */
-export function BranchNameBox({ placeholder, hint, initial = "", onName, onClose }: {
+export function BranchNameBox({ place, placeholder, hint, initial = "", onName, onClose }: {
+  place: Place;
   placeholder: string;
   /** What Enter does, under the field. */
   hint: string;
@@ -158,9 +165,8 @@ export function BranchNameBox({ placeholder, hint, initial = "", onName, onClose
 }) {
   const [name, setName] = useState(initial);
   return (
-    <Surface onClose={onClose}>
+    <Surface place={place} onClose={onClose}>
       <Input
-        autoFocus
         autoComplete="off"
         spellCheck={false}
         value={name}

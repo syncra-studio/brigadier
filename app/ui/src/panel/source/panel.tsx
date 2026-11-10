@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
 import { cx } from "../../components/cx";
@@ -107,6 +107,7 @@ export function SourcePanel({
   const [failed, setFailed] = useState(false);
   const [mergeStyle, setMergeStyle] = useState<MergeStyle>("merge");
   const [picker, setPicker] = useState<Picker>(initialPicker);
+  const branchItem = useRef<HTMLDivElement>(null);
   const [discarding, setDiscarding] = useState<Discarding | null>(null);
   const [stagingConflicts, setStagingConflicts] = useState<{ paths: string[]; marked: number } | null>(null);
   const [droppingStash, setDroppingStash] = useState(false);
@@ -120,6 +121,10 @@ export function SourcePanel({
   const state = ops ? data.source : local;
   const step = data.step;
   const offline = data.offline ?? false;
+  // The pickers float outside the panel's inert page: a disconnect closes them.
+  useEffect(() => {
+    if (offline) setPicker(null);
+  }, [offline]);
   const pending = new Set(data.pending ?? []);
   // A watch that failed after its first read: the last read stays, read-only, under the error [D30].
   const stale = state !== null && Boolean(data.error);
@@ -297,6 +302,7 @@ export function SourcePanel({
       </SourceHeader>
       {picker === "branch" && state && (
         <QuickPick
+          place={{ anchor: branchItem }}
           placeholder={folder ? "Select a branch to switch to" : "This session works on its own branch"}
           items={folder ? folderItems(data.branches ?? null, state.branch, nowMs) : sessionItems(base ?? "main", data.host ?? null)}
           off={folder && data.agentWorking ? "Branches can't switch while the agent is working." : null}
@@ -306,6 +312,7 @@ export function SourcePanel({
       )}
       {(picker === "rename" || picker === "create") && (
         <BranchNameBox
+          place={{ anchor: branchItem }}
           placeholder={picker === "create" ? "New branch name" : "New name for the branch"}
           hint={picker === "rename" ? `Enter renames ${state?.branch ?? "the branch"}` : `Enter creates it from ${state?.branch ?? "what is checked out"} and switches to it`}
           initial={picker === "rename" ? (state?.branch ?? "") : ""}
@@ -354,7 +361,7 @@ export function SourcePanel({
       </div>
       {state && (
         <footer className="flex shrink-0 items-center border-t border-divider ps-2 pe-1.5 py-1.5">
-          <div className="min-w-0 flex-1">
+          <div ref={branchItem} className="min-w-0 flex-1">
             <BranchItem state={state} locked={locked} open={picker === "branch"} onBranch={() => setPicker("branch")} />
           </div>
         </footer>
