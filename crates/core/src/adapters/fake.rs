@@ -2,7 +2,7 @@
 
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
-    Retune, Rewound, Timing, Tool, base_env, s,
+    Retune, Rewound, Timing, Tool, base_env, change, s,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -139,6 +139,21 @@ impl Adapter for Fake {
             "hello" => vec![Event::Resume(s(&v, &["session"]).into())],
             "turn" => vec![Event::TurnStart],
             "say" => vec![Event::Text(s(&v, &["text"]).into())],
+            // `write:` reports an edit step with its file change; every other tool is "other".
+            "tool" if v["path"].is_string() => vec![Event::ToolStart(Tool {
+                id: s(&v, &["id"]).into(),
+                name: s(&v, &["name"]).into(),
+                step: "edit",
+                input: s(&v, &["path"]).into(),
+                changes: vec![change(
+                    s(&v, &["path"]),
+                    s(&v, &["change"]),
+                    None,
+                    None,
+                    None,
+                )],
+                ..Default::default()
+            })],
             "tool" => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
@@ -147,7 +162,7 @@ impl Adapter for Fake {
             })],
             "tool_done" => vec![Event::ToolEnd(Done {
                 id: s(&v, &["id"]).into(),
-                ok: true,
+                ok: v["ok"].as_bool().unwrap_or(true),
                 ..Default::default()
             })],
             "mark" => vec![Event::Mark {
