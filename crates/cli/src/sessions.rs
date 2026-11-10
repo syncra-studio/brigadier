@@ -49,7 +49,7 @@ fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
 
 /// Whether a session is busy, by core's one test [D172]. One that can't be read isn't: its
 /// delete then says why.
-fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
+pub(crate) fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
     let dir = core::session_dir(data, id);
     // Waits out a turn start that passed its check before the marker (`session::fence`).
     let Ok(_fence) = core::worktrees::lock(&dir) else {

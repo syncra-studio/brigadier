@@ -65,6 +65,8 @@ fn locked(path: &Path) -> bool {
     let checkout = Checkout {
         root: run.root,
         git_dir: run.git_dir,
+        // Only its lock is taken here, which doesn't read this.
+        worktree: false,
     };
     let _exclusive = lock(&checkout, true, &AtomicBool::new(false));
     settle(path)

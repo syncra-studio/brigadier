@@ -134,6 +134,17 @@ pub fn link(repo: &Repo, base: &str, head: &str, title: &str, body: &str) -> Str
     }
 }
 
+/// The branch's own page on its host, for the quick pick's Open branch on ‹host› [D1021].
+pub fn branch_page(repo: &Repo, branch: &str) -> String {
+    let (web, branch) = (repo.web(), enc(branch, true));
+    match repo.kind {
+        Kind::GitHub => format!("{web}/tree/{branch}"),
+        Kind::GitLab => format!("{web}/-/tree/{branch}"),
+        Kind::Bitbucket => format!("{web}/branch/{branch}"),
+        Kind::Gitea | Kind::Forgejo => format!("{web}/src/branch/{branch}"),
+    }
+}
+
 /// gh, when it's installed and its active account for `repo`'s server is signed in. Only GitHub
 /// has a CLI here yet; GitLab's glab is a later slice [D1030].
 fn gh(repo: &Repo) -> Option<String> {

@@ -8,6 +8,10 @@ use std::io;
 use std::path::Path;
 
 pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    pr_run(data, args).or_else(super::git::rejected)
+}
+
+fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     let pr = host::pr(data, arg(args, 1)?)?;
     let (title, body) = (
         flag(args, "--title").unwrap_or(""),

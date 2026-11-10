@@ -7,7 +7,8 @@ use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, files, history, recover, replace, search, watch::Watch,
+    self, Checkout, Status, Target, branch, files, history, push::Rejected, recover, replace,
+    search, sync, watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -77,7 +78,27 @@ fn since(
     Ok((base, since))
 }
 
+/// A push the remote turned away answers its lease too, for force push's confirm [D1034, D1049].
+pub(super) fn rejected(e: io::Error) -> io::Result<Value> {
+    match Rejected::of(&e) {
+        Some(r) => Ok(json!({"ok": false, "error": e.to_string(), "rejected": r.json()})),
+        None => Err(e),
+    }
+}
+
+/// The sessions busy in this folder, by core's one test [D172, D1021].
+fn working(data: &Path, checkout: &git::Checkout) -> usize {
+    let all = brigadier_frames::procs::all();
+    (branch::sharing(data, checkout).iter())
+        .filter(|id| super::sessions::busy(data, id, &all))
+        .count()
+}
+
 pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
+    source_of(data, args).or_else(rejected)
+}
+
+fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     let (target, at) = target(args)?;
     let checkout = git::checkout(data, &target)?;
     let stop = AtomicBool::new(false);
@@ -188,6 +209,51 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
             super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
         }
         "write" => super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"))?,
+        // The branch item [D1020, D1021, D1026, D1034].
+        "branches" => {
+            let mut read = branch::branches(data, &target, &checkout)?;
+            read["working"] = (!checkout.worktree && working(data, &checkout) > 0).into();
+            json!({"ok": true, "branches": read})
+        }
+        "rename" => {
+            branch::rename(data, &target, &checkout, word(1)?, &stop)?;
+            done
+        }
+        "base" => {
+            let Target::Session(id) = target else {
+                return Err(io::Error::other(super::USAGE));
+            };
+            brigadier_core::load(data, id)?;
+            brigadier_core::worktrees::set_base(&brigadier_core::session_dir(data, id), word(1)?)?;
+            done
+        }
+        verb @ ("switch" | "create") => {
+            // No turn starts here meanwhile, and none is under way [D1021, D1082].
+            let _fence = branch::fence(data)?;
+            if working(data, &checkout) > 0 {
+                return Err(io::Error::other(
+                    "Branches can't switch while the agent is working.",
+                ));
+            }
+            match verb {
+                "switch" => branch::switch(&checkout, word(1)?, has(args, "--remote"), &stop)?,
+                _ => branch::create(&checkout, word(1)?, flag(args, "--from"), &stop)?,
+            }
+            done
+        }
+        "sync" => {
+            sync::sync(&checkout, sync::trusted(data, &target), &stop)?;
+            done
+        }
+        "publish" => {
+            sync::publish(&checkout, sync::trusted(data, &target), &stop)?;
+            done
+        }
+        "force-push" => {
+            let hooks = sync::trusted(data, &target);
+            sync::force_push(&checkout, word(1)?, word(2)?, word(3)?, hooks, &stop)?;
+            done
+        }
         _ => return Err(io::Error::other(super::USAGE)),
     })
 }

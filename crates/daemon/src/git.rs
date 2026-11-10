@@ -180,8 +180,39 @@ pub(super) fn leave(conn: u64) {
     drop(left);
 }
 
-/// Window focus: reads `conn`'s checkout again now.
+/// Proposed: auto-fetch's least gap, however often the window takes focus.
+const FETCH_GAP: std::time::Duration = std::time::Duration::from_secs(30);
+const FETCH_EVERY: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+static FOCUS: Mutex<Option<Sender<()>>> = Mutex::new(None);
+
+/// Auto-fetch [D1026]: every published branch's remote on window focus and every 5 minutes, so the
+/// counts stay honest without hammering the remote. The watches then read the moved refs.
+pub(super) fn auto_fetch(data: PathBuf) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    *FOCUS.lock().unwrap() = Some(tx);
+    std::thread::spawn(move || {
+        let never = std::sync::atomic::AtomicBool::new(false);
+        let mut last: Option<std::time::Instant> = None;
+        loop {
+            match rx.recv_timeout(FETCH_EVERY) {
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                Ok(()) if last.is_some_and(|at| at.elapsed() < FETCH_GAP) => continue,
+                _ => {}
+            }
+            last = Some(std::time::Instant::now());
+            git::sync::fetch_published(&data, &never);
+            for w in WATCHED.lock().unwrap().values() {
+                w.watch.poke();
+            }
+        }
+    });
+}
+
+/// Window focus: reads `conn`'s checkout again now, and fetches [D1026].
 pub(super) fn refresh(conn: u64) {
+    if let Some(focus) = FOCUS.lock().unwrap().as_ref() {
+        let _ = focus.send(());
+    }
     for w in WATCHED.lock().unwrap().values() {
         if w.seen
             .lock()

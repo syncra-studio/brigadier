@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+pub mod branch;
 pub mod change;
 pub mod commit;
 pub mod diff;
@@ -23,6 +24,7 @@ pub mod push;
 pub mod recover;
 pub mod replace;
 pub mod search;
+pub mod sync;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.
@@ -44,6 +46,8 @@ pub enum Target<'a> {
 pub struct Checkout {
     pub root: PathBuf,
     pub git_dir: PathBuf,
+    /// A session's own worktree under `sessions/<id>/`, not a folder of the user's [D1021].
+    pub worktree: bool,
 }
 
 /// The checkout a session or project works in, chosen here and never taken from a client: a
@@ -62,10 +66,16 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
     )?;
     let text = String::from_utf8(out).map_err(io::Error::other)?;
     match text.lines().collect::<Vec<_>>()[..] {
-        [root, git_dir] => Ok(Checkout {
-            root: fs::canonicalize(root)?,
-            git_dir: fs::canonicalize(git_dir)?,
-        }),
+        [root, git_dir] => {
+            let root = fs::canonicalize(root)?;
+            let sessions = fs::canonicalize(data.join("sessions")).ok();
+            Ok(Checkout {
+                worktree: root.ends_with("worktree")
+                    && root.parent().and_then(Path::parent) == sessions.as_deref(),
+                root,
+                git_dir: fs::canonicalize(git_dir)?,
+            })
+        }
         _ => err(format!("{} isn't a git checkout", folder.display())),
     }
 }
@@ -189,7 +199,23 @@ pub fn status(checkout: &Checkout, stop: &AtomicBool) -> io::Result<Status> {
         ],
         stop,
     )?;
-    parse(&checkout.root, &out)
+    let mut status = parse(&checkout.root, &out)?;
+    // Which quick pick the branch item opens, and where Publish would push before any upstream
+    // [D1020, D1021].
+    let head = &mut status.head;
+    head["checkout"] = if checkout.worktree {
+        "worktree"
+    } else {
+        "folder"
+    }
+    .into();
+    head["remote"] = match (head["branch"].as_str(), head["upstream"].as_str()) {
+        (Some(branch), None) => push::remote(checkout, branch).ok().into(),
+        // shortcut: a remote whose name has a `/` shows cut; only a name, never acted on.
+        (_, Some(upstream)) => upstream.split('/').next().into(),
+        _ => Value::Null,
+    };
+    Ok(status)
 }
 
 /// `git status --porcelain=v2 -z --branch`, taken from the old app's `source_changes`: the index

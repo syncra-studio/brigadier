@@ -1,0 +1,247 @@
+//! The branch item's sync [D1020]: pull then push, keeping the branch's own remote, destination and
+//! tracking; force push with a pinned lease [D1034, D1049]; and auto-fetch of every published
+//! branch [D1026]. Git does the work.
+
+use super::push::{self, push_to};
+use super::{Checkout, Target, checkout, lock, read};
+use crate::adapters::setup;
+use crate::{ids, load, projects, session_dir, worktrees};
+use std::collections::BTreeSet;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+
+/// Proposed: a pull or fetch gives up after this.
+const NET_SECS: u64 = 120;
+
+fn err<T>(message: impl Into<String>) -> io::Result<T> {
+    Err(io::Error::other(message.into()))
+}
+
+/// Whether the checkout's project is trusted, so its own hooks run on a push or pull [D166, D211].
+pub fn trusted(data: &Path, target: &Target) -> bool {
+    let project = match target {
+        Target::Session(id) => load(data, id).ok().and_then(|s| s.project),
+        Target::Project(id) => Some(id.to_string()),
+    };
+    project.is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)))
+}
+
+fn config(checkout: &Checkout, key: &str) -> Option<String> {
+    read(
+        &checkout.root,
+        &["config", "--get", key],
+        &AtomicBool::new(false),
+    )
+    .ok()
+    .map(|out| String::from_utf8_lossy(&out).trim().to_string())
+    .filter(|value| !value.is_empty())
+}
+
+/// The checked-out branch.
+pub fn branch(checkout: &Checkout) -> io::Result<String> {
+    let out = read(
+        &checkout.root,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+        &AtomicBool::new(false),
+    )
+    .or_else(|_| err("This checkout isn't on a branch."))?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
+}
+
+/// Git in the checkout with the network's settings: never a prompt, and the trusted project's hooks.
+fn net(checkout: &Checkout, hooks: bool) -> std::process::Command {
+    let mut command = match hooks {
+        true => worktrees::with_hooks(&checkout.root),
+        false => worktrees::command(&checkout.root),
+    };
+    command
+        .env("PATH", setup::login().path)
+        .env("GCM_INTERACTIVE", "never");
+    command
+}
+
+fn run(mut command: std::process::Command, stop: &AtomicBool) -> io::Result<()> {
+    let out = setup::run_until(&mut command, NET_SECS, stop).map_err(io::Error::other)?;
+    match out.status.success() {
+        true => Ok(()),
+        false => err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+    }
+}
+
+/// Fetches `remote` quietly.
+fn fetch(checkout: &Checkout, remote: &str, stop: &AtomicBool) -> io::Result<()> {
+    let mut command = net(checkout, false);
+    command.args(["fetch", "--quiet", "--", remote]);
+    run(command, stop)
+}
+
+/// Pull then push, as VS Code's Sync [D1020]: the branch's own upstream (its remote and branch) is
+/// pulled and pushed to, and its tracking stays. A pull that would conflict changes nothing and
+/// says so, until 2.23's conflict tab (proposed, D1166).
+pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<()> {
+    let branch = branch(checkout)?;
+    let (Some(remote), Some(dest)) = (
+        config(checkout, &format!("branch.{branch}.remote")),
+        config(checkout, &format!("branch.{branch}.merge")),
+    ) else {
+        return err("This branch isn't published yet.");
+    };
+    if remote == "." {
+        return err("This branch follows a local branch, so there's nothing to sync.");
+    }
+    fetch(checkout, &remote, stop)
+        .map_err(|e| io::Error::other(format!("Couldn't reach the remote.\n\n{e}")))?;
+    let counts = |stop: &AtomicBool| -> io::Result<(u64, u64)> {
+        let out = read(
+            &checkout.root,
+            &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+            stop,
+        )?;
+        let text = String::from_utf8_lossy(&out);
+        let mut n = text.split_whitespace().map(|n| n.parse().unwrap_or(0));
+        Ok((n.next().unwrap_or(0), n.next().unwrap_or(0)))
+    };
+    let (ahead, behind) = counts(stop)?;
+    if behind > 0 {
+        pull(checkout, &branch, ahead > 0, hooks, stop)?;
+    }
+    if counts(stop)?.0 > 0 {
+        push_to(checkout, &remote, &branch, &dest, &[], hooks, stop)?;
+    }
+    Ok(())
+}
+
+const CONFLICTS: &str = "Pulling would conflict with this branch's commits.";
+
+fn pull(
+    checkout: &Checkout,
+    branch: &str,
+    diverged: bool,
+    hooks: bool,
+    stop: &AtomicBool,
+) -> io::Result<()> {
+    // Asked before anything moves: merge-tree writes no file, index or ref [D1166].
+    if diverged {
+        let mut command = worktrees::command(&checkout.root);
+        command.args([
+            "merge-tree",
+            "--write-tree",
+            "--name-only",
+            "HEAD",
+            "@{upstream}",
+        ]);
+        let out = setup::run_until(&mut command, NET_SECS, stop).map_err(io::Error::other)?;
+        match out.status.code() {
+            Some(0) => {}
+            Some(1) => return err(CONFLICTS),
+            _ => return err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
+        }
+    }
+    let _held = lock(checkout, true, stop)?;
+    let mut command = net(checkout, hooks);
+    command.args(["pull", "--quiet", "--no-edit"]);
+    // The user's own choice stands; with none, a merge, as git's own default was.
+    if config(checkout, "pull.rebase").is_none()
+        && config(checkout, &format!("branch.{branch}.rebase")).is_none()
+    {
+        command.arg("--no-rebase");
+    }
+    let pulled = run(command, stop);
+    if pulled.is_ok() {
+        return Ok(());
+    }
+    // Stopped half-way after all: undone, the user's own edits as they were.
+    let git_dir = &checkout.git_dir;
+    let undo = match () {
+        _ if git_dir.join("MERGE_HEAD").exists() => Some("merge"),
+        _ if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() => {
+            Some("rebase")
+        }
+        _ => None,
+    };
+    if let Some(undo) = undo {
+        let mut command = worktrees::command(&checkout.root);
+        command.args([undo, "--abort"]);
+        let _ = run(command, stop);
+        return err(CONFLICTS);
+    }
+    pulled.map_err(|e| io::Error::other(format!("The pull didn't go through.\n\n{e}")))
+}
+
+/// Publish [D1020]: the branch to the same name on the remote git would push to, tracked there.
+pub fn publish(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<()> {
+    let branch = branch(checkout)?;
+    let remote = push::remote(checkout, &branch)?;
+    push::push(checkout, &remote, &branch, hooks, stop)
+}
+
+/// Force push with lease [D1034, D1049]: replaces `dest` on `remote` only while it's still at
+/// `oid`, the commit the user reviewed, so a fetch since can't weaken the lease. If it moved, the
+/// `Rejected` that comes back says where it is now, for the confirm to ask again.
+pub fn force_push(
+    checkout: &Checkout,
+    remote: &str,
+    dest: &str,
+    oid: &str,
+    hooks: bool,
+    stop: &AtomicBool,
+) -> io::Result<()> {
+    let remotes = read(&checkout.root, &["remote"], stop)?;
+    let known = String::from_utf8_lossy(&remotes)
+        .lines()
+        .any(|r| r == remote);
+    let hex = (oid.len() == 40 || oid.len() == 64) && oid.bytes().all(|b| b.is_ascii_hexdigit());
+    if !known || !dest.starts_with("refs/heads/") || !hex {
+        return err("That force push isn't one Brigadier offered.");
+    }
+    let branch = branch(checkout)?;
+    let lease = format!("--force-with-lease={dest}:{oid}");
+    let mut extra = vec![lease.as_str()];
+    if config(checkout, &format!("branch.{branch}.merge")).is_none() {
+        extra.push("--set-upstream");
+    }
+    push_to(checkout, remote, &branch, dest, &extra, hooks, stop)
+}
+
+/// Auto-fetch [D1026]: each remote a published branch follows, once per repository, every session's
+/// and project's. A remote that fails is logged and left, so the counts stay as they were.
+pub fn fetch_published(data: &Path, stop: &AtomicBool) {
+    let mut checkouts = vec![];
+    for id in ids(data) {
+        if !session_dir(data, &id).join("archived").exists() {
+            checkouts.extend(checkout(data, &Target::Session(&id)).ok());
+        }
+    }
+    for project in projects::list(data).unwrap_or_default() {
+        checkouts.extend(checkout(data, &Target::Project(&project.id)).ok());
+    }
+    let mut done = BTreeSet::<(PathBuf, String)>::new();
+    for checkout in checkouts {
+        let Ok(branch) = branch(&checkout) else {
+            continue;
+        };
+        let Some(remote) = config(&checkout, &format!("branch.{branch}.remote")) else {
+            continue;
+        };
+        let common = read(
+            &checkout.root,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            stop,
+        )
+        .ok()
+        .and_then(|out| fs::canonicalize(String::from_utf8_lossy(&out).trim()).ok());
+        let Some(common) = common.filter(|_| remote != ".") else {
+            continue;
+        };
+        if done.insert((common, remote.clone()))
+            && let Err(e) = fetch(&checkout, &remote, stop)
+        {
+            eprintln!(
+                "brigadier: fetching {remote} in {}: {e}",
+                checkout.root.display()
+            );
+        }
+    }
+}
