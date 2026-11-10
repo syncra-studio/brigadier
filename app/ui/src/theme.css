@@ -40,6 +40,17 @@
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
+  /* Pull request words and their chips, the old app's PR colours. */
+  --color-pr-yellow: #fbc959;
+  --color-pr-purple: #d080e2;
+  --color-pr-purple-wash: color-mix(in oklab, var(--color-pr-purple) 15%, transparent);
+  --color-destructive-chip: color-mix(in oklab, var(--color-destructive) 15%, transparent);
+  /* A conflict's current side, as the old conflict tab tinted it: its marker, then its lines. */
+  --color-conflict-current-head: color-mix(in oklab, var(--color-link) 30%, transparent);
+  --color-conflict-current: color-mix(in oklab, var(--color-link) 15%, transparent);
+  /* The old timeline's past dots and event titles. */
+  --color-timeline-past: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+  --color-timeline-title: color-mix(in oklab, var(--color-foreground) 90%, transparent);
   /* The text's own colour, faint: a key hint on any button. */
   --color-current-wash: color-mix(in oklab, currentColor 12%, transparent);
   /* Faint foreground washes for quiet controls, lightest to strongest. */
@@ -168,6 +179,9 @@
   --text-label--line-height: 1.125rem;
   --text-code: 0.8125rem;
   --text-code--line-height: 1.25rem;
+  /* Code in the conflict tab, as the old diffs drew it. */
+  --text-diff: 0.75rem;
+  --text-diff--line-height: 1.35rem;
   --text-sm: 0.875rem;
   --text-sm--line-height: 1.25rem;
   --text-base: 0.9375rem;
