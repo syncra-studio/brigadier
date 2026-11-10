@@ -176,20 +176,18 @@ export function StartingBubble({ id }: { id: string }) {
       />
     );
   }
-  // pt-4 under the footer's own pt-4: the first row's gap, so Rust's row takes its place without a shift.
+  // The footer's gap is the first row's (thread.tsx), so Rust's row takes its place without a shift.
   return (
-    <div className="pt-4">
-      <UserBubble
-        keep={entry.cid}
-        text={entry.text}
-        time={entry.sent}
-        // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
-        dated
-        unconfirmed={entry.unknown}
-        failed={entry.error}
-        onRetry={entry.asking ? undefined : () => retry(id)}
-        onDiscard={entry.asking ? undefined : () => discard(id)}
-      />
-    </div>
+    <UserBubble
+      keep={entry.cid}
+      text={entry.text}
+      time={entry.sent}
+      // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
+      dated
+      unconfirmed={entry.unknown}
+      failed={entry.error}
+      onRetry={entry.asking ? undefined : () => retry(id)}
+      onDiscard={entry.asking ? undefined : () => discard(id)}
+    />
   );
 }

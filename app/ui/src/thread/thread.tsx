@@ -248,7 +248,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           line.type === "footer" ? (
             <div key={FOOTER.id} data-footer>
               <div className="mx-auto w-full max-w-reading px-6 pb-8">
-                {hasFooter && <div className="pt-4 empty:hidden">{footer}</div>}
+                {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
+                {hasFooter && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
                 <Spacer space={space} />
               </div>
               <div data-end aria-hidden className="end-snap-target" />
