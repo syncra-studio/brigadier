@@ -133,7 +133,8 @@ const nameOf = (tab: Tab) => (tab.kind === "new" ? "New tab" : "Terminal");
 /** A tab it opened: the kind's icon, its name and ×. Its button is the drag handle, as a button inside a sortable won't start one otherwise; Alt+←/→ moves it from the keyboard. */
 function OtherTab({ owner, tab, index, last, selected, separator, closing, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; separator: boolean; closing: boolean; order: string[]; onClose: () => void }) {
   const { ref, handleRef } = useSortable({ id: tab.id, index, disabled: closing });
-  const [fresh] = useState(() => justOpened(tab.id));
+  // It grows in once: a node moved in the DOM (a drag, a drop) would otherwise replay it [D432].
+  const [fresh, setFresh] = useState(() => justOpened(tab.id));
   const name = nameOf(tab);
   return (
     <ContextMenu>
@@ -144,6 +145,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             data-session-tab
             data-tab-id={tab.id}
             data-fresh={fresh || undefined}
+            onTransitionEnd={(event) => event.target === event.currentTarget && setFresh(false)}
             data-closing={closing || undefined}
             aria-hidden={closing || undefined}
             inert={closing}
