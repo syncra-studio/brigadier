@@ -12,6 +12,7 @@ import { FileViewer } from "../files/viewer";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { RightPanelSlot } from "./right-panel";
+import { SummarySlot } from "./summary-card";
 import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint hover:bg-fill has-data-popup-open:bg-fill";
@@ -105,7 +106,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
     <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div inert={active !== CHAT} className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {children}
+          <SummarySlot owner={owner}>{children}</SummarySlot>
         </div>
         {tabs.map((tab) => (
           <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>

@@ -6,7 +6,8 @@ import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../compon
 import { justStarted, useHomeDraft } from "../home/start";
 import { Tasks } from "../icons";
 import { useProjects } from "../projects/projects";
-import { RightPanelToggle } from "./right-panel";
+import { RightPanelToggle, useHasPanel } from "./right-panel";
+import { useCardToggle } from "./summary-card";
 import { HOME } from "./tab-store";
 
 /** A control whose feature isn't built yet [D388]: drawn and named only. A disabled button hears no pointer, so its tip hangs on what holds it. */
@@ -20,6 +21,24 @@ function Drawn({ tooltip, className, children }: { tooltip: string; className?: 
       </TooltipTrigger>
       <TooltipContent side="bottom">{tooltip}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Context shows and hides the summary card where the chat has one [D1014]; elsewhere it's still drawn only. */
+function ContextButton({ owner, className }: { owner: string; className?: string | false }) {
+  const { shown, toggle } = useCardToggle(owner);
+  if (!useHasPanel(owner))
+    return (
+      <Drawn tooltip="Context" className={className}>
+        <Tasks />
+      </Drawn>
+    );
+  return (
+    <span className={cx("app-no-drag flex", className)}>
+      <TooltipIconButton look="toolbar" tooltip="Context" pressed={shown} onClick={toggle}>
+        <Tasks />
+      </TooltipIconButton>
+    </span>
   );
 }
 
@@ -37,11 +56,7 @@ export function Toolbar({ owner }: { owner: string }) {
   const panel = !home || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
   return (
     <TitlebarTips>
-      {!home && (
-        <Drawn tooltip="Context" className={enter}>
-          <Tasks />
-        </Drawn>
-      )}
+      {!home && <ContextButton owner={owner} className={enter} />}
       {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}
       {panel && (
         <RightPanelToggle owner={owner} className={enter} />
