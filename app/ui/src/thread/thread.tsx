@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
-import { VList, type VListHandle } from "virtua";
+import { VList, type CacheSnapshot, type VListHandle } from "virtua";
 
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
@@ -56,6 +56,17 @@ function Newer({ after, newer }: { after: number; newer?: () => void }) {
       <Placeholder />
     </div>
   );
+}
+
+/**
+ * Each session's row heights as last drawn, by row id, while the app runs: opened again, the list knows them before it
+ * draws, so the distance from the end it was left at lands on the same row [D457, D516]. By id, since the rows held
+ * then can start elsewhere; the footer's without its space, which opens at none.
+ */
+const heights = new Map<string, { by: Map<string, number>; estimate?: number }>();
+function cacheOf(id: string | undefined, data: readonly { id: string }[]): CacheSnapshot | undefined {
+  const known = id === undefined ? undefined : heights.get(id);
+  return known && [data.map((line) => known.by.get(line.id) ?? -1), known.estimate];
 }
 
 /** The space itself: an empty svg as tall as it, since our code sets no inline styles (D68). */
@@ -147,6 +158,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   });
   const hasFooter = footer !== undefined && footer !== null && footer !== false;
   const data = useMemo(() => [...rows, FOOTER], [rows]);
+  const drawnData = useRef(data);
 
   const running = turnList?.at(-1)?.status === "running";
   // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
@@ -225,6 +237,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
   // A footer shows before the session does: a start from Home has only its message there at first.
   const listed = rows.length > 0 || hasFooter;
+  // Read by Virtua once, as the list mounts: made as it appears, from the rows it mounts with (so not on `data`).
+  const cache = useMemo(() => (listed ? cacheOf(id, data) : undefined), [listed, id]);
   useLayoutEffect(() => {
     const el = listed ? (box.current?.firstElementChild as HTMLElement | null) : null;
     if (!el) return;
@@ -258,6 +272,13 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     // Virtua's sized content: any row growing or shrinking.
     if (el.firstElementChild) observer.observe(el.firstElementChild);
     return () => {
+      const [sizes, estimate] = list.current?.cache ?? [[]];
+      const by = new Map<string, number>();
+      drawnData.current.forEach((line, at) => {
+        const size = (sizes[at] ?? -1) - (line === FOOTER ? follow.space.get() : 0);
+        if (size >= 0) by.set(line.id, size);
+      });
+      if (id !== undefined && by.size) heights.set(id, { by, estimate });
       follow.leave(id);
       for (const [type, listener] of on) el.removeEventListener(type, listener);
       for (const type of stops) el.removeEventListener(type, follow.stopPlacing, { capture: true });
@@ -281,6 +302,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   });
   // New rows: placed, followed or taken from the space before the paint.
   useLayoutEffect(() => {
+    drawnData.current = data;
     follow.resized();
     fill();
   }, [follow, data]);
@@ -295,6 +317,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       <VList
         ref={list}
         data={data}
+        cache={cache}
         shift={shift}
         bufferSize={3200}
         // Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
