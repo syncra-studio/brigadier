@@ -166,7 +166,42 @@ impl Agent {
         pending
     }
 
+    /// The message writer's prompt (core's `writer`, D1029): a message naming the diff's files, so
+    /// a commit on Fake reads as one. In the changes, "nowrite" makes it fail and "slow:<ms>" waits, for demos.
+    fn write(&mut self, text: &str) {
+        emit(json!({"t": "turn"}));
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
+            thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
+        }
+        if text.contains("nowrite") {
+            emit(json!({"t": "error", "code": 500, "message": "the fake writer was told to fail"}));
+            return emit(json!({"t": "done", "ok": false}));
+        }
+        let files: Vec<&str> = (text.lines())
+            .filter_map(|l| l.strip_prefix("diff --git a/")?.split(" b/").next())
+            .take(3)
+            .collect();
+        let what = match files.is_empty() {
+            true => "the files".to_string(),
+            false => files.join(", "),
+        };
+        match text.starts_with("Write the pull request") {
+            true => self.say(&format!("Update {what}\n\nThis updates {what}.")),
+            false => self.say(&format!("Update {what}")),
+        }
+        emit(json!({"t": "done"}));
+    }
+
     fn handle(&mut self, text: &str) {
+        if text.starts_with("Write the ")
+            && text
+                .lines()
+                .next()
+                .is_some_and(|l| l.ends_with("for these changes."))
+        {
+            return self.write(text);
+        }
         let first = text.split_whitespace().next().unwrap_or("");
         ledger(&format!("recv {} {first}", self.sid));
         self.note(&format!("recv {text}"));

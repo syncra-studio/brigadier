@@ -237,6 +237,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
             }
         }
     }
+    left.extend(crate::writer::forget(spec, f));
     // Anything left keeps the folder: its log holds the ids a later delete tries again with.
     if !left.is_empty() {
         left.push(format!("{}: kept to try again", dir.display()));

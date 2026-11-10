@@ -18,6 +18,7 @@ pub mod thread;
 pub mod trust;
 mod worktree_setup;
 pub mod worktrees;
+pub mod writer;
 
 use brigadier_frames::log::{self, Reader};
 use brigadier_frames::procs;

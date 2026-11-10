@@ -3,7 +3,7 @@
 //! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103], and a
 //! session's commits since its base and one commit's diff [D1041].
 
-use super::{arg, has};
+use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
@@ -180,6 +180,12 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             None => json!({"ok": true, "review": history::commit(&checkout, word(1)?, &stop)?}),
         },
+        // Source's commit and the message writer [D1029, D1107].
+        "make-commit" => {
+            let all = has(args, "--all");
+            super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
+        }
+        "write" => super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"))?,
         _ => return Err(io::Error::other(super::USAGE)),
     })
 }
