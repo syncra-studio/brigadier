@@ -1104,6 +1104,10 @@
 @utility session-tab-list {
   --session-tab-count: attr(data-count type(<number>), 1);
   flex: 0 1 auto;
+  /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
+  &:has(> * > .session-tab:first-child:hover) > .session-tab::after {
+    opacity: 0;
+  }
 }
 
 @utility session-tab {
@@ -1142,6 +1146,11 @@
   }
   &[data-separator]::after {
     opacity: 1;
+  }
+  /* No rule beside a hovered tab, either side, as Chrome does; it only fades, so nothing moves [D437]. */
+  &:hover::after,
+  &:has(+ .session-tab:hover)::after {
+    opacity: 0;
   }
   /* The last tab never shows its rule, and the rule would poke past the list and make the bar scroll [D431]. */
   &:last-child::after {
