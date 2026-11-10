@@ -17,7 +17,17 @@ import type { PanelHint, SourceFile, SourceState } from "./types";
  */
 
 type Entry = { path: string; old: string | null; staged: FileStatus | null; changes: FileStatus | null };
-type Head = { branch: string | null; head: string | null; upstream: string | null; ahead: number; behind: number; hint: PanelHint | null };
+type Head = {
+  branch: string | null;
+  head: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  hint: PanelHint | null;
+  /** Rust's: a session's own worktree or a folder of the user's, and the remote it syncs or would publish to [D1020, D1021]. */
+  checkout: "worktree" | "folder";
+  remote: string | null;
+};
 type Counts = Map<string, { insertions: number; deletions: number }>;
 /** A move sent and not yet seen in a read. `done`: Rust answered, the next read settles it. */
 type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone"; done?: boolean };
@@ -148,9 +158,9 @@ function sourceOf(now: Git): SourceState | null {
     if (entry.changes) changes.push(file(entry, entry.changes, now.counts, !entry.staged));
   }
   let state: SourceState = {
-    checkout: "session" in (now.target ?? {}) ? "worktree" : "folder",
+    checkout: now.head.checkout,
     branch: now.head.branch,
-    remote: now.head.upstream?.split("/")[0] ?? null,
+    remote: now.head.remote,
     upstream: now.head.upstream,
     ahead: now.head.ahead,
     behind: now.head.behind,

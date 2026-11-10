@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
+import { copyWithToast } from "../../components/copy-button";
 import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
@@ -8,6 +9,7 @@ import type { Branch, Commit, ForcePush, Pr, PrWatch, SourceFile, SourceState, S
 import { statusWords } from "../words";
 import { ActionButton } from "./action";
 import { BranchItem } from "./branch";
+import type { BranchRead } from "./branch-ops";
 import { CommitBox } from "./commit-box";
 import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type GitRun, StageConflictsDialog } from "./dialogs";
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
@@ -46,9 +48,27 @@ export type SourceData = {
   watch?: PrWatch | null;
   /** The message drafted for the work so far (2.20), the field's grey text [D1107]. */
   draft?: string | null;
+  /** A sync or publish is under way; the name a rename or switch is moving to, until the watch reads it [D30]. */
+  syncing?: boolean;
+  naming?: string | null;
 };
 
-type Picker = "branch" | "rename" | "create" | null;
+/** The quick pick or name box open over the branch item: `from`, `base` and `newSession` list branches to pick. */
+type Picker = "branch" | "rename" | "create" | "from" | "base" | "newSession" | null;
+
+/** The branch item's moves on Rust's git (2.21) [D1020, D1021]; without them (the gallery) a pick only closes. */
+export type BranchOps = {
+  read: (done: (read: BranchRead | null) => void) => void;
+  sync: () => void;
+  publish: () => void;
+  rename: (name: string) => void;
+  switchTo: (name: string, remote: boolean) => void;
+  create: (name: string, from: string | null) => void;
+  setBase: (base: string) => void;
+  /** Home, to start a session from `base` in this session's project. */
+  newSession: (base: string) => void;
+  openPage: (url: string) => void;
+};
 
 /** Rust's moves and the tabs a row opens, once wired [D1043, D1103]: without them the panel moves a local copy. */
 export type SourceOps = {
@@ -59,6 +79,7 @@ export type SourceOps = {
   review: (path?: string) => void;
   openFile: (path: string) => void;
   retry: () => void;
+  branch?: BranchOps;
 };
 
 /** One entry for a path that is partly staged: its staged and unstaged lines together. */
@@ -108,7 +129,17 @@ export function SourcePanel({
   useEffect(() => {
     if (local && local !== data.source) onSource?.(local);
   }, [local, data.source, onSource]);
-  const [picker, setPicker] = useState<Picker>(initialPicker);
+  const [picker, setPickerNow] = useState<Picker>(initialPicker);
+  // What the quick pick lists, read again each time one opens; undefined while it's read.
+  const [read, setRead] = useState<BranchRead | null | undefined>(undefined);
+  const [from, setFrom] = useState<string | null>(null);
+  const branchOps = ops?.branch;
+  const setPicker = (next: Picker) => {
+    setPickerNow(next);
+    if (!next || next === "rename" || next === "create" || !branchOps) return;
+    setRead(undefined);
+    branchOps.read((answer) => setRead(answer));
+  };
   const branchItem = useRef<HTMLDivElement>(null);
   const [discarding, setDiscarding] = useState<Discarding | null>(null);
   const [stagingConflicts, setStagingConflicts] = useState<{ paths: string[]; marked: number } | null>(null);
@@ -182,8 +213,14 @@ export function SourcePanel({
         stageAll: () => move(changes.map((file) => file.path), "staged"),
         unstageAll: () => move(staged.map((file) => file.path), "changes"),
         discardAll: () => setDiscarding({ scope: "unstaged", files: changes }),
-        createBranch: () => setPicker("create"),
+        checkout: () => setPicker("branch"),
+        createBranch: () => {
+          setFrom(null);
+          setPicker("create");
+        },
+        createFrom: () => setPicker("from"),
         renameBranch: () => setPicker("rename"),
+        publish: branchOps?.publish,
         dropStash: () => setDroppingStash(true),
         gitOutput: () => setGitOutput(data.gitRuns ?? []),
       }}
@@ -257,9 +294,38 @@ export function SourcePanel({
         <QuickPick
           place={{ anchor: branchItem }}
           placeholder={folder ? "Select a branch to switch to" : "This session works on its own branch"}
-          items={folder ? folderItems(data.branches ?? null, state.branch, nowMs) : sessionItems(base ?? "main", data.host ?? null)}
-          off={folder && data.agentWorking ? "Branches can't switch while the agent is working." : null}
-          onPick={(item) => setPicker(item.id === "rename" ? "rename" : item.id === "create" ? "create" : null)}
+          items={folder ? folderItems(read === undefined && branchOps ? null : (read?.branches ?? data.branches ?? null), state.branch, nowMs) : sessionItems(read?.base ?? base ?? "main", read ? (read.page && read.host) : (data.host ?? null))}
+          off={folder && (data.agentWorking || read?.working) ? "Branches can't switch while the agent is working." : null}
+          onPick={(item) => {
+            setPicker(null);
+            if (item.id === "rename") setPicker("rename");
+            else if (item.id === "create") {
+              setFrom(null);
+              setPicker("create");
+            } else if (item.id === "createFrom") setPicker("from");
+            else if (item.id === "lands") setPicker("base");
+            else if (item.id === "new") setPicker("newSession");
+            else if (item.id === "copy" && state.branch) copyWithToast(state.branch, "branch name");
+            else if (item.id === "open" && read?.page) branchOps?.openPage(read.page);
+            else if (folder) branchOps?.switchTo(item.title, item.id.startsWith("true:"));
+          }}
+          onClose={() => setPicker(null)}
+        />
+      )}
+      {(picker === "from" || picker === "base" || picker === "newSession") && state && (
+        <QuickPick
+          place={{ anchor: branchItem }}
+          placeholder={picker === "from" ? "Select a ref to create the branch from" : picker === "base" ? `What ${state.branch ?? "this branch"} lands into` : "Select a branch to start a session from"}
+          // The branches but the checked-out one, as the folder's list has them.
+          items={read === undefined && branchOps ? null : (folderItems(read?.branches ?? data.branches ?? [], state.branch, nowMs)?.slice(2) ?? null)}
+          onPick={(item) => {
+            setPicker(null);
+            if (picker === "from") {
+              setFrom(item.title);
+              setPickerNow("create");
+            } else if (picker === "base") branchOps?.setBase(item.title);
+            else branchOps?.newSession(item.title);
+          }}
           onClose={() => setPicker(null)}
         />
       )}
@@ -267,9 +333,13 @@ export function SourcePanel({
         <BranchNameBox
           place={{ anchor: branchItem }}
           placeholder={picker === "create" ? "New branch name" : "New name for the branch"}
-          hint={picker === "rename" ? `Enter renames ${state?.branch ?? "the branch"}` : `Enter creates it from ${state?.branch ?? "what is checked out"} and switches to it`}
+          hint={picker === "rename" ? `Enter renames ${state?.branch ?? "the branch"}` : `Enter creates it from ${from ?? state?.branch ?? "what is checked out"} and switches to it`}
           initial={picker === "rename" ? (state?.branch ?? "") : ""}
-          onName={() => setPicker(null)}
+          onName={(name) => {
+            setPicker(null);
+            if (picker === "rename") branchOps?.rename(name);
+            else branchOps?.create(name, from);
+          }}
           onClose={() => setPicker(null)}
         />
       )}
@@ -308,7 +378,15 @@ export function SourcePanel({
       {state && (
         <footer className="flex shrink-0 items-center border-t border-divider ps-2 pe-1.5 py-1.5">
           <div ref={branchItem} className="min-w-0 flex-1">
-            <BranchItem state={state} locked={locked} open={picker === "branch"} onBranch={() => setPicker("branch")} />
+            <BranchItem
+              state={data.naming ? { ...state, branch: data.naming } : state}
+              locked={locked}
+              syncing={data.syncing}
+              open={picker === "branch"}
+              onBranch={() => setPicker("branch")}
+              onSync={branchOps?.sync}
+              onPublish={branchOps?.publish}
+            />
           </div>
         </footer>
       )}

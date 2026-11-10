@@ -12,6 +12,7 @@ import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
 import type { Pr } from "../types";
 import type { ActionPick } from "./action-menus";
+import { failed, keep } from "./branch-ops";
 import { Confirm, type Held } from "./dialogs";
 
 /**
@@ -136,7 +137,8 @@ const run = (session: string, args: string[], onReply: (reply: Record<string, an
     onReply(reply);
   });
 
-function read(session: string) {
+/** Reads the session's PR facts again: after Change what it lands into, its base [D1143]. */
+export function read(session: string) {
   run(session, ["info"], (reply) => {
     if (reply.error === "disconnected") return;
     // Null PRs: gh couldn't say, so the last ones stay.
@@ -183,6 +185,7 @@ function create(session: string) {
   run(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], (reply) => {
     if (reply.ok) return made(session, reply.pr);
     const lost = reply.error === "disconnected";
+    keep({ session }, reply);
     put(session, { busy: null, uncertain: lost || opOf(session).uncertain, error: lost ? "Brigadier lost its connection. It checks whether the PR was made before making another." : reply.error });
   });
 }
@@ -208,11 +211,7 @@ function push(session: string, page: boolean) {
   const pending = showToast(`Pushing ${branch}…`, { stays: true });
   run(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], (reply) => {
     toastManager.close(pending);
-    if (!reply.ok) {
-      if (reply.error === "disconnected") return showToast("Brigadier isn't connected.", { tone: "error" });
-      const [said, details] = split(reply.error);
-      return showToast(said!, { tone: "error", actions: details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : [] });
-    }
+    if (!reply.ok) return failed({ session }, reply);
     // Past the click, so window.open would be blocked: main opens it [D1142].
     if (page) window.brigadier?.openLink(reply.url);
     else showToast(`Pushed ${branch}`, { tone: "success" });

@@ -87,5 +87,8 @@ export type PanelHint =
   | { tone: "conflict"; base: string }
   | { tone: "failed"; pr: number; why: "checks" | "changes" };
 
-/** A force push after a rejected one [D1034, D1049]: the remote commit the user reviewed, and where it is now if it moved. */
-export type ForcePush = { remoteRef: string; reviewed: string; movedTo: string | null };
+/**
+ * A force push after a rejected one [D1034, D1049]: the remote and its ref (`remoteRef` as shown), the remote commit
+ * the user reviewed, and where it is now if it moved.
+ */
+export type ForcePush = { remote: string; ref: string; remoteRef: string; reviewed: string; movedTo: string | null };

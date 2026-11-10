@@ -1,10 +1,11 @@
 import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, writeMessage } from "../git";
+import { commitFiles, useGit, writeMessage } from "../git";
 import type { ForcePush, MergeStyle, SourceState } from "../types";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
 import type { ActionPick } from "./action-menus";
+import { askForce, cancelForce, forcePush, useBranchOp } from "./branch-ops";
 import { useCreatePr } from "./create-pr";
 import { StageAllDialog } from "./dialogs";
 import type { SourceData } from "./panel";
@@ -55,6 +56,12 @@ const LOST = "Brigadier isn't connected.";
 /** Per session, the view whose Create PR… opened the dialog: its open state is the session's, so one view draws it. */
 const asked = new Map<string, string>();
 
+/** The Source views on screen: Force Push's confirm is drawn by Source, else by the summary card. */
+const sources = new Set<string>();
+const notify = () => {
+  for (const listener of listeners) listener();
+};
+
 /**
  * Source's next step [D1015]: the action button, the commit it runs and the confirms it asks, one set for Source and
  * the summary card [D1145, D1148], with the branch's PRs and Create PR [D1030]. `session`: whose PR it makes; none in
@@ -82,9 +89,21 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const [squashing, setSquashing] = useState(false);
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
   const [mergingPr, setMergingPr] = useState(false);
-  const [forcing, setForcing] = useState<ForcePush | null>(null);
+  const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
   const pr = useCreatePr(session);
   const id = useId();
+  // The on-screen checkout's rejected push and its confirm [D1034, D1049]; the gallery's own without one.
+  const target = useGit().target;
+  const branchOp = useBranchOp(target);
+  const rejected = target ? branchOp.rejected : (data.rejected ?? null);
+  const forcing = target ? branchOp.forcing : galleryForcing;
+  const drawsForce = useSyncExternalStore(subscribe, () => !card || sources.size === 0);
+  useEffect(() => {
+    if (card) return;
+    sources.add(id);
+    notify();
+    return () => void (sources.delete(id), notify());
+  }, [card, id]);
   // shortcut: the host module's one read of the branch's PRs until 2.27's watch sends them in `data.prs`.
   const prs = data.prs ?? pr.prs;
   const claim = session ? asked.get(session) : undefined;
@@ -178,14 +197,14 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           // The field shows Source's own failures; the card has none, so its button's line does.
           error: data.stepError ?? (card && (failed || work.error) ? { kind: step.kind, reason: failed ? "no message was written. Type one in Source." : work.error! } : null),
           mergeStyle,
-          rejected: data.rejected != null,
+          rejected: rejected !== null,
           prWay: pr.way,
           onMergeStyle: setMergeStyle,
           onRun: run,
           onPick: (pick: ActionPick) => {
             if (session && pick === "createPr") asked.set(session, id);
             pr.onPick(pick);
-            if (pick === "forcePush" && data.rejected) setForcing(data.rejected);
+            if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
             if (pick === "commit") commit();
           },
         }
@@ -218,7 +237,14 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       {step?.kind === "mergePr" && (
         <MergePrDialog open={mergingPr} pr={step.pr} base={step.base} checks={step.checks} onCancel={() => setMergingPr(false)} onConfirm={() => setMergingPr(false)} />
       )}
-      <ForcePushDialog force={forcing} branch={state?.branch ?? "…"} onCancel={() => setForcing(null)} onConfirm={() => setForcing(null)} />
+      {drawsForce && (
+        <ForcePushDialog
+          force={forcing}
+          branch={state?.branch ?? "…"}
+          onCancel={() => (target ? cancelForce(target) : setGalleryForcing(null))}
+          onConfirm={() => (target ? forcePush(target, state?.branch ?? "the branch") : setGalleryForcing(null))}
+        />
+      )}
       {drawsPr && pr.dialog}
     </>
   );

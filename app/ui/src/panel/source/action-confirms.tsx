@@ -107,8 +107,8 @@ export function ForcePushDialog({ force, branch, held, onCancel, onConfirm }: { 
           title={<span className="block pe-7 leading-5">{force.movedTo ? `${force.remoteRef} moved. Force push anyway?` : `Force push ${branch}?`}</span>}
           description={
             force.movedTo
-              ? `It's at ${force.movedTo} now, not ${force.reviewed} as when you looked. Force pushing replaces those commits too.`
-              : `${force.remoteRef} has commits this branch doesn't. Force pushing replaces them with your branch, only if it's still at ${force.reviewed}.`
+              ? `It's at ${force.movedTo.slice(0, 7)} now, not ${force.reviewed.slice(0, 7)} as when you looked. Force pushing replaces those commits too.`
+              : `${force.remoteRef} has commits this branch doesn't. Force pushing replaces them with your branch, only if it's still at ${force.reviewed.slice(0, 7)}.`
           }
           confirm="Force Push"
           destructive
