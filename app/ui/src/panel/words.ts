@@ -127,12 +127,12 @@ export function errorWords(kind: Step["kind"], reason: string): string {
   return `Couldn't ${verb}: ${reason}`;
 }
 
-/** What discarding `file` throws away, in plain words (the old SourcePanel's discardWords). */
-export function discardWords(scope: "staged" | "unstaged", file: SourceFile, alsoUnstaged: boolean): string {
+/** What discarding `file` throws away, in plain words (the old SourcePanel's discardWords). `other`: it has changes on the other side too. */
+export function discardWords(scope: "staged" | "unstaged", file: SourceFile, other: boolean): string {
   if (scope === "unstaged") {
     return file.status === "untracked"
       ? `${file.path} is deleted. Git doesn't track it, so it can't be brought back.`
-      : `The changes to ${file.path} that aren't staged are lost. Its staged changes stay.`;
+      : `The changes to ${file.path} that aren't staged are lost.${other ? " Its staged changes stay." : ""}`;
   }
   const back =
     file.status === "added"
@@ -140,7 +140,7 @@ export function discardWords(scope: "staged" | "unstaged", file: SourceFile, als
       : file.status === "renamed"
         ? `${file.path} goes back to ${file.oldPath ?? "its old name"} as it was last committed.`
         : `${file.path} goes back to how it was last committed.`;
-  return alsoUnstaged ? `${back} Its changes that aren't staged are lost too.` : back;
+  return other ? `${back} Its changes that aren't staged are lost too.` : back;
 }
 
 /** Source's one status at the top [D1098, D1107]: what the work needs now, from Rust's state and step. */

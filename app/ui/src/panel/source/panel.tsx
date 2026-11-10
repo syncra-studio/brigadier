@@ -362,6 +362,7 @@ export function SourcePanel({
 
       <DiscardDialog
         discarding={discarding}
+        stagedPaths={stagedPaths}
         unstagedPaths={unstagedPaths}
         onCancel={() => setDiscarding(null)}
         onConfirm={() => {

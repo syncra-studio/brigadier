@@ -28,8 +28,9 @@ export function Confirm({ open, onOpenChange, held, children }: { open: boolean;
 export type Discarding = { scope: "staged" | "unstaged"; files: SourceFile[] };
 
 /** Discard's confirm: one file's changes, a new file Git doesn't track (deleted), or many files. */
-export function DiscardDialog({ discarding, unstagedPaths, held, onCancel, onConfirm }: {
+export function DiscardDialog({ discarding, stagedPaths, unstagedPaths, held, onCancel, onConfirm }: {
   discarding: Discarding | null;
+  stagedPaths: ReadonlySet<string>;
   unstagedPaths: ReadonlySet<string>;
   held?: Held;
   onCancel: () => void;
@@ -52,7 +53,7 @@ export function DiscardDialog({ discarding, unstagedPaths, held, onCancel, onCon
           description={
             many
               ? "Their changes that aren't staged are lost, and new files Git doesn't track are deleted. This can't be undone."
-              : discardWords(discarding.scope, file, discarding.scope === "staged" && unstagedPaths.has(file.path))
+              : discardWords(discarding.scope, file, (discarding.scope === "staged" ? unstagedPaths : stagedPaths).has(file.path))
           }
           confirm={untracked ? "Delete" : "Discard"}
           destructive

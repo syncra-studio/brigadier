@@ -195,16 +195,16 @@ export function SourceGallery() {
       </Row>
       <Row name="Confirms">
         <Confirm label="Discard a file's changes">
-          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: [file("src/upload/retry.ts", "modified")] }} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: [file("src/upload/retry.ts", "modified")] }} stagedPaths={new Set()} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Discard staged changes">
-          {(held) => <DiscardDialog discarding={{ scope: "staged", files: [file("src/upload/client.ts", "modified")] }} unstagedPaths={new Set(["src/upload/client.ts"])} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <DiscardDialog discarding={{ scope: "staged", files: [file("src/upload/client.ts", "modified")] }} stagedPaths={new Set()} unstagedPaths={new Set(["src/upload/client.ts"])} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Delete an untracked file">
-          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: [file("notes/todo.md", "untracked")] }} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: [file("notes/todo.md", "untracked")] }} stagedPaths={new Set()} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Discard many files">
-          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: CHANGES.changes }} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <DiscardDialog discarding={{ scope: "unstaged", files: CHANGES.changes }} stagedPaths={new Set()} unstagedPaths={new Set()} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Stage with conflicts">
           {(held) => <StageConflictsDialog staging={{ paths: ["src/upload/retry.ts"], marked: 1 }} held={held} onCancel={noop} onConfirm={noop} />}
