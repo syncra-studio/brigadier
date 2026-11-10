@@ -80,7 +80,7 @@ export function HunkBar({
 }) {
   return (
     <div data-slot="hunk-bar" className="flex h-control-md items-center gap-2 border-y border-border bg-fill-subtle ps-3 pe-2 font-sans text-xs">
-      <span className="shrink-0 font-mono text-link">{hunk.header}</span>
+      <span className="min-w-0 truncate font-mono text-link">{hunk.header}</span>
       <Counts insertions={hunk.insertions} deletions={hunk.deletions} />
       {hunk.staged && <Badge variant="success">Staged</Badge>}
       <ErrorLine error={state && "error" in state ? state.error : null} className="min-w-0 truncate" />

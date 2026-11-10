@@ -241,6 +241,8 @@ function retryWords(reason: unknown): string {
 
 // View › Add project… and File › Open Folder… (⌘O) [D165].
 listenToMenu();
+// The Review diff's engine loads at idle, so the first diff opened draws at once (the old app's warmCode).
+void import("./review/diff-view").then((view) => view.warmReview());
 
 // Dev-only component gallery (pnpm gallery); other builds drop it.
 const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../gallery/gallery")) : null;
