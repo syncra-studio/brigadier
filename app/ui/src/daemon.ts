@@ -68,6 +68,9 @@ let itemAt = new Map<string, number>();
 // The `n` of the first row held, or null once the whole history is in; the older page asked for, if any [D97].
 let before: number | null = null;
 let olderRe = 0;
+// The older page's answer, for whoever asked; and whether pages older than the snapshot came.
+let olderDone: ((result: Paged) => void)[] = [];
+let paged = false;
 const threadListeners = new Set<() => void>();
 // The sessions last left, as Rust last sent them: one opened again paints at once, and its snapshot then replaces the
 // rows by id [D30].
@@ -111,9 +114,21 @@ function setThread(next: ThreadState | undefined, nextSession = session): void {
   for (const listener of threadListeners) listener();
 }
 
+/** An older page came (`before`: the new first row's `n`, null once the whole history is in), or why not. */
+export type Paged = { ok: true; before: number | null } | { ok: false; error: string };
+/** Find in the conversation's matches in the rows not loaded: each row's `n` and how many [D470]. */
+export type Older = { ok: true; matches: { n: number; count: number }[]; more: boolean } | { ok: false; error: string };
+
+function paging(result: Paged): void {
+  olderRe = 0;
+  const waiting = olderDone;
+  olderDone = [];
+  for (const done of waiting) done(result);
+}
+
 function watch(): void {
   threadN = undefined;
-  olderRe = 0;
+  if (olderRe) paging({ ok: false, error: "stale" });
   if (thread && view.daemon) threadRe = send({ op: "thread", session: thread.id });
 }
 
@@ -146,7 +161,7 @@ export function peekThread(id: string): void {
 export function openThread(id: string): void {
   if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
   // Older pages aren't kept: the snapshot starts at the newest page, so it would take those rows away under the view.
-  if (thread?.status === "ready" && session && before === session.before) keep(thread.id, session);
+  if (thread?.status === "ready" && session && !paged) keep(thread.id, session);
   setThread({ id, status: "loading" }, left.get(id) ?? null);
   watch();
 }
@@ -210,21 +225,24 @@ function onFrame(frame: Record<string, any>): void {
     itemAt = new Map(next.items.map((item, at) => [item.id, at]));
     threadN = frame.n;
     before = frame.session.before;
+    paged = false;
     setThread({ id: thread.id, status: "ready" }, next);
   } else if (thread && session && olderRe && frame.re === olderRe) {
-    olderRe = 0;
-    if (!frame.ok) return;
+    if (!frame.ok) return paging({ ok: false, error: frame.error });
     const turns = new Set(session.turns.map((turn) => turn.id));
     const work = new Set(session.work?.map((each) => each.turnId));
     const items = [...(frame.items as Item[]), ...session.items];
     itemAt = new Map(items.map((item, at) => [item.id, at]));
     before = frame.before;
+    paged = true;
     setThread(thread, {
       ...session,
+      before,
       items,
       turns: [...(frame.turns as Turn[]).filter((turn) => !turns.has(turn.id)), ...session.turns],
       work: [...(frame.work as Work[]).filter((each) => !work.has(each.turnId)), ...(session.work ?? [])],
     });
+    paging({ ok: true, before });
   } else if (frame.thread !== undefined) {
     applyThread(frame);
   } else if (frame.re === undefined && typeof frame.n === "number" && n !== undefined) {
@@ -264,6 +282,7 @@ window.addEventListener("message", (event) => {
     threadN = undefined;
     const waiting = [...replies.values()];
     replies.clear();
+    if (olderRe) paging({ ok: false, error: "disconnected" });
     // Before the first connection a failed try is the daemon main just launched still starting: connecting, not
     // disconnected. The socket tries every 250ms, so one that never comes up says so once this has passed [D476].
     if (view.daemon !== undefined || performance.now() > STARTING_MS) set({ daemon: null });
@@ -281,7 +300,7 @@ export const useDaemon = (): View =>
   );
 
 /** The open thread as the view's source: null while it loads. */
-export const threadSource: Source = {
+export const threadSource: Omit<Source, "older"> & { older(): Promise<Paged>; findOlder(query: string, limit: number): Promise<Older> } = {
   subscribe(listener) {
     threadListeners.add(listener);
     return () => threadListeners.delete(listener);
@@ -289,7 +308,24 @@ export const threadSource: Source = {
   get: () => session,
   older() {
     // `before` is only this session's once its snapshot is in.
-    if (thread && session && threadN !== undefined && before !== null && !olderRe && view.daemon) olderRe = send({ op: "thread_older", session: thread.id, before });
+    if (!thread || !session || threadN === undefined) return Promise.resolve({ ok: false, error: "loading" });
+    if (before === null) return Promise.resolve({ ok: true, before: null });
+    if (!olderRe && !view.daemon) return Promise.resolve({ ok: false, error: "disconnected" });
+    if (!olderRe) olderRe = send({ op: "thread_older", session: thread.id, before });
+    return new Promise((done) => olderDone.push(done));
+  },
+  findOlder(query, limit) {
+    // Bound to this session's watch: an answer after it changed (another session, a reconnect) is dropped.
+    const id = thread?.id;
+    const re = threadRe;
+    return new Promise((done) => {
+      if (!id || !session || threadN === undefined) return done({ ok: false, error: "loading" });
+      if (before === null) return done({ ok: true, matches: [], more: false });
+      ask({ op: "thread_find", session: id, before, query, limit }, (frame) => {
+        if (thread?.id !== id || threadRe !== re) return done({ ok: false, error: "stale" });
+        done(frame.ok ? { ok: true, matches: frame.matches, more: frame.more } : { ok: false, error: frame.error });
+      });
+    });
   },
 };
 
