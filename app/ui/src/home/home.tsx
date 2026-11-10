@@ -203,4 +203,3 @@ export function StartingLine({ id }: { id: string }) {
     </div>
   );
 }
-

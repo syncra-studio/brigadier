@@ -111,7 +111,7 @@ export function ChangesGallery() {
       </Row>
       <Row name="Live: one broken reply leaves the rest visible"><LiveBoundary /></Row>
       <Row name="Empty after rewind: pending and refused sends stay visible">
-        <State label="pending"><div className="h-48 w-160 max-w-full"><Thread source={emptySource} footer={<UserBubble keep="empty-pending" text="Retry the saved message" sending />} /></div></State>
+        <State label="pending"><div className="h-48 w-160 max-w-full"><Thread source={emptySource} footer={<UserBubble keep="empty-pending" text="Retry the saved message" time={NOW} />} /></div></State>
         <State label="refused"><div className="h-48 w-160 max-w-full"><Thread source={emptySource} footer={<UserBubble keep="empty-refused" text="Retry the saved message" failed="The agent isn’t available" onRetry={noop} onDiscard={noop} />} /></div></State>
       </Row>
       <Row name="Changes across the thread">
