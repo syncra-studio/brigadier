@@ -72,7 +72,8 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   const shown = list?.filter((each) => !done(each)) ?? [];
   if (shown.length === 0) return null;
   return (
-    <div className="flex flex-col gap-3">
+    // Under the footer's pt-4, the gaps a turn's row has (pt-6), so Rust's row takes a bubble's place without a shift.
+    <div className="flex flex-col gap-6 pt-2">
       {shown.map((each) => (
         <UserBubble
           key={each.cid}

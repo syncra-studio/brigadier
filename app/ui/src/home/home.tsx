@@ -153,7 +153,8 @@ export function StartingBubble({ id }: { id: string }) {
   const entry = useStarting().get(id);
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
   const inThread = Boolean(entry && session?.items.length && session.turns.some((turn) => turn.id === entry.cid));
-  if (!entry || (inThread && entry.outcome === "delivered")) return null;
+  // In the thread, Rust's row is the message: only a logged-but-not-delivered start says more.
+  if (!entry || (inThread && entry.outcome !== "logged")) return null;
   if (inThread) {
     return (
       <ErrorLine
@@ -174,33 +175,18 @@ export function StartingBubble({ id }: { id: string }) {
       />
     );
   }
+  // pt-4 under the footer's own pt-4: the first row's gap, so Rust's row takes its place without a shift.
   return (
-    <UserBubble
-      keep={entry.cid}
-      text={entry.text}
-      time={entry.sent}
-      unconfirmed={entry.unknown}
-      failed={entry.error}
-      onRetry={entry.asking ? undefined : () => retry(id)}
-      onDiscard={entry.asking ? undefined : () => discard(id)}
-    />
-  );
-}
-
-/** Session `id` was started from Home and its thread has nothing yet: StartingThread stands in for it. */
-export function useStartShown(id: string): boolean {
-  const entry = useStarting().get(id);
-  const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
-  return Boolean(entry) && !session?.items.length;
-}
-
-/** A started session's thread before Rust has a turn in it: its message in the thread's column. */
-export function StartingThread({ id }: { id: string }) {
-  return (
-    <div className="scroll-gutter-both h-full overflow-y-auto text-sm antialiased">
-      <div className="mx-auto w-full max-w-reading px-6 pt-4 pb-8">
-        <StartingBubble id={id} />
-      </div>
+    <div className="pt-4">
+      <UserBubble
+        keep={entry.cid}
+        text={entry.text}
+        time={entry.sent}
+        unconfirmed={entry.unknown}
+        failed={entry.error}
+        onRetry={entry.asking ? undefined : () => retry(id)}
+        onDiscard={entry.asking ? undefined : () => discard(id)}
+      />
     </div>
   );
 }

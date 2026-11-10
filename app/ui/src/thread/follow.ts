@@ -49,6 +49,11 @@ export function spaceStore() {
 }
 export type Space = ReturnType<typeof spaceStore>;
 
+/** Sessions just started from Home: their thread gives the first message its space and glide once it opens. */
+const toPlace = new Set<string>();
+export const placeOnOpen = (id: string) => void toPlace.add(id);
+export const takePlace = (id: string) => toPlace.delete(id);
+
 /** Where each session was left, while the app runs: back to it, the view is where it was. */
 const left = new Map<string, { distance: number; mode: Mode; stick: boolean }>();
 

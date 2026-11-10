@@ -4,7 +4,7 @@ import { VList, type VListHandle } from "virtua";
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
-import { Follow, OLDER, spaceStore, type Phase, type Space } from "./follow";
+import { Follow, OLDER, spaceStore, takePlace, type Phase, type Space } from "./follow";
 import { cx } from "../components/cx";
 import { JumpSign, datedMessages } from "../components/thread/message";
 
@@ -168,12 +168,14 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
 
   // Before it is opened, so a running turn opens following its work or its answer.
   useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
-  const listed = Boolean(session && (rows.length > 0 || hasFooter));
+  // A footer shows before the session does: a start from Home has only its message there at first.
+  const listed = rows.length > 0 || hasFooter;
   useLayoutEffect(() => {
     const el = listed ? (box.current?.firstElementChild as HTMLElement | null) : null;
     if (!el) return;
     follow.el = el;
     follow.open(id, running);
+    if (id !== undefined && takePlace(id)) requestAnimationFrame(() => follow.place());
     const on: [string, EventListener][] = [
       ["wheel", follow.wheel as EventListener],
       ["keydown", follow.key as EventListener],

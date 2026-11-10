@@ -10,6 +10,7 @@ import { store } from "../onboarding/api";
 import { newId } from "../session/store";
 import { carryHome, CHAT, rereadHome, selectTab } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
+import { placeOnOpen } from "../thread/follow";
 
 /*
  * Home's draft and the sessions it starts [D30, D161]. Its project and model live in memory; its words are kept by
@@ -129,6 +130,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (level) args.push("--level", level);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
+  placeOnOpen(id);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
   keepDraft(daemonRun, HOME_DRAFT, []);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

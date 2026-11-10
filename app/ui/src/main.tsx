@@ -9,7 +9,7 @@ import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, type Row, useDaemon, useThread } from "./daemon";
-import { HomeDraft, StartingBubble, StartingThread, useStartShown } from "./home/home";
+import { HomeDraft, StartingBubble } from "./home/home";
 import { newChat, newSession, useStart, useStartingRows } from "./home/start";
 import { Key } from "./icons";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -161,7 +161,6 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   // Started from Home and not made yet: "not found" means "not yet" [D30].
   const starting = useStart(id);
   const missing = state?.status === "missing" && !starting;
-  const shown = useStartShown(id);
   return (
     <>
       <TabBar key={id} owner={id} offline={offline} row={titled} />
@@ -174,13 +173,13 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
           ) : (
             <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${offline ? "opacity-disabled" : ""}`}>
               <div className="min-h-0 flex-1">
-                {shown ? (
-                  <StartingThread id={id} />
-                ) : state?.id === id && (
+                {/* Started from Home, the thread is there at once with the message in its footer [D458]. */}
+                {(starting || state?.id === id) && (
                 <SessionOfThread value={{ id, offline }}>
                   <RewindProvider key={id} id={id} row={row} offline={offline}>
                   <Thread
                     key={id}
+                    id={id}
                     ref={thread}
                     source={answeringSource}
                     footer={
