@@ -465,3 +465,4 @@ export function SidebarFloatingLeft(props: IconProps) {
     </svg>
   );
 }
+export * from "./file-types";

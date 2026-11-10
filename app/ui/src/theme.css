@@ -130,6 +130,17 @@
   /* A diff's added and removed lines. */
   --color-diff-added: color-mix(in oklab, var(--color-success) 12%, transparent);
   --color-diff-removed: color-mix(in oklab, var(--color-destructive) 12%, transparent);
+  /* A file's type icon (Seti UI's colours, as the old app tinted them). */
+  --color-file-blue: #519aba;
+  --color-file-green: #8dc149;
+  --color-file-orange: #e37933;
+  --color-file-yellow: #cbcb41;
+  --color-file-purple: #a074c4;
+  --color-file-red: #cc3e44;
+  --color-file-pink: #f55385;
+  --color-file-grey: #6d8086;
+  --color-file-white: #d4d7d6;
+  --color-file-ignore: #41535b;
   /* The composer card, and a field's placeholder in it. */
   --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
