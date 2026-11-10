@@ -62,7 +62,8 @@ export function PrTab({
     <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-reading flex-col gap-5 p-5">
         <header className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+          {/* As tall as its buttons, so the header holds still when they go (merged, closed). */}
+          <div className="flex min-h-control-sm items-center gap-2">
             <PrIcon state={pr.state} tone={look.tone} />
             <h2 className="min-w-0 flex-1 truncate font-display text-base font-medium">
               <span className="text-muted-foreground">#{pr.number}</span> {pr.title}

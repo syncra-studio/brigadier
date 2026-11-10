@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 import { NavList } from "../src/components/nav";
+import { Segmented } from "../src/components/segmented";
 import type { AgentChip } from "../src/landing/agent-chip";
 import type { PrChipState } from "../src/landing/pr-chip";
 import type { Sends } from "../src/landing/pr-parts";
@@ -46,7 +47,7 @@ const FAILING: PullRequest = {
   ],
   events: [
     { id: "e5", atMs: min(4), kind: "changes_requested", actor: "sam-k", detail: "2 comments" },
-    { id: "e4", atMs: min(6), kind: "checks_failed", actor: "CI", detail: "test (ubuntu-latest)" },
+    { id: "e4", atMs: min(6), kind: "checks_failed", actor: "CI", detail: "test (ubuntu-latest)", check: "k1" },
     { id: "e3", atMs: min(12), kind: "pushed", actor: "the agent", detail: "2 commits" },
     { id: "e1", atMs: min(14), kind: "opened", actor: "the agent", detail: null },
   ],
@@ -100,13 +101,17 @@ function Live() {
   };
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
-        {([["Checks failed", FAILING], ["Ready", READY]] as const).map(([label, next]) => (
-          <button key={label} type="button" className="rounded-control bg-fill px-2 py-1 text-xs" onClick={() => setPr(next)}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Merged is where Ready leads, so it stays under Ready. */}
+      <Segmented
+        label="Pull request state"
+        value={pr === FAILING ? "failed" : "ready"}
+        options={[
+          { value: "failed", label: "Checks failed" },
+          { value: "ready", label: "Ready" },
+        ]}
+        onChange={(next) => setPr(next === "failed" ? FAILING : READY)}
+        className="self-start"
+      />
       <TabFrame tall>
         <PrTab
           pr={pr}

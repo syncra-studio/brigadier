@@ -110,7 +110,7 @@ function Waiting({ slot, error, offline }: { slot: string; error: string | undef
 
 const CHOICE_WORDS: Record<Choice, string> = { current: "Current", incoming: "Incoming", both: "Both" };
 
-/** The actions over one conflict; while its accept is on the way, what was picked; if that failed, why, and the actions again. */
+/** The actions over one conflict; while its accept is on the way, what was picked; if that failed, the actions again and why. */
 function ConflictLens({
   conflict,
   pending,
@@ -136,7 +136,14 @@ function ConflictLens({
       ]}
     />
   );
-  return pending?.error ? <ErrorLine error={`Failed to accept the change: ${pending.error}`} actions={lens} /> : lens;
+  if (!pending?.error) return lens;
+  // The actions as before, then the whole reason, wrapping rather than cut.
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3">
+      <span>{lens}</span>
+      <ErrorLine error={`Failed to accept the change: ${pending.error}`} />
+    </div>
+  );
 }
 
 /** One shown row: a numbered line, tinted by its side, or a row of actions over a conflict. */

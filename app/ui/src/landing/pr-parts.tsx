@@ -173,7 +173,7 @@ export function History({ pr, sends }: { pr: PullRequest; sends: Sends }) {
         failed: event.kind === "checks_failed",
         more: SENDABLE.has(event.kind) && (
           <span className="pt-1">
-            <SendButton send={{ kind: "event", id: event.id }} sends={sends} />
+            <SendButton send={event.check ? { kind: "check", id: event.check } : { kind: "event", id: event.id }} sends={sends} />
           </span>
         ),
       }))}

@@ -43,6 +43,8 @@ export type PrEvent = {
   actor: string;
   /** Names the event carries: a failing check, a commit count. */
   detail: string | null;
+  /** On checks_failed, when one check failed: its id, so the event's Send is that check's log, one chip for both. */
+  check?: string;
 };
 
 /** What a Send or Fix with agent leaves above the composer; nothing is sent until the user sends [D1019, D1027]. */
