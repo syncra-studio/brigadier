@@ -30,6 +30,9 @@ pub struct Turn {
     pub delivered: Option<u64>,
     pub began: bool,
     pub tools: BTreeSet<String>,
+    /// When the earliest of its open tools started (ms).
+    #[serde(default)]
+    pub tools_since: u64,
     pub question: Option<String>,
     /// Requests waiting on the user (approvals and questions), by the id their CLI gave them.
     #[serde(default)]
@@ -347,7 +350,14 @@ impl Fold {
                 };
                 self.close(outcome, Value::Null, ts);
             }
-            "tool" => drop(self.turns.first_mut().map(|t| t.tools.insert(str_of("id")))),
+            "tool" => {
+                if let Some(t) = self.turns.first_mut() {
+                    if t.tools.is_empty() {
+                        t.tools_since = ts;
+                    }
+                    t.tools.insert(str_of("id"));
+                }
+            }
             "tool_done" => drop(
                 self.turns
                     .first_mut()
