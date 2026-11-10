@@ -27,6 +27,7 @@ pub(super) type Shown = Arc<Mutex<Option<(String, Arc<Mutex<Thread>>)>>>;
 /// numbered on from the snapshot and tagged with this watch's request, until `watching` moves past
 /// `mine`. A host that died mid-turn writes no frame, so the live state ends such a turn [D60].
 /// The thread is locked while a change is taken and sent, so an older page never passes it.
+/// With no `mine` it's a peek: the snapshot only, nothing shown or followed.
 // shortcut: every open folds the whole log; add a thread checkpoint once long sessions make opening
 // slow.
 #[allow(clippy::too_many_arguments)]
@@ -36,7 +37,7 @@ pub(super) fn watch(
     title: Value,
     re: Value,
     out: &Sender<String>,
-    mine: u64,
+    mine: Option<u64>,
     watching: &AtomicU64,
     shown: &Shown,
 ) {
@@ -100,13 +101,17 @@ pub(super) fn watch(
     interrupted(&mut thread);
     let title = title.as_str().unwrap_or("");
     // Shown before the snapshot goes, so its older pages can be asked for at once.
-    {
+    if let Some(mine) = mine {
         let mut shown = shown.lock().unwrap();
         if watching.load(Ordering::SeqCst) == mine {
             *shown = Some((id.to_string(), shared.clone()));
         }
     }
     let snapshot = json!({"re": re, "ok": true, "n": 0, "session": thread.session(id, title)});
+    let Some(mine) = mine else {
+        let _ = out.send(snapshot.to_string());
+        return;
+    };
     if out.send(snapshot.to_string()).is_err() {
         return;
     }

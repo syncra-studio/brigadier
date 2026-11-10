@@ -8,7 +8,7 @@ import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
-import { openThread, type Row, useDaemon, useThread } from "./daemon";
+import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble } from "./home/home";
 import { newChat, newSession, useStart, useStartingRows } from "./home/start";
 import { Key } from "./icons";
@@ -96,7 +96,13 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   useSeen(rows?.find((row) => row.id === active));
   return (
-    <div className="fixed inset-0 bg-chrome">
+    <div
+      className="fixed inset-0 bg-chrome"
+      // A session row under the pointer or focus: its rows are fetched before the click [D477].
+      onPointerOver={(event) => peekRow(event.target, REST_MS)}
+      onPointerDown={(event) => peekRow(event.target)}
+      onFocus={(event) => peekRow(event.target)}
+    >
       {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
       <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
       <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
@@ -143,6 +149,15 @@ function FirstLoad({ error }: { error?: string }) {
     </main>
   );
 }
+
+/** A row the pointer rests on is peeked shortly, so a sweep down the sidebar folds nothing; a press or focus at once. */
+const REST_MS = 80;
+let resting: ReturnType<typeof setTimeout> | undefined;
+const peekRow = (target: EventTarget, wait = 0) => {
+  const id = target instanceof Element ? target.closest("[data-row-id]")?.getAttribute("data-row-id") : null;
+  clearTimeout(resting);
+  if (id) resting = setTimeout(() => peekThread(id), wait);
+};
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefined; offline: boolean }) {

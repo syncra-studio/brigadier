@@ -106,7 +106,9 @@ pub(super) fn serve(
                     },
                 );
             }
-            "thread" => {
+            // A peek is the same snapshot with nothing followed after it, so the open thread stays watched.
+            op @ ("thread" | "peek") => {
+                let follow = op == "thread";
                 let id = req["session"].as_str().unwrap_or("").to_string();
                 let title = state
                     .lock()
@@ -114,11 +116,24 @@ pub(super) fn serve(
                     .rows
                     .get(&id)
                     .map_or(Value::Null, |r| r["title"].clone());
-                let mine = watching.fetch_add(1, Ordering::SeqCst) + 1;
+                let mine = if follow {
+                    watching.fetch_add(1, Ordering::SeqCst) + 1
+                } else {
+                    0
+                };
                 let (out, data) = (out.clone(), PathBuf::from(data));
                 let (watching, shown) = (watching.clone(), shown.clone());
                 thread::spawn(move || {
-                    watch::watch(&data, &id, title, re, &out, mine, &watching, &shown)
+                    watch::watch(
+                        &data,
+                        &id,
+                        title,
+                        re,
+                        &out,
+                        follow.then_some(mine),
+                        &watching,
+                        &shown,
+                    )
                 });
             }
             "thread_older" => {

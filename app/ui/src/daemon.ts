@@ -117,15 +117,36 @@ function watch(): void {
   if (thread && view.daemon) threadRe = send({ op: "thread", session: thread.id });
 }
 
+function keep(id: string, kept: Session): void {
+  left.delete(id);
+  left.set(id, kept);
+  if (left.size > KEPT_THREADS) left.delete(left.keys().next().value!);
+}
+
+/** When each session was last peeked at (0 while a peek is on its way). */
+const peeked = new Map<string, number>();
+/**
+ * The pointer or focus is on a session: Rust's snapshot of it, unfollowed, into the kept threads, so opening it
+ * paints its rows at once instead of an empty column until the watch's snapshot comes [D477].
+ */
+export function peekThread(id: string): void {
+  const at = peeked.get(id);
+  if (thread?.id === id || at === 0 || (at !== undefined && performance.now() - at < 2000)) return;
+  peeked.set(id, 0);
+  ask({ op: "peek", session: id }, (reply) => {
+    peeked.set(id, performance.now());
+    if (!reply.ok || (thread?.id === id && thread.status === "ready")) return;
+    keep(id, reply.session);
+    // Opened while it was on its way: it paints now, and the watch's snapshot replaces it.
+    if (thread?.id === id && !session) setThread(thread, reply.session);
+  });
+}
+
 /** Opens a session's thread; the last one's rows go at once, so no other session flashes in. */
 export function openThread(id: string): void {
   if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
   // Older pages aren't kept: the snapshot starts at the newest page, so it would take those rows away under the view.
-  if (thread?.status === "ready" && session && before === session.before) {
-    left.delete(thread.id);
-    left.set(thread.id, session);
-    if (left.size > KEPT_THREADS) left.delete(left.keys().next().value!);
-  }
+  if (thread?.status === "ready" && session && before === session.before) keep(thread.id, session);
   setThread({ id, status: "loading" }, left.get(id) ?? null);
   watch();
 }

@@ -11,6 +11,8 @@
 //! `{"id", "op": "thread", "session"}` answers `{"re", "ok", "n", "session"}`, the session's thread
 //! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
 //! what it names by id [D40, D64, D65]. One thread per connection: a new request ends the last.
+//! `{"id", "op": "peek", "session"}` answers the same snapshot and follows nothing, so a session the
+//! pointer is on opens at once while the open thread stays followed [D477].
 //! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
 //! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
 //! answers `{"re", "ok", "items", "turns", "work", "before"}`, the page before that [D97, D98].
