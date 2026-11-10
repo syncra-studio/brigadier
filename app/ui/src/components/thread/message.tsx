@@ -195,40 +195,33 @@ export function SystemLine({ text }: { text: string }) {
 
 /**
  * The agent's message: `children` is the rendered reply. Under a turn's `final` answer, or one a follow-up
- * joined, its actions stay in view: copy, Try again where `onTryAgain` is given, and the time only on hover or
- * focus. Commentary between the turn's steps has none.
+ * joined, its actions stay in view: copy, and the time only on hover or focus. Commentary between the turn's
+ * steps has none.
  */
 export function AssistantMessage({
   text,
   final,
   time,
-  onTryAgain,
   children,
 }: {
   text: string;
   final: boolean;
   time?: number;
-  onTryAgain?: () => void;
   children: ReactNode;
 }) {
   return (
     <div className="group/answer flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
-      {final && <AnswerMarks text={text} time={time} onTryAgain={onTryAgain} />}
+      {final && <AnswerMarks text={text} time={time} />}
     </div>
   );
 }
 
-/** A finished answer's actions: copy, Try again where it's offered, the time only on hover or focus [D297]. */
-export function AnswerMarks({ text, time, onTryAgain }: { text: string; time?: number; onTryAgain?: () => void }) {
+/** A finished answer's actions: copy, the time only on hover or focus [D297]. */
+export function AnswerMarks({ text, time }: { text: string; time?: number }) {
   return (
     <div className="group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground">
       <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
-      {onTryAgain && (
-        <TooltipIconButton tooltip="Try again" size="icon-answer" onClick={onTryAgain}>
-          <Regenerate />
-        </TooltipIconButton>
-      )}
       {time !== undefined && (
         <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>
       )}

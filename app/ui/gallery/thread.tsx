@@ -3,11 +3,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Body } from "../src/components/thread/body";
-import { AssistantMessage, JumpSign, UserBubble } from "../src/components/thread/message";
+import { JumpSign, UserBubble } from "../src/components/thread/message";
 import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work";
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
 import type { Group } from "../src/thread/lines";
-import { Markdown } from "../src/thread/markdown";
 import "../src/thread/markdown.css";
 import { Row, Section, State } from "./parts";
 import { SetupGallery } from "./setup";
@@ -340,16 +339,6 @@ export function Thread() {
           <Wide label="at rest">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
           <Wide label="hover" frozen="hover">
             {item({ ...base("a2c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}
-          </Wide>
-          <Wide label="with Try again">
-            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
-              <Markdown text={REPLY} keep="a2d" />
-            </AssistantMessage>
-          </Wide>
-          <Wide label="with Try again, hover" frozen="hover">
-            <AssistantMessage text={REPLY} final time={NOW - 60_000} onTryAgain={noop}>
-              <Markdown text={REPLY} keep="a2e" />
-            </AssistantMessage>
           </Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false, final: true })}</Wide>
         </Row>
