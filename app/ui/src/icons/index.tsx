@@ -465,5 +465,6 @@ export function SidebarFloatingLeft(props: IconProps) {
     </svg>
   );
 }
+export * from "./source";
 export * from "./file-types";
 export * from "./review";

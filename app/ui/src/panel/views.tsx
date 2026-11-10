@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 
 import { EmptyState } from "../components/empty-state";
 import { Branch, Folders, Search } from "../icons";
+import { SourceView } from "./source/view";
 import type { PanelView } from "./types";
 
 /*
@@ -17,5 +18,5 @@ const NotYet = (title: string, icon: ComponentType<{ className?: string }>) =>
 export const VIEWS: Record<PanelView, { Icon: ComponentType; View: ComponentType<{ owner: string }> }> = {
   files: { Icon: Folders, View: NotYet("Files", Folders) },
   search: { Icon: Search, View: NotYet("Search", Search) },
-  source: { Icon: Branch, View: NotYet("Source", Branch) },
+  source: { Icon: Branch, View: SourceView },
 };
