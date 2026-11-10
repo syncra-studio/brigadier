@@ -64,8 +64,9 @@ export class Follow {
   /** Following the end as content grows (the scroller's own, apart from the turn's mode). */
   private stick = true;
   private intent: { way: Way; at: number } | null = null;
-  /** The distance at the last scroll seen. */
+  /** The distance at the last scroll seen, and the offset it was seen at. */
   private last = 0;
+  private top = 0;
   /** The latest turn's drawn height, from its user message to the space. */
   private tail: number | null = null;
   private placing: (() => void) | null = null;
@@ -108,6 +109,7 @@ export class Follow {
     if (distance > 0) this.unsnap();
     if (el.scrollTop !== top) el.scrollTop = top;
     this.last = this.distance();
+    this.top = el.scrollTop;
   }
   /** At the end, following it. */
   private toEnd() {
@@ -353,6 +355,7 @@ export class Follow {
     }
     const now = this.distance();
     this.last = now;
+    this.top = el.scrollTop;
     const intent = this.intent;
     if (intent && performance.now() - intent.at > INTENT_MS) this.intent = null;
     else if (intent && (now > before ? "away" : now < before ? "toward" : null) === intent.way) {
@@ -405,7 +408,8 @@ export class Follow {
     const now = this.distance();
     // Following stays at the end through any growth or resize (stick goes only by the user's own scrolling).
     if (this.stick && now > 0 && this.intent?.way !== "away") this.toEnd();
-    else this.last = now;
+    // Moved by layout only: a scroll still on its way keeps the distance it started from.
+    else if (el.scrollTop === this.top) this.last = now;
     this.hooks.changed();
   }
   private bringBack() {
