@@ -183,6 +183,8 @@ export type Item = Base &
         text: string;
         backend?: string;
         account?: string;
+        /** When the limit resets (ms), if its CLI said; null otherwise [D74]. */
+        resets?: number | null;
       }
     /**
      * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,

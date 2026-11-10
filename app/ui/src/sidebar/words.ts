@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react";
 
 import type { Row } from "../daemon";
+import { hhmm } from "../thread/words";
 
 /** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, or nothing. */
 export type Mark = "working" | "needs" | "amber" | "unread" | null;
@@ -52,11 +53,6 @@ const STATE_WORDS: Record<string, string | null> = {
 
 // A state this build has no words for yet still says what its mark means.
 const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply" };
-
-const hhmm = (ms: number) => {
-  const at = new Date(ms);
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-};
 
 /** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
 const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();

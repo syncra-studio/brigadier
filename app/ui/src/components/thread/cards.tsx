@@ -4,12 +4,13 @@ import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSqua
 import type { IconProps } from "../../icons";
 import type { ApprovalAction, Item, Progress, StepKind } from "../../thread/item";
 import type { PendingQuestion, QuestionItem } from "../composer/question";
-import { duration, useSecond } from "../../thread/words";
+import { duration, hhmm, useSecond } from "../../thread/words";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
+import { InfoTip, WithTip } from "./tip";
 import { ToolBox, VERBS } from "./tool";
 
 const WITHDRAWN = "withdrawn";
@@ -264,49 +265,25 @@ export function NoticeRow({ level, text, link }: { level: "info" | "warning" | "
 type Switch = Extract<Item, { kind: "switch" }>;
 const SWITCH_STATES = ["limit", "switching", "switched", "failed", "over"] as const;
 
-/** An ⓘ whose tooltip says the rest, on hover or focus. */
-function InfoTip({ text }: { text: string }) {
-  return (
-    // Centred on the capitals of the line it sits on.
-    <span className="ms-1.5 w-icon-sm cap-box">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span role="img" tabIndex={0} aria-label={text} className="flex rounded-control hover:text-foreground focus-visible:focus-ring">
-              <Info className="size-icon-sm" />
-            </span>
-          }
-        />
-        <TooltipContent>{text}</TooltipContent>
-      </Tooltip>
-    </span>
-  );
-}
-
-/** Words, then an ⓘ that never wraps onto a line alone: it holds to the last word. */
-function WithTip({ words, tip }: { words: string; tip: string }) {
-  const cut = words.lastIndexOf(" ") + 1;
-  return (
-    <span>
-      {words.slice(0, cut)}
-      <span className="whitespace-nowrap">
-        {words.slice(cut)}
-        <InfoTip text={tip} />
-      </span>
-    </span>
-  );
-}
-
 /** One state's line of a switch divider. */
 function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined): ReactNode {
   const to = change.model ? `${change.to} · ${change.model}` : (change.to ?? "");
   const refused = change.reason === "unresumable";
   const hit = refused ? `${from} couldn’t resume this conversation` : change.reason === "credits" ? `Out of credits on ${from}` : `Usage limit on ${from}`;
+  // When it comes back, as its CLI said; a reset already past, or none said, is "later" [D74, D379].
+  const back = change.reason !== "usage-limit" ? "" : change.resets && change.resets > Date.now() ? ` · try again at ${hhmm(change.resets)}` : " · try again later";
+  // At the limit it reads as a status that may wrap, its icon first (D487).
+  const status = (
+    <>
+      <Warning className="size-icon-sm shrink-0" />
+      <span>{hit + back}</span>
+    </>
+  );
   switch (state) {
     case "limit":
       return (
         <>
-          <span>{hit}</span>
+          {status}
           {actions}
         </>
       );
@@ -331,7 +308,7 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
         </>
       );
     case "over":
-      return <span>{hit}</span>;
+      return status;
   }
 }
 

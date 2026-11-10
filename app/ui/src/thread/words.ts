@@ -40,6 +40,12 @@ export function workWords(turn: Turn, work: Work | undefined, now: number): stri
 }
 
 /** 12s, 3m 4s, 1h 5m. */
+/** A clock time, "09:39". */
+export const hhmm = (ms: number) => {
+  const at = new Date(ms);
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+};
+
 export function duration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;

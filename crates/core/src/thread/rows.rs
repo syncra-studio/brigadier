@@ -200,7 +200,7 @@ impl Thread {
                 // `backend` and `account` name the side at its limit until a switch names both.
                 let at = self.add(json!({"kind": "switch", "state": "limit",
                     "reason": if item["credits"] == true { "credits" } else { super::reason(Some(kind)) }, "backend": backend, "account": account,
-                    "handoff": false, "automatic": false, "text": item["message"]}));
+                    "handoff": false, "automatic": false, "text": item["message"], "resets": item["resets"]}));
                 self.limit_row = Some(at);
             }
             "sign_in" => {
