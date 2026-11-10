@@ -266,8 +266,6 @@
   /* A scroll view's faded edges. */
   --spacing-fade-top: 2rem;
   --spacing-fade-bottom: 2rem;
-  /* The thread's top fade, under the top bar (the old theme's). */
-  --spacing-thread-fade-top: 1.25rem;
   /* An opened group's steps show this much, then scroll under a fade this tall (the old theme's). */
   --spacing-group-list: 14rem;
   --spacing-group-fade: 1.5rem;
@@ -1265,9 +1263,21 @@
   --edge-size-top: var(--spacing-group-fade);
   --edge-size-bottom: var(--spacing-group-fade);
 }
-/* The thread's own top fade, shorter than a scroll view's (the old app's). */
-@utility thread-fades {
-  --spacing-fade-top: var(--spacing-thread-fade-top);
+/* The thread's edges fade [D462]: 1rem at the top; at the bottom from 16px above the composer to 22px past it. */
+@utility thread-edge-mask {
+  mask-image: linear-gradient(to bottom, transparent 0, black 1rem, black calc(100% - var(--spacing) * 4), transparent calc(100% + var(--spacing) * 1.5));
+}
+/* While following at the very end with no space below, the browser keeps the view there as rows grow. */
+@utility end-snap {
+  &[data-end-snap] {
+    scroll-snap-type: block proximity;
+  }
+}
+@utility end-snap-target {
+  scroll-snap-align: end;
+  flex: none;
+  height: 1px;
+  margin-top: -1px;
 }
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
 @utility wash-line {

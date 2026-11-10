@@ -1,72 +1,43 @@
-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
+import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
 import { VList, type VListHandle } from "virtua";
 
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
-import { ScrollFade } from "../components/scroll-fade";
+import { Follow, OLDER, spaceStore, type Phase, type Space } from "./follow";
 import { cx } from "../components/cx";
 import { JumpSign, datedMessages } from "../components/thread/message";
 
 /** Where the session comes from: null while it loads. */
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
-/** `sent(id)`: this window sent the message under this row or command id, so it pins. */
+/** `sent(id)`: this window sent the message under this row or command id, so it gets the space below and the glide. */
 export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void; sent(id: string): void };
 
-/** How close to the end, in px, still counts as at the bottom. */
-const NEAR_END = 2;
-/** How long after the user's wheel, key or press a scroll still counts as theirs (smooth scrolling runs on). */
-const BY_HAND_MS = 500;
-/** After the last row: the working line, then space so the last row clears the bottom fade. */
+/** After the last row: the working line and the bubbles on their way, then the space, then room at the end. */
 const FOOTER = { type: "footer", id: "footer" } as const;
-
-/** The blank space (px) under a new message that its reply grows into, in its own store so only the spacer redraws. */
-function spaceStore() {
-  let value = 0;
-  const listeners = new Set<() => void>();
-  return {
-    get: () => value,
-    set(next: number) {
-      if (next === value) return;
-      value = next;
-      for (const listener of listeners) listener();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
-}
-type Space = ReturnType<typeof spaceStore>;
 
 /** The space itself: an empty svg as tall as it, since our code sets no inline styles (D68). */
 function Spacer({ space }: { space: Space }) {
   const height = useSyncExternalStore(space.subscribe, space.get);
-  return height > 0 ? <svg aria-hidden className="block" width="1" height={height} /> : null;
+  return <svg data-spacer aria-hidden className="block" width="1" height={height} />;
 }
 
 /**
- * The session's rows, virtualised, with groups and finished turns' work closed until opened; it follows the bottom
- * while the user is there. `footer` goes under the last row (the working line). A new user message moves near the
- * top with blank space below that its reply grows into; scrolling up gives that space up for good.
+ * The session's rows, virtualised, with groups and finished turns' work closed until opened. How it scrolls is
+ * follow.ts's: a message sent here glides up with space below that its reply grows into. `footer` goes
+ * under the last row; `id` is the session's, so a source still on another session draws nothing and each session
+ * opens where it was left.
  */
-export function Thread({ source, footer, ref }: { source: Source; footer?: ReactNode; ref?: Ref<ThreadHandle> }) {
-  const session = useSyncExternalStore(source.subscribe, source.get);
+export function Thread({ id, source, footer, ref }: { id?: string; source: Source; footer?: ReactNode; ref?: Ref<ThreadHandle> }) {
+  const got = useSyncExternalStore(source.subscribe, source.get);
+  const session = id === undefined || got?.id === id ? got : null;
   const list = useRef<VListHandle>(null);
   const box = useRef<HTMLDivElement>(null);
-  const stuck = useRef(true);
-  const scrolledTo = useRef(0);
-  // When the user last moved the list by hand (Infinity while a pointer is down): only that gives up a pin's space,
-  // never Virtua's own offset changes as rows arriving above get measured.
-  const byHand = useRef(-Infinity);
-  const hand = () => (byHand.current = Math.max(byHand.current, performance.now()));
   const [away, setAway] = useState(false);
   const [, redraw] = useReducer((count: number) => count + 1, 0);
   // Opened groups and work folds: view state only, gone with the view.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = useCallback((id: string) => {
-    // What the user opens stays where it is instead of the list following the bottom.
-    stuck.current = false;
     setOpen((was) => {
       const next = new Set(was);
       if (!next.delete(id)) next.add(id);
@@ -139,11 +110,12 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
   });
   const hasFooter = footer !== undefined && footer !== null && footer !== false;
   const data = useMemo(() => [...rows, FOOTER], [rows]);
-  const last = data.length - 1;
-  const current = useRef(data);
-  current.current = data;
 
-  // The newest user message: pinned near the top when a new one arrives, until its reply fills the view.
+  const running = turnList?.at(-1)?.status === "running";
+  // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
+  const tail = all.at(-1);
+  const phase: Phase = !running ? "idle" : tail?.type === "marks" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant") ? "answer" : "work";
+  // The newest user message: the latest turn's top, which its growth is measured from.
   const newest = useMemo(() => {
     for (let at = all.length - 1; at >= 0; at--) {
       const line = all[at]!;
@@ -151,219 +123,142 @@ export function Thread({ source, footer, ref }: { source: Source; footer?: React
     }
     return undefined;
   }, [all]);
+  const newestRef = useRef(newest);
+  newestRef.current = newest;
+  // A message sent here and not in the rows yet: its bubble is in the footer, so the footer is the turn's top.
+  const pending = useRef<string | null>(null);
+  if (pending.current && newest && [newest.id, newest.cid, newest.turnId].includes(pending.current)) pending.current = null;
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
   const space = useMemo(spaceStore, []);
-  const pin = useRef<{ id: string; released: boolean } | null>(null);
-  // A card waiting on the user brings its live row into view, unless they've scrolled by hand since sending.
-  const asking = session?.approvals?.[0]?.id ?? session?.questions?.[0]?.id;
-  const askingNow = useRef(asking);
-  askingNow.current = asking;
-  const sentAt = useRef(0);
-  const toCard = useCallback(() => {
-    if (!askingNow.current || pin.current || byHand.current >= sentAt.current) return;
-    stuck.current = true;
-    setAway(false);
-    list.current?.scrollToIndex(current.current.length - 1, { align: "end" });
-  }, []);
-  const fit = useCallback(() => {
-    const handle = list.current;
-    const viewport = box.current;
-    const pinned = pin.current;
-    // Older rows just arrived above: Virtua is still placing them (see the hold above), so wait for its scroll end.
-    if (!handle || !viewport || !pinned || held.current) return;
-    const lines = current.current;
-    let at = lines.length - 1;
-    while (at >= 0 && lines[at]!.id !== pinned.id) at--;
-    const end = viewport.querySelector<HTMLElement>("[data-footer]");
-    if (at < 0 || (pinned.released && !end)) {
-      pin.current = null;
-      space.set(0);
-      return;
-    }
-    if (pinned.released) {
-      // Where the rows end without the space: the footer's place plus its own content.
-      const bottom = handle.getItemOffset(lines.length - 1) + end!.offsetHeight - space.get();
-      // Given up: it only shrinks, to what is still on screen, so nothing moves.
-      const next = Math.min(space.get(), Math.max(0, Math.ceil(handle.scrollOffset + handle.viewportSize - bottom)));
-      space.set(next);
-      if (next === 0) pin.current = null;
-      return;
-    }
-    // The message's own top gap shows under the top fade.
-    const row = viewport.querySelector<HTMLElement>(`[data-item="${CSS.escape(pinned.id)}"]`);
-    const fade = viewport.querySelector<HTMLElement>('[data-slot="scroll-fade"]')?.offsetHeight ?? 0;
-    const lift = Math.max(0, fade - (row ? parseFloat(getComputedStyle(row).paddingTop) : 0));
-    // How far it is from its place, as drawn (a row above may have grown), else as Virtua places it.
-    const drift = row ? row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - lift : handle.getItemOffset(at) - lift - handle.scrollOffset;
-    const filled = () => {
-      // The bottom works as before, and what grows below is away.
-      pin.current = null;
-      space.set(0);
-      setAway(true);
-      toCard();
-    };
-    // Our own move isn't the user scrolling up.
-    const move = () => {
-      scrolledTo.current = handle.scrollOffset + drift;
-      handle.scrollBy(drift);
-    };
-    // What follows it runs past what is drawn: bring it up first (it came while the view was elsewhere); in place, it's filled.
-    if (!end) return Math.abs(drift) > 1 ? move() : filled();
-    // The message and what follows it, as drawn: Virtua's sizes for rows just added are only estimates.
-    let below = end.offsetHeight - space.get();
-    for (let line = at; line < lines.length - 1; line++) {
-      const drawn = viewport.querySelector<HTMLElement>(`[data-item="${CSS.escape(lines[line]!.id)}"]`);
-      below += drawn ? drawn.offsetHeight : handle.getItemSize(line);
-    }
-    const need = Math.max(0, Math.round(handle.viewportSize - lift - below));
-    if (need === 0) return filled();
-    space.set(need);
-    if (Math.abs(drift) > 1) move();
-  }, [space, toCard]);
-  const seen = useRef(newest);
-  const mine = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const before = seen.current;
-    seen.current = newest;
-    if (newest?.id === before?.id || before === undefined || newest === undefined) return;
-    // Only this window's send pins a message; inputs from elsewhere keep the current follow state.
-    if (mine.current !== newest.id && mine.current !== (newest.cid ?? newest.turnId)) return;
-    pin.current = { id: newest.id, released: false };
-    stuck.current = false;
-    setAway(false);
-    fit();
-  }, [newest, fit]);
+  const follow = useMemo(() => {
+    const made: Follow = new Follow(space, {
+      older: () => sourceRef.current.older?.(),
+      changed: () => setAway(made.shown()),
+      anchor: () => {
+        const user = newestRef.current;
+        if (pending.current || !user) return made.el?.querySelector("[data-footer]") ?? null;
+        return made.el?.querySelector(`[data-item="${CSS.escape(user.id)}"]`) ?? null;
+      },
+    });
+    return made;
+  }, [space]);
 
-  // Rows too few to scroll give no scroll to ask for older ones on: ask once they are drawn and measured.
+  // Rows too few to scroll give no scroll to ask for older ones on: ask until there is more than a little to scroll.
   const fill = () => {
-    const handle = list.current;
-    if (handle && handle.viewportSize > 0 && handle.scrollSize <= handle.viewportSize) source.older?.();
-  };
-  const toBottom = () => {
-    stuck.current = true;
-    setAway(false);
-    list.current?.scrollToIndex(last, { align: "end" });
+    const el = follow.el;
+    if (el && el.clientHeight > 0 && el.scrollHeight - el.clientHeight <= OLDER) source.older?.();
   };
   useImperativeHandle(ref, () => ({
-    toBottom,
+    toBottom: () => follow.jump(running),
     toIndex: (index) => {
-      stuck.current = false;
-      // A jump away gives a pin's space up, as scrolling up does.
-      if (pin.current) pin.current.released = true;
+      follow.away();
       list.current?.scrollToIndex(index, { align: "start" });
     },
     scrollBy: (offset) => {
-      hand();
+      follow.intend(offset < 0 ? "away" : "toward", true);
       list.current?.scrollBy(offset);
     },
-    sent: (id) => {
-      mine.current = id;
-      sentAt.current = performance.now();
+    sent: (cid) => {
+      pending.current = cid;
+      // Once the bubble is drawn in the footer.
+      requestAnimationFrame(() => follow.place());
     },
-  }), [last]);
+  }), [follow, running]);
 
+  // Before it is opened, so a running turn opens following its work or its answer.
+  useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
+  const listed = Boolean(session && (rows.length > 0 || hasFooter));
   useLayoutEffect(() => {
-    if (stuck.current) list.current?.scrollToIndex(last, { align: "end" });
-    else fit();
-    fill();
-  }, [data, last, fit]);
-  useLayoutEffect(toCard, [asking, toCard]);
-
-  // A growing last row or footer is measured after the effect above, and the viewport can shrink (window, composer),
-  // so follow the bottom again on any. Coming back to the bottom (away turns false) finds them remounted.
-  const lastId = rows.at(-1)?.id;
-  useEffect(() => {
-    const viewport = box.current;
-    if (!viewport) return;
+    const el = listed ? (box.current?.firstElementChild as HTMLElement | null) : null;
+    if (!el) return;
+    follow.el = el;
+    follow.open(id, running);
+    const on: [string, EventListener][] = [
+      ["wheel", follow.wheel as EventListener],
+      ["keydown", follow.key as EventListener],
+      ["pointerdown", follow.press as EventListener],
+      ["touchstart", follow.touchStart as EventListener],
+      ["touchmove", follow.touchMove as EventListener],
+      ["touchend", follow.touchEnd],
+    ];
+    for (const [type, listener] of on) el.addEventListener(type, listener, { passive: true });
+    // A wheel, touch, press or key stops the glide before anything else hears it.
+    const stops = ["wheel", "touchstart", "pointerdown", "keydown"];
+    for (const type of stops) el.addEventListener(type, follow.stopPlacing, { capture: true, passive: true });
+    // A scrollbar drag ends wherever the pointer is let go.
+    addEventListener("pointerup", follow.release);
+    addEventListener("pointercancel", follow.release);
     const observer = new ResizeObserver(() => {
-      if (stuck.current) list.current?.scrollToIndex(last, { align: "end" });
-      else fit();
+      follow.resized();
+      fill();
     });
-    observer.observe(viewport);
+    observer.observe(el);
     // Virtua's sized content: any row growing or shrinking.
-    const content = viewport.firstElementChild?.firstElementChild;
-    if (content) observer.observe(content);
-    const row = lastId && viewport.querySelector(`[data-item="${CSS.escape(lastId)}"]`);
-    if (row) observer.observe(row);
-    const end = viewport.querySelector("[data-footer]");
-    if (end) observer.observe(end);
-    return () => observer.disconnect();
-  }, [lastId, last, away, hasFooter, fit]);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => {
+      follow.leave(id);
+      for (const [type, listener] of on) el.removeEventListener(type, listener);
+      for (const type of stops) el.removeEventListener(type, follow.stopPlacing, { capture: true });
+      removeEventListener("pointerup", follow.release);
+      removeEventListener("pointercancel", follow.release);
+      observer.disconnect();
+      follow.el = null;
+    };
+    // Opened once per list: `running` is read as the list appears.
+  }, [follow, listed, id]);
+  // New rows: placed, followed or taken from the space before the paint.
+  useLayoutEffect(() => {
+    follow.resized();
+    fill();
+  }, [follow, data]);
 
   // Words here would flash on every open; the column stays empty for the moment it takes.
-  if (!session) return <span role="status" className="sr-only">Loading conversation</span>;
-  if (rows.length === 0) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
+  if (!listed && !session) return <span role="status" className="sr-only">Loading conversation</span>;
+  if (!listed) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
   return (
-    <div
-      ref={box}
-      // The old app's thread type: 14px, smoothed; and its shorter top fade.
-      className="thread-fades relative h-full text-sm antialiased"
-      // Anything the user opens in a row (a code block's "Show more" too) stays where it is instead of following the bottom.
-      onClickCapture={(event) => {
-        if ((event.target as Element).closest("[aria-expanded]")) stuck.current = false;
-      }}
-      onWheel={(event) => event.deltaY < 0 && hand()}
-      onKeyDown={hand}
-      onPointerDown={() => {
-        // A scrollbar drag lasts as long as the press, wherever it ends.
-        byHand.current = Infinity;
-        addEventListener("pointerup", () => (byHand.current = performance.now()), { once: true });
-      }}
-    >
+    // The old app's thread type: 14px, smoothed.
+    <div ref={box} className="relative h-full text-sm antialiased">
       <VList
         ref={list}
         data={data}
         shift={shift}
         bufferSize={3200}
-        className="scroll-gutter-both h-full"
+        // Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
+        className="scroll-gutter-both thread-edge-mask end-snap h-full overscroll-y-contain"
         onScrollEnd={letGo}
-        onResize={fill}
-        onScroll={(offset) => {
+        onScroll={() => {
           scrolled.current++;
-          const handle = list.current;
-          if (!handle) return;
-          const end = handle.scrollSize - offset - handle.viewportSize <= NEAR_END;
-          const byUser = performance.now() - byHand.current < BY_HAND_MS;
-          // Scrolled up past a pinned message: its space is given up.
-          if (pin.current && offset < scrolledTo.current - 1 && byUser) pin.current.released = true;
-          scrolledTo.current = offset;
-          if (pin.current) fit();
-          // The blank space under a pinned message isn't a bottom to follow.
-          // Measurements and viewport resizes can move the offset before the end is followed again.
-          if (end || byUser) stuck.current = end && space.get() === 0;
-          // A pinned message's space is the latest, wherever our own moves pass on the way.
-          setAway(!stuck.current && !end && pin.current?.released !== false);
-          // Near the top, the source brings older rows, if it has any.
-          if (offset < handle.viewportSize) source.older?.();
+          follow.scroll();
         }}
       >
         {(line: Line | typeof FOOTER) =>
           line.type === "footer" ? (
-            <div key={FOOTER.id} data-footer className="mx-auto w-full max-w-reading px-6 pb-8">
-              {hasFooter && <div className="pt-4 empty:hidden">{footer}</div>}
-              <Spacer space={space} />
+            <div key={FOOTER.id} data-footer>
+              <div className="mx-auto w-full max-w-reading px-6 pb-8">
+                {hasFooter && <div className="pt-4 empty:hidden">{footer}</div>}
+                <Spacer space={space} />
+              </div>
+              <div data-end aria-hidden className="end-snap-target" />
             </div>
           ) : (
             <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />
           )
         }
       </VList>
-      {/* Over the scroller, not in it: rows fade out under the top bar and at the bottom edge. */}
-      <ScrollFade edge="top" />
-      {/* Raised over the jump button while it shows, so no text runs under it. */}
-      <ScrollFade edge="bottom" raised={away} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button
         type="button"
         aria-label="Jump to the latest"
         aria-hidden={!away || undefined}
         tabIndex={away ? undefined : -1}
-        onClick={away ? toBottom : undefined}
+        onClick={away ? () => follow.jump(running) : undefined}
         className={cx(
           "group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md -translate-x-1/2 cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground transition-opacity focus-visible:focus-ring motion-reduce:transition-none",
           !away && "pointer-events-none opacity-0",
         )}
       >
-        <JumpSign running={turnList?.at(-1)?.status === "running"} />
+        <JumpSign running={running} />
       </button>
     </div>
   );
