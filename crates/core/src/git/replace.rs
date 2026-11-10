@@ -111,12 +111,7 @@ pub fn replace(
         discard(&staged);
         return Err(e);
     }
-    let forget = || {
-        let _ = fs::remove_file(record);
-        // A project's folder holds nothing else.
-        let _ = record.parent().map(fs::remove_dir);
-    };
-    let kept = |file: &Staged| keep_aside(file, keep);
+    let kept = |file: &Staged, copy: &Path| keep_copy(copy, &file.full, keep);
     let mut placed = 0;
     for file in &staged {
         let Err((reason, moved)) = place(file) else {
@@ -134,12 +129,13 @@ pub fn replace(
         }
         skipped.push(skip(&file.path, reason));
         discard(&staged);
-        forget();
+        // Whatever couldn't be put back stays recorded, to try again.
+        super::recover::settle(record);
         return Ok(outcome(0, 0, skipped, unrestored));
     }
     // All in: a crash now only leaves old copies, never a run half undone. Unrecorded, it leaves them.
     if note(true).is_err() {
-        forget();
+        let _ = fs::remove_file(record);
     }
     for file in &staged {
         // A writer that had the file open before it moved aside wrote into the old copy: kept.
@@ -147,12 +143,15 @@ pub fn replace(
             true => drop(fs::remove_file(&file.aside)),
             false => {
                 let why = "it was written while it was replaced; that save is in";
-                unrestored.push(skip(&file.path, format!("{why} {}", kept(file).display())));
+                unrestored.push(skip(
+                    &file.path,
+                    format!("{why} {}", kept(file, &file.aside).display()),
+                ));
             }
         }
         let _ = fs::remove_file(&file.temp);
     }
-    forget();
+    super::recover::settle(record);
     let matches = staged.iter().map(|f| f.matches).sum();
     Ok(outcome(staged.len() as u64, matches, skipped, unrestored))
 }
@@ -290,7 +289,7 @@ fn place(file: &Staged) -> Result<(), (String, bool)> {
 /// Undoes a `place` that failed after moving the file aside. Nothing in its place now is this
 /// write's: the file from before goes back only where nothing is. Where a newer save took its
 /// place, that stays; the text from before goes too when it's just what was checked.
-fn undo_place(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+fn undo_place(file: &Staged, kept: &impl Fn(&Staged, &Path) -> PathBuf) -> Result<(), String> {
     let Err(undo) = restore(file, kept) else {
         return Ok(());
     };
@@ -306,15 +305,19 @@ fn undo_place(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), S
 /// before comes back. What's in its place is moved off first and checked there, so a save that
 /// lands meanwhile is never deleted: when something else is in its place, both stay, and the
 /// reason says where the text from before is.
-pub(super) fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+pub(super) fn put_back(
+    file: &Staged,
+    kept: &impl Fn(&Staged, &Path) -> PathBuf,
+) -> Result<(), String> {
     let changed = || {
         format!(
             "it changed while the files were being replaced; its text from before is in {}",
-            kept(file).display()
+            kept(file, &file.aside).display()
         )
     };
     let off = &file.undone;
-    match fs::rename(&file.full, off) {
+    // Exclusive: a save a rollback cut short left there is never written over.
+    match rename_into(&file.full, off) {
         Ok(()) if fs::read(off).is_ok_and(|bytes| hash(&bytes) == file.new_hash) => {
             let _ = fs::remove_file(off);
         }
@@ -322,7 +325,10 @@ pub(super) fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Res
         Ok(()) => {
             return Err(match rename_into(off, &file.full) {
                 Ok(()) => changed(),
-                Err(_) => format!("{}; a newer save of it is in {}", changed(), off.display()),
+                Err(_) => {
+                    let off = kept(file, off);
+                    format!("{}; a newer save of it is in {}", changed(), off.display())
+                }
             });
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -332,13 +338,13 @@ pub(super) fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Res
 }
 
 /// Moves a file moved aside back into its place, refusing anything that took the place.
-fn restore(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+fn restore(file: &Staged, kept: &impl Fn(&Staged, &Path) -> PathBuf) -> Result<(), String> {
     let restored = match file.hard_links {
         true => fs::hard_link(&file.aside, &file.full).and_then(|()| fs::remove_file(&file.aside)),
         false => rename_into(&file.aside, &file.full),
     };
     restored.map_err(|e| {
-        let kept = kept(file);
+        let kept = kept(file, &file.aside);
         format!(
             "couldn't undo it ({e}); its text from before is in {}",
             kept.display()
@@ -346,15 +352,10 @@ fn restore(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), Stri
     })
 }
 
-/// Where a file's text from before stays when it can't go back: moved into `keep` (the session's
+/// Where a copy of the file at `of` stays when it can't go back: moved into `keep` (the session's
 /// folder, so delete takes it [D35]), else beside it.
 // shortcut: when the session's own folder can't take the copy, it stays beside the file, named in
 // the reason but recorded nowhere, as no record could be written there either.
-pub(super) fn keep_aside(file: &Staged, keep: Option<&Path>) -> PathBuf {
-    keep_copy(&file.aside, &file.full, keep)
-}
-
-/// The same for any copy of the file at `of`.
 pub(super) fn keep_copy(copy: &Path, of: &Path, keep: Option<&Path>) -> PathBuf {
     let Some(keep) = keep else {
         return copy.to_path_buf();

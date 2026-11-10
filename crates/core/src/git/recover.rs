@@ -1,6 +1,6 @@
 //! Replace all's record of a run under way, and putting right a run cut short [D1173].
 
-use super::replace::{Staged, keep_aside, keep_copy, put_back, rename_into};
+use super::replace::{Staged, keep_copy, put_back, rename_into};
 use super::search::hash;
 use super::{Checkout, Target, lock};
 use serde::{Deserialize, Serialize};
@@ -84,11 +84,11 @@ pub(super) fn settle(path: &Path) -> bool {
     };
     for file in &run.files {
         // Kept away only where its place holds something: a file still missing keeps its copy beside it.
-        let kept = |f: &Staged| match fs::symlink_metadata(&f.full).is_ok() {
-            true => keep_aside(f, run.keep.as_deref()),
-            false => f.aside.clone(),
+        let kept = |f: &Staged, copy: &Path| match fs::symlink_metadata(&f.full).is_ok() {
+            true => keep_copy(copy, &f.full, run.keep.as_deref()),
+            false => copy.to_path_buf(),
         };
-        if let Err(why) = recover(file, run.placed, run.keep.as_deref(), &kept) {
+        if let Err(why) = recover(file, run.placed, &kept) {
             eprintln!("brigadier: replace {}: {why}", file.full.display());
         }
     }
@@ -117,8 +117,7 @@ pub(super) fn settle(path: &Path) -> bool {
 fn recover(
     file: &Staged,
     placed: bool,
-    keep: Option<&Path>,
-    kept: &impl Fn(&Staged) -> PathBuf,
+    kept: &impl Fn(&Staged, &Path) -> PathBuf,
 ) -> Result<(), String> {
     let _ = fs::remove_file(&file.temp);
     // A rollback cut short while it checked what was in the file's place: that comes back first.
@@ -128,7 +127,7 @@ fn recover(
             let _ = fs::remove_file(&file.undone);
         } else if rename_into(&file.undone, &file.full).is_err() {
             // Yet another save took the place: this one goes where the session's delete takes it.
-            let undone = keep_copy(&file.undone, &file.full, keep);
+            let undone = kept(file, &file.undone);
             newer = Some(format!("a newer save of it is in {}", undone.display()));
         }
     }
@@ -140,7 +139,11 @@ fn recover(
 }
 
 /// The file's copy from before: back in its place, or gone once its rewrite is in.
-fn aside(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+fn aside(
+    file: &Staged,
+    placed: bool,
+    kept: &impl Fn(&Staged, &Path) -> PathBuf,
+) -> Result<(), String> {
     if fs::symlink_metadata(&file.aside).is_err() {
         return Ok(());
     }
@@ -154,7 +157,7 @@ fn aside(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Res
         }
         false => Err(format!(
             "it was written while it was replaced; that save is in {}",
-            kept(file).display()
+            kept(file, &file.aside).display()
         )),
     }
 }
