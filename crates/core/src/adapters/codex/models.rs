@@ -169,5 +169,12 @@ fn info(m: &Value) -> ModelInfo {
             .filter_map(|e| e["reasoningEffort"].as_str().map(String::from))
             .collect(),
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
+        // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
+        retiring: m["upgradeInfo"].as_object().map(|u| {
+            let at = u.get("retirementAt").and_then(Value::as_u64);
+            // A Unix time, in seconds unless it's already as large as milliseconds.
+            let at = at.map(|t| if t < 100_000_000_000 { t * 1000 } else { t });
+            json!({"at": at, "to": u.get("model")})
+        }),
     }
 }

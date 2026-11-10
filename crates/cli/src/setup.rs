@@ -260,7 +260,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["models"] = c
                     .models
                     .into_iter()
-                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring}))
                     .collect();
             }
             Err(e) => out["error"] = e.trim().into(),

@@ -59,6 +59,8 @@ impl Adapter for Fake {
                     ModelInfo {
                         id: "fake-large".into(),
                         name: "fake-large".into(),
+                        // Retiring with no date, for the notice's demo [D487].
+                        retiring: Some(json!({"at": null, "to": "fake"})),
                         ..level(&["low", "medium", "high", "xhigh"], "high")
                     },
                 ]

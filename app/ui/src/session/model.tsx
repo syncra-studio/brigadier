@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ErrorLine } from "../components/error-line";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
@@ -23,15 +23,28 @@ type Rust = { provider: string; label: string; mark: string | null; unavailable:
 export const asGroups = (groups: Rust[]): ModelGroup[] =>
   groups.map((group) => ({ ...group, models: group.models.map(({ default_effort, ...model }) => ({ ...model, defaultEffort: default_effort ?? undefined })) }));
 
+/** Opens a session's model picker: a notice's "Choose another model" (D487). */
+export const askModel = new EventTarget();
+
+/** The session's model, by name, and what its CLI says of its retiring, for the rail (D487); none when it says nothing. */
+export type Retiring = { name: string; at: number | null; to: string | null };
+const retiring = new Map<string, Retiring>();
+const told = new EventTarget();
+export const useRetiring = (id: string): Retiring | undefined =>
+  useSyncExternalStore(
+    (listener) => {
+      told.addEventListener("change", listener);
+      return () => told.removeEventListener("change", listener);
+    },
+    () => retiring.get(id),
+  );
+
 /**
  * The session's model pill [D129, D190]: the list from each agent's last check at once, then fresh [D128]. A pick shows
  * at once as pending and goes to Rust with its op id; the row's `setup_op` reaching that id settles it, and a refusal
  * puts the last value back with Rust's words [D30, D40]. Another agent's model asks "Switch to {name}?" first, and the
  * next message goes to it [D90]. Offline it can't be opened.
  */
-/** Opens a session's model picker: a notice's "Choose another model" (D487). */
-export const askModel = new EventTarget();
-
 export function SessionModel({ id, row, offline }: { id: string; row: ModelRow | undefined; offline: boolean }) {
   const [chooseAsked, setChooseAsked] = useState(0);
   useEffect(() => {
@@ -75,6 +88,18 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
       ? { provider: row.backend, model: row.model, effort: row.effort ?? null }
       : null;
   const value = pending?.choice ?? shown;
+
+  // What the list says of the model it runs, for the rail; another of its models names the suggested one.
+  const models = groups?.find((group) => group.provider === shown?.provider)?.models;
+  const current = models?.find((model) => model.id === shown?.model);
+  const named = current?.retiring ? { name: current.name, at: current.retiring.at, to: models?.find((model) => model.id === current.retiring?.to)?.name ?? current.retiring.to } : undefined;
+  useEffect(() => {
+    const was = retiring.get(id);
+    if (was?.name === named?.name && was?.at === named?.at && was?.to === named?.to) return;
+    if (named) retiring.set(id, named);
+    else retiring.delete(id);
+    told.dispatchEvent(new Event("change"));
+  });
 
   const change = (choice: ModelChoice) => {
     const op = newId();

@@ -4,7 +4,7 @@ import { Button } from "../components/button";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
 import type { RailNotice, SetupStep } from "../thread/item";
-import { askModel } from "./model";
+import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
 
 /** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. */
@@ -41,6 +41,21 @@ function said(notice: RailNotice): Notice {
   }
 }
 
+/** "A retires on 12 Dec." with what it suggests, never a move it hasn't said it makes [D74]. */
+function retiringNotice({ name, at, to }: Retiring): Notice {
+  const when = at === null ? `${name} is being retired.` : at > Date.now() ? `${name} retires on ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.` : `${name} was retired.`;
+  return {
+    id: "retiring",
+    level: "info",
+    text: to ? `${when} ${to} is suggested instead.` : `${when} Pick another model to keep going.`,
+    action: (
+      <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => askModel.dispatchEvent(new Event("ask"))}>
+        Choose another model
+      </Button>
+    ),
+  };
+}
+
 const STEP: Record<SetupStep["kind"], string> = { worktree: "the worktree", setupScript: "the setup script", cli: "the agent's install" };
 
 /**
@@ -52,7 +67,9 @@ export function SessionNotices({ id, offline, source }: { id: string; offline: b
   const thread = useThread();
   const session = useSyncExternalStore(source.subscribe, source.get);
   const [gone, setGone] = useState<ReadonlySet<Key>>(new Set());
-  const notices: Notice[] = session?.id === id ? (session.notices ?? []).map(said) : [];
+  const retiring = useRetiring(id);
+  const notices: Notice[] = retiring ? [retiringNotice(retiring)] : [];
+  if (session?.id === id) notices.push(...(session.notices ?? []).map(said));
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });
   if (thread?.id === id && thread.status === "error") {

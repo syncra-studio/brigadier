@@ -157,6 +157,9 @@ pub struct ModelInfo {
     pub local: bool,
     pub efforts: Vec<String>,
     pub default_effort: Option<String>,
+    /// Being retired, where its CLI's list says so [D487]: `{at, to}`, when (ms) and the model it
+    /// suggests instead, each null where not said. None for a model nothing says of [D74].
+    pub retiring: Option<Value>,
 }
 
 impl ModelInfo {

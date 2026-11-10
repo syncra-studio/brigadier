@@ -12,7 +12,14 @@ import { fuzzyMatch, MatchedText } from "./menus";
 import { STILL } from "./pickers";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
-export type Model = { id: string; name: string; efforts: string[]; defaultEffort?: string };
+export type Model = {
+  id: string;
+  name: string;
+  efforts: string[];
+  defaultEffort?: string;
+  /** Being retired, as its CLI's list says: when (ms) and the model it suggests instead, each null where not said. */
+  retiring?: { at: number | null; to: string | null } | null;
+};
 
 /**
  * An agent's models, under its name and mark (one SVG from its adapter, as onboarding draws it). `unavailable`: its CLI
