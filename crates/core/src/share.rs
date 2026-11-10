@@ -31,6 +31,18 @@ pub fn others(data: &Path, spec: &Spec) -> Vec<Spec> {
     in_folder(data, Path::new(&spec.cwd), Some(&spec.id))
 }
 
+/// The session whose record holds `spec`'s folder as its worktree: its own, or another user's
+/// [D263, D1080]. None in a Local checkout.
+pub fn holder(data: &Path, spec: &Spec) -> Option<Spec> {
+    if worktrees::made(&spec.dir) {
+        return Some(spec.clone());
+    }
+    let folder = key(Path::new(&spec.cwd));
+    others(data, spec).into_iter().find(|o| {
+        worktrees::made(&o.dir) && worktrees::folder(&o.dir).is_some_and(|f| key(&f) == folder)
+    })
+}
+
 /// The first session of a line of "here" forks; a session in no line is its own.
 pub fn root(spec: &Spec) -> String {
     fork::record(&spec.dir)
@@ -85,17 +97,13 @@ pub fn guard(
     Ok(Some(lock))
 }
 
-/// Refuses a landing (merge into base, a pull request) by anyone but the folder's owner [D1082].
-pub fn lands(data: &Path, spec: &Spec) -> io::Result<()> {
-    let others = others(data, spec);
-    let owner = owner(spec, &others);
-    if owner.id == spec.id {
-        return Ok(());
-    }
-    Err(io::Error::other(format!(
-        "Landing stays with {} while it's there.",
-        title(owner)
-    )))
+/// Who lands session `id`'s work instead of it (merge into base, a pull request): the folder's
+/// owner's name where that's another session, else None [D1082]. One that can't be read lands its own.
+pub fn lands(data: &Path, id: &str) -> Option<String> {
+    let spec = load(data, id).ok()?;
+    let others = others(data, &spec);
+    let owner = owner(&spec, &others);
+    (owner.id != spec.id).then(|| title(owner))
 }
 
 /// What Source shows of the sharing, by session id; the UI writes the words [D65, D1082]:

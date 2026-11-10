@@ -15,8 +15,12 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = brigadier_core::load(data, id)?;
     // Landing is the folder owner's alone; all of these wait for no other session's turn [D1082].
-    if matches!(arg(args, 2)?, "link" | "create") {
-        brigadier_core::share::lands(data, &spec)?;
+    if matches!(arg(args, 2)?, "link" | "create")
+        && let Some(owner) = brigadier_core::share::lands(data, id)
+    {
+        return Err(io::Error::other(format!(
+            "Landing stays with {owner} while it's there."
+        )));
     }
     let pr = host::pr(data, id)?;
     let _shared = match arg(args, 2)? {

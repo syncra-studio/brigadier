@@ -16,9 +16,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     check_id(cid)?;
     settled(data, &spec)?;
+    let live =
+        |s: &Spec, f: &fold::Fold| fold::live(f, owner::state(data, &s.id), data, &procs::all());
     if has(args, "--preview") {
         let f = core::fold(&spec.dir, true)?.fold;
-        return Ok(core::rewind::preview(data, &spec, &f, cid));
+        return Ok(core::rewind::preview(data, &spec, &f, cid, &live));
     }
     let op = flag(args, "--op").ok_or_else(|| io::Error::other(crate::USAGE))?;
     check_id(op)?;
@@ -29,7 +31,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             "message": "Messages are waiting to send. Send or remove them first."}));
     }
     let call = |req| owner::call(data, id, req);
-    let live = |f: &fold::Fold| fold::live(f, owner::state(data, id), data, &procs::all());
     let restore = has(args, "--restore");
     core::rewind::apply(data, &spec, op, cid, restore, &call, &live)
 }

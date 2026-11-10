@@ -2,21 +2,25 @@
 //! back [D1078, D1089], and what their turns changed, for Source [D1082].
 
 use super::snap::Store;
-use crate::Spec;
-use crate::fold::Boundary;
+use crate::fold::{Boundary, Fold, Live};
+use crate::{Spec, session};
 use brigadier_frames::log::now_ms;
 use std::collections::BTreeSet;
 use std::path::Path;
 
 /// Why the folder can't go back because another session works in it, archived ones too [D1078,
-/// D1089]: one with a turn open now (`busy`), or one whose turn ran during any of `turns`
+/// D1089]: one with a turn or background work running now (`busy`), or one whose turn ran during any of `turns`
 /// (`overlap`), with its id. Its turn runs from its first capture to its end's, else to its next
 /// record's or now; a time missing, from before this rule, overlaps. Read under the checkout lock.
+/// Reads a session's host and its background work [D172].
+pub(super) type Lives<'a> = &'a dyn Fn(&Spec, &Fold) -> Live;
+
 pub(super) fn sharer(
     data: &Path,
     spec: &Spec,
     store: &Store,
     turns: &[Boundary],
+    live: Lives,
 ) -> Option<(&'static str, String)> {
     let now = now_ms();
     let mine: Vec<Option<(u64, u64)>> = (turns.iter())
@@ -27,7 +31,9 @@ pub(super) fn sharer(
         })
         .collect();
     for other in crate::share::others(data, spec) {
-        if crate::fold(&other.dir, true).is_ok_and(|f| !f.fold.turns.is_empty()) {
+        if crate::fold(&other.dir, true)
+            .is_ok_and(|f| session::busy(&f.fold, &live(&other, &f.fold)))
+        {
             return Some(("busy", other.id));
         }
         let theirs = Store::of(&other).map(|s| s.records()).unwrap_or_default();

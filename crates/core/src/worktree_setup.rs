@@ -26,10 +26,17 @@ pub fn setup_launch(item: &serde_json::Value) -> bool {
 /// stop the agent (proposed). A script started before and never ended was interrupted: it's
 /// recorded so and not run again.
 pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
-    // Runs in the worktree its record holds, its own or one handed on to it [D263, D1080].
-    let worktree = crate::worktrees::folder(&spec.dir).unwrap_or(spec.dir.join("worktree"));
-    let (started, exit) = (spec.dir.join("setup.started"), spec.dir.join("setup.exit"));
-    if !crate::worktrees::made(&spec.dir) || exit.exists() {
+    // Once per worktree, recorded with whoever holds it: a "here" fork's runs its holder's, in
+    // the worktree that record names [D263, D1080].
+    // shortcut: two sharers' first launches at once after a restore may mark the other's run
+    // interrupted; give setup its own lock if that shows up.
+    let Some(holder) = crate::share::holder(data, spec) else {
+        return argv;
+    };
+    let dir = &holder.dir;
+    let worktree = crate::worktrees::folder(dir).unwrap_or(dir.join("worktree"));
+    let (started, exit) = (dir.join("setup.started"), dir.join("setup.exit"));
+    if exit.exists() {
         return argv;
     }
     if started.exists() {
@@ -46,7 +53,7 @@ pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
     if script.trim().is_empty() {
         return argv;
     }
-    let path = |name: &str| spec.dir.join(name).display().to_string();
+    let path = |name: &str| dir.join(name).display().to_string();
     // The script stays an argument; each tail update replaces its capped output atomically.
     let line = r#"if (set -C; : >"$2") 2>/dev/null; then
     : >"$3.raw"

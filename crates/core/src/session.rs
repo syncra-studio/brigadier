@@ -203,7 +203,15 @@ pub fn stays(spec: &Spec) -> Option<String> {
 /// handover [D35]. Only users left archived: it's freed, as the last archive would [D180].
 fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
     let (others, _held) = sharers(spec)?;
-    if others.is_empty() || !worktrees::made(&spec.dir) {
+    if others.is_empty() {
+        return Ok(false);
+    }
+    let archived = others.iter().all(|o| o.dir.join(ARCHIVED).exists());
+    // A user with no record leaving only archived ones: the holder's worktree is freed [D180].
+    if !worktrees::made(&spec.dir) {
+        if archived {
+            worktrees::free(&holder(spec, &others))?;
+        }
         return Ok(false);
     }
     let deleting = |o: &Spec| self::intent(&o.dir).is_some_and(|i| i["op"] == "delete");
@@ -220,7 +228,7 @@ fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
         .into();
     record(&spec.dir, intent)?;
     worktrees::handover(&spec.dir, &heir.dir)?;
-    if others.iter().all(|o| o.dir.join(ARCHIVED).exists()) {
+    if archived {
         worktrees::free(&heir.dir)?;
     }
     Ok(true)
@@ -326,6 +334,16 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         "kept_branches": kept_branches})
 }
 
+/// Rolls back a restore cut short: its worktree is freed again, unless another session still
+/// works there unarchived [D1080].
+fn undo_restore(spec: &Spec) -> io::Result<()> {
+    let (others, _held) = sharers(spec)?;
+    if others.iter().any(|o| !o.dir.join(ARCHIVED).exists()) {
+        return Ok(());
+    }
+    worktrees::free(&holder(spec, &others))
+}
+
 /// The session's folder goes; one still holding a worktree another uses keeps only that, its
 /// record last, so a crash leaves it a session that deletes again [D35, D1080].
 fn remove(dir: &Path) -> io::Result<()> {
@@ -359,8 +377,8 @@ pub fn sweep(data: &Path) {
                 }
             }
             Some("restore") => {
-                if let Ok(_one) = worktrees::lock(&dir)
-                    && worktrees::free(&dir).is_ok()
+                if let (Ok(_one), Ok(spec)) = (worktrees::lock(&dir), crate::load(data, &id))
+                    && undo_restore(&spec).is_ok()
                 {
                     let _ = clear(&dir, INTENT);
                 }

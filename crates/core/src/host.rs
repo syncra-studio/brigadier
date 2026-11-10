@@ -175,7 +175,9 @@ pub struct Pr {
 /// The session's PR facts, from Rust's records and git, never from the client.
 pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let checkout = git::checkout(data, &Target::Session(id))?;
-    let Some(base) = worktrees::base(&session_dir(data, id)) else {
+    // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
+    let holder = crate::share::holder(data, &crate::load(data, id)?);
+    let Some(base) = worktrees::base(&holder.map_or(session_dir(data, id), |h| h.dir)) else {
         return err("This session has no base to open a PR into.");
     };
     let never = AtomicBool::new(false);

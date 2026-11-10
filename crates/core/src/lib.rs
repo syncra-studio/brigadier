@@ -143,6 +143,12 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 pub fn create(data: &Path, spec: &Spec) -> io::Result<Spec> {
     check_id(&spec.id)?;
     let dir = session_dir(data, &spec.id);
+    // A deleted session's folder still holding a worktree another uses keeps its id [D1080].
+    if dir.join(worktrees::RETAINED).exists() {
+        return Err(io::Error::other(
+            "That id still holds a folder another session uses.",
+        ));
+    }
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)

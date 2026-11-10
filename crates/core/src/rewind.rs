@@ -18,8 +18,8 @@ pub use fork::{end_of, now_of, write_shot};
 use plan::{Files, plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use shared::sharer;
 pub use shared::turn_paths;
+use shared::{Lives, sharer};
 pub use snap::Shot;
 use snap::{Record, Store};
 use std::collections::BTreeSet;
@@ -118,21 +118,21 @@ pub(crate) fn checkout_lock(data: &Path, exclusive: bool) -> io::Result<File> {
 
 type Why = (&'static str, Option<String>);
 
-fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Result<Files, Why> {
+fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Result<Files, Why> {
     let store = Store::of(spec).ok_or(("no_project", None))?;
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    if let Some((why, with)) = sharer(data, spec, &store, &turns) {
+    if let Some((why, with)) = sharer(data, spec, &store, &turns, live) {
         return Err((why, Some(with)));
     }
     plan(&store, &turns).map_err(|why| (why, None))
 }
 
 /// What the confirmation shows: whether the folder can go back, and what it would and wouldn't do.
-pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Value {
+pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Value {
     if !f.points().iter().any(|p| p == cid) {
         return refused("gone", "This message can't be rewound to any more.");
     }
-    match plan_for(data, spec, f, cid) {
+    match plan_for(data, spec, f, cid, live) {
         Ok(p) => json!({"ok": true, "restore": true, "paths": p.paths, "hand": p.hand,
             "leftOut": p.left_out, "commits": p.commits}),
         Err((why, with)) => json!({"ok": true, "restore": false, "why": why, "with": with}),
@@ -298,7 +298,8 @@ fn rolled_back(spec: &Spec, op: &Op, why: String) -> Value {
 }
 
 /// Rewinds to `cid`, fenced from the eligibility check to the end: the caller holds the queue's
-/// lock and has seen it empty; `live` reads the session's host and its background work.
+/// lock and has seen it empty; `live` reads a session's host and its background work, this one's
+/// and any other's in its folder [D1078].
 pub fn apply(
     data: &Path,
     spec: &Spec,
@@ -306,7 +307,7 @@ pub fn apply(
     cid: &str,
     restore: bool,
     call: Call,
-    live: &dyn Fn(&Fold) -> Live,
+    live: &dyn Fn(&Spec, &Fold) -> Live,
 ) -> io::Result<Value> {
     let (fence, mut checkout) = session::fence(data, spec)?;
     let _fence = fence;
@@ -328,14 +329,14 @@ fn run(
     cid: &str,
     restore: bool,
     call: Call,
-    live: &dyn Fn(&Fold) -> Live,
+    live: &dyn Fn(&Spec, &Fold) -> Live,
 ) -> Result<Value, Value> {
     let mut host = ping(call)?;
     let mut f = folded(spec)?;
     if f.rewinds.contains(op) {
         return Ok(json!({"ok": true, "op": op, "already": true}));
     }
-    gate(&f, &live(&f), &host, cid)?;
+    gate(&f, &live(spec, &f), &host, cid)?;
     // An idle child still holds the old conversation in memory.
     if host["child"].is_number() {
         let by = json!({"op": "stop", "by": "rewind"});
@@ -352,13 +353,13 @@ fn run(
             thread::sleep(Duration::from_millis(50));
         }
         f = folded(spec)?;
-        gate(&f, &live(&f), &host, cid)?;
+        gate(&f, &live(spec, &f), &host, cid)?;
     }
     let (kept, mut turns) = f
         .range(cid)
         .ok_or_else(|| refused("gone", "This message can't be rewound to any more."))?;
     let files = if restore {
-        let p = plan_for(data, spec, &f, cid).map_err(|(why, with)| {
+        let p = plan_for(data, spec, &f, cid, live).map_err(|(why, with)| {
             let named = with.and_then(|id| crate::load(data, &id).ok());
             refused(
                 "no_restore",
