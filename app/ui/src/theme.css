@@ -23,6 +23,9 @@
   --color-success: oklch(0.765 0.15 155);
   --color-border: oklch(0.985 0.002 106 / 10%);
   --color-divider: oklch(0.985 0.002 106 / 8%);
+  /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
+  --color-find-match: oklch(0.86 0.17 95 / 38%);
+  --color-find-match-active: oklch(0.66 0.18 50 / 85%);
   --color-input: oklch(0.985 0.002 106 / 15%);
   --color-ring: oklch(0.556 0.004 106);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
@@ -228,6 +231,13 @@
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
+  /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
+     room under it; a folded code block's 10 lines, drawn whole but cut there while it searches (the old app's). */
+  --spacing-find-row: 2.75rem;
+  --spacing-thread-find: 24rem;
+  --container-thread-find-max: 70vw;
+  --spacing-thread-find-top: calc(var(--spacing-find-row) + 1.5rem);
+  --spacing-code-folded: 10lh;
   /* A menu's least width, and a select's longest list and widest menu. */
   --spacing-menu: 8rem;
   --spacing-select: 24rem;
@@ -328,6 +338,7 @@
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   --shadow-overlay: 0 12px 32px oklch(0 0 0 / 35%);
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
+  --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
   /* A dialog card's hairline edges (light inside, dark outside) and soft shadow (D46). */
   --shadow-material:
@@ -572,6 +583,16 @@
 @utility user-message-cut {
   max-height: attr(data-cut px, var(--spacing-user-message));
   overflow-y: clip;
+}
+
+/* WebKit marks only selectable text, and moves a mark on other text onto the next selectable text: the thread's text
+   is selectable while find marks it. Text in a button never is, so the button holding the match gone to is ringed. */
+[data-thread-finding] * {
+  user-select: text !important;
+}
+[data-thread-find-active] {
+  outline: 2px solid var(--color-find-match-active);
+  outline-offset: 2px;
 }
 
 /* A notice's words: one line until opened to the whole text (rail.tsx); the height eases between. */

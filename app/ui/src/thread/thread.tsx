@@ -4,6 +4,7 @@ import { VList, type VListHandle } from "virtua";
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
+import { Find } from "./find";
 import { Follow, OLDER, spaceStore, takePlace, type Phase, type Space } from "./follow";
 import { cx } from "../components/cx";
 import { JumpSign, datedMessages } from "../components/thread/message";
@@ -143,6 +144,12 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   }, [space]);
   if (follow.pending && newest && [newest.id, newest.cid, newest.turnId].includes(follow.pending)) follow.pending = null;
 
+  // Find in the conversation: it reads the scroller, opens folds and scrolls only through these.
+  const scroller = useCallback(() => follow.el, [follow]);
+  const openAll = useCallback((ids: readonly string[]) => setOpen((was) => new Set([...was, ...ids])), []);
+  const toIndex = useCallback((index: number) => (follow.away(), list.current?.scrollToIndex(index, { align: "start" })), [follow]);
+  const leaveEnd = useCallback(() => follow.away(), [follow]);
+
   // Rows too few to scroll give no scroll to ask for older ones on: ask until there is more than a little to scroll.
   const fill = () => {
     const el = follow.el;
@@ -251,6 +258,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           )
         }
       </VList>
+      <Find source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button
         type="button"

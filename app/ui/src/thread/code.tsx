@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { ChevronDown, ChevronUp, Code } from "../icons";
+import { useFindSearching } from "./find-text";
 import { highlight } from "./highlight";
 import { useKept } from "./kept";
 import "./code.css";
@@ -76,8 +77,11 @@ export function CodeBlock({
   const [open, setOpen] = useKept(keep);
   const count = code.split("\n").length;
   const long = count > LONG_LINES;
-  // Folded, only the lines on show are drawn and coloured, so a huge block costs no more than a short one.
-  const shown = long && !open ? code.split("\n", FOLDED_LINES).join("\n") : code;
+  // Folded, only the lines on show are drawn and coloured, so a huge block costs no more than a short one; while
+  // find searches, all of them, cut to the fold, so they are found (find.tsx opens it to go to one).
+  const searched = useFindSearching();
+  const cut = long && !open && searched;
+  const shown = long && !open && !searched ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
   return (
     <div data-look={look} className={cx("relative overflow-clip border border-border", frame.card)}>
@@ -92,7 +96,7 @@ export function CodeBlock({
         <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
       </div>
       <div className="relative">
-        <pre className={cx("overflow-x-auto px-3 font-mono", frame.pre)}>
+        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
           {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
         </pre>
         {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}

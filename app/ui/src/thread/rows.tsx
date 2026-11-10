@@ -10,7 +10,8 @@ import { SetupRow } from "../components/thread/setup";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
-const GAPS: Record<Gap, string> = { first: "pt-8", turn: "pt-6", part: "pt-4", step: "pt-1" };
+// The first row clears find's bar (find.tsx), as the old app's did.
+const GAPS: Record<Gap, string> = { first: "pt-thread-find-top", turn: "pt-6", part: "pt-4", step: "pt-1" };
 
 export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean };
 
@@ -35,8 +36,11 @@ export const LineRow = memo(function LineRow(props: LineProps) {
           {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
           {props.open && props.steps.length > 0 && (
             <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
+              {/* Each step marked, for find to go to a match in it. */}
               {props.steps.map((step) => (
-                <Body key={step.id} item={step.item} turn={step.turn} step={step.step} />
+                <div key={step.id} data-step={step.id}>
+                  <Body item={step.item} turn={step.turn} step={step.step} />
+                </div>
               ))}
             </div>
           )}
