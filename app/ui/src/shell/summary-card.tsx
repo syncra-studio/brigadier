@@ -110,6 +110,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
+      // The next session's first layout lands in place too, not eased in [D423].
+      setSettled(false);
       setCard(owner, { layout: null, floating: false });
     };
   }, [has, owner]);
