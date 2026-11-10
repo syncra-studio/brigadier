@@ -23,11 +23,11 @@ function Panel({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** A main-area file tab's room. */
+/** A main-area file tab's room: a tab panel, as tab-views mounts it, so the thread's ⌘F leaves its keys alone. */
 function Tab({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
     <State label={label}>
-      <div className={`flex ${wide ? "h-120 w-200" : "h-64 w-120"} flex-col overflow-hidden rounded-surface border border-border bg-background`}>{children}</div>
+      <div role="tabpanel" aria-label="File" className={`flex ${wide ? "h-120 w-200" : "h-64 w-120"} flex-col overflow-hidden rounded-surface border border-border bg-background`}>{children}</div>
     </State>
   );
 }
