@@ -9,6 +9,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
+import { PrChip, prList } from "../landing/pr-chip";
 import { RowMenuItems } from "./menu";
 import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -123,6 +124,7 @@ export function SessionRowItem({
           >
             {badged && project && <ProjectBadge name={project.name} tone={tone} />}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
+            {row.pr && <PrChip pr={row.pr} />}
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>
@@ -144,6 +146,7 @@ export function SessionRowItem({
                     <span className={cx(row.mark && "-ms-0.5")}>{words}</span>
                   </div>
                 )}
+                {row.pr && <div className={CARD_LINE}>{prList(row.pr)}</div>}
                 {project && (
                   <>
                     <div className="my-1.5 border-t border-divider" />

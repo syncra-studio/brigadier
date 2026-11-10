@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from "react";
 
 import type { Row } from "../daemon";
+import type { PrChipState } from "../landing/pr-chip";
 import { hhmm } from "../thread/words";
 
 /** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, or nothing. */
@@ -23,6 +24,8 @@ export type SessionRow = {
   finished: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
+  /** Its pull requests' chip, as Rust computes it [D1018]; none when no PR needs a word. */
+  pr?: PrChipState | null;
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle">;
 
 export type Project = { id: string; name: string; folder: string };
