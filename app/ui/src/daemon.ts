@@ -77,9 +77,8 @@ let after: number | null = null;
 // Bumped when the rows held start over (a snapshot, an island), so a page asked for before then is dropped.
 let rowsRun = 0;
 let newerAsked = false;
-// The older page's answer, for whoever asked; and whether pages older than the snapshot came.
+// The older page's answer, for whoever asked.
 let olderDone: ((result: Paged) => void)[] = [];
-let paged = false;
 const threadListeners = new Set<() => void>();
 // The sessions last left, as Rust last sent them: one opened again paints at once, and its snapshot then replaces the
 // rows by id [D30].
@@ -151,7 +150,6 @@ function merge(frame: Record<string, any>): void {
     return above ? [...extra, ...now] : [...now, ...extra];
   };
   itemAt = new Map(items.map((item, at) => [item.id, at]));
-  paged = true;
   setThread(thread, {
     ...session,
     before,
@@ -174,10 +172,16 @@ function paging(result: Paged): void {
   for (const done of waiting) done(result);
 }
 
-function watch(): void {
+/** The rows a kept session holds, for its snapshot to reach: from its first (1 once its whole history is in) to its end [D516]. */
+const reachOf = (id: string): { from?: number; to?: number } => {
+  const kept = left.get(id);
+  return kept ? { from: kept.before ?? 1, to: kept.after ?? undefined } : {};
+};
+
+function watch(reach: { from?: number; to?: number } = {}): void {
   threadN = undefined;
   if (olderRe) paging({ ok: false, error: "stale" });
-  if (thread && view.daemon) threadRe = send({ op: "thread", session: thread.id });
+  if (thread && view.daemon) threadRe = send({ op: "thread", session: thread.id, ...reach });
 }
 
 function keep(id: string, kept: Session): void {
@@ -196,7 +200,7 @@ export function peekThread(id: string): void {
   const at = peeked.get(id);
   if (thread?.id === id || at === 0 || (at !== undefined && performance.now() - at < 2000)) return;
   peeked.set(id, 0);
-  ask({ op: "peek", session: id }, (reply) => {
+  ask({ op: "peek", session: id, ...reachOf(id) }, (reply) => {
     peeked.set(id, performance.now());
     if (!reply.ok || (thread?.id === id && thread.status === "ready")) return;
     keep(id, reply.session);
@@ -208,10 +212,10 @@ export function peekThread(id: string): void {
 /** Opens a session's thread; the last one's rows go at once, so no other session flashes in. */
 export function openThread(id: string): void {
   if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
-  // Older pages aren't kept: the snapshot starts at the newest page, so it would take those rows away under the view.
-  if (thread?.status === "ready" && session && !paged) keep(thread.id, session);
+  // Older pages and an island are kept too, and the snapshot reaches the same rows, so the place left comes back [D516].
+  if (thread?.status === "ready" && session) keep(thread.id, session);
   setThread({ id, status: "loading" }, left.get(id) ?? null);
-  watch();
+  watch(reachOf(id));
 }
 
 function applyThread(frame: Record<string, any>): void {
@@ -278,9 +282,8 @@ function onFrame(frame: Record<string, any>): void {
     itemAt = new Map(next.items.map((item, at) => [item.id, at]));
     threadN = frame.n;
     before = frame.session.before;
-    after = null;
+    after = next.after ?? null;
     rowsRun++;
-    paged = false;
     setThread({ id: thread.id, status: "ready" }, next);
   } else if (thread && session && olderRe && frame.re === olderRe) {
     if (!frame.ok) return paging({ ok: false, error: frame.error });

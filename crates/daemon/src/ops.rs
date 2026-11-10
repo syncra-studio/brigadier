@@ -121,6 +121,7 @@ pub(super) fn serve(
                     .rows
                     .get(&id)
                     .map_or(Value::Null, |r| r["title"].clone());
+                let reach = (req["from"].as_u64(), req["to"].as_u64());
                 let mine = if follow {
                     watching.fetch_add(1, Ordering::SeqCst) + 1
                 } else {
@@ -133,6 +134,7 @@ pub(super) fn serve(
                         &data,
                         &id,
                         title,
+                        reach,
                         re,
                         &out,
                         follow.then_some(mine),

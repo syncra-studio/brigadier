@@ -11,10 +11,14 @@ const PAGE: usize = 2000;
 
 impl Thread {
     /// The view's Session with only its newest page of rows; what changed so far counts as sent.
-    pub fn session(&mut self, id: &str, title: &str) -> Value {
+    /// Given `from` and `to` (`n`s), it reaches back to row `from`'s turn and ends before row `to`:
+    /// a view opened again gets the rows it held, an island's too, so its place comes back [D516].
+    pub fn session(&mut self, id: &str, title: &str, from: Option<u64>, to: Option<u64>) -> Value {
         self.take();
-        let end = self.items.len();
-        let mut page = self.slice(self.start(end, end, PAGE), end);
+        let at = |n: u64| (n.saturating_sub(1) as usize).min(self.items.len());
+        let end = to.map_or(self.items.len(), at);
+        let floor = from.map_or(end, at).min(end);
+        let mut page = self.slice(self.start(end, floor, PAGE), end);
         page["id"] = id.into();
         page["title"] = title.into();
         page["setup"] = self.setup.clone();

@@ -317,7 +317,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 thread.interrupt(log::now_ms());
             }
             thread.sync_setup(setup, live.child.is_some());
-            Ok(thread.session(id, ""))
+            Ok(thread.session(id, "", None, None))
         }
         "index" => index(data, has(args, "--cold")),
         "git" => git::run(data, args),

@@ -32,6 +32,7 @@ pub(super) fn watch(
     data: &Path,
     id: &str,
     title: Value,
+    (from, to): (Option<u64>, Option<u64>),
     re: Value,
     out: &Sender<String>,
     mine: Option<u64>,
@@ -87,7 +88,7 @@ pub(super) fn watch(
             }
         };
         interrupted(&mut saved.thread);
-        let session = saved.thread.session(id, title);
+        let session = saved.thread.session(id, title, from, to);
         if !saved.thread.items.broken() || tries > 0 {
             break (saved, session);
         }

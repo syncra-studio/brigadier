@@ -14,7 +14,9 @@
 //! `{"id", "op": "peek", "session"}` answers the same snapshot and follows nothing, so a session the
 //! pointer is on opens at once while the open thread stays followed [D477].
 //! The snapshot holds only the newest whole turns, about 2k rows, and `before`: the `n` of its
-//! first row, or null when nothing is older. `{"id", "op": "thread_older", "session", "before"}`
+//! first row, or null when nothing is older; with `"from"` and `"to"` (`n`s) it reaches back to
+//! row `from`'s turn and ends before row `to`, the rows a view opened again held, `after` naming
+//! the first not sent. `{"id", "op": "thread_older", "session", "before"}`
 //! answers `{"re", "ok", "items", "turns", "work", "before", "after"}`, the page before that
 //! [D97, D98]; with `"after"` instead, the page from that row on down. `{"id", "op":
 //! "thread_around", "session", "n"}` answers the same shape for the whole turns around row `n`,
