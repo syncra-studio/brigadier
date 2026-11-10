@@ -99,7 +99,7 @@ function openWindow(): void {
   });
   // A web link (a sign-in's code page) opens in the browser; nothing opens in the app.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:/.test(url)) void shell.openExternal(url);
+    openLink(url);
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -164,6 +164,11 @@ async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: s
 }
 ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
 ipcMain.on("text-undo", (event) => event.sender.undo());
+// A web link opens in the browser: from window.open, or from the page once a click's wait is over (a push, then its PR page).
+function openLink(url: string): void {
+  if (/^https:/.test(url)) void shell.openExternal(url);
+}
+ipcMain.on("open-link", (_event, url: string) => openLink(url));
 // The windows whose ⌘W closes a tab (the tab bar says so) [D360].
 const closesTab = new WeakSet<Electron.WebContents>();
 ipcMain.on("closes-tab", (event, on: boolean) => void (on ? closesTab.add(event.sender) : closesTab.delete(event.sender)));

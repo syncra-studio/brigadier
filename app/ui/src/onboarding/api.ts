@@ -19,6 +19,8 @@ declare global {
       /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
       closesTab(on: boolean): void;
+      /** Opens an https link in the browser, with no click needed. */
+      openLink(url: string): void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;

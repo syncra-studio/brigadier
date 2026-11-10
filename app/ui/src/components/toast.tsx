@@ -12,9 +12,9 @@ type ToastAction = { label: string; run: () => void };
 /** The app's toasts, shown by the Toaster; `showToast` adds one from anywhere. */
 export const toastManager = Toast.createToastManager();
 
-/** Shows a short message ("Changes reverted", "Archived chat"), with buttons for what can follow it. */
-export function showToast(text: string, { tone = "neutral", actions = [] }: { tone?: Tone; actions?: ToastAction[] } = {}) {
-  return toastManager.add({ title: text, type: tone, data: { actions } });
+/** Shows a short message ("Changes reverted", "Archived chat"), with buttons for what can follow it; `stays` until dismissed. */
+export function showToast(text: string, { tone = "neutral", actions = [], stays = false }: { tone?: Tone; actions?: ToastAction[]; stays?: boolean } = {}) {
+  return toastManager.add({ title: text, type: tone, data: { actions }, ...(stays && { timeout: 0 }) });
 }
 
 const ICONS = { success: CheckCircle, error: Warning, neutral: InfoCircle };
@@ -43,7 +43,7 @@ function ToastList() {
         )}
       >
         <Icon aria-hidden className={cx("size-icon-sm shrink-0", tone === "neutral" && "text-muted-foreground")} />
-        <Toast.Title className="min-w-0" />
+        <Toast.Title className="min-w-0 whitespace-pre-wrap" />
         {actions.map((action) => (
           <Toast.Action
             key={action.label}

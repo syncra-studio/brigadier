@@ -54,7 +54,7 @@ pub fn url(checkout: &Checkout, remote: &str) -> io::Result<String> {
 }
 
 /// Pushes `branch` to the same name on `remote` and tracks it there, never asking for a password:
-/// git's reason comes back instead. `hooks`: the project is trusted, so its pre-push hook runs.
+/// a plain sentence comes back instead, git's own output after it. `hooks`: the project is trusted, so its pre-push hook runs.
 pub fn push(
     checkout: &Checkout,
     remote: &str,
@@ -77,17 +77,34 @@ pub fn push(
     if out.status.success() {
         return Ok(());
     }
-    let why = String::from_utf8_lossy(&out.stderr);
-    let lines: Vec<&str> = (why.lines())
-        .map(|l| {
-            l.trim()
-                .trim_start_matches("fatal: ")
-                .trim_start_matches("error: ")
-        })
-        .filter(|l| !l.is_empty() && !l.starts_with("hint:"))
-        .collect();
-    Err(io::Error::other(match lines.is_empty() {
+    let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    // Proposed words. One plain sentence, then git's own output after a blank line for Details.
+    let has = |words: &[&str]| words.iter().any(|w| why.contains(w));
+    let plain = if has(&["(fetch first)", "(non-fast-forward)"]) {
+        "The remote's branch has commits this one doesn't, so it refused the push."
+    } else if has(&[
+        "Authentication failed",
+        "Permission denied",
+        "could not read Username",
+        "terminal prompts disabled",
+        "returned error: 403",
+    ]) {
+        "The remote didn't accept your sign-in for this push."
+    } else if has(&[
+        "Could not resolve host",
+        "Could not read from remote",
+        "unable to access",
+        "timed out",
+    ]) {
+        "Couldn't reach the remote."
+    } else if has(&["[remote rejected]", "hook declined"]) {
+        "The remote refused the push."
+    } else {
+        "The push didn't go through."
+    };
+    let details = match why.is_empty() {
         true => format!("git push: {}", out.status),
-        false => lines.join("\n"),
-    }))
+        false => why,
+    };
+    Err(io::Error::other(format!("{plain}\n\n{details}")))
 }

@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { Button } from "../../components/button";
 import { CheckboxRow } from "../../components/checkbox-row";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/collapsible";
 import { ErrorLine } from "../../components/error-line";
 import { Input } from "../../components/input";
 import { Skeleton } from "../../components/skeleton";
@@ -44,6 +45,7 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
   onConfirm: () => void;
 }) {
   const working = busy !== null;
+  const [said, details] = split(error);
   return (
     <Confirm open={open} onOpenChange={(next) => !next && !working && onCancel()} held={held}>
       <ConfirmForm
@@ -69,15 +71,34 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
           <Input aria-label="Title" placeholder={info ? "Title" : error ? "" : "Loading…"} value={text.title} disabled={!info || working} onValueChange={(title: string) => onText({ ...text, title })} />
           <Textarea aria-label="Description" placeholder={info ? "Description" : ""} value={text.body} disabled={!info || working} onChange={(event) => onText({ ...text, body: event.target.value })} />
           <CheckboxRow label="Create as draft" checked={text.draft} disabled={!info || working} onCheckedChange={(draft) => onText({ ...text, draft })} />
-          <ErrorLine
-            error={offline ? "Brigadier isn't connected. This waits until it is." : error}
-            actions={!info && !offline && onRetry ? <Button variant="ghost" size="xs" onClick={onRetry}>Try again</Button> : undefined}
-          />
+          <Collapsible>
+            <ErrorLine
+              error={offline ? "Brigadier isn't connected. This waits until it is." : said}
+              actions={
+                !offline && details ? (
+                  <CollapsibleTrigger render={<Button variant="ghost" size="xs" />}>Details</CollapsibleTrigger>
+                ) : !info && !offline && onRetry ? (
+                  <Button variant="ghost" size="xs" onClick={onRetry}>Try again</Button>
+                ) : undefined
+              }
+            />
+            {details && (
+              <CollapsibleContent>
+                <pre className="mt-1 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-muted-foreground">{details}</pre>
+              </CollapsibleContent>
+            )}
+          </Collapsible>
         </div>
       </ConfirmForm>
     </Confirm>
   );
 }
+
+/** Rust's error: a plain sentence, then (after a blank line) what the tool itself said, for Details. */
+const split = (error: string | null | undefined) => {
+  const at = error?.indexOf("\n\n") ?? -1;
+  return at < 0 ? [error, ""] : [error!.slice(0, at), error!.slice(at + 2)];
+};
 
 const EMPTY: Text = { title: "", body: "", draft: false };
 
@@ -122,7 +143,7 @@ function read(session: string) {
 function made(session: string, pr: { number: number | null; url: string }) {
   put(session, { uncertain: false, text: null, busy: null, open: false, error: null });
   // Proposed words.
-  showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
+  showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", stays: true, actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
 }
 
 function create(session: string) {
@@ -156,8 +177,13 @@ function push(session: string, page: boolean) {
   const pending = showToast(`Pushing ${branch}…`);
   run(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], (reply) => {
     toastManager.close(pending);
-    if (!reply.ok) return showToast(reply.error === "disconnected" ? "Brigadier isn't connected." : reply.error, { tone: "error" });
-    if (page) window.open(reply.url);
+    if (!reply.ok) {
+      if (reply.error === "disconnected") return showToast("Brigadier isn't connected.", { tone: "error" });
+      const [said, details] = split(reply.error);
+      return showToast(said!, { tone: "error", actions: details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : [] });
+    }
+    // Past the click, so window.open would be blocked: main opens it [D1142].
+    if (page) window.brigadier?.openLink(reply.url);
     else showToast(`Pushed ${branch}`, { tone: "success" });
   });
 }

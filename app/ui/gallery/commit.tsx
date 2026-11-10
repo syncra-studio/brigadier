@@ -166,7 +166,7 @@ export function CommitGallery() {
           {(held) => <CreatePrDialog open info={PR_INFO} text={{ ...PR_TEXT, draft: true }} busy="creating" held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Create PR: failed, text kept" tall>
-          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} error="Updates were rejected because the remote contains work that you do not have locally." held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} error={"The remote's branch has commits this one doesn't, so it refused the push.\n\nTo /tmp/demo/origin.git\n ! [rejected]        brigadier/demo -> brigadier/demo (fetch first)\nerror: failed to push some refs to '/tmp/demo/origin.git'"} held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Create PR: answer lost, checking first" tall>
           {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} busy="checking" error="Brigadier lost its connection. It checks whether the PR was made before making another." held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
