@@ -1,8 +1,9 @@
-// Step 2.11's conflict tab on fake data [D1044]: in place, its states, Resolve with agent and the chip it leaves.
+// Step 2.11's conflict tab on fake data [D1044]: in place, Compare, their states, Resolve with agent and the chip it leaves.
 import { useState } from "react";
 
 import { type AgentChip } from "../src/landing/agent-chip";
-import { ConflictTab } from "../src/landing/conflict-tab";
+import { Button } from "../src/components/button";
+import { CompareView, ConflictTab } from "../src/landing/conflict-tab";
 import type { Accepting, Choice, Conflict, ConflictFile, Segment } from "../src/landing/conflicts";
 import { ChipsComposer, TabFrame } from "./landing-parts";
 import { Row, Section, State } from "./parts";
@@ -55,6 +56,8 @@ function Live({ fails = false }: { fails?: boolean }) {
   const [file, setFile] = useState(FILE);
   const [accepting, setAccepting] = useState<Record<string, Accepting>>({});
   const [chips, setChips] = useState<AgentChip[]>([]);
+  // The tab's view; the real tab keeps it per tab (2.23). The way back is the gallery's own.
+  const [comparing, setComparing] = useState(false);
   const accept = (id: string, choice: Choice) => {
     setAccepting((now) => ({ ...now, [id]: { choice } }));
     setTimeout(() => {
@@ -69,14 +72,23 @@ function Live({ fails = false }: { fails?: boolean }) {
   return (
     <div className="flex flex-col gap-3">
       <TabFrame>
-        <ConflictTab
-          file={file}
-          accepting={accepting}
-          onAccept={accept}
-          onCompare={noop}
-          onResolveWithAgent={() => setChips((now) => (now.some((chip) => chip.id === RESOLVE.id) ? now : [...now, RESOLVE]))}
-        />
+        {comparing ? (
+          <CompareView file={file} />
+        ) : (
+          <ConflictTab
+            file={file}
+            accepting={accepting}
+            onAccept={accept}
+            onCompare={() => setComparing(true)}
+            onResolveWithAgent={() => setChips((now) => (now.some((chip) => chip.id === RESOLVE.id) ? now : [...now, RESOLVE]))}
+          />
+        )}
       </TabFrame>
+      {comparing && (
+        <Button variant="soft" size="xs" className="self-start" onClick={() => setComparing(false)}>
+          Back to the conflicts
+        </Button>
+      )}
       <ChipsComposer chips={chips} onRemove={(id) => setChips((now) => now.filter((chip) => chip.id !== id))} />
     </div>
   );
@@ -85,7 +97,7 @@ function Live({ fails = false }: { fails?: boolean }) {
 export function ConflictsGallery() {
   return (
     <Section title="Conflict tab (step 2.11)">
-      <Row name="live: accept a side, Resolve with agent leaves a chip above the composer and sends nothing">
+      <Row name="live: accept a side, Compare Changes, Resolve with agent leaves a chip above the composer and sends nothing">
         <State label="accepts settle">
           <Live />
         </State>
@@ -139,6 +151,28 @@ export function ConflictsGallery() {
         <State label="disconnected">
           <TabFrame>
             <ConflictTab file={FILE} offline onAccept={noop} onCompare={noop} onResolveWithAgent={noop} />
+          </TabFrame>
+        </State>
+      </Row>
+      <Row name="Compare Changes: both sides whole, side by side · loading · couldn't read · disconnected">
+        <State label="compare">
+          <TabFrame>
+            <CompareView file={FILE} />
+          </TabFrame>
+        </State>
+        <State label="loading">
+          <TabFrame>
+            <CompareView file={undefined} />
+          </TabFrame>
+        </State>
+        <State label="couldn't read">
+          <TabFrame>
+            <CompareView file={undefined} error="Couldn't read src/cart/total.ts: it's no longer in conflict" />
+          </TabFrame>
+        </State>
+        <State label="disconnected">
+          <TabFrame>
+            <CompareView file={undefined} offline />
           </TabFrame>
         </State>
       </Row>

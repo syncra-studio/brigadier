@@ -3,6 +3,7 @@ import { Fragment, type ReactNode, useRef } from "react";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
+import { DiffView } from "../review/diff-view";
 import type { Accepting, Choice, Conflict, ConflictFile } from "./conflicts";
 import { Sparkles } from "./icons";
 import { StepCounter } from "./step-counter";
@@ -35,13 +36,7 @@ export function ConflictTab({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const at = useRef(-1);
-  if (!file) {
-    return (
-      <div data-slot="conflict-tab" className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
-        {error ? <ErrorLine size="sm" error={error} /> : offline ? "Reconnecting…" : "Loading…"}
-      </div>
-    );
-  }
+  if (!file) return <Waiting slot="conflict-tab" error={error} offline={offline} />;
   const count = file.segments?.filter((segment) => segment.type === "conflict").length ?? 0;
   const step = (by: 1 | -1) => {
     at.current = (at.current + by + count) % count;
@@ -87,6 +82,28 @@ export function ConflictTab({
       ) : (
         <Code rows={rows} />
       )}
+    </div>
+  );
+}
+
+/** Both sides of a conflicted file compared whole, side by side, as the old conflict tab's Compare view [D1044]. */
+export function CompareView({ file, error, offline = false }: { file: ConflictFile | undefined; error?: string; offline?: boolean }) {
+  if (!file) return <Waiting slot="conflict-compare" error={error} offline={offline} />;
+  return (
+    <div data-slot="conflict-compare" className="min-h-0 flex-1 overflow-auto">
+      <DiffView
+        source={{ kind: "sides", path: file.path, before: file.current ?? "", after: file.incoming ?? "" }}
+        look={{ numbered: true, split: true, wrap: false, words: true }}
+      />
+    </div>
+  );
+}
+
+/** Before the file's first read: loading, why it couldn't be read, or the daemon gone. */
+function Waiting({ slot, error, offline }: { slot: string; error: string | undefined; offline: boolean }) {
+  return (
+    <div data-slot={slot} className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
+      {error ? <ErrorLine size="sm" error={error} /> : offline ? "Reconnecting…" : "Loading…"}
     </div>
   );
 }
