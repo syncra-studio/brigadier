@@ -20,6 +20,7 @@ export function BranchItem({ state, locked, syncing = false, open = false, onBra
   const name = state.branch ?? state.rebasing?.branch ?? "…";
   const publish = state.branch !== null && state.upstream === null && state.remote !== null;
   const sync = state.branch !== null && state.upstream !== null;
+  const moveLabel = publish ? "Publish Branch" : `Pull ${state.behind} and push ${state.ahead} commits`;
   return (
     <div className="flex h-control-sm min-w-0 items-center gap-1 text-sm">
       <button
@@ -41,7 +42,8 @@ export function BranchItem({ state, locked, syncing = false, open = false, onBra
       {(sync || publish) && (
         <button
           type="button"
-          title={publish ? "Publish Branch" : `Pull ${state.behind} and push ${state.ahead} commits`}
+          title={moveLabel}
+          aria-label={moveLabel}
           disabled={locked || syncing}
           onClick={publish ? onPublish : onSync}
           className="flex h-full shrink-0 cursor-pointer items-center gap-1 rounded-control px-1.5 text-xs text-muted-foreground tabular-nums hover:bg-muted hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled"

@@ -86,6 +86,8 @@ export function failed(target: Target, reply: Record<string, any>): void {
       ...(details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : []),
       ...(rejected ? [{ label: "Force Push…", run: () => askForce(target) }] : []),
     ],
+    // A refused push waits for the user's choice instead of leaving before they've read it.
+    stays: rejected !== null,
   });
 }
 

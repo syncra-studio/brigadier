@@ -51,7 +51,7 @@ function ToastList() {
               action.run();
               close(toast.id);
             }}
-            className="ms-1 cursor-pointer font-medium text-foreground transition-colors hover:text-action-hover focus-visible:focus-ring"
+            className="ms-1 shrink-0 cursor-pointer whitespace-nowrap font-medium text-foreground transition-colors hover:text-action-hover focus-visible:focus-ring"
           >
             {action.label}
           </Toast.Action>
