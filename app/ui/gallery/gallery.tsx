@@ -13,6 +13,7 @@ import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
 import { FilesGallery } from "./files";
 import { RewindGallery } from "./rewind";
+import { ForkGallery } from "./fork";
 import { FindGallery } from "./find";
 import { HomeGallery } from "./home";
 import { PickersGallery } from "./pickers";
@@ -119,6 +120,7 @@ function GalleryPage() {
             <Area name="Thread">
               <Thread />
               <RewindGallery />
+              <ForkGallery />
               <FindGallery />
               <Notices />
               <ChangesGallery />

@@ -9,7 +9,7 @@ import { Section } from "./parts";
 const RING = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5.5"/></svg>';
 const DIAMOND = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5 14.5 8 8 14.5 1.5 8Z"/></svg>';
 
-const GROUPS: ModelGroup[] = [
+export const GROUPS: ModelGroup[] = [
   {
     provider: "cloud",
     label: "Cloud agent",

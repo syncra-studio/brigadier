@@ -218,11 +218,12 @@ export function AssistantMessage({
   );
 }
 
-/** A finished answer's actions: copy, the time only on hover or focus [D297]. */
-export function AnswerMarks({ text, time }: { text: string; time?: number }) {
+/** A finished answer's actions: copy, then fork where offered [D1069], the time only on hover or focus [D297]. */
+export function AnswerMarks({ text, time, fork }: { text: string; time?: number; fork?: ReactNode }) {
   return (
     <div className="group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground">
       <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
+      {fork}
       {time !== undefined && (
         <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>
       )}

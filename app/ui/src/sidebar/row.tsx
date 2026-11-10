@@ -8,7 +8,7 @@ import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
-import { Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
+import { BranchAlt, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
 import { PrChip, prList } from "../landing/pr-chip";
 import { openPr } from "../panel/open";
 import { RowMenuItems } from "./menu";
@@ -75,6 +75,7 @@ export function SessionRowItem({
   active,
   badged = false,
   nested = false,
+  forked = false,
   offline = false,
   held,
   picked = false,
@@ -90,6 +91,8 @@ export function SessionRowItem({
   active: boolean;
   badged?: boolean;
   nested?: boolean;
+  /** A fork, under its source: the fork mark before its title, one step further in [D48]. */
+  forked?: boolean;
   /** The daemon is gone: the mark is its last known one, dimmed. */
   offline?: boolean;
   onOpen: (id: string) => void;
@@ -118,7 +121,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", nested && "ps-8", badged && "h-9")}
+                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", nested && (forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", badged && "h-9")}
                 onClick={(event) => {
                   if (onClick) onClick(event);
                   else onOpen(row.id);
@@ -130,6 +133,7 @@ export function SessionRowItem({
             }
           >
             {badged && project && <ProjectBadge name={project.name} tone={tone} />}
+            {forked && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             {row.pr && <PrChip pr={row.pr} />}
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
