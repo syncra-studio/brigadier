@@ -63,7 +63,7 @@ export function retiringNotice({ name, at, to }: Retiring): Notice {
   };
 }
 
-// A rewind's pending command survives switching sessions, with the same id after an uncertain reply [D30].
+// shortcut: pending retries survive navigation and reconnects; use durable commands when renderer-restart recovery is added.
 type Retrying = { turn: string; text: string; op: string; asking: boolean; unknown?: boolean; error?: string };
 const retries = store<ReadonlyMap<string, Retrying>>(new Map());
 function keepRetry(id: string, entry: Retrying | null) {
