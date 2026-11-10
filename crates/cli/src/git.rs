@@ -7,7 +7,7 @@ use super::{arg, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, files, history, replace, search, watch::Watch,
+    self, Checkout, Status, Target, files, history, recover, replace, search, watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -137,7 +137,7 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
                 word(2)?,
                 files,
                 keep.as_deref(),
-                &replace::record(data, &target),
+                &recover::record(data, &target),
                 &stop,
             )?;
             json!({"ok": true, "outcome": outcome})

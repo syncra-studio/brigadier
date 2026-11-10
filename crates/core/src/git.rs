@@ -19,6 +19,7 @@ pub mod diff;
 pub mod files;
 pub mod history;
 pub mod push;
+pub mod recover;
 pub mod replace;
 pub mod search;
 pub mod watch;

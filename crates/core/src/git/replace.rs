@@ -3,7 +3,7 @@
 //! writes over a save that lands meanwhile.
 
 use super::search::{Matcher, hash, searchable};
-use super::{Checkout, Target, files::listed, lock};
+use super::{Checkout, files::listed, lock};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -12,39 +12,20 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
-/// Where a Replace all under way keeps its record: the session's folder, or the project's in the
-/// app's data. The daemon's start puts back every file a run cut short left aside [D1173].
-pub fn record(data: &Path, target: &Target) -> PathBuf {
-    match target {
-        Target::Session(id) => crate::session_dir(data, id).join(RECORD),
-        Target::Project(id) => data.join("projects").join(id).join(RECORD),
-    }
-}
-
-const RECORD: &str = "replacing.json";
-
-/// A run's record: its files, and whether all were placed (left: only removing their old copies).
-#[derive(Deserialize)]
-struct Record {
-    root: PathBuf,
-    git_dir: PathBuf,
-    keep: Option<PathBuf>,
-    placed: bool,
-    files: Vec<Staged>,
-}
-
 /// One listed file's rewrite, ready to go: its new text written beside it, not yet in place.
 #[derive(Serialize, Deserialize)]
-struct Staged {
-    path: String,
-    full: PathBuf,
+pub(super) struct Staged {
+    pub(super) path: String,
+    pub(super) full: PathBuf,
     /// What the search found in it, and what the rewrite holds.
-    hash: String,
-    new_hash: String,
+    pub(super) hash: String,
+    pub(super) new_hash: String,
     matches: u64,
-    temp: PathBuf,
+    pub(super) temp: PathBuf,
     /// Where the file is moved aside while the rewrite takes its place, until all are in.
-    aside: PathBuf,
+    pub(super) aside: PathBuf,
+    /// Where what's in its place goes while a rollback checks it.
+    pub(super) undone: PathBuf,
     /// Whether its folder takes hard links, probed before any original is moved.
     hard_links: bool,
 }
@@ -69,6 +50,12 @@ pub fn replace(
     stop: &AtomicBool,
 ) -> io::Result<Value> {
     let _exclusive = lock(checkout, true, stop)?;
+    // A run cut short before this one is put right first: its record is about to be reused.
+    if !super::recover::settle(record) {
+        return Err(io::Error::other(
+            "An earlier Replace all left files it couldn't put back; Brigadier tries again when it starts.",
+        ));
+    }
     let eligible: HashSet<String> = listed(checkout, stop)?.into_iter().collect();
     let (mut skipped, mut unrestored) = (vec![], vec![]);
     let skip = |path: &str, reason: String| json!({"path": path, "reason": reason});
@@ -172,65 +159,6 @@ pub fn replace(
     Ok(outcome(staged.len() as u64, matches, skipped, unrestored))
 }
 
-/// At the daemon's start: each Replace all cut short is put right under its checkout's lock. Cut
-/// short while placing, every file goes back as it was; once all were placed, only their old copies
-/// go. A file something else changed stays, and the log says where its text from before is.
-pub fn sweep(data: &Path) {
-    let projects = fs::read_dir(data.join("projects"))
-        .into_iter()
-        .flatten()
-        .flatten();
-    let records = crate::ids(data)
-        .into_iter()
-        .map(|id| crate::session_dir(data, &id).join(RECORD))
-        .chain(projects.map(|dir| dir.path().join(RECORD)));
-    let never = AtomicBool::new(false);
-    for path in records {
-        let read = || serde_json::from_slice::<Record>(&fs::read(&path).ok()?).ok();
-        let Some(run) = read() else { continue };
-        let checkout = Checkout {
-            root: run.root,
-            git_dir: run.git_dir,
-        };
-        // A run still going from the CLI holds it, and removes its record when done.
-        let Ok(_exclusive) = lock(&checkout, true, &never) else {
-            continue;
-        };
-        let Some(run) = read() else { continue };
-        for file in &run.files {
-            if let Err(why) = recover(file, run.placed, &|f: &Staged| {
-                keep_aside(f, run.keep.as_deref())
-            }) {
-                eprintln!("brigadierd: replace {}: {why}", file.full.display());
-            }
-        }
-        let _ = fs::remove_file(&path);
-        let _ = path.parent().map(fs::remove_dir);
-    }
-}
-
-/// Puts one file of a run cut short right: back as it was, or once all were placed, its old copy
-/// gone; either way only while what's there is this run's own.
-fn recover(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
-    let _ = fs::remove_file(&file.temp);
-    if fs::symlink_metadata(&file.aside).is_err() {
-        return Ok(());
-    }
-    let original = |path: &Path| fs::read(path).is_ok_and(|bytes| hash(&bytes) == file.hash);
-    if !placed && !original(&file.full) {
-        return put_back(file, kept);
-    }
-    match original(&file.aside) {
-        true => {
-            fs::remove_file(&file.aside).map_err(|e| format!("couldn't remove its old copy: {e}"))
-        }
-        false => Err(format!(
-            "it was written while it was replaced; that save is in {}",
-            kept(file).display()
-        )),
-    }
-}
-
 /// Checks a listed file against its search and writes its rewrite beside it.
 fn stage_file(
     checkout: &Checkout,
@@ -267,6 +195,7 @@ fn stage_file(
     Ok(Staged {
         path: path.to_string(),
         aside: sibling(&full, "replaced"),
+        undone: sibling(&full, "undone"),
         full,
         hash,
         new_hash: self::hash(out.as_bytes()),
@@ -294,7 +223,7 @@ fn probe(file: &Staged) -> io::Result<bool> {
 
 /// Moves a rewrite or original into an empty path, refusing a concurrent writer atomically.
 #[cfg(target_os = "macos")]
-fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
+pub(super) fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
     let from = CString::new(from.as_os_str().as_bytes()).map_err(io::Error::other)?;
@@ -307,7 +236,7 @@ fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
+pub(super) fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
     let from = CString::new(from.as_os_str().as_bytes()).map_err(io::Error::other)?;
@@ -329,7 +258,7 @@ fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn rename_into(_: &Path, _: &Path) -> io::Result<()> {
+pub(super) fn rename_into(_: &Path, _: &Path) -> io::Result<()> {
     // Without an exclusive rename, the probe fails before an original moves.
     Err(io::ErrorKind::Unsupported.into())
 }
@@ -379,21 +308,21 @@ fn undo_place(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), S
 /// before comes back. What's in its place is moved off first and checked there, so a save that
 /// lands meanwhile is never deleted: when something else is in its place, both stay, and the
 /// reason says where the text from before is.
-fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+pub(super) fn put_back(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
     let changed = || {
         format!(
             "it changed while the files were being replaced; its text from before is in {}",
             kept(file).display()
         )
     };
-    let off = sibling(&file.full, "undone");
-    match fs::rename(&file.full, &off) {
-        Ok(()) if fs::read(&off).is_ok_and(|bytes| hash(&bytes) == file.new_hash) => {
-            let _ = fs::remove_file(&off);
+    let off = &file.undone;
+    match fs::rename(&file.full, off) {
+        Ok(()) if fs::read(off).is_ok_and(|bytes| hash(&bytes) == file.new_hash) => {
+            let _ = fs::remove_file(off);
         }
         // Someone else's save: it goes back where it was, unless yet another took the place.
         Ok(()) => {
-            return Err(match rename_into(&off, &file.full) {
+            return Err(match rename_into(off, &file.full) {
                 Ok(()) => changed(),
                 Err(_) => format!("{}; a newer save of it is in {}", changed(), off.display()),
             });
@@ -423,7 +352,7 @@ fn restore(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), Stri
 /// folder, so delete takes it [D35]), else beside it.
 // shortcut: when the session's own folder can't take the copy, it stays beside the file, named in
 // the reason but recorded nowhere, as no record could be written there either.
-fn keep_aside(file: &Staged, keep: Option<&Path>) -> PathBuf {
+pub(super) fn keep_aside(file: &Staged, keep: Option<&Path>) -> PathBuf {
     let Some(keep) = keep else {
         return file.aside.clone();
     };
