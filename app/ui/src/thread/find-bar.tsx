@@ -4,8 +4,8 @@ import { TooltipIconButton } from "../components/icon-button";
 import { ChevronLeft, ChevronRight, X } from "../icons";
 import { Search } from "../icons/tab";
 
-/** Proposed: what the count says while the rows not loaded can't be counted (find.tsx). */
-const OLDER = { searching: "Searching older…", offline: "Older: offline", failed: "Older not searched" } as const;
+/** What the count says while the rows not loaded are being counted, or couldn't be (offline or an error) [D501]. */
+const OLDER = { searching: "Searching older…", failed: "Older not searched" } as const;
 
 /**
  * Find in the conversation's bar, the old app's [D48, D470]: 24rem at most 70% of the window, over the thread's top

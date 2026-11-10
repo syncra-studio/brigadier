@@ -61,7 +61,7 @@ export function Find(props: FindProps) {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<Found>(NOTHING);
   const [active, setActive] = useState(-1);
-  const [olderState, setOlderState] = useState<"searching" | "offline" | "failed" | null>(null);
+  const [olderState, setOlderState] = useState<"searching" | "failed" | null>(null);
   const [focusAsk, setFocusAsk] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -242,7 +242,7 @@ export function Find(props: FindProps) {
       const paged = await page();
       if (!live()) return void done();
       if (!paged || !paged.ok) {
-        setOlderState(paged?.error === "disconnected" || paged?.error === "stale" ? "offline" : "failed");
+        setOlderState("failed");
         return void done();
       }
     }
@@ -399,7 +399,7 @@ export function Find(props: FindProps) {
   const ask = source.findOlder;
   // Asked again when the rows held start elsewhere (a page loaded, a reconnect's snapshot), and after an answer that
   // couldn't come once the session changes again.
-  const retry = olderState === "offline" || olderState === "failed" ? props.items : null;
+  const retry = olderState === "failed" ? props.items : null;
   useEffect(() => {
     if (!open || query === "" || !ask || cursor === null) {
       older.current = null;
@@ -412,7 +412,7 @@ export function Find(props: FindProps) {
     const timer = setTimeout(() => {
       void ask(query, MAX_RESULTS).then((found) => {
         if (!current) return;
-        if (!found.ok) return setOlderState(["disconnected", "stale", "loading"].includes(found.error) ? "offline" : "failed");
+        if (!found.ok) return setOlderState("failed");
         older.current = { needle: lower(query), ...found };
         setOlderState(null);
         later.current();

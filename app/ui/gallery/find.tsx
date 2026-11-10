@@ -61,14 +61,11 @@ export function FindGallery() {
           <Bar query="websocket" label="0 results" />
         </State>
       </Row>
-      <Row name="Older history not counted (proposed wording)">
+      <Row name="Older history not counted">
         <State label="Searching">
           <Bar query="socket" label="2 / 7 results" none={false} older="searching" />
         </State>
-        <State label="Offline">
-          <Bar query="socket" label="2 / 7 results" none={false} older="offline" />
-        </State>
-        <State label="Failed">
+        <State label="Not searched (offline or error)">
           <Bar query="socket" label="0 results" older="failed" />
         </State>
       </Row>
