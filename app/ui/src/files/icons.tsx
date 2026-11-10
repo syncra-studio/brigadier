@@ -1,0 +1,49 @@
+// Search's title row icons [D1057]. Clear, Collapse and CompareArrows are from @openai/apps-sdk-ui 0.2.2 (MIT, see
+// THIRD_PARTY_NOTICES.md); match case, whole word and regex are text glyphs.
+import type { IconProps } from "../icons";
+
+export function Clear(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M20.719 4.696a1 1 0 0 0-1.415-1.415l-4.796 4.796-.634-.635a3.002 3.002 0 0 0-3.788-.375l-7.64 5.093a1 1 0 0 0-.153 1.541l8.005 8.005a1.002 1.002 0 0 0 1.541-.152l5.093-7.64a3.001 3.001 0 0 0-.375-3.789l-.634-.633 4.796-4.796Zm-9.523 4.037a1 1 0 0 1 1.263.124l2.682 2.684a1 1 0 0 1 .126 1.262l-.414.621-4.278-4.277.62-.414ZM8.877 10.28l-4.305 2.87 1.43 1.43 1.294-1.292a1 1 0 0 1 1.415 1.415l-1.294 1.294 3.433 3.432 2.871-4.306-4.844-4.843Z"
+      />
+    </svg>
+  );
+}
+
+export function Collapse(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M12.659 9.753a1 1 0 0 1-1.318 0l-4-3.5A1 1 0 1 1 8.66 4.747L12 7.671l3.341-2.924a1 1 0 1 1 1.318 1.506l-4 3.5Zm-4.002 9.501a1 1 0 1 1-1.314-1.508l4-3.485a1 1 0 0 1 1.314 0l4 3.485a1 1 0 1 1-1.314 1.508L12 16.34l-3.343 2.913Z" />
+    </svg>
+  );
+}
+
+export function CompareArrows(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 18 16" fill="currentColor" aria-hidden {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M5.70243 1.16073C6.02787 0.835297 6.55551 0.835297 6.88094 1.16073L9.79761 4.0774C10.123 4.40284 10.123 4.93048 9.79761 5.25591L6.88094 8.17258C6.55551 8.49802 6.02787 8.49802 5.70243 8.17258C5.37699 7.84714 5.37699 7.3195 5.70243 6.99407L7.19651 5.49999H1.50002C1.03978 5.49999 0.666687 5.12689 0.666687 4.66666C0.666687 4.20642 1.03978 3.83332 1.50002 3.83332H7.19651L5.70243 2.33925C5.37699 2.01381 5.37699 1.48617 5.70243 1.16073Z"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M12.2976 14.8392C11.9722 15.1647 11.4445 15.1647 11.1191 14.8392L8.20243 11.9226C7.87699 11.5971 7.87699 11.0695 8.20243 10.7441L11.1191 7.8274C11.4445 7.50196 11.9722 7.50196 12.2976 7.8274C12.623 8.15284 12.623 8.68048 12.2976 9.00591L10.8035 10.5H16.5C16.9603 10.5 17.3334 10.8731 17.3334 11.3333C17.3334 11.7936 16.9603 12.1667 16.5 12.1667H10.8035L12.2976 13.6607C12.623 13.9862 12.623 14.5138 12.2976 14.8392Z"
+      />
+    </svg>
+  );
+}
+
+/** A toggle's glyph in letters ("Aa", "ab", ".*"), at the icon's size. */
+export function TextGlyph({ text, mono = false }: { text: string; mono?: boolean }) {
+  return (
+    <span aria-hidden className={mono ? "font-mono text-xs font-semibold" : "text-xs font-semibold"}>
+      {text}
+    </span>
+  );
+}

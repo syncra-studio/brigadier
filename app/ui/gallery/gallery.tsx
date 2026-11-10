@@ -11,6 +11,7 @@ import { RailGallery } from "./rail";
 import { TabsGallery } from "./tabs";
 import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
+import { FilesGallery } from "./files";
 import { RewindGallery } from "./rewind";
 import { FindGallery } from "./find";
 import { HomeGallery } from "./home";
@@ -130,6 +131,7 @@ function GalleryPage() {
             <Area name="Layout">
               <TabsGallery />
               <Panes />
+              <FilesGallery />
             </Area>
             <Area name="Landing the work">
               <ConflictsGallery />

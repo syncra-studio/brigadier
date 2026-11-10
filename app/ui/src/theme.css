@@ -39,6 +39,9 @@
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
+  /* Find in a file and Search's marks: the old bg-warning/30, and /70 for the current one [D1002]. */
+  --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
+  --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
   /* Pull request words and their chips, the old app's PR colours. */
   --color-pr-yellow: #fbc959;
@@ -479,6 +482,8 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
+  /* What git ignores, in the Files tree: the old opacity-50. */
+  --opacity-ignored: 50%;
   --opacity-tab-close: 60%;
   /* Back and Forward with nowhere to go. */
   --opacity-titlebar-nowhere: 40%;
@@ -1467,4 +1472,19 @@
   --diffs-font-size: var(--text-diff);
   --diffs-line-height: var(--text-diff--line-height);
   --diffs-tab-size: 2;
+}
+
+/* Files tree: each level indents by four spacing steps (data-depth on the row, files/tree.tsx). */
+@utility tree-indent {
+  padding-inline-start: calc(var(--spacing) * (2 + attr(data-depth type(<number>), 0) * 4));
+}
+
+/* The file viewer's line numbers: as wide as the last one's digits (data-digits), plus their padding. */
+@utility line-gutter {
+  width: calc(attr(data-digits type(<number>), 1) * 1ch + var(--spacing) * 8);
+}
+
+/* A highlighted token in the theme's own colour (data-colour, from shiki's pierre-dark) [D1059]. */
+@utility token-colour {
+  color: attr(data-colour type(<color>), currentcolor);
 }
