@@ -16,7 +16,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = core::load(data, id)?;
     match args[0].as_str() {
-        "archive" => session::archive(&spec, || stop(data, id, "archive"))?,
+        // Settled first too: an archived session gets no host to settle with.
+        "archive" => crate::rewind::settled(data, &spec)
+            .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {
@@ -35,6 +37,8 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
 /// One session's delete: its host stops, then core deletes it, recording its intent first.
 fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
+    // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
+    crate::rewind::settled(data, &spec)?;
     stop(data, id, by)?;
     let f = core::fold(&spec.dir, false)?;
     Ok(session::delete(&spec, &f.fold, drop))
@@ -104,6 +108,12 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         return Ok(json!({"ok": true, "sessions": ids, "working": working,
             "worktrees": worktrees, "bytes": bytes, "merged": merged, "branches": branches,
             "removing": project.removing}));
+    }
+    // Settling needs a host, which is refused once the project is marked as being removed.
+    for s in &ids {
+        core::load(data, s)
+            .and_then(|spec| crate::rewind::settled(data, &spec))
+            .map_err(|e| io::Error::other(format!("{s}: {e}")))?;
     }
     // New work in it is refused from here on; busy is checked again under that [D172].
     projects::set_removing(data, id, true)?;
