@@ -3,7 +3,8 @@
 //! writes over a save that lands meanwhile.
 
 use super::search::{Matcher, hash, searchable};
-use super::{Checkout, files::listed, lock};
+use super::{Checkout, Target, files::listed, lock};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::fs;
@@ -11,7 +12,29 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
+/// Where a Replace all under way keeps its record: the session's folder, or the project's in the
+/// app's data. The daemon's start puts back every file a run cut short left aside [D1173].
+pub fn record(data: &Path, target: &Target) -> PathBuf {
+    match target {
+        Target::Session(id) => crate::session_dir(data, id).join(RECORD),
+        Target::Project(id) => data.join("projects").join(id).join(RECORD),
+    }
+}
+
+const RECORD: &str = "replacing.json";
+
+/// A run's record: its files, and whether all were placed (left: only removing their old copies).
+#[derive(Deserialize)]
+struct Record {
+    root: PathBuf,
+    git_dir: PathBuf,
+    keep: Option<PathBuf>,
+    placed: bool,
+    files: Vec<Staged>,
+}
+
 /// One listed file's rewrite, ready to go: its new text written beside it, not yet in place.
+#[derive(Serialize, Deserialize)]
 struct Staged {
     path: String,
     full: PathBuf,
@@ -42,6 +65,7 @@ pub fn replace(
     replacement: &str,
     files: &[Value],
     keep: Option<&Path>,
+    record: &Path,
     stop: &AtomicBool,
 ) -> io::Result<Value> {
     let _exclusive = lock(checkout, true, stop)?;
@@ -91,6 +115,22 @@ pub fn replace(
             }
         }
     }
+    let note = |placed: bool| {
+        let note = json!({"root": checkout.root, "git_dir": checkout.git_dir, "keep": keep,
+            "placed": placed, "files": &staged});
+        fs::create_dir_all(record.parent().unwrap_or(Path::new(".")))?;
+        crate::write_atomic(record, &serde_json::to_vec(&note)?)
+    };
+    // Before the first file moves aside, so a crash from here on is put right at the next start.
+    if let Err(e) = note(false) {
+        discard(&staged);
+        return Err(e);
+    }
+    let forget = || {
+        let _ = fs::remove_file(record);
+        // A project's folder holds nothing else.
+        let _ = record.parent().map(fs::remove_dir);
+    };
     let kept = |file: &Staged| keep_aside(file, keep);
     let mut placed = 0;
     for file in &staged {
@@ -109,7 +149,12 @@ pub fn replace(
         }
         skipped.push(skip(&file.path, reason));
         discard(&staged);
+        forget();
         return Ok(outcome(0, 0, skipped, unrestored));
+    }
+    // All in: a crash now only leaves old copies, never a run half undone. Unrecorded, it leaves them.
+    if note(true).is_err() {
+        forget();
     }
     for file in &staged {
         // A writer that had the file open before it moved aside wrote into the old copy: kept.
@@ -122,8 +167,68 @@ pub fn replace(
         }
         let _ = fs::remove_file(&file.temp);
     }
+    forget();
     let matches = staged.iter().map(|f| f.matches).sum();
     Ok(outcome(staged.len() as u64, matches, skipped, unrestored))
+}
+
+/// At the daemon's start: each Replace all cut short is put right under its checkout's lock. Cut
+/// short while placing, every file goes back as it was; once all were placed, only their old copies
+/// go. A file something else changed stays, and the log says where its text from before is.
+pub fn sweep(data: &Path) {
+    let projects = fs::read_dir(data.join("projects"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    let records = crate::ids(data)
+        .into_iter()
+        .map(|id| crate::session_dir(data, &id).join(RECORD))
+        .chain(projects.map(|dir| dir.path().join(RECORD)));
+    let never = AtomicBool::new(false);
+    for path in records {
+        let read = || serde_json::from_slice::<Record>(&fs::read(&path).ok()?).ok();
+        let Some(run) = read() else { continue };
+        let checkout = Checkout {
+            root: run.root,
+            git_dir: run.git_dir,
+        };
+        // A run still going from the CLI holds it, and removes its record when done.
+        let Ok(_exclusive) = lock(&checkout, true, &never) else {
+            continue;
+        };
+        let Some(run) = read() else { continue };
+        for file in &run.files {
+            if let Err(why) = recover(file, run.placed, &|f: &Staged| {
+                keep_aside(f, run.keep.as_deref())
+            }) {
+                eprintln!("brigadierd: replace {}: {why}", file.full.display());
+            }
+        }
+        let _ = fs::remove_file(&path);
+        let _ = path.parent().map(fs::remove_dir);
+    }
+}
+
+/// Puts one file of a run cut short right: back as it was, or once all were placed, its old copy
+/// gone; either way only while what's there is this run's own.
+fn recover(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+    let _ = fs::remove_file(&file.temp);
+    if fs::symlink_metadata(&file.aside).is_err() {
+        return Ok(());
+    }
+    let original = |path: &Path| fs::read(path).is_ok_and(|bytes| hash(&bytes) == file.hash);
+    if !placed && !original(&file.full) {
+        return put_back(file, kept);
+    }
+    match original(&file.aside) {
+        true => {
+            fs::remove_file(&file.aside).map_err(|e| format!("couldn't remove its old copy: {e}"))
+        }
+        false => Err(format!(
+            "it was written while it was replaced; that save is in {}",
+            kept(file).display()
+        )),
+    }
 }
 
 /// Checks a listed file against its search and writes its rewrite beside it.

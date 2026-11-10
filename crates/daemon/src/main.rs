@@ -107,6 +107,7 @@ fn main() -> io::Result<()> {
         None => return Ok(()),
     };
     brigadier_core::worktrees::sweep(&data);
+    brigadier_core::git::replace::sweep(&data);
     brigadier::rewind::sweep(&data);
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;

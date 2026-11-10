@@ -131,8 +131,15 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
                 Target::Project(_) => None,
             };
             let files = files.as_array().map_or(&[][..], Vec::as_slice);
-            let outcome =
-                replace::replace(&checkout, &matcher, word(2)?, files, keep.as_deref(), &stop)?;
+            let outcome = replace::replace(
+                &checkout,
+                &matcher,
+                word(2)?,
+                files,
+                keep.as_deref(),
+                &replace::record(data, &target),
+                &stop,
+            )?;
             json!({"ok": true, "outcome": outcome})
         }
         verb @ ("stage" | "unstage" | "discard") => {
