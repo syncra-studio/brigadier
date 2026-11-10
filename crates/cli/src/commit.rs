@@ -78,6 +78,7 @@ fn written(
     }
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
+        run.dir = writer::home(&spec.dir);
         run.level = a.can().levels.first().map(|l| l.to_string());
         run.grants = vec![];
     };

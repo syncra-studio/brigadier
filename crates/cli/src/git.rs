@@ -182,7 +182,9 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
         },
         // Source's commit and the message writer [D1029, D1107].
         "make-commit" => {
-            let all = has(args, "--all");
+            // `--all` as a flag, never as the message's own text.
+            let all = (args.iter().enumerate())
+                .any(|(i, a)| a == "--all" && (i == 0 || args[i - 1] != "--message"));
             super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
         }
         "write" => super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"))?,

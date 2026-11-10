@@ -133,6 +133,13 @@ fn clean(reply: &str) -> String {
         .to_string()
 }
 
+/// The writer's own folder in the session's: its runs use it as theirs, so an adapter reading a
+/// run's folder (its log, its own records) finds only the writer's conversations, never the
+/// session's, and removes nothing of the session's [D35].
+pub fn home(session: &Path) -> PathBuf {
+    session.join("writer")
+}
+
 fn records(dir: &Path) -> PathBuf {
     dir.join("writers")
 }
@@ -172,6 +179,7 @@ fn remove(a: &dyn Adapter, run: &Spec, id: &str, named: &[String]) -> Result<(),
 /// One reply from `a` on a new conversation of `run` (its model, effort and account already the
 /// writer's), as a clean message. `account`: the account id the run is on, "" for the computer's own.
 pub fn write(a: &dyn Adapter, run: &Spec, account: &str, prompt: &str) -> Result<String, Failure> {
+    fs::create_dir_all(&run.dir).map_err(|e| fail(e.to_string()))?;
     let launch = a.launch(run, None, Some(prompt));
     let (exe, args) = launch
         .argv
@@ -228,11 +236,17 @@ pub fn write(a: &dyn Adapter, run: &Spec, account: &str, prompt: &str) -> Result
                 ended += 1;
                 continue;
             }
+            // What it said goes with it, so an offline failure still reads as one.
             Ok(None) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                break Err(format!("{} stopped before it answered", a.label()));
+                break Err(format!(
+                    "{} stopped before it answered\n{}",
+                    a.label(),
+                    said.join("\n")
+                ));
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                break Err(format!("{} didn't answer in {WRITE_SECS} s", a.label()));
+                let late = format!("{} didn't answer in {WRITE_SECS} s", a.label());
+                break Err(format!("{late}\n{}", said.join("\n")));
             }
         };
         let events = a.parse(&line);
@@ -317,11 +331,12 @@ fn left(dir: &Path) -> Vec<(String, String, String, Vec<String>)> {
 /// keeps the session to try again [D35].
 pub fn forget(spec: &Spec, f: &Fold) -> Vec<String> {
     let mut stayed = vec![];
-    for (backend, account, id, paths) in left(&spec.dir) {
+    for (backend, account, id, paths) in left(&home(&spec.dir)) {
         let Some(a) = crate::adapters::get(&backend) else {
             continue;
         };
-        let run = crate::account::as_run(spec, f, &backend, Some(&account));
+        let mut run = crate::account::as_run(spec, f, &backend, Some(&account));
+        run.dir = home(&spec.dir);
         if let Err(e) = remove(a, &run, &id, &paths) {
             stayed.push(format!("{backend} writer: {e}"));
         }

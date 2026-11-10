@@ -11,8 +11,6 @@ use std::io;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
-/// Git's empty tree, the base of a repository's first commit.
-const EMPTY: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// Proposed: a commit, its hooks included, gives up after this.
 const COMMIT_SECS: u64 = 120;
 
@@ -61,6 +59,10 @@ fn tree(checkout: &Checkout, all: bool, stop: &AtomicBool) -> io::Result<String>
     if !all {
         return run(&mut write_tree, "Resolve the conflicts first.", stop);
     }
+    // Staging everything would take conflict markers as resolved: a conflict is resolved first.
+    if !read(&checkout.root, &["ls-files", "--unmerged"], stop)?.is_empty() {
+        return err("Resolve the conflicts first.");
+    }
     let copy = std::env::temp_dir().join(format!("brigadier-index-{}", crate::adapters::uuid()));
     let index = checkout.git_dir.join("index");
     if index.exists() {
@@ -80,7 +82,19 @@ pub fn prepare(checkout: &Checkout, all: bool, stop: &AtomicBool) -> io::Result<
     let _held = lock(checkout, false, stop)?;
     let head = head(checkout, stop);
     let tree = tree(checkout, all, stop)?;
-    let base = head.as_deref().unwrap_or(EMPTY);
+    // A repository with no commit yet compares with the empty tree, in its own hash.
+    let empty = || {
+        read(
+            &checkout.root,
+            &["hash-object", "-t", "tree", "/dev/null"],
+            stop,
+        )
+        .map(text)
+    };
+    let base = match &head {
+        Some(head) => head.clone(),
+        None => empty()?,
+    };
     let patch = read(
         &checkout.root,
         &[
@@ -88,7 +102,9 @@ pub fn prepare(checkout: &Checkout, all: bool, stop: &AtomicBool) -> io::Result<
             "--patch-with-stat",
             "-M",
             "--no-color",
-            base,
+            "--no-ext-diff",
+            "--no-textconv",
+            &base,
             &tree,
         ],
         stop,
@@ -196,6 +212,8 @@ pub fn branch(
             "--patch-with-stat",
             "-M",
             "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
             &since,
             "--",
         ],

@@ -151,9 +151,16 @@ function read(session: string) {
  * The message writer's title and body [D1029], replacing git's own text while the user hasn't edited it; when it
  * writes nothing, git's text stays (proposed, D1164).
  */
+/** Per session, the writer's draft still wanted: a create or an edit drops it, so a late reply changes nothing. */
+const drafts = new Map<string, number>();
+const dropDraft = (session: string) => drafts.set(session, (drafts.get(session) ?? 0) + 1);
+
 function draft(session: string) {
+  dropDraft(session);
+  const wanted = drafts.get(session);
   ask({ op: "run", args: ["source", session, "write", "pr"] }, (reply) => {
-    if (!reply.ok || opOf(session).text !== null) return;
+    const op = opOf(session);
+    if (!reply.ok || drafts.get(session) !== wanted || op.text !== null || op.busy || !op.open) return;
     const [title = "", ...body] = String(reply.text).split("\n");
     put(session, { text: { title: title.trim(), body: body.join("\n").trim(), draft: false } });
   });
@@ -170,6 +177,7 @@ function made(session: string, pr: { number: number | null; url: string }) {
 }
 
 function create(session: string) {
+  dropDraft(session);
   const text = textOf(opOf(session));
   put(session, { busy: "creating", error: null });
   run(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], (reply) => {
@@ -240,7 +248,10 @@ export function useCreatePr(session: string | null) {
       busy={op.busy}
       error={op.error ?? (op.info ? null : op.readError)}
       offline={!connected}
-      onText={(text) => put(session, { text })}
+      onText={(text) => {
+        dropDraft(session);
+        put(session, { text });
+      }}
       onRetry={() => read(session)}
       onCancel={() => put(session, { open: false })}
       onConfirm={() => confirm(session)}
