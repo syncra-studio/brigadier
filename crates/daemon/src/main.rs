@@ -19,9 +19,8 @@
 //! [D97, D98]; with `"after"` instead, the page from that row on down. `{"id", "op":
 //! "thread_around", "session", "n"}` answers the same shape for the whole turns around row `n`,
 //! an island find goes to, `before` and `after` naming the rows not sent on each side [D503].
-//! `{"id", "op": "thread_find", "session", "before", "gap"?: [from, to], "query", "limit"}`
-//! answers `{"re", "ok", "matches": [{"n", "count"}], "more"}`: find in the conversation for the
-//! rows not loaded, older than `before` and in the gap under an island [D470].
+//! `{"id", "op": "thread_find", "session", "before", "query", "limit"}` answers `{"re", "ok",
+//! "matches": [{"n", "count"}], "more"}`: find in the conversation, for the rows not loaded [D470].
 //! Threads are folded from each session's saved thread (`store`), saved as turns end [D503].
 //!
 //! `{"id", "op": "git", "session" | "project"}` follows that checkout's status the same way: a

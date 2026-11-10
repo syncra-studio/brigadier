@@ -1,4 +1,4 @@
-import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
 import { VList, type VListHandle } from "virtua";
 
 import type { Session } from "./item";
@@ -7,15 +7,56 @@ import { LineRow } from "./rows";
 import { Find } from "./find";
 import { Follow, OLDER, spaceStore, takePlace, type Phase, type Space } from "./follow";
 import { cx } from "../components/cx";
+import { Skeleton } from "../components/skeleton";
 import { JumpSign, datedMessages } from "../components/thread/message";
 
-/** Where the session comes from: null while it loads. */
-export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void };
+/**
+ * Where the session comes from: null while it loads. After find went to an island far up (`after` set), `newer` asks
+ * for the page under the rows held and `latest` for the newest rows again [D503].
+ */
+export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void; newer?(): void; latest?(): void };
 /** `sent(id)`: this window sent the message under this row or command id, so it gets the space below and the glide. */
 export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void; sent(id: string): void };
 
 /** After the last row: the working line and the bubbles on their way, then the space, then room at the end. */
 const FOOTER = { type: "footer", id: "footer" } as const;
+
+/** Rows on their way, in the old app's shapes [D48]: a message, then a reply's lines. */
+function Placeholder() {
+  return (
+    <div aria-hidden className="flex flex-col gap-2">
+      <Skeleton className="ml-auto h-10 w-2/5 rounded-bubble" />
+      <Skeleton className="mt-4 h-4 w-4/5" />
+      <Skeleton className="h-4 w-3/5" />
+    </div>
+  );
+}
+
+/** A thread still on its way: blank for a moment, as an open is mostly quicker, then its placeholder. */
+function Loading() {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setLate(true), 200);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div role="status" className="mx-auto w-full max-w-reading px-6 pt-thread-find-top">
+      <span className="sr-only">Loading conversation</span>
+      {late && <Placeholder />}
+    </div>
+  );
+}
+
+/** Under an island: the newer rows' place, asking for them whenever it's drawn, near the view. */
+function Newer({ after, newer }: { after: number; newer?: () => void }) {
+  useEffect(() => newer?.(), [after, newer]);
+  return (
+    <div role="status" className="pt-6">
+      <span className="sr-only">Loading newer messages</span>
+      <Placeholder />
+    </div>
+  );
+}
 
 /** The space itself: an empty svg as tall as it, since our code sets no inline styles (D68). */
 function Spacer({ space }: { space: Space }) {
@@ -43,6 +84,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const turns = useMemo(() => new Map(turnList?.map((turn) => [turn.id, turn])), [turnList]);
   const work = useMemo(() => new Map(workList?.map((each) => [each.turnId, each])), [workList]);
   const items = session?.items;
+  // Under an island find went to, the newest rows load as the view gets there.
+  const after = session?.after ?? null;
   const lines = useMemo(lineMaker, []);
   const dated = useMemo(() => datedMessages(items ?? []), [items]);
   const threadRows = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
@@ -171,6 +214,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       list.current?.scrollBy(offset);
     },
     sent: (cid) => {
+      sourceRef.current.latest?.();
       follow.pending = cid;
       // Once the bubble is drawn in the footer.
       requestAnimationFrame(() => follow.place());
@@ -224,6 +268,17 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     };
     // Opened once per list: `running` is read as the list appears.
   }, [follow, listed, id]);
+  // Under an island the end isn't the newest: it never follows there, so rows coming under it stay below.
+  useLayoutEffect(() => {
+    if (after !== null) follow.hold();
+  }, [follow, data, after]);
+  // The jump button under an island: once the newest rows are back, to their end.
+  const toLatest = useRef(false);
+  useLayoutEffect(() => {
+    if (after !== null || !toLatest.current) return;
+    toLatest.current = false;
+    follow.jump(running);
+  });
   // New rows: placed, followed or taken from the space before the paint.
   useLayoutEffect(() => {
     follow.resized();
@@ -231,8 +286,9 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   }, [follow, data]);
 
   // Words here would flash on every open; the column stays empty for the moment it takes.
-  if (!listed && !session) return <span role="status" className="sr-only">Loading conversation</span>;
+  if (!listed && !session) return <Loading />;
   if (!listed) return <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No messages yet</p>;
+  const jumps = away || after !== null;
   return (
     // The old app's thread type: 14px, smoothed.
     <div ref={box} className="relative h-full text-sm antialiased">
@@ -253,8 +309,9 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           line.type === "footer" ? (
             <div key={FOOTER.id} data-footer>
               <div className="mx-auto w-full max-w-reading px-6 pb-8">
+                {after !== null && <Newer after={after} newer={source.newer} />}
                 {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
-                {hasFooter && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
+                {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
                 <Spacer space={space} />
               </div>
               <div data-end aria-hidden className="end-snap-target" />
@@ -269,12 +326,12 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       <button
         type="button"
         aria-label="Jump to the latest"
-        aria-hidden={!away || undefined}
-        tabIndex={away ? undefined : -1}
-        onClick={away ? () => follow.jump(running) : undefined}
+        aria-hidden={!jumps || undefined}
+        tabIndex={jumps ? undefined : -1}
+        onClick={jumps ? () => (after === null ? follow.jump(running) : ((toLatest.current = true), source.latest?.())) : undefined}
         className={cx(
           "group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md -translate-x-1/2 cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground transition-opacity focus-visible:focus-ring motion-reduce:transition-none",
-          !away && "pointer-events-none opacity-0",
+          !jumps && "pointer-events-none opacity-0",
         )}
       >
         <JumpSign running={running} />

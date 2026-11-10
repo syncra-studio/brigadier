@@ -65,7 +65,7 @@ function overlay(session: Session, mine: ReadonlyMap<string, Answer> | undefined
 
 let memo: { from: Session | null; mine: ReadonlyMap<string, Answer> | undefined; out: Session | null } = { from: null, mine: undefined, out: null };
 /** The open thread with the answers on their way already in it. */
-export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, "older" | "findOlder"> = {
+export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, "older" | "newer" | "latest" | "jump" | "findOlder"> = {
   subscribe(listener) {
     const off = threadSource.subscribe(listener);
     const offMine = subscribe(listener);
@@ -80,7 +80,10 @@ export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, 
     if (from !== memo.from || mine !== memo.mine) memo = { from, mine, out: from && overlay(from, mine) };
     return memo.out;
   },
-  older: (through) => threadSource.older(through),
+  older: () => threadSource.older(),
+  newer: () => threadSource.newer(),
+  latest: () => threadSource.latest(),
+  jump: (n) => threadSource.jump(n),
   findOlder: (query, limit) => threadSource.findOlder(query, limit),
 };
 

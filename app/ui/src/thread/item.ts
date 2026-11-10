@@ -13,6 +13,8 @@ export type Session = {
   title: string;
   /** The `n` of the first row sent, or null when the whole history came. */
   before?: number | null;
+  /** After find went to an island far up: the `n` of the first newer row not held, or null when they reach the newest. */
+  after?: number | null;
   turns: Turn[];
   /** Every item of every turn, oldest first: the rows of the thread. */
   items: Item[];

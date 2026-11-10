@@ -163,7 +163,6 @@ pub(super) fn serve(
                             "thread_around" => thread.around(n("n").unwrap_or(0)),
                             _ => thread.find(
                                 n("before").unwrap_or(0),
-                                req["gap"][0].as_u64().zip(req["gap"][1].as_u64()),
                                 req["query"].as_str().unwrap_or(""),
                                 n("limit").unwrap_or(250) as usize,
                             ),

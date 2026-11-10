@@ -124,26 +124,17 @@ fn words(item: &Value) -> Vec<std::borrow::Cow<'_, str>> {
 }
 
 impl Thread {
-    /// Where `query` is, case aside, in the rows the view hasn't loaded: those older than row
-    /// `before` (an `n`) and those in `gap` (`n`s from, to), under an island find went to. Each
-    /// row's `n` and how many times, oldest first, counted from the newest up to `limit` in all;
-    /// `more` when it stopped there.
-    pub fn find(&self, before: u64, gap: Option<(u64, u64)>, query: &str, limit: usize) -> Value {
+    /// Where `query` is, case aside, in the rows older than row `before` (an `n`): each row's `n`
+    /// and how many times, oldest first, counted from the newest up to `limit` in all; `more` when
+    /// it stopped there. The view asks for every row's, and counts those it holds itself.
+    pub fn find(&self, before: u64, query: &str, limit: usize) -> Value {
         let needle = query.to_lowercase();
         let (mut matches, mut more, mut left) = (vec![], false, limit);
-        let len = self.items.len() as u64;
-        let index = |n: u64| n.saturating_sub(1).min(len) as usize;
-        let gap = gap.map_or(0..0, |(from, to)| index(from)..index(to + 1));
-        let older = 0..index(before);
+        let end = before.saturating_sub(1).min(self.items.len() as u64) as usize;
         if !needle.is_empty() {
             self.items.read_all();
         }
-        for item in self
-            .items
-            .range(gap)
-            .rev()
-            .chain(self.items.range(older).rev())
-        {
+        for item in self.items.range(0..end).rev() {
             let Some(n) = item["n"].as_u64() else {
                 continue;
             };

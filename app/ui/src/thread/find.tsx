@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import type { Older, Paged } from "../daemon";
 import { FindBar } from "./find-bar";
-import { clippedBy, covered, findInThread, firstBelow, isRange, itemOf, NOTHING, olderAt, sameHit, withOlder, type Away, type Found, type Row } from "./find-hits";
+import { clippedBy, countOf, covered, findInThread, firstBelow, isRange, itemOf, NOTHING, sameHit, unloadedAt, withOlder, type Away, type Found, type Row } from "./find-hits";
 import { findLabel, lower, MAX_RESULTS, paint, startSearching, unpaint } from "./find-text";
 import { setKept } from "./kept";
 import type { Item, Session } from "./item";
@@ -12,17 +12,17 @@ import type { Item, Session } from "./item";
  * aside, in what the thread shows. Every match is washed yellow and the one gone to orange. Enter, ⌘G and › go to the
  * next, ⇧Enter, ⇧⌘G and ‹ the one before, Esc closes. Rows the list hasn't drawn are found in what they showed when
  * last drawn, or else their words (find-text.ts); a closed work fold or group counts its steps' words, and going to
- * one (a step, never typing) opens it. Rows not loaded are counted by Rust ahead of the thread's own; going to one
- * loads down to it in one page. Proposed: a line beside the count says while those can't be counted. Unlike the old app, a
+ * one (a step, never typing) opens it. Rows not loaded are counted by Rust, in their place among the thread's own;
+ * going to one loads the turns around it, an island, the rows between it and the newest loading as the view gets
+ * there [D503]. Proposed: a line beside the count says while those can't be counted. Unlike the old app, a
  * session's bar and its text come back with the session while the app runs [D508].
  */
 
 /** What find reads and asks of the source: the session, its older pages, and Rust's count of the rows not loaded. */
-export type FindSource = { get(): Session | null; older?(through?: number): Promise<Paged> | void; findOlder?(query: string, limit: number): Promise<Older> };
+export type FindSource = { get(): Session | null; jump?(n: number): Promise<Paged>; findOlder?(query: string, limit: number): Promise<Older> };
 
 const RERUN_MS = 150;
 const OLDER_MS = 150;
-const OLDER_PAGES = 50;
 const STILL_FRAMES = 3;
 const LAST_FRAME = 300;
 const CLEAR_PX = 16;
@@ -63,6 +63,7 @@ export function Find(props: FindProps) {
   const now = useRef(props);
   now.current = props;
   const cursor = source.get()?.before ?? null;
+  const end = source.get()?.after ?? null;
   const [open, setOpen] = useState(() => props.id !== undefined && remembered.has(props.id));
   const [query, setQuery] = useState(() => (props.id !== undefined && remembered.get(props.id)) || "");
   const [result, setResult] = useState<Found>(NOTHING);
@@ -105,9 +106,10 @@ export function Find(props: FindProps) {
     const root = now.current.scroller();
     const read = new Map<string, { text: string; line: Row }>();
     const needle = lower(text);
-    const found = withOlder(root ? findInThread(root, rowsNow(), now.current.items, needle, textOf, read) : NOTHING, older.current, needle, now.current.source.get()?.before ?? null);
+    const held = now.current.source.get();
+    const found = withOlder(root ? findInThread(root, rowsNow(), now.current.items, needle, textOf, read) : NOTHING, older.current, needle, held?.before ?? null, held?.after ?? null);
     for (const [id, kept] of read) texts.current.set(id, kept);
-    const count = found.before + found.ranges.length;
+    const count = countOf(found);
     if (fresh) {
       reveals.current++;
       loading.current = null;
@@ -127,13 +129,15 @@ export function Find(props: FindProps) {
     }
     if (fresh || at < 0) {
       if (found.ranges.length > 0 && root) goTo(found.before + firstBelow(root, rowsNow(), found.ranges), found, false);
-      else choose(found.before - 1);
+      else choose(found.after > 0 ? found.before : found.before - 1);
       return found;
     }
-    // The thread changed under the bar: the match gone to stays, where it still is.
+    // The thread changed under the bar: the match gone to stays, where it still is; one not loaded keeps its place
+    // counted from its own side.
     const kept = last.ranges[at - last.before];
     const same = kept ? found.ranges.findIndex((hit) => sameHit(hit, kept)) : -1;
-    const index = same >= 0 ? found.before + same : at < last.before ? at : at - last.before + found.before;
+    const newer = at >= last.before + last.ranges.length;
+    const index = same >= 0 ? found.before + same : at < last.before ? at : newer ? count - (countOf(last) - at) : at - last.before + found.before;
     choose(Math.max(0, Math.min(index, count - 1)));
     return found;
   };
@@ -237,25 +241,21 @@ export function Find(props: FindProps) {
     }
   };
 
-  /** Goes to match `index`, one in the rows not loaded: one page down to its row loads, then it is found in that row. */
+  /** Goes to match `index`, one in the rows not loaded: the turns around its row load, then it is found in that row. */
   const loadTo = async (index: number, found: Found) => {
-    const target = olderAt(found, index);
-    const page = now.current.source.older;
-    if (!target || !page) return;
+    const target = unloadedAt(found, index);
+    const jump = now.current.source.jump;
+    if (!target || !jump) return;
     const seq = ++reveals.current;
     const live = () => seq === reveals.current;
-    const mine = { index, all: found.before + found.ranges.length };
+    const mine = { index, all: countOf(found) };
     loading.current = mine;
     const done = () => loading.current === mine && (loading.current = null);
-    for (let pages = 0; pages < OLDER_PAGES; pages++) {
-      const held = now.current.source.get()?.before ?? null;
-      if (held === null || held <= target.n) break;
-      const paged = await page(target.n);
-      if (!live()) return void done();
-      if (!paged || !paged.ok) {
-        setOlderState("failed");
-        return void done();
-      }
+    const paged = await jump(target.n);
+    if (!live()) return void done();
+    if (!paged.ok) {
+      setOlderState("failed");
+      return void done();
     }
     // Once the thread holds the row and finds its matches: the same one of them, counted from its last.
     for (let frames = 0; frames <= LAST_FRAME && live(); frames++) {
@@ -274,7 +274,7 @@ export function Find(props: FindProps) {
   /** Match `index` is the one gone to; `opens` (a step) goes there, opening and loading what it must. */
   const goTo = (index: number, found: Found, opens: boolean) => {
     choose(index);
-    if (index < found.before) return void (opens && loadTo(index, found));
+    if (index < found.before || index >= found.before + found.ranges.length) return void (opens && loadTo(index, found));
     const hit = found.ranges[index - found.before];
     if (isRange(hit)) void reveal(hit, opens);
     else if (hit) void bring(hit, opens);
@@ -283,11 +283,12 @@ export function Find(props: FindProps) {
   /** The match after (`1`) or before (`-1`), round from the last to the first. */
   const step = (by: 1 | -1) => {
     const { result: found, active: at } = state.current;
-    const count = found.before + found.ranges.length;
+    const count = countOf(found);
     if (count === 0) return;
     // The match typing went to is in the rows not loaded or a closed fold: this step goes there first.
     const current = found.ranges[at - found.before];
-    if ((at >= 0 && at < found.before) || (current && !isRange(current) && current.folded)) goTo(at, found, true);
+    const unloaded = at >= 0 && (at < found.before || at >= found.before + found.ranges.length);
+    if (unloaded || (current && !isRange(current) && current.folded)) goTo(at, found, true);
     else goTo((at + by + count) % count, found, true);
   };
   const stepRef = useRef(step);
@@ -412,7 +413,7 @@ export function Find(props: FindProps) {
   // couldn't come once the session changes again.
   const retry = olderState === "failed" ? props.items : null;
   useEffect(() => {
-    if (!open || query === "" || !ask || cursor === null) {
+    if (!open || query === "" || !ask || (cursor === null && end === null)) {
       older.current = null;
       setOlderState(null);
       return;
@@ -433,7 +434,7 @@ export function Find(props: FindProps) {
       current = false;
       clearTimeout(timer);
     };
-  }, [open, query, ask, cursor, retry]);
+  }, [open, query, ask, cursor, end, retry]);
 
   // A text in the bar: folded code blocks draw all their lines, cut to their fold, to be found.
   const hasText = open && query !== "";
@@ -447,7 +448,7 @@ export function Find(props: FindProps) {
   useEffect(() => () => unpaint(now.current.scroller()), []);
 
   if (!open) return null;
-  const count = result.before + result.ranges.length;
+  const count = countOf(result);
   return (
     <FindBar
       bar={bar}

@@ -71,6 +71,12 @@ let itemAt = new Map<string, number>();
 // The `n` of the first row held, or null once the whole history is in; the older page asked for, if any [D97].
 let before: number | null = null;
 let olderRe = 0;
+// After find went to an island far up, the `n` of the first newer row not held, or null when the rows held reach the
+// newest; those come a page at a time as the view scrolls down to them [D503].
+let after: number | null = null;
+// Bumped when the rows held start over (a snapshot, an island), so a page asked for before then is dropped.
+let rowsRun = 0;
+let newerAsked = false;
 // The older page's answer, for whoever asked; and whether pages older than the snapshot came.
 let olderDone: ((result: Paged) => void)[] = [];
 let paged = false;
@@ -115,6 +121,45 @@ function setThread(next: ThreadState | undefined, nextSession = session): void {
   thread = next;
   session = nextSession;
   for (const listener of threadListeners) listener();
+}
+
+/**
+ * A page or an island put with the rows held: where they touch, one run of rows by `n`, the page's copies winning (it
+ * was read after them); where they don't, the island alone, and the rows newer than it come as the view gets there.
+ */
+function merge(frame: Record<string, any>): void {
+  if (!thread || !session) return;
+  const got = frame.items as Item[];
+  const [first, end] = [session.items[0]?.n ?? Infinity, after ?? Infinity];
+  const [from, to] = [got[0]?.n ?? Infinity, (frame.after as number | null) ?? Infinity];
+  const touch = from <= end && to >= first;
+  const above = from < first;
+  if (!touch) rowsRun++;
+  const byId = new Map(touch ? session.items.map((item) => [item.id, item]) : []);
+  for (const item of got) byId.set(item.id, item);
+  const items = touch && got.length === 0 ? session.items : [...byId.values()].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
+  if (!touch || above) before = frame.before;
+  if (!touch) after = frame.after;
+  else if (frame.after === null || after === null) after = null;
+  else after = Math.max(after, frame.after);
+  const join = <T,>(have: readonly T[], come: readonly T[], key: (each: T) => string): T[] => {
+    if (!touch) return [...come];
+    const fresh = new Map(come.map((each) => [key(each), each]));
+    const kept = new Set(have.map(key));
+    const extra = come.filter((each) => !kept.has(key(each)));
+    const now = have.map((each) => fresh.get(key(each)) ?? each);
+    return above ? [...extra, ...now] : [...now, ...extra];
+  };
+  itemAt = new Map(items.map((item, at) => [item.id, at]));
+  paged = true;
+  setThread(thread, {
+    ...session,
+    before,
+    after,
+    items,
+    turns: join(session.turns, frame.turns as Turn[], (turn) => turn.id),
+    work: join(session.work ?? [], frame.work as Work[], (each) => each.turnId),
+  });
 }
 
 /** An older page came (`before`: the new first row's `n`, null once the whole history is in), or why not. */
@@ -180,8 +225,9 @@ function applyThread(frame: Record<string, any>): void {
   const items = frame.items.length ? session.items.slice() : session.items;
   for (const item of frame.items as Item[]) {
     const at = itemAt.get(item.id);
-    // A row older than the pages held comes with its page.
+    // A row older than the pages held, or newer than an island's, comes with its page.
     if (at === undefined && before !== null && item.n !== undefined && item.n < before) continue;
+    if (at === undefined && after !== null && item.n !== undefined && item.n >= after) continue;
     if (at === undefined) itemAt.set(item.id, items.push(item) - 1);
     else items[at] = item;
   }
@@ -229,23 +275,13 @@ function onFrame(frame: Record<string, any>): void {
     itemAt = new Map(next.items.map((item, at) => [item.id, at]));
     threadN = frame.n;
     before = frame.session.before;
+    after = null;
+    rowsRun++;
     paged = false;
     setThread({ id: thread.id, status: "ready" }, next);
   } else if (thread && session && olderRe && frame.re === olderRe) {
     if (!frame.ok) return paging({ ok: false, error: frame.error });
-    const turns = new Set(session.turns.map((turn) => turn.id));
-    const work = new Set(session.work?.map((each) => each.turnId));
-    const items = [...(frame.items as Item[]), ...session.items];
-    itemAt = new Map(items.map((item, at) => [item.id, at]));
-    before = frame.before;
-    paged = true;
-    setThread(thread, {
-      ...session,
-      before,
-      items,
-      turns: [...(frame.turns as Turn[]).filter((turn) => !turns.has(turn.id)), ...session.turns],
-      work: [...(frame.work as Work[]).filter((each) => !work.has(each.turnId)), ...(session.work ?? [])],
-    });
+    merge(frame);
     paging({ ok: true, before });
   } else if (frame.thread !== undefined) {
     applyThread(frame);
@@ -321,20 +357,53 @@ export const useDaemon = (): View =>
     () => view,
   );
 
+/** Asks for a page or an island of the open thread; its answer is dropped once the rows held start over. */
+function page(request: object, done: (result: Paged) => void): void {
+  const [id, re, run] = [thread?.id, threadRe, rowsRun];
+  if (!id || !session || threadN === undefined) return done({ ok: false, error: "loading" });
+  ask({ session: id, ...request }, (frame) => {
+    if (thread?.id !== id || threadRe !== re || rowsRun !== run) return done({ ok: false, error: "stale" });
+    if (!frame.ok) return done({ ok: false, error: frame.error });
+    merge(frame);
+    done({ ok: true, before });
+  });
+}
+
 /** The open thread as the view's source: null while it loads. */
-export const threadSource: Omit<Source, "older"> & { older(through?: number): Promise<Paged>; findOlder(query: string, limit: number): Promise<Older> } = {
+export const threadSource: Omit<Source, "older"> & {
+  older(): Promise<Paged>;
+  /** The rows held after find went to an island far up: the page under them, or the newest again [D503]. */
+  newer(): void;
+  latest(): void;
+  /** Find going to row `n`, not held: the turns around it, the rows between left to load as the view gets there. */
+  jump(n: number): Promise<Paged>;
+  findOlder(query: string, limit: number): Promise<Older>;
+} = {
   subscribe(listener) {
     threadListeners.add(listener);
     return () => threadListeners.delete(listener);
   },
   get: () => session,
-  older(through) {
+  older() {
     // `before` is only this session's once its snapshot is in.
     if (!thread || !session || threadN === undefined) return Promise.resolve({ ok: false, error: "loading" });
     if (before === null) return Promise.resolve({ ok: true, before: null });
     if (!olderRe && !view.daemon) return Promise.resolve({ ok: false, error: "disconnected" });
-    if (!olderRe) olderRe = send({ op: "thread_older", session: thread.id, before, through });
+    if (!olderRe) olderRe = send({ op: "thread_older", session: thread.id, before });
     return new Promise((done) => olderDone.push(done));
+  },
+  newer() {
+    if (after === null || newerAsked) return;
+    newerAsked = true;
+    page({ op: "thread_older", after }, () => (newerAsked = false));
+  },
+  latest() {
+    if (after !== null) watch();
+  },
+  jump(n) {
+    // An older page on its way would start from rows no longer held.
+    if (olderRe) paging({ ok: false, error: "stale" });
+    return new Promise((done) => page({ op: "thread_around", n }, done));
   },
   findOlder(query, limit) {
     // Bound to this session's watch: an answer after it changed (another session, a reconnect) is dropped.
@@ -342,8 +411,9 @@ export const threadSource: Omit<Source, "older"> & { older(through?: number): Pr
     const re = threadRe;
     return new Promise((done) => {
       if (!id || !session || threadN === undefined) return done({ ok: false, error: "loading" });
-      if (before === null) return done({ ok: true, matches: [], more: false });
-      ask({ op: "thread_find", session: id, before, query, limit }, (frame) => {
+      if (before === null && after === null) return done({ ok: true, matches: [], more: false });
+      // Every row's, so an answer stays whole while the rows held move (an island, a page): the view counts its own.
+      ask({ op: "thread_find", session: id, before: Number.MAX_SAFE_INTEGER, query, limit }, (frame) => {
         if (thread?.id !== id || threadRe !== re) return done({ ok: false, error: "stale" });
         done(frame.ok ? { ok: true, matches: frame.matches, more: frame.more } : { ok: false, error: frame.error });
       });

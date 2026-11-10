@@ -15,8 +15,14 @@ export type Row = Line | { type: "footer"; id: string };
 export type Away = { row: string; back: number; item?: string; folded?: boolean };
 export type Hit = Range | Away;
 export const isRange = (hit: Hit | undefined): hit is Range => hit instanceof Range;
-export type Found = { ranges: Hit[]; more: boolean; before: number; older: readonly { n: number; count: number }[] };
-export const NOTHING: Found = { ranges: [], more: false, before: 0, older: [] };
+type Unloaded = readonly { n: number; count: number }[];
+/**
+ * Matches in conversation order [D504]: `before` in the rows older than those held (`older`), the `ranges` in those
+ * held, then `after` in the rows newer than an island find went to (`newer`).
+ */
+export type Found = { ranges: Hit[]; more: boolean; before: number; older: Unloaded; after: number; newer: Unloaded };
+export const NOTHING: Found = { ranges: [], more: false, before: 0, older: [], after: 0, newer: [] };
+export const countOf = (found: Found) => found.before + found.ranges.length + found.after;
 
 /** The first item with `n` at least `n`: items come in `n` order. */
 export function firstAt(items: readonly Item[], n: number): number {
@@ -98,19 +104,35 @@ export function findInThread(root: Element, rows: readonly Row[], items: readonl
   return { ranges: all.slice(Math.max(0, all.length - MAX_RESULTS)), more };
 }
 
-/** The thread's matches with Rust's in the rows older than `cursor` ahead of them, the newest kept past `MAX_RESULTS`. */
-export function withOlder(found: { ranges: Hit[]; more: boolean }, older: { needle: string } & Extract<Older, { ok: true }> | null, needle: string, cursor: number | null): Found {
-  if (!older || older.needle !== needle || needle === "" || cursor === null) return { ...found, before: 0, older: [] };
-  const unloaded = older.matches.filter((match) => match.n < cursor);
-  const all = unloaded.reduce((sum, match) => sum + match.count, 0);
-  const before = Math.max(0, Math.min(all, MAX_RESULTS - found.ranges.length));
-  return { ranges: found.ranges, more: found.more || older.more || before < all, before, older: unloaded };
+const total = (matches: Unloaded) => matches.reduce((sum, match) => sum + match.count, 0);
+/**
+ * The thread's matches with Rust's in the rows not held: those older than `cursor` ahead of them, those from `end` on
+ * after them; the newest kept past `MAX_RESULTS`.
+ */
+export function withOlder(found: { ranges: Hit[]; more: boolean }, older: { needle: string } & Extract<Older, { ok: true }> | null, needle: string, cursor: number | null, end: number | null): Found {
+  if (!older || older.needle !== needle || needle === "" || (cursor === null && end === null)) return { ...found, before: 0, older: [], after: 0, newer: [] };
+  const newer = end === null ? [] : older.matches.filter((match) => match.n >= end);
+  const unloaded = cursor === null ? [] : older.matches.filter((match) => match.n < cursor);
+  const [allNewer, all] = [total(newer), total(unloaded)];
+  const after = Math.min(allNewer, MAX_RESULTS);
+  const ranges = found.ranges.slice(Math.max(0, found.ranges.length - (MAX_RESULTS - after)));
+  const before = Math.max(0, Math.min(all, MAX_RESULTS - after - ranges.length));
+  return { ranges, more: found.more || older.more || before < all || after < allNewer || ranges.length < found.ranges.length, before, older: unloaded, after, newer };
 }
 
-/** The row not loaded holding match `index` (one of the first `before`), and which of its matches from its last. */
-export function olderAt(found: Found, index: number) {
-  let left = found.before - 1 - index;
-  for (const match of found.older.toReversed()) {
+/** The row not loaded holding match `index` (older or newer than the rows held), and which of its matches from its last. */
+export function unloadedAt(found: Found, index: number) {
+  if (index < found.before) {
+    let left = found.before - 1 - index;
+    for (const match of found.older.toReversed()) {
+      if (left < match.count) return { n: match.n, back: left };
+      left -= match.count;
+    }
+    return null;
+  }
+  // The newer ones kept are the newest: counted from the last.
+  let left = countOf(found) - 1 - index;
+  for (const match of found.newer.toReversed()) {
     if (left < match.count) return { n: match.n, back: left };
     left -= match.count;
   }
