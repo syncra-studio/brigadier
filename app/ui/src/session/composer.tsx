@@ -7,7 +7,7 @@ import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { ComposerRail, PausedSendDialog } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
 import { ErrorLine } from "../components/error-line";
-import { UserBubble } from "../components/thread/message";
+import { UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
@@ -73,24 +73,31 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   });
   const shown = list?.filter((each) => !done(each)) ?? [];
   if (shown.length === 0) return null;
+  // Dated as their rows will be (after the thread's last message, or the bubble before), so a row takes its place without a shift.
+  let previous: { sentAt?: number } | undefined = session?.items.findLast((item) => item.kind === "message");
   return (
     // Under the footer's pt-4, the gaps a turn's row has (pt-6), so Rust's row takes a bubble's place without a shift.
     <div className="flex flex-col gap-6 pt-2">
-      {shown.map((each) => (
-        <UserBubble
-          key={each.cid}
-          keep={each.cid}
-          text={each.text}
-          time={each.at}
-          failed={each.error}
-          onRetry={() => {
-            const again = { ...each, error: undefined };
-            setSent(id, (now) => now.map((one) => (one.cid === each.cid ? again : one)));
-            deliver(run, id, again);
-          }}
-          onDiscard={() => setSent(id, (now) => now.filter((one) => one.cid !== each.cid))}
-        />
-      ))}
+      {shown.map((each) => {
+        const dated = datedAfter(previous, each.at);
+        previous = { sentAt: each.at };
+        return (
+          <UserBubble
+            key={each.cid}
+            keep={each.cid}
+            text={each.text}
+            time={each.at}
+            dated={dated}
+            failed={each.error}
+            onRetry={() => {
+              const again = { ...each, error: undefined };
+              setSent(id, (now) => now.map((one) => (one.cid === each.cid ? again : one)));
+              deliver(run, id, again);
+            }}
+            onDiscard={() => setSent(id, (now) => now.filter((one) => one.cid !== each.cid))}
+          />
+        );
+      })}
     </div>
   );
 }

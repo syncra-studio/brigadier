@@ -45,11 +45,15 @@ export function datedMessages(items: readonly Item[]): ReadonlySet<string> {
   let previous: Extract<Item, { kind: "message" }> | undefined;
   for (const item of items) {
     if (item.kind !== "message") continue;
-    const gap = item.sentAt !== undefined && previous?.sentAt !== undefined ? item.sentAt - previous.sentAt : 0;
-    if (item.role === "user" && item.origin !== "system" && (!previous || gap > SEPARATOR_GAP_MS)) dated.add(item.id);
+    if (item.role === "user" && item.origin !== "system" && datedAfter(previous, item.sentAt)) dated.add(item.id);
     previous = item;
   }
   return dated;
+}
+
+/** Whether a user's message sent at `at` after `previous` (the last message, if any) has its date above it. */
+export function datedAfter(previous: { sentAt?: number } | undefined, at: number | undefined): boolean {
+  return !previous || (at !== undefined && previous.sentAt !== undefined && at - previous.sentAt > SEPARATOR_GAP_MS);
 }
 
 /**

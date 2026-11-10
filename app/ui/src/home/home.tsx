@@ -183,6 +183,8 @@ export function StartingBubble({ id }: { id: string }) {
         keep={entry.cid}
         text={entry.text}
         time={entry.sent}
+        // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
+        dated
         unconfirmed={entry.unknown}
         failed={entry.error}
         onRetry={entry.asking ? undefined : () => retry(id)}
