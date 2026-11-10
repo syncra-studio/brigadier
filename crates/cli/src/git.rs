@@ -228,15 +228,12 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             done
         }
         verb @ ("switch" | "create") => {
-            // No turn starts here meanwhile, and none is under way [D1021, D1082]: each sharing
-            // session's lock, then the fence, in `session::fence`'s order.
-            let mut sharing = branch::sharing(data, &checkout);
-            sharing.sort();
-            let _held = (sharing.iter())
-                .map(|id| brigadier_core::worktrees::lock(&brigadier_core::session_dir(data, id)))
-                .collect::<io::Result<Vec<_>>>()?;
+            // No turn starts here meanwhile, and none is under way [D1021, D1082]: a turn starting
+            // in a shared folder holds the fence until it's logged, so once it's held, who works
+            // here is read whole.
             let _fence = branch::fence(data)?;
             let all = brigadier_frames::procs::all();
+            let sharing = branch::sharing(data, &checkout);
             if (sharing.iter()).any(|id| super::sessions::busy_now(data, id, &all)) {
                 return Err(io::Error::other(
                     "Branches can't switch while the agent is working.",

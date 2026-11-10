@@ -5,7 +5,7 @@ import type { ForcePush, MergeStyle, SourceState } from "../types";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
 import type { ActionPick } from "./action-menus";
-import { askForce, cancelForce, forcePush, useBranchOp } from "./branch-ops";
+import { askForce, cancelForce, forcePush, useBranchOp, useForcing } from "./branch-ops";
 import { useCreatePr } from "./create-pr";
 import { StageAllDialog } from "./dialogs";
 import type { SourceData } from "./panel";
@@ -94,9 +94,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const id = useId();
   // The on-screen checkout's rejected push and its confirm [D1034, D1049]; the gallery's own without one.
   const target = useGit().target;
-  const branchOp = useBranchOp(target);
-  const rejected = target ? branchOp.rejected : (data.rejected ?? null);
-  const forcing = target ? branchOp.forcing : galleryForcing;
+  const rejected = useBranchOp(target).rejected ?? (target ? null : (data.rejected ?? null));
+  const asking = useForcing();
+  const forcing = target ? (asking?.force ?? null) : galleryForcing;
   const drawsForce = useSyncExternalStore(subscribe, () => !card || sources.size === 0);
   useEffect(() => {
     if (card) return;
@@ -240,9 +240,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       {drawsForce && (
         <ForcePushDialog
           force={forcing}
-          branch={state?.branch ?? "…"}
-          onCancel={() => (target ? cancelForce(target) : setGalleryForcing(null))}
-          onConfirm={() => (target ? forcePush(target, state?.branch ?? "the branch") : setGalleryForcing(null))}
+          branch={forcing?.branch ?? "…"}
+          onCancel={() => (asking ? cancelForce(asking.target) : setGalleryForcing(null))}
+          onConfirm={() => (asking ? forcePush(asking.target) : setGalleryForcing(null))}
         />
       )}
       {drawsPr && pr.dialog}

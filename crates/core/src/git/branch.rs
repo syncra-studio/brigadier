@@ -51,32 +51,33 @@ pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result
         Target::Session(id) => worktrees::base(&session_dir(data, id)),
         Target::Project(_) => None,
     };
+    // The page of the branch it syncs with, on the remote that one's on, whatever it's called.
     let (mut host_name, mut page) = (None, None);
+    let config = |key: String| super::sync::config(checkout, &key);
     if let Ok(branch) = super::sync::branch(checkout)
-        && let Ok(remote) = push::remote(checkout, &branch)
-        && let Some(repo) = push::url(checkout, &remote)
-            .ok()
-            .and_then(|u| host::repo(&u))
+        && let Some(remote) = config(format!("branch.{branch}.remote"))
+        && let Some(merge) = config(format!("branch.{branch}.merge"))
+        && let Some(name) = merge.strip_prefix("refs/heads/")
+        && let Some(repo) = (push::url(checkout, &remote).ok()).and_then(|u| host::repo(&u))
     {
         host_name = Some(repo.name());
-        // The page of the branch it syncs with, whatever that one's called.
-        let published = super::sync::config(checkout, &format!("branch.{branch}.merge"));
-        page = (published.as_deref())
-            .and_then(|merge| merge.strip_prefix("refs/heads/"))
-            .map(|name| host::branch_page(&repo, name));
+        page = Some(host::branch_page(&repo, name));
     }
     Ok(json!({"branches": branches, "base": base, "host": host_name, "page": page}))
 }
 
-/// The sessions working in this checkout now, by `busy`: none may have their branch switched from
-/// under them [D1021, D1082]. Only a folder of the user's own asks.
+/// The sessions that work in this checkout, a subfolder of it included: none may have their branch
+/// switched from under them while busy [D1021, D1082]. Only a folder of the user's own asks.
 pub fn sharing(data: &Path, checkout: &Checkout) -> Vec<String> {
     (ids(data).into_iter())
         .filter(|id| !session_dir(data, id).join("archived").exists())
         .filter(|id| {
+            // Found without git first: only one under this checkout's folder is asked.
             folder(data, &Target::Session(id))
                 .and_then(fs::canonicalize)
-                .is_ok_and(|f| f == checkout.root)
+                .is_ok_and(|f| f.starts_with(&checkout.root))
+                && super::checkout(data, &Target::Session(id))
+                    .is_ok_and(|c| c.root == checkout.root)
         })
         .collect()
 }
@@ -162,6 +163,8 @@ pub fn rename(
     match (target, checkout.worktree) {
         (Target::Session(id), true) => {
             load(data, id)?;
+            // Not while a Sync or push holds the checkout.
+            let _held = lock(checkout, true, stop)?;
             worktrees::rename(&session_dir(data, id), new)
         }
         _ => git(checkout, &["branch", "-m", new], stop),

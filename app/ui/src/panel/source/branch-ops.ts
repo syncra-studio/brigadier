@@ -35,6 +35,20 @@ const subscribe = (listener: () => void) => {
 /** The branch moves' state for `target`'s checkout. */
 export const useBranchOp = (target: Target | null): Op => useSyncExternalStore(subscribe, () => opOf(target));
 
+let asking: { target: Target; force: ForcePush } | null = null;
+/**
+ * The Force Push confirm open now, whichever checkout's: a toast clicked after another session came on screen still
+ * opens it there [D30].
+ */
+export const useForcing = () =>
+  useSyncExternalStore(subscribe, () => {
+    const found = [...ops].find(([, op]) => op.forcing);
+    const target = found && (JSON.parse(found[0]) as Target);
+    if (!found || !target) return (asking = null);
+    if (asking?.force !== found[1].forcing) asking = { target, force: found[1].forcing! };
+    return asking;
+  });
+
 /** Rust's error: a plain sentence, then (after a blank line) what git itself said, for Details. */
 const split = (error: string): [string, string] => {
   const at = error.indexOf("\n\n");
@@ -91,9 +105,10 @@ export function askForce(target: Target): void {
 export const cancelForce = (target: Target) => put(target, { forcing: null });
 
 /** Force push with the lease the user confirmed; if the remote moved since, the confirm asks again [D1049]. */
-export function forcePush(target: Target, branch: string): void {
+export function forcePush(target: Target): void {
   const force = opOf(target).forcing;
   if (!force) return;
+  const branch = force.branch;
   put(target, { forcing: null });
   const pending = showToast(`Force pushing ${branch}…`, { stays: true });
   run(target, ["force-push", force.branch, force.remote, force.ref, force.movedTo ?? force.reviewed], (reply) => {
