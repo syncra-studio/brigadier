@@ -264,7 +264,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           )
         }
       </VList>
-      <Find source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
+      <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button
         type="button"

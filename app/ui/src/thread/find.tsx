@@ -13,7 +13,8 @@ import type { Item, Session } from "./item";
  * next, ⇧Enter, ⇧⌘G and ‹ the one before, Esc closes. Rows the list hasn't drawn are found in what they showed when
  * last drawn, or else their words (find-text.ts); a closed work fold or group counts its steps' words, and going to
  * one (a step, never typing) opens it. Rows not loaded are counted by Rust ahead of the thread's own; going to one
- * loads down to it in one page. Proposed: a line beside the count says while those can't be counted.
+ * loads down to it in one page. Proposed: a line beside the count says while those can't be counted. Unlike the old app, a
+ * session's bar and its text come back with the session while the app runs [D508].
  */
 
 /** What find reads and asks of the source: the session, its older pages, and Rust's count of the rows not loaded. */
@@ -38,6 +39,8 @@ function command(event: KeyboardEvent, code: string): boolean {
 }
 
 export type FindProps = {
+  /** The session it finds in, whose bar and text come back with it. */
+  id?: string;
   source: FindSource;
   /** The list's scroller. */
   scroller: () => HTMLElement | null;
@@ -51,14 +54,17 @@ export type FindProps = {
   away: () => void;
 };
 
+/** Each session's bar while open, by id, with its text: going back to the session opens it and searches again [D508]. */
+const remembered = new Map<string, string>();
+
 /** The bar, over the thread's top right. */
 export function Find(props: FindProps) {
   const { source, scroller } = props;
   const now = useRef(props);
   now.current = props;
   const cursor = source.get()?.before ?? null;
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(() => props.id !== undefined && remembered.has(props.id));
+  const [query, setQuery] = useState(() => (props.id !== undefined && remembered.get(props.id)) || "");
   const [result, setResult] = useState<Found>(NOTHING);
   const [active, setActive] = useState(-1);
   const [olderState, setOlderState] = useState<"searching" | "failed" | null>(null);
@@ -77,6 +83,11 @@ export function Find(props: FindProps) {
   useLayoutEffect(() => {
     state.current = { open, query, result, active };
   });
+  useEffect(() => {
+    if (props.id === undefined) return;
+    if (open) remembered.set(props.id, query);
+    else remembered.delete(props.id);
+  }, [props.id, open, query]);
   const choose = useCallback((index: number) => {
     state.current.active = index;
     setActive(index);
