@@ -3,11 +3,12 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
+import { Input } from "../components/input";
 import { Skeleton } from "../components/skeleton";
 import { ChevronDown, ChevronRight } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { LETTERS, type FileStatus } from "../panel/status";
-import { PanelField } from "./field";
+import { PLAIN_FIELD } from "./field";
 import type { ChangeMarks, FileList, FolderEntry, Listing } from "./types";
 
 /**
@@ -157,12 +158,15 @@ export function FileTree({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border p-2">
-        <PanelField
-          inputRef={search}
-          label="Search files"
+      <div className="shrink-0 border-b border-divider p-3">
+        <Input
+          ref={search}
+          aria-label="Search files"
+          placeholder="Search files"
+          {...PLAIN_FIELD}
           value={query}
-          onChange={(value) => {
+          onChange={(event) => {
+            const value = event.target.value;
             setQuery(value);
             setActive(0);
             onQuery(value.trim());
