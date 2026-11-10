@@ -5,6 +5,7 @@
 
 use brigadier_core::thread::Saved;
 use brigadier_core::{session, session_dir};
+use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::path::Path;
@@ -75,12 +76,18 @@ impl Store {
     }
 
     /// Runs `archive` holding the session's thread: archived, its saved copy goes, and the first
-    /// open after a restore folds it again from the log [D513].
-    pub(super) fn archiving<T>(&self, data: &Path, id: &str, archive: impl FnOnce() -> T) -> T {
+    /// open after a restore folds it again from the log [D513]. Only once it went through, so an
+    /// id the archive refused never names a folder here.
+    pub(super) fn archiving(
+        &self,
+        data: &Path,
+        id: &str,
+        archive: impl FnOnce() -> Value,
+    ) -> Value {
         self.deleting(id, || {
             let out = archive();
             let dir = session_dir(data, id);
-            if archived(&dir) {
+            if out["ok"] == true && archived(&dir) {
                 Saved::fresh(&dir);
             }
             out

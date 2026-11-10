@@ -234,10 +234,13 @@ function applyThread(frame: Record<string, any>): void {
   let turns = session.turns;
   for (const turn of frame.turns as Turn[]) {
     const at = turns.findIndex((each) => each.id === turn.id);
+    // Under an island a new turn comes with the page that reaches it, so the turns stay in order.
+    if (at < 0 && after !== null) continue;
     turns = at < 0 ? [...turns, turn] : turns.with(at, turn);
   }
+  const work = after === null ? (frame.work as Work[]) : (frame.work as Work[]).filter((each) => turns.some((turn) => turn.id === each.turnId));
   setThread(thread, {
-    ...session, items, turns, work: frame.work.length ? [...(session.work ?? []), ...frame.work] : session.work,
+    ...session, items, turns, work: work.length ? [...(session.work ?? []), ...work] : session.work,
     setup: "setup" in frame ? frame.setup : session.setup,
     approvals: frame.approvals ?? session.approvals,
     questions: frame.questions ?? session.questions,
@@ -398,7 +401,11 @@ export const threadSource: Omit<Source, "older"> & {
     page({ op: "thread_older", after }, () => (newerAsked = false));
   },
   latest() {
-    if (after !== null) watch();
+    if (after === null) return;
+    // The island goes at once, so a message sent from it shows under the rows while the newest come.
+    after = null;
+    if (thread && session) setThread(thread, { ...session, after: null });
+    watch();
   },
   jump(n) {
     // An older page on its way would start from rows no longer held.
