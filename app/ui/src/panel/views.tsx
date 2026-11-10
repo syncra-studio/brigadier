@@ -16,6 +16,9 @@ const NotYet = (title: string, icon: ComponentType<{ className?: string }>) =>
   };
 
 export const VIEWS: Record<PanelView, { Icon: ComponentType; View: ComponentType<{ owner: string }> }> = {
+  // shortcut: Files and Search open nothing yet; when the file tab kind lands (w17), they become
+  // ({ owner }) => <FilesView owner={owner} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />
+  // and the same for SearchView, with the match's line.
   files: { Icon: Folders, View: NotYet("Files", Folders) },
   search: { Icon: Search, View: NotYet("Search", Search) },
   source: { Icon: Branch, View: SourceView },
