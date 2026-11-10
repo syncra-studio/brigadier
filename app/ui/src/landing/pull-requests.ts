@@ -2,6 +2,8 @@
 // [D65, D71, D1017]. PROPOSED contract, unwired; the gallery feeds it fake data [D388].
 
 export type PrState = "open" | "draft" | "merged" | "closed";
+export type PrStatus = "merged" | "closed" | "checks_failed" | "draft" | "checks_running" | "changes_requested" | "conflicts" | "ready" | "review_needed";
+export type MergeStyle = "merge" | "squash" | "rebase";
 
 export type PullRequest = {
   id: string;
@@ -10,11 +12,12 @@ export type PullRequest = {
   /** The host's name as Rust's host module gives it, for "Open on …"; nothing here names a host [D1030]. */
   host: string;
   state: PrState;
-  ci: "passing" | "failing" | "pending" | "none";
-  review: "approved" | "changes_requested" | "required";
-  /** Who asked for changes. */
-  changesBy: string[];
-  mergeable: boolean;
+  /** Its one status, as Rust ranks it: failing checks before a draft [D1017]. */
+  status: PrStatus;
+  /** What stands in the way of merging; null when nothing does. */
+  blockers: { failedChecks: number; changesBy: string[]; conflicts: boolean } | null;
+  /** Whether Merge is on, the styles the repo allows and the one the button uses [D1019, D1028]. */
+  merge: { allowed: boolean; styles: MergeStyle[]; default: MergeStyle };
   branch: string;
   base: string;
   openedBy: string;

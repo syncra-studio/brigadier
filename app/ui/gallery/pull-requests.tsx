@@ -6,7 +6,7 @@ import type { AgentChip } from "../src/landing/agent-chip";
 import type { PrChipState } from "../src/landing/pr-chip";
 import type { Sends } from "../src/landing/pr-parts";
 import { type PrView, PrTab } from "../src/landing/pr-tab";
-import { blockers, eventWords } from "../src/landing/pr-words";
+import { blockerWords, eventWords } from "../src/landing/pr-words";
 import { type PrSend, type PullRequest, sendKey } from "../src/landing/pull-requests";
 import { ChecksFailedRow, MergedRow, type Revert } from "../src/landing/thread-rows";
 import { SessionRowItem } from "../src/sidebar/row";
@@ -25,10 +25,9 @@ const FAILING: PullRequest = {
   title: "Retry failed uploads",
   host: "GitHub",
   state: "open",
-  ci: "failing",
-  review: "changes_requested",
-  changesBy: ["sam-k"],
-  mergeable: true,
+  status: "checks_failed",
+  blockers: { failedChecks: 1, changesBy: ["sam-k"], conflicts: false },
+  merge: { allowed: false, styles: ["merge", "squash", "rebase"], default: "squash" },
   branch: "brigadier/912a9469/session",
   base: "main",
   openedBy: "the agent",
@@ -55,30 +54,29 @@ const FAILING: PullRequest = {
 const passed = FAILING.checks.map((check) => ({ ...check, state: "passed" as const, logTail: null, durationMs: check.durationMs ?? 40_000 }));
 const READY: PullRequest = {
   ...FAILING,
-  ci: "passing",
-  review: "approved",
-  changesBy: [],
+  status: "ready",
+  blockers: null,
+  merge: { ...FAILING.merge, allowed: true },
   checks: passed,
   comments: [],
   events: [{ id: "e6", atMs: min(2), kind: "approved", actor: "sam-k", detail: null }, { id: "e7", atMs: min(3), kind: "checks_passed", actor: "CI", detail: null }, ...FAILING.events.slice(2)],
 };
-const MERGED: PullRequest = { ...READY, state: "merged", events: [{ id: "e8", atMs: min(1), kind: "merged", actor: "you", detail: "squash" }, ...READY.events] };
+const MERGED: PullRequest = { ...READY, state: "merged", status: "merged", merge: { ...READY.merge, allowed: false }, events: [{ id: "e8", atMs: min(1), kind: "merged", actor: "you", detail: "squash" }, ...READY.events] };
 const STALE: PullRequest = {
   ...FAILING,
-  ci: "pending",
-  review: "required",
-  changesBy: [],
+  status: "checks_running",
+  blockers: null,
   comments: [],
   checkedAtMs: min(5),
   problem: "GitHub CLI is signed out. Run gh auth login, then Check now.",
   checks: FAILING.checks.map((check) => ({ ...check, state: "running" as const, logTail: null })),
 };
-const FRESH: PullRequest = { ...FAILING, ci: "none", review: "required", changesBy: [], checks: [], comments: [], events: [] };
+const FRESH: PullRequest = { ...FAILING, status: "review_needed", blockers: null, checks: [], comments: [], events: [] };
 
 /** What a Send leaves: the chip's words come from the PR's data. Gallery only until the composer carries chips. */
 function chipFor(pr: PullRequest, send: PrSend): AgentChip {
   const id = sendKey(send);
-  if (send.kind === "fix") return { id, kind: "fix", pr: pr.number, reasons: (blockers(pr) ?? "").replace("Can't merge yet: ", "").replace(/\.$/, "") };
+  if (send.kind === "fix") return { id, kind: "fix", pr: pr.number, reasons: (blockerWords(pr) ?? "").replace("Can't merge yet: ", "").replace(/\.$/, "") };
   if (send.kind === "check") return { id, kind: "check", pr: pr.number, name: pr.checks.find((check) => check.id === send.id)?.name ?? "" };
   if (send.kind === "comment") {
     const comment = pr.comments.find((each) => each.id === send.id)!;

@@ -38,7 +38,7 @@ export function ConflictTab({
   if (!file) {
     return (
       <div data-slot="conflict-tab" className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
-        {error ? <ErrorLine size="sm" error={error} /> : "Loading…"}
+        {error ? <ErrorLine size="sm" error={error} /> : offline ? "Reconnecting…" : "Loading…"}
       </div>
     );
   }

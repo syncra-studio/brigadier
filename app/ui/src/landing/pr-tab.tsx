@@ -11,10 +11,9 @@ import { ArrowUpRight, Check, ChevronDown } from "../icons";
 import { Sparkles } from "./icons";
 import { Checks, Comments, History, Overview, PrIcon, type Sends } from "./pr-parts";
 import { ago, prLook, TONES } from "./pr-words";
-import type { PullRequest } from "./pull-requests";
+import type { MergeStyle, PullRequest } from "./pull-requests";
 
 export type PrView = "overview" | "checks" | "comments" | "timeline";
-export type MergeStyle = "merge" | "squash" | "rebase";
 
 const TAB = cx(
   "flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 text-sm text-muted-foreground",
@@ -49,15 +48,16 @@ export function PrTab({
   if (!pr) {
     return (
       <div data-slot="pr-tab" className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
-        {error ? <ErrorLine size="sm" error={error} /> : "Loading pull request…"}
+        {error ? <ErrorLine size="sm" error={error} /> : sends.offline ? "Reconnecting…" : "Loading pull request…"}
       </div>
     );
   }
   const look = prLook(pr);
   const failed = pr.checks.filter((check) => check.state === "failed").length;
-  const fix = pr.state === "open" && (pr.ci === "failing" || pr.review === "changes_requested");
+  const fix = pr.state === "open" && pr.blockers !== null && (pr.blockers.failedChecks > 0 || pr.blockers.changesBy.length > 0);
   const fixAdded = sends.added.has("fix");
-  const ready = look.word === "Ready" && !sends.offline && !pr.problem;
+  // Merge only on Rust's word, while the watch is current and the daemon is here.
+  const canMerge = pr.merge.allowed && !sends.offline && !pr.problem;
   return (
     <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-reading flex-col gap-5 p-5">
@@ -73,7 +73,7 @@ export function PrTab({
                 {fixAdded ? "Added" : "Fix with agent"}
               </Button>
             )}
-            {(pr.state === "open" || pr.state === "draft") && <MergeButton pr={pr} enabled={ready && pr.state === "open"} merging={merging} onMerge={onMerge} />}
+            {(pr.state === "open" || pr.state === "draft") && <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />}
             <TooltipIconButton tooltip={`Open on ${pr.host}`} onClick={() => sends.onOpen("pr")}>
               <ArrowUpRight />
             </TooltipIconButton>
@@ -130,13 +130,15 @@ const STYLE_WORDS: Record<MergeStyle, string> = {
   rebase: "rebased onto it, commit by commit",
 };
 
+const STYLE_ITEMS: Record<MergeStyle, string> = { merge: "Create a merge commit", squash: "Squash and merge", rebase: "Rebase and merge" };
+
 /**
- * Merge, with the host's other merge styles behind its arrow [D1028]; on only once it's Ready. Each asks first,
- * saying where the checks and review stand [D1019].
+ * Merge in the repo's default style, with the other styles it allows behind the arrow [D1028]; on only while Rust
+ * allows it. Each asks first, saying where the checks stand [D1019]; the ask closes if merging stops being allowed.
  */
 function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabled: boolean; merging: boolean; onMerge: (style: MergeStyle) => void }) {
   const [asking, setAsking] = useState<MergeStyle | null>(null);
-  const [style, setStyle] = useState<MergeStyle>("merge");
+  const [style, setStyle] = useState<MergeStyle>(pr.merge.default);
   const ask = (next: MergeStyle) => {
     setStyle(next);
     setAsking(next);
@@ -144,7 +146,7 @@ function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabl
   const passed = pr.checks.filter((check) => check.state === "passed").length;
   return (
     <div className="flex">
-      <Button size={null} variant={null} disabled={!enabled || merging} className={cx(SPLIT, "rounded-s-capsule ps-2.5 pe-2")} onClick={() => ask("merge")}>
+      <Button size={null} variant={null} disabled={!enabled || merging} className={cx(SPLIT, "rounded-s-capsule ps-2.5 pe-2")} onClick={() => ask(pr.merge.default)}>
         {merging ? "Merging…" : "Merge"}
       </Button>
       <DropdownMenu modal={false}>
@@ -155,19 +157,23 @@ function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabl
           <ChevronDown />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => ask("merge")}>Create a merge commit</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => ask("squash")}>Squash and merge</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => ask("rebase")}>Rebase and merge</DropdownMenuItem>
+          {pr.merge.styles.map((each) => (
+            <DropdownMenuItem key={each} onClick={() => ask(each)}>
+              {STYLE_ITEMS[each]}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       <ConfirmDialog
-        open={asking !== null}
+        open={asking !== null && enabled}
         onOpenChange={(open) => !open && setAsking(null)}
         title={`Merge #${pr.number} into ${pr.base}?`}
-        description={`${passed === pr.checks.length ? "All checks passed" : `${passed} of ${pr.checks.length} checks passed`} and it's approved. It lands on ${pr.base} on ${pr.host} ${STYLE_WORDS[style]}.`}
+        description={`${pr.checks.length === 0 ? "It has no checks" : passed === pr.checks.length ? "All checks passed" : `${passed} of ${pr.checks.length} checks passed`}. It lands on ${pr.base} on ${pr.host} ${STYLE_WORDS[style]}.`}
         confirm="Merge"
         busy={merging}
+        disabled={!enabled}
         onConfirm={() => {
+          if (!enabled) return;
           setAsking(null);
           onMerge(style);
         }}

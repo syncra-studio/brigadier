@@ -1,20 +1,23 @@
-import type { PrEvent, PrState, PullRequest } from "./pull-requests";
+import type { PrEvent, PrState, PrStatus, PullRequest } from "./pull-requests";
 
 /** A pull request's word and its colour family, the old app's pullRequestWords [D48]. */
 export type PrLook = { word: string; tone: Tone };
 export type Tone = "good" | "failed" | "waiting" | "merged" | "quiet";
 
-/** Terminal states win, then failing checks (a draft no longer hides them [D1017]), draft, running checks and readiness. */
-export function prLook(pr: PullRequest): PrLook {
-  if (pr.state === "merged") return { word: "Merged", tone: "merged" };
-  if (pr.state === "closed") return { word: "Closed", tone: "quiet" };
-  if (pr.ci === "failing") return { word: "Checks failed", tone: "failed" };
-  if (pr.state === "draft") return { word: "Draft", tone: "quiet" };
-  if (pr.ci === "pending") return { word: "Checks running", tone: "waiting" };
-  if (pr.review === "changes_requested") return { word: "Changes requested", tone: "waiting" };
-  if (pr.review === "approved" && pr.mergeable) return { word: "Ready", tone: "good" };
-  return { word: "Review needed", tone: "waiting" };
-}
+const LOOKS: Record<PrStatus, PrLook> = {
+  merged: { word: "Merged", tone: "merged" },
+  closed: { word: "Closed", tone: "quiet" },
+  checks_failed: { word: "Checks failed", tone: "failed" },
+  draft: { word: "Draft", tone: "quiet" },
+  checks_running: { word: "Checks running", tone: "waiting" },
+  changes_requested: { word: "Changes requested", tone: "waiting" },
+  conflicts: { word: "Conflicts with its base", tone: "waiting" },
+  ready: { word: "Ready", tone: "good" },
+  review_needed: { word: "Review needed", tone: "waiting" },
+};
+
+/** The status Rust sends, in words. */
+export const prLook = (pr: PullRequest): PrLook => LOOKS[pr.status];
 
 export const TONES: Record<Tone, string> = {
   good: "text-success",
@@ -59,14 +62,15 @@ export function duration(ms: number): string {
 /** "14:32". */
 export const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** Why it can't merge yet, in one line; null when nothing stands in the way. */
-export function blockers(pr: PullRequest): string | null {
-  if (pr.state !== "open") return null;
-  const failed = pr.checks.filter((check) => check.state === "failed").length;
+/** Why it can't merge yet, in one line, from Rust's blockers; null when nothing stands in the way. */
+export function blockerWords(pr: PullRequest): string | null {
+  const blockers = pr.blockers;
+  if (!blockers) return null;
+  const { failedChecks: failed, changesBy } = blockers;
   const parts = [
     failed > 0 && (failed === 1 ? "1 check failed" : `${failed} checks failed`),
-    pr.review === "changes_requested" && `${pr.changesBy.length > 0 ? pr.changesBy.join(" and ") : "a reviewer"} asked for changes`,
-    !pr.mergeable && "it conflicts with its base",
+    changesBy.length > 0 && `${changesBy.join(" and ")} asked for changes`,
+    blockers.conflicts && "it conflicts with its base",
   ].filter(Boolean);
   return parts.length > 0 ? `Can't merge yet: ${parts.join(" and ")}.` : null;
 }

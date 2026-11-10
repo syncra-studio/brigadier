@@ -6,7 +6,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Timeline } from "../components/timeline";
 import { ArrowUpRight, Check, CheckCircle, Comment, Warning } from "../icons";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles, XCircle } from "./icons";
-import { blockers, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
+import { blockerWords, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
 import { type PrCheck, type PrComment, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
 
 /** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
@@ -54,18 +54,22 @@ export function Quiet({ children }: { children: ReactNode }) {
   return <p className="px-2 py-1.5 text-sm text-muted-foreground">{children}</p>;
 }
 
+const CHECK_WORDS = { failed: "Failed", passed: "Passed", running: "Running" };
+
 /** One check: its state, name and time, Send log to agent on a failure, and a link to it on the host. */
 export function CheckRow({ check, host, sends, log = false }: { check: PrCheck; host: string; sends: Sends; log?: boolean }) {
   return (
     <li className="flex flex-col gap-1">
       <div className="flex h-control-md items-center gap-2 px-2 text-sm">
-        {check.state === "failed" ? (
-          <XCircle aria-label="Failed" className="size-icon-sm text-destructive" />
-        ) : check.state === "passed" ? (
-          <CheckCircle aria-label="Passed" className="size-icon-sm text-success" />
-        ) : (
-          <Clock aria-label="Running" className="size-icon-sm text-pr-yellow" />
-        )}
+        <span role="img" aria-label={CHECK_WORDS[check.state]} className="flex">
+          {check.state === "failed" ? (
+            <XCircle className="size-icon-sm text-destructive" />
+          ) : check.state === "passed" ? (
+            <CheckCircle className="size-icon-sm text-success" />
+          ) : (
+            <Clock className="size-icon-sm text-pr-yellow" />
+          )}
+        </span>
         <span className="min-w-0 flex-1 truncate">{check.name}</span>
         {check.durationMs !== null && <span className="text-xs text-muted-foreground tabular-nums">{duration(check.durationMs)}</span>}
         {check.state === "failed" && <SendButton send={{ kind: "check", id: check.id }} label="Send log to agent" sends={sends} />}
@@ -105,7 +109,7 @@ export function CommentRow({ comment, sends }: { comment: PrComment; sends: Send
 export function Overview({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const failed = pr.checks.filter((check) => check.state === "failed");
   const order = [...failed, ...pr.checks.filter((check) => check.state !== "failed")];
-  const blocked = blockers(pr);
+  const blocked = blockerWords(pr);
   return (
     <>
       <section className="flex flex-col gap-1">
@@ -121,7 +125,7 @@ export function Overview({ pr, sends }: { pr: PullRequest; sends: Sends }) {
         )}
       </section>
       <section className="flex flex-col gap-1">
-        <Heading end={pr.review === "changes_requested" && <span className="font-normal tracking-normal text-pr-yellow">changes requested</span>}>REVIEWS</Heading>
+        <Heading end={(pr.blockers?.changesBy.length ?? 0) > 0 && <span className="font-normal tracking-normal text-pr-yellow">changes requested</span>}>REVIEWS</Heading>
         {pr.comments.length === 0 ? <Quiet>No comments yet</Quiet> : pr.comments.map((comment) => <CommentRow key={comment.id} comment={comment} sends={sends} />)}
       </section>
       {blocked && (
