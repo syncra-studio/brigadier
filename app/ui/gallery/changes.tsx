@@ -73,7 +73,7 @@ const RAIL: [string, Notice][] = [
   ["start not confirmed", { id: "start", level: "info", text: "Not confirmed yet, so don’t send it again. It’s checked once Brigadier reconnects." }],
   ["couldn’t start", { id: "start", level: "error", text: "Couldn’t start this conversation. The folder could not be opened.", action: action("Try again") }],
   ["retrying", { id: "retry", level: "error", text: "This turn didn’t finish.", action: <span className="text-xs text-muted-foreground shimmer">Retrying…</span> }],
-  ["retry refused", { id: "retry", level: "error", text: "Couldn’t retry: this turn can’t be rewound." }],
+  ["retry refused", { id: "retry", level: "error", text: "Couldn’t retry: this turn can’t be rewound.", action: action("Put back message") }],
 ];
 
 function Rail({ notices, onDismiss = noop }: { notices: Notice[]; onDismiss?: (id: Notice["id"]) => void }) {
