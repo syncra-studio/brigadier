@@ -80,7 +80,7 @@ export function ViewTrigger({ projects, show }: { projects: Project[]; show: Sho
 
 /**
  * Around the sidebar's lists, so it stays open while Group by moves its button to the other list's header:
- * Group by None or Project, and Show: All, each project with its count, and Chats, then Add project.
+ * Group by None or Project, and Show: All, No project, then each project with its count [D440], then Add project.
  */
 export function ViewMenu({
   grouping,
@@ -101,7 +101,7 @@ export function ViewMenu({
   const [open, setOpen] = useState(false);
   const heading = useId();
   const count = (project: string | null) => rows.filter((row) => row.project === project).length;
-  // All counts the lines ticked below it, projects and Chats.
+  // All counts the lines ticked below it, No project and the projects.
   const ticked = projects.filter((project) => !show.hiddenProjects.has(project.id)).length + (show.hideChats ? 0 : 1);
   const tickProject = (id: string, on: boolean) => {
     const others = [...show.hiddenProjects].filter((each) => each !== id);
@@ -130,6 +130,7 @@ export function ViewMenu({
         <div className={RULE} />
         <div className={HEADING}>Show</div>
         <ShowRow name="All" checked={show.all} onChange={tickAll} count={ticked} />
+        <ShowRow name="No project" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<ProjectBadge name={null} tone={undefined} />} count={count(null)} none="No chats" />
         <div className={RULE} />
         <div className="scroll-edge-fade edge-fade-sidebar max-h-60 overflow-y-auto">
           {projects.map((project, tone) => (
@@ -143,7 +144,6 @@ export function ViewMenu({
               none="No sessions"
             />
           ))}
-          <ShowRow name="Chats" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<ProjectBadge name={null} tone={undefined} />} count={count(null)} none="No chats" />
         </div>
         <div className={RULE} />
         <button
