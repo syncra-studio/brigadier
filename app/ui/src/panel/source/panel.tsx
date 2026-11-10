@@ -42,14 +42,25 @@ Uploads that fail now retry three times with a growing wait, and the tray shows 
 
 type Picker = "branch" | "rename" | "create" | null;
 
+/** Messages typed and not committed, by checkout: they outlive the view, as the old CommitBox's did. */
+const unsent = new Map<string, string>();
+
 /**
  * The Source panel, laid out as the old SourcePanel: the title row, the commit box with the action button and the
  * branch item, then Merge Changes, Staged Changes and Changes, and the session's Commits [D1041]. Unwired: its
  * actions move rows in a local copy, or do nothing [D388]. `selected`: the row whose diff shows.
  */
-export function SourcePanel({ data, nowMs, selected, picker: initialPicker = null }: { data: SourceData; nowMs: number; selected?: string; picker?: Picker }) {
+export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPicker = null }: { data: SourceData; draftKey?: string; nowMs: number; selected?: string; picker?: Picker }) {
   const [local, setLocal] = useState(data.source);
-  const [message, setMessage] = useState("");
+  const [message, setMessageState] = useState(() => (draftKey && unsent.get(draftKey)) || "");
+  const setMessage = (next: string) => {
+    setMessageState(next);
+    if (!draftKey) return;
+    if (next) unsent.set(draftKey, next);
+    else unsent.delete(draftKey);
+  };
+  const [prefilled, setPrefilled] = useState<string | null>(null);
+  const [stageAll, setStageAll] = useState<"ask" | "always">("ask");
   const [writing, setWriting] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -78,6 +89,13 @@ export function SourcePanel({ data, nowMs, selected, picker: initialPicker = nul
   const folder = state?.checkout === "folder";
   const base = step && "base" in step ? step.base : null;
 
+  // Git's merge message fills the box unless the user wrote one, as the old CommitBox did.
+  const merging = state?.merging ?? null;
+  if (merging && merging.message !== prefilled) {
+    setPrefilled(merging.message);
+    if (!message) setMessage(merging.message);
+  } else if (!merging && prefilled !== null) setPrefilled(null);
+
   // Fake moves, at once: what Rust will confirm by path [D30].
   const move = (paths: string[], to: "staged" | "changes") =>
     setLocal((now) => {
@@ -92,11 +110,16 @@ export function SourcePanel({ data, nowMs, selected, picker: initialPicker = nul
 
   const commit = () => {
     if (!state || locked || clean) return;
-    if (staged.length === 0) return setAskingStageAll(true);
+    if (staged.length > 0) return finish();
+    if (stageAll === "ask") return setAskingStageAll(true);
+    move(changes.map((file) => file.path), "staged");
+    finish();
+  };
+  const finish = () => {
     setFailed(false);
     if (message.trim()) {
       setMessage("");
-      setLocal({ ...state, staged: [] });
+      setLocal((now) => now && { ...now, staged: [] });
       return;
     }
     // A blank box: the message is written at commit [D1029]. Unwired, the writer fails, so it asks for one.
@@ -327,7 +350,10 @@ export function SourcePanel({ data, nowMs, selected, picker: initialPicker = nul
         onClose={() => setAskingStageAll(false)}
         onAnswer={(answer) => {
           setAskingStageAll(false);
-          if (answer !== "never" && state) setLocal({ ...state, changes: [], staged: [] });
+          if (answer === "never") return;
+          if (answer === "always") setStageAll("always");
+          move(changes.map((file) => file.path), "staged");
+          finish();
         }}
       />
       <GitOutputDialog runs={gitOutput} onClose={() => setGitOutput("closed")} />
