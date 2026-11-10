@@ -1,3 +1,4 @@
+import { Menu } from "@base-ui/react/menu";
 import type { ReactNode } from "react";
 
 import { Button } from "../../components/button";
@@ -35,13 +36,13 @@ export function MoreButton({ locked, menu, held = false }: { locked: boolean; me
   );
 }
 
-/** A menu's last row: one button into the whole tab [D1114]. */
+/** A menu's last row: one button into the whole tab, closing the menu as any item does [D1114, D1149]. */
 function OpenTab({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
   return (
     <div className="px-1 pt-1 pb-0.5">
-      <Button size="sm" variant="soft" className="w-full" onClick={onClick}>
+      <Menu.Item render={<Button size="sm" variant="soft" className="w-full" />} onClick={onClick}>
         {children}
-      </Button>
+      </Menu.Item>
     </div>
   );
 }

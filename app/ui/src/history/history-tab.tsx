@@ -1,3 +1,4 @@
+import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
@@ -43,17 +44,19 @@ export function HistoryList({ state, connected, nowMs, onCommit, onRefresh }: { 
         ) : (
           <ul className="flex flex-col p-2">
             {history.commits.map((commit) => (
-              <li key={commit.sha}>
+              <li key={commit.sha} className="flex items-center rounded-control pe-1 hover:bg-muted">
                 <button
                   type="button"
                   onClick={() => onCommit(commit.sha)}
-                  className="flex h-control-md w-full cursor-pointer items-center gap-3 rounded-control px-2 text-start text-sm hover:bg-muted focus-visible:focus-ring"
+                  className="flex h-control-md min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-control px-2 text-start text-sm focus-visible:focus-ring"
                 >
                   <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
                   <span className="shrink-0 font-mono text-xs text-muted-foreground">{commit.sha.slice(0, 7)}</span>
                   <span className="w-28 shrink-0 text-end text-xs text-muted-foreground">{ago(commit.atMs, nowMs)}</span>
                   <Counts insertions={commit.added} deletions={commit.removed} />
                 </button>
+                {/* The full hash, as the row shows only its short one [D1147]. */}
+                <CopyButton text={commit.sha} tooltip="Copy commit hash" size="icon-xs" className="text-muted-foreground" />
               </li>
             ))}
           </ul>
