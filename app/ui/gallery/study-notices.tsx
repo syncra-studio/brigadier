@@ -1,0 +1,12 @@
+// Study only (D464, D466): the studied thread notices next to ours, and four error-card looks. Dev gallery only;
+// removed before anything lands.
+import { StudyThreadKinds } from "./study-thread";
+import { Section } from "./parts";
+
+export function StudyNotices() {
+  return (
+    <Section title="Study notices">
+      <StudyThreadKinds />
+    </Section>
+  );
+}

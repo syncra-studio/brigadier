@@ -1,6 +1,7 @@
 // Dev-only: every kit component in every state (D2). Opened by `pnpm gallery`.
 import { type RefObject, useEffect, useRef } from "react";
 
+import { StudyNotices } from "./study-notices";
 import { Choices } from "./choices";
 import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
@@ -111,6 +112,7 @@ function GalleryPage() {
               <RewindGallery />
               <FindGallery />
               <Notices />
+              <StudyNotices />
             </Area>
             <Area name="Controls">
               <Kit />
