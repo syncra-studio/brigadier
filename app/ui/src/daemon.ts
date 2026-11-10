@@ -182,11 +182,9 @@ function paging(result: Paged): void {
   for (const done of waiting) done(result);
 }
 
-/** The rows a kept session holds, for its snapshot to reach: from its first (1 once its whole history is in) to its end [D516]. */
-const reachOf = (id: string): { from?: number; to?: number } => {
-  const kept = left.get(id);
-  return kept ? { from: kept.before ?? 1, to: kept.after ?? undefined } : {};
-};
+/** The rows a session holds, for its snapshot to reach: from its first (1 once its whole history is in) to its end [D516]. */
+const reachOf = (held: Session | null | undefined): { from?: number; to?: number } =>
+  held ? { from: held.before ?? 1, to: held.after ?? undefined } : {};
 
 function watch(reach: { from?: number; to?: number } = {}): void {
   threadN = undefined;
@@ -210,7 +208,7 @@ export function peekThread(id: string): void {
   const at = peeked.get(id);
   if (thread?.id === id || at === 0 || (at !== undefined && performance.now() - at < 2000)) return;
   peeked.set(id, 0);
-  ask({ op: "peek", session: id, ...reachOf(id) }, (reply) => {
+  ask({ op: "peek", session: id, ...reachOf(left.get(id)) }, (reply) => {
     peeked.set(id, performance.now());
     if (!reply.ok || (thread?.id === id && thread.status === "ready")) return;
     keep(id, reply.session);
@@ -228,7 +226,7 @@ export function openThread(id: string): void {
   // The kept rows' own, so a send before the snapshot leaves an island (`latest`).
   [before, after, newerLater] = [kept?.before ?? null, kept?.after ?? null, false];
   setThread({ id, status: "loading" }, kept);
-  watch(reachOf(id));
+  watch(reachOf(kept));
 }
 
 function applyThread(frame: Record<string, any>): void {
@@ -237,7 +235,7 @@ function applyThread(frame: Record<string, any>): void {
   if (frame.reset) return watch();
   if (frame.error) return setThread({ id: thread.id, status: frame.error === "not_found" ? "missing" : "error", error: frame.error });
   if (!session || threadN === undefined) return;
-  if (frame.n !== threadN + 1) return watch();
+  if (frame.n !== threadN + 1) return watch(reachOf(session));
   threadN = frame.n;
   const items = frame.items.length ? session.items.slice() : session.items;
   for (const item of frame.items as Item[]) {
@@ -282,7 +280,8 @@ function onFrame(frame: Record<string, any>): void {
   if (frame.status === "running") {
     set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
     subscribe();
-    watch();
+    // The open thread's snapshot reaches the rows it still shows, so a place far up stays put [D537].
+    watch(reachOf(session));
   } else if (frame.status === "refused") {
     set({ daemon: null, refused: frame.error });
   } else if (frame.re === listId) {
