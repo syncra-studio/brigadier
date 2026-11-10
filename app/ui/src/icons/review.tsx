@@ -35,7 +35,6 @@ export function Compare(props: IconProps) {
   );
 }
 
-
 export function ExternalLink(props: IconProps) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
