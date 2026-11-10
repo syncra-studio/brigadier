@@ -14,6 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+pub mod change;
+pub mod diff;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.
@@ -270,6 +272,12 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
         );
     }
     head["count"] = files.len().into();
+    // The toggle's dot [D1025]: changes, for now. Ready, would-conflict and failed checks come with
+    // the facts that tell them (the land pre-check, the PR watch); until then none is guessed [D74].
+    head["hint"] = match files.len() {
+        0 => Value::Null,
+        n => json!({"tone": "changes", "count": n}),
+    };
     Ok(Status { head, files })
 }
 
@@ -281,4 +289,29 @@ fn stamp(path: &Path, index: &str) -> String {
         format!("{}.{:09}:{}", m.mtime(), m.mtime_nsec(), m.size())
     });
     format!("{file} {index}").trim_end().to_string()
+}
+
+/// Proposed: the viewer reads this much of a file, as the old app did.
+const FILE_MAX: u64 = 1024 * 1024;
+
+/// A checkout file as the viewer shows it [D1002]: `{size, text, truncated}`, text null for a
+/// binary file; `{gone: true}` once it's not there.
+pub fn read_file(checkout: &Checkout, rel: &str) -> io::Result<Value> {
+    use std::io::Read;
+    let path = inside(checkout, rel)?;
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(json!({"gone": true})),
+        Err(e) => return Err(e),
+    };
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        return err(format!("{rel} is not a file"));
+    }
+    let mut bytes = vec![];
+    file.take(FILE_MAX).read_to_end(&mut bytes)?;
+    let binary = bytes[..bytes.len().min(8000)].contains(&0);
+    // A cut can split a character, and a file may not be UTF-8 at all.
+    let text = (!binary).then(|| String::from_utf8_lossy(&bytes).into_owned());
+    Ok(json!({"size": meta.len(), "text": text, "truncated": meta.len() > FILE_MAX}))
 }

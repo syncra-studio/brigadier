@@ -1,7 +1,10 @@
 //! `brigadier git`: a checkout's status as the panel gets it, and with `--watch` what changes after,
-//! one line each, from the same watch the daemon runs [D71].
+//! one line each, from the same watch the daemon runs [D71]. `brigadier source`: what the panel and
+//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
 
 use super::{arg, flag, has};
+use brigadier_core::git::change::{self, Move};
+use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{self, Status, Target, watch::Watch};
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -9,11 +12,15 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 
+fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
+    Ok(match flag(args, "--project") {
+        Some(project) => (Target::Project(project), 3),
+        None => (Target::Session(arg(args, 1)?), 2),
+    })
+}
+
 pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
-    let target = match flag(args, "--project") {
-        Some(project) => Target::Project(project),
-        None => Target::Session(arg(args, 1)?),
-    };
+    let (target, _) = target(args)?;
     let checkout = git::checkout(data, &target)?;
     if !has(args, "--watch") {
         let status = git::status(&checkout, &AtomicBool::new(false))?;
@@ -38,4 +45,44 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         last = Some(status);
     }
     Ok(Value::Null)
+}
+
+pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
+    let (target, at) = target(args)?;
+    let checkout = git::checkout(data, &target)?;
+    let stop = AtomicBool::new(false);
+    let word = |i: usize| arg(args, at + i);
+    let from = |i: usize| args.get(at + i).map(String::as_str).filter(|w| *w != "-");
+    let done = json!({"ok": true});
+    Ok(match word(0)? {
+        "review" => {
+            json!({"ok": true, "review": diff::list(&checkout, Scope::parse(word(1)?)?, &stop)?})
+        }
+        "review-file" => {
+            let contents =
+                diff::file(&checkout, Scope::parse(word(1)?)?, word(2)?, from(3), &stop)?;
+            json!({"ok": true, "contents": contents})
+        }
+        verb @ ("stage" | "unstage" | "discard") => {
+            let paths = args.get(at + 2..).unwrap_or_default();
+            if paths.is_empty() {
+                return Err(io::Error::other(super::USAGE));
+            }
+            change::files(
+                &checkout,
+                Scope::parse(word(1)?)?,
+                Move::parse(verb)?,
+                paths,
+                &stop,
+            )?;
+            done
+        }
+        "hunk" => {
+            let (action, scope) = (Move::parse(word(1)?)?, Scope::parse(word(2)?)?);
+            change::hunk(&checkout, scope, action, word(3)?, from(4), word(5)?, &stop)?;
+            done
+        }
+        "file" => json!({"ok": true, "file": git::read_file(&checkout, word(1)?)?}),
+        _ => return Err(io::Error::other(super::USAGE)),
+    })
 }
