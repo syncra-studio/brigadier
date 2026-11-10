@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "../../components/button";
 import { cx } from "../../components/cx";
@@ -60,8 +60,26 @@ const unsent = new Map<string, string>();
  * field, the action button and Review changes; one list of files; the branch item in the footer [D1094, D1111].
  * Unwired: its actions move rows in a local copy, or do nothing [D388]. `selected`: the row whose diff shows.
  */
-export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPicker = null }: { data: SourceData; draftKey?: string; nowMs: number; selected?: string; picker?: Picker }) {
+export function SourcePanel({
+  data,
+  draftKey,
+  nowMs,
+  selected,
+  picker: initialPicker = null,
+  onSource,
+}: {
+  data: SourceData;
+  draftKey?: string;
+  nowMs: number;
+  selected?: string;
+  picker?: Picker;
+  /** The local copy after each fake move, for the toggle and the Source badge (unwired). */
+  onSource?: (source: SourceState) => void;
+}) {
   const [local, setLocal] = useState(data.source);
+  useEffect(() => {
+    if (local && local !== data.source) onSource?.(local);
+  }, [local, data.source, onSource]);
   const [message, setMessageState] = useState(() => (draftKey && unsent.get(draftKey)) || "");
   const setMessage = (next: string) => {
     setMessageState(next);
@@ -96,9 +114,9 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
   const changes = state?.changes.filter((file) => !conflicted.includes(file)) ?? [];
   const staged = state?.staged ?? [];
   const stagedPaths = new Set(staged.map((file) => file.path));
-  // One list [D1110]: a file both staged and changed shows once, with its ✓.
+  // One list [D1110]: a file both staged and changed shows once, with its ✓; by path, as git lists them, so staging moves no row.
   const unstagedPaths = new Set(state?.changes.map((file) => file.path));
-  const uncommitted = [...staged.map((file) => sum(file, state?.changes.find((other) => other.path === file.path))), ...(state?.changes.filter((file) => !stagedPaths.has(file.path)) ?? [])];
+  const uncommitted = [...staged.map((file) => sum(file, state?.changes.find((other) => other.path === file.path))), ...(state?.changes.filter((file) => !stagedPaths.has(file.path)) ?? [])].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const merged = uncommitted.filter((file) => !conflicted.includes(file));
   const listed = uncommitted.length > 0 ? uncommitted : (state?.sinceBase ?? []);
   const clean = state !== null && uncommitted.length === 0 && !resolving;

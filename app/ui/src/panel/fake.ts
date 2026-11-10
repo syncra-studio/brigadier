@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 import type { Branch, Commit, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /*
@@ -134,7 +136,7 @@ export const HOST = "GitHub";
 
 export const STEPS = {
   commit: { kind: "commit", base: "main", waiting: 0, clean: true },
-  commitWaiting: { kind: "commit", base: "main", waiting: 3, clean: true },
+  commitWaiting: { kind: "commit", base: "main", waiting: COMMITS.length, clean: true },
   merge: { kind: "merge", base: "main", ready: 3, moved: 0, busy: null },
   mergeMoved: { kind: "merge", base: "main", ready: 3, moved: 4, busy: null },
   catchUp: { kind: "catchUp", base: "main", conflicts: ["src/upload/retry.ts", "src/upload/client.ts"] },
@@ -167,4 +169,27 @@ export function fakeFor(owner: string, folder: boolean) {
   let hash = 0;
   for (const char of owner) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return FAKES[hash % FAKES.length]!;
+}
+
+/** The fake's moves (stage, discard, commit) per session, so the toggle and the Source badge follow them. */
+const moved = new Map<string, SourceState>();
+const listeners = new Set<() => void>();
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+export function setFakeSource(owner: string, source: SourceState) {
+  moved.set(owner, source);
+  for (const listener of listeners) listener();
+}
+
+/** `fakeFor` as moved so far, with the files left to commit counted once each. */
+export function useFake(owner: string, folder: boolean) {
+  const fake = fakeFor(owner, folder);
+  const source = useSyncExternalStore(subscribe, () => moved.get(owner) ?? fake.source);
+  const count = new Set([...source.staged, ...source.changes].map((each) => each.path)).size;
+  const hint: PanelHint | null = fake.hint?.tone === "changes" ? (count > 0 ? { tone: "changes", count } : null) : fake.hint;
+  return { ...fake, source, hint, count };
 }

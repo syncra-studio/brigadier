@@ -6,7 +6,7 @@ import { TitlebarTips } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { useHomeDraft, useStart } from "../home/start";
 import { SidebarFloatingLeft } from "../icons";
-import { fakeFor } from "../panel/fake";
+import { useFake } from "../panel/fake";
 import { setPanelOpen, setPanelWidth, showPanelView, usePanelMemory } from "../panel/memory";
 import type { PanelHint, PanelView } from "../panel/types";
 import { VIEWS } from "../panel/views";
@@ -40,7 +40,7 @@ function useHasPanel(owner: string): boolean {
 
 /** What the panel draws for `owner`: fake until step 2.15 wires it to Rust. */
 function usePanelData(owner: string) {
-  return fakeFor(owner, owner === HOME);
+  return useFake(owner, owner === HOME);
 }
 
 const DOT: Record<PanelHint["tone"], string> = { changes: "bg-link", ready: "bg-success", conflict: "bg-warning", failed: "bg-destructive" };
@@ -132,7 +132,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
         className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}
       >
         <div className="right-panel-width flex h-full min-h-0 flex-col">
-          <ViewTabs active={view} count={data.source.staged.length + data.source.changes.length} onSelect={(next) => showPanelView(owner, next)} />
+          <ViewTabs active={view} count={data.count} onSelect={(next) => showPanelView(owner, next)} />
           <div ref={content} id="right-panel-content" role="tabpanel" aria-labelledby={`right-panel-${view}`} className="flex min-h-0 flex-1 flex-col">
             {shown && <View key={owner} owner={owner} />}
           </div>
@@ -226,6 +226,8 @@ function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizin
       }}
       onPointerMove={(event) => {
         if (!start.current) return;
+        // A release that never reached the handle still ends the drag, so the width is kept app-wide [D1033].
+        if (!(event.buttons & 1)) return end(event);
         const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
         const wanted = start.current.width - (event.clientX - start.current.x) * (rtl ? -1 : 1);
         const min = px("--spacing-sidebar-min");
@@ -243,6 +245,7 @@ function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizin
       }}
       onPointerUp={end}
       onPointerCancel={end}
+      onLostPointerCapture={end}
       className="group/resize absolute start-0 top-0 bottom-0 z-10 flex w-resize-handle -translate-x-1/2 cursor-col-resize justify-center rtl:translate-x-1/2"
     >
       <span className="w-px bg-input opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
