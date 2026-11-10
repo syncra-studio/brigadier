@@ -24,7 +24,7 @@ const LOOK = {
   checks_failed: "destructive-soft",
   changes_asked: "warning",
   ready: "success",
-  merged: "purple",
+  merged: "pr-merged",
 } as const;
 
 /** The chip on a sidebar row, before its mark: one word for the PR that needs you most. */
