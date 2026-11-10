@@ -388,29 +388,11 @@ export function Trash(props: IconProps) {
   );
 }
 
-/** A candidate for rewind's action [D444]: an arrow turning back. */
+/** Rewind's action on a user's message [D444, D474]: an arrow turning back. */
 export function Undo(props: IconProps) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
       <path d="M8.70711 2.29289C9.09763 2.68342 9.09763 3.31658 8.70711 3.70711L6.41421 6H14C17.866 6 21 9.13401 21 13C21 16.866 17.866 20 14 20H10C9.44772 20 9 19.5523 9 19C9 18.4477 9.44772 18 10 18H14C16.7614 18 19 15.7614 19 13C19 10.2386 16.7614 8 14 8H6.41421L8.70711 10.2929C9.09763 10.6834 9.09763 11.3166 8.70711 11.7071C8.31658 12.0976 7.68342 12.0976 7.29289 11.7071L3.29289 7.70711C2.90237 7.31658 2.90237 6.68342 3.29289 6.29289L7.29289 2.29289C7.68342 1.90237 8.31658 1.90237 8.70711 2.29289Z" />
-    </svg>
-  );
-}
-
-/** A candidate for rewind's action [D444]: a clock turning back. */
-export function History(props: IconProps) {
-  return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M2.954 7.807A1 1 0 0 0 3.968 9c.064.002.13-.003.196-.014l3-.5a1 1 0 0 0-.328-1.972l-.778.13a8 8 0 1 1-2.009 6.247 1 1 0 0 0-1.988.219C2.614 18.11 6.852 22 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2a9.975 9.975 0 0 0-7.434 3.312l-.08-.476a1 1 0 0 0-1.972.328l.44 2.643ZM12 7a1 1 0 0 1 1 1v3.586l2.207 2.207a1 1 0 0 1-1.414 1.414l-2.5-2.5A1 1 0 0 1 11 12V8a1 1 0 0 1 1-1Z" />
-    </svg>
-  );
-}
-
-/** A candidate for rewind's action [D444]: the media rewind mark. */
-export function Rewind(props: IconProps) {
-  return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
-      <path d="M12.8933 10.1521V8.04584C12.8933 6.99369 11.6096 6.38168 10.6854 6.99323L4.70973 10.9474C3.93009 11.4633 3.93009 12.5368 4.70974 13.0526L10.6854 17.0068C11.6096 17.6183 12.8933 17.0063 12.8933 15.9542V13.848L17.6671 17.0068C18.5913 17.6183 19.875 17.0063 19.875 15.9542V8.04584C19.875 6.99369 18.5912 6.38168 17.6671 6.99323L12.8933 10.1521Z" />
     </svg>
   );
 }

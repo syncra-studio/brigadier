@@ -155,7 +155,7 @@ export function UserBubble({
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
             {rewind && (
               <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
-                {rewind.icon ?? <Undo />}
+                <Undo />
               </TooltipIconButton>
             )}
             {failed && onDiscard && (

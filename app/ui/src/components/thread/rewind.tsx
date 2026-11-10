@@ -1,18 +1,11 @@
 import { createContext, type ReactNode, useState } from "react";
 
-import { Button } from "../button";
 import { ConfirmForm } from "../confirm-dialog";
-import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { ErrorLine } from "../error-line";
 import { Radio, RadioGroup } from "../radio";
 
 /** A user message's rewind: `blocked` says why not right now. */
-export type RewindOffer = {
-  blocked?: string;
-  open: () => void;
-  /** Only while the owner picks the action's icon in the gallery [D444]. */
-  icon?: ReactNode;
-};
+export type RewindOffer = { blocked?: string; open: () => void };
 export const RewindContext = createContext<{
   offer: (cid: string, text: string) => RewindOffer | undefined;
   /** Whether this row goes with the rewind under way, so it dims at once [D30]. */
@@ -93,40 +86,5 @@ export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: Form
       </RadioGroup>
       <ErrorLine error={preview.error ?? error} />
     </ConfirmForm>
-  );
-}
-
-/** Another agent's confirmation, as close as Brigadier's rules allow: two ways to go back, keeping files the main one. */
-export function RewindFormT3({ preview, error, onKeep, onRestore, onCancel }: FormProps) {
-  const can = preview.restore !== false;
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Edit from here?</DialogTitle>
-        <DialogDescription>
-          Rewind the chat to before this message. Your message returns to the composer.{can && " “Restore files too” also puts back the files the agent changed."}
-        </DialogDescription>
-      </DialogHeader>
-      {(!can || preview.files || preview.error || error) && (
-        <div className="flex flex-col gap-1">
-          {!can && <Note>{WHY[preview.why ?? ""] ?? WHY.missing}</Note>}
-          {can && <Notes files={preview.files} lead={(count, paths) => `Restoring puts back ${count}: ${paths}.`} />}
-          <ErrorLine error={preview.error ?? error} />
-        </div>
-      )}
-      <DialogFooter data-confirm>
-        <Button variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        {can && (
-          <Button variant="outline" disabled={preview.restore === undefined || preview.error !== undefined} onClick={onRestore}>
-            Restore files too
-          </Button>
-        )}
-        <Button disabled={preview.error !== undefined} onClick={onKeep}>
-          Keep files
-        </Button>
-      </DialogFooter>
-    </>
   );
 }
