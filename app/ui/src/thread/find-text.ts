@@ -171,7 +171,7 @@ export function startSearching(): () => void {
  * The marks' colours, on the page only while the marks are: a `::highlight()` rule in a stylesheet costs every style
  * pass, for marks that are rarely there.
  */
-// A constructed sheet: the page's CSP (default-src 'self') refuses a <style> made at run time.
+// A constructed sheet: the page's CSP (default-src 'self') refuses a style element made at run time.
 let sheet: CSSStyleSheet | null = null;
 function showColours(on: boolean): void {
   sheet ??= new CSSStyleSheet();
