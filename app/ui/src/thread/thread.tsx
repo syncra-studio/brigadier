@@ -38,13 +38,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const [, redraw] = useReducer((count: number) => count + 1, 0);
   // Opened groups and work folds: view state only, gone with the view.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
-  const toggle = useCallback((id: string) => {
-    setOpen((was) => {
-      const next = new Set(was);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-  }, []);
   const turnList = session?.turns;
   const workList = session?.work;
   const turns = useMemo(() => new Map(turnList?.map((turn) => [turn.id, turn])), [turnList]);
@@ -142,6 +135,18 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     });
     return made;
   }, [space]);
+  const toggle = useCallback(
+    (id: string) => {
+      // What the user opens stays where it is instead of the list following the bottom.
+      follow.hold();
+      setOpen((was) => {
+        const next = new Set(was);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      });
+    },
+    [follow],
+  );
   if (follow.pending && newest && [newest.id, newest.cid, newest.turnId].includes(follow.pending)) follow.pending = null;
 
   // Find in the conversation: it reads the scroller, opens folds and scrolls only through these.

@@ -220,7 +220,7 @@ export class Follow {
     this.placing = null;
   };
   /** Stop following: the view stays where it is. */
-  private hold() {
+  hold() {
     this.unsnap();
     this.stick = false;
     this.mode = "still";

@@ -76,7 +76,7 @@ export function words(item: Item): string {
   const fields =
     item.kind === "message" ? [item.role === "assistant" ? unmarked(item.text) : item.text]
     : item.kind === "notice" ? ["text" in item ? item.text : ""]
-    : item.kind === "tool" ? [item.name, item.input]
+    : item.kind === "tool" ? [item.name, (item.step ?? "other") === "other" ? "" : item.input] // another tool's row shows only its name
     : item.kind === "question" ? [item.question, item.answer]
     : item.kind === "childAgent" ? [item.title, item.answer]
     : item.kind === "fileChange" ? item.changes.map((change) => change.path)

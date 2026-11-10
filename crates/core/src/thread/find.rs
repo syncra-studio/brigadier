@@ -78,10 +78,12 @@ fn unmarked(text: &str) -> String {
         while let Some(start) = rest[at..].find('`').map(|i| at + i) {
             let ticks = rest[start..].bytes().take_while(|&b| b == b'`').count();
             let body = start + ticks;
+            // Bytes, not str slices: `i` walks every byte, inside multibyte characters too.
+            let bytes = rest.as_bytes();
             let close = (body..rest.len()).find(|&i| {
-                rest[i..].bytes().take_while(|&b| b == b'`').count() == ticks
+                bytes[i..].iter().take_while(|&&b| b == b'`').count() == ticks
                     && i > body
-                    && rest.as_bytes()[i - 1] != b'`'
+                    && bytes[i - 1] != b'`'
             });
             match close {
                 Some(end) => {
@@ -108,6 +110,8 @@ fn words(item: &Value) -> Vec<std::borrow::Cow<'_, str>> {
                 .unwrap_or_default();
         }
         Some("message") | Some("notice") => vec![text("text")],
+        // Another tool's row shows only its name.
+        Some("tool") if matches!(text("step"), None | Some("other")) => vec![text("name")],
         Some("tool") => vec![text("name"), text("input")],
         Some("question") => vec![text("question"), text("answer")],
         Some("childAgent") => vec![text("title"), text("answer")],

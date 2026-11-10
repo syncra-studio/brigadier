@@ -75,7 +75,10 @@ export function findInThread(root: Element, rows: readonly Row[], items: readonl
       more = found.more;
       read.set(line.id, { text: found.text, line });
     } else if (line.type === "item") hits.push(...awayIn(textOf(line) ?? words(line.item), needle, { row: line.id, item: line.item.id }, room()));
-    else if (line.type === "group" && line.open) for (const step of line.steps) hits.push(...awayIn(words(step.item), needle, { row: line.id, item: step.id }, room()));
+    else if (line.type === "group" && line.open) {
+      // Newest first, as the cap keeps the newest; then back in order.
+      for (const step of line.steps.toReversed()) hits.unshift(...awayIn(words(step.item), needle, { row: line.id, item: step.id }, room()));
+    }
     else hits.push(...awayIn(textOf(line) ?? "", needle, { row: line.id }, room()));
     // What a closed fold holds: newest first, as the cap keeps the newest.
     const folded: Away[][] = [];
