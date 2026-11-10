@@ -1,22 +1,29 @@
-import { createContext, type ReactNode } from "react";
+import { createContext, type ReactNode, useState } from "react";
 
-import { Spinner } from "../../icons";
 import { Button } from "../button";
+import { ConfirmForm } from "../confirm-dialog";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../dialog";
 import { ErrorLine } from "../error-line";
+import { Radio, RadioGroup } from "../radio";
 
 /** A user message's rewind: `blocked` says why not right now. */
-export type RewindOffer = { blocked?: string; open: () => void };
+export type RewindOffer = {
+  blocked?: string;
+  open: () => void;
+  /** Only while the owner picks the action's icon in the gallery [D444]. */
+  icon?: ReactNode;
+};
 export const RewindContext = createContext<{
   offer: (cid: string, text: string) => RewindOffer | undefined;
   /** Whether this row goes with the rewind under way, so it dims at once [D30]. */
   gone: (n: number | undefined, turn: string | undefined) => boolean;
 } | null>(null);
 
-export type RewindPreview =
-  | { status: "loading" }
-  | { status: "error"; error: string }
-  | { status: "ready"; restore: boolean; why?: string; paths: string[]; hand: string[]; leftOut: string[]; commits: boolean };
+/** What a restore would do, from Rust's look at the folder. */
+export type RewindFiles = { paths: string[]; hand: string[]; leftOut: string[]; commits: boolean };
+/** Rust's answers so far: `restore` is unknown only as the dialog opens, `files` comes a moment later [D446]. */
+export type RewindPreview = { error?: string; restore?: boolean; why?: string; files?: RewindFiles };
+type FormProps = { preview: RewindPreview; error?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
 const WHY: Record<string, string> = {
   no_project: "This chat has no project folder, so only the conversation goes back.",
@@ -26,43 +33,98 @@ const WHY: Record<string, string> = {
 };
 
 const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
+const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
 
 function Note({ children }: { children: ReactNode }) {
-  return <p className="text-sm break-words text-muted-foreground">{children}</p>;
+  return <p className="text-xs break-words text-muted-foreground">{children}</p>;
 }
 
-/** The confirmation's inside: what going back does, then Keep files or Restore files [D384]. */
-export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: { preview: RewindPreview; error?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void }) {
-  const ready = preview.status === "ready" ? preview : null;
+/** What a restore puts back and what it leaves alone; nothing until the folder's been looked at. */
+function Notes({ files: f, lead }: { files?: RewindFiles; lead: (count: string, paths: string) => string }) {
+  if (!f) return null;
+  return (
+    <>
+      <Note>{f.paths.length === 0 ? "No files changed since then." : lead(files(f.paths.length), named(f.paths))}</Note>
+      {f.hand.length > 0 && <Note>Left as you edited them: {named(f.hand)}.</Note>}
+      {f.leftOut.length > 0 && <Note>Too big to go back: {named(f.leftOut)}.</Note>}
+      {f.commits && <Note>Commits made since then stay.</Note>}
+    </>
+  );
+}
+
+function Choice({ value, label, disabled, children }: { value: string; label: string; disabled?: boolean; children: ReactNode }) {
+  return (
+    <label className="flex gap-2 text-sm">
+      <Radio value={value} disabled={disabled} className="mt-0.5" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className={disabled ? "text-muted-foreground" : undefined}>{label}</span>
+        {children}
+      </span>
+    </label>
+  );
+}
+
+/** The confirmation, one choice and one action: keep the files or restore them, then Rewind [D384, D446]. */
+export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: FormProps) {
+  const [choice, setChoice] = useState("keep");
+  const restore = choice === "restore";
+  return (
+    <ConfirmForm
+      title="Rewind to this message?"
+      description="The chat goes back to just before it, and the message returns to the composer."
+      confirm="Rewind"
+      disabled={preview.error !== undefined || (restore && preview.restore !== true)}
+      onConfirm={restore ? onRestore : onKeep}
+      onCancel={onCancel}
+    >
+      <RadioGroup value={choice} onValueChange={(value) => setChoice(String(value))} className="flex flex-col gap-3">
+        <Choice value="keep" label="Keep files as they are">
+          <Note>Only the chat goes back.</Note>
+        </Choice>
+        <Choice value="restore" label="Restore files too" disabled={preview.restore !== true}>
+          {preview.restore === false ? (
+            <Note>{WHY[preview.why ?? ""] ?? WHY.missing}</Note>
+          ) : preview.files ? (
+            <Notes files={preview.files} lead={(count, paths) => `Puts back ${count} the agent changed: ${paths}.`} />
+          ) : (
+            <Note>Puts back the files the agent changed since then.</Note>
+          )}
+        </Choice>
+      </RadioGroup>
+      <ErrorLine error={preview.error ?? error} />
+    </ConfirmForm>
+  );
+}
+
+/** Another agent's confirmation, as close as Brigadier's rules allow: two ways to go back, keeping files the main one. */
+export function RewindFormT3({ preview, error, onKeep, onRestore, onCancel }: FormProps) {
+  const can = preview.restore !== false;
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Rewind to this message?</DialogTitle>
-        <DialogDescription>The conversation goes back to just before it, and the message returns to the composer.</DialogDescription>
+        <DialogTitle>Edit from here?</DialogTitle>
+        <DialogDescription>
+          Rewind the chat to before this message. Your message returns to the composer.{can && " “Restore files too” also puts back the files the agent changed."}
+        </DialogDescription>
       </DialogHeader>
-      <div className="flex flex-col gap-1.5">
-        {preview.status === "loading" && (
-          <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />
-            Checking the folder…
-          </p>
-        )}
-        {ready && !ready.restore && <Note>{WHY[ready.why ?? ""] ?? WHY.missing}</Note>}
-        {ready?.restore && <Note>{ready.paths.length === 0 ? "No files need to go back." : `Restoring puts back ${ready.paths.length === 1 ? "1 file" : `${ready.paths.length} files`}: ${named(ready.paths)}.`}</Note>}
-        {ready?.restore && ready.hand.length > 0 && <Note>Left as you edited them: {named(ready.hand)}.</Note>}
-        {ready?.restore && ready.leftOut.length > 0 && <Note>Too big to go back: {named(ready.leftOut)}.</Note>}
-        {ready?.restore && ready.commits && <Note>Commits made since then stay.</Note>}
-        <ErrorLine error={preview.status === "error" ? preview.error : error} />
-      </div>
+      {(!can || preview.files || preview.error || error) && (
+        <div className="flex flex-col gap-1">
+          {!can && <Note>{WHY[preview.why ?? ""] ?? WHY.missing}</Note>}
+          {can && <Notes files={preview.files} lead={(count, paths) => `Restoring puts back ${count}: ${paths}.`} />}
+          <ErrorLine error={preview.error ?? error} />
+        </div>
+      )}
       <DialogFooter data-confirm>
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="secondary" disabled={preview.status === "error"} onClick={onKeep}>
+        {can && (
+          <Button variant="outline" disabled={preview.restore === undefined || preview.error !== undefined} onClick={onRestore}>
+            Restore files too
+          </Button>
+        )}
+        <Button disabled={preview.error !== undefined} onClick={onKeep}>
           Keep files
-        </Button>
-        <Button disabled={!ready?.restore} onClick={onRestore}>
-          Restore files
         </Button>
       </DialogFooter>
     </>

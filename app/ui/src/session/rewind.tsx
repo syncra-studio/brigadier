@@ -15,6 +15,14 @@ type Running = { cid: string; n: number | undefined; replied: boolean };
 
 const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
 
+/** One of the two preview answers into what's known; either may come first. */
+function merged(now: RewindPreview, reply: Record<string, any>, files: boolean): RewindPreview {
+  if (!reply.ok) return { ...now, error: why(reply) };
+  if (reply.restore !== true) return { ...now, restore: false, why: now.why ?? reply.why };
+  if (!files) return { ...now, restore: now.restore ?? true };
+  return { ...now, files: { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } };
+}
+
 function said(reply: Record<string, any>, restore: boolean): string {
   if (reply.already) return "Rewound · check your files";
   if (!restore) return "Rewound · your files are as they were";
@@ -34,12 +42,15 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   const value = useMemo(() => {
     const queued = (row?.queue?.items.length ?? 0) > 0 || !!row?.queue?.editing;
     const blocked = offline ? "Reconnecting…" : running ? "Rewinding…" : row?.running ? "Stop the turn first" : queued ? "Send or remove the queued messages first" : undefined;
+    // Opens at once: whether files can go back comes in a millisecond, inside the dialog's opening; what
+    // they are takes a look at the folder, and fills in when it's done [D446].
     const open = (cid: string, text: string) => {
-      setAsking({ cid, op: newId(), text, preview: { status: "loading" } });
-      void run(["rewind", id, cid, "--preview"]).then((reply) => {
-        const preview: RewindPreview = reply.ok ? { status: "ready", restore: reply.restore === true, why: reply.why, paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } : { status: "error", error: why(reply) };
-        setAsking((now) => (now?.cid === cid ? { ...now, preview } : now));
-      });
+      const op = newId();
+      setAsking({ cid, op, text, preview: {} });
+      const answered = (files: boolean) => (reply: Record<string, any>) =>
+        setAsking((now) => (now?.op === op ? { ...now, preview: merged(now.preview, reply, files) } : now));
+      void run(["rewind", id, cid, "--preview"]).then(answered(false));
+      void run(["rewind", id, cid, "--preview", "--files"]).then(answered(true));
     };
     const first = running && session?.items.find((item) => "cid" in item && item.cid === running.cid);
     const turnsGone = new Set(running ? session?.turns.slice(session.turns.findIndex((turn) => turn.id === running.cid)).map((turn) => turn.id) : []);
