@@ -73,6 +73,8 @@ export type Starting = {
   /** The link dropped before an answer: asked again on reconnect. */
   unknown?: boolean;
   error?: string;
+  /** A fork of session `source` [D1063]: no message; `cid` is the answer's, whose turn its thread starts with. */
+  fork?: { source: string; where: string };
 };
 const starting = store<ReadonlyMap<string, Starting>>(new Map());
 export const useStarting = starting.use;
@@ -93,7 +95,8 @@ const isOpen = (id: string) => window.location.hash === `#thread/${encodeURIComp
 function land(id: string, reply: Record<string, any>): void {
   if (!get(id)) return;
   if (reply.error === "disconnected") return put(id, { asking: false, unknown: true });
-  const result = reply.result as string | undefined;
+  // A fork answers with its session once it holds all it needs [D35].
+  const result = (reply.result ?? (reply.ok && reply.session ? "delivered" : undefined)) as string | undefined;
   if (result === "delivered") {
     // Kept until Rust's row has it and, when open, its thread has the turn (useStartingRows).
     put(id, { asking: false, unknown: false, outcome: "delivered", error: undefined });
@@ -103,7 +106,7 @@ function land(id: string, reply: Record<string, any>): void {
   }
   if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
   put(id, { asking: false, unknown: false, error: reason(reply) });
-  sendFailed(get(id)!.cid);
+  if (!get(id)!.fork) sendFailed(get(id)!.cid);
   rereadHome();
 }
 
@@ -139,6 +142,16 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   carryHome(id, () => runStart(entry));
 }
 
+/** Forks session `source` at answer `at` and opens the fork at once, pending, under the title Rust gives it [D30, D1063]. */
+export function startFork(source: string, project: string | null, at: string, where: string, fingerprint: string, title: string): void {
+  const id = sessionId();
+  const args = ["fork", source, id, "--at", at, "--where", where, "--fingerprint", fingerprint];
+  const entry: Starting = { id, cid: at, project, text: "", title, args, sent: Date.now(), asking: true, fork: { source, where } };
+  starting.set(new Map(starting.get()).set(id, entry));
+  window.location.hash = `#thread/${encodeURIComponent(id)}`;
+  runStart(entry);
+}
+
 /** Again: Rust's recover for a message logged but not delivered; otherwise the same start under the same ids. */
 export function retry(id: string): void {
   const entry = get(id);
@@ -158,6 +171,10 @@ export function discard(id: string): void {
     const gone = reply.ok || /os error 2\b/.test(String(reply.error));
     if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
     put(id, null);
+    if (entry.fork) {
+      if (isOpen(id)) window.location.hash = `#thread/${encodeURIComponent(entry.fork.source)}`;
+      return;
+    }
     setHomeDraft({ ...(entry.project ? { project: entry.project, chat: false } : { chat: true }), text: { parts: [entry.text], attachmentIds: [] } });
     keepDraft(daemonRun, HOME_DRAFT, [entry.text]);
     if (isOpen(id)) window.location.hash = "";
@@ -192,7 +209,7 @@ export function useStartingRows(open: string | null): Row[] | undefined {
   if (mine.length === 0) return rows;
   return [
     ...rows,
-    ...mine.map(({ id, project, title, sent, error, outcome }) => ({
+    ...mine.map(({ id, project, title, sent, error, outcome, fork }) => ({
       id,
       title,
       state: error || outcome === "logged" ? "undelivered" : "starting",
@@ -206,6 +223,7 @@ export function useStartingRows(open: string | null): Row[] | undefined {
       updated: sent,
       items: 0,
       error: error ?? null,
+      forkOf: fork?.source ?? null,
     })),
   ];
 }

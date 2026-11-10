@@ -108,6 +108,8 @@ type Base = {
   hidden?: boolean;
   /** Monotonic across the session: a snapshot is at N, events after it count on from N. */
   n?: number;
+  /** A fork's copy of its source's thread, read only: no rewind, and its answers fork from the source [D1079]. */
+  inherited?: boolean;
 };
 
 export type Item = Base &
@@ -211,6 +213,8 @@ export type Item = Base &
      * with the text) then its result in place. The new session's title and status come from its own row; `title`
      * here is for when that row is gone. `failed`: Rust's `error`, and what its cleanup couldn't remove (`left`).
      */
+    /** Where a fork starts, after its inherited rows [D48, D1063]; `where` null for a chat's. */
+    | { kind: "forked"; source: string; where: "worktree" | "folder" | null; summary: boolean; leftOut: string[] }
     | {
         kind: "started";
         session: string;

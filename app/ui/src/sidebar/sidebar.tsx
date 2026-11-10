@@ -100,7 +100,8 @@ export function AppSidebar({
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
   const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
-  const rest = kept?.filter((each) => !each.pinned).toSorted(byLastSend);
+  const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(byLastSend));
+  const forked = new Set(rest?.filter((each) => each.forkOf && rest.some((source) => source.id === each.forkOf)).map((each) => each.id));
   const homeless = rest?.filter((each) => each.project === null || !projectOf.has(each.project)) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   // Each section's rows top to bottom, keyed by what folds them: the order ⌥⌘A goes in and the pill counts.
@@ -167,6 +168,7 @@ export function AppSidebar({
       picked={picks.has(each.id)}
       onClick={(event) => clickRow(event, each, order, active, onOpen)}
       onRename={setRenaming}
+      forked={forked.has(each.id)}
       {...layout}
     />
   );
@@ -387,4 +389,12 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
       {children}
     </div>
   );
+}
+
+/** Each fork right under its source, the list's order otherwise [D48]. */
+function underSources(list: SessionRow[] | undefined): SessionRow[] | undefined {
+  if (!list) return list;
+  const here = new Set(list.map((each) => each.id));
+  const under = (each: SessionRow): SessionRow[] => [each, ...list.filter((fork) => fork.forkOf === each.id).flatMap(under)];
+  return list.filter((each) => !(each.forkOf && here.has(each.forkOf))).flatMap(under);
 }

@@ -26,7 +26,7 @@ export type SessionRow = {
   project: string | null;
   /** Its pull requests' chip, as Rust computes it [D1018]; none when no PR needs a word. */
   pr?: PrChipState | null;
-} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle">;
+} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf">;
 
 export type Project = { id: string; name: string; folder: string };
 

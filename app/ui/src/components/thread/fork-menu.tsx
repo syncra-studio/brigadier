@@ -47,9 +47,9 @@ const HERE = {
 };
 
 /** A place the fork can go, as the old ForkPlaces row: its icon, title and a grey line under it that wraps. */
-function Place({ title, detail, onClick }: { title: string; detail: string; onClick: () => void }) {
+function Place({ title, detail, onClick, disabled }: { title: string; detail: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <DropdownMenuItem className="items-start py-2" onClick={onClick}>
+    <DropdownMenuItem className="items-start py-2" disabled={disabled} onClick={onClick}>
       <BranchAlt className="mt-0.5" />
       <span className="flex flex-col gap-0.5">
         <span>{title}</span>
@@ -74,6 +74,7 @@ export function ForkMenu({
   onPick,
   held,
   openSub = false,
+  later = false,
 }: {
   /** A chat's words: "Fork chat from here". */
   chat: boolean;
@@ -88,6 +89,8 @@ export function ForkMenu({
   /** The gallery's box: the menu held open in it, and its agent submenu with `openSub`. */
   held?: HTMLElement;
   openSub?: boolean;
+  /** Fork here and another agent, drawn but not offered yet (2.35, 2.36). */
+  later?: boolean;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
@@ -114,7 +117,7 @@ export function ForkMenu({
                 <Place title="Fork to a new worktree" detail={FILES[offer.worktree]} onClick={() => onPick({ where: "worktree" })} />
               )}
               {offer.here && (
-                <Place title="Fork here" detail={HERE[offer.here]} onClick={() => onPick({ where: "here" })} />
+                <Place title="Fork here" detail={HERE[offer.here]} disabled={later} onClick={() => onPick({ where: "here" })} />
               )}
               {!offer.worktree && !offer.here && (
                 <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>
@@ -123,7 +126,7 @@ export function ForkMenu({
               )}
               <DropdownMenuSeparator />
               <DropdownMenuSub {...(held && { open: openSub })}>
-                <DropdownMenuSubTrigger>
+                <DropdownMenuSubTrigger disabled={later}>
                   <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent {...place}>

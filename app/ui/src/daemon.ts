@@ -31,6 +31,8 @@ export type Row = {
   error: string | null;
   /** An agent is working in it now: what keeps the computer awake "while agents work". */
   works?: boolean;
+  /** The session it was forked from, which its row sits under [D48]. */
+  forkOf?: string | null;
 };
 
 export type View = {

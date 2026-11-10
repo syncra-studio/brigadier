@@ -135,7 +135,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       continue;
     }
     // A send-as-new line follows the reply, so the reply's actions stay directly under it [D204].
-    if (item.kind === "started") end();
+    if (item.kind === "started" || item.kind === "forked") end();
     if (item.kind === "message" && item.role === "assistant" && item.final) {
       marks = { type: "marks", id: `${item.id}:marks`, gap: "step", item, turn };
     }

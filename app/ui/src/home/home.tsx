@@ -5,6 +5,7 @@ import type { PermissionLevel } from "../components/composer/pickers";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
+import { SetupRow } from "../components/thread/setup";
 import { WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
@@ -157,6 +158,22 @@ export function StartingBubble({ id }: { id: string }) {
   const inThread = Boolean(entry && session?.items.length && session.turns.some((turn) => turn.id === entry.cid));
   // In the thread, Rust's row is the message: only a logged-but-not-delivered start says more.
   if (!entry || (inThread && entry.outcome !== "logged")) return null;
+  const again = !entry.asking && (
+    <>
+      <Button variant="link-blue" size={null} onClick={() => retry(id)}>
+        Try again
+      </Button>
+      <Button variant="link-blue" size={null} onClick={() => discard(id)}>
+        Discard
+      </Button>
+    </>
+  );
+  // A fork has no message: wave 1's setup line until its thread opens with the inherited rows [D30, D160].
+  if (entry.fork) {
+    if (entry.error) return <ErrorLine size="sm" error={`Couldn't fork · ${entry.error}`} actions={again} />;
+    if (entry.fork.where !== "worktree") return <WorkingLine state="live">Starting the conversation</WorkingLine>;
+    return <SetupRow keep={id} setup={{ state: "running", before: null, steps: [] }} />;
+  }
   if (inThread) {
     return (
       <ErrorLine
@@ -196,7 +213,7 @@ export function StartingBubble({ id }: { id: string }) {
 /** While its start is out and nothing's gone wrong, a shimmering line under the message (D487). */
 export function StartingLine({ id }: { id: string }) {
   const entry = useStarting().get(id);
-  if (!entry || entry.error || entry.unknown || entry.outcome) return null;
+  if (!entry || entry.fork || entry.error || entry.unknown || entry.outcome) return null;
   return (
     <div className="pt-4">
       <WorkingLine state="live">Starting the conversation</WorkingLine>
