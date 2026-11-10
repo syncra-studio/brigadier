@@ -45,8 +45,8 @@ export function ErrorState({ summary, details, onRetry }: { summary: string; det
 export class DrawBoundary extends Component<{ summary: string; className?: string; children: ReactNode }, { error: Error | null }> {
   override state: { error: Error | null } = { error: null };
 
-  static getDerivedStateFromError(error: Error) {
-    return { error };
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error : new Error(String(error)) };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {

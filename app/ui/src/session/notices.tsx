@@ -9,6 +9,7 @@ import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
 import { retryMessage, type Runner } from "./composer";
 import { newId } from "./store";
+import { putBack } from "./side";
 
 /** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. `again` resends its turn. */
 export function sessionNotice(notice: RailNotice, again: ReactNode): Notice {
@@ -76,16 +77,16 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
   const notices: Notice[] = retiring ? [retiringNotice(retiring)] : [];
   // Retry: back to the failed turn's message, files kept, and it again in that attempt's place (D492). Only where
   // Rust offers a rewind to it; shown at once as under way, its refusal said in the notice's place [D30].
-  const [retrying, setRetrying] = useState<{ turn: string; error?: string } | null>(null);
+  const [retrying, setRetrying] = useState<{ turn: string; text: string; error?: string } | null>(null);
   const again = (turn: string) => {
     const message = session?.items.find((item) => item.kind === "message" && item.role === "user" && item.turnId === turn);
     if (offline || !message || message.kind !== "message" || !session?.rewind?.includes(turn)) return null;
     if (retrying?.turn === turn && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
     const go = async () => {
-      setRetrying({ turn });
+      setRetrying({ turn, text: message.text });
       const back = await run(["rewind", id, turn, "--op", newId()]);
       if (!back.ok) {
-        setRetrying({ turn, error: String(back.message ?? back.error ?? "Refused") });
+        setRetrying({ turn, text: message.text, error: String(back.message ?? back.error ?? "Refused") });
         return;
       }
       await retryMessage(run, id, message.text, turn);
@@ -98,7 +99,10 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
     );
   };
   if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => sessionNotice(notice, again(notice.turnId))));
-  if (retrying?.error) notices.push({ id: "retry", level: "error", text: `Couldn’t retry: ${retrying.error}` });
+  if (retrying?.error) notices.push({
+    id: "retry", level: "error", text: `Couldn’t retry: ${retrying.error}`,
+    action: <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => { putBack(id, retrying.text, true); setRetrying(null); }}>Put back message</Button>,
+  });
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });
   if (thread?.id === id && thread.status === "error") {

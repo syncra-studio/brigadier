@@ -256,7 +256,9 @@ createRoot(document.getElementById("root")!).render(
       </Suspense>
     ) : (
       <>
-        <App />
+        <DrawBoundary summary="This view couldn’t be shown" className="mx-auto w-full max-w-reading px-6 pt-8">
+          <App />
+        </DrawBoundary>
         <AddProjectHost />
         <GlobalSearch />
         <Toaster className="top-titlebar" />
