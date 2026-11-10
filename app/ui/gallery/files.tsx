@@ -123,14 +123,15 @@ export function FilesGallery() {
         </Row>
       </Section>
       <Section title="Search">
-        <Row name="Live: type, toggle, dismiss, Replace all (fake checkout)">
+        <Row name="Live: type, options, dismiss, Replace all (fake checkout)">
           <Panel label="live">
             <SearchView owner="g-search-live" />
           </Panel>
         </Row>
-        <Row name="Results · grouped by file, matches marked, files to include and exclude">
+        <Row name="Kit · menu · empty, results, filters shown: the options icon's dot while any option is on [D1106]">
+          {search("empty", form({}), null)}
           {search("results", RETRY, found(RETRY))}
-          {search("include and exclude open, match case on", form({ text: "retry", matchCase: true, include: "src/upload", details: true }), found(form({ text: "retry", matchCase: true, include: "src/upload", details: true })))}
+          {search("filters shown, match case on", form({ text: "retry", matchCase: true, include: "src/upload", details: true }), found(form({ text: "retry", matchCase: true, include: "src/upload", details: true })))}
           {search("searching", form({ text: "upload" }), { query: { ...form({ text: "upload" }), text: "upload" }, files: [], done: null, error: null, filteredFiles: 0 })}
         </Row>
         <Row name="Replace all · confirm, done, refused">

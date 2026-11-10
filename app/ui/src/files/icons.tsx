@@ -1,5 +1,5 @@
-// Search's title row icons [D1057]. Clear, Collapse and CompareArrows are from @openai/apps-sdk-ui 0.2.2 (MIT, see
-// THIRD_PARTY_NOTICES.md); match case, whole word and regex are text glyphs.
+// Search's icons [D1057]: Clear, Collapse and CompareArrows, from @openai/apps-sdk-ui 0.2.2 (MIT, see
+// THIRD_PARTY_NOTICES.md).
 import type { IconProps } from "../icons";
 
 export function Clear(props: IconProps) {
@@ -36,14 +36,5 @@ export function CompareArrows(props: IconProps) {
         d="M12.2976 14.8392C11.9722 15.1647 11.4445 15.1647 11.1191 14.8392L8.20243 11.9226C7.87699 11.5971 7.87699 11.0695 8.20243 10.7441L11.1191 7.8274C11.4445 7.50196 11.9722 7.50196 12.2976 7.8274C12.623 8.15284 12.623 8.68048 12.2976 9.00591L10.8035 10.5H16.5C16.9603 10.5 17.3334 10.8731 17.3334 11.3333C17.3334 11.7936 16.9603 12.1667 16.5 12.1667H10.8035L12.2976 13.6607C12.623 13.9862 12.623 14.5138 12.2976 14.8392Z"
       />
     </svg>
-  );
-}
-
-/** A toggle's glyph in letters ("Aa", "ab", ".*"), at the icon's size. */
-export function TextGlyph({ text, mono = false }: { text: string; mono?: boolean }) {
-  return (
-    <span aria-hidden className={mono ? "font-mono text-xs font-semibold" : "text-xs font-semibold"}>
-      {text}
-    </span>
   );
 }

@@ -1,18 +1,22 @@
 import { type KeyboardEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 
+import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
-import { DotsHorizontal, Reload } from "../icons";
-import { PanelField, PLAIN_FIELD } from "./field";
-import { Clear, Collapse, CompareArrows, TextGlyph } from "./icons";
+import { Input } from "../components/input";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
+import { SettingsSlider } from "../icons";
+import { PLAIN_FIELD } from "./field";
+import { Clear, Collapse } from "./icons";
 import { ResultList, type OnOpenLine } from "./search-results";
 import { baseName } from "./tree";
 import type { ReplaceOutcome, ReplaceSkip, SearchQuery, SearchResults } from "./types";
 
 /**
- * The panel's Search (⇧⌘F), ported from the old SearchPanel [D48, D1003]: text or a pattern across the checkout,
- * with match case, whole word and regular expression, files to include and exclude, and Replace all. Results come
+ * The panel's Search (⇧⌘F), ported from the old SearchPanel [D48, D1003] and drawn as direction C's "Kit · menu"
+ * [D1099, D1106]: text or a pattern across the checkout, with match case, whole word and regular expression and files
+ * to include and exclude in one options menu, and Replace all. Results come
  * grouped by file; a line opens the file there. The search itself and Replace all run in Rust (step 2.17): this
  * view only asks, through `onSearch` and `onReplace`.
  */
@@ -33,6 +37,13 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count.toLoca
 
 // shortcut: whether include and exclude show is kept in memory for the app's run; step 2.15 keeps it in Rust.
 export let detailsShown = false;
+
+/** The options menu's switches, in the old order. */
+const OPTIONS = [
+  ["matchCase", "Match case"],
+  ["wholeWord", "Whole word"],
+  ["regex", "Regular expression"],
+] as const;
 
 export function SearchPanel({
   form,
@@ -100,14 +111,35 @@ export function SearchPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-control-md shrink-0 items-center gap-0.5 ps-3 pe-2 text-muted-foreground">
-        <h2 className="min-w-0 flex-1 text-xs font-semibold tracking-wide">SEARCH</h2>
-        <TooltipIconButton tooltip="Refresh" size="icon-xs" disabled={!query} onClick={onSearch}>
-          <Reload />
-        </TooltipIconButton>
+      <header className="flex h-control-md shrink-0 items-center gap-0.5 ps-3 pe-2">
+        <h2 className="min-w-0 flex-1 text-sm font-medium">Search</h2>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger
+            render={<TooltipIconButton tooltip="Search options" size="icon-sm" dot={form.matchCase || form.wholeWord || form.regex || form.details ? "bg-link" : undefined} />}
+          >
+            <SettingsSlider />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {OPTIONS.map(([key, label]) => (
+              <DropdownMenuCheckboxItem key={key} checked={form[key]} onCheckedChange={(on) => set({ [key]: on })}>
+                {label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={form.details}
+              onCheckedChange={(details) => {
+                detailsShown = details;
+                set({ details });
+              }}
+            >
+              Files to include and exclude
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <TooltipIconButton
           tooltip="Clear"
-          size="icon-xs"
+          size="icon-sm"
           disabled={empty}
           onClick={() => {
             set({ text: "", replace: "", include: "", exclude: "" });
@@ -118,49 +150,36 @@ export function SearchPanel({
         </TooltipIconButton>
         <TooltipIconButton
           tooltip={allCollapsed ? "Expand all" : "Collapse all"}
-          size="icon-xs"
+          size="icon-sm"
           disabled={!results?.files.length}
           onClick={() => setCollapsed(new Set(allCollapsed ? [] : results?.files.map((file) => file.path)))}
         >
           <Collapse />
         </TooltipIconButton>
       </header>
-      <div className="flex shrink-0 flex-col gap-1.5 border-b border-border px-2 pb-2">
-        <PanelField tight icon={null} label="Search" value={form.text} onChange={(text) => set({ text })} onKeyDown={onEnter(() => query && onSearch())}>
-          <Toggle label="Match case" pressed={form.matchCase} onChange={(matchCase) => set({ matchCase })}>
-            <TextGlyph text="Aa" />
-          </Toggle>
-          <Toggle label="Whole word" pressed={form.wholeWord} onChange={(wholeWord) => set({ wholeWord })}>
-            <TextGlyph text="ab" />
-          </Toggle>
-          <Toggle label="Regular expression" pressed={form.regex} onChange={(regex) => set({ regex })}>
-            <TextGlyph text=".*" mono />
-          </Toggle>
-        </PanelField>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-divider px-3 pb-3">
+        <Input aria-label="Search" placeholder="Search" {...PLAIN_FIELD} value={form.text} onChange={(event) => set({ text: event.target.value })} onKeyDown={onEnter(() => query && onSearch())} />
         {!readOnly && (
-          <PanelField tight icon={null} label="Replace" value={form.replace} onChange={(value) => set({ replace: value })} onKeyDown={onEnter(() => canReplace && setConfirming({}))}>
-            <TooltipIconButton tooltip="Replace all" size="icon-xs" disabled={!canReplace} onClick={() => setConfirming({})}>
-              <CompareArrows />
-            </TooltipIconButton>
-          </PanelField>
+          <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <Input
+                aria-label="Replace"
+                placeholder="Replace"
+                {...PLAIN_FIELD}
+                value={form.replace}
+                onChange={(event) => set({ replace: event.target.value })}
+                onKeyDown={onEnter(() => canReplace && setConfirming({}))}
+              />
+            </div>
+            <Button variant="soft" size="sm" disabled={!canReplace} onClick={() => setConfirming({})}>
+              Replace all
+            </Button>
+          </div>
         )}
-        <div className="flex items-center justify-end">
-          <TooltipIconButton
-            tooltip={form.details ? "Hide files to include and exclude" : "Files to include and exclude"}
-            size="icon-xs"
-            aria-expanded={form.details}
-            onClick={() => {
-              detailsShown = !form.details;
-              set({ details: !form.details });
-            }}
-          >
-            <DotsHorizontal />
-          </TooltipIconButton>
-        </div>
         {form.details && (
           <>
-            <Glob label="files to include" placeholder="e.g. src/**, *.ts" value={form.include} onChange={(include) => set({ include })} />
-            <Glob label="files to exclude" placeholder="e.g. *.test.ts, docs" value={form.exclude} onChange={(exclude) => set({ exclude })} />
+            <Input aria-label="Files to include" placeholder="Files to include, e.g. src/**, *.ts" {...PLAIN_FIELD} value={form.include} onChange={(event) => set({ include: event.target.value })} />
+            <Input aria-label="Files to exclude" placeholder="Files to exclude, e.g. *.test.ts" {...PLAIN_FIELD} value={form.exclude} onChange={(event) => set({ exclude: event.target.value })} />
           </>
         )}
       </div>
@@ -169,7 +188,7 @@ export function SearchPanel({
       ) : (
         results && (
           <>
-            <div className="flex shrink-0 flex-col px-2 pt-2" aria-busy={searching}>
+            <div className="flex shrink-0 flex-col px-3 pt-1" aria-busy={searching}>
               <p data-slot="search-summary" className="flex h-control-sm items-center px-1 text-xs text-muted-foreground">
                 <span className="min-w-0 truncate">
                   {results.files.length === 0
@@ -224,36 +243,6 @@ const onEnter = (run: () => void) => (event: KeyboardEvent<HTMLInputElement>) =>
     run();
   }
 };
-
-function Toggle({ label, pressed, onChange, children }: { label: string; pressed: boolean; onChange: (pressed: boolean) => void; children: ReactNode }) {
-  return (
-    <TooltipIconButton
-      tooltip={label}
-      size="icon-xs"
-      pressed={pressed}
-      onClick={() => onChange(!pressed)}
-      className="text-muted-foreground aria-pressed:bg-fill-subtle aria-pressed:text-foreground"
-    >
-      {children}
-    </TooltipIconButton>
-  );
-}
-
-function Glob({ label, placeholder, value, onChange }: { label: string; placeholder: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <label className="flex flex-col gap-0.5">
-      <span className="px-1 text-xs text-muted-foreground">{label}</span>
-      <input
-        value={value}
-        placeholder={placeholder}
-        aria-label={label}
-        {...PLAIN_FIELD}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-control-md cursor-text rounded-control border border-border bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
-      />
-    </label>
-  );
-}
 
 const skipList = (skips: ReplaceSkip[]) => skips.map((skip) => `${baseName(skip.path)} (${skip.reason})`).join(", ");
 
