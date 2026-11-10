@@ -244,7 +244,7 @@ impl Adapter for Codex {
             kept.end.as_deref().unwrap_or(""),
         )?;
         // The fork holds the kept turns: Norm counts on from them, so diffs() reads the right one.
-        let turns = rollouts(&home_path(".codex"), &[format!("-{id}.jsonl")])
+        let turns = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{id}.jsonl")])
             .pop()
             .and_then(|path| std::fs::read_to_string(path).ok())
             .map_or(0, |text| {
