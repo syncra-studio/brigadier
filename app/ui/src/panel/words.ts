@@ -146,7 +146,8 @@ export function discardWords(scope: "staged" | "unstaged", file: SourceFile, als
 /** Source's one status at the top [D1098, D1107]: what the work needs now, from Rust's state and step. */
 export type Status = { title: string; tone: "quiet" | "changes" | "good" | "warn" | "bad"; icon: "clean" | "changes" | "warn" | "pr" | "sync" };
 
-export function statusWords(state: SourceState, step: Step, files: number, prs: Pr[]): Status {
+/** `step` is null until Rust works out the next step (2.19 on): only the files speak then. */
+export function statusWords(state: SourceState, step: Step | null, files: number, prs: Pr[]): Status {
   const resolving = state.merging ?? state.rebasing;
   if (resolving) {
     const onto = state.merging?.incoming ?? state.rebasing?.onto ?? "";
@@ -155,7 +156,7 @@ export function statusWords(state: SourceState, step: Step, files: number, prs: 
       : { title: "Conflicts resolved", tone: "changes", icon: "changes" };
   }
   if (files > 0) return { title: `${plural(files, "file")} changed`, tone: "changes", icon: "changes" };
-  switch (step.kind) {
+  switch (step?.kind) {
     case "merge":
     case "mergePr":
       return { title: "Ready to merge", tone: "good", icon: "clean" };

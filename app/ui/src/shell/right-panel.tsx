@@ -6,8 +6,8 @@ import { TitlebarTips } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { useHomeDraft, useStart } from "../home/start";
 import { SidebarFloatingLeft } from "../icons";
-import { useFake } from "../panel/fake";
-import { setPanelOpen, setPanelWidth, showPanelView, usePanelMemory } from "../panel/memory";
+import { useGit, useGitWatch } from "../panel/git";
+import { setPanelOpen, setPanelWidth, showPanelView, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import type { PanelHint, PanelView } from "../panel/types";
 import { VIEWS } from "../panel/views";
 import { hintWords } from "../panel/words";
@@ -38,9 +38,11 @@ function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** What the panel draws for `owner`: fake until step 2.15 wires it to Rust. */
-function usePanelData(owner: string) {
-  return useFake(owner, owner === HOME);
+/** The dot and the count, as Rust sends them for the checkout on screen [D71, D1025]. */
+function usePanelData() {
+  const { hint, source } = useGit();
+  const count = new Set([...(source?.staged ?? []), ...(source?.changes ?? [])].map((each) => each.path)).size;
+  return { hint, count };
 }
 
 const DOT: Record<PanelHint["tone"], string> = { changes: "bg-link", ready: "bg-success", conflict: "bg-warning", failed: "bg-destructive" };
@@ -59,7 +61,7 @@ export function PanelToggleButton({ hint, open, ...props }: { hint: PanelHint | 
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
   const has = useHasPanel(owner);
-  const { hint } = usePanelData(owner);
+  const { hint } = usePanelData();
   const view = memory.views[owner] ?? "files";
   const showing = memory.open && view === "source";
   if (!has) return null;
@@ -91,7 +93,9 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   const memory = usePanelMemory();
   const view = memory.views[owner] ?? "files";
   const open = has && memory.open;
-  const data = usePanelData(owner);
+  const data = usePanelData();
+  usePanelFromRust(owner, useDaemon().rows?.find((each) => each.id === owner)?.finished);
+  useGitWatch(has ? owner : null);
   const content = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState(false);
   // Its contents stay through the closing slide, then go, so a closed panel reads nothing.

@@ -1,21 +1,61 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
+import { showToast } from "../components/toast";
+import { ask, useDaemon } from "../daemon";
 import type { PanelView } from "./types";
 
 /*
- * What the right panel remembers [D1033]: open or closed and its width for the whole app, the view per session or
- * chat. Temporary: held in memory only until step 2.15 keeps it in Rust; callers use just these functions, so that
- * step replaces this file alone.
+ * What the right panel remembers [D1014, D1033]: open or closed and its width for the whole app, the view per session
+ * or chat. Rust keeps it (crates/cli/src/panel.rs); this shows each change at once and takes Rust's answer when it's
+ * newer, as the tabs do [D30, D71]. A change the link took is sent again on reconnect: each is safe twice.
  */
 
 type Memory = { open: boolean; width: number | null; views: Record<string, PanelView> };
+type Change = { args: string[]; change: (now: Memory) => Memory; out?: boolean };
 
-let memory: Memory = { open: false, width: null, views: {} };
+let rev = -1;
+let rust: Memory = { open: false, width: null, views: {} };
+let memory = rust;
+let pending: Change[] = [];
 const listeners = new Set<() => void>();
 
-function set(next: Partial<Memory>) {
-  memory = { ...memory, ...next };
+function draw() {
+  memory = pending.reduce((now, each) => each.change(now), rust);
   for (const listener of listeners) listener();
+}
+
+/** Rust's word: open and width only when newer, an owner's view at its rev or newer (a read of another owner's). */
+function land(reply: Record<string, any>, owner?: string) {
+  if (reply.rev < rev) return;
+  if (reply.rev > rev) rust = { ...rust, open: reply.open, width: reply.width ?? null };
+  rev = reply.rev;
+  if (owner && reply.view) rust = { ...rust, views: { ...rust.views, [owner]: reply.view } };
+  // The one time it opened by itself, it says why [D1023].
+  if (typeof reply.opened === "number") showToast(`Opened: the agent changed ${reply.opened} ${reply.opened === 1 ? "file" : "files"}`);
+  draw();
+}
+
+function pump() {
+  const change = pending[0];
+  if (!change || change.out) return;
+  change.out = true;
+  ask({ op: "run", args: ["panel", ...change.args] }, (reply) => {
+    if (pending[0] !== change) return;
+    if (reply.error === "disconnected") return void (change.out = false);
+    pending.shift();
+    if (reply.ok) land(reply, change.args[0] === "view" ? change.args[1] : undefined);
+    else {
+      draw();
+      showToast(String(reply.error), { tone: "error" });
+    }
+    pump();
+  });
+}
+
+function act(args: string[], change: (now: Memory) => Memory) {
+  pending.push({ args, change });
+  draw();
+  pump();
 }
 
 function subscribe(listener: () => void) {
@@ -27,15 +67,32 @@ export function usePanelMemory(): Memory {
   return useSyncExternalStore(subscribe, () => memory);
 }
 
+/**
+ * Reads `owner`'s view on opening and on every reconnect, sends again what the link took, and tells Rust the owner is
+ * on screen: on opening it and when its turn ends (`finished`), so the panel opens itself there, once [D1023].
+ */
+export function usePanelFromRust(owner: string, finished: number | undefined): void {
+  const { daemon } = useDaemon();
+  useEffect(() => {
+    if (!daemon) return;
+    ask({ op: "run", args: ["panel", owner] }, (reply) => reply.ok && land(reply, owner));
+    pump();
+  }, [owner, daemon]);
+  useEffect(() => {
+    if (!daemon || finished === undefined) return;
+    ask({ op: "run", args: ["panel", "shown", owner] }, (reply) => reply.ok && land(reply, owner));
+  }, [owner, daemon, finished]);
+}
+
 export function setPanelOpen(open: boolean) {
-  set({ open });
+  act(["open", open ? "on" : "off"], (now) => ({ ...now, open }));
 }
 
 export function setPanelWidth(width: number) {
-  set({ width });
+  act(["width", String(width)], (now) => ({ ...now, width }));
 }
 
 /** Opens the panel on `view` for `owner`. */
 export function showPanelView(owner: string, view: PanelView) {
-  set({ open: true, views: { ...memory.views, [owner]: view } });
+  act(["view", owner, view], (now) => ({ ...now, open: true, views: { ...now.views, [owner]: view } }));
 }

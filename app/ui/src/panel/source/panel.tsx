@@ -49,6 +49,17 @@ Uploads that fail now retry three times with a growing wait, and the tray shows 
 
 type Picker = "branch" | "rename" | "create" | null;
 
+/** Rust's moves and the tabs a row opens, once wired [D1043, D1103]: without them the panel moves a local copy. */
+export type SourceOps = {
+  stage: (paths: string[]) => void;
+  unstage: (paths: string[]) => void;
+  discard: (paths: string[], scope: Discarding["scope"]) => void;
+  /** A file's diff in a Review tab, or every file's with none. */
+  review: (path?: string) => void;
+  openFile: (path: string) => void;
+  retry: () => void;
+};
+
 /** One entry for a path that is partly staged: its staged and unstaged lines together. */
 const sum = (file: SourceFile, other?: SourceFile): SourceFile => (other ? { ...file, added: file.added + other.added, removed: file.removed + other.removed } : file);
 
@@ -67,6 +78,7 @@ export function SourcePanel({
   selected,
   picker: initialPicker = null,
   onSource,
+  ops,
 }: {
   data: SourceData;
   draftKey?: string;
@@ -75,6 +87,7 @@ export function SourcePanel({
   picker?: Picker;
   /** The local copy after each fake move, for the toggle and the Source badge (unwired). */
   onSource?: (source: SourceState) => void;
+  ops?: SourceOps;
 }) {
   const [local, setLocal] = useState(data.source);
   useEffect(() => {
@@ -104,7 +117,7 @@ export function SourcePanel({
   const [mergingPr, setMergingPr] = useState(false);
   const [forcing, setForcing] = useState<ForcePush | null>(null);
 
-  const state = local;
+  const state = ops ? data.source : local;
   const step = data.step;
   const offline = data.offline ?? false;
   const pending = new Set(data.pending ?? []);
@@ -134,7 +147,7 @@ export function SourcePanel({
 
   // Fake moves, at once: what Rust will confirm by path [D30].
   const move = (paths: string[], to: "staged" | "changes") =>
-    setLocal((now) => {
+    ops ? ops[to === "staged" ? "stage" : "unstage"](paths) : setLocal((now) => {
       if (!now) return now;
       const [from, into] = to === "staged" ? [now.changes, now.staged] : [now.staged, now.changes];
       // A path already on the other side (partly staged) joins it as one entry.
@@ -148,6 +161,7 @@ export function SourcePanel({
   // Discarding staged changes loses the path's unstaged ones too, as its confirm says.
   const drop = (files: SourceFile[], scope: Discarding["scope"]) => {
     const paths = files.map((file) => file.path);
+    if (ops) return ops.discard(paths, scope);
     const keep = (list: SourceFile[]) => list.filter((file) => !paths.includes(file.path));
     setLocal((now) => now && (scope === "staged" ? { ...now, staged: keep(now.staged), changes: keep(now.changes) } : { ...now, changes: keep(now.changes) }));
   };
@@ -205,7 +219,7 @@ export function SourcePanel({
     />
   );
 
-  const top = state && step && (
+  const top = state && (
     <div className="flex flex-col gap-3">
       <StatusLine status={statusWords(state, step, uncommitted.length, data.prs ?? [])} files={resolving ? uncommitted : listed} />
       {(uncommitted.length > 0 || resolving) && (
@@ -226,7 +240,7 @@ export function SourcePanel({
           onCommit={commit}
         />
       )}
-      {!idle && (
+      {step && !idle && (
         <ActionButton
           step={step}
           nowMs={nowMs}
@@ -243,16 +257,15 @@ export function SourcePanel({
           }}
         />
       )}
-      {/* Opens the Review tab (2.8) once it's wired. */}
       {listed.length > 0 && (
-        <Button variant="soft" size="sm" className="self-start">
+        <Button variant="soft" size="sm" className="self-start" onClick={() => ops?.review()}>
           Review changes
         </Button>
       )}
     </div>
   );
 
-  // A click opens the file's diff in a Review tab, Open File the file in its own tab: both wired with the tabs (2.16).
+  // A click opens the file's diff in a Review tab, Open File the file in its own tab [D1032, D1103].
   const row = (file: SourceFile, committed = false) => (
     <FileRow
       key={file.path}
@@ -264,6 +277,8 @@ export function SourcePanel({
       locked={locked}
       pending={pending.has(file.path)}
       actions={{
+        onOpen: () => ops?.review(file.path),
+        onOpenFile: () => ops?.openFile(file.path),
         onStage: () => (file.status === "conflicted" ? setStagingConflicts({ paths: [file.path], marked: 1 }) : move([file.path], "staged")),
         onUnstage: () => move([file.path], "changes"),
         onDiscard: () => setDiscarding({ scope: stagedPaths.has(file.path) ? "staged" : "unstaged", files: [file] }),
@@ -309,7 +324,7 @@ export function SourcePanel({
           <ErrorLine
             error={`Couldn't read this checkout: ${data.error}`}
             actions={
-              <button type="button" className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+              <button type="button" onClick={ops?.retry} className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
                 Try again
               </button>
             }
