@@ -65,7 +65,7 @@ function build(path: string, segs: Seg[], shown: (change: number) => boolean, ap
   return { contents, changes, insertions: rows.filter((row) => row.kind === "add").length, deletions: rows.filter((row) => row.kind === "del").length };
 }
 
-const SOURCES: { file: ReviewFile; segs: Seg[] }[] = [
+const SOURCES: { file: Omit<ReviewFile, "staged">; segs: Seg[] }[] = [
   {
     file: { path: "src/upload/retry.ts", from: null, status: "modified", insertions: 0, deletions: 0, binary: false, large: false },
     segs: [
@@ -112,7 +112,7 @@ const SOURCES: { file: ReviewFile; segs: Seg[] }[] = [
   },
 ];
 
-const BINARY: ReviewFile = { path: "assets/upload-icon.png", from: null, status: "added", insertions: 0, deletions: 0, binary: true, large: false };
+const BINARY: ReviewFile = { path: "assets/upload-icon.png", from: null, status: "added", insertions: 0, deletions: 0, binary: true, staged: false, large: false };
 
 /** What Rust would send for `scope`: the list, each file's contents, and which changes each hunk holds. */
 export function read(scope: ReviewScope, done: Done) {
@@ -127,11 +127,13 @@ export function read(scope: ReviewScope, done: Done) {
     // Unstaged reads over the index: what's staged there reads as unchanged, already new.
     const made = build(file.path, segs, shown, (c) => scope === "unstaged" && live(c) && staged(c), staged);
     if (made.contents.hunks.length === 0) continue;
-    files.push({ ...file, insertions: made.insertions, deletions: made.deletions });
+    files.push({ ...file, insertions: made.insertions, deletions: made.deletions, staged: made.contents.hunks.every((hunk) => hunk.staged) });
     contents.set(file.path, made.contents);
     for (const [id, own] of made.changes) changes.set(id, own);
   }
-  if (scope !== "staged" && !done.reverted.has(BINARY.path)) files.push(BINARY);
+  // The binary file is one change: it shows in the scope its staging puts it in.
+  const binaryStaged = done.staged.has(BINARY.path);
+  if (!done.reverted.has(BINARY.path) && (scope === "staged" ? binaryStaged : scope !== "unstaged" || !binaryStaged)) files.push({ ...BINARY, staged: binaryStaged });
   const review: Review = {
     scope,
     base: "main",

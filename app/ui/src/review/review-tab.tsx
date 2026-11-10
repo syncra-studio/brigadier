@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { ChevronDown, ChevronDownUp, ChevronUpDown, Compare, Reload, Text } from "../icons";
 import { cx } from "../components/cx";
@@ -64,8 +64,12 @@ export function ReviewTab(props: ReviewTabProps) {
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
     setFolded((current) => new Set([...current].filter((path) => !shown.some((file) => file.path === path))));
-    for (const file of shown) if (file.large && !contents.has(file.path)) props.onLoad(file.path);
   };
+  // An opened large file without its contents asks for them: when opened, and again when a refresh drops them (D1036).
+  useEffect(() => {
+    if (loading) return;
+    for (const file of files) if (file.large && opened.has(file.path) && !folded.has(file.path) && !contents.has(file.path)) props.onLoad(file.path);
+  }, [review, contents, loading, opened, folded]);
   const act = (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => {
     const request = { action, path: file.path, hunk: hunk?.id ?? null };
     if (action === "revert") setAsking({ request, file, hunk });

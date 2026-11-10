@@ -69,7 +69,6 @@ export function LiveReview() {
     }, LATENCY);
     return () => clearTimeout(timer);
     // A new scope or a refresh reads again; a stage or revert settles in place.
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [scope, tick]);
   const shown = useMemo(() => new Map<string, FileContents>([...contents].filter(([path]) => arrived.has(path))), [contents, arrived]);
   const setState = (key: string, state: RequestState | null) =>

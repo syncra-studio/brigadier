@@ -65,9 +65,6 @@ function OpenInMenu({ file, onOpenIn }: { file: ReviewFile; onOpenIn: FileProps[
 /** One file's diff under its sticky header: icon, path, counts, on hover copy, Open in and fold, then Revert and Stage. */
 export function FileSection(props: FileProps) {
   const { file, collapsed, onToggle, actions, connected, states, onAction } = props;
-  // The file's own Stage turns to Unstage once all its hunks are staged.
-  const hunks = props.contents && "hunks" in props.contents ? props.contents.hunks : [];
-  const staged = hunks.length > 0 && hunks.every((hunk) => hunk.staged);
   const state = states.get(file.path);
   return (
     <section data-slot="review-file" data-path={file.path}>
@@ -88,7 +85,7 @@ export function FileSection(props: FileProps) {
         {actions && (
           <>
             <ErrorLine error={state && "error" in state ? state.error : null} className="min-w-0 truncate" />
-            <Actions staged={staged} state={state} disabled={!connected} onAction={(action) => onAction(action, file, null)} />
+            <Actions staged={file.staged} state={state} disabled={!connected} onAction={(action) => onAction(action, file, null)} />
           </>
         )}
       </header>
@@ -104,7 +101,8 @@ type Note = { kind: "hunk"; hunk: ReviewHunk } | { kind: "comment"; comment: Dif
 
 function FileBody({ file, contents, look, actions, connected, states, onAction, onRetry, comments, onComment, onRemoveComment }: FileProps) {
   const [draft, setDraft] = useState<LineRange | null>(null);
-  const pick = useCallback((range: LineRange) => setDraft(range), []);
+  // A pick across both sides keeps its end's line: a comment's numbers are one side's.
+  const pick = useCallback((range: LineRange) => setDraft(range.endSide && range.endSide !== range.side ? { start: range.end, end: range.end, side: range.endSide } : range), []);
   const sides = contents && "hunks" in contents ? contents : null;
   const notes = useMemo(() => {
     if (!sides) return [];

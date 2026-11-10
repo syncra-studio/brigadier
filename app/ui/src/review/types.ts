@@ -16,6 +16,8 @@ export type ReviewFile = {
   insertions: number;
   deletions: number;
   binary: boolean;
+  /** All its changes are in the index, so the file's own action is Unstage; known before its contents arrive. */
+  staged: boolean;
   /** Over Rust's size threshold: it arrives folded, and its contents are asked for when it's opened (D1036). */
   large: boolean;
 };
