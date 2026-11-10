@@ -1,4 +1,4 @@
-//! `rewind <id> <cid> --preview [--files] | --op OP [--restore]` [D384]: what the app calls, and the two
+//! `rewind <id> <cid> --preview | --op OP [--restore]` [D384]: what the app calls, and the two
 //! passes that keep it honest. Takes the queue's lock, then core's fence, through to the end.
 
 use crate::{arg, flag, has, owner, queue};
@@ -18,13 +18,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     settled(data, &spec)?;
     if has(args, "--preview") {
         let f = core::fold(&spec.dir, true)?.fold;
-        return Ok(core::rewind::preview(
-            data,
-            &spec,
-            &f,
-            cid,
-            has(args, "--files"),
-        ));
+        return Ok(core::rewind::preview(data, &spec, &f, cid));
     }
     let op = flag(args, "--op").ok_or_else(|| io::Error::other(crate::USAGE))?;
     check_id(op)?;

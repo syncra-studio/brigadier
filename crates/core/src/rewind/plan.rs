@@ -14,24 +14,17 @@ pub(super) struct Files {
     pub commits: bool,
 }
 
-/// Each turn's folder before it and at its end.
-pub(super) type Edges = Vec<(Shot, Shot)>;
-
-/// Each turn's two edges, or `Err` if one is missing. Only reads the records, so it's quick.
-pub(super) fn shots(store: &Store, turns: &[Boundary]) -> Result<Edges, &'static str> {
-    let shots: Option<Edges> = (turns.iter())
+/// `Err` says why the folder can't go back. Only what the agent changed in these turns goes, and
+/// only where the user hasn't edited the same path since (proposed).
+pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static str> {
+    let unread = |_| "unreadable";
+    let shots: Option<Vec<(Shot, Shot)>> = (turns.iter())
         .map(|t| {
             let r = store.load(&t.cid)?;
             Some((r.before, r.end?))
         })
         .collect();
-    shots.filter(|s| !s.is_empty()).ok_or("missing")
-}
-
-/// `Err` says why the folder can't go back. Only what the agent changed in these turns goes, and
-/// only where the user hasn't edited the same path since (proposed).
-pub(super) fn plan(store: &Store, shots: Edges) -> Result<Files, &'static str> {
-    let unread = |_| "unreadable";
+    let shots = shots.filter(|s| !s.is_empty()).ok_or("missing")?;
     let pre = store.capture().map_err(unread)?;
     let target = shots[0].0.clone();
     let (mut agent, mut gaps) = (BTreeSet::new(), BTreeSet::new());

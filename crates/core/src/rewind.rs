@@ -124,38 +124,19 @@ fn shared(data: &Path, spec: &Spec) -> bool {
         .any(|other| fs::canonicalize(&other.cwd).ok() == mine)
 }
 
-/// The store and each turn's edges, or why the folder can't go back. No git, so it's quick.
-fn ready(
-    data: &Path,
-    spec: &Spec,
-    f: &Fold,
-    cid: &str,
-) -> Result<(Store, plan::Edges), &'static str> {
+fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Result<Files, &'static str> {
     let store = Store::of(spec).ok_or("no_project")?;
     if local(data, spec) && shared(data, spec) {
         return Err("shared");
     }
     let (_, turns) = f.range(cid).ok_or("missing")?;
-    let shots = plan::shots(&store, &turns)?;
-    Ok((store, shots))
+    plan(&store, &turns)
 }
 
-fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Result<Files, &'static str> {
-    let (store, shots) = ready(data, spec, f, cid)?;
-    plan(&store, shots)
-}
-
-/// What the confirmation shows: whether the folder can go back, quick enough to be there as the
-/// dialog opens; with `files`, what a restore would and wouldn't do, from a fresh look at the folder.
-pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str, files: bool) -> Value {
+/// What the confirmation shows: whether the folder can go back, and what it would and wouldn't do.
+pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Value {
     if !f.points().iter().any(|p| p == cid) {
         return refused("gone", "This message can't be rewound to any more.");
-    }
-    if !files {
-        return match ready(data, spec, f, cid) {
-            Ok(_) => json!({"ok": true, "restore": true}),
-            Err(why) => json!({"ok": true, "restore": false, "why": why}),
-        };
     }
     match plan_for(data, spec, f, cid) {
         Ok(p) => json!({"ok": true, "restore": true, "paths": p.paths, "hand": p.hand,

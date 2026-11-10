@@ -30,7 +30,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> | pin <id> [--off]
        brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
-       brigadier rewind <id> <cid> --preview [--files] | rewind <id> <cid> --op OP [--restore]
+       brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore]
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
