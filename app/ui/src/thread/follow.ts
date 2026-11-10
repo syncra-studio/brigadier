@@ -81,6 +81,8 @@ export class Follow {
   private top = 0;
   /** The latest turn's drawn height, from its user message to the space. */
   private tail: number | null = null;
+  /** The element the tail was last measured from. */
+  private anchored: Element | null = null;
   private placing: (() => void) | null = null;
   private jumping: (() => void) | null = null;
   private drag: { height: number; top: number } | null = null;
@@ -451,6 +453,11 @@ export class Follow {
     const spacer = this.spacer();
     if (!el || !anchor || !spacer) return void (this.tail = null);
     const tail = spacer.getBoundingClientRect().top - anchor.getBoundingClientRect().top;
+    // A row new as the anchor (a sent message's row taking over from its bubble in the footer) is placed before the
+    // list has measured it: it is judged from the next frame, against the last tail measured.
+    const swapped = anchor !== this.anchored && !anchor.hasAttribute("data-footer");
+    this.anchored = anchor;
+    if (swapped) return;
     const grown = this.tail === null ? 0 : tail - this.tail;
     this.tail = tail;
     if (this.mode === "follow" || (this.mode === "workFollow" && this.phase === "work")) {
