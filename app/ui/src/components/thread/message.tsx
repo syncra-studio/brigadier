@@ -2,7 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import type { Item } from "../../thread/item";
 
-import { ChevronRightAlt, Regenerate, Trash } from "../../icons";
+import { ChevronRightAlt, Trash, Undo } from "../../icons";
 import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
@@ -155,7 +155,7 @@ export function UserBubble({
             <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
             {rewind && (
               <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
-                <Regenerate />
+                {rewind.icon ?? <Undo />}
               </TooltipIconButton>
             )}
             {failed && onDiscard && (
