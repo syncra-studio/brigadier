@@ -266,6 +266,8 @@ impl Store {
     pub fn write_back(&self, tree: &str, paths: &BTreeSet<String>) -> io::Result<()> {
         let _one = self.lock()?;
         let index = self.git.join("restore.index");
+        // Only a write-back cut short leaves these, and the lock says none is running.
+        let _ = fs::remove_file(self.git.join("restore.index.lock"));
         let _ = fs::remove_file(&index);
         self.run(&index, &["read-tree", tree])?;
         let there: BTreeSet<String> = split(self.run(&index, &["ls-files", "-z"])?)?

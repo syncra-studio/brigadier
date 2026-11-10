@@ -224,7 +224,7 @@ fn cut<'a>(op: &'a Op) -> Cut<'a> {
 fn note(spec: &Spec, op: &Op, call: Call) -> Result<(), String> {
     let done = op.done.clone().unwrap_or_default();
     let data = json!({"event": "rewound", "op": op.op, "to": op.cid, "backend": op.backend,
-        "fresh": done.fresh, "moved": done.moved, "pin": done.pin});
+        "fresh": done.fresh, "moved": done.moved, "pin": done.pin, "turns": done.turns});
     for _ in 0..40 {
         let len = call(json!({"op": "ping"})).map_err(|e| e.to_string())?["len"].clone();
         let f = crate::fold(&spec.dir, true)

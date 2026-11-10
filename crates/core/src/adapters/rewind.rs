@@ -20,6 +20,9 @@ pub struct Rewound {
     pub moved: Option<String>,
     #[serde(default)]
     pub pin: Option<String>,
+    /// Turns `moved` already holds, kept from the original, so the next turn counts after them.
+    #[serde(default)]
+    pub turns: u64,
 }
 
 /// Why a cut didn't finish: proof nothing happened, or no way to tell [D54, D300].

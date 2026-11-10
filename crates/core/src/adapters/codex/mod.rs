@@ -243,8 +243,19 @@ impl Adapter for Codex {
             &kept.conv,
             kept.end.as_deref().unwrap_or(""),
         )?;
+        // The fork holds the kept turns: Norm counts on from them, so diffs() reads the right one.
+        let turns = rollouts(&home_path(".codex"), &[format!("-{id}.jsonl")])
+            .pop()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map_or(0, |text| {
+                (text.lines())
+                    .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                    .filter(|v| s(&v["payload"], &["type"]) == "task_started")
+                    .count() as u64
+            });
         Ok(Rewound {
             moved: Some(id),
+            turns,
             ..Rewound::default()
         })
     }

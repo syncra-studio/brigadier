@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 14;
+pub const VERSION: u32 = 15;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -100,6 +100,10 @@ impl Norm {
                     && let Some(b) = v["backend"].as_str()
                 {
                     self.announced.remove(b);
+                    if let Some(moved) = v["moved"].as_str() {
+                        self.turns
+                            .insert(moved.into(), v["turns"].as_u64().unwrap_or(0));
+                    }
                 }
                 v["kind"] = "note".into();
                 emit(self, v);
