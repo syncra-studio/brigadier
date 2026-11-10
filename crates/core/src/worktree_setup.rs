@@ -26,6 +26,8 @@ pub fn setup_launch(item: &serde_json::Value) -> bool {
 /// stop the agent (proposed). A script started before and never ended was interrupted: it's
 /// recorded so and not run again.
 pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
+    // Runs in the worktree its record holds, its own or one handed on to it [D263, D1080].
+    let worktree = crate::worktrees::folder(&spec.dir).unwrap_or(spec.dir.join("worktree"));
     let (started, exit) = (spec.dir.join("setup.started"), spec.dir.join("setup.exit"));
     if !crate::worktrees::made(&spec.dir) || exit.exists() {
         return argv;
@@ -66,7 +68,7 @@ shift 5; exec "$@""#;
         path("setup.started"),
         path("setup.log"),
         path("setup.exit"),
-        path("worktree"),
+        worktree.display().to_string(),
     ];
     head.into_iter().chain(files).chain(argv).collect()
 }

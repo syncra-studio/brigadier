@@ -12,7 +12,17 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 }
 
 fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
-    let pr = host::pr(data, arg(args, 1)?)?;
+    let id = arg(args, 1)?;
+    let spec = brigadier_core::load(data, id)?;
+    // Landing is the folder owner's alone; all of these wait for no other session's turn [D1082].
+    if matches!(arg(args, 2)?, "link" | "create") {
+        brigadier_core::share::lands(data, &spec)?;
+    }
+    let pr = host::pr(data, id)?;
+    let _shared = match arg(args, 2)? {
+        "push" | "link" | "create" => crate::sessions::guard(data, Path::new(&spec.cwd), Some(id))?,
+        _ => None,
+    };
     let (title, body) = (
         flag(args, "--title").unwrap_or(""),
         flag(args, "--body").unwrap_or(""),

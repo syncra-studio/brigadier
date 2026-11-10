@@ -6,6 +6,7 @@
 mod active;
 pub mod fork;
 mod plan;
+mod shared;
 mod snap;
 
 use crate::adapters::{self, Cut, Failed, Landing, Rewound};
@@ -17,6 +18,8 @@ pub use fork::{end_of, now_of, write_shot};
 use plan::{Files, plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use shared::sharer;
+pub use shared::turn_paths;
 pub use snap::Shot;
 use snap::{Record, Store};
 use std::collections::BTreeSet;
@@ -98,10 +101,6 @@ fn ended(store: &Store, f: &Fold) {
     }
 }
 
-fn local(data: &Path, spec: &Spec) -> bool {
-    Path::new(&spec.cwd) != worktrees::path(data, &spec.id)
-}
-
 /// Serialises a restore against turns starting in a folder other sessions may use.
 pub(crate) fn checkout_lock(data: &Path, exclusive: bool) -> io::Result<File> {
     let file = OpenOptions::new()
@@ -117,23 +116,15 @@ pub(crate) fn checkout_lock(data: &Path, exclusive: bool) -> io::Result<File> {
     Ok(file)
 }
 
-/// Whether another session that isn't archived works in the same folder.
-fn shared(data: &Path, spec: &Spec) -> bool {
-    let mine = fs::canonicalize(&spec.cwd).ok();
-    (crate::ids(data).iter())
-        .filter(|id| **id != spec.id)
-        .filter_map(|id| crate::load(data, id).ok())
-        .filter(|other| !other.dir.join("archived").exists())
-        .any(|other| fs::canonicalize(&other.cwd).ok() == mine)
-}
+type Why = (&'static str, Option<String>);
 
-fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Result<Files, &'static str> {
-    let store = Store::of(spec).ok_or("no_project")?;
-    if local(data, spec) && shared(data, spec) {
-        return Err("shared");
+fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Result<Files, Why> {
+    let store = Store::of(spec).ok_or(("no_project", None))?;
+    let (_, turns) = f.range(cid).ok_or(("missing", None))?;
+    if let Some((why, with)) = sharer(data, spec, &store, &turns) {
+        return Err((why, Some(with)));
     }
-    let (_, turns) = f.range(cid).ok_or("missing")?;
-    plan(&store, &turns)
+    plan(&store, &turns).map_err(|why| (why, None))
 }
 
 /// What the confirmation shows: whether the folder can go back, and what it would and wouldn't do.
@@ -144,7 +135,7 @@ pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str) -> Value {
     match plan_for(data, spec, f, cid) {
         Ok(p) => json!({"ok": true, "restore": true, "paths": p.paths, "hand": p.hand,
             "leftOut": p.left_out, "commits": p.commits}),
-        Err(why) => json!({"ok": true, "restore": false, "why": why}),
+        Err((why, with)) => json!({"ok": true, "restore": false, "why": why, "with": with}),
     }
 }
 
@@ -320,7 +311,8 @@ pub fn apply(
     let (fence, mut checkout) = session::fence(data, spec)?;
     let _fence = fence;
     // The shared lock is this process's own: exchanged, or the exclusive one would wait on it.
-    let _exclusive = if restore && local(data, spec) {
+    // Every restore takes it: another session may share even a worktree [D1070, D1089].
+    let _exclusive = if restore {
         checkout.take();
         Some(checkout_lock(data, true)?)
     } else {
@@ -366,10 +358,17 @@ fn run(
         .range(cid)
         .ok_or_else(|| refused("gone", "This message can't be rewound to any more."))?;
     let files = if restore {
-        let p = plan_for(data, spec, &f, cid).map_err(|why| {
+        let p = plan_for(data, spec, &f, cid).map_err(|(why, with)| {
+            let named = with.and_then(|id| crate::load(data, &id).ok());
             refused(
                 "no_restore",
-                format!("The agent's file changes can't be undone ({why})."),
+                match named {
+                    Some(o) => format!(
+                        "Files stay: {} was working in this folder during this turn.",
+                        crate::share::title(&o)
+                    ),
+                    None => format!("The agent's file changes can't be undone ({why})."),
+                },
             )
         })?;
         Some(p)

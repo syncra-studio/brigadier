@@ -5,13 +5,13 @@
 
 use crate::fold::{Fold, Live, Owner};
 use crate::{
-    Spec, adapters, as_run, check_id, ids, projects, session_dir, sweep as kill_left, worktrees,
-    write_atomic,
+    Spec, adapters, as_run, check_id, data_of, ids, projects, session_dir, share,
+    sweep as kill_left, worktrees, write_atomic,
 };
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 /// The operation under way (`op`: archive, restore or delete), the delete's branch choice, and
@@ -66,18 +66,17 @@ pub fn retired(dir: &Path) -> Option<&'static str> {
 
 /// Held by a turn's start from this check until its turn is logged, and by Remove project around
 /// its busy check, so a send that raced the marker is either seen as busy or refused here [D172].
-/// The second lock keeps a turn from starting in a shared folder while a restore writes there.
+/// The second lock keeps a turn from starting in a folder while a restore, or one of our own
+/// changes to a shared folder, writes there; any folder, as a "here" fork shares even a worktree
+/// [D1070, D1089].
 pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
     let lock = worktrees::lock(&spec.dir)?;
     let removing = projects::removing(data, spec).then_some("This project is being removed.");
     if let Some(why) = closed(&spec.dir).or(removing) {
         return Err(io::Error::other(why));
     }
-    let own = Path::new(&spec.cwd) == worktrees::path(data, &spec.id);
-    let shared = (!own)
-        .then(|| crate::rewind::checkout_lock(data, false))
-        .transpose()?;
-    Ok((lock, shared))
+    let shared = crate::rewind::checkout_lock(data, false)?;
+    Ok((lock, Some(shared)))
 }
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
@@ -93,18 +92,41 @@ pub fn archive(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result
         clear(&spec.dir, INTENT)?;
         return Err(e);
     }
-    finish_archive(&spec.dir)
+    finish_archive(spec)
 }
 
-fn finish_archive(dir: &Path) -> io::Result<()> {
-    match worktrees::free(dir) {
+/// The other sessions in this one's folder, and the checkout lock held while there are any, so
+/// none starts a turn or changes hands meanwhile [D1080]. The caller holds its own `lock`.
+fn sharers(spec: &Spec) -> io::Result<(Vec<Spec>, Option<File>)> {
+    let data = data_of(spec);
+    let others = share::others(&data, spec);
+    let held = (!others.is_empty())
+        .then(|| crate::rewind::checkout_lock(&data, true))
+        .transpose()?;
+    Ok((others, held))
+}
+
+/// Whose record holds the folder's worktree: this session's own, else another user's.
+fn holder(spec: &Spec, others: &[Spec]) -> PathBuf {
+    (others.iter())
+        .find(|o| !worktrees::made(&spec.dir) && worktrees::made(&o.dir))
+        .map_or(spec.dir.clone(), |o| o.dir.clone())
+}
+
+fn finish_archive(spec: &Spec) -> io::Result<()> {
+    let dir = &spec.dir;
+    let (others, _held) = sharers(spec)?;
+    // Another still working there keeps the folder; the last user archived frees it [D1080].
+    let holder =
+        (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
+    match holder.as_deref().map_or(Ok(()), worktrees::free) {
         Ok(()) => {
             write_atomic(&dir.join(ARCHIVED), now_ms().to_string().as_bytes())?;
             clear(dir, INTENT)
         }
         // Nothing went yet: the session stays as it was. Half gone: the next start finishes it.
         Err(e) => {
-            if worktrees::present(dir) {
+            if holder.as_deref().is_none_or(worktrees::present) {
                 clear(dir, INTENT)?;
             }
             Err(e)
@@ -119,6 +141,11 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         return Ok(());
     }
     record(&spec.dir, &json!({"op": "restore"}))?;
+    // A shared worktree comes back for any of its users, from its holder's record [D1080].
+    let (others, _held) = sharers(spec)?;
+    let holder = holder(spec, &others);
+    let own = holder == spec.dir;
+    let was = worktrees::present(&holder);
     let project = spec
         .project
         .as_deref()
@@ -127,17 +154,18 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         .as_ref()
         .map(|p| p.include.clone())
         .unwrap_or_default();
-    if let Err(e) = worktrees::restore(&spec.dir, &picks) {
+    if let Err(e) = worktrees::restore(&holder, &picks) {
         // Rolled back: it stays archived and can be restored again.
-        if !worktrees::present(&spec.dir) {
+        if !worktrees::present(&holder) {
             clear(&spec.dir, INTENT)?;
         }
         return Err(e);
     }
-    // Restore always re-runs setup in trusted projects before the next turn [D263].
-    if project.is_some_and(|p| p.trusted == Some(true)) {
+    // Restore always re-runs setup in trusted projects before the next turn [D263]; a shared
+    // worktree's, only when this brought it back.
+    if project.is_some_and(|p| p.trusted == Some(true)) && (own || !was) {
         for name in ["setup.started", "setup.exit", "setup.log"] {
-            clear(&spec.dir, name)?;
+            clear(&holder, name)?;
         }
     }
     clear(&spec.dir, ARCHIVED)?;
@@ -154,9 +182,48 @@ pub fn busy(f: &Fold, live: &Live) -> bool {
     }
 }
 
-/// The branch a delete would ask about, if any [D181].
+/// The branch a delete would ask about, if any [D181]: none while another session uses the
+/// folder, which keeps it [D1080].
 pub fn unlanded(spec: &Spec) -> io::Result<Option<String>> {
+    if !share::others(&data_of(spec), spec).is_empty() {
+        return Ok(None);
+    }
     worktrees::unlanded(&spec.dir)
+}
+
+/// Who still works in the folder after this session goes, for the confirm [D1080].
+pub fn stays(spec: &Spec) -> Option<String> {
+    share::others(&data_of(spec), spec)
+        .first()
+        .map(|o| o.id.clone())
+}
+
+/// While others use the folder, its worktree's record goes to the oldest not being deleted
+/// itself, landing with it [D1080, D1082], named in the intent first so a crash finishes the same
+/// handover [D35]. Only users left archived: it's freed, as the last archive would [D180].
+fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
+    let (others, _held) = sharers(spec)?;
+    if others.is_empty() || !worktrees::made(&spec.dir) {
+        return Ok(false);
+    }
+    let deleting = |o: &Spec| self::intent(&o.dir).is_some_and(|i| i["op"] == "delete");
+    let named = intent["heir"].as_str().map(String::from);
+    let Some(heir) = (others.iter())
+        .find(|o| named.as_ref() == Some(&o.id))
+        .or_else(|| others.iter().find(|o| !deleting(o)))
+    else {
+        return Ok(false);
+    };
+    intent["heir"] = heir.id.clone().into();
+    intent["keep"] = worktrees::folder(&spec.dir)
+        .map(|p| p.display().to_string())
+        .into();
+    record(&spec.dir, intent)?;
+    worktrees::handover(&spec.dir, &heir.dir)?;
+    if others.iter().all(|o| o.dir.join(ARCHIVED).exists()) {
+        worktrees::free(&heir.dir)?;
+    }
+    Ok(true)
 }
 
 /// Removes the session folder and every recorded path outside it, its branch too when `drop`
@@ -180,7 +247,12 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         return json!({"ok": false, "swept": 0, "removed": [],
             "left": ["A rewind of this session hasn't finished."], "kept_branches": []});
     }
-    if let Err(e) = record(dir, &json!({"op": "delete", "drop_branch": drop_branch})) {
+    let mut cut = intent(dir)
+        .filter(|i| i["op"] == "delete")
+        .unwrap_or_default();
+    cut["op"] = "delete".into();
+    cut["drop_branch"] = drop_branch.into();
+    if let Err(e) = record(dir, &cut).and_then(|()| hand_on(spec, &mut cut)) {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
     let swept = kill_left(f);
@@ -246,12 +318,32 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         reply["kept_branches"] = kept_branches.into();
         return reply;
     }
-    match fs::remove_dir_all(dir) {
+    match remove(dir) {
         Ok(()) => removed.push(dir.display().to_string()),
         Err(e) => left.push(format!("{}: {e}", dir.display())),
     }
     json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left,
         "kept_branches": kept_branches})
+}
+
+/// The session's folder goes; one still holding a worktree another uses keeps only that, its
+/// record last, so a crash leaves it a session that deletes again [D35, D1080].
+fn remove(dir: &Path) -> io::Result<()> {
+    if !dir.join(worktrees::RETAINED).exists() {
+        return fs::remove_dir_all(dir);
+    }
+    let keep = ["worktree", worktrees::RETAINED, "session.json", INTENT];
+    for entry in fs::read_dir(dir)?.flatten() {
+        if keep.iter().any(|k| entry.file_name() == *k) {
+            continue;
+        }
+        match entry.file_type()?.is_dir() {
+            true => fs::remove_dir_all(entry.path())?,
+            false => fs::remove_file(entry.path())?,
+        }
+    }
+    fs::remove_file(dir.join("session.json"))?;
+    clear(dir, INTENT)
 }
 
 /// At the daemon's start, after `worktrees::sweep`'s own: an archive cut short finishes, a restore
@@ -262,8 +354,8 @@ pub fn sweep(data: &Path) {
         let Some(cut) = intent(&dir) else { continue };
         match cut["op"].as_str() {
             Some("archive") => {
-                if let Ok(_one) = worktrees::lock(&dir) {
-                    let _ = finish_archive(&dir);
+                if let (Ok(_one), Ok(spec)) = (worktrees::lock(&dir), crate::load(data, &id)) {
+                    let _ = finish_archive(&spec);
                 }
             }
             Some("restore") => {

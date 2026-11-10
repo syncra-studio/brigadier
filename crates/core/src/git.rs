@@ -26,8 +26,8 @@ pub mod push;
 pub mod recover;
 pub mod replace;
 pub mod search;
-pub mod sync;
 pub mod step;
+pub mod sync;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.
@@ -89,7 +89,8 @@ pub fn folder(data: &Path, target: &Target) -> io::Result<PathBuf> {
         Target::Session(id) => {
             check_id(id)?;
             if worktrees::made(&session_dir(data, id)) {
-                worktrees::path(data, id)
+                // Its own, or one handed on with its record [D1080].
+                worktrees::folder(&session_dir(data, id)).unwrap_or(worktrees::path(data, id))
             } else {
                 PathBuf::from(load(data, id)?.cwd)
             }

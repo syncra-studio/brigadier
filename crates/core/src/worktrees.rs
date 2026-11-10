@@ -16,8 +16,10 @@ use std::process::Command;
 mod branch;
 mod copy;
 pub use branch::{rename, set_base};
+mod hand;
 mod landing;
 use copy::include;
+pub use hand::{RETAINED, folder, handover};
 pub use landing::{Landing, Lands, landed, lands, set_landing, unlanded};
 
 const RECORD: &str = "worktree.json";
@@ -43,6 +45,8 @@ struct Owned {
     renaming: Option<String>,
     /// The last landing into the base: it goes wherever this record goes [D1049, D1082].
     landing: Option<Landing>,
+    /// The deleted session that made it and handed it on, whose folder holds it [D1080].
+    inherited: Option<String>,
 }
 
 fn err<T>(message: String) -> io::Result<T> {
@@ -408,14 +412,16 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(None);
     };
+    hand::drop_maker(&owned)?;
     let repo = Path::new(&owned.repo);
-    let Some(branch) = owned.branch.filter(|b| has_branch(repo, b)) else {
+    let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
     if unlanded(dir)?.is_some() && !drop {
         return Ok(Some(branch));
     }
-    // Only the branch this session made, as its record names it, renamed or not [D181].
+    // Only the branch this session made or was handed, as its record names it, renamed or not
+    // [D181, D1080].
     git(repo, &["branch", "-D", &branch])?;
     Ok(None)
 }

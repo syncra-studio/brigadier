@@ -4,6 +4,7 @@
 
 use crate::adapters::setup;
 use crate::{Spec, check_id, write_atomic};
+use brigadier_frames::log::now_ms;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
@@ -20,12 +21,15 @@ const GIT_SECS: u64 = 60;
 const CHUNK: usize = 200;
 
 /// The folder at one moment. `out` holds what the tree can't: each big untracked file's size and
-/// time, each nested repository's commit, by path.
+/// time, each nested repository's commit, by path. `at`: when its capture started (ms), so a
+/// turn spans its two captures [D1078, D1089]; none on one taken before that.
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Shot {
     pub tree: String,
     pub head: Option<String>,
     pub out: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<u64>,
 }
 
 /// One turn's two edges. A missing end means no restore across it.
@@ -178,6 +182,7 @@ impl Store {
 
     /// The folder now. Fails where the folder isn't a git repository: that range offers keep only.
     pub fn capture(&self) -> io::Result<Shot> {
+        let at = Some(now_ms());
         let _one = self.lock()?;
         self.init()?;
         let index = self.git.join("index");
@@ -223,7 +228,12 @@ impl Store {
             .source(&["rev-parse", "-q", "--verify", "HEAD"])
             .ok()
             .map(|h| String::from_utf8_lossy(&h).trim().to_string());
-        Ok(Shot { tree, head, out })
+        Ok(Shot {
+            tree,
+            head,
+            out,
+            at,
+        })
     }
 
     fn record(&self, cid: &str) -> io::Result<PathBuf> {
@@ -239,6 +249,19 @@ impl Store {
         let path = self.record(cid)?;
         fs::create_dir_all(self.git.join("turns"))?;
         write_atomic(&path, &serde_json::to_vec(record)?)
+    }
+
+    /// Every turn's record, oldest first by its first capture; those with no time first.
+    pub fn records(&self) -> Vec<Record> {
+        let turns = fs::read_dir(self.git.join("turns"))
+            .into_iter()
+            .flatten()
+            .flatten();
+        let mut all: Vec<Record> = turns
+            .filter_map(|e| serde_json::from_slice(&fs::read(e.path()).ok()?).ok())
+            .collect();
+        all.sort_by_key(|r| r.before.at);
+        all
     }
 
     /// The paths that differ between two moments.

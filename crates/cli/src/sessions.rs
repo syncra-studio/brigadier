@@ -23,7 +23,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {
-            return Ok(json!({"ok": true, "branch": session::unlanded(&spec)?}));
+            return Ok(
+                json!({"ok": true, "branch": session::unlanded(&spec)?, "stays": session::stays(&spec)}),
+            );
         }
         _ => return delete(data, id, flag(args, "--branch") == Some("delete"), "delete"),
     }
@@ -55,15 +57,28 @@ pub(crate) fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
     let Ok(_fence) = core::worktrees::lock(&dir) else {
         return true;
     };
-    busy_now(data, id, all)
+    working(data, id, all)
 }
 
-/// `busy` for a caller already holding the session's lock.
-pub(crate) fn busy_now(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
-    let dir = core::session_dir(data, id);
-    core::fold(&dir, false).is_ok_and(|f| {
+/// Whether a session is busy, taking no lock of its own: for a check under the checkout lock,
+/// which a turn start holds until its turn is logged (`session::fence`).
+pub(crate) fn working(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
+    core::fold(&core::session_dir(data, id), false).is_ok_and(|f| {
         let live = fold::live(&f.fold, owner::state(data, id), data, all);
         session::busy(&f.fold, &live)
+    })
+}
+
+/// Held through one of our own changes to `folder`: none of the other sessions working there
+/// starts a turn meanwhile, and the change is refused while one works [D1082].
+pub(crate) fn guard(
+    data: &Path,
+    folder: &Path,
+    except: Option<&str>,
+) -> io::Result<Option<fs::File>> {
+    let all = std::cell::OnceCell::new();
+    core::share::guard(data, folder, except, &|o| {
+        working(data, &o.id, all.get_or_init(procs::all))
     })
 }
 

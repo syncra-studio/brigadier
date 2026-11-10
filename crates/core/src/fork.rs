@@ -217,6 +217,9 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
     let place = ask.place.unwrap_or(offer["default"].as_str().unwrap_or(""));
     let offered = match place {
         "worktree" => !offer["worktree"].is_null(),
+        // In the source's own folder, today's files [D1070]; an inherited answer whose source is
+        // gone has no folder to share.
+        "here" => !offer["here"].is_null() && !s.gone,
         "chat" => s.src.project.is_none(),
         _ => false,
     };
@@ -275,8 +278,11 @@ fn build(
     rf::write(src, op, "files")?;
     let run = as_run(src, f, &op.backend, None);
     let worktree = place == "worktree";
+    let here = place == "here";
     let cwd = if worktree {
         worktrees::path(data, ask.fork)
+    } else if here {
+        src.cwd.clone().into()
     } else {
         session_dir(data, ask.fork).join("scratch")
     };
@@ -313,6 +319,8 @@ fn build(
         let base = worktrees::base(&src.dir);
         worktrees::create(&new, &project, base.as_deref(), shot.head.as_deref())?;
         write_shot(src, &shot, &cwd)?
+    } else if here {
+        vec![]
     } else {
         fs::create_dir_all(&cwd)?;
         vec![]
@@ -330,8 +338,10 @@ fn build(
         .collect();
     inherited.push(ask.at);
     let at = op.at.as_ref();
+    // Written under the source's fence, so no restore sits between its check and this [D1073].
+    let place = (worktree.then_some("worktree")).or(here.then_some("folder"));
     op.record = json!({"fork": ask.fork, "source": src.id, "at": ask.at,
-        "where": worktree.then_some("worktree"), "summary": forked.is_none(), "leftOut": left_out,
+        "where": place, "root": here.then(|| crate::share::root(src)), "summary": forked.is_none(), "leftOut": left_out,
         "backend": op.backend, "account": op.account, "moved": forked.as_ref().map(|k| &k.conv),
         "turns": forked.as_ref().map(|k| k.turns), "end": at.and_then(|b| b.end.clone()),
         "inherited": inherited});

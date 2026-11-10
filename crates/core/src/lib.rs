@@ -13,6 +13,7 @@ pub mod repos;
 pub mod rewind;
 mod send;
 pub mod session;
+pub mod share;
 pub mod switch;
 pub mod thread;
 pub mod trust;
@@ -110,6 +111,11 @@ pub fn ids(data: &Path) -> Vec<String> {
         .into_iter()
         .flatten()
         .flatten()
+        // A deleted session's folder kept only for a worktree another uses isn't one [D1080].
+        .filter(|e| {
+            let p = e.path();
+            !p.join(worktrees::RETAINED).exists() || p.join("session.json").exists()
+        })
         .filter_map(|e| e.file_name().into_string().ok())
         .collect();
     ids.sort();
