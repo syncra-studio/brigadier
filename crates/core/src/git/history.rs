@@ -220,3 +220,9 @@ pub fn contents(
     };
     Ok(json!({"before": before, "after": after, "hunks": []}))
 }
+
+/// Where the session's branch left `base`, the commit Branch since base starts from [D1035].
+pub fn since(checkout: &Checkout, base: &str, stop: &AtomicBool) -> io::Result<String> {
+    let out = read(&checkout.root, &["merge-base", base, "HEAD"], stop)?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
+}

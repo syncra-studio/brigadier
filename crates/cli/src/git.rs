@@ -6,7 +6,9 @@
 use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
-use brigadier_core::git::{self, Checkout, Status, Target, files, history, search, watch::Watch};
+use brigadier_core::git::{
+    self, Checkout, Status, Target, files, history, replace, search, watch::Watch,
+};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
@@ -69,7 +71,7 @@ fn since(
     };
     let base =
         base.ok_or_else(|| io::Error::other("This checkout has no base to compare with."))?;
-    let since = diff::since(checkout, &base, stop)?;
+    let since = history::since(checkout, &base, stop)?;
     Ok((base, since))
 }
 
@@ -123,7 +125,7 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
             };
             let files = files.as_array().map_or(&[][..], Vec::as_slice);
             let outcome =
-                search::replace(&checkout, &matcher, word(2)?, files, keep.as_deref(), &stop)?;
+                replace::replace(&checkout, &matcher, word(2)?, files, keep.as_deref(), &stop)?;
             json!({"ok": true, "outcome": outcome})
         }
         verb @ ("stage" | "unstage" | "discard") => {

@@ -51,12 +51,6 @@ impl Scope<'_> {
     }
 }
 
-/// Where the session's branch left `base`, the commit Branch since base starts from [D1035].
-pub fn since(checkout: &Checkout, base: &str, stop: &AtomicBool) -> io::Result<String> {
-    let out = read(&checkout.root, &["merge-base", base, "HEAD"], stop)?;
-    Ok(String::from_utf8_lossy(&out).trim().to_string())
-}
-
 /// What `git diff` compares for a scope: none for the index to the files.
 pub(super) fn base(
     checkout: &Checkout,
