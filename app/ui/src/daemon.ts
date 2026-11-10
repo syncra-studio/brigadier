@@ -77,6 +77,8 @@ let after: number | null = null;
 // Bumped when the rows held start over (a snapshot, an island), so a page asked for before then is dropped.
 let rowsRun = 0;
 let newerAsked = false;
+// Newer rows asked for before the snapshot came: asked again once it has, as the row that asked stays drawn.
+let newerLater = false;
 // The older page's answer, for whoever asked.
 let olderDone: ((result: Paged) => void)[] = [];
 const threadListeners = new Set<() => void>();
@@ -214,7 +216,10 @@ export function openThread(id: string): void {
   if (thread?.id === id && (thread.status === "loading" || thread.status === "ready")) return;
   // Older pages and an island are kept too, and the snapshot reaches the same rows, so the place left comes back [D516].
   if (thread?.status === "ready" && session) keep(thread.id, session);
-  setThread({ id, status: "loading" }, left.get(id) ?? null);
+  const kept = left.get(id) ?? null;
+  // The kept rows' own, so a send before the snapshot leaves an island (`latest`).
+  [before, after, newerLater] = [kept?.before ?? null, kept?.after ?? null, false];
+  setThread({ id, status: "loading" }, kept);
   watch(reachOf(id));
 }
 
@@ -285,6 +290,10 @@ function onFrame(frame: Record<string, any>): void {
     after = next.after ?? null;
     rowsRun++;
     setThread({ id: thread.id, status: "ready" }, next);
+    if (newerLater) {
+      newerLater = false;
+      threadSource.newer();
+    }
   } else if (thread && session && olderRe && frame.re === olderRe) {
     if (!frame.ok) return paging({ ok: false, error: frame.error });
     merge(frame);
@@ -400,6 +409,7 @@ export const threadSource: Omit<Source, "older"> & {
   },
   newer() {
     if (after === null || newerAsked) return;
+    if (threadN === undefined) return void (newerLater = true);
     newerAsked = true;
     page({ op: "thread_older", after }, () => (newerAsked = false));
   },
