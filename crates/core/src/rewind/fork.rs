@@ -121,6 +121,8 @@ pub(super) fn settle(spec: &Spec, call_in: CallIn) -> io::Result<()> {
             unfork(spec, &op)?;
             remove(&data, &op.fork)?;
         }
+        // Discarded before its record was written: only an unheard native fork is left [D35].
+        _ if !session_dir(&data, &op.fork).exists() => unfork(spec, &op)?,
         _ => crate::fork::made(&data, &op.record, call_in)?,
     }
     clear(spec)

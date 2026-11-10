@@ -24,6 +24,7 @@ export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean
 export const LineRow = memo(function LineRow(props: LineProps) {
   const rewind = useContext(RewindContext);
   const gone = rewind?.gone("item" in props ? props.item.n : undefined, "turn" in props ? props.turn?.id : undefined);
+  const fork = "turn" in props && props.turn && <ForkAction at={props.turn.id} />;
   return (
     <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
       {/* A row that throws while it's drawn leaves the rest of the thread standing (D490). */}
@@ -31,7 +32,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       {props.type === "setup" ? (
         <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
-        <AnswerMarks text={props.item.text} time={props.item.sentAt} fork={props.turn && <ForkAction at={props.turn.id} />} />
+        <AnswerMarks text={props.item.text} time={props.item.sentAt} fork={fork} />
       ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
@@ -56,7 +57,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.item.kind === "forked" ? (
         <ForkedLine item={props.item} />
       ) : (
-        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} actions={props.item.kind !== "message" || !props.item.final || props.actions === true} />
+        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} actions={props.item.kind !== "message" || !props.item.final || props.actions === true} fork={fork} />
       )}
       </DrawBoundary>
     </div>

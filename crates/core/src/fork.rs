@@ -210,6 +210,9 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
             "This answer changed. Open the menu again.",
         ));
     }
+    if session_dir(data, ask.fork).exists() {
+        return Ok(refused("taken", "There's already a session with that id."));
+    }
     let place = ask.place.unwrap_or(offer["default"].as_str().unwrap_or(""));
     let offered = match place {
         "worktree" => !offer["worktree"].is_null(),

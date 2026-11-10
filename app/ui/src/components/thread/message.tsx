@@ -203,17 +203,19 @@ export function AssistantMessage({
   text,
   final,
   time,
+  fork,
   children,
 }: {
   text: string;
   final: boolean;
   time?: number;
+  fork?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="group/answer flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
-      {final && <AnswerMarks text={text} time={time} />}
+      {final && <AnswerMarks text={text} time={time} fork={fork} />}
     </div>
   );
 }

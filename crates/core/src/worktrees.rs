@@ -189,6 +189,8 @@ pub fn create(
         return err("This session already has a worktree record.".into());
     }
     let (base_commit, base) = match base {
+        // A fork's commit stands in below, whatever became of its base since.
+        Some(base) if at.is_some() => (String::new(), base.to_string()),
         // A send as new starts where its source started [D204].
         Some(base) => (
             git(

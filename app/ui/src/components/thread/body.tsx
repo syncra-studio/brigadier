@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { type ReactNode, useContext } from "react";
 
 import type { Item, Turn } from "../../thread/item";
 import { Markdown } from "../../thread/markdown";
@@ -29,7 +29,7 @@ function UserRow({ id, cid, text, time, dated }: { id: string; cid: string | und
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
  * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above.
  */
-export function Body({ item, turn, step, dated = false, actions = true }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean }) {
+export function Body({ item, turn, step, dated = false, actions = true, fork }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; fork?: ReactNode }) {
   switch (item.kind) {
     case "group":
       return null;
@@ -41,6 +41,7 @@ export function Body({ item, turn, step, dated = false, actions = true }: { item
           text={item.text}
           final={actions && (item.final === true || item.joined === true)}
           time={item.sentAt}
+          fork={fork}
         >
           <Markdown text={item.text} keep={item.id} />
         </AssistantMessage>
