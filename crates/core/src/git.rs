@@ -41,17 +41,7 @@ pub struct Checkout {
 /// session's own worktree, else its folder (Local checkout), or a project's folder [D160, D1039].
 /// An archived session's worktree is gone until restore, so it's not found [D180].
 pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
-    let folder = match target {
-        Target::Session(id) => {
-            check_id(id)?;
-            if worktrees::made(&session_dir(data, id)) {
-                worktrees::path(data, id)
-            } else {
-                PathBuf::from(load(data, id)?.cwd)
-            }
-        }
-        Target::Project(id) => PathBuf::from(projects::get(data, id)?.folder),
-    };
+    let folder = folder(data, target)?;
     if !folder.is_dir() {
         return Err(io::ErrorKind::NotFound.into());
     }
@@ -69,6 +59,21 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
         }),
         _ => err(format!("{} isn't a git checkout", folder.display())),
     }
+}
+
+/// The folder `checkout` looks in, found without running git.
+pub fn folder(data: &Path, target: &Target) -> io::Result<PathBuf> {
+    Ok(match target {
+        Target::Session(id) => {
+            check_id(id)?;
+            if worktrees::made(&session_dir(data, id)) {
+                worktrees::path(data, id)
+            } else {
+                PathBuf::from(load(data, id)?.cwd)
+            }
+        }
+        Target::Project(id) => PathBuf::from(projects::get(data, id)?.folder),
+    })
 }
 
 /// A read-only git in `dir`, ended early by `stop`: it takes no optional lock (so never the index
@@ -117,8 +122,12 @@ pub fn inside(checkout: &Checkout, rel: &str) -> io::Result<PathBuf> {
         return refused();
     }
     let full = checkout.root.join(rel);
-    let existing = full.ancestors().find(|p| p.exists()).unwrap_or(&full);
-    let resolved = fs::canonicalize(existing)?;
+    // The nearest part that's there, a link included: a dangling link fails to resolve, so it's
+    // refused rather than skipped.
+    let existing = (full.ancestors())
+        .find(|p| fs::symlink_metadata(p).is_ok())
+        .unwrap_or(&full);
+    let resolved = fs::canonicalize(existing).or_else(|_| refused())?;
     match resolved.strip_prefix(&checkout.root) {
         Ok(under) if !under.components().any(|c| c.as_os_str() == ".git") => Ok(full),
         _ => refused(),
@@ -203,9 +212,9 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
             }
             continue;
         }
-        let (path, old, staged, changes) = match record.as_bytes()[0] {
+        let (path, old, staged, changes, index) = match record.as_bytes()[0] {
             b'!' => continue,
-            b'?' => (&record[2..], None, None, Some("untracked")),
+            b'?' => (&record[2..], None, None, Some("untracked"), String::new()),
             kind @ (b'1' | b'2' | b'u') => {
                 let count = match kind {
                     b'1' => 9,
@@ -232,8 +241,24 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
                 };
                 let codes = parts[1].as_bytes();
                 match kind {
-                    b'u' => (parts[count - 1], None, None, Some("conflicted")),
-                    _ => (parts[count - 1], old, side(codes[0])?, side(codes[1])?),
+                    b'u' => (
+                        parts[count - 1],
+                        None,
+                        None,
+                        Some("conflicted"),
+                        String::new(),
+                    ),
+                    // The staged version's mode and blob: staging more of a file changes them.
+                    _ => {
+                        let index = format!("{} {}", parts[4], parts[7]);
+                        (
+                            parts[count - 1],
+                            old,
+                            side(codes[0])?,
+                            side(codes[1])?,
+                            index,
+                        )
+                    }
                 }
             }
             _ => return Err(bad(record)),
@@ -241,17 +266,19 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
         files.insert(
             path.to_string(),
             json!({"path": path, "old": old, "staged": staged,
-            "changes": changes, "stamp": stamp(&root.join(path))}),
+            "changes": changes, "stamp": stamp(&root.join(path), &index)}),
         );
     }
     head["count"] = files.len().into();
     Ok(Status { head, files })
 }
 
-/// When the file was last written and its size: an edit to a file already changed shows here,
-/// though its status doesn't, so a viewer or diff knows to read it again [D30]. None once gone.
-fn stamp(path: &Path) -> Value {
-    fs::symlink_metadata(path).map_or(Value::Null, |m| {
-        format!("{}.{:09}:{}", m.mtime(), m.mtime_nsec(), m.size()).into()
-    })
+/// When the file was last written and its size (`-` once gone), then its staged version: an edit
+/// to a file already changed, or staging more of it, shows here though its status doesn't, so a
+/// viewer or diff knows to read it again [D30]. Opaque to the UI: it's only compared.
+fn stamp(path: &Path, index: &str) -> String {
+    let file = fs::symlink_metadata(path).map_or("-".into(), |m| {
+        format!("{}.{:09}:{}", m.mtime(), m.mtime_nsec(), m.size())
+    });
+    format!("{file} {index}").trim_end().to_string()
 }

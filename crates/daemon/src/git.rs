@@ -22,7 +22,6 @@ struct Sub {
     re: Value,
     /// The session or project it asked for, which its pushes name.
     name: String,
-    session: bool,
     out: Sender<String>,
     /// Its snapshot waits for the watcher's first read.
     waiting: bool,
@@ -110,9 +109,9 @@ pub(super) fn subscribe(
     gitting: &AtomicU64,
 ) {
     let re = req["id"].clone();
-    let (target, name, session) = match (req["session"].as_str(), req["project"].as_str()) {
-        (Some(id), _) => (Target::Session(id), id, true),
-        (None, Some(id)) => (Target::Project(id), id, false),
+    let (target, name) = match (req["session"].as_str(), req["project"].as_str()) {
+        (Some(id), _) => (Target::Session(id), id),
+        (None, Some(id)) => (Target::Project(id), id),
         _ => {
             let error = json!({"re": re, "ok": false, "error": "git needs a session or project"});
             let _ = out.send(error.to_string());
@@ -138,24 +137,30 @@ pub(super) fn subscribe(
             return;
         }
     };
-    let mut sub = Sub {
+    let mut sub = Some(Sub {
         conn,
         re,
         name: name.into(),
-        session,
         out: out.clone(),
         waiting: true,
-    };
+    });
     if let Some(w) = all.get(&checkout.root) {
+        // Under its lock, so it can't end between the look and the join.
         let mut seen = w.seen.lock().unwrap();
-        // Joined at its last read: its snapshot goes now, numbered where the others are.
-        if let Some(last) = &seen.last {
-            let snapshot = json!({"re": sub.re, "ok": true, "n": seen.n, "git": last.json()});
-            sub.waiting = false;
-            let _ = out.send(snapshot.to_string());
+        if !seen.ended {
+            let mut joined = sub.take().unwrap();
+            // Joined at its last read: its snapshot goes now, numbered where the others are.
+            if let Some(last) = &seen.last {
+                let snapshot =
+                    json!({"re": joined.re, "ok": true, "n": seen.n, "git": last.json()});
+                joined.waiting = false;
+                let _ = out.send(snapshot.to_string());
+            }
+            seen.subs.push(joined);
         }
-        seen.subs.push(sub);
-    } else {
+    }
+    let mut left = left;
+    if let Some(sub) = sub {
         let seen = Arc::new(Mutex::new(Seen {
             subs: vec![sub],
             ..Seen::default()
@@ -163,7 +168,7 @@ pub(super) fn subscribe(
         let shared = seen.clone();
         let root = checkout.root.clone();
         let watch = Watch::start(checkout, move |read| deliver(&shared, read));
-        all.insert(root, Watched { seen, watch });
+        left.extend(all.insert(root, Watched { seen, watch }));
     }
     drop(all);
     drop(left);
@@ -175,23 +180,34 @@ pub(super) fn leave(conn: u64) {
     drop(left);
 }
 
-/// Reads again now every checkout `wanted` says, as on focus.
-fn poke(wanted: impl Fn(&Sub) -> bool) {
+/// Window focus: reads `conn`'s checkout again now.
+pub(super) fn refresh(conn: u64) {
     for w in WATCHED.lock().unwrap().values() {
-        if w.seen.lock().unwrap().subs.iter().any(&wanted) {
+        if w.seen
+            .lock()
+            .unwrap()
+            .subs
+            .iter()
+            .any(|sub| sub.conn == conn)
+        {
             w.watch.poke();
         }
     }
 }
 
-/// Window focus: reads `conn`'s checkout again now.
-pub(super) fn refresh(conn: u64) {
-    poke(|sub| sub.conn == conn);
-}
-
-/// A turn began or ended in these sessions: their checkouts are read again [D48].
-pub(super) fn turned(sessions: &[&str]) {
-    if !sessions.is_empty() {
-        poke(|sub| sub.session && sessions.contains(&sub.name.as_str()));
+/// A turn began or ended in these sessions: the checkouts they work in are read again, whoever
+/// watches them [D48].
+pub(super) fn turned(data: &Path, sessions: &[&str]) {
+    let folders: Vec<PathBuf> = (sessions.iter())
+        .filter_map(|id| git::folder(data, &Target::Session(id)).ok())
+        .filter_map(|folder| folder.canonicalize().ok())
+        .collect();
+    if folders.is_empty() {
+        return;
+    }
+    for (root, w) in WATCHED.lock().unwrap().iter() {
+        if folders.iter().any(|folder| folder.starts_with(root)) {
+            w.watch.poke();
+        }
     }
 }

@@ -234,7 +234,7 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         })
         .filter_map(|row| row["id"].as_str())
         .collect();
-    git::turned(&turned);
+    git::turned(data, &turned);
     let delta =
         !rows.is_empty() || !gone.is_empty() || !projects.is_empty() || !projects_gone.is_empty();
     for row in &rows {
