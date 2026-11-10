@@ -7,6 +7,7 @@ mod git;
 pub mod index;
 mod models;
 pub mod owner;
+mod panel;
 pub mod queue;
 pub mod rewind;
 mod sessions;
@@ -36,6 +37,8 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier git <id> | git --project P [--watch]
+       brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
+       brigadier panel [open on|off | width <px> | view <id> files|search|source | shown <id>]
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
@@ -92,7 +95,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" | "models" | "title" | "git" => &[][..],
+        | "switching" | "models" | "title" | "git" | "source" | "panel" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids
@@ -321,6 +324,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "index" => index(data, has(args, "--cold")),
         "git" => git::run(data, args),
+        "source" => git::source(data, args),
+        "panel" => panel::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),

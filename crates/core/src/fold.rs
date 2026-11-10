@@ -64,6 +64,12 @@ pub struct Turn {
     /// The CLI holds its reply for extra safety checks, until it says it let it go [D487].
     #[serde(default)]
     pub checking: bool,
+    /// The files its edit steps changed: an edit counts once it ended well, or when the backend's
+    /// own record lists it [D1023]. `editing` holds each edit step still open, by its id.
+    #[serde(default)]
+    pub edited: BTreeSet<String>,
+    #[serde(default)]
+    pub editing: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -136,6 +142,10 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
+    /// The latest ended turn that changed files: `{at, files}`, its end and how many files. What
+    /// opens the panel the first time [D1023, D1125]; never inferred from the checkout's state.
+    #[serde(default)]
+    pub edited: Option<Value>,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
     /// delivered), withdrawn, or the outcome of the turn they ended with.
     #[serde(default)]
@@ -203,6 +213,9 @@ impl Fold {
             });
             self.turns.remove(0);
             self.finished = ts;
+            if !turn.edited.is_empty() {
+                self.edited = Some(json!({"at": ts, "files": turn.edited.len()}));
+            }
             self.bound(&turn);
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
@@ -412,13 +425,35 @@ impl Fold {
                         t.tools_since = ts;
                     }
                     t.tools.insert(str_of("id"));
+                    if item["step"] == "edit" {
+                        let mut paths = paths_of(&item["changes"]);
+                        if paths.is_empty() && !str_of("input").is_empty() {
+                            paths.push(str_of("input"));
+                        }
+                        t.editing.insert(str_of("id"), paths);
+                    }
                 }
             }
-            "tool_done" => drop(
-                self.turns
-                    .first_mut()
-                    .map(|t| t.tools.remove(&str_of("id"))),
-            ),
+            "tool_done" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.tools.remove(&str_of("id"));
+                    let paths = t.editing.remove(&str_of("id"));
+                    if item["ok"] == true {
+                        t.edited.extend(
+                            paths
+                                .into_iter()
+                                .flatten()
+                                .chain(paths_of(&item["changes"])),
+                        );
+                    }
+                }
+            }
+            // The backend's own record of a turn's edits [D95].
+            "changes" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.edited.extend(paths_of(&item["changes"]));
+                }
+            }
             "question" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.question = Some(str_of("text"));
@@ -496,4 +531,11 @@ impl Fold {
             _ => {}
         }
     }
+}
+
+/// The paths a FileChange list names.
+fn paths_of(changes: &Value) -> Vec<String> {
+    (changes.as_array().into_iter().flatten())
+        .filter_map(|c| c["path"].as_str().map(String::from))
+        .collect()
 }
