@@ -1033,7 +1033,8 @@
     width: 0.5px;
     background: var(--color-divider);
     pointer-events: none;
-    z-index: 1;
+    /* Above the scroll fades (z-10), which would otherwise wash it out at the page's foot [D433]. */
+    z-index: 11;
   }
 }
 
