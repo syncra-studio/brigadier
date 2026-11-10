@@ -176,8 +176,11 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     .or_else(|_| err("The session isn't on a branch."))?;
     let branch = String::from_utf8_lossy(&out).trim().to_string();
     let remote = push::remote(&checkout, &branch)?;
-    // A base taken from a remote branch lands into that branch's name on the host.
-    let host_base = (base.strip_prefix(&format!("{remote}/")))
+    // A base taken from a remote branch lands into that branch's name on the host, whichever
+    // remote the push goes to.
+    let remotes = git::read(&checkout.root, &["remote"], &never)?;
+    let host_base = (String::from_utf8_lossy(&remotes).lines())
+        .find_map(|r| base.strip_prefix(&format!("{r}/")))
         .unwrap_or(&base)
         .to_string();
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its

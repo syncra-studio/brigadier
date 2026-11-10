@@ -185,7 +185,7 @@ function push(session: string, page: boolean) {
   const op = opOf(session);
   const branch = op.info?.branch ?? "the branch";
   const text = textOf(op);
-  const pending = showToast(`Pushing ${branch}…`);
+  const pending = showToast(`Pushing ${branch}…`, { stays: true });
   run(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], (reply) => {
     toastManager.close(pending);
     if (!reply.ok) {
