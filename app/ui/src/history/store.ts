@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { ask, useDaemon } from "../daemon";
 import type { Commit } from "../panel/types";
+import { HOME_DRAFT } from "../session/draft";
 
 /*
  * A session's commits since its base, as Rust reads them (`source <id> history`) [D1041]: one read per session shared by
@@ -27,6 +28,8 @@ function set(owner: string, next: Partial<Slot>): void {
 
 /** Reads `owner`'s history now; one asked meanwhile waits for this one, then reads once more. */
 export function refreshHistory(owner: string): void {
+  // Home's Source is a project's folder: no session, so no base [D1041].
+  if (owner === HOME_DRAFT) return set(owner, { history: { base: null, commits: [] } });
   if (slots.get(owner)?.loading) return set(owner, { again: true });
   set(owner, { loading: true, again: false });
   ask({ op: "run", args: ["source", owner, "history"] }, (reply) => {

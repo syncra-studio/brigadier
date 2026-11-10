@@ -66,11 +66,12 @@ export function ReviewTab(props: ReviewTabProps) {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
     setFolded((current) => new Set([...current].filter((path) => !shown.some((file) => file.path === path))));
   };
-  // An opened large file without its contents asks for them: when opened, and again when a refresh drops them (D1036).
+  // An opened large file without its contents asks for them: when opened, again when a refresh drops them, and on a
+  // reconnect (D1036).
   useEffect(() => {
-    if (loading) return;
+    if (loading || !connected) return;
     for (const file of files) if (file.large && opened.has(file.path) && !folded.has(file.path) && !contents.has(file.path)) props.onLoad(file.path);
-  }, [review, contents, loading, opened, folded]);
+  }, [review, contents, loading, connected, opened, folded]);
   const act = (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => {
     const request = { action, path: file.path, hunk: hunk?.id ?? null };
     if (action === "revert") setAsking({ request, file, hunk });
