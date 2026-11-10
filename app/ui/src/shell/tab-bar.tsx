@@ -10,14 +10,15 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { setHomeDraft } from "../home/start";
-import { Archive, Chat, Dock, DotsHorizontal, Globe, Plus, SidebarError, X } from "../icons";
+import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
+import { FileIcon } from "../icons/file-types";
 import { showToast } from "../components/toast";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { useTabKeys } from "./tab-keys";
-import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, moveTab, openTab, selectTab, type Tab, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
+import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -128,7 +129,14 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
   );
 }
 
-const nameOf = (tab: Tab) => (tab.kind === "new" ? "New tab" : "Terminal");
+/** A conflict tab is named by its file, a PR tab by its number. */
+const nameOf = (tab: Tab) => (tab.target === undefined ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : tab.target.slice(tab.target.lastIndexOf("/") + 1));
+
+function TabIcon({ tab }: { tab: Tab }) {
+  if (tab.kind === "conflict" && tab.target !== undefined) return <FileIcon name={tab.target} size="sm" />;
+  const Icon = TAB_KINDS[tab.kind].icon;
+  return <Icon className="size-icon-sm shrink-0" />;
+}
 
 /** A tab it opened: the kind's icon, its name and ×. Its button is the drag handle, as a button inside a sortable won't start one otherwise; Alt+←/→ moves it from the keyboard. */
 function OtherTab({ owner, tab, index, last, selected, separator, closing, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; separator: boolean; closing: boolean; order: string[]; onClose: () => void }) {
@@ -177,7 +185,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
           }}
           className={BUTTON}
         >
-          {tab.kind === "new" ? <Globe className="size-icon-sm shrink-0" /> : <Dock className="size-icon-sm shrink-0" />}
+          <TabIcon tab={tab} />
           <span className={TITLE}>{name}</span>
         </button>
         <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>

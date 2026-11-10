@@ -1,7 +1,9 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
+import { Dock, Document, Globe } from "../icons";
+import { PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
 
@@ -14,8 +16,16 @@ import { newId } from "../session/store";
 
 export const CHAT = "chat";
 export const HOME = HOME_DRAFT;
-export type TabKind = "new" | "terminal";
-export type Tab = { id: string; kind: TabKind; opener: string };
+/** Each kind's name and icon, shared by the tab bar and the page under it: a new kind adds one line. */
+export const TAB_KINDS = {
+  new: { name: "New tab", icon: Globe },
+  terminal: { name: "Terminal", icon: Dock },
+  conflict: { name: "Conflict", icon: Document },
+  pr: { name: "Pull request", icon: PullRequestOpen },
+} satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
+export type TabKind = keyof typeof TAB_KINDS;
+/** `target`: a conflict tab's file path, a PR tab's number [D1014]. */
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string };
 export type Tabs = { tabs: Tab[]; active: string };
 
 type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
@@ -123,22 +133,28 @@ export const justOpened = (id: string): boolean => opened.delete(id);
 
 const has = (now: Tabs, id: string) => id === CHAT || now.tabs.some((tab) => tab.id === id);
 
-export function openTab(owner: string, kind: TabKind): void {
+export function openTab(owner: string, kind: TabKind, target?: string): void {
   const id = `t-${newId()}`;
-  opened.add(id);
+  // A file or PR already open comes to the front, as Rust does, so no tab of this id ever shows.
+  if (target === undefined || !tabsOf(owner).tabs.some((tab) => tab.kind === kind && tab.target === target)) opened.add(id);
   act(owner, {
-    args: ["open", id, kind],
+    args: ["open", id, kind, ...(target === undefined ? [] : [target])],
     change: (now) => {
+      const same = target !== undefined && now.tabs.find((tab) => tab.kind === kind && tab.target === target);
+      if (same) return { ...now, active: same.id };
       if (has(now, id)) return { ...now, active: id };
       const at = now.tabs.findIndex((tab) => tab.id === now.active) + 1;
-      return { tabs: now.tabs.toSpliced(at, 0, { id, kind, opener: now.active }), active: id };
+      return { tabs: now.tabs.toSpliced(at, 0, { id, kind, opener: now.active, ...(target === undefined ? {} : { target }) }), active: id };
     },
   });
 }
 
-/** A New tab becomes what was picked on it, in place. */
-export function replaceTab(owner: string, id: string, kind: TabKind): void {
-  act(owner, { args: ["replace", id, kind], change: (now) => ({ tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind } : tab)), active: id }) });
+/** A New tab becomes what was picked on it, in place, as Rust does: only a New tab, only a kind with no target. */
+export function replaceTab(owner: string, id: string, kind: "new" | "terminal"): void {
+  act(owner, {
+    args: ["replace", id, kind],
+    change: (now) => (now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind } : tab)), active: id } : now),
+  });
 }
 
 export function selectTab(owner: string, id: string): void {

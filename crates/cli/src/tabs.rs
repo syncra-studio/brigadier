@@ -13,9 +13,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
-/// The old app's New tab chooser, and a terminal, drawn only for now [D361].
-const KINDS: [&str; 2] = ["new", "terminal"];
+/// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a conflicted file and a pull
+/// request, each with its target, a path or a PR number [D1014, D1032].
+const KINDS: [&str; 4] = ["new", "terminal", "conflict", "pr"];
 const TERMINAL: &str = "terminal";
+const NEW: &str = "new";
 const CLOSED_KEPT: usize = 20;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -24,6 +26,9 @@ struct Tab {
     kind: String,
     /// The tab it was opened from: where a close goes back to.
     opener: String,
+    /// What a conflict or PR tab shows: its file's path, or the PR's number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +92,16 @@ impl Tabs {
         id == CHAT || self.at(id).is_some()
     }
 
+    /// The tab already showing this file or PR, so one never gets two tabs.
+    fn same(&self, kind: &str, target: &Option<String>) -> Option<String> {
+        target.as_ref()?;
+        let tab = self
+            .tabs
+            .iter()
+            .find(|t| t.kind == kind && t.target == *target)?;
+        Some(tab.id.clone())
+    }
+
     /// Takes the tab at `at` and remembers it for ⇧⌘T.
     fn remove(&mut self, at: usize) -> Tab {
         let tab = self.tabs.remove(at);
@@ -127,7 +142,33 @@ impl Tabs {
     }
 }
 
-/// `tabs <id> [open <tab> <kind> | replace <tab> <kind> | select <tab> | close <tab> |
+/// A conflict and a PR tab need their target, every other kind refuses one. A conflict's is its file,
+/// relative and staying in the session's checkout; a PR's is its number, written plainly so one PR
+/// is one tab [D1032].
+fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
+    let ok = match (kind, target) {
+        // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
+        ("conflict", Some(path)) => {
+            !path.contains('\0')
+                && path
+                    .split('/')
+                    .all(|s| !s.is_empty() && s != "." && s != "..")
+        }
+        ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
+        ("conflict" | "pr", None) => false,
+        (_, target) => target.is_none(),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "not a {kind} tab's target: {}",
+            target.unwrap_or("none")
+        )))
+    }
+}
+
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> | select <tab> | close <tab> |
 /// close-others <tab> | close-right <tab> | move <tab> <to> | reopen]`, for a session or Home.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
@@ -164,25 +205,47 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 && !now.exists(&tab.id)
                 && allowed(&tab.kind).is_ok()
             {
-                now.active = tab.id.clone();
-                let index = index.min(now.tabs.len());
-                now.tabs.insert(index, tab);
+                if let Some(same) = now.same(&tab.kind, &tab.target) {
+                    now.active = same;
+                } else {
+                    now.active = tab.id.clone();
+                    let index = index.min(now.tabs.len());
+                    now.tabs.insert(index, tab);
+                }
             }
         }
         "open" => {
             let (tab, kind) = (arg(args, 3)?, kind()?);
+            let target = args.get(5).cloned();
             core::check_id(tab)?;
-            if !now.exists(tab) {
-                let index = now.at(&now.active).map_or(0, |at| at + 1);
-                let opener = now.active.clone();
-                let id = tab.to_string();
-                now.tabs.insert(index, Tab { id, kind, opener });
+            check_target(&kind, target.as_deref())?;
+            if let Some(same) = now.same(&kind, &target) {
+                now.active = same;
+            } else {
+                if !now.exists(tab) {
+                    let index = now.at(&now.active).map_or(0, |at| at + 1);
+                    let opener = now.active.clone();
+                    let id = tab.to_string();
+                    now.tabs.insert(
+                        index,
+                        Tab {
+                            id,
+                            kind,
+                            opener,
+                            target,
+                        },
+                    );
+                }
+                now.active = tab.into();
             }
-            now.active = tab.into();
         }
         "replace" => {
             let (tab, kind) = (arg(args, 3)?, kind()?);
-            if let Some(at) = now.at(tab) {
+            // A New tab becomes what was picked on it: a kind with no target.
+            check_target(&kind, None)?;
+            if let Some(at) = now.at(tab)
+                && now.tabs[at].kind == NEW
+            {
                 now.tabs[at].kind = kind;
                 now.active = tab.into();
             }

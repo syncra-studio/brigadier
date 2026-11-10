@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortc
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
 import { RightPanelSlot } from "./right-panel";
-import { CHAT, HOME, replaceTab, type Tab, useTabs } from "./tab-store";
+import { CHAT, HOME, replaceTab, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key or chevron along the top, its name under them. */
@@ -97,8 +97,9 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           {children}
         </div>
         {tabs.map((tab) => (
-          <div key={tab.id} role="tabpanel" aria-label={tab.kind === "new" ? "New tab" : "Terminal"} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
-            {tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={Dock} title="Terminal" detail="Not connected yet" className="m-auto" />}
+          <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
+            {/* Each kind until it's wired: the conflict and PR views come with 2.23 and 2.27 [D1014, D1044, D1017]. */}
+            {tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}
       </div>
