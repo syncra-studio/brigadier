@@ -87,10 +87,13 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     const element = pane.current;
     if (!has || !element) return;
     let windowWidth = innerWidth;
+    let paneWidth = -1;
     let frame = 0;
     const observer = new ResizeObserver(([entry]) => {
       const width = entry?.borderBoxSize[0]?.inlineSize;
-      if (width === undefined) return;
+      // Only the width lays the card out: a height-only resize leaves it as it was.
+      if (width === undefined || width === paneWidth) return;
+      paneWidth = width;
       const resized = innerWidth !== windowWidth;
       windowWidth = innerWidth;
       const before = cardOf(owner);
@@ -129,7 +132,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     <div
       ref={pane}
       className={cx(
-        "relative flex min-h-0 min-w-0 flex-1 flex-col",
+        // Its own stacking context, so the card stays under the tabs drawn over the chat.
+        "relative isolate flex min-h-0 min-w-0 flex-1 flex-col",
         shift && "pe-81",
         settled && "motion-safe:transition-all motion-safe:duration-350 motion-safe:ease-summary-shift",
       )}
