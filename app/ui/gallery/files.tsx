@@ -3,10 +3,10 @@ import { useState, type ReactNode } from "react";
 
 import { ConfirmForm } from "../src/components/confirm-dialog";
 import { Dialog, DialogContent } from "../src/components/dialog";
-import { CAPPED, FILES, fakeText, findFiles, IGNORED, LONG_FILE, MARKS, searchFake } from "../src/files/fake";
+import { CAPPED, FILES, fakeRead, findFiles, IGNORED, LONG_FILE, MARKS, searchFake } from "../src/files/fake";
 import { EMPTY_FORM, replaceDescription, replaceTitle, SearchPanel, type SearchForm } from "../src/files/search";
 import { FileTree } from "../src/files/tree";
-import type { FileRead, SearchResults } from "../src/files/types";
+import type { SearchResults } from "../src/files/types";
 import { FileViewer } from "../src/files/viewer";
 import { FilesView, SearchView } from "../src/files/views";
 import { Held, Row, Section, State } from "./parts";
@@ -36,11 +36,6 @@ const tree = (scope: string, change: Partial<Parameters<typeof FileTree>[0]> = {
   <FileTree scope={scope} listing={{ state: "listed", list: FILES }} marks={MARKS} results={null} onQuery={noop} onOpen={noop} {...change} />
 );
 
-const read = (path: string, change: Partial<Extract<FileRead, { state: "read" }>["file"]> = {}): FileRead => {
-  const text = fakeText(path);
-  return { state: "read", file: { size: text.length, text, truncated: false, ...change } };
-};
-
 const form = (change: Partial<SearchForm>): SearchForm => ({ ...EMPTY_FORM, ...change });
 const found = (search: SearchForm, change: Partial<SearchResults> = {}): SearchResults => ({ ...searchFake({ ...search }), ...change });
 const RETRY = form({ text: "retry", replace: "withRetry" });
@@ -64,7 +59,7 @@ function LiveFiles() {
         <FilesView owner="g-files-live" onOpen={(path) => setOpen(path)} />
       </Panel>
       <Tab label="live: the file it opened · ⌘F find · ⌃G go to line" wide>
-        <FileViewer path={open} read={read(open)} active onReveal={noop} />
+        <FileViewer path={open} read={fakeRead(open)} active onReveal={noop} />
       </Tab>
     </>
   );
@@ -97,18 +92,18 @@ export function FilesGallery() {
       <Section title="File viewer">
         <Row name="A long file: virtualised, coloured with pierre-dark, find and go to line">
           <Tab label="find “upload”: 1 of N, the current match stronger" wide>
-            <FileViewer path="src/pipeline.ts" read={read("src/pipeline.ts")} active={false} onReveal={noop} defaultFind="upload" />
+            <FileViewer path="src/pipeline.ts" read={fakeRead("src/pipeline.ts")} active={false} onReveal={noop} defaultFind="upload" />
           </Tab>
           <Tab label="go to line (⌃G)" wide>
-            <FileViewer path="src/pipeline.ts" read={read("src/pipeline.ts")} active={false} onReveal={noop} defaultGoing />
+            <FileViewer path="src/pipeline.ts" read={fakeRead("src/pipeline.ts")} active={false} onReveal={noop} defaultGoing />
           </Tab>
           <Tab label="opened at line 42, from a search result" wide>
-            <FileViewer path="src/pipeline.ts" read={read("src/pipeline.ts")} line={42} active={false} onReveal={noop} />
+            <FileViewer path="src/pipeline.ts" read={fakeRead("src/pipeline.ts")} line={42} active={false} onReveal={noop} />
           </Tab>
         </Row>
         <Row name="Messages · in the old words">
           <Tab label="truncated">
-            <FileViewer path="src/pipeline.ts" read={read("src/pipeline.ts", { size: LONG_FILE.length * 4, truncated: true })} active={false} onReveal={noop} />
+            <FileViewer path="src/pipeline.ts" read={fakeRead("src/pipeline.ts", { size: LONG_FILE.length * 4, truncated: true })} active={false} onReveal={noop} />
           </Tab>
           <Tab label="binary">
             <FileViewer path="assets/splash.png" read={{ state: "read", file: { size: 48_213, text: null, truncated: false } }} active={false} onReveal={noop} />

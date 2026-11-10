@@ -2,7 +2,7 @@
 // (marks, filename search, content search, Replace all) is faked here, never in the views.
 import { fuzzyMatch } from "../components/composer/menus";
 import { baseName } from "./tree";
-import type { ChangeMarks, FileList, FolderEntry, ReplaceOutcome, SearchFile, SearchQuery, SearchResults } from "./types";
+import type { ChangeMarks, CheckoutFile, FileList, FileRead, FolderEntry, ReplaceOutcome, SearchFile, SearchQuery, SearchResults } from "./types";
 
 const SOURCES: Record<string, string> = {
   "src/upload/retry.ts": `import { sleep } from "../lib/time";
@@ -115,6 +115,11 @@ export function findFiles(list: FileList, query: string): string[] {
 
 /** A file's text in the fake checkout. */
 export const fakeText = (path: string) => SOURCES[path] ?? (path === "src/pipeline.ts" ? LONG_FILE : `// ${path}\n`);
+
+export function fakeRead(path: string, change: Partial<CheckoutFile> = {}): FileRead {
+  const text = fakeText(path);
+  return { state: "read", file: { size: text.length, text, truncated: false, ...change } };
+}
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
