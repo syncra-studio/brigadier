@@ -22,7 +22,7 @@ export type SourceData = {
   /** Null while the first read is under way. */
   source: SourceState | null;
   step: Step | null;
-  /** The read failed (and there is nothing older to show). */
+  /** The read failed: shown over the last read, if any, which stays read-only. */
   error?: string | null;
   /** The daemon is out of reach: what was last read shows, read-only. */
   offline?: boolean;
@@ -121,7 +121,9 @@ export function SourcePanel({
   const step = data.step;
   const offline = data.offline ?? false;
   const pending = new Set(data.pending ?? []);
-  const locked = offline || committing || writing;
+  // A watch that failed after its first read: the last read stays, read-only, under the error [D30].
+  const stale = state !== null && Boolean(data.error);
+  const locked = offline || stale || committing || writing;
   const resolving = state?.merging != null || state?.rebasing != null;
   const conflicted = resolving ? (state?.changes.filter((file) => file.status === "conflicted") ?? []) : [];
   const changes = state?.changes.filter((file) => !conflicted.includes(file)) ?? [];
@@ -320,7 +322,7 @@ export function SourcePanel({
             <Skeleton className="h-control-sm w-3/4" />
           </div>
         )}
-        {state === null && data.error && (
+        {data.error && (!offline || state === null) && (
           <ErrorLine
             error={`Couldn't read this checkout: ${data.error}`}
             actions={

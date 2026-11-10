@@ -64,8 +64,8 @@ function count(): void {
   counting = true;
   ask({ op: "run", args: sourceArgs(target, "review", "uncommitted") }, (reply) => {
     counting = false;
-    if (git.target !== target) return;
-    if (reply.ok) set({ counts: new Map(reply.review.files.map((file: any) => [file.path, { insertions: file.insertions, deletions: file.deletions }])) });
+    // Another checkout's answer is dropped, but a count asked for meanwhile still runs.
+    if (reply.ok && git.target === target) set({ counts: new Map(reply.review.files.map((file: any) => [file.path, { insertions: file.insertions, deletions: file.deletions }])) });
     if (recount) {
       recount = false;
       count();

@@ -14,6 +14,8 @@ type Memory = { open: boolean; width: number | null; views: Record<string, Panel
 type Change = { args: string[]; change: (now: Memory) => Memory; out?: boolean };
 
 let rev = -1;
+// Each owner's view has its own: a read of one isn't stale for being older than another's change.
+const viewRevs = new Map<string, number>();
 let rust: Memory = { open: false, width: null, views: {} };
 let memory = rust;
 let pending: Change[] = [];
@@ -24,12 +26,16 @@ function draw() {
   for (const listener of listeners) listener();
 }
 
-/** Rust's word: open and width only when newer, an owner's view at its rev or newer (a read of another owner's). */
+/** Rust's word: open and width only when newer than the last, an owner's view when newer than that owner's last. */
 function land(reply: Record<string, any>, owner?: string) {
-  if (reply.rev < rev) return;
-  if (reply.rev > rev) rust = { ...rust, open: reply.open, width: reply.width ?? null };
-  rev = reply.rev;
-  if (owner && reply.view) rust = { ...rust, views: { ...rust.views, [owner]: reply.view } };
+  if (reply.rev > rev) {
+    rust = { ...rust, open: reply.open, width: reply.width ?? null };
+    rev = reply.rev;
+  }
+  if (owner && reply.view && reply.rev >= (viewRevs.get(owner) ?? -1)) {
+    viewRevs.set(owner, reply.rev);
+    rust = { ...rust, views: { ...rust.views, [owner]: reply.view } };
+  }
   // The one time it opened by itself, it says why [D1023].
   if (typeof reply.opened === "number") showToast(`Opened: the agent changed ${reply.opened} ${reply.opened === 1 ? "file" : "files"}`);
   draw();

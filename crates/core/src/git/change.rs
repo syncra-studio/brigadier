@@ -101,6 +101,19 @@ pub fn files(
     for path in paths {
         inside(checkout, path)?;
     }
+    // A staged rename moves as its pair: its old path comes back with it [D1043].
+    let status = (scope != Scope::Unstaged || action != Move::Revert)
+        .then(|| super::status(checkout, stop))
+        .transpose()?;
+    let mut paths = paths.to_vec();
+    for entry in status.iter().flat_map(|s| s.files.values()) {
+        if let (Some(path), Some(old)) = (entry["path"].as_str(), entry["old"].as_str())
+            && paths.iter().any(|p| p == path)
+            && !paths.iter().any(|p| p == old)
+        {
+            paths.push(old.into());
+        }
+    }
     let _exclusive = lock(checkout, true, stop)?;
     let list: Vec<&str> = paths.iter().map(String::as_str).collect();
     fn with<'a>(first: &[&'a str], list: &[&'a str]) -> Vec<&'a str> {
@@ -124,13 +137,16 @@ pub fn files(
                 true => write(checkout, &with(&["reset", "-q", "HEAD"], &list), None),
                 false => write(
                     checkout,
-                    &with(&["rm", "-q", "--cached", "-r", "--ignore-unmatch"], &list),
+                    &with(
+                        &["rm", "-q", "--cached", "-f", "-r", "--ignore-unmatch"],
+                        &list,
+                    ),
                     None,
                 ),
             }
         }
         Move::Revert => {
-            for path in paths {
+            for path in &paths {
                 let now = known(checkout, path, stop)?;
                 match (scope, now.in_index, now.in_head) {
                     // Untracked: nothing git can bring back.
@@ -140,9 +156,9 @@ pub fn files(
                     }
                     // Back to HEAD in both, a staged delete (a rename's old path) included.
                     (_, _, true) => write(checkout, &["checkout", "-q", "HEAD", "--", path], None)?,
-                    // New since HEAD: out of the index and gone.
+                    // New since HEAD: out of the index (even edited since it was staged) and gone.
                     (_, true, false) => {
-                        write(checkout, &["rm", "-q", "--cached", "--", path], None)?;
+                        write(checkout, &["rm", "-q", "--cached", "-f", "--", path], None)?;
                         delete(checkout, path)?;
                     }
                 }
