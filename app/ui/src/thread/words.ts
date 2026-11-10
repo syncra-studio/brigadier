@@ -37,7 +37,8 @@ export function workWords(turn: Turn, work: Work | undefined, now: number): stri
   const ms = work?.ms ?? (turn.endedAt ?? now) - turn.startedAt - (turn.waitedMs ?? 0);
   if (turn.status === "running" && ms < 1000) return "Working";
   // The actions turned down in it, beside the time (D487).
-  return `${ENDED[turn.status]} ${duration(ms)}${work?.denied ? ` · ${work.denied} denied` : ""}`;
+  const denied = turn.denied ?? work?.denied;
+  return `${ENDED[turn.status]} ${duration(ms)}${denied ? ` · ${denied} denied` : ""}`;
 }
 
 /** A clock time, "09:39". */
@@ -47,7 +48,6 @@ export const hhmm = (ms: number) => {
 };
 
 /** 12s, 3m 4s, 1h 5m. */
-
 export function duration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;

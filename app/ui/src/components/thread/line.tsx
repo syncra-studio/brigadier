@@ -16,9 +16,9 @@ type Icon = ComponentType<IconProps>;
 export function ThreadLine({ icon: Glyph, tip, live, children }: { icon?: Icon; tip?: string; live?: boolean; children: ReactNode }) {
   return (
     <LabeledDivider role="status">
-      <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 text-center wrap-break-word">
-        {Glyph && <Glyph className="size-icon-sm shrink-0" />}
+      <span className="min-w-0 text-center wrap-break-word">
         <span className={cx("min-w-0", live && "shimmer")}>
+          {Glyph && <span className="me-1.5 w-icon-sm cap-box"><Glyph className="size-icon-sm" /></span>}
           {children}
           {tip && <InfoTip text={tip} />}
         </span>
@@ -66,7 +66,7 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
         </ThreadLine>
       );
     case "retried":
-      return <ThreadLine icon={ArrowRotateCw}>Sent again · it replaces the attempt above</ThreadLine>;
+      return <ThreadLine icon={ArrowRotateCw}>Sent again · the previous attempt was replaced</ThreadLine>;
     case "continued":
       return (
         <ThreadLine icon={Chat}>

@@ -38,7 +38,7 @@ const failure = (reply: Record<string, any>) => (reply.error === "disconnected" 
  * it again can't send it twice (the host drops a repeated id). It settles when Rust's thread has it under that id: a
  * sent one's turn, a steer's message. A refusal stays, with Try again.
  */
-type Sent = { cid: string; text: string; steer: boolean; at: number; error?: string };
+type Sent = { cid: string; text: string; steer: boolean; at: number; retryOf?: string; error?: string };
 let sent = new Map<string, Sent[]>();
 const sentListeners = new Set<() => void>();
 function setSent(id: string, change: (list: Sent[]) => Sent[]): void {
@@ -50,14 +50,22 @@ const subscribeSent = (listener: () => void) => {
   return () => sentListeners.delete(listener);
 };
 
-function deliver(run: Runner, id: string, message: Sent): void {
+function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   const args = ["send", id, message.text, "--cid", message.cid];
-  void run(message.steer ? [...args, "--steer"] : args).then((reply) => {
+  if (message.retryOf) args.push("--retry-of", message.retryOf);
+  return run(message.steer ? [...args, "--steer"] : args).then((reply) => {
     // Logged: the thread shows the turn and how it ended, so the message has its place there.
     if (reply.ok || reply.result === "logged") return;
     setSent(id, (list) => list.map((each) => (each.cid === message.cid ? { ...each, error: failure(reply) } : each)));
     sendFailed(message.cid);
   });
+}
+
+/** The retry after a rewind uses the same pending bubble and command-id recovery as any send. */
+export function retryMessage(run: Runner, id: string, text: string, retryOf: string): Promise<void> {
+  const entry: Sent = { cid: newId(), text, steer: false, at: Date.now(), retryOf };
+  setSent(id, (list) => [...list, entry]);
+  return deliver(run, id, entry);
 }
 
 /** Whether the session has messages on their way (so the thread's footer shows them). */

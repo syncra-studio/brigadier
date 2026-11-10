@@ -317,6 +317,17 @@ fn notification(state: &Shared, v: &mut Value) {
     if p["threadId"] != st.thread.as_str() {
         return;
     }
+    // Statuses arriving after their turn ended must never hold the next reply [D492].
+    if matches!(
+        method.as_str(),
+        "error"
+            | "model/rerouted"
+            | "model/safetyBuffering/updated"
+            | "item/autoApprovalReview/completed"
+    ) && (st.turn.is_empty() || p["turnId"] != st.turn.as_str())
+    {
+        return;
+    }
     match method.as_str() {
         "turn/started" => st.turn = p["turn"]["id"].as_str().unwrap_or("").into(),
         "turn/completed" => {

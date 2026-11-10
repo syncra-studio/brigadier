@@ -45,6 +45,9 @@ pub fn events(v: &Value) -> Vec<Event> {
 
 /// Whether a failed turn hit a usage limit.
 pub fn limited(turn: &Value) -> bool {
+    if !cause(turn).is_empty() {
+        return false;
+    }
     let info = s(turn, &["error", "codexErrorInfo"]);
     matches!(info, "usageLimitExceeded" | "rateLimitExceeded")
         || matches!(
@@ -61,6 +64,8 @@ fn completed(p: &Value) -> Vec<Event> {
         let message = s(turn, &["error", "message"]);
         events.push(if p["brigadier"]["credits"] == true {
             Event::OutOfCredits
+        } else if !cause(turn).is_empty() {
+            Event::Failed(cause(turn), message.into())
         } else if limited(turn) {
             Event::Limited(message.into(), p["brigadier"]["resets"].as_u64())
         } else if s(turn, &["error", "codexErrorInfo"]) == "unauthorized" {

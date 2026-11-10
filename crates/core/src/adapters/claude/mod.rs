@@ -247,7 +247,7 @@ impl Adapter for Claude {
                 max: v["max_retries"].as_u64(),
                 at: None,
             }],
-            ("system", "model_refusal_fallback") => vec![Event::Rerouted(
+            ("system", "model_refusal_fallback") if v["scope"] != "local" => vec![Event::Rerouted(
                 v["original_model"].as_str().map(String::from),
                 s(&v, &["fallback_model"]).into(),
             )],
@@ -256,6 +256,22 @@ impl Adapter for Claude {
             }
             ("system", "permission_denied") => vec![Event::Denied],
             ("system", _) | ("stream_event", _) => vec![],
+            ("assistant", _)
+                if parent.is_none()
+                    && matches!(s(&v, &["error"]), "model_not_found" | "overloaded") =>
+            {
+                let cause = if v["error"] == "overloaded" {
+                    "capacity"
+                } else {
+                    "model"
+                };
+                let text = blocks()
+                    .iter()
+                    .filter_map(|b| b["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                vec![Event::Failed(cause, text)]
+            }
             ("assistant", _) => blocks()
                 .iter()
                 .flat_map(|b| match s(b, &["type"]) {
@@ -290,18 +306,15 @@ impl Adapter for Claude {
                 let mut events = vec![Event::Usage(v["usage"].clone())];
                 if v["is_error"].as_bool() == Some(true) {
                     let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
-                    events.push(classify(&said).unwrap_or_else(|| {
-                        let cause = match () {
-                            _ if v["api_error_status"] == 529 => "capacity",
-                            _ if v["terminal_reason"] == "model_error" => "model",
-                            _ => "",
-                        };
-                        let text = match s(&v, &["result"]) {
-                            "" => v["errors"].to_string(),
-                            text => text.into(),
-                        };
-                        Event::Failed(cause, text)
-                    }));
+                    let text = match s(&v, &["result"]) {
+                        "" => v["errors"].to_string(),
+                        text => text.into(),
+                    };
+                    events.push(if v["api_error_status"] == 529 {
+                        Event::Failed("capacity", text)
+                    } else {
+                        classify(&said).unwrap_or(Event::Failed("", text))
+                    });
                 }
                 events.push(Event::TurnEnd(v["is_error"].as_bool() != Some(true)));
                 events

@@ -247,6 +247,9 @@ impl Fold {
             self.last_out = ts;
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
+                if kind != "retrying" {
+                    t.retry = Value::Null;
+                }
             }
         }
         match kind {

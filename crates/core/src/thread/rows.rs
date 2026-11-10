@@ -222,6 +222,10 @@ impl Thread {
             }
             // A failed turn: its line in the thread, and what it means on the composer's rail [D487].
             "failed" => {
+                if self.failed.as_deref() == Some(&turn) {
+                    return;
+                }
+                self.failed = Some(turn.clone());
                 self.break_group();
                 let why = item["why"].as_str().unwrap_or("");
                 match why {

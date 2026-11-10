@@ -184,10 +184,7 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
         return ("waiting_answer", serde_json::json!({"approval": id}));
     }
     // The CLI's own retry while nothing came after it, and its safety hold, say so [D487].
-    if turn.retry["ts"]
-        .as_u64()
-        .is_some_and(|t| t >= fold.last_out)
-    {
+    if turn.retry.is_object() {
         return ("retrying", turn.retry.clone());
     }
     if turn.checking {

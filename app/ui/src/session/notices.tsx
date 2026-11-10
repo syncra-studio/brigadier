@@ -7,11 +7,11 @@ import type { RailNotice, SetupStep } from "../thread/item";
 import { retry, useStart } from "../home/start";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
-import type { Runner } from "./composer";
+import { retryMessage, type Runner } from "./composer";
 import { newId } from "./store";
 
 /** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. `again` resends its turn. */
-function said(notice: RailNotice, again: ReactNode): Notice {
+export function sessionNotice(notice: RailNotice, again: ReactNode): Notice {
   const tail = notice.text ? ` ${notice.text}` : "";
   switch (notice.reason) {
     case "turn-failed":
@@ -47,7 +47,7 @@ function said(notice: RailNotice, again: ReactNode): Notice {
 }
 
 /** "A retires on 12 Dec." with what it suggests, never a move it hasn't said it makes [D74]. */
-function retiringNotice({ name, at, to }: Retiring): Notice {
+export function retiringNotice({ name, at, to }: Retiring): Notice {
   const when = at === null ? `${name} is being retired.` : at > Date.now() ? `${name} retires on ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.` : `${name} was retired.`;
   return {
     id: "retiring",
@@ -84,8 +84,12 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
     const go = async () => {
       setRetrying({ turn });
       const back = await run(["rewind", id, turn, "--op", newId()]);
-      const sent = back.ok ? await run(["send", id, message.text, "--cid", newId(), "--retry-of", turn]) : back;
-      setRetrying(sent.ok || sent.result === "logged" ? null : { turn, error: String(sent.message ?? sent.error ?? "Refused") });
+      if (!back.ok) {
+        setRetrying({ turn, error: String(back.message ?? back.error ?? "Refused") });
+        return;
+      }
+      await retryMessage(run, id, message.text, turn);
+      setRetrying(null);
     };
     return (
       <Button variant="link-blue" size="xs" className="-my-0.5" onClick={go}>
@@ -93,7 +97,7 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
       </Button>
     );
   };
-  if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => said(notice, again(notice.turnId))));
+  if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => sessionNotice(notice, again(notice.turnId))));
   if (retrying?.error) notices.push({ id: "retry", level: "error", text: `Couldn’t retry: ${retrying.error}` });
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });

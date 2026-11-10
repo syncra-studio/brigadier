@@ -56,6 +56,8 @@ export type SetupStep = {
 } & ({ kind: "worktree"; branch: string | null; base: string | null } | { kind: "setupScript" } | { kind: "cli"; cli: string | null });
 
 export type Turn = {
+  /** Actions turned down, even when none ran and there is no work fold. */
+  denied?: number;
   id: string;
   status: "running" | "done" | "failed" | "cancelled";
   startedAt: number;

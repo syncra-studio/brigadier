@@ -4,11 +4,13 @@ mod claude;
 mod codex;
 mod fake;
 mod files;
+mod model;
 mod opencode;
 mod rewind;
 pub mod setup;
 mod shell;
 
+pub use model::ModelInfo;
 pub use rewind::{Cut, Failed, Landing, Rewound};
 pub use shell::{shell_step, unwrap_shell};
 
@@ -145,34 +147,6 @@ pub struct Check {
     pub signed_in: Option<bool>,
     pub how: String,
     pub models: Vec<ModelInfo>,
-}
-
-/// A model a session can pick: its id, the name people know it by, whether it runs on this
-/// computer, and the effort levels its CLI reports for it, lowest first, with its default; empty
-/// and None where the CLI reports none, never guessed [D74, D129].
-#[derive(Default)]
-pub struct ModelInfo {
-    pub id: String,
-    pub name: String,
-    pub local: bool,
-    pub efforts: Vec<String>,
-    pub default_effort: Option<String>,
-    /// Being retired, where its CLI's list says so [D487]: `{at, to}`, when (ms) and the model it
-    /// suggests instead, each null where not said. None for a model nothing says of [D74].
-    pub retiring: Option<Value>,
-}
-
-impl ModelInfo {
-    /// A model known only by its id: no name of its own, no efforts reported.
-    pub fn plain(id: &str, local: bool) -> Self {
-        let (id, name) = (id.to_string(), id.to_string());
-        Self {
-            id,
-            name,
-            local,
-            ..Self::default()
-        }
-    }
 }
 
 /// How a CLI keeps more than one account apart [D51]: one home folder per extra account, named by
@@ -494,7 +468,6 @@ pub fn classify(message: &str) -> Option<Event> {
         "usage limit",
         "quota",
         "too many requests",
-        "overloaded",
     ];
     let auth = [
         "401",

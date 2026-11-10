@@ -28,7 +28,7 @@ pub fn send(
     backend: Option<&str>,
     retry_of: Option<&str>,
 ) -> Value {
-    let picking = origin == "user" && backend.is_none() && retry_of.is_none() && f.picked.is_some();
+    let picking = origin == "user" && backend.is_none() && f.picked.is_some();
     let mut replace = None;
     let picked_fold;
     let f = if picking {

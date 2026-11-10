@@ -28,7 +28,11 @@ fn failed(error: &Value) -> Event {
     let said = error["message"]
         .as_str()
         .map_or_else(|| error.to_string(), String::from);
-    Event::Failed(cause, said)
+    if cause.is_empty() {
+        refusal(error).unwrap_or(Event::Failed(cause, said))
+    } else {
+        Event::Failed(cause, said)
+    }
 }
 
 /// A line from the helper: the server's event, or the result of a request it sent. None: a line
@@ -78,14 +82,13 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         "session.execution.succeeded" => vec![Event::TurnEnd(true)],
         "session.execution.interrupted" => vec![Event::TurnEnd(false)],
         "session.execution.failed" => {
-            let said = match refusal(&d["error"]) {
+            let said = match failed(&d["error"]) {
                 // A reset OpenCode names, never a guessed one [D74].
-                Some(Event::Limited(m, _)) => {
+                Event::Limited(m, _) => {
                     let after = d["error"]["retryAfterMs"].as_u64();
                     Event::Limited(m, after.zip(v["created"].as_u64()).map(|(a, at)| at + a))
                 }
-                Some(e) => e,
-                None => failed(&d["error"]),
+                e => e,
             };
             vec![said, Event::TurnEnd(false)]
         }
