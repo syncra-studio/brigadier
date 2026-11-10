@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import { Button } from "../../components/button";
 import { CheckboxRow } from "../../components/checkbox-row";
 import { ErrorLine } from "../../components/error-line";
 import { Input } from "../../components/input";
@@ -26,7 +27,7 @@ export const prWay = (info: HostInfo | null | undefined): PrWay => (info === und
 type Text = { title: string; body: string; draft: boolean };
 
 /** Create PR's dialog [D1030, D1085, D1100]: the title, the description, draft, into the session's base. */
-export function CreatePrDialog({ open, info, text, busy = null, error = null, offline = false, held, onText, onCancel, onConfirm }: {
+export function CreatePrDialog({ open, info, text, busy = null, error = null, offline = false, held, onText, onRetry, onCancel, onConfirm }: {
   open: boolean;
   /** Undefined while Rust reads it. */
   info: HostInfo | undefined;
@@ -37,6 +38,8 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
   offline?: boolean;
   held?: Held;
   onText: (text: Text) => void;
+  /** Reads the host again after a failed read (no `info`, an `error`). */
+  onRetry?: () => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -50,6 +53,8 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
             <>
               <span className="font-mono text-foreground">{info.branch}</span> into <span className="font-mono text-foreground">{info.base}</span> on {info.host}. It's pushed first.
             </>
+          ) : error ? (
+            "Couldn't read where this branch goes."
           ) : (
             <Skeleton className="h-4 w-56" />
           )
@@ -61,10 +66,13 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
         onCancel={onCancel}
       >
         <div className="flex flex-col gap-2">
-          <Input aria-label="Title" placeholder={info ? "Title" : "Loading…"} value={text.title} disabled={!info || working} onValueChange={(title: string) => onText({ ...text, title })} />
+          <Input aria-label="Title" placeholder={info ? "Title" : error ? "" : "Loading…"} value={text.title} disabled={!info || working} onValueChange={(title: string) => onText({ ...text, title })} />
           <Textarea aria-label="Description" placeholder={info ? "Description" : ""} value={text.body} disabled={!info || working} onChange={(event) => onText({ ...text, body: event.target.value })} />
           <CheckboxRow label="Create as draft" checked={text.draft} disabled={!info || working} onCheckedChange={(draft) => onText({ ...text, draft })} />
-          <ErrorLine error={offline ? "Brigadier isn't connected. This waits until it is." : error} />
+          <ErrorLine
+            error={offline ? "Brigadier isn't connected. This waits until it is." : error}
+            actions={!info && !offline && onRetry ? <Button variant="ghost" size="xs" onClick={onRetry}>Try again</Button> : undefined}
+          />
         </div>
       </ConfirmForm>
     </Confirm>
@@ -79,9 +87,9 @@ const EMPTY: Text = { title: "", body: "", draft: false };
  * reads it and null for no known host; `text` null until edited, so it follows Rust's; `uncertain`: a create went out
  * and lost its answer, so the host is asked before another.
  */
-type Op = { info: HostInfo | null | undefined; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean };
+type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean };
 
-const NONE: Op = { info: null, text: null, open: false, busy: null, error: null, uncertain: false };
+const NONE: Op = { info: null, readError: null, text: null, open: false, busy: null, error: null, uncertain: false };
 const ops = new Map<string, Op>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -104,8 +112,10 @@ const run = (session: string, args: string[], onReply: (reply: Record<string, an
 function read(session: string) {
   run(session, ["info"], (reply) => {
     if (reply.error === "disconnected") return;
-    // An unknown remote, a session with no base: no PR rows, as with no host [D1030].
-    put(session, { info: reply.ok ? reply.info : null });
+    if (reply.ok) return put(session, { info: reply.info, readError: null });
+    // A failed read keeps what was read before; with nothing before, no PR rows [D1030] and the dialog says why.
+    const before = opOf(session).info;
+    put(session, { info: before === undefined ? null : before, readError: reply.error });
   });
 }
 
@@ -178,12 +188,15 @@ export function useCreatePr(session: string | null) {
       info={op.info ?? undefined}
       text={textOf(op)}
       busy={op.busy}
-      error={op.error}
+      error={op.error ?? (op.info ? null : op.readError)}
       offline={!connected}
       onText={(text) => put(session, { text })}
+      onRetry={() => read(session)}
       onCancel={() => put(session, { open: false })}
       onConfirm={() => confirm(session)}
     />
   );
-  return { way: session ? prWay(op.info) : ("cli" as PrWay), onPick, dialog };
+  // A read that failed with nothing before it still offers Create PR…, whose dialog says why and tries again [D30].
+  const way: PrWay = !session || (op.info === null && op.readError) ? "cli" : prWay(op.info);
+  return { way, onPick, dialog };
 }

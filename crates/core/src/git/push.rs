@@ -68,14 +68,11 @@ pub fn push(
         true => worktrees::with_hooks(&checkout.root),
         false => worktrees::command(&checkout.root),
     };
-    command.env("GCM_INTERACTIVE", "never").args([
-        "push",
-        "--quiet",
-        "--set-upstream",
-        "--",
-        remote,
-        &refspec,
-    ]);
+    // The login shell's PATH, so a hook finds its tools (git-lfs) when the app was opened from Finder.
+    command
+        .env("PATH", setup::login().path)
+        .env("GCM_INTERACTIVE", "never")
+        .args(["push", "--quiet", "--set-upstream", "--", remote, &refspec]);
     let out = setup::run_until(&mut command, PUSH_SECS, stop).map_err(io::Error::other)?;
     if out.status.success() {
         return Ok(());

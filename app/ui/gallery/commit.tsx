@@ -174,6 +174,9 @@ export function CommitGallery() {
         <Confirm label="Create PR: disconnected" tall>
           {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} offline held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>
+        <Confirm label="Create PR: the host couldn't be read" tall>
+          {(held) => <CreatePrDialog open info={undefined} text={{ title: "", body: "", draft: false }} error="This session has no base to open a PR into." held={held} onText={noop} onRetry={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
         <Confirm label="Force push with lease">
           {(held) => <ForcePushDialog force={{ remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: null }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
