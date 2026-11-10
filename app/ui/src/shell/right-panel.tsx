@@ -3,7 +3,8 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } f
 import { cx } from "../components/cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
 import { TitlebarTips } from "../components/tooltip";
-import { useHomeDraft } from "../home/start";
+import { useDaemon } from "../daemon";
+import { useHomeDraft, useStart } from "../home/start";
 import { SidebarFloatingLeft } from "../icons";
 import { fakeFor } from "../panel/fake";
 import { setPanelOpen, setPanelWidth, showPanelView, usePanelMemory } from "../panel/memory";
@@ -26,11 +27,14 @@ const TABS: { view: PanelView; title: string; shortcut: string }[] = [
   { view: "source", title: "Source", shortcut: "⌃⇧G" },
 ];
 
-/** Sessions and project chats have it; a chat in no project doesn't [D1014, D1039]. The toolbar's own rule. */
+/** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
 function useHasPanel(owner: string): boolean {
   const draft = useHomeDraft();
   const projects = useProjects();
-  return owner !== HOME || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
+  const row = useDaemon().rows?.find((each) => each.id === owner);
+  const starting = useStart(owner);
+  if (owner === HOME) return !draft.chat && Boolean(projects?.some((each) => !each.pending));
+  return (row ?? starting)?.project != null;
 }
 
 /** What the panel draws for `owner`: fake until step 2.15 wires it to Rust. */
@@ -53,9 +57,11 @@ export function PanelToggleButton({ hint, open, ...props }: { hint: PanelHint | 
 /** The toolbar's rightmost button [D1014]. With a dot, a click opens the view it's about; the dot hides while that shows. */
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
+  const has = useHasPanel(owner);
   const { hint } = usePanelData(owner);
   const view = memory.views[owner] ?? "files";
   const showing = memory.open && view === "source";
+  if (!has) return null;
   return (
     <span className={cx("app-no-drag flex", className)}>
       <PanelToggleButton
