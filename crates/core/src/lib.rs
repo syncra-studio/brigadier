@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod fold;
 pub mod fork;
 pub mod git;
+pub mod host;
 pub mod norm;
 pub mod projects;
 pub mod repos;

@@ -49,12 +49,9 @@ const PROTECTED: &[&str] = &[
     "Music",
     "Applications",
 ];
-/// Proposed: a clone gets an hour, a GitHub list 20 s, git init and its first commit 20 s.
+/// Proposed: a clone gets an hour, git init and its first commit 20 s.
 const CLONE_SECS: u64 = 3600;
-const GH_SECS: u64 = 20;
 const INIT_SECS: u64 = 20;
-/// Proposed: the GitHub list's length.
-const GH_LIMIT: &str = "200";
 
 fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
@@ -70,7 +67,7 @@ fn expand(path: &str) -> PathBuf {
 }
 
 /// A command on the login shell's PATH, never asking for a password: it fails instead.
-fn tool(bin: &str) -> Command {
+pub(crate) fn tool(bin: &str) -> Command {
     let mut command = Command::new(bin);
     command
         .env("PATH", setup::login().path)
@@ -80,7 +77,7 @@ fn tool(bin: &str) -> Command {
 }
 
 /// What a tool said on failure, in its own words without blank lines or `fatal: `; or how it ended.
-fn failed(out: &Output) -> String {
+pub(crate) fn failed(out: &Output) -> String {
     let text = String::from_utf8_lossy(&out.stderr);
     let lines: Vec<&str> = text
         .lines()
@@ -291,15 +288,7 @@ pub fn clone(
         fs::create_dir_all(parent)?;
     }
     let cloned = if github {
-        let gh = setup::find("gh", &[])
-            .ok_or_else(|| io::Error::other("The GitHub CLI (gh) isn't installed."))?;
-        ran(
-            tool(gh.to_str().unwrap_or("gh"))
-                .args(["repo", "clone", from])
-                .arg(&dir)
-                .args(["--", "--quiet"]),
-            CLONE_SECS,
-        )
+        crate::host::clone_github(from, &dir, CLONE_SECS)
     } else {
         ran(
             tool("git").args(["clone", "--quiet", "--", from]).arg(&dir),
@@ -370,30 +359,4 @@ pub fn init(data: &Path, dest: &str, here: bool, id: &str) -> io::Result<project
         return Err(e);
     }
     projects::add(data, &dir.display().to_string(), Some(id), None)
-}
-
-/// Your GitHub repositories through the gh CLI [D202], or `gh: "missing"` / `"signed-out"`.
-pub fn github() -> io::Result<Value> {
-    let Some(gh) = setup::find("gh", &[]) else {
-        return Ok(json!({"gh": "missing"}));
-    };
-    let fields = "nameWithOwner,description,isPrivate";
-    let mut command = tool(gh.to_str().unwrap_or("gh"));
-    command.args(["repo", "list", "--json", fields, "--limit", GH_LIMIT]);
-    let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-    // gh exits 4 when it needs a sign-in (its `gh help exit-codes`); a token GitHub refuses fails
-    // with its own hint to sign in again.
-    let refused = String::from_utf8_lossy(&out.stderr).contains("gh auth login");
-    if out.status.code() == Some(4) || (!out.status.success() && refused) {
-        return Ok(json!({"gh": "signed-out"}));
-    }
-    if !out.status.success() {
-        return err(failed(&out));
-    }
-    let list: Vec<Value> = serde_json::from_slice(&out.stdout)?;
-    let repos: Vec<Value> = list
-        .iter()
-        .map(|r| json!({"name": r["nameWithOwner"], "description": r["description"].as_str().filter(|d| !d.is_empty()), "private": r["isPrivate"]}))
-        .collect();
-    Ok(json!({"repos": repos}))
 }

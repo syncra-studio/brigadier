@@ -5,6 +5,7 @@ mod accounts;
 mod control;
 mod fork;
 mod git;
+mod host;
 pub mod index;
 mod models;
 pub mod owner;
@@ -42,6 +43,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
        brigadier source <id> history | source <id> commit <sha> [<path> [<from>]]
        brigadier panel [open on|off | width <px> | view <id> files|search|source | shown <id>]
+       brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft]
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
@@ -330,6 +332,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "git" => git::run(data, args),
         "source" => git::source(data, args),
         "panel" => panel::run(data, args),
+        "host" => host::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),

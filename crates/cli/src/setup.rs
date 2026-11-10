@@ -137,7 +137,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         repos::init(data, arg(2), here, flag(args, "--id").unwrap_or(""))?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
-                "github" => return Ok(json!({"ok": true, "github": repos::github()?})),
+                "github" => {
+                    return Ok(
+                        json!({"ok": true, "github": brigadier_core::host::github_repos()?}),
+                    );
+                }
                 _ => {}
             }
             let taken: Vec<String> = projects::list(data)?
