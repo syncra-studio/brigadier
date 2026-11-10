@@ -4,7 +4,7 @@ import type { FileChange, Progress } from "../../thread/item";
 import { CodeBlock } from "../../thread/code";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
-import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
+import { OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 
 export const FILE_VERBS: Record<FileChange["change"], [string, string, string]> = {
   added: ["Creating", "Created", "create"],
@@ -20,10 +20,11 @@ export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
  * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a dot for a
- * created (blue) or deleted (red) file. A finished one opens to its diff; one without a diff doesn't open. A declined change reads "Rejected".
+ * created (blue) or deleted (red) file. A finished one opens to its diff; one without a diff opens the file in the Review tab. A declined change reads "Rejected".
  */
 export function FileChangeRow({ keep, change, progress }: { keep: string; change: FileChange; progress: Progress }) {
   const { added, removed } = change;
+  const session = useReviewSession();
   const running = progress === "running" || progress === "pending";
   const name = fileName(change.path);
   const [doing, done, waiting] = FILE_VERBS[change.change];
@@ -48,18 +49,32 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
       {change.change === "deleted" && <span className="size-1.5 rounded-capsule bg-destructive" />}
     </>
   );
-  if (change.diff === null)
-    return (
-      <div className={ROW}>
+  if (change.diff === null) {
+    const body = (
+      <>
         {head}
         <span className="ms-1 flex shrink-0 items-center gap-1.5">{trail}</span>
-      </div>
+      </>
     );
+    // Nothing to expand: the row opens the file's diff in the Review tab [D1038].
+    if (!session || progress === "cancelled") return <div className={ROW}>{body}</div>;
+    return (
+      <button type="button" title={`Review ${change.path}`} onClick={() => openReview(session, change.path)} className={cx(ROW, TOGGLE)}>
+        {body}
+      </button>
+    );
+  }
   return (
     <OpeningRow keep={keep} trail={trail} detail={<DiffCard keep={keep} change={change} diff={change.diff} />}>
       {head}
     </OpeningRow>
   );
+}
+
+/** The thread's session when it has a checkout to review in; a chat with no project has none. */
+function useReviewSession() {
+  const id = useThread()?.id;
+  return useDaemon().rows?.find((row) => row.id === id)?.project ? id : undefined;
 }
 
 /** "+7 −2". Quiet: grey until its row is hovered; a zero stays grey. */
@@ -81,9 +96,7 @@ export function DiffCard({ keep, change, diff: text }: { keep: string; change: F
   const { added, removed } = change;
   const diff = text.replace(/\n$/, "");
   const count = diff ? diff.split("\n", MAX_DIFF_LINES + 1).length : 0;
-  const id = useThread()?.id;
-  // A chat with no project has no checkout to review in.
-  const session = useDaemon().rows?.find((row) => row.id === id)?.project ? id : undefined;
+  const session = useReviewSession();
   // Its name opens the file's diff in the Review tab [D1038].
   const title = (
     <>
