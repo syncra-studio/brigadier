@@ -8,13 +8,14 @@ use brigadier_frames::log::now_ms;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// Why the folder can't go back because another session works in it, archived ones too [D1078,
-/// D1089]: one with a turn or background work running now (`busy`), or one whose turn ran during any of `turns`
-/// (`overlap`), with its id. Its turn runs from its first capture to its end's, else to its next
-/// record's or now; a time missing, from before this rule, overlaps. Read under the checkout lock.
 /// Reads a session's host and its background work [D172].
 pub(super) type Lives<'a> = &'a dyn Fn(&Spec, &Fold) -> Live;
 
+/// Why the folder can't go back because another session works in it, archived ones too [D1078,
+/// D1089]: one with a turn or background work running now (`busy`), or one whose turn ran during any of `turns`
+/// (`overlap`), with its id. Its turn runs from its first capture to its end's, else to its next
+/// record's or now; a time missing, from before this rule, overlaps, and a turn with no record
+/// runs between its neighbours'. Read under the checkout lock.
 pub(super) fn sharer(
     data: &Path,
     spec: &Spec,
@@ -54,7 +55,6 @@ pub(super) fn sharer(
                 return Some(("overlap", other.id));
             }
         }
-        // A turn whose first capture failed has no record: it ran between its neighbours' times.
         let logged = f.iter().flat_map(|f| &f.fold.boundaries);
         let loaded: Vec<_> = (logged.filter(|b| b.origin != "fork"))
             .map(|b| store.as_ref().and_then(|s| s.load(&b.cid)))

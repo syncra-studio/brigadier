@@ -222,9 +222,6 @@ fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
         return Ok(false);
     };
     intent["heir"] = heir.id.clone().into();
-    intent["keep"] = worktrees::folder(&spec.dir)
-        .map(|p| p.display().to_string())
-        .into();
     record(&spec.dir, intent)?;
     worktrees::handover(&spec.dir, &heir.dir)?;
     if archived {

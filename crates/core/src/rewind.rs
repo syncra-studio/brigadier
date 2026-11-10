@@ -121,10 +121,14 @@ type Why = (&'static str, Option<String>);
 fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Result<Files, Why> {
     let store = Store::of(spec).ok_or(("no_project", None))?;
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    if let Some((why, with)) = sharer(data, spec, &store, &turns, live) {
+    let files = plan(&store, &turns).map_err(|why| (why, None))?;
+    // Only files that would go back are any sharer's business [D481].
+    if !files.paths.is_empty()
+        && let Some((why, with)) = sharer(data, spec, &store, &turns, live)
+    {
         return Err((why, Some(with)));
     }
-    plan(&store, &turns).map_err(|why| (why, None))
+    Ok(files)
 }
 
 /// What the confirmation shows: whether the folder can go back, and what it would and wouldn't do.
@@ -199,10 +203,16 @@ fn clear(spec: &Spec) -> io::Result<()> {
     fs::remove_file(spec.dir.join(OP))
 }
 
-/// Puts the folder back as it was just before this rewind.
+/// Puts the folder back as it was just before this rewind, only where it's still as the restore
+/// left it: a path changed since keeps its edit, another session's in a shared folder [D1078].
 fn undo(spec: &Spec, op: &Op) -> io::Result<()> {
-    if let (Some(pre), Some(store)) = (&op.pre, Store::of(spec)) {
-        store.write_back(&pre.tree, &op.paths)?;
+    if let (Some(pre), Some(target), Some(store)) = (&op.pre, &op.target, Store::of(spec)) {
+        let restored = Shot {
+            tree: target.clone(),
+            ..Shot::default()
+        };
+        let since = store.diff(&restored, &store.capture()?)?;
+        store.write_back(&pre.tree, &op.paths.difference(&since).cloned().collect())?;
     }
     Ok(())
 }
@@ -364,6 +374,10 @@ fn run(
             refused(
                 "no_restore",
                 match named {
+                    Some(o) if why == "busy" => format!(
+                        "Files stay: {} is working in this folder now.",
+                        crate::share::title(&o)
+                    ),
                     Some(o) => format!(
                         "Files stay: {} was working in this folder during this turn.",
                         crate::share::title(&o)
@@ -447,9 +461,15 @@ pub fn settle(spec: &Spec, call: Call, call_in: CallIn) -> io::Result<()> {
     let mut op: Op = serde_json::from_slice(&bytes)?;
     let f = crate::fold(&spec.dir, true)?.fold;
     let unsettled = |v: Value| io::Error::other(v["message"].as_str().unwrap_or("").to_string());
+    // An undo writes into a folder other sessions may use: none starts a turn meanwhile [D1089].
+    let undo = |op: &Op| {
+        checkout_lock(&crate::data_of(spec), true)
+            .and_then(|_checkout| undo(spec, op))
+            .and_then(|()| clear(spec))
+    };
     match op.phase.as_str() {
         "prepared" => clear(spec),
-        "files" => undo(spec, &op).and_then(|()| clear(spec)),
+        "files" => undo(&op),
         "landed" => {
             note(spec, &op, call).map_err(io::Error::other)?;
             clear(spec)
@@ -460,7 +480,7 @@ pub fn settle(spec: &Spec, call: Call, call_in: CallIn) -> io::Result<()> {
                 v if v["ok"] == true => Ok(()),
                 v => Err(unsettled(v)),
             },
-            Landing::NotApplied => undo(spec, &op).and_then(|()| clear(spec)),
+            Landing::NotApplied => undo(&op),
             Landing::Unknown(why) => Err(unsettled(uncertain(&why))),
         },
     }
