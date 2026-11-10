@@ -1,6 +1,6 @@
 //! Replace all's record of a run under way, and putting right a run cut short [D1173].
 
-use super::replace::{Staged, keep_aside, put_back, rename_into};
+use super::replace::{Staged, keep_aside, keep_copy, put_back, rename_into};
 use super::search::hash;
 use super::{Checkout, Target, lock};
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,7 @@ pub(super) fn settle(path: &Path) -> bool {
             true => keep_aside(f, run.keep.as_deref()),
             false => f.aside.clone(),
         };
-        if let Err(why) = recover(file, run.placed, &kept) {
+        if let Err(why) = recover(file, run.placed, run.keep.as_deref(), &kept) {
             eprintln!("brigadier: replace {}: {why}", file.full.display());
         }
     }
@@ -88,17 +88,33 @@ pub(super) fn settle(path: &Path) -> bool {
 }
 
 /// Puts one file of a run cut short right, only while what's there is this run's own.
-fn recover(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
+fn recover(
+    file: &Staged,
+    placed: bool,
+    keep: Option<&Path>,
+    kept: &impl Fn(&Staged) -> PathBuf,
+) -> Result<(), String> {
     let _ = fs::remove_file(&file.temp);
     // A rollback cut short while it checked what was in the file's place: that comes back first.
+    let mut newer = None;
     if fs::symlink_metadata(&file.undone).is_ok() {
         if fs::read(&file.undone).is_ok_and(|bytes| hash(&bytes) == file.new_hash) {
             let _ = fs::remove_file(&file.undone);
         } else if rename_into(&file.undone, &file.full).is_err() {
-            let undone = file.undone.display();
-            return Err(format!("a newer save of it is in {undone}"));
+            // Yet another save took the place: this one goes where the session's delete takes it.
+            let undone = keep_copy(&file.undone, &file.full, keep);
+            newer = Some(format!("a newer save of it is in {}", undone.display()));
         }
     }
+    match (aside(file, placed, kept), newer) {
+        (result, None) => result,
+        (Ok(()), Some(newer)) => Err(newer),
+        (Err(why), Some(newer)) => Err(format!("{why}; {newer}")),
+    }
+}
+
+/// The file's copy from before: back in its place, or gone once its rewrite is in.
+fn aside(file: &Staged, placed: bool, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), String> {
     if fs::symlink_metadata(&file.aside).is_err() {
         return Ok(());
     }

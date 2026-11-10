@@ -353,19 +353,24 @@ fn restore(file: &Staged, kept: &impl Fn(&Staged) -> PathBuf) -> Result<(), Stri
 // shortcut: when the session's own folder can't take the copy, it stays beside the file, named in
 // the reason but recorded nowhere, as no record could be written there either.
 pub(super) fn keep_aside(file: &Staged, keep: Option<&Path>) -> PathBuf {
+    keep_copy(&file.aside, &file.full, keep)
+}
+
+/// The same for any copy of the file at `of`.
+pub(super) fn keep_copy(copy: &Path, of: &Path, keep: Option<&Path>) -> PathBuf {
     let Some(keep) = keep else {
-        return file.aside.clone();
+        return copy.to_path_buf();
     };
-    let name = file.full.file_name().unwrap_or_default().to_string_lossy();
+    let name = of.file_name().unwrap_or_default().to_string_lossy();
     let to = keep.join(format!("{}-{name}", crate::adapters::uuid()));
     let moved = fs::create_dir_all(keep)
-        .and_then(|()| fs::copy(&file.aside, &to))
-        .and_then(|_| fs::remove_file(&file.aside));
+        .and_then(|()| fs::copy(copy, &to))
+        .and_then(|_| fs::remove_file(copy));
     match moved {
         Ok(()) => to,
         Err(_) => {
             let _ = fs::remove_file(&to);
-            file.aside.clone()
+            copy.to_path_buf()
         }
     }
 }

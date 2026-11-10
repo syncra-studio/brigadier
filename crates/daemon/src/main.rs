@@ -106,8 +106,9 @@ fn main() -> io::Result<()> {
         },
         None => return Ok(()),
     };
-    brigadier_core::worktrees::sweep(&data);
+    // Before a delete or archive cut short takes the folder a Replace all cut short left files in.
     brigadier_core::git::recover::sweep(&data);
+    brigadier_core::worktrees::sweep(&data);
     brigadier::rewind::sweep(&data);
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
