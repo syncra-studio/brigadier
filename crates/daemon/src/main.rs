@@ -55,6 +55,7 @@ use std::time::{Duration, Instant};
 
 mod awake;
 mod git;
+mod grep;
 mod install;
 mod ops;
 mod store;

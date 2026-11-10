@@ -1,6 +1,7 @@
 //! The daemon's op table: one connection's handshake, then each request routed by its op.
 
 use super::git;
+use super::grep;
 use super::store::Store;
 use super::watch::{self, Shown};
 use super::{
@@ -14,6 +15,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::{process, thread};
@@ -92,6 +94,8 @@ pub(super) fn serve(
     let (terming, acked) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
     // The same for the checkout this connection watches.
     let gitting = Arc::new(AtomicU64::new(0));
+    // This connection's search: set to stop it, when a new one starts or the connection closes.
+    let mut grepping = Arc::new(AtomicBool::new(false));
     // The thread this connection watches, by session, for its older pages.
     let shown: Shown = Arc::default();
     let hello = json!({"status": "running", "pid": process::id(), "version": env!("CARGO_PKG_VERSION"), "build": wire::build()});
@@ -198,6 +202,12 @@ pub(super) fn serve(
                 let (out, data, gitting) = (out.clone(), PathBuf::from(data), gitting.clone());
                 thread::spawn(move || git::subscribe(&data, conn, &req, &out, mine, &gitting));
             }
+            "grep" => {
+                grepping.store(true, Ordering::SeqCst);
+                grepping = Arc::new(AtomicBool::new(false));
+                let (out, data, stop) = (out.clone(), PathBuf::from(data), grepping.clone());
+                thread::spawn(move || grep::run(&data, &req, &out, &stop));
+            }
             "git_refresh" => {
                 git::refresh(conn);
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
@@ -271,6 +281,7 @@ pub(super) fn serve(
     watching.fetch_add(1, Ordering::SeqCst);
     terming.fetch_add(1, Ordering::SeqCst);
     gitting.fetch_add(1, Ordering::SeqCst);
+    grepping.store(true, Ordering::SeqCst);
     git::leave(conn);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
