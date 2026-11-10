@@ -21,7 +21,7 @@ type Switch = Extract<Item, { kind: "switch" }>;
  */
 export function SwitchRow({ item }: { item: Switch }) {
   const session = useContext(SessionOfThread);
-  const { agents, error, loading } = useAccounts();
+  const { agents, error } = useAccounts();
   const [pending, setPending] = useState<{ account: string | undefined; to: string; error?: string } | null>(null);
   const live = item.state === "limit" && session !== null;
 
@@ -55,7 +55,7 @@ export function SwitchRow({ item }: { item: Switch }) {
   let actions: ReactNode = null;
   if (session !== null && item.reason === "unresumable") {
     actions = link("new", "Start a new conversation", () => go(undefined, "a new conversation"));
-  } else if (session !== null && agents !== undefined && !(loading && others.length === 0)) {
+  } else if (session !== null && agents !== undefined) {
     if (!agent?.accounts) actions = <span>· {label} keeps one login</span>;
     else if (others.length === 0) {
       actions = (

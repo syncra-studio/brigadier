@@ -1,6 +1,7 @@
 import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import { loadAccounts } from "./accounts/api";
 import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
 import { SidebarProvider } from "./components/sidebar";
@@ -59,6 +60,10 @@ function App() {
   useEffect(() => {
     if (daemon && !profile.value) loadProfile();
   }, [daemon, profile.value]);
+  // Loaded at start, so a limit line opens with its last words, not after a reload [D460].
+  useEffect(() => {
+    if (daemon) void loadAccounts();
+  }, [daemon]);
   // A window held clear for the first launch's intro (main's intro.ts) shows at once when there's none.
   const playsIntro = profile.value && !profile.value.onboarded && !profile.value.intro_seen && hash !== "#states";
   const knownNot = playsIntro === false || hash === "#states" || Boolean(refused || profile.error);
