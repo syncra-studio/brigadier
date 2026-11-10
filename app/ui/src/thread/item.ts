@@ -63,7 +63,7 @@ export type StepKind = "read" | "edit" | "search" | "run" | "web" | "agent" | "o
  * `kept`: rows in it that stay visible, its questions with the user's answers [D99].
  * It folds exactly one turn. A background job still running after the turn ends is its own status, not part of it.
  */
-export type Work = { turnId: string; ms: number; folded: [number, number]; kept?: number[] };
+export type Work = { turnId: string; ms: number; folded: [number, number]; kept?: number[]; /** Its approvals the user or a rule turned down. */ denied?: number };
 
 /** How far an action has got. */
 export type Progress = "pending" | "running" | "done" | "failed" | "cancelled";

@@ -36,15 +36,17 @@ export function workWords(turn: Turn, work: Work | undefined, now: number): stri
   // Like Rust's `Work.ms`, the turn's finished waits on the user don't count.
   const ms = work?.ms ?? (turn.endedAt ?? now) - turn.startedAt - (turn.waitedMs ?? 0);
   if (turn.status === "running" && ms < 1000) return "Working";
-  return `${ENDED[turn.status]} ${duration(ms)}`;
+  // The actions turned down in it, beside the time (D487).
+  return `${ENDED[turn.status]} ${duration(ms)}${work?.denied ? ` · ${work.denied} denied` : ""}`;
 }
 
-/** 12s, 3m 4s, 1h 5m. */
 /** A clock time, "09:39". */
 export const hhmm = (ms: number) => {
   const at = new Date(ms);
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 };
+
+/** 12s, 3m 4s, 1h 5m. */
 
 export function duration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

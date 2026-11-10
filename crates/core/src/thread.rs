@@ -332,8 +332,13 @@ impl Thread {
             let kept: Vec<u64> = o.kept.into_iter().filter(|&n| n < answer).collect();
             if first + (kept.len() as u64) < answer {
                 let ms = ts.saturating_sub(o.started).saturating_sub(o.waited);
+                // Its actions turned down, counted beside the time [D487].
+                let denied = (self.items[o.from..].iter())
+                    .filter(|r| r["kind"] == "approval" && r["decision"] == "denied")
+                    .count();
                 self.work.push(
-                    json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1], "kept": kept}),
+                    json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1],
+                    "kept": kept, "denied": denied}),
                 );
             }
         }
