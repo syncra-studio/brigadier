@@ -37,8 +37,12 @@ export async function warmDiffs(): Promise<void> {
   }
 }
 
-/** The theme paints its own near-black; the diff sits on the tab's background instead. */
-const ON_TAB = "pre { --diffs-bg: var(--color-background) !important; background-color: var(--color-background) !important; }";
+/**
+ * The theme paints its own near-black; the diff sits on the tab's background instead. A picked range's fill stops at
+ * its lines: the box, notes and hunk bars under them don't take it.
+ */
+const ON_TAB = `pre { --diffs-bg: var(--color-background) !important; background-color: var(--color-background) !important; }
+:is([data-line-annotation], [data-gutter-buffer=annotation])[data-selected-line] { --diffs-computed-selected-line-bg: var(--diffs-computed-diff-line-bg) !important; }`;
 
 export default function PierreDiff<T>({
   source,

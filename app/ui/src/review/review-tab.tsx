@@ -33,6 +33,7 @@ export type ReviewTabProps = {
   /** Ask for a large file's contents, when it's opened (D1036). */
   onLoad: (path: string) => void;
   /** Stage, unstage and revert in flight or failed, by hunk id or file path. */
+  /** Pending and refused actions by hunk id or path; a refused reason goes on the next read or the next success. */
   states: ReadonlyMap<string, RequestState>;
   /** Asked at once for Stage and Unstage, after its confirm for Revert. */
   onRequest: (request: ReviewRequest) => void;

@@ -60,7 +60,10 @@ export function LiveReview() {
   const [comments, setComments] = useState<DiffComment[]>([]);
   const { review, contents, changes } = useMemo(() => read(scope, done), [scope, done]);
   const [tick, setTick] = useState(0);
+  // A refused action's reason lasts until the diff is read again or another action goes through; what's pending stays.
+  const dropReasons = () => setStates((current) => new Map([...current].filter(([, state]) => "pending" in state)));
   useEffect(() => {
+    dropReasons();
     setArrived(new Set());
     setLoading(true);
     const timer = setTimeout(() => {
@@ -87,6 +90,7 @@ export function LiveReview() {
     setTimeout(() => {
       if (failing) return setState(key, { error: "The file changed since this diff was read. Refresh and try again." });
       setState(key, null);
+      dropReasons();
       const own = hunk ? (changes.get(hunk) ?? []) : [...changes].filter(([id]) => id.startsWith(`${path}:`)).flatMap(([, list]) => list);
       setDone((current) => {
         const staged = new Set(current.staged);
