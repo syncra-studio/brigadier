@@ -260,13 +260,19 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           writing: committing && !message.trim(),
           ...(committing && message.trim() && { running: true }),
           disabled: writing,
-          // The field shows Source's own failures; the card has none, so its button's line does.
-          error: landError ?? data.stepError ?? (card && (failed || work.error) ? { kind: shown.kind, reason: failed ? "no message was written. Type one in Source." : work.error! } : null),
+          // The field shows Source's own failures; the card has none, so its button's line does. Another session working
+          // in this folder: the pre-check line says so, and Rust refuses [D1082].
+          error:
+            landError ??
+            data.stepError ??
+            (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null) ??
+            (card && (failed || work.error) ? { kind: shown.kind, reason: failed ? "no message was written. Type one in Source." : work.error! } : null),
           later: landing ? null : later,
           ...(wired && { can: (pick: ActionPick) => WIRED.includes(pick) }),
           mergeStyle,
           rejected: rejected !== null,
-          prWay: pr.way,
+          // Landing is the folder owner's alone [D1082].
+          prWay: data.share?.lands === false ? "none" : pr.way,
           onMergeStyle: (style: MergeStyle) => (ops?.setStyle ? ops.setStyle(style) : setOwnStyle(style)),
           onRun: run,
           onPick: (pick: ActionPick) => {

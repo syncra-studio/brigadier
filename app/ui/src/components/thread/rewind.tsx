@@ -12,9 +12,12 @@ export const RewindContext = createContext<{
   gone: (n: number | undefined, turn: string | undefined) => boolean;
 } | null>(null);
 
-/** Rust's answer: what a restore would put back and leave alone. No paths, no file choice [D481]. */
-export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; commits: boolean; error?: string };
-type FormProps = { preview: RewindPreview; error?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
+/**
+ * Rust's answer: what a restore would put back and leave alone. No paths, no file choice [D481]. `sharer`: the files
+ * stay because another session in this folder worked during these turns, or works now [D1078].
+ */
+export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean } };
+type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
 const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
 const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
@@ -39,7 +42,7 @@ function Choice({ value, label, children }: { value: string; label: string; chil
  * The confirmation, drawn whole from Rust's answer [D446, D480]: its title, line, Cancel and Rewind; where
  * files can go back, the choice to keep or restore them first [D384, D481].
  */
-export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: FormProps) {
+export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCancel }: FormProps) {
   const [choice, setChoice] = useState("keep");
   const { paths, hand, leftOut, commits } = preview;
   const can = paths.length > 0;
@@ -72,6 +75,12 @@ export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: Form
             {commits && <Note>Commits made since then stay.</Note>}
           </Choice>
         </RadioGroup>
+      )}
+      {preview.sharer && (
+        // Proposed words, shown to the owner on screen [D1078].
+        <Note>
+          Files stay: {sharerName ?? "another session"} {preview.sharer.now ? "is working in this folder now" : "was working in this folder during this turn"}.
+        </Note>
       )}
       <ErrorLine error={preview.error ?? error} />
     </ConfirmForm>

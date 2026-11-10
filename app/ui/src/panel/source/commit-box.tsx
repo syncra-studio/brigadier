@@ -9,7 +9,7 @@ import { Sparkles, Spinner } from "../../icons";
  * git's message, during a rebase the stopped commit's, kept as it is. A write that failed says so under it, and
  * nothing was committed.
  */
-export function CommitBox({ message, onMessage, branch, draft = null, rebaseMessage = null, writing = false, busy = false, canWrite, failed = false, error = null, onWrite, onCommit }: {
+export function CommitBox({ message, onMessage, branch, draft = null, rebaseMessage = null, writing = false, busy = false, canWrite, failed = false, error = null, includes = null, onWrite, onCommit }: {
   message: string;
   onMessage: (message: string) => void;
   branch: string | null;
@@ -25,6 +25,8 @@ export function CommitBox({ message, onMessage, branch, draft = null, rebaseMess
   failed?: boolean;
   /** A commit Rust refused, in its words. */
   error?: string | null;
+  /** Another session in this folder made changes still uncommitted here: the field says so [D1082, D1107]. */
+  includes?: string | null;
   onWrite?: () => void;
   onCommit?: () => void;
 }) {
@@ -48,6 +50,7 @@ export function CommitBox({ message, onMessage, branch, draft = null, rebaseMess
           </TooltipIconButton>
         }
       />
+      {includes && <p className="px-1 text-xs text-muted-foreground">Includes changes from {includes}</p>}
       {failed && <ErrorLine error="Couldn't write a message. Type one." className="px-1" />}
       {error && <ErrorLine error={error} className="px-1" />}
     </div>

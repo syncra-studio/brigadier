@@ -74,6 +74,12 @@ export function CommitGallery() {
             <ActionButton step={STEPS.commit} nowMs={NOW} />
           </Top>
         </State>
+        <State label="Shared folder: includes another session's changes, which works there now">
+          <Top>
+            <CommitBox message="" onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite includes="Login" />
+            <ActionButton step={STEPS.commit} nowMs={NOW} error={{ kind: "commit", reason: "Login is working in this folder. Wait for its turn to end." }} />
+          </Top>
+        </State>
         <State label="Typed: subject and body">
           <Top>
             <CommitBox message={TYPED} onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite />

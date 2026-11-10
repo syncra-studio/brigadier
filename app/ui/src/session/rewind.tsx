@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 import { Dialog, DialogContent } from "../components/dialog";
 import { RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
-import { threadSource } from "../daemon";
+import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
 import { type ComposerRow, daemonRun, type Runner } from "./composer";
 import { putBack } from "./side";
@@ -25,7 +25,9 @@ const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "B
 function previewOf(reply: Record<string, any>): RewindPreview {
   const none = { paths: [], hand: [], leftOut: [], commits: false };
   if (!reply.ok) return { ...none, error: why(reply) };
-  return reply.restore === true ? { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } : none;
+  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true };
+  // Another session in the folder keeps the files [D1078].
+  return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : none;
 }
 
 function said(reply: Record<string, any>, restore: boolean): string {
@@ -38,6 +40,7 @@ function said(reply: Record<string, any>, restore: boolean): string {
 /** The session's rewind [D384]: what its messages offer, the confirmation, and the rows dimmed until Rust's thread comes back. */
 export function RewindProvider({ id, row, offline, children, run = daemonRun, source = threadSource }: { id: string; row: ComposerRow | undefined; offline: boolean; children: ReactNode; run?: Runner; source?: Source }) {
   const session = useSyncExternalStore(source.subscribe, source.get);
+  const { rows } = useDaemon();
   const [asking, setAsking] = useState<Asking | null>(null);
   const [running, setRunning] = useState<Running | null>(null);
   // Answers stand until a turn starts or ends, or the messages that can be rewound to change.
@@ -94,7 +97,7 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
     <RewindContext.Provider value={value}>
       {children}
       <Dialog open={!!asking?.preview} onOpenChange={(next) => !next && setAsking(null)}>
-        <DialogContent frame={FRAME}>{asking?.preview && <RewindForm preview={asking.preview} error={asking.error} onKeep={() => go(false)} onRestore={() => go(true)} onCancel={() => setAsking(null)} />}</DialogContent>
+        <DialogContent frame={FRAME}>{asking?.preview && <RewindForm preview={asking.preview} error={asking.error} sharerName={rows?.find((each) => each.id === asking.preview?.sharer?.id)?.title} onKeep={() => go(false)} onRestore={() => go(true)} onCancel={() => setAsking(null)} />}</DialogContent>
       </Dialog>
     </RewindContext.Provider>
   );

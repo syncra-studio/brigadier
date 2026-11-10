@@ -46,6 +46,11 @@ export type SourceData = {
   /** A push was turned away: Force Push is offered, with this lease [D1034, D1049]. */
   rejected?: ForcePush | null;
   stepError?: StepError | null;
+  /**
+   * Others work in this folder too, by name [D1070, D1082]: `with` lands its work, `busy` works there now, `includes`
+   * made changes still uncommitted here; `lands` false, no PR or merge from here. Null until Rust's first read.
+   */
+  share?: { with: string | null; busy: string | null; includes: string | null; lands: boolean } | null;
   /** The agent is working, so the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
   /** The branch's pull requests and what their watch saw (2.13); none without a host [D1030]. */
@@ -257,6 +262,7 @@ export function SourcePanel({
           canWrite={!resolving}
           failed={failed}
           error={error}
+          includes={data.share?.includes ?? null}
           onWrite={write}
           onCommit={commit}
         />
@@ -394,6 +400,7 @@ export function SourcePanel({
             <BranchItem
               state={data.naming ? { ...state, branch: data.naming } : state}
               locked={locked}
+              sharedWith={data.share?.with ?? null}
               syncing={data.syncing}
               open={picker === "branch"}
               onBranch={() => setPicker("branch")}

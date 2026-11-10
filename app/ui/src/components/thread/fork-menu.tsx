@@ -89,7 +89,7 @@ export function ForkMenu({
   /** The gallery's box: the menu held open in it, and its agent submenu with `openSub`. */
   held?: HTMLElement;
   openSub?: boolean;
-  /** Fork here and another agent, drawn but not offered yet (2.35, 2.36). */
+  /** Fork with another agent, drawn but not offered yet (2.36). */
   later?: boolean;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
@@ -117,7 +117,7 @@ export function ForkMenu({
                 <Place title="Fork to a new worktree" detail={FILES[offer.worktree]} onClick={() => onPick({ where: "worktree" })} />
               )}
               {offer.here && (
-                <Place title="Fork here" detail={HERE[offer.here]} disabled={later} onClick={() => onPick({ where: "here" })} />
+                <Place title="Fork here" detail={HERE[offer.here]} onClick={() => onPick({ where: "here" })} />
               )}
               {!offer.worktree && !offer.here && (
                 <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>

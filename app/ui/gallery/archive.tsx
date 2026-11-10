@@ -20,6 +20,9 @@ export function ArchiveGallery() {
         <Frozen label="unlanded branch" frame={FRAME}>
           <DeleteForm row={ROW} onClose={() => {}} check={{ state: "done", branch: "brigadier/s-1" }} />
         </Frozen>
+        <Frozen label="another session still works in its folder" frame={FRAME}>
+          <DeleteForm row={ROW} onClose={() => {}} check={{ state: "done", branch: null, stays: "s-2" }} />
+        </Frozen>
         <Frozen label="check failed" frame={FRAME}>
           <DeleteForm row={ROW} onClose={() => {}} check={{ state: "failed", error: "Brigadier isn't running" }} />
         </Frozen>

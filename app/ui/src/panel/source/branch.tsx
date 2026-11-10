@@ -7,9 +7,11 @@ import type { SourceState } from "../types";
  * pick) and the sync item (↓ to pull, ↑ to push, one click doing both; a cloud when it was never published). During a
  * merge or rebase the old "(merging)" and "(rebasing)" stay. Off while something is under way.
  */
-export function BranchItem({ state, locked, syncing = false, open = false, onBranch, onSync, onPublish }: {
+export function BranchItem({ state, locked, sharedWith = null, syncing = false, open = false, onBranch, onSync, onPublish }: {
   state: SourceState;
   locked: boolean;
+  /** Another session works on this branch's folder and lands it: "‹branch› · shared with ‹it›" [D1082]. */
+  sharedWith?: string | null;
   syncing?: boolean;
   /** Its quick pick is open. */
   open?: boolean;
@@ -36,7 +38,10 @@ export function BranchItem({ state, locked, syncing = false, open = false, onBra
         )}
       >
         <Branch className="size-icon-sm shrink-0" />
-        <span className="min-w-0 truncate text-foreground">{name}</span>
+        <span className="min-w-0 truncate text-foreground">
+          {name}
+          {sharedWith && <span className="text-muted-foreground"> · shared with {sharedWith}</span>}
+        </span>
         {(state.merging || state.rebasing) && <span className="shrink-0 text-foreground">{state.merging ? "(merging)" : "(rebasing)"}</span>}
       </button>
       {(sync || publish) && (

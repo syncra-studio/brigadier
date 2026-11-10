@@ -51,6 +51,9 @@ export function BranchGallery() {
         <State label="Syncing">
           <Line><BranchItem state={FOLDER} locked={false} syncing /></Line>
         </State>
+        <State label="A fork here: shared with its source">
+          <Line><BranchItem state={CHANGES} locked={false} sharedWith="Login" /></Line>
+        </State>
         <State label="Merging">
           <Line><BranchItem state={MERGING} locked={false} /></Line>
         </State>

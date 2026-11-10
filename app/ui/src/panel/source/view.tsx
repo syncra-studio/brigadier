@@ -5,6 +5,7 @@ import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
 import { landBranch, moveFiles, refreshStep, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
+import { useShare } from "../share";
 import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
@@ -54,6 +55,8 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
     if (git.target && op.naming && op.naming === branch) named(git.target);
     if (git.target && op.rejected && branch && op.rejected.branch !== branch) moved(git.target);
   }, [git.target, op.naming, op.rejected, branch]);
+  const share = useShare(owner === HOME ? null : owner, git.version);
+  const title = (id: string | null) => (id === null ? null : (rows?.find((row) => row.id === id)?.title ?? "Another session"));
   return {
     data: {
       source: git.source,
@@ -66,6 +69,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       rejected: op.rejected,
       syncing: op.syncing,
       naming: op.naming,
+      share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {
       stage: (paths) => moveFiles("stage", "uncommitted", paths),

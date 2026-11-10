@@ -11,6 +11,8 @@ const CASES: [string, RewindPreview][] = [
   ["hand edits, big files, commits", { paths: ["src/totals.ts"], hand: ["README.md"], leftOut: ["data/dump.sql"], commits: true }],
   ["no file can go back", NONE],
   ["refused", { ...NONE, error: "This message can't be rewound to any more." }],
+  ["shared folder: the fork worked during this turn", { ...NONE, sharer: { id: "s-2", now: false } }],
+  ["shared folder: the fork works now", { ...NONE, sharer: { id: "s-2", now: true } }],
 ];
 
 export function RewindGallery() {
@@ -19,7 +21,7 @@ export function RewindGallery() {
       <Row name="Rewind to this message?">
         {CASES.map(([label, preview]) => (
           <Frozen key={label} label={label} frame={FRAME}>
-            <RewindForm preview={preview} {...ACTIONS} />
+            <RewindForm preview={preview} sharerName="Login (fork)" {...ACTIONS} />
           </Frozen>
         ))}
       </Row>

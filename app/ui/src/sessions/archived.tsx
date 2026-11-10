@@ -9,7 +9,7 @@ import { EmptyState } from "../components/empty-state";
 import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
-import { ask } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
@@ -104,7 +104,8 @@ export function ArchivedSection({
   );
 }
 
-type Check = { state: "checking" } | { state: "done"; branch: string | null } | { state: "failed"; error: string };
+/** `stays`: another session still works in its folder, which stays [D1080]. */
+type Check = { state: "checking" } | { state: "done"; branch: string | null; stays?: string | null } | { state: "failed"; error: string };
 
 /**
  * Delete's confirm [D35, D181]: a branch with work that never landed is named, kept unless asked. Delete
@@ -112,6 +113,7 @@ type Check = { state: "checking" } | { state: "done"; branch: string | null } | 
  */
 export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; onClose: () => void; check?: Check }) {
   const [check, setCheck] = useState<Check>(given ?? { state: "checking" });
+  const { rows } = useDaemon();
   const [drop, setDrop] = useState("keep");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -119,7 +121,7 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
     let live = true;
     setCheck({ state: "checking" });
     run(["delete", row.id, "--check"]).then(
-      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null }),
+      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null }),
       (cause) => live && setCheck({ state: "failed", error: errorText(cause) }),
     );
     return () => {
@@ -155,6 +157,9 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
             Retry
           </Button>
         </div>
+      )}
+      {check.state === "done" && check.stays && (
+        <p className="text-xs text-muted-foreground">Its folder stays: {rows?.find((each) => each.id === check.stays)?.title ?? "another session"} still works there.</p>
       )}
       {check.state === "done" && check.branch && (
         <div className="flex flex-col gap-2.5">
