@@ -5,6 +5,7 @@ import { BRANCH, COMMITS, DRAFT, MERGING, STEPS } from "../src/panel/fake";
 import { ActionButton } from "../src/panel/source/action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "../src/panel/source/action-confirms";
 import { CommitBox } from "../src/panel/source/commit-box";
+import { CreatePrDialog, type HostInfo } from "../src/panel/source/create-pr";
 import { StageAllDialog } from "../src/panel/source/dialogs";
 import type { Step } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
@@ -53,6 +54,9 @@ const MENUS: [string, Step, boolean?][] = [
   ["Your folder", STEPS.folderCommit],
   ["After a rejected push", STEPS.sync, true],
 ];
+
+const PR_INFO: HostInfo = { host: "GitHub", cli: true, base: "main", branch: BRANCH, title: "Retry failed uploads", body: "- Retry failed uploads\n- Show upload progress in the tray" };
+const PR_TEXT = { title: PR_INFO.title, body: PR_INFO.body, draft: false };
 
 export function CommitGallery() {
   return (
@@ -123,6 +127,18 @@ export function CommitGallery() {
             <Held className="h-96 w-80">{(held) => <ActionButton step={step} nowMs={NOW} held={held} rejected={rejected ?? false} />}</Held>
           </State>
         ))}
+        <State label="No host CLI: Push branch, Open PR page">
+          <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.merge} nowMs={NOW} held={held} prWay="page" />}</Held>
+        </State>
+        <State label="Unknown host: Push branch only">
+          <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.merge} nowMs={NOW} held={held} prWay="none" />}</Held>
+        </State>
+        <State label="Host still being read">
+          <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.merge} nowMs={NOW} held={held} prWay="loading" />}</Held>
+        </State>
+        <State label="Catch up, no host CLI">
+          <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.catchUp} nowMs={NOW} held={held} prWay="page" />}</Held>
+        </State>
         <State label="Merge as Squash, picked">
           <Held className="h-96 w-80">{(held) => <ActionButton step={STEPS.merge} nowMs={NOW} held={held} mergeStyle="squash" />}</Held>
         </State>
@@ -139,6 +155,24 @@ export function CommitGallery() {
         </Confirm>
         <Confirm label="Merge #12: not all green">
           {(held) => <MergePrDialog open pr={12} base="main" checks={{ passed: 4, failed: 1, running: 1, approved: false }} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: loading" tall>
+          {(held) => <CreatePrDialog open info={undefined} text={{ title: "", body: "", draft: false }} held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: text from the branch (proposed until 2.19's writer)" tall>
+          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: creating" tall>
+          {(held) => <CreatePrDialog open info={PR_INFO} text={{ ...PR_TEXT, draft: true }} busy="creating" held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: failed, text kept" tall>
+          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} error="Updates were rejected because the remote contains work that you do not have locally." held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: answer lost, checking first" tall>
+          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} busy="checking" error="Brigadier lost its connection. It checks whether the PR was made before making another." held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Create PR: disconnected" tall>
+          {(held) => <CreatePrDialog open info={PR_INFO} text={PR_TEXT} offline held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Force push with lease">
           {(held) => <ForcePushDialog force={{ remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: null }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}

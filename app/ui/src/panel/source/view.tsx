@@ -1,6 +1,6 @@
 import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
-import { openFile, openTab } from "../../shell/tab-store";
+import { HOME, openFile, openTab } from "../../shell/tab-store";
 import { moveFiles, retryGit, useGit } from "../git";
 import { openReview } from "../open";
 import { SourcePanel } from "./panel";
@@ -28,6 +28,7 @@ export function SourceView({ owner }: { owner: string }) {
         },
       }}
       draftKey={owner}
+      session={owner === HOME ? null : owner}
       nowMs={Date.now()}
       ops={{
         stage: (paths) => moveFiles("stage", "uncommitted", paths),

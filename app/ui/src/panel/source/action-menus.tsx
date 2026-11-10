@@ -1,12 +1,13 @@
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, MenuRow } from "../../components/menu";
 import { Check, PullRequestOpen, Publish, Sparkles } from "../../icons";
 import type { MergeStyle, Step } from "../types";
+import type { PrWay } from "./create-pr";
 import { plural } from "../words";
 
 /** What a pick in the action button's menu asks for; until it's wired, each is a no-op. */
 export type ActionPick =
   | "commit" | "amend" | "commitPush" | "commitSync" | "commitMerge" | "commitPr"
-  | "createPr" | "pushBranch" | "catchUp" | "catchUpMerge" | "catchUpRebase" | "catchUpAgent"
+  | "createPr" | "pushBranch" | "openPrPage" | "catchUp" | "catchUpMerge" | "catchUpRebase" | "catchUpAgent"
   | "continue" | "abortCatchUp" | "mergeLocally" | "forcePush" | "fixChecks" | "fixComments" | "fixConflicts" | "fixAll";
 
 /** Each step's menu: every other way on from here [D1008, D1015, D1028]. Landed has none. */
@@ -17,10 +18,12 @@ export function hasActionMenu(step: Step): boolean {
 /**
  * The arrow menu beside the action button: Commit's combos, Merge's style and the PR way, Catch up's ways, or a
  * folder's old CommitActionsMenu. Resolve with agent leaves a chip above the composer and sends nothing [D1044].
- * `rejected`: a push was just turned away, so Force Push is offered [D1034].
+ * `rejected`: a push was just turned away, so Force Push is offered [D1034]. `prWay`: Create PR through the host's
+ * CLI, else its PR page, else Push branch alone [D1030].
  */
-export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMergeStyle, onPick, held }: {
+export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay = "cli", onMergeStyle, onPick, held }: {
   step: Step;
+  prWay?: PrWay;
   mergeStyle?: MergeStyle;
   rejected?: boolean;
   onMergeStyle?: (style: MergeStyle) => void;
@@ -28,6 +31,12 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
   held?: HTMLElement;
 }) {
   const pick = (what: ActionPick) => () => onPick?.(what);
+  const createPr = (title: string) =>
+    prWay === "page" ? (
+      <DropdownMenuItem onClick={pick("openPrPage")}><MenuRow icon={<PullRequestOpen />} title="Open PR page ↗" /></DropdownMenuItem>
+    ) : (
+      prWay !== "none" && <DropdownMenuItem disabled={prWay === "loading"} onClick={pick("createPr")}><MenuRow icon={<PullRequestOpen />} title={title} /></DropdownMenuItem>
+    );
   const place = held && { container: held, collisionAvoidance: { side: "none", align: "none" } as const };
   const force = rejected && (
     <>
@@ -68,8 +77,9 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
           <DropdownMenuLabel>Merge as</DropdownMenuLabel>
           {styles(false)}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("createPr")}><MenuRow icon={<PullRequestOpen />} title="Create PR…" /></DropdownMenuItem>
+          {prWay !== "page" && createPr("Create PR…")}
           <DropdownMenuItem onClick={pick("pushBranch")}><MenuRow icon={<Publish />} title="Push branch" /></DropdownMenuItem>
+          {prWay === "page" && createPr("Create PR…")}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={pick("catchUp")}>Catch up with {step.base}</DropdownMenuItem>
         </>
@@ -82,8 +92,12 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
           <DropdownMenuItem onClick={pick("catchUpRebase")}>Catch up by rebasing onto {step.base}</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={pick("catchUpAgent")}><MenuRow icon={<Sparkles />} title="Catch up, then resolve with agent" /></DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={pick("createPr")}><MenuRow icon={<PullRequestOpen />} title="Create PR anyway…" /></DropdownMenuItem>
+          {prWay !== "none" && (
+            <>
+              <DropdownMenuSeparator />
+              {createPr("Create PR anyway…")}
+            </>
+          )}
         </>
       );
       break;

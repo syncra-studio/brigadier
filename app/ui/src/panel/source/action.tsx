@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, Branch, Check, ChevronDown, Publish, Sparkles, Spin
 import type { MergeStyle, Step, StepError } from "../types";
 import { errorWords, runningWords, stepWords, type Tone } from "../words";
 import { ActionMenu, type ActionPick, hasActionMenu } from "./action-menus";
+import type { PrWay } from "./create-pr";
 
 /** Each half of the split button: the kit's small button, less its press scale [D1155]. */
 const SPLIT = "inline-flex h-control-sm gap-1 text-sm font-medium transition-all";
@@ -40,7 +41,7 @@ function icon(step: Step): ReactNode {
  * [D1019, D1044].
  * `writing`: Commit pressed with a blank box, the message being written [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, mergeStyle, rejected, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
   step: Step;
   nowMs: number;
   running?: boolean;
@@ -50,6 +51,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   error?: StepError | null;
   mergeStyle?: MergeStyle;
   rejected?: boolean;
+  prWay?: PrWay;
   onMergeStyle?: (style: MergeStyle) => void;
   onRun?: () => void;
   onPick?: (pick: ActionPick) => void;
@@ -95,7 +97,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
           >
             <ChevronDown />
           </DropdownMenuTrigger>
-          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} onMergeStyle={onMergeStyle} onPick={onPick} held={held} />}
+          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} onMergeStyle={onMergeStyle} onPick={onPick} held={held} />}
         </DropdownMenu>
       </div>
       <p className={cx("px-1 text-xs", TONE[tone])}>

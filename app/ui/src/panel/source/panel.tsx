@@ -10,6 +10,7 @@ import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
 import { BranchItem } from "./branch";
 import { CommitBox } from "./commit-box";
+import { useCreatePr } from "./create-pr";
 import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type GitRun, StageAllDialog, StageConflictsDialog } from "./dialogs";
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { MoreMenu } from "./more-menu";
@@ -79,6 +80,7 @@ const unsent = new Map<string, string>();
 export function SourcePanel({
   data,
   draftKey,
+  session = null,
   nowMs,
   selected,
   picker: initialPicker = null,
@@ -87,6 +89,8 @@ export function SourcePanel({
 }: {
   data: SourceData;
   draftKey?: string;
+  /** The session whose PR the action menu makes through Rust's host module [D1030]; none in the gallery. */
+  session?: string | null;
   nowMs: number;
   selected?: string;
   picker?: Picker;
@@ -122,6 +126,7 @@ export function SourcePanel({
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
   const [mergingPr, setMergingPr] = useState(false);
   const [forcing, setForcing] = useState<ForcePush | null>(null);
+  const pr = useCreatePr(session);
 
   const state = ops ? data.source : local;
   const step = data.step;
@@ -261,9 +266,11 @@ export function SourcePanel({
           error={data.stepError ?? null}
           mergeStyle={mergeStyle}
           rejected={data.rejected != null}
+          prWay={pr.way}
           onMergeStyle={setMergeStyle}
           onRun={run}
           onPick={(pick) => {
+            pr.onPick(pick);
             if (pick === "forcePush" && data.rejected) setForcing(data.rejected);
             if (pick === "commit") commit();
           }}
@@ -423,6 +430,7 @@ export function SourcePanel({
         <MergePrDialog open={mergingPr} pr={step.pr} base={step.base} checks={step.checks} onCancel={() => setMergingPr(false)} onConfirm={() => setMergingPr(false)} />
       )}
       <ForcePushDialog force={forcing} branch={state?.branch ?? "…"} onCancel={() => setForcing(null)} onConfirm={() => setForcing(null)} />
+      {pr.dialog}
     </div>
   );
 }
