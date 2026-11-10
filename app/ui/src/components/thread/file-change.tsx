@@ -19,8 +19,8 @@ const MAX_DIFF_LINES = 5000;
 export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
- * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a dot for a
- * created (blue) or deleted (red) file. A finished one opens to its diff; one without a diff opens the file in the Review tab. A declined change reads "Rejected".
+ * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a red dot for a
+ * deleted file. A finished one opens to its diff; one without a diff opens the file in the Review tab. A declined change reads "Rejected".
  */
 export function FileChangeRow({ keep, change, progress }: { keep: string; change: FileChange; progress: Progress }) {
   const { added, removed } = change;
@@ -45,7 +45,6 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
   const trail = (
     <>
       {added !== null && removed !== null && <Counts added={added} removed={removed} quiet />}
-      {change.change === "added" && <span className="size-1.5 rounded-capsule bg-link" />}
       {change.change === "deleted" && <span className="size-1.5 rounded-capsule bg-destructive" />}
     </>
   );
