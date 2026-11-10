@@ -62,6 +62,7 @@ const listeners = new Set<() => void>();
 const replies = new Map<number, (frame: Record<string, any>) => void>();
 let onTerm: ((frame: Record<string, any>) => void) | undefined;
 let onGit: ((frame: Record<string, any>) => void) | undefined;
+let onFound: ((frame: Record<string, any>) => void) | undefined;
 
 /** The open thread's request: what the view shows beside the rows (loading, not found, an error). */
 export type ThreadState = { id: string; status: "loading" | "ready" | "missing" | "error"; error?: string };
@@ -109,6 +110,11 @@ export function ask(request: object, onReply?: (frame: Record<string, any>) => v
 /** Where the git watch's pushed frames go: one watch per connection [D71]. */
 export function setGitHandler(handler: typeof onGit): void {
   onGit = handler;
+}
+
+/** Where Search's found files go as they're found: one search per connection [D1003]. */
+export function setFoundHandler(handler: typeof onFound): void {
+  onFound = handler;
 }
 
 /** Where a sign-in terminal's pushed frames go: one at a time [D45]. */
@@ -277,6 +283,7 @@ function onFrame(frame: Record<string, any>): void {
   }
   if (frame.term !== undefined) return onTerm?.(frame);
   if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
+  if (frame.found !== undefined) return onFound?.(frame);
   if (frame.status === "running") {
     set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
     subscribe();

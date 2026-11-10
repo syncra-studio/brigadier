@@ -1,4 +1,4 @@
-// What Files, the file viewer and Search show: the shapes the daemon will send (step 2.17), written by hand. Data only.
+// What Files, the file viewer and Search show: the shapes Rust sends [D1002, D1003]. Data only.
 import type { FileStatus } from "../panel/status";
 
 /** A checkout's files as git lists them, capped; what it ignores ("dist/" a folder) is listed apart. */
@@ -14,7 +14,7 @@ export type ChangeMarks = { files: Record<string, FileStatus>; folders: Record<s
 export type FolderEntry = { name: string; folder: boolean };
 
 /** A file read from the checkout: `text` null for a binary one, cut short past the size cap. */
-export type CheckoutFile = { size: number; text: string | null; truncated: boolean };
+export type CheckoutFile = { size: number; text: string | null; truncated: boolean; /** git ignores it. */ ignored?: boolean };
 
 /** A file tab's read: loading, read, gone ("deleted or moved", or never in this session's copy), or failed. */
 export type FileRead =

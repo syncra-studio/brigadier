@@ -212,15 +212,26 @@ function settle(move: Pending): void {
 export function useFileRead(path: string): FileRead {
   const { target, version } = useSyncExternalStore(subscribe, () => git);
   const [read, setRead] = useState<FileRead>({ state: "loading" });
+  const [tick, setTick] = useState(0);
+  // shortcut: the watch leaves ignored files out, so an ignored file's tab reads it again every few seconds while the
+  // window shows; a watch of the file itself would be instant.
+  const ignored = read.state === "read" && read.file.ignored === true;
+  useEffect(() => {
+    if (!ignored) return;
+    const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), 3000);
+    return () => clearInterval(timer);
+  }, [ignored]);
   useEffect(() => {
     if (!target) return;
     let live = true;
     ask({ op: "run", args: sourceArgs(target, "file", path) }, (reply) => {
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setRead({ state: "failed", error: String(reply.error) });
-      setRead(reply.file.gone ? { state: "gone", carried: false } : { state: "read", file: reply.file });
+      const next: FileRead = reply.file.gone ? { state: "gone", carried: false } : { state: "read", file: reply.file };
+      // The same read keeps its object, so the viewer doesn't draw it again.
+      setRead((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));
     });
     return () => void (live = false);
-  }, [target, path, version]);
+  }, [target, path, version, tick]);
   return read;
 }

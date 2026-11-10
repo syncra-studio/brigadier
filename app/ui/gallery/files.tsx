@@ -8,7 +8,7 @@ import { EMPTY_FORM, replaceDescription, replaceTitle, SearchPanel, searchQuery,
 import { FileTree } from "../src/files/tree";
 import type { SearchResults } from "../src/files/types";
 import { FileViewer } from "../src/files/viewer";
-import { FilesView, SearchView } from "../src/files/views";
+import { FilesView, SearchView } from "./files-live";
 import { Held, Row, Section, State } from "./parts";
 
 const noop = () => {};

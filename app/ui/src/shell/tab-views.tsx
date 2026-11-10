@@ -90,7 +90,7 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
   );
 }
 
-/** A checkout file, read by Rust [D1002]. Reveal in Finder comes with 2.17. */
+/** A checkout file, read by Rust [D1002]. */
 function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
   const path = tab.target ?? "";
   return <FileViewer path={path} read={useFileRead(path)} line={tab.line ?? null} reveal={revealOf(tab.id)} active={active} />;

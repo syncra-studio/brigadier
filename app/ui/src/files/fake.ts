@@ -1,4 +1,4 @@
-// Fake data for Files, the viewer and Search until step 2.17 wires them to Rust; it goes then. What Rust will work out
+// Fake data for the gallery's Files, viewer and Search; the app reads Rust [D1002, D1003]. What Rust works out
 // (marks, filename search, content search, Replace all) is faked here, never in the views.
 import { fuzzyMatch } from "../components/composer/menus";
 import { baseName } from "./tree";
