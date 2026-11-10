@@ -1,8 +1,8 @@
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { ROW } from "../components/thread/activity-row";
-import { Archive, Branch, Check } from "../icons";
-import { Undo, XCircle } from "./icons";
+import { Archive, Branch, Check, Undo } from "../icons";
+import { XCircle } from "./icons";
 
 /**
  * "Checks failed on #12 · test (ubuntu-latest)" at the thread's end [D1017], with Send to agent, which leaves a chip
