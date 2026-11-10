@@ -171,17 +171,18 @@ export function startSearching(): () => void {
  * The marks' colours, on the page only while the marks are: a `::highlight()` rule in a stylesheet costs every style
  * pass, for marks that are rarely there.
  */
-let sheet: HTMLStyleElement | null = null;
+// A constructed sheet: the page's CSP (default-src 'self') refuses a <style> made at run time.
+let sheet: CSSStyleSheet | null = null;
 function showColours(on: boolean): void {
-  if (on === (sheet !== null)) return;
+  sheet ??= new CSSStyleSheet();
+  const shown = document.adoptedStyleSheets.includes(sheet);
+  if (on === shown) return;
   if (!on) {
-    sheet?.remove();
-    sheet = null;
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((each) => each !== sheet);
     return;
   }
-  sheet = document.createElement("style");
-  sheet.textContent = `::highlight(${MATCHES}) { background-color: var(--color-find-match); }\n::highlight(${ACTIVE_MATCH}) { background-color: var(--color-find-match-active); }`;
-  document.head.append(sheet);
+  sheet.replaceSync(`::highlight(${MATCHES}) { background-color: var(--color-find-match); }\n::highlight(${ACTIVE_MATCH}) { background-color: var(--color-find-match-active); }`);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 }
 
 /** Changed in place, never swapped or dropped whole: WebKit left a replaced highlight's old marks on screen. */

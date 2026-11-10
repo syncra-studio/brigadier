@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Older, Paged } from "../daemon";
-import { blocked } from "../shell/titlebar";
 import { FindBar } from "./find-bar";
 import { clippedBy, covered, findInThread, firstBelow, isRange, NOTHING, olderAt, ownWords, rowOf, sameHit, withOlder, type Away, type Found, type Row } from "./find-hits";
 import { findLabel, lower, MAX_RESULTS, paint, startSearching, unpaint } from "./find-text";
@@ -27,8 +26,8 @@ const LAST_FRAME = 300;
 const CLEAR_PX = 16;
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-/** Where a key press belongs to something else (a terminal, another tab). */
-const ELSEWHERE = '[role="tabpanel"], .xterm';
+/** Where a key press belongs to something else (a terminal, another tab, a dialog or menu), as the old app's. */
+const ELSEWHERE = '[role="tabpanel"], .xterm, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 /** ⌘ and `code` (Ctrl off macOS). */
 function command(event: KeyboardEvent, code: string): boolean {
@@ -338,7 +337,7 @@ export function Find(props: FindProps) {
   useEffect(() => {
     const finds = (target: EventTarget | null) => {
       const root = now.current.scroller();
-      if (!root?.isConnected || root.clientHeight === 0 || root.closest("[inert]") || blocked()) return false;
+      if (!root?.isConnected || root.clientHeight === 0 || root.closest("[inert]")) return false;
       return !(target instanceof Element && target.closest(ELSEWHERE));
     };
     const onKeyDown = (event: KeyboardEvent) => {

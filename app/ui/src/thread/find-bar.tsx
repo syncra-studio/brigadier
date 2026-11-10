@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, X } from "../icons";
 import { Search } from "../icons/tab";
 
 /** Proposed: what the count says while the rows not loaded can't be counted (find.tsx). */
-const OLDER = { searching: "Searching older…", offline: "Offline: older not searched", failed: "Older not searched" } as const;
+const OLDER = { searching: "Searching older…", offline: "Older: offline", failed: "Older not searched" } as const;
 
 /**
  * Find in the conversation's bar, the old app's [D48, D470]: 24rem at most 70% of the window, over the thread's top
