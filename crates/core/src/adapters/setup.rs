@@ -7,6 +7,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// What the login shell gives: PATH, and the credential variables some adapter names (`keys`).
@@ -81,6 +82,11 @@ fn is_exe(p: &Path) -> bool {
 /// Runs a probe to its end or kills its whole group after `secs`. Stdin is closed, so a probe
 /// that asks a question fails instead of waiting.
 pub fn run(command: &mut Command, secs: u64) -> Result<Output, String> {
+    run_until(command, secs, &AtomicBool::new(false))
+}
+
+/// `run`, also ended as soon as `stop` is set, so whoever waits on it can leave at once.
+pub fn run_until(command: &mut Command, secs: u64, stop: &AtomicBool) -> Result<Output, String> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -105,10 +111,15 @@ pub fn run(command: &mut Command, secs: u64) -> Result<Output, String> {
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            Ok(None) if Instant::now() < deadline && !stop.load(Ordering::SeqCst) => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
             _ => {
                 unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
                 let _ = child.wait();
+                if stop.load(Ordering::SeqCst) {
+                    return Err("stopped".into());
+                }
                 return Err(format!("timed out after {secs} s"));
             }
         }

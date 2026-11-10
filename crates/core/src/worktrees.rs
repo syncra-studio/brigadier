@@ -41,14 +41,36 @@ fn err<T>(message: String) -> io::Result<T> {
     Err(io::Error::other(message))
 }
 
-fn git(dir: &Path, args: &[&str]) -> io::Result<String> {
+/// Git in `dir` and nowhere else: what the environment says about another repository is dropped,
+/// as the old app's runner did, and it never prompts.
+pub(crate) fn command(dir: &Path) -> Command {
     let mut command = Command::new("git");
+    for key in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_NAMESPACE",
+        "GIT_CEILING_DIRECTORIES",
+        "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    ] {
+        command.env_remove(key);
+    }
     // Bookkeeping must not run a repository's hooks before its trust gate [D166, D211].
     command
+        .env("GIT_TERMINAL_PROMPT", "0")
         .args(["-c", "core.hooksPath=/dev/null"])
         .arg("-C")
-        .arg(dir)
-        .args(args);
+        .arg(dir);
+    command
+}
+
+fn git(dir: &Path, args: &[&str]) -> io::Result<String> {
+    let mut command = command(dir);
+    command.args(args);
     let out = setup::run(&mut command, GIT_SECS).map_err(io::Error::other)?;
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
