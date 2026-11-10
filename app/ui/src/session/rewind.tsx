@@ -10,17 +10,22 @@ import { putBack } from "./side";
 import { newId } from "./store";
 
 // One id for all of a confirmation's tries: a reply lost after the rewind landed is answered as already done.
-type Asking = { cid: string; op: string; text: string; preview: RewindPreview; error?: string };
+// No `preview` yet: clicked before Rust's answer came, so the dialog waits for it.
+type Asking = { cid: string; op: string; text: string; preview?: RewindPreview; error?: string };
+/** Rust's answer per message, and when it was asked for. */
+type Looked = { at: number; preview?: RewindPreview };
+/** The dialog's card. */
+export const FRAME = "max-w-dialog gap-4 p-5";
+/** How long an answer stands before the pointer coming back asks again. */
+const FRESH_MS = 2_000;
 type Running = { cid: string; n: number | undefined; replied: boolean };
 
 const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
 
-/** One of the two preview answers into what's known; either may come first. */
-function merged(now: RewindPreview, reply: Record<string, any>, files: boolean): RewindPreview {
-  if (!reply.ok) return { ...now, error: why(reply) };
-  if (reply.restore !== true) return { ...now, restore: false, why: now.why ?? reply.why };
-  if (!files) return { ...now, restore: now.restore ?? true };
-  return { ...now, files: { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } };
+function previewOf(reply: Record<string, any>): RewindPreview {
+  const none = { paths: [], hand: [], leftOut: [], commits: false };
+  if (!reply.ok) return { ...none, error: why(reply) };
+  return reply.restore === true ? { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true } : none;
 }
 
 function said(reply: Record<string, any>, restore: boolean): string {
@@ -35,6 +40,9 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   const session = useSyncExternalStore(source.subscribe, source.get);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [running, setRunning] = useState<Running | null>(null);
+  // Answers stand until a turn starts or ends, or the messages that can be rewound to change.
+  const points = session?.rewind?.join(" ");
+  const looked = useMemo(() => new Map<string, Looked>(), [id, row?.running, points]);
   // Settled by id: the reply is in and Rust's thread no longer has the message.
   useEffect(() => {
     if (running?.replied && !session?.items.some((item) => "cid" in item && item.cid === running.cid)) setRunning(null);
@@ -42,25 +50,31 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   const value = useMemo(() => {
     const queued = (row?.queue?.items.length ?? 0) > 0 || !!row?.queue?.editing;
     const blocked = offline ? "Reconnecting…" : running ? "Rewinding…" : row?.running ? "Stop the turn first" : queued ? "Send or remove the queued messages first" : undefined;
-    // Opens at once: whether files can go back comes in a millisecond, inside the dialog's opening; what
-    // they are takes a look at the folder, and fills in when it's done [D446].
+    // Rust looks at the folder as the pointer or focus reaches the message, so by the click the dialog
+    // opens whole, in one frame [D446, D480].
+    const look = (cid: string) => {
+      const had = looked.get(cid);
+      if (had && Date.now() - had.at < FRESH_MS) return;
+      const now: Looked = { at: Date.now() };
+      looked.set(cid, now);
+      void run(["rewind", id, cid, "--preview"]).then((reply) => {
+        now.preview = previewOf(reply);
+        setAsking((asking) => (asking?.cid === cid && !asking.preview ? { ...asking, preview: now.preview } : asking));
+      });
+    };
     const open = (cid: string, text: string) => {
-      const op = newId();
-      setAsking({ cid, op, text, preview: {} });
-      const answered = (files: boolean) => (reply: Record<string, any>) =>
-        setAsking((now) => (now?.op === op ? { ...now, preview: merged(now.preview, reply, files) } : now));
-      void run(["rewind", id, cid, "--preview"]).then(answered(false));
-      void run(["rewind", id, cid, "--preview", "--files"]).then(answered(true));
+      if (!looked.has(cid)) look(cid);
+      setAsking({ cid, op: newId(), text, preview: looked.get(cid)?.preview });
     };
     const first = running && session?.items.find((item) => "cid" in item && item.cid === running.cid);
     const turnsGone = new Set(running ? session?.turns.slice(session.turns.findIndex((turn) => turn.id === running.cid)).map((turn) => turn.id) : []);
     return {
-      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) ? { blocked, open: () => open(cid, text) } : undefined),
+      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) ? { blocked, open: () => open(cid, text), look: () => look(cid) } : undefined),
       gone: (n: number | undefined, turn: string | undefined) => !!running && ((first && n !== undefined && first.n !== undefined && n >= first.n) || (turn !== undefined && turnsGone.has(turn))),
     };
-  }, [session, running, offline, row?.running, row?.queue, id, run]);
+  }, [session, running, offline, row?.running, row?.queue, id, run, looked]);
   const go = (restore: boolean) => {
-    if (!asking) return;
+    if (!asking?.preview) return;
     const { cid, op, text, preview } = asking;
     const n = session?.items.find((item) => "cid" in item && item.cid === cid)?.n;
     setAsking(null);
@@ -79,8 +93,8 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   return (
     <RewindContext.Provider value={value}>
       {children}
-      <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
-        <DialogContent>{asking && <RewindForm preview={asking.preview} error={asking.error} onKeep={() => go(false)} onRestore={() => go(true)} onCancel={() => setAsking(null)} />}</DialogContent>
+      <Dialog open={!!asking?.preview} onOpenChange={(next) => !next && setAsking(null)}>
+        <DialogContent frame={FRAME}>{asking?.preview && <RewindForm preview={asking.preview} error={asking.error} onKeep={() => go(false)} onRestore={() => go(true)} onCancel={() => setAsking(null)} />}</DialogContent>
       </Dialog>
     </RewindContext.Provider>
   );

@@ -11,8 +11,16 @@ import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
 
 function UserRow({ id, cid, text, time, dated }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean }) {
-  const rewind = useContext(RewindContext);
-  return <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? rewind?.offer(cid, text) : undefined} />;
+  const offer = useContext(RewindContext)?.offer(cid ?? "", text);
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} />;
+  // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
+  return cid && offer ? (
+    <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
+      {bubble}
+    </div>
+  ) : (
+    bubble
+  );
 }
 
 /**
