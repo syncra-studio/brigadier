@@ -22,6 +22,8 @@ function icon(step: Step): ReactNode {
       return <ArrowUp />;
     case "fixPr":
       return <Sparkles />;
+    case "continue":
+      return step.left > 0 ? <Sparkles /> : <Check />;
     case "publish":
       return <Publish />;
     default:
@@ -32,7 +34,8 @@ function icon(step: Step): ReactNode {
 /**
  * The one action button [D1008, D1015]: the old main button's split look, its label the next step Rust works out,
  * and the grey pre-check line under it saying what clicking does and whether it will work. The arrow holds every
- * other way. Fix with agent only leaves a chip above the composer, sent when the user sends [D1019].
+ * other way. Fix with agent and Resolve with agent only leave a chip above the composer, sent when the user sends
+ * [D1019, D1044].
  * `writing`: Commit pressed with a blank box, the message being written [D1029]. `held`: the gallery's open menu.
  */
 export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, mergeStyle, rejected, onMergeStyle, onRun, onPick, held }: {
@@ -94,7 +97,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
         </DropdownMenu>
       </div>
       <p className={cx("px-1 text-xs", TONE[tone])}>
-        {step.kind === "fixPr" && !running && !error && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
+        {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
         {line}
       </p>
     </div>

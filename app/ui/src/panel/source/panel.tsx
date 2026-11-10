@@ -1,19 +1,21 @@
 import { useState } from "react";
 
+import { Button } from "../../components/button";
 import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
-import { FileDocument, Minus, Plus, Undo } from "../../icons";
-import type { Branch, ForcePush, MergeStyle, SourceFile, SourceState, Step, StepError } from "../types";
+import type { Branch, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
+import { statusWords } from "../words";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
 import { BranchItem } from "./branch";
 import { CommitBox } from "./commit-box";
 import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type GitRun, StageAllDialog, StageConflictsDialog } from "./dialogs";
-import { SourceActions, SourceHeader } from "./header";
+import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { MoreMenu } from "./more-menu";
 import { BranchNameBox, folderItems, QuickPick, sessionItems } from "./quick-pick";
-import { CommitsGroup, FileRow, RowButton, SourceGroup } from "./rows";
+import { FileRow, Group, Heading } from "./rows";
+import { StatusLine } from "./status-line";
 
 /** What the Source panel shows: Rust's, once wired (2.14 on); fake until then. */
 export type SourceData = {
@@ -34,6 +36,11 @@ export type SourceData = {
   stepError?: StepError | null;
   /** The agent is working, so the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
+  /** The branch's pull requests and what their watch saw (2.13); none without a host [D1030]. */
+  prs?: Pr[];
+  watch?: PrWatch | null;
+  /** The message drafted for the work so far (2.20), the field's grey text [D1107]. */
+  draft?: string | null;
 };
 
 const SQUASH_MESSAGE = `Retry failed uploads
@@ -46,9 +53,9 @@ type Picker = "branch" | "rename" | "create" | null;
 const unsent = new Map<string, string>();
 
 /**
- * The Source panel, laid out as the old SourcePanel: the title row, the commit box with the action button and the
- * branch item, then Merge Changes, Staged Changes and Changes, and the session's Commits [D1041]. Unwired: its
- * actions move rows in a local copy, or do nothing [D388]. `selected`: the row whose diff shows.
+ * The Source panel, direction C [D1098]: the title row with History, PRs and More Actions; one status; the message
+ * field, the action button and Review changes; one list of files; the branch item in the footer [D1094, D1111].
+ * Unwired: its actions move rows in a local copy, or do nothing [D388]. `selected`: the row whose diff shows.
  */
 export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPicker = null }: { data: SourceData; draftKey?: string; nowMs: number; selected?: string; picker?: Picker }) {
   const [local, setLocal] = useState(data.source);
@@ -85,7 +92,14 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
   const conflicted = resolving ? (state?.changes.filter((file) => file.status === "conflicted") ?? []) : [];
   const changes = state?.changes.filter((file) => !conflicted.includes(file)) ?? [];
   const staged = state?.staged ?? [];
-  const clean = state !== null && staged.length === 0 && state.changes.length === 0 && !resolving;
+  const stagedPaths = new Set(staged.map((file) => file.path));
+  // One list [D1110]: a file both staged and changed shows once, with its ✓.
+  const uncommitted = [...staged, ...(state?.changes.filter((file) => !stagedPaths.has(file.path)) ?? [])];
+  const merged = uncommitted.filter((file) => !conflicted.includes(file));
+  const listed = uncommitted.length > 0 ? uncommitted : (state?.sinceBase ?? []);
+  const clean = state !== null && uncommitted.length === 0 && !resolving;
+  // Nothing to commit and nothing further to do: no button.
+  const idle = clean && (step?.kind === "commit" || step?.kind === "folderCommit" || step?.kind === "landed");
   const folder = state?.checkout === "folder";
   const base = step && "base" in step ? step.base : null;
 
@@ -142,7 +156,8 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
     if (step.kind === "commit" || step.kind === "folderCommit") commit();
     else if (step.kind === "merge" && mergeStyle === "squash") setSquashing(true);
     else if (step.kind === "mergePr") setMergingPr(true);
-    // Fix with agent leaves a chip above the composer, sent when the user sends [D1019]: wired with the composer.
+    // Fix with agent and Resolve with agent leave a chip above the composer, sent when the user sends [D1019, D1044]:
+    // wired with the composer.
   };
 
   const more = (
@@ -160,10 +175,76 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
     />
   );
 
+  const top = state && step && (
+    <div className="flex flex-col gap-3">
+      <StatusLine status={statusWords(state, step, uncommitted.length, data.prs ?? [])} files={resolving ? uncommitted : listed} />
+      {(uncommitted.length > 0 || resolving) && (
+        <CommitBox
+          message={message}
+          onMessage={(next) => {
+            setMessage(next);
+            setFailed(false);
+          }}
+          branch={state.branch}
+          draft={data.draft ?? null}
+          rebaseMessage={state.rebasing?.message ?? null}
+          writing={writing}
+          busy={committing || writing}
+          canWrite={!resolving}
+          failed={failed}
+          onWrite={write}
+          onCommit={commit}
+        />
+      )}
+      {!idle && (
+        <ActionButton
+          step={step}
+          nowMs={nowMs}
+          writing={committing && !message.trim()}
+          disabled={writing}
+          error={data.stepError ?? null}
+          mergeStyle={mergeStyle}
+          rejected={data.rejected != null}
+          onMergeStyle={setMergeStyle}
+          onRun={run}
+          onPick={(pick) => {
+            if (pick === "forcePush" && data.rejected) setForcing(data.rejected);
+            if (pick === "commit") commit();
+          }}
+        />
+      )}
+      {/* Opens the Review tab (2.8) once it's wired. */}
+      {listed.length > 0 && (
+        <Button variant="soft" size="sm" className="self-start">
+          Review changes
+        </Button>
+      )}
+    </div>
+  );
+
+  // A click opens the file's diff in a Review tab, Open File the file in its own tab: both wired with the tabs (2.16).
+  const row = (file: SourceFile, isStaged: boolean) => (
+    <FileRow
+      key={file.path}
+      file={file}
+      staged={isStaged}
+      selected={selected === file.path}
+      locked={locked}
+      pending={pending.has(file.path)}
+      actions={{
+        onStage: () => (file.status === "conflicted" ? setStagingConflicts({ paths: [file.path], marked: 1 }) : move([file.path], "staged")),
+        onUnstage: () => move([file.path], "changes"),
+        onDiscard: () => setDiscarding({ scope: isStaged ? "staged" : "unstaged", files: [file] }),
+      }}
+    />
+  );
+
   return (
     <div className={cx("relative flex min-h-0 flex-1 flex-col", offline && "opacity-disabled")} inert={offline}>
       <SourceHeader>
-        <SourceActions canCommit={!clean && state !== null} locked={locked || state === null} onCommit={commit} moreMenu={more} />
+        {state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />}
+        {(data.prs?.length ?? 0) > 0 && <PrMenu prs={data.prs ?? []} watch={data.watch ?? null} nowMs={nowMs} />}
+        <MoreButton locked={locked || state === null} menu={more} />
       </SourceHeader>
       {picker === "branch" && state && (
         <QuickPick
@@ -183,55 +264,18 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
           onClose={() => setPicker(null)}
         />
       )}
-      {state && step && (
-        <div className="flex shrink-0 flex-col gap-2 px-2 pb-1">
-          <CommitBox
-            message={message}
-            onMessage={(next) => {
-              setMessage(next);
-              setFailed(false);
-            }}
-            branch={state.branch}
-            rebaseMessage={state.rebasing?.message ?? null}
-            writing={writing}
-            busy={committing || writing}
-            canWrite={!resolving && !clean}
-            idle={clean}
-            failed={failed}
-            onWrite={write}
-            onCommit={commit}
-          />
-          <ActionButton
-            step={step}
-            nowMs={nowMs}
-            writing={committing && !message.trim()}
-            disabled={writing}
-            error={data.stepError ?? null}
-            mergeStyle={mergeStyle}
-            rejected={data.rejected != null}
-            onMergeStyle={setMergeStyle}
-            onRun={run}
-            onPick={(pick) => {
-              if (pick === "forcePush" && data.rejected) setForcing(data.rejected);
-              if (pick === "commit") commit();
-            }}
-          />
-          <BranchItem state={state} locked={locked} open={picker === "branch"} onBranch={() => setPicker("branch")} />
-        </div>
-      )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-1 pb-3">
         {state === null && !data.error && (
-          <div aria-busy className="flex flex-col gap-2 p-2">
-            <Skeleton className="h-16" />
+          <div aria-busy className="flex flex-col gap-2">
+            <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-control-md" />
             <Skeleton className="h-control-sm" />
             <Skeleton className="h-control-sm w-3/4" />
-            <Skeleton className="h-control-sm w-1/2" />
           </div>
         )}
         {state === null && data.error && (
           <ErrorLine
             error={`Couldn't read this checkout: ${data.error}`}
-            className="p-2"
             actions={
               <button type="button" className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
                 Try again
@@ -239,93 +283,33 @@ export function SourcePanel({ data, draftKey, nowMs, selected, picker: initialPi
             }
           />
         )}
-        {clean && <p className="p-2 text-sm text-muted-foreground">Nothing to commit</p>}
-        {conflicted.length > 0 && (
-          <SourceGroup
-            title="Merge Changes"
-            count={conflicted.length}
-            actions={
-              <RowButton tooltip="Stage All Merge Changes" disabled={locked} onClick={() => setStagingConflicts({ paths: conflicted.map((file) => file.path), marked: conflicted.length })}>
-                <Plus />
-              </RowButton>
-            }
-          >
-            {conflicted.map((file) => (
-              <FileRow
-                key={`merge:${file.path}`}
-                file={file}
-                group="merge"
-                selected={selected === file.path}
-                locked={locked}
-                pending={pending.has(file.path)}
-                actions={{ onStage: () => setStagingConflicts({ paths: [file.path], marked: 1 }) }}
-              />
-            ))}
-          </SourceGroup>
-        )}
-        {staged.length > 0 && (
-          <SourceGroup
-            title="Staged Changes"
-            count={staged.length}
-            actions={
-              <>
-                <RowButton tooltip="Open Staged Changes">
-                  <FileDocument />
-                </RowButton>
-                <RowButton tooltip="Unstage All Changes" disabled={locked} onClick={() => move(staged.map((file) => file.path), "changes")}>
-                  <Minus />
-                </RowButton>
-              </>
-            }
-          >
-            {staged.map((file) => (
-              <FileRow
-                key={`staged:${file.path}`}
-                file={file}
-                group="staged"
-                selected={selected === file.path}
-                locked={locked}
-                pending={pending.has(file.path)}
-                actions={{ onUnstage: () => move([file.path], "changes") }}
-              />
-            ))}
-          </SourceGroup>
-        )}
-        {state && (changes.length > 0 || staged.length > 0 || resolving) && (
-          <SourceGroup
-            title="Changes"
-            count={changes.length}
-            actions={
-              changes.length > 0 && (
-                <>
-                  <RowButton tooltip="Open Changes">
-                    <FileDocument />
-                  </RowButton>
-                  <RowButton tooltip="Discard All Changes" disabled={locked} onClick={() => setDiscarding({ scope: "unstaged", files: changes })}>
-                    <Undo />
-                  </RowButton>
-                  <RowButton tooltip="Stage All Changes" disabled={locked} onClick={() => move(changes.map((file) => file.path), "staged")}>
-                    <Plus />
-                  </RowButton>
-                </>
-              )
-            }
-          >
-            {changes.map((file) => (
-              <FileRow
-                key={`changes:${file.path}`}
-                file={file}
-                group="changes"
-                selected={selected === file.path}
-                locked={locked}
-                pending={pending.has(file.path)}
-                actions={{ onStage: () => move([file.path], "staged"), onDiscard: () => setDiscarding({ scope: "unstaged", files: [file] }) }}
-              />
-            ))}
-          </SourceGroup>
-        )}
-        {state && state.commits.length > 0 && base && <CommitsGroup commits={state.commits} base={base} nowMs={nowMs} />}
+        {top}
+        {state && (conflicted.length > 0 ? (
+          <div className="flex flex-col gap-1 border-t border-divider pt-2">
+            <Heading title="Conflicts" count={conflicted.length} />
+            <ul className="flex flex-col">{conflicted.map((file) => row(file, false))}</ul>
+            {merged.length > 0 && (
+              <Group title="Merged cleanly" count={merged.length} defaultOpen={false}>
+                {merged.map((file) => row(file, stagedPaths.has(file.path)))}
+              </Group>
+            )}
+          </div>
+        ) : listed.length > 0 ? (
+          <div className="flex flex-col gap-1 border-t border-divider pt-2">
+            <Heading title={uncommitted.length > 0 ? "Files" : `Changed since ${base ?? "the base"}`} count={listed.length} />
+            <ul className="flex flex-col">{listed.map((file) => row(file, stagedPaths.has(file.path)))}</ul>
+          </div>
+        ) : (
+          !resolving && <p className="text-xs text-muted-foreground">What the agent changes shows here.</p>
+        ))}
       </div>
+      {state && (
+        <footer className="flex shrink-0 items-center border-t border-divider ps-2 pe-1.5 py-1.5">
+          <div className="min-w-0 flex-1">
+            <BranchItem state={state} locked={locked} open={picker === "branch"} onBranch={() => setPicker("branch")} />
+          </div>
+        </footer>
+      )}
 
       <DiscardDialog
         discarding={discarding}

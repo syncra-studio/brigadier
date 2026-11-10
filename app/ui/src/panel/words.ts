@@ -1,4 +1,4 @@
-import type { PanelHint, SourceFile, Step } from "./types";
+import type { PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /* The right panel's words, written from what Rust sends [D65]. */
 
@@ -68,13 +68,10 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
     case "catchUp":
       return { label: `Catch up with ${step.base}`, line: `Would conflict in ${names(step.conflicts)}`, tone: "warn" };
     case "continue":
-      return {
-        label: "Continue",
-        line: step.left > 0 ? `Catching up with ${step.base} · ${plural(step.left, "conflict")} left` : `Catching up with ${step.base} · conflicts resolved`,
-        tone: step.left > 0 ? "warn" : "quiet",
-        off: step.left > 0,
-        why: step.left > 0 ? "Resolve the merge conflicts first" : undefined,
-      };
+      // While conflicts are left the button hands them to the agent; once none are, it continues [D1015, D1093].
+      return step.left > 0
+        ? { label: "Resolve with agent", line: `Catching up with ${step.base} · ${plural(step.left, "conflict")} left`, tone: "warn" }
+        : { label: "Continue", line: `Catching up with ${step.base} · conflicts resolved`, tone: "quiet" };
     case "landed":
       return { label: "Commit", line: `Everything is in ${step.base} · merged ${ago(step.atMs, nowMs)}`, tone: "quiet", off: true };
     case "pushPr":
@@ -145,3 +142,72 @@ export function discardWords(scope: "staged" | "unstaged", file: SourceFile, als
         : `${file.path} goes back to how it was last committed.`;
   return alsoUnstaged ? `${back} Its changes that aren't staged are lost too.` : back;
 }
+
+/** Source's one status at the top [D1098, D1107]: what the work needs now, from Rust's state and step. */
+export type Status = { title: string; tone: "quiet" | "changes" | "good" | "warn" | "bad"; icon: "clean" | "changes" | "warn" | "pr" | "sync" };
+
+export function statusWords(state: SourceState, step: Step, files: number, prs: Pr[]): Status {
+  const resolving = state.merging ?? state.rebasing;
+  if (resolving) {
+    const onto = state.merging?.incoming ?? state.rebasing?.onto ?? "";
+    return state.changes.some((file) => file.status === "conflicted")
+      ? { title: `Conflicts with ${onto}`, tone: "warn", icon: "warn" }
+      : { title: "Conflicts resolved", tone: "changes", icon: "changes" };
+  }
+  if (files > 0) return { title: `${plural(files, "file")} changed`, tone: "changes", icon: "changes" };
+  switch (step.kind) {
+    case "merge":
+    case "mergePr":
+      return { title: "Ready to merge", tone: "good", icon: "clean" };
+    case "catchUp":
+      return { title: `Would conflict with ${step.base}`, tone: "warn", icon: "warn" };
+    case "fixPr": {
+      const failed = prs.find((pr) => pr.number === step.pr)?.failed ?? 0;
+      if (step.why === "changes") return { title: `Changes asked on #${step.pr}`, tone: "warn", icon: "pr" };
+      return { title: failed > 0 ? `${plural(failed, "check")} failed` : "Checks failed", tone: "bad", icon: "pr" };
+    }
+    case "pushPr":
+      return { title: `${plural(step.ahead, "commit")} to push`, tone: "changes", icon: "sync" };
+    case "sync":
+      return { title: step.behind > 0 ? `${step.behind} to pull, ${step.ahead} to push` : `${step.ahead} to push`, tone: "changes", icon: "sync" };
+    case "publish":
+      return { title: "Not published yet", tone: "quiet", icon: "sync" };
+    case "landed":
+      return { title: `Merged into ${step.base}`, tone: "quiet", icon: "clean" };
+    default:
+      return { title: "No changes yet", tone: "quiet", icon: "clean" };
+  }
+}
+
+/** A PR's state word and its tone, as its row says it. */
+export function prWords(pr: Pr): { word: string; tone: Tone } {
+  if (pr.state === "merged") return { word: "Merged", tone: "quiet" };
+  if (pr.state === "closed") return { word: "Closed", tone: "quiet" };
+  switch (pr.health) {
+    case "failed":
+      return { word: `${plural(pr.failed, "check")} failed`, tone: "bad" };
+    case "conflicts":
+      return { word: "Conflicts", tone: "warn" };
+    case "changes":
+      return { word: "Changes asked", tone: "warn" };
+    case "running":
+      return { word: "Checks running", tone: "quiet" };
+    case "ready":
+      return { word: "Ready", tone: "good" };
+  }
+}
+
+/** The PR icon's dot: the worst open PR's tone [D1025, D1114]; none while every open one's checks run. */
+export function prDot(prs: Pr[]): Tone | null {
+  const tones = prs.filter((pr) => pr.state === "open").map((pr) => prWords(pr).tone);
+  return (["bad", "warn", "good"] as const).find((tone) => tones.includes(tone)) ?? null;
+}
+
+/** One line of the PR watch: "#12 · checks failed". */
+export function watchWords(event: PrWatch["events"][number]): string {
+  const what = { opened: "opened", checksFailed: "· checks failed", checksPassed: "· checks passed", changesAsked: "· changes asked", commented: "· new comment", merged: "merged" }[event.kind];
+  return `#${event.pr} ${what}`;
+}
+
+/** "14:32", the watch's clock time. */
+export const clock = (atMs: number) => new Date(atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });

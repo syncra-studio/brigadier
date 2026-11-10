@@ -1,36 +1,48 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/context-menu";
 import { cx } from "../../components/cx";
-import { TooltipIconButton } from "../../components/icon-button";
-import { ChevronDown, ChevronRight, FileDocument, FileIcon, Minus, Plus, Spinner, Undo } from "../../icons";
-import type { Commit, SourceFile } from "../types";
-import { LETTERS } from "../status";
-import { ago, baseName, dirName } from "../words";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip";
+import { Check, ChevronDown, ChevronRight, FileIcon, Spinner, Warning } from "../../icons";
+import type { SourceFile } from "../types";
+import { baseName, dirName } from "../words";
 
-/** A group of files under its title and count, folding away; its actions show on hover (the old SourceGroup). */
-export function SourceGroup({ title, count, actions, defaultOpen = true, children }: { title: string; count: number; actions?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(defaultOpen);
+/** "+62 −8": lines added and removed, each only when there are some. */
+export function Counts({ added, removed }: { added: number; removed: number }) {
   return (
-    <section aria-label={title} className="mt-2">
-      <header className="group/source-group flex h-control-sm items-center gap-1 pe-1 text-sm">
-        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-start focus-visible:focus-ring">
-          {open ? <ChevronDown className="size-icon-sm shrink-0 text-muted-foreground" /> : <ChevronRight className="size-icon-sm shrink-0 text-muted-foreground" />}
-          <span className="truncate">{title}</span>
-        </button>
-        <span className="hidden shrink-0 items-center group-focus-within/source-group:flex group-hover/source-group:flex">{actions}</span>
-        <span className="rounded-capsule bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">{count}</span>
-      </header>
-      {open && <ul>{children}</ul>}
-    </section>
+    <span className="shrink-0 font-mono text-xs tabular-nums">
+      {added > 0 && <span className="text-success">+{added}</span>} {removed > 0 && <span className="text-destructive">−{removed}</span>}
+    </span>
   );
 }
 
-/** A row's or group's small action. */
-export function RowButton({ tooltip, disabled, onClick, children }: { tooltip: string; disabled?: boolean; onClick?: () => void; children: ReactNode }) {
+/** A quiet heading over the list: a name and its count. */
+export function Heading({ title, count }: { title: string; count: number }) {
   return (
-    <TooltipIconButton tooltip={tooltip} size="icon-xs" disabled={disabled} onClick={onClick}>
-      {children}
-    </TooltipIconButton>
+    <h3 className="flex h-control-xs items-center gap-1.5 px-2 text-xs font-normal text-muted-foreground">
+      <span>{title}</span>
+      <span className="tabular-nums">{count}</span>
+    </h3>
+  );
+}
+
+/** A heading that folds its rows away ("Merged cleanly" during a merge). */
+export function Group({ title, count, defaultOpen = true, children }: { title: string; count: number; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section aria-label={title} className="flex flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-2 text-start text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring"
+      >
+        <span>{title}</span>
+        <span className="tabular-nums">{count}</span>
+        {open ? <ChevronDown className="size-icon-xs" /> : <ChevronRight className="size-icon-xs" />}
+      </button>
+      {open && <ul className="flex flex-col">{children}</ul>}
+    </section>
   );
 }
 
@@ -43,89 +55,72 @@ export type RowActions = {
 };
 
 /**
- * A changed file: a click opens its diff (a conflicted one its conflict view); its actions show on hover. `pending`:
- * moved here at once, its actions off until Rust answers [D30].
+ * A changed file, one quiet row [D1098, D1103, D1110]: its icon, name and counts, its folder as the tooltip, a ✓ when
+ * staged, a warning when conflicted. A click opens its diff (a conflicted one its conflict tab); a right-click opens
+ * Open File, Stage or Unstage, and Discard. `pending`: moved at once, waiting for Rust's answer [D30].
+ * `held`: the gallery holds its menu open there.
  */
-export function FileRow({ file, group, selected = false, locked = false, pending = false, actions = {} }: {
+export function FileRow({ file, staged = false, selected = false, locked = false, pending = false, actions = {}, held }: {
   file: SourceFile;
-  group: "merge" | "staged" | "changes";
+  staged?: boolean;
   selected?: boolean;
   locked?: boolean;
   pending?: boolean;
   actions?: RowActions;
+  held?: HTMLElement;
 }) {
-  const status = LETTERS[file.status];
+  const conflicted = file.status === "conflicted";
   const off = locked || pending;
-  const title = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+  const folder = dirName(file.path);
+  // Held open in the gallery there's no pointer to place it at: it hangs from the row.
+  const row = useRef<HTMLLIElement>(null);
   return (
-    <li
-      aria-current={selected || undefined}
-      aria-busy={pending || undefined}
-      className={cx("group/source-row flex h-control-sm items-center gap-1 rounded-control pe-1 hover:bg-muted", selected && "bg-muted")}
-    >
-      <button type="button" title={title} onClick={actions.onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm ps-2 text-start text-sm focus-visible:focus-ring">
-        <FileIcon name={file.path} />
-        {/* A long name gives way before the row's actions do; its folder takes what is left. */}
-        <span className={cx("min-w-0 truncate", file.status === "deleted" && "line-through", file.status === "conflicted" && "text-destructive")}>{baseName(file.path)}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{dirName(file.path)}</span>
-      </button>
-      <span className="hidden shrink-0 items-center group-focus-within/source-row:flex group-hover/source-row:flex">
-        {file.status !== "deleted" && (
-          <RowButton tooltip="Open File" onClick={actions.onOpenFile}>
-            <FileDocument />
-          </RowButton>
-        )}
-        {group === "changes" && (
-          <RowButton tooltip="Discard Changes" disabled={off} onClick={actions.onDiscard}>
-            <Undo />
-          </RowButton>
-        )}
-        {group === "staged" ? (
-          <RowButton tooltip="Unstage Changes" disabled={off} onClick={actions.onUnstage}>
-            <Minus />
-          </RowButton>
-        ) : (
-          <RowButton tooltip="Stage Changes" disabled={off} onClick={actions.onStage}>
-            <Plus />
-          </RowButton>
-        )}
-      </span>
-      {/* Pending, the letter waits as the queue's rows do: a spinner in its place. */}
-      <span title={status.label} className={cx("flex w-4 shrink-0 justify-center font-mono text-xs font-medium", status.className)}>
-        {pending ? <Spinner className="size-icon-xs animate-spin text-muted-foreground motion-reduce:animate-none" /> : status.letter}
-      </span>
+    <li ref={row}>
+      <ContextMenu {...(held && { open: true })}>
+        <ContextMenuTrigger
+          render={
+            <button
+              type="button"
+              title={file.oldPath ? `${file.oldPath} → ${file.path}` : folder || undefined}
+              aria-current={selected || undefined}
+              aria-busy={pending || undefined}
+              onClick={actions.onOpen}
+              className={cx(
+                "flex h-control-sm w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-muted focus-visible:focus-ring",
+                selected && "bg-muted",
+              )}
+            />
+          }
+        >
+          <FileIcon name={baseName(file.path)} size="sm" />
+          <span className={cx("min-w-0 flex-1 truncate", file.status === "deleted" && "line-through")}>{baseName(file.path)}</span>
+          {staged && (
+            <Tooltip>
+              <TooltipTrigger render={<span className="flex shrink-0 text-muted-foreground svg:size-icon-xs" />}>
+                <Check />
+              </TooltipTrigger>
+              <TooltipContent>Staged</TooltipContent>
+            </Tooltip>
+          )}
+          {pending ? (
+            <Spinner className="size-icon-xs shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />
+          ) : conflicted ? (
+            <Warning aria-label="Conflicted" className="size-icon-sm shrink-0 text-warning" />
+          ) : (
+            <Counts added={file.added} removed={file.removed} />
+          )}
+        </ContextMenuTrigger>
+        <ContextMenuContent {...(held && { container: held, anchor: row, side: "bottom", align: "start", collisionAvoidance: { side: "none", align: "none" } as const })}>
+          {file.status !== "deleted" && <ContextMenuItem onClick={actions.onOpenFile}>Open File</ContextMenuItem>}
+          <ContextMenuItem disabled={off} onClick={staged ? actions.onUnstage : actions.onStage}>
+            {staged ? "Unstage" : "Stage"}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem disabled={off} onClick={actions.onDiscard}>
+            Discard Changes…
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </li>
-  );
-}
-
-/** The session's commits since its base, newest first [D1041]: read-only, a click opens the commit's diff. */
-export function CommitsGroup({ commits, base, nowMs, selected, onOpen }: { commits: Commit[]; base: string; nowMs: number; selected?: string; onOpen?: (sha: string) => void }) {
-  return (
-    <SourceGroup title="Commits" count={commits.length} actions={<RowButton tooltip={`Open all commits since ${base}`}>
-      <FileDocument />
-    </RowButton>}>
-      {commits.map((commit) => (
-        <li key={commit.sha}>
-          <button
-            type="button"
-            aria-current={selected === commit.sha || undefined}
-            title={`${commit.sha} · ${ago(commit.atMs, nowMs)}`}
-            onClick={() => onOpen?.(commit.sha)}
-            className={cx("flex w-full cursor-pointer flex-col gap-0.5 rounded-control py-1 ps-6 pe-1 text-start hover:bg-muted focus-visible:focus-ring", selected === commit.sha && "bg-muted")}
-          >
-            <span className="w-full truncate text-sm">{commit.subject}</span>
-            <span className="flex w-full items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="font-mono">{commit.sha}</span>
-              <span>·</span>
-              <span>{ago(commit.atMs, nowMs)}</span>
-              <span className="flex-1" />
-              <span className="font-mono tabular-nums">
-                <span className="text-success">+{commit.added}</span> <span className="text-destructive">−{commit.removed}</span>
-              </span>
-            </span>
-          </button>
-        </li>
-      ))}
-    </SourceGroup>
   );
 }

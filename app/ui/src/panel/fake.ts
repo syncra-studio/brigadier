@@ -1,4 +1,4 @@
-import type { Branch, Commit, PanelHint, SourceFile, SourceState, Step } from "./types";
+import type { Branch, Commit, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /*
  * Fake data for the right panel while it's unwired [D388]: the app and the gallery draw from it. It goes when the
@@ -8,7 +8,7 @@ import type { Branch, Commit, PanelHint, SourceFile, SourceState, Step } from ".
 const NOW = Date.now();
 const MIN = 60_000;
 
-export const file = (path: string, status: SourceFile["status"], oldPath: string | null = null): SourceFile => ({ path, status, oldPath });
+export const file = (path: string, status: SourceFile["status"], added = 0, removed = 0, oldPath: string | null = null): SourceFile => ({ path, status, oldPath, added, removed });
 
 export const BRANCH = "brigadier/912a9469/session";
 
@@ -31,39 +31,50 @@ export const CLEAN: SourceState = {
   merging: null,
   rebasing: null,
   commits: [],
+  sinceBase: [],
 };
 
 export const CHANGES: SourceState = {
   ...CLEAN,
   ahead: 2,
-  changes: [file("src/upload/retry.ts", "modified"), file("src/upload/client.ts", "modified"), file("src/tray/Progress.tsx", "added")],
+  changes: [file("src/upload/retry.ts", "modified", 62, 8), file("src/upload/client.ts", "modified", 21, 3), file("src/tray/Progress.tsx", "added", 58)],
   commits: COMMITS,
 };
 
 export const STAGED: SourceState = {
   ...CHANGES,
-  staged: [file("src/upload/retry.ts", "added"), file("src/upload/client.ts", "modified")],
-  changes: [file("src/tray/Progress.tsx", "modified"), file("README.md", "modified")],
+  staged: [file("src/upload/retry.ts", "added", 62), file("src/upload/client.ts", "modified", 21, 3)],
+  changes: [file("src/tray/Progress.tsx", "modified", 58), file("README.md", "modified", 14)],
+};
+
+/** Everything committed: what the branch changed since main. */
+export const COMMITTED: SourceState = {
+  ...CLEAN,
+  ahead: 4,
+  commits: COMMITS,
+  sinceBase: [...STAGED.staged, ...STAGED.changes, file("src/upload/retry.test.ts", "added", 42)],
 };
 
 /** Every letter Source draws. */
 export const LETTERED: SourceState = {
   ...CLEAN,
   changes: [
-    file("src/upload/retry.ts", "modified"),
-    file("src/upload/backoff.ts", "added"),
-    file("src/upload/legacy.ts", "deleted"),
-    file("src/tray/Progress.tsx", "renamed", "src/tray/Bar.tsx"),
-    file("src/tray/Icon.tsx", "copied", "src/tray/Badge.tsx"),
+    file("src/upload/retry.ts", "modified", 12, 4),
+    file("src/upload/backoff.ts", "added", 30),
+    file("src/upload/legacy.ts", "deleted", 0, 88),
+    file("src/tray/Progress.tsx", "renamed", 2, 2, "src/tray/Bar.tsx"),
+    file("src/tray/Icon.tsx", "copied", 0, 0, "src/tray/Badge.tsx"),
     file("scripts/run", "typeChanged"),
-    file("notes/todo.md", "untracked"),
+    file("notes/todo.md", "untracked", 9),
   ],
 };
 
 export const MERGING: SourceState = {
   ...CLEAN,
   merging: { incoming: "main", message: "Merge branch 'main' into brigadier/912a9469/session" },
-  staged: [file("src/tray/Progress.tsx", "modified")],
+  ahead: 2,
+  commits: COMMITS,
+  staged: [file("src/tray/Progress.tsx", "modified", 6, 1)],
   changes: [file("src/upload/retry.ts", "conflicted"), file("src/upload/client.ts", "conflicted")],
 };
 
@@ -71,6 +82,7 @@ export const REBASING: SourceState = {
   ...CLEAN,
   branch: null,
   rebasing: { branch: BRANCH, onto: "main", message: "Show upload progress in the tray" },
+  commits: COMMITS,
   changes: [file("src/tray/Progress.tsx", "conflicted")],
 };
 
@@ -82,7 +94,8 @@ export const FOLDER: SourceState = {
   upstream: "origin/main",
   ahead: 2,
   behind: 1,
-  changes: [file("README.md", "modified")],
+  staged: [file("src/upload/retry.ts", "modified", 9, 2)],
+  changes: [file("src/tray/Progress.tsx", "added", 58), file("README.md", "modified", 14)],
 };
 
 export const BRANCHES: Branch[] = [
@@ -97,6 +110,24 @@ export const GIT_RUNS = [
   { atMs: NOW - 8 * MIN, command: "git pull --ff-only", output: "Already up to date.", ok: true },
   { atMs: NOW - 2 * MIN, command: "git push", output: "! [rejected] HEAD -> brigadier/912a9469/session (fetch first)\nerror: failed to push some refs", ok: false },
 ];
+
+/** The branch's pull requests: #12 open with a failing check, #11 merged. */
+export const PRS: Pr[] = [
+  { number: 12, title: "Retry failed uploads", state: "open", health: "failed", failed: 1 },
+  { number: 11, title: "Show upload progress in the tray", state: "merged", health: "ready", failed: 0 },
+];
+
+export const WATCH: PrWatch = {
+  checkedAtMs: NOW - MIN,
+  events: [
+    { atMs: NOW - 18 * MIN, pr: 12, kind: "checksFailed", detail: "test (ubuntu-latest)" },
+    { atMs: NOW - 30 * MIN, pr: 12, kind: "opened", detail: "by the agent" },
+    { atMs: NOW - 52 * MIN, pr: 11, kind: "merged", detail: "by you" },
+  ],
+};
+
+/** The message drafted for the work so far (2.20), the field's grey text. */
+export const DRAFT = "Retry failed uploads and show progress in the tray";
 
 /** The host the fake branch publishes to; the UI names none of its own [D1030]. */
 export const HOST = "GitHub";
@@ -120,15 +151,15 @@ export const STEPS = {
 } satisfies Record<string, Step>;
 
 /** One fake per session or chat, picked by its id, so a few sessions show every dot and tip [D1025]. */
-const FAKES: { source: SourceState; step: Step; hint: PanelHint | null }[] = [
-  { source: CHANGES, step: STEPS.commitWaiting, hint: { tone: "changes", count: 3 } },
-  { source: { ...CLEAN, ahead: 3, commits: COMMITS.slice(0, 3) }, step: STEPS.merge, hint: { tone: "ready", base: "main" } },
-  { source: { ...CLEAN, ahead: 3, commits: COMMITS.slice(0, 3) }, step: STEPS.catchUp, hint: { tone: "conflict", base: "main" } },
-  { source: { ...CLEAN, ahead: 2, commits: COMMITS.slice(0, 2) }, step: STEPS.fixPr, hint: { tone: "failed", pr: 12, why: "checks" } },
-  { source: { ...CLEAN, commits: COMMITS }, step: STEPS.landed, hint: null },
+const FAKES: { source: SourceState; step: Step; hint: PanelHint | null; prs?: Pr[] }[] = [
+  { source: STAGED, step: STEPS.commitWaiting, hint: { tone: "changes", count: 4 }, prs: PRS },
+  { source: { ...COMMITTED, commits: COMMITS.slice(0, 3) }, step: STEPS.merge, hint: { tone: "ready", base: "main" } },
+  { source: { ...COMMITTED, commits: COMMITS.slice(0, 3) }, step: STEPS.catchUp, hint: { tone: "conflict", base: "main" } },
+  { source: COMMITTED, step: STEPS.fixPr, hint: { tone: "failed", pr: 12, why: "checks" }, prs: PRS },
+  { source: CLEAN, step: STEPS.landed, hint: null },
 ];
 
-const FOLDER_FAKE = { source: FOLDER, step: STEPS.sync as Step, hint: { tone: "changes", count: 1 } as PanelHint | null };
+const FOLDER_FAKE = { source: FOLDER, step: STEPS.folderCommit as Step, hint: { tone: "changes", count: 3 } as PanelHint | null, prs: undefined };
 
 /** `folder`: a project chat, on the project's folder [D1039]. */
 export function fakeFor(owner: string, folder: boolean) {

@@ -1,28 +1,35 @@
-// The Source panel [D410, D1037, D1041]: its states on fake data, its menu and its confirms.
+// The Source panel, direction C [D1098, D1111, D1114]: its states on fake data, its menus and its confirms.
 import type { ReactNode } from "react";
 
-import { BRANCHES, CHANGES, CLEAN, file, FOLDER, GIT_RUNS, HOST, LETTERED, MERGING, REBASING, STAGED, STEPS } from "../src/panel/fake";
+import { BRANCHES, CHANGES, CLEAN, COMMITS, COMMITTED, DRAFT, file, FOLDER, GIT_RUNS, HOST, LETTERED, MERGING, PRS, REBASING, STAGED, STEPS, WATCH } from "../src/panel/fake";
 import { DiscardDialog, DropStashDialog, GitOutputDialog, StageConflictsDialog } from "../src/panel/source/dialogs";
-import { SourceActions, SourceHeader } from "../src/panel/source/header";
+import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "../src/panel/source/header";
 import { MoreMenu, type Submenu } from "../src/panel/source/more-menu";
 import { type SourceData, SourcePanel } from "../src/panel/source/panel";
-import { CommitsGroup, FileRow } from "../src/panel/source/rows";
+import { FileRow } from "../src/panel/source/rows";
 import type { SourceState } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
-import { OldApp, PanelFrame } from "./right-panel";
+import { PanelFrame } from "./right-panel";
 
 const NOW = Date.now();
-const fake = (source: SourceState | null, step: SourceData["step"], more: Partial<SourceData> = {}): SourceData => ({ source, step, host: HOST, branches: BRANCHES, gitRuns: GIT_RUNS, ...more });
+const fake = (source: SourceState | null, step: SourceData["step"], more: Partial<SourceData> = {}): SourceData => ({ source, step, host: HOST, branches: BRANCHES, gitRuns: GIT_RUNS, draft: DRAFT, ...more });
+const CONFLICT_PRS = [{ ...PRS[0]!, health: "conflicts" as const, failed: 0 }, PRS[1]!];
 
+/** The states the owner checks C in [D1098, D1114], then the rest. */
 const PANELS: [string, SourceData, string?][] = [
-  ["Clean, landed", fake({ ...CLEAN, commits: CHANGES.commits }, STEPS.landed)],
-  ["Changes, commits waiting", fake(CHANGES, STEPS.commitWaiting)],
-  ["Staged and changes", fake(STAGED, STEPS.commit)],
-  ["Merge conflicts", fake(MERGING, STEPS.continue)],
-  ["Rebasing", fake(REBASING, STEPS.continue)],
-  ["Every letter", fake(LETTERED, STEPS.commit)],
+  ["Nothing changed", fake(CLEAN, STEPS.commit)],
+  ["Changes: two staged by hand, #12 failing, #11 merged", fake(STAGED, STEPS.commitWaiting, { prs: PRS, watch: WATCH })],
+  ["Ready to merge: everything committed", fake(COMMITTED, STEPS.merge)],
+  ["A PR with failing checks", fake(COMMITTED, STEPS.fixPr, { prs: PRS, watch: WATCH })],
+  ["A conflict: catching up with main", fake(MERGING, STEPS.continue, { prs: CONFLICT_PRS, watch: WATCH })],
+  ["Conflicts resolved: Continue", fake({ ...MERGING, changes: [], staged: [...MERGING.staged, file("src/upload/retry.ts", "modified", 9, 3), file("src/upload/client.ts", "modified", 4, 1)] }, { ...STEPS.continue, left: 0 })],
+  ["Local checkout: your own folder", fake(FOLDER, STEPS.folderCommit)],
+  ["Local checkout, committed: Sync", fake({ ...FOLDER, staged: [], changes: [] }, STEPS.sync)],
+  ["Rebasing: the stopped commit", fake(REBASING, { ...STEPS.continue, left: 1 })],
+  ["Landed", fake({ ...CLEAN, commits: COMMITS }, STEPS.landed)],
+  ["No draft yet", fake(CHANGES, STEPS.commitWaiting, { draft: null })],
+  ["Every kind of change", fake(LETTERED, STEPS.commit)],
   ["A row selected: its diff shows", fake(CHANGES, STEPS.commitWaiting), "src/upload/client.ts"],
-  ["Your own folder", fake(FOLDER, STEPS.sync)],
 ];
 
 const DATA: [string, SourceData][] = [
@@ -38,7 +45,7 @@ function HeldMenu({ state, sub }: { state: SourceState; sub?: Submenu }) {
       {(box) => (
         <div className="w-80">
           <SourceHeader>
-            <SourceActions canCommit locked={false} held moreMenu={<MoreMenu state={state} held={box} {...(sub && { openSub: sub })} />} />
+            <MoreButton locked={false} held menu={<MoreMenu state={state} held={box} {...(sub && { openSub: sub })} />} />
           </SourceHeader>
         </div>
       )}
@@ -54,7 +61,7 @@ export function SourceGallery() {
       <Row name="Panel states">
         {PANELS.map(([label, data, selected]) => (
           <State key={label} label={label}>
-            <PanelFrame>
+            <PanelFrame className="h-160">
               <SourcePanel data={data} nowMs={NOW} {...(selected && { selected })} />
             </PanelFrame>
           </State>
@@ -63,32 +70,88 @@ export function SourceGallery() {
       <Row name="Data states">
         {DATA.map(([label, data]) => (
           <State key={label} label={label}>
-            <PanelFrame>
+            <PanelFrame className="h-160">
               <SourcePanel data={data} nowMs={NOW} />
             </PanelFrame>
           </State>
         ))}
       </Row>
+      <Row name="The title row's menus">
+        <State label="History: the last five commits">
+          <Held className="h-96 w-80">
+            {(box) => (
+              <SourceHeader>
+                <HistoryMenu commits={COMMITS} base="main" held={box} />
+              </SourceHeader>
+            )}
+          </Held>
+        </State>
+        <State label="Pull requests: every PR, the watch">
+          <Held className="h-96 w-80">
+            {(box) => (
+              <SourceHeader>
+                <PrMenu prs={PRS} watch={WATCH} nowMs={NOW} held={box} />
+              </SourceHeader>
+            )}
+          </Held>
+        </State>
+        <State label="Pull requests: one, in conflict">
+          <Held className="h-96 w-80">
+            {(box) => (
+              <SourceHeader>
+                <PrMenu prs={CONFLICT_PRS.slice(0, 1)} watch={WATCH} nowMs={NOW} held={box} />
+              </SourceHeader>
+            )}
+          </Held>
+        </State>
+        <State label="Pull requests: ready, no watch yet">
+          <Held className="h-96 w-80">
+            {(box) => (
+              <SourceHeader>
+                <PrMenu prs={[{ ...PRS[0]!, health: "ready", failed: 0 }]} watch={null} nowMs={NOW} held={box} />
+              </SourceHeader>
+            )}
+          </Held>
+        </State>
+      </Row>
       <Row name="Rows">
-        <State label="Hovered: its actions show" frozen="hover">
+        <State label="Hovered" frozen="hover">
           <ul className="w-80">
-            <FileRow file={file("src/upload/retry.ts", "modified")} group="changes" />
+            <FileRow file={file("src/upload/retry.ts", "modified", 62, 8)} />
           </ul>
         </State>
-        <State label="Staged, hovered" frozen="hover">
+        <State label="Staged: the ✓">
           <ul className="w-80">
-            <FileRow file={file("src/upload/client.ts", "added")} group="staged" />
+            <FileRow file={file("src/upload/client.ts", "added", 21)} staged />
           </ul>
         </State>
-        <State label="Conflicted, hovered" frozen="hover">
+        <State label="Conflicted">
           <ul className="w-80">
-            <FileRow file={file("src/upload/retry.ts", "conflicted")} group="merge" />
+            <FileRow file={file("src/upload/retry.ts", "conflicted")} />
           </ul>
         </State>
-        <State label="Commits since main">
-          <div className="w-80">
-            <CommitsGroup commits={CHANGES.commits} base="main" nowMs={NOW} />
-          </div>
+        <State label="Pending">
+          <ul className="w-80">
+            <FileRow file={file("src/upload/retry.ts", "modified", 62, 8)} pending />
+          </ul>
+        </State>
+        <State label="Right-click: a file's menu">
+          <Held className="h-48 w-80">
+            {(box) => (
+              <ul className="w-80">
+                <FileRow file={file("src/upload/retry.ts", "modified", 62, 8)} held={box} />
+              </ul>
+            )}
+          </Held>
+        </State>
+        <State label="Right-click: a staged file's">
+          <Held className="h-48 w-80">
+            {(box) => (
+              <ul className="w-80">
+                <FileRow file={file("src/upload/client.ts", "added", 21)} staged held={box} />
+              </ul>
+            )}
+          </Held>
         </State>
       </Row>
       <Row name="More Actions: a session">
@@ -143,11 +206,6 @@ export function SourceGallery() {
         <Confirm label="Runs, a failure in red" tall>
           {(held) => <GitOutputDialog runs={GIT_RUNS} held={held} onClose={noop} />}
         </Confirm>
-      </Row>
-      <Row name="Old app">
-        <OldApp page="source-panel" />
-        <OldApp page="source-menu" />
-        <OldApp page="source-rebase" />
       </Row>
     </Section>
   );

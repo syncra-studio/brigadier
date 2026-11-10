@@ -1,12 +1,13 @@
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, MenuRow } from "../../components/menu";
 import { Check, PullRequestOpen, Publish, Sparkles } from "../../icons";
 import type { MergeStyle, Step } from "../types";
+import { plural } from "../words";
 
 /** What a pick in the action button's menu asks for; until it's wired, each is a no-op. */
 export type ActionPick =
   | "commit" | "amend" | "commitPush" | "commitSync" | "commitMerge" | "commitPr"
   | "createPr" | "pushBranch" | "catchUp" | "catchUpMerge" | "catchUpRebase" | "catchUpAgent"
-  | "resolveAgent" | "abortCatchUp" | "mergeLocally" | "forcePush";
+  | "continue" | "abortCatchUp" | "mergeLocally" | "forcePush" | "fixChecks" | "fixComments" | "fixConflicts" | "fixAll";
 
 /** Each step's menu: every other way on from here [D1008, D1015, D1028]. Landed has none. */
 export function hasActionMenu(step: Step): boolean {
@@ -87,10 +88,15 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
       );
       break;
     case "continue":
+      // The button resolves with the agent while conflicts are left; Continue waits here until none are [D1093].
       items = (
         <>
-          <DropdownMenuItem onClick={pick("resolveAgent")}><MenuRow icon={<Sparkles />} title="Resolve with agent" /></DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {step.left > 0 && (
+            <>
+              <DropdownMenuItem disabled>Continue · {plural(step.left, "conflict")} left</DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={pick("abortCatchUp")}>Abort catching up</DropdownMenuItem>
         </>
       );
@@ -105,8 +111,21 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, onMer
         </>
       );
       break;
-    case "pushPr":
     case "fixPr":
+      // Each only leaves a chip above the composer [D1019, D1076].
+      items = (
+        <>
+          <DropdownMenuLabel>Fix with agent</DropdownMenuLabel>
+          <DropdownMenuItem onClick={pick("fixChecks")}><MenuRow icon={<Sparkles />} title="Failing checks" /></DropdownMenuItem>
+          <DropdownMenuItem onClick={pick("fixComments")}><MenuRow icon={<Sparkles />} title="Comments" /></DropdownMenuItem>
+          <DropdownMenuItem onClick={pick("fixConflicts")}><MenuRow icon={<Sparkles />} title="Conflicts" /></DropdownMenuItem>
+          <DropdownMenuItem onClick={pick("fixAll")}><MenuRow icon={<Sparkles />} title="Everything" /></DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>
+        </>
+      );
+      break;
+    case "pushPr":
       items = <DropdownMenuItem onClick={pick("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>;
       break;
     case "landed":
