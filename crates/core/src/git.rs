@@ -1,0 +1,257 @@
+//! A checkout's git state for the right panel [D30, D71]: which checkout a session or project
+//! works in, its status, a lock per checkout, and paths kept inside it. Git itself does the work,
+//! as the old app's `crates/git` did.
+
+use crate::adapters::setup;
+use crate::{check_id, load, projects, session_dir, worktrees};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::fs::{self, File, TryLockError};
+use std::io;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
+
+pub mod watch;
+
+/// Proposed: a read gives up after this, so a hung git never holds its watch.
+const READ_SECS: u64 = 30;
+/// How often a wait for the lock looks again, and at `stop`.
+const STEP: Duration = Duration::from_millis(20);
+
+fn err<T>(message: impl Into<String>) -> io::Result<T> {
+    Err(io::Error::other(message.into()))
+}
+
+pub enum Target<'a> {
+    Session(&'a str),
+    Project(&'a str),
+}
+
+/// One checkout: its top folder and its own git folder, both canonical.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Checkout {
+    pub root: PathBuf,
+    pub git_dir: PathBuf,
+}
+
+/// The checkout a session or project works in, chosen here and never taken from a client: a
+/// session's own worktree, else its folder (Local checkout), or a project's folder [D160, D1039].
+/// An archived session's worktree is gone until restore, so it's not found [D180].
+pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
+    let folder = match target {
+        Target::Session(id) => {
+            check_id(id)?;
+            if worktrees::made(&session_dir(data, id)) {
+                worktrees::path(data, id)
+            } else {
+                PathBuf::from(load(data, id)?.cwd)
+            }
+        }
+        Target::Project(id) => PathBuf::from(projects::get(data, id)?.folder),
+    };
+    if !folder.is_dir() {
+        return Err(io::ErrorKind::NotFound.into());
+    }
+    let never = AtomicBool::new(false);
+    let out = read(
+        &folder,
+        &["rev-parse", "--show-toplevel", "--absolute-git-dir"],
+        &never,
+    )?;
+    let text = String::from_utf8(out).map_err(io::Error::other)?;
+    match text.lines().collect::<Vec<_>>()[..] {
+        [root, git_dir] => Ok(Checkout {
+            root: fs::canonicalize(root)?,
+            git_dir: fs::canonicalize(git_dir)?,
+        }),
+        _ => err(format!("{} isn't a git checkout", folder.display())),
+    }
+}
+
+/// A read-only git in `dir`, ended early by `stop`: it takes no optional lock (so never the index
+/// lock from under the agent's own git), and paths are read literally, never as patterns.
+pub(crate) fn read(dir: &Path, args: &[&str], stop: &AtomicBool) -> io::Result<Vec<u8>> {
+    let mut command = worktrees::command(dir);
+    command
+        .env("GIT_LITERAL_PATHSPECS", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .args(args);
+    let out = setup::run_until(&mut command, READ_SECS, stop).map_err(io::Error::other)?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return err(format!("git {}: {why}", args.join(" ")));
+    }
+    Ok(out.stdout)
+}
+
+/// The checkout's lock [D1060]: an flock on its own git folder, so it makes no file of its own.
+/// Reads take it shared and writes exclusive. It waits in steps, so `stop` ends the wait.
+pub fn lock(checkout: &Checkout, exclusive: bool, stop: &AtomicBool) -> io::Result<File> {
+    let file = File::open(&checkout.git_dir)?;
+    loop {
+        let got = match exclusive {
+            true => file.try_lock(),
+            false => file.try_lock_shared(),
+        };
+        match got {
+            Ok(()) => return Ok(file),
+            Err(TryLockError::WouldBlock) if !stop.load(Ordering::SeqCst) => thread::sleep(STEP),
+            Err(TryLockError::WouldBlock) => return err("stopped"),
+            Err(TryLockError::Error(e)) => return Err(e),
+        }
+    }
+}
+
+/// `rel` as a path in the checkout, refused unless it's a plain relative path (no `.`, `..` or
+/// `.git` part) that, links followed as far as it exists, stays inside and out of `.git`.
+pub fn inside(checkout: &Checkout, rel: &str) -> io::Result<PathBuf> {
+    let refused = || err(format!("not a path in the checkout: {rel:?}"));
+    if rel.contains(['\0', '\\'])
+        || rel
+            .split('/')
+            .any(|part| matches!(part, "" | "." | ".." | ".git"))
+    {
+        return refused();
+    }
+    let full = checkout.root.join(rel);
+    let existing = full.ancestors().find(|p| p.exists()).unwrap_or(&full);
+    let resolved = fs::canonicalize(existing)?;
+    match resolved.strip_prefix(&checkout.root) {
+        Ok(under) if !under.components().any(|c| c.as_os_str() == ".git") => Ok(full),
+        _ => refused(),
+    }
+}
+
+/// A checkout's status as the panel shows it: `head` is the branch line and the count, `files`
+/// one entry per changed path, which is its id [D30, D65]. Rust sends structure; the UI writes the
+/// words and letters.
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Status {
+    pub head: Value,
+    pub files: BTreeMap<String, Value>,
+}
+
+impl Status {
+    pub fn json(&self) -> Value {
+        json!({"head": self.head, "files": self.files.values().collect::<Vec<_>>()})
+    }
+
+    /// What changed from `old`, as one push: the head whole, the files new or changed by path,
+    /// and the paths no longer changed. None when nothing did.
+    pub fn delta(&self, old: &Status) -> Option<Value> {
+        let files: Vec<&Value> = (self.files.iter())
+            .filter(|(path, entry)| old.files.get(*path) != Some(entry))
+            .map(|(_, entry)| entry)
+            .collect();
+        let gone: Vec<&String> = (old.files.keys())
+            .filter(|path| !self.files.contains_key(*path))
+            .collect();
+        (self.head != old.head || !files.is_empty() || !gone.is_empty())
+            .then(|| json!({"head": self.head, "files": files, "gone": gone}))
+    }
+}
+
+/// The checkout's status from one `git status`, taken under its shared lock so it never reads half
+/// of one of our own writes.
+// shortcut: a huge untracked list (an unignored node_modules) is read and sent whole; cap it when
+// that shows up.
+pub fn status(checkout: &Checkout, stop: &AtomicBool) -> io::Result<Status> {
+    let _shared = lock(checkout, false, stop)?;
+    let out = read(
+        &checkout.root,
+        &[
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--branch",
+            "--untracked-files=all",
+        ],
+        stop,
+    )?;
+    parse(&checkout.root, &out)
+}
+
+/// `git status --porcelain=v2 -z --branch`, taken from the old app's `source_changes`: the index
+/// code (X) is the staged side, the files code (Y) the other; an unmerged entry is conflicted.
+fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
+    let text = std::str::from_utf8(bytes).map_err(|_| io::Error::other("non-UTF-8 git output"))?;
+    let bad = |record: &str| io::Error::other(format!("unexpected git status line {record:?}"));
+    let (mut head, mut files) = (
+        json!({"branch": null, "head": null, "upstream": null,
+        "ahead": 0, "behind": 0}),
+        BTreeMap::new(),
+    );
+    let mut records = text.split('\0').filter(|r| !r.is_empty());
+    while let Some(record) = records.next() {
+        if let Some(header) = record.strip_prefix("# ") {
+            let (key, value) = header.split_once(' ').unwrap_or((header, ""));
+            match key {
+                "branch.oid" if value != "(initial)" => head["head"] = value.into(),
+                "branch.head" if value != "(detached)" => head["branch"] = value.into(),
+                "branch.upstream" => head["upstream"] = value.into(),
+                "branch.ab" => {
+                    let mut counts = value
+                        .split(' ')
+                        .map(|c| c.get(1..).and_then(|n| n.parse::<u64>().ok()));
+                    head["ahead"] = counts.next().flatten().ok_or_else(|| bad(record))?.into();
+                    head["behind"] = counts.next().flatten().ok_or_else(|| bad(record))?.into();
+                }
+                _ => {}
+            }
+            continue;
+        }
+        let (path, old, staged, changes) = match record.as_bytes()[0] {
+            b'!' => continue,
+            b'?' => (&record[2..], None, None, Some("untracked")),
+            kind @ (b'1' | b'2' | b'u') => {
+                let count = match kind {
+                    b'1' => 9,
+                    b'2' => 10,
+                    _ => 11,
+                };
+                let parts: Vec<&str> = record.splitn(count, ' ').collect();
+                if parts.len() != count || parts[1].len() != 2 {
+                    return Err(bad(record));
+                }
+                let old = match kind {
+                    b'2' => Some(records.next().ok_or_else(|| bad(record))?),
+                    _ => None,
+                };
+                let side = |code: u8| match code {
+                    b'.' => Ok(None),
+                    b'M' => Ok(Some("modified")),
+                    b'A' => Ok(Some("added")),
+                    b'D' => Ok(Some("deleted")),
+                    b'R' => Ok(Some("renamed")),
+                    b'C' => Ok(Some("copied")),
+                    b'T' => Ok(Some("typechange")),
+                    _ => Err(bad(record)),
+                };
+                let codes = parts[1].as_bytes();
+                match kind {
+                    b'u' => (parts[count - 1], None, None, Some("conflicted")),
+                    _ => (parts[count - 1], old, side(codes[0])?, side(codes[1])?),
+                }
+            }
+            _ => return Err(bad(record)),
+        };
+        files.insert(
+            path.to_string(),
+            json!({"path": path, "old": old, "staged": staged,
+            "changes": changes, "stamp": stamp(&root.join(path))}),
+        );
+    }
+    head["count"] = files.len().into();
+    Ok(Status { head, files })
+}
+
+/// When the file was last written and its size: an edit to a file already changed shows here,
+/// though its status doesn't, so a viewer or diff knows to read it again [D30]. None once gone.
+fn stamp(path: &Path) -> Value {
+    fs::symlink_metadata(path).map_or(Value::Null, |m| {
+        format!("{}.{:09}:{}", m.mtime(), m.mtime_nsec(), m.size()).into()
+    })
+}

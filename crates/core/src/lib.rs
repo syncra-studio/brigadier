@@ -4,6 +4,7 @@
 mod account;
 pub mod adapters;
 pub mod fold;
+pub mod git;
 pub mod norm;
 pub mod projects;
 pub mod repos;
