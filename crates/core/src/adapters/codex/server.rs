@@ -338,6 +338,9 @@ fn notification(state: &Shared, v: &mut Value) {
         }
         "item/completed" => drop(st.items.remove(p["item"]["id"].as_str().unwrap_or(""))),
         "thread/tokenUsage/updated"
+        | "error"
+        | "model/rerouted"
+        | "model/safetyBuffering/updated"
         | "item/started"
         | "item/autoApprovalReview/started"
         | "item/autoApprovalReview/completed" => {}

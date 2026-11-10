@@ -210,6 +210,44 @@ impl Thread {
                 self.limit_row = Some(at);
                 self.reset_at = item["resets"].as_u64();
             }
+            "rerouted" => {
+                self.break_group();
+                self.add(json!({"kind": "line", "reason": "model", "why": "rerouted",
+                    "from": item["from"], "to": item["to"]}));
+            }
+            "denied" => {
+                if let Some(o) = self.open.as_mut() {
+                    o.denied += 1;
+                }
+            }
+            // A failed turn: its line in the thread, and what it means on the composer's rail [D487].
+            "failed" => {
+                self.break_group();
+                let why = item["why"].as_str().unwrap_or("");
+                match why {
+                    "review" => self.add(json!({"kind": "line", "reason": "review-ended"})),
+                    "blocked" => self.add(
+                        json!({"kind": "notice", "reason": "blocked", "text": item["message"]}),
+                    ),
+                    _ => self
+                        .add(json!({"kind": "notice", "level": "error", "text": item["message"]})),
+                };
+                let reason = match why {
+                    "model" => "model-unavailable",
+                    "ended" => "ended-for-safety",
+                    "blocked" | "review" => return,
+                    _ => "turn-failed",
+                };
+                let cause = if why == "capacity" {
+                    json!("capacity")
+                } else {
+                    Value::Null
+                };
+                self.notices
+                    .push(json!({"id": format!("{turn}:{reason}"), "reason": reason,
+                    "cause": cause, "text": item["message"], "turnId": turn}));
+                self.notices_changed = true;
+            }
             "sign_in" => {
                 self.break_group();
                 self.add(json!({"kind": "notice", "reason": "sign-in", "text": item["message"]}));

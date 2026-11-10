@@ -240,6 +240,21 @@ impl Adapter for Claude {
                     ..Default::default()
                 })]
             }
+            // Its own retries, its reroute past a refusal, a reply withheld, an action its rule turned
+            // down: as its SDK types them [D487].
+            ("system", "api_retry") => vec![Event::Retrying {
+                attempt: v["attempt"].as_u64(),
+                max: v["max_retries"].as_u64(),
+                at: None,
+            }],
+            ("system", "model_refusal_fallback") => vec![Event::Rerouted(
+                v["original_model"].as_str().map(String::from),
+                s(&v, &["fallback_model"]).into(),
+            )],
+            ("system", "model_refusal_no_fallback") => {
+                vec![Event::Failed("blocked", s(&v, &["content"]).into())]
+            }
+            ("system", "permission_denied") => vec![Event::Denied],
             ("system", _) | ("stream_event", _) => vec![],
             ("assistant", _) => blocks()
                 .iter()
@@ -274,7 +289,19 @@ impl Adapter for Claude {
             ("result", _) => {
                 let mut events = vec![Event::Usage(v["usage"].clone())];
                 if v["is_error"].as_bool() == Some(true) {
-                    events.extend(classify(&format!("{} {}", s(&v, &["result"]), v["errors"])));
+                    let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
+                    events.push(classify(&said).unwrap_or_else(|| {
+                        let cause = match () {
+                            _ if v["api_error_status"] == 529 => "capacity",
+                            _ if v["terminal_reason"] == "model_error" => "model",
+                            _ => "",
+                        };
+                        let text = match s(&v, &["result"]) {
+                            "" => v["errors"].to_string(),
+                            text => text.into(),
+                        };
+                        Event::Failed(cause, text)
+                    }));
                 }
                 events.push(Event::TurnEnd(v["is_error"].as_bool() != Some(true)));
                 events

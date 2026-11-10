@@ -24,6 +24,16 @@ pub fn events(v: &Value) -> Vec<Event> {
         }
         "thread/tokenUsage/updated" => vec![Event::Usage(snake_keys(&p["tokenUsage"]["last"]))],
         "serverRequest/resolved" => vec![Event::Resolved(s(p, &["requestId"]).into())],
+        // A transient error it retries by itself; one it won't retry ends the turn [D487].
+        "error" if p["willRetry"] == true => vec![retrying(s(p, &["error", "message"]))],
+        "model/rerouted" => vec![Event::Rerouted(
+            p["fromModel"].as_str().map(String::from),
+            s(p, &["toModel"]).into(),
+        )],
+        "model/safetyBuffering/updated" => vec![Event::Checking(p["showBufferingUi"] == true)],
+        "item/autoApprovalReview/completed" if p["review"]["status"] == "denied" => {
+            vec![Event::Denied]
+        }
         "item/commandExecution/requestApproval" => vec![command(v)],
         "item/fileChange/requestApproval" => vec![edit(v)],
         "item/permissions/requestApproval" => vec![permissions(v)],
@@ -56,7 +66,7 @@ fn completed(p: &Value) -> Vec<Event> {
         } else if s(turn, &["error", "codexErrorInfo"]) == "unauthorized" {
             Event::SignIn(message.into())
         } else {
-            refused(message).unwrap_or(Event::Unknown(message.into()))
+            refused(message).unwrap_or_else(|| Event::Failed(cause(turn), message.into()))
         });
     }
     if status == "completed" {
@@ -68,6 +78,31 @@ fn completed(p: &Value) -> Vec<Event> {
     }
     events.push(Event::TurnEnd(status == "completed"));
     events
+}
+
+/// What its error info says a failed turn hit, as Brigadier's causes [D487].
+fn cause(turn: &Value) -> &'static str {
+    match s(turn, &["error", "codexErrorInfo"]) {
+        "serverOverloaded" => "capacity",
+        "modelNotFound" => "model",
+        "cyberPolicy" => "blocked",
+        "misalignmentPolicyViolation" => "ended",
+        "tooManyDenials" => "review",
+        _ => "",
+    }
+}
+
+/// Its retry as it words it, "Reconnecting... 2/5", which its own TUI reads the same way; a retry
+/// worded otherwise has no count [D74].
+fn retrying(message: &str) -> Event {
+    let count = message.rsplit(' ').next().and_then(|c| c.split_once('/'));
+    let n = |x: &str| x.parse::<u64>().ok();
+    let (attempt, max) = count.map_or((None, None), |(a, m)| (n(a), n(m)));
+    Event::Retrying {
+        attempt,
+        max,
+        at: None,
+    }
 }
 
 fn snake_keys(v: &Value) -> Value {

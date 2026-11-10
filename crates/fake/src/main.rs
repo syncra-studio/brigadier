@@ -294,6 +294,36 @@ impl Agent {
                 return false;
             }
             "compact" => emit(json!({"t": "compact"})),
+            // The notices' signals [D487]: its own retries, a reroute, a turn failing for a cause,
+            // a reply held for checks, an action its rule turned down.
+            "retry" => {
+                for attempt in 1..=n.max(1) {
+                    emit(
+                        json!({"t": "retry", "attempt": attempt, "max": n.max(1), "at": now() + 2_000}),
+                    );
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
+            "reroute" => emit(json!({"t": "reroute", "from": "fake-large", "to": "fake-small"})),
+            "check" => {
+                emit(json!({"t": "check", "on": true}));
+                thread::sleep(Duration::from_secs(n.max(1)));
+                emit(json!({"t": "check", "on": false}));
+            }
+            "deny" => emit(json!({"t": "deny"})),
+            why @ ("overload" | "nomodel" | "blocked" | "unsafe" | "review" | "fail") => {
+                let (why, message) = match why {
+                    "overload" => ("capacity", "The model is overloaded (529)."),
+                    "nomodel" => ("model", "Model fake-large not found."),
+                    "blocked" => ("blocked", "The reply was withheld by a content filter."),
+                    "unsafe" => ("ended", "This conversation was ended by a safety check."),
+                    "review" => ("review", "Too many actions were denied."),
+                    _ => ("", "The agent stopped: its connection closed."),
+                };
+                emit(json!({"t": "fail", "why": why, "message": message}));
+                emit(json!({"t": "done", "ok": false}));
+                return false;
+            }
             "unknown" => {
                 emit(json!({"t": "mystery", "x": 1}));
                 out(b"garbage <<<");

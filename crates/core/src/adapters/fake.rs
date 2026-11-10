@@ -165,6 +165,28 @@ impl Adapter for Fake {
                 "reason": null, "command": v["command"], "grant": {"scope": "command", "pattern": v["pattern"]}}))],
             "resolved" => vec![Event::Resolved(s(&v, &["id"]).into())],
             "compact" => vec![Event::Compaction("done")],
+            "retry" => vec![Event::Retrying {
+                attempt: v["attempt"].as_u64(),
+                max: v["max"].as_u64(),
+                at: v["at"].as_u64(),
+            }],
+            "reroute" => vec![Event::Rerouted(
+                v["from"].as_str().map(String::from),
+                s(&v, &["to"]).into(),
+            )],
+            "check" => vec![Event::Checking(v["on"] == true)],
+            "deny" => vec![Event::Denied],
+            "fail" => vec![Event::Failed(
+                match s(&v, &["why"]) {
+                    "capacity" => "capacity",
+                    "model" => "model",
+                    "blocked" => "blocked",
+                    "ended" => "ended",
+                    "review" => "review",
+                    _ => "",
+                },
+                s(&v, &["message"]).into(),
+            )],
             "error" => vec![
                 match super::classify(&format!("{} {}", v["code"], s(&v, &["message"]))) {
                     Some(Event::Limited(m, _)) => Event::Limited(m, v["resets"].as_u64()),

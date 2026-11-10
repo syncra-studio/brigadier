@@ -35,6 +35,8 @@ struct Open {
     waited: u64,
     /// `n` of its question rows: they stay out of its work fold, like the user's own messages [D99].
     kept: Vec<u64>,
+    /// Actions the CLI's own rule or reviewer turned down in it, with nobody asked [D487].
+    denied: usize,
 }
 
 #[derive(Default)]
@@ -61,6 +63,9 @@ pub struct Thread {
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
     ran: Option<(String, String)>,
+    /// What the composer's rail says about the last turn's failure, and whether that changed [D487].
+    notices: Vec<Value>,
+    notices_changed: bool,
     /// Rows of the requests still waiting on the user, oldest first, and whether that changed.
     pending: Vec<usize>,
     pending_changed: bool,
@@ -232,7 +237,13 @@ impl Thread {
             wait: None,
             waited: 0,
             kept: vec![],
+            denied: 0,
         });
+        // The rail's notices are about the last turn's failure: the next turn ends them (proposed).
+        if !self.notices.is_empty() {
+            self.notices.clear();
+            self.notices_changed = true;
+        }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
         let model = self
             .fold
@@ -335,7 +346,8 @@ impl Thread {
                 // Its actions turned down, counted beside the time [D487].
                 let denied = (self.items[o.from..].iter())
                     .filter(|r| r["kind"] == "approval" && r["decision"] == "denied")
-                    .count();
+                    .count()
+                    + o.denied;
                 self.work.push(
                     json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1],
                     "kept": kept, "denied": denied}),
@@ -455,12 +467,16 @@ impl Thread {
             out["setup"] = self.setup.clone();
         }
         let points_changed = self.send_points(&mut out);
+        let notices_changed = std::mem::take(&mut self.notices_changed);
+        if notices_changed {
+            out["notices"] = self.notices.clone().into();
+        }
         // What waits on the user goes whole whenever it changed, to replace what the view holds.
         if std::mem::take(&mut self.pending_changed) {
             for (k, v) in self.requests().as_object().unwrap() {
                 out[k] = v.clone();
             }
-        } else if quiet && !setup_changed && !points_changed {
+        } else if quiet && !setup_changed && !points_changed && !notices_changed {
             return None;
         }
         Some(out)
@@ -475,6 +491,7 @@ impl Thread {
         page["title"] = title.into();
         page["setup"] = self.setup.clone();
         page["rewind"] = self.fold.points().into();
+        page["notices"] = self.notices.clone().into();
         for (k, v) in self.requests().as_object().unwrap() {
             page[k] = v.clone();
         }

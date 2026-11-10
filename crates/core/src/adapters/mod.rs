@@ -70,6 +70,23 @@ pub enum Event {
     Answer(String, Option<String>),
     /// "running" or "done".
     Compaction(&'static str),
+    /// The CLI tries a request again by itself: which try, of how many, and when the next goes (ms),
+    /// each where it says [D487].
+    Retrying {
+        attempt: Option<u64>,
+        max: Option<u64>,
+        at: Option<u64>,
+    },
+    /// The CLI ran this request on another model than the one asked: from (where it says), to [D487].
+    Rerouted(Option<String>, String),
+    /// A failed turn's error, with its cause where the CLI says it as structure [D487]: "capacity",
+    /// "model" (not available), "blocked" (a reply withheld), "ended" (the conversation can't go
+    /// on), "review" (its own reviewer ended the turn); "" for any other.
+    Failed(&'static str, String),
+    /// The CLI holds its reply for extra safety checks (true), or let it go (false) [D487].
+    Checking(bool),
+    /// An action the CLI's own rule or reviewer turned down, with nobody asked [D487].
+    Denied,
     Usage(Value),
     /// Where this turn sits in the CLI's own record, for a later cut: its first entry and its
     /// latest, as far as this line says.

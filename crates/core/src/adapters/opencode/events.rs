@@ -17,6 +17,20 @@ pub fn refusal(error: &Value) -> Option<Event> {
     })
 }
 
+/// A failed turn's error, with the cause its type names [D487]; its words, not its JSON.
+fn failed(error: &Value) -> Event {
+    let cause = match s(error, &["type"]) {
+        "provider.internal" if matches!(error["status"].as_u64(), Some(503 | 529)) => "capacity",
+        "provider.no-route" => "model",
+        "provider.content-filter" => "blocked",
+        _ => "",
+    };
+    let said = error["message"]
+        .as_str()
+        .map_or_else(|| error.to_string(), String::from);
+    Event::Failed(cause, said)
+}
+
 /// A line from the helper: the server's event, or the result of a request it sent. None: a line
 /// of `run`.
 pub fn server(v: &Value) -> Option<Vec<Event>> {
@@ -71,10 +85,16 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
                     Event::Limited(m, after.zip(v["created"].as_u64()).map(|(a, at)| at + a))
                 }
                 Some(e) => e,
-                None => Event::Unknown(v.to_string()),
+                None => failed(&d["error"]),
             };
             vec![said, Event::TurnEnd(false)]
         }
+        // Its own retry: which try and when the next goes; it says no most [D487].
+        "session.retry.scheduled" => vec![Event::Retrying {
+            attempt: d["attempt"].as_u64(),
+            max: None,
+            at: d["at"].as_u64(),
+        }],
         "session.text.ended" => vec![Event::Text(id("text"))],
         "session.reasoning.ended" if !id("text").is_empty() => vec![Event::Reasoning(id("text"))],
         "session.tool.called" | "session.tool.success" | "session.tool.failed" => {

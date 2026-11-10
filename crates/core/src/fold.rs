@@ -55,6 +55,12 @@ pub struct Turn {
     pub start: Option<String>,
     #[serde(default)]
     pub end: Option<String>,
+    /// The CLI's own retry, as logged with its time: shown while nothing came after it [D487].
+    #[serde(default)]
+    pub retry: Value,
+    /// The CLI holds its reply for extra safety checks, until it says it let it go [D487].
+    #[serde(default)]
+    pub checking: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -232,6 +238,11 @@ impl Fold {
                 | "resolved"
                 | "reasoning"
                 | "compaction"
+                | "retrying"
+                | "checking"
+                | "rerouted"
+                | "failed"
+                | "denied"
         ) {
             self.last_out = ts;
             if let Some(t) = self.turns.first_mut() {
@@ -239,6 +250,16 @@ impl Fold {
             }
         }
         match kind {
+            "retrying" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.retry = json!({"attempt": item["attempt"], "max": item["max"], "at": item["at"], "ts": ts});
+                }
+            }
+            "checking" | "text" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.checking = item["on"] == true;
+                }
+            }
             "input" => {
                 let cid = str_of("cid");
                 *self.cids.entry(cid.clone()).or_default() += 1;

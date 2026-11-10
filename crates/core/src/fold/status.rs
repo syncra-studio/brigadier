@@ -89,7 +89,9 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         .unwrap_or(0);
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
-        "logged" | "starting" | "working" | "silent" | "idle_jobs" => Some("working"),
+        "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking" => {
+            Some("working")
+        }
         "limited" | "out_of_credits" | "unresumable"
             if auto && live.now.saturating_sub(ended) < SWITCH_GRACE_MS =>
         {
@@ -180,6 +182,16 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     }
     if let Some(id) = turn.asks.keys().next() {
         return ("waiting_answer", serde_json::json!({"approval": id}));
+    }
+    // The CLI's own retry while nothing came after it, and its safety hold, say so [D487].
+    if turn.retry["ts"]
+        .as_u64()
+        .is_some_and(|t| t >= fold.last_out)
+    {
+        return ("retrying", turn.retry.clone());
+    }
+    if turn.checking {
+        return ("checking", Value::Null);
     }
     let silence = live.now.saturating_sub(fold.last_out.max(delivered));
     if !turn.began {

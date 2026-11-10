@@ -232,6 +232,13 @@ impl Norm {
                 Event::Compaction(progress) => json!({"kind": "compaction", "progress": progress}),
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
                 Event::Mark { start, end } => json!({"kind": "mark", "start": start, "end": end}),
+                Event::Retrying { attempt, max, at } => {
+                    json!({"kind": "retrying", "attempt": attempt, "max": max, "at": at})
+                }
+                Event::Rerouted(from, to) => json!({"kind": "rerouted", "from": from, "to": to}),
+                Event::Failed(why, m) => json!({"kind": "failed", "why": why, "message": m}),
+                Event::Checking(on) => json!({"kind": "checking", "on": on}),
+                Event::Denied => json!({"kind": "denied"}),
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
             };
             items.push(item);
