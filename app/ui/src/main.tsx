@@ -9,7 +9,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingThread, useStartShown } from "./home/home";
-import { newSession, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, useStart, useStartingRows } from "./home/start";
 import { Key } from "./icons";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
@@ -103,6 +103,7 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
           // ⌘N's too: Home in the open session's project [D184].
           onNewSession={() => newSession(rows?.find((row) => row.id === active)?.project)}
+          onNewChat={newChat}
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>

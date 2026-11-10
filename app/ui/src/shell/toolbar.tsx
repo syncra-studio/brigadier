@@ -1,15 +1,18 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
+import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Dock, SidebarFloatingLeft, Tasks } from "../icons";
-import { openTab } from "./tab-store";
+import { justStarted, useHomeDraft } from "../home/start";
+import { SidebarFloatingLeft, Tasks } from "../icons";
+import { useProjects } from "../projects/projects";
+import { HOME } from "./tab-store";
 
 /** A control whose feature isn't built yet [D388]: drawn and named only. A disabled button hears no pointer, so its tip hangs on what holds it. */
-function Drawn({ tooltip, children }: { tooltip: string; children: ReactNode }) {
+function Drawn({ tooltip, className, children }: { tooltip: string; className?: string | false; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="app-no-drag flex" />}>
+      <TooltipTrigger render={<span className={cx("app-no-drag flex", className)} />}>
         <TooltipIconButton look="toolbar" tip={false} tooltip={tooltip} disabled>
           {children}
         </TooltipIconButton>
@@ -19,21 +22,31 @@ function Drawn({ tooltip, children }: { tooltip: string; children: ReactNode }) 
   );
 }
 
-/** One toolbar for Home, chats and sessions, in the old app's order [D360]. */
-export function Toolbar({ owner, archived }: { owner: string; archived: boolean }) {
+/**
+ * One toolbar for Home, chats and sessions, in the old app's order [D360]; terminals are tabs only [D418]. Context
+ * waits for the first message [D420], and Home's new chat, in no project, has no right panel [D421]. What the first
+ * message brings fades in; opening a session that has them shows them at once.
+ */
+export function Toolbar({ owner }: { owner: string }) {
+  const home = owner === HOME;
+  const draft = useHomeDraft();
+  const projects = useProjects();
+  const [fresh] = useState(() => justStarted(owner));
+  const enter = fresh && "motion-safe:animate-fade-in";
+  const panel = !home || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
   return (
     <TitlebarTips>
-      <Drawn tooltip="Context">
-        <Tasks />
-      </Drawn>
-      {/* Proposed: with no bottom panel [D360], this opens a Terminal tab rather than toggling one. */}
-      <TooltipIconButton look="toolbar" tooltip="Terminal" shortcut="⌘J" className="app-no-drag" disabled={archived} onClick={() => openTab(owner, "terminal")}>
-        <Dock />
-      </TooltipIconButton>
+      {!home && (
+        <Drawn tooltip="Context" className={enter}>
+          <Tasks />
+        </Drawn>
+      )}
       {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}
-      <Drawn tooltip="Right sidebar">
-        <SidebarFloatingLeft className="-scale-x-100" />
-      </Drawn>
+      {panel && (
+        <Drawn tooltip="Right sidebar" className={enter}>
+          <SidebarFloatingLeft className="-scale-x-100" />
+        </Drawn>
+      )}
     </TitlebarTips>
   );
 }

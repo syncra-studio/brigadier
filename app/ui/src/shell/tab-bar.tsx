@@ -367,7 +367,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       )}
       <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
       <span aria-hidden data-hidden={!full || undefined} className="mx-0.5 h-4 w-px shrink-0 bg-fill transition-opacity data-hidden:opacity-0 motion-reduce:transition-none" />
-      <Toolbar owner={owner} archived={archived} />
+      <Toolbar owner={owner} />
     </header>
   );
 }

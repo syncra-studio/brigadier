@@ -50,6 +50,13 @@ export function newSession(project?: string | null): void {
   window.location.hash = "";
 }
 
+/** Home in no project, from the sidebar's New session: a new chat [D421]. */
+export function newChat(): void {
+  setHomeDraft({ chat: true, focus: draft.get().focus + 1 });
+  selectTab(HOME_DRAFT, CHAT);
+  window.location.hash = "";
+}
+
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */
 export type Starting = {
   id: string;
@@ -198,6 +205,9 @@ export function useStartingRows(open: string | null): Row[] | undefined {
     })),
   ];
 }
+
+/** Whether session `id` was just started from Home and Rust's row hasn't taken over yet. */
+export const justStarted = (id: string): boolean => Boolean(get(id));
 
 /** The start of session `id` from Home, while it has anything to show. */
 export const useStart = (id: string): Starting | undefined => starting.use().get(id);

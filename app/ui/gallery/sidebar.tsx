@@ -65,6 +65,7 @@ function Demo({ storeKey, rows, offline = false }: { storeKey: string; rows: Ses
           offline={offline}
           onOpen={setActive}
           onNewSession={() => setActive(null)}
+          onNewChat={() => setActive(null)}
           storeKey={storeKey}
         />
         <div className="flex flex-1 p-4 pt-titlebar text-sm text-muted-foreground">{active === null ? "Home" : `Session ${active}`}</div>

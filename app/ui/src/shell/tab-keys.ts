@@ -20,7 +20,7 @@ export function useTabKeys(owner: string, archived: boolean): void {
       else if (command && !alt && shift && code === "KeyT") run = () => reopenTab(owner);
       else if (command && !alt && shift && (code === "BracketLeft" || code === "BracketRight")) run = () => stepTab(owner, code === "BracketLeft" ? -1 : 1);
       else if (command && !alt && !shift && code === "KeyT") run = () => openTab(owner, "new");
-      // Proposed: with no bottom panel [D360], ⌘J opens a Terminal tab.
+      // ⌘J opens a Terminal tab, on Home, in a chat and in a session [D428]; there is no bottom panel [D360].
       else if (command && !alt && !shift && code === "KeyJ") run = () => !archived && openTab(owner, "terminal");
       else if (command && !alt && !shift && digit) run = () => selectNumber(owner, Number(digit[1]));
       if (!run) return;

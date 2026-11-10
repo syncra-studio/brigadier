@@ -59,6 +59,7 @@ export function AppSidebar({
   offline,
   onOpen,
   onNewSession,
+  onNewChat,
   foot,
   storeKey = "sidebar",
 }: {
@@ -72,6 +73,8 @@ export function AppSidebar({
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
+  /** The New session row and the strip's: Home in no project, a new chat [D421]. */
+  onNewChat: () => void;
   /** Given the strip's Archived icon, which only the sidebar has the rows for. */
   foot?: (archived: ReactNode) => ReactNode;
   /** Where its view is kept; the gallery's demos keep theirs apart. */
@@ -187,7 +190,7 @@ export function AppSidebar({
   return (
     <SidebarPanel
       strip={
-        <Strip onNewSession={onNewSession}>
+        <Strip onNewChat={onNewChat}>
           <ProjectsFlyout projects={byName} sessions={rest ?? []} {...listed} />
           <ChatsFlyout pinned={pinned} chats={homeless} {...listed} />
         </Strip>
@@ -216,7 +219,7 @@ export function AppSidebar({
       />
       <NavList className="mb-2 px-2">
         <li>
-          <NavRow data-active={home || undefined} onClick={onNewSession}>
+          <NavRow data-active={home || undefined} onClick={onNewChat}>
             <ComposeEditSquare />
             New session
           </NavRow>
@@ -363,7 +366,7 @@ function ProjectRow({
 }
 
 /** The collapsed strip: the mark, which peeks the panel and opens it, New session, Search and the lists (`children`). */
-function Strip({ onNewSession, children }: { onNewSession: () => void; children: ReactNode }) {
+function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   const { setOpen, peek } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-1 pt-2.75">
@@ -375,7 +378,7 @@ function Strip({ onNewSession, children }: { onNewSession: () => void; children:
           <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
         </TooltipIconButton>
       </div>
-      <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewSession}>
+      <TooltipIconButton tooltip="New session" look="strip" side="right" onClick={onNewChat}>
         <ComposeEditSquare />
       </TooltipIconButton>
       <TooltipIconButton tooltip="Search" shortcut="⌘K" look="strip" side="right" onClick={openSearch}>
