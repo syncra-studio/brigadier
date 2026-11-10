@@ -7,7 +7,7 @@ use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, branch, files, history, push::Rejected, recover, replace,
+    self, Checkout, Status, Target, branch, files, history, land, push::Rejected, recover, replace,
     search, sync, watch::Watch,
 };
 use serde_json::{Value, json};
@@ -265,6 +265,29 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 &stop,
             )?;
             done
+        }
+        // The action button's next step, and landing [D1015, D1028, D1049].
+        "step" => {
+            let step = land::step(data, &target, has(args, "--fresh"), &stop)?;
+            json!({"ok": true, "step": step})
+        }
+        "style" => {
+            land::set_style(data, &target, word(1)?)?;
+            done
+        }
+        "land" | "squash-message" => {
+            let Target::Session(id) = target else {
+                return Err(io::Error::other(super::USAGE));
+            };
+            match word(0)? {
+                "land" => {
+                    let at = (word(2)?, word(3)?);
+                    let landed =
+                        land::land(data, id, word(1)?, flag(args, "--message"), at, &stop)?;
+                    json!({"ok": true, "landed": landed})
+                }
+                _ => json!({"ok": true, "message": land::squash_message(data, id)?}),
+            }
         }
         _ => return Err(io::Error::other(super::USAGE)),
     })

@@ -35,6 +35,9 @@ pub struct Project {
     /// Set while Remove project runs: its sessions take no new work [D172, D179].
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub removing: bool,
+    /// How its sessions land, once picked: "merge" or "squash" [D1028].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merge: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -150,6 +153,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         include: vec![],
         added,
         removing: false,
+        merge: None,
     }
 }
 
@@ -347,6 +351,15 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
         Ok(p.clone())
     })?;
     Ok(project)
+}
+
+/// Remembers how the project's sessions land [D1028].
+pub fn set_merge(data: &Path, id: &str, style: &str) -> io::Result<()> {
+    change(data, |list| {
+        find(list, id)?.merge = Some(style.into());
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 /// One path to copy into worktrees, from the repository's top; never out of it.

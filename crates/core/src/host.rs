@@ -332,6 +332,12 @@ impl Pr {
         Some(list.iter().map(pr_row).collect())
     }
 
+    /// The branch's PRs, or None when gh can't say: what the action button's PR steps read [D1019].
+    pub fn list(&self) -> Option<Value> {
+        let gh = self.repo.as_ref().and_then(gh)?;
+        self.prs(&gh)
+    }
+
     /// The branch's open PR into the base, if any: how a create whose answer was lost is found.
     pub fn find(&self) -> io::Result<Value> {
         let Some((repo, gh)) = self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) else {
@@ -384,18 +390,21 @@ fn pr_row(pr: &Value) -> Value {
             })
         })
         .count();
-    let running = checks.iter().any(|c| {
-        let status = word(c, "status");
-        (!status.is_empty() && status != "COMPLETED")
-            || ["PENDING", "EXPECTED"].contains(&word(c, "state").as_str())
-    });
+    let running = (checks.iter())
+        .filter(|c| {
+            let status = word(c, "status");
+            (!status.is_empty() && status != "COMPLETED")
+                || ["PENDING", "EXPECTED"].contains(&word(c, "state").as_str())
+        })
+        .count();
+    let running = running.min(checks.len() - failed);
     let health = if failed > 0 {
         "failed"
     } else if pr["mergeable"] == "CONFLICTING" {
         "conflicts"
     } else if pr["reviewDecision"] == "CHANGES_REQUESTED" {
         "changes"
-    } else if running {
+    } else if running > 0 {
         "running"
     } else {
         "ready"
@@ -406,6 +415,19 @@ fn pr_row(pr: &Value) -> Value {
         "state": pr["state"].as_str().unwrap_or("OPEN").to_lowercase(),
         "health": health,
         "failed": failed,
+        // What Merge #N's confirm shows; nothing is guessed from what gh didn't say [D74, D1019].
+        "running": running,
+        "passed": checks.len() - failed - running,
+        "approved": match pr["reviewDecision"].as_str() {
+            Some("APPROVED") => json!(true),
+            Some("REVIEW_REQUIRED" | "CHANGES_REQUESTED") => json!(false),
+            _ => Value::Null,
+        },
+        "mergeable": match pr["mergeable"].as_str() {
+            Some("MERGEABLE") => json!(true),
+            Some("CONFLICTING") => json!(false),
+            _ => Value::Null,
+        },
     })
 }
 
