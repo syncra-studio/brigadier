@@ -3,8 +3,43 @@ import { type Key, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/button";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
-import type { SetupStep } from "../thread/item";
+import type { RailNotice, SetupStep } from "../thread/item";
+import { askModel } from "./model";
 import type { Source } from "../thread/thread";
+
+/** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. */
+function said(notice: RailNotice): Notice {
+  const tail = notice.text ? ` ${notice.text}` : "";
+  switch (notice.reason) {
+    case "turn-failed":
+      // shortcut: no Retry yet; it rewinds to the turn's message and resends it once rewind is on main (D492).
+      return notice.cause === "capacity"
+        ? { id: notice.id, level: "warning", text: `The model’s servers are busy, so this turn didn’t finish. Send it again in a moment.${tail}` }
+        : { id: notice.id, level: "error", text: `This turn didn’t finish.${tail}` };
+    case "model-unavailable":
+      return {
+        id: notice.id,
+        level: "warning",
+        text: `This model isn’t available.${tail}`,
+        action: (
+          <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => askModel.dispatchEvent(new Event("ask"))}>
+            Choose another model
+          </Button>
+        ),
+      };
+    case "ended-for-safety":
+      return {
+        id: notice.id,
+        level: "warning",
+        text: `A safety check ended this conversation, so it can’t go on.${tail}`,
+        action: (
+          <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => (window.location.hash = "#")}>
+            Start a new one
+          </Button>
+        ),
+      };
+  }
+}
 
 const STEP: Record<SetupStep["kind"], string> = { worktree: "the worktree", setupScript: "the setup script", cli: "the agent's install" };
 
@@ -17,7 +52,7 @@ export function SessionNotices({ id, offline, source }: { id: string; offline: b
   const thread = useThread();
   const session = useSyncExternalStore(source.subscribe, source.get);
   const [gone, setGone] = useState<ReadonlySet<Key>>(new Set());
-  const notices: Notice[] = [];
+  const notices: Notice[] = session?.id === id ? (session.notices ?? []).map(said) : [];
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });
   if (thread?.id === id && thread.status === "error") {

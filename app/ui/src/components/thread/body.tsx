@@ -6,7 +6,8 @@ import { duration } from "../../thread/words";
 import { describe } from "../composer/approval";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
-import { ChangeLine } from "./line";
+import { ShieldExclamation } from "../../icons";
+import { ChangeLine, InlineStatus } from "./line";
 import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./message";
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
@@ -94,6 +95,13 @@ export function Body({ item, turn, step, dated = false, actions = true }: { item
       return <CompactionDivider progress={item.progress} />;
     case "notice":
       if (!("reason" in item)) return <NoticeRow level={item.level} text={item.text} />;
+      if (item.reason === "blocked") {
+        return (
+          <InlineStatus icon={ShieldExclamation} tip={item.text || undefined}>
+            The agent’s safety checks held this reply back
+          </InlineStatus>
+        );
+      }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
       // Sign-in lives on the Accounts page today, the one the Settings gear opens [D347, D381].
       return (

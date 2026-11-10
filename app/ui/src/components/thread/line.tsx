@@ -28,12 +28,15 @@ export function ThreadLine({ icon: Glyph, tip, live, children }: { icon?: Icon; 
 }
 
 /** A status that may take two lines, between the same hairlines: an icon held to the first line, then the sentence. */
-export function InlineStatus({ icon: Glyph, children }: { icon: Icon; children: ReactNode }) {
+export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?: string; children: ReactNode }) {
   return (
     <LabeledDivider role="status">
       <span className="flex max-w-4/5 min-w-0 items-start gap-1.5 text-center">
         <Glyph className="mt-0.5 size-icon-sm shrink-0" />
-        <span className="min-w-0 wrap-break-word">{children}</span>
+        <span className="min-w-0 wrap-break-word">
+          {children}
+          {tip && <InfoTip text={tip} />}
+        </span>
       </span>
     </LabeledDivider>
   );

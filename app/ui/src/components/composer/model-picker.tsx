@@ -98,6 +98,7 @@ export function ModelPicker({
   held,
   search: typed = "",
   asksSwitch = true,
+  asked = 0,
 }: {
   groups: ModelGroup[];
   value: ModelChoice;
@@ -111,8 +112,15 @@ export function ModelPicker({
   search?: string;
   /** False before a session exists: another agent is then just a pick, with nothing to hand off. */
   asksSwitch?: boolean;
+  /** A count that opens it each time it goes up: a notice's "Choose another model". */
+  asked?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(asked);
+  if (asked !== seen) {
+    setSeen(asked);
+    if (!disabled) setOpen(true);
+  }
   const [browsing, setBrowsing] = useState(value.provider);
   const [query, setQuery] = useState(typed);
   const [inSearch, setInSearch] = useState(false);

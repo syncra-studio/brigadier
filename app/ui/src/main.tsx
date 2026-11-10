@@ -7,6 +7,7 @@ import { SessionOfThread } from "./accounts/limit";
 import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
+import { hhmm } from "./thread/words";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
@@ -173,7 +174,10 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   const sides = useSidePending(id);
   const line =
     row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
-    row?.state === "stalled" && <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine>;
+    row?.state === "stalled" ? <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine> :
+    // The agent's own retry and safety hold, in its words' place (D487).
+    row?.state === "retrying" ? <WorkingLine state="live">{retryWords(row.reason)}</WorkingLine> :
+    row?.state === "checking" && <WorkingLine state="live">Running extra safety checks · this can take a little longer</WorkingLine>;
   // Started from Home and not made yet: "not found" means "not yet" [D30].
   const starting = useStart(id);
   const missing = state?.status === "missing" && !starting;
@@ -223,6 +227,13 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
       </TabbedMain>
     </>
   );
+}
+
+/** "Reconnecting · try 2 of 5 · next at 09:41", each part only where the agent's CLI said it [D74]. */
+function retryWords(reason: unknown): string {
+  const { attempt, max, at } = (reason ?? {}) as { attempt?: number | null; max?: number | null; at?: number | null };
+  const tries = attempt ? ` · try ${attempt}${max ? ` of ${max}` : ""}` : "";
+  return `Reconnecting${tries}${at && at > Date.now() ? ` · next at ${hhmm(at)}` : ""}`;
 }
 
 // View › Add project… and File › Open Folder… (⌘O) [D165].

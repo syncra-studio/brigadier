@@ -193,6 +193,7 @@ function applyThread(frame: Record<string, any>): void {
     approvals: frame.approvals ?? session.approvals,
     questions: frame.questions ?? session.questions,
     rewind: frame.rewind ?? session.rewind,
+    notices: frame.notices ?? session.notices,
   });
 }
 

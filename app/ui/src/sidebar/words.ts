@@ -35,6 +35,8 @@ const STATE_WORDS: Record<string, string | null> = {
   starting: "Starting",
   working: "Working",
   silent: "Working",
+  retrying: "Reconnecting",
+  checking: "Running safety checks",
   idle_jobs: "Working · background job",
   failed: "Failed",
   out_of_credits: "Out of credits",

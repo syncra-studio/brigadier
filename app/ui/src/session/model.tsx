@@ -29,7 +29,16 @@ export const asGroups = (groups: Rust[]): ModelGroup[] =>
  * puts the last value back with Rust's words [D30, D40]. Another agent's model asks "Switch to {name}?" first, and the
  * next message goes to it [D90]. Offline it can't be opened.
  */
+/** Opens a session's model picker: a notice's "Choose another model" (D487). */
+export const askModel = new EventTarget();
+
 export function SessionModel({ id, row, offline }: { id: string; row: ModelRow | undefined; offline: boolean }) {
+  const [chooseAsked, setChooseAsked] = useState(0);
+  useEffect(() => {
+    const ask = () => setChooseAsked((n) => n + 1);
+    askModel.addEventListener("ask", ask);
+    return () => askModel.removeEventListener("ask", ask);
+  }, []);
   const starting = useStart(id)?.asking === true;
   const [groups, setGroups] = useState<ModelGroup[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -83,7 +92,7 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
   return (
     <div className="flex min-w-0 items-center justify-end gap-2">
       <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
-      <ModelPicker groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} disabled={offline || groups === null} />
+      <ModelPicker groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} disabled={offline || groups === null} asked={chooseAsked} />
       <SetUpAgentDialog
         name={setUp}
         onClose={() => {
