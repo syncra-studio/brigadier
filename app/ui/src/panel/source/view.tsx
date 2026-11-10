@@ -6,7 +6,7 @@ import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
 import { moveFiles, retryGit, type Target, useGit } from "../git";
 import { openReview } from "../open";
-import { name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
+import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
 import { type BranchOps, type SourceData, type SourceOps, SourcePanel } from "./panel";
 
@@ -26,7 +26,8 @@ function branchOps(target: Target, owner: string, project: string | null, branch
         if (owner !== HOME) readPr(owner);
       }),
     newSession: (base) => {
-      if (project) setHomeDraft({ spot: { project, base } });
+      // A base is a new worktree's: Home's Local checkout would drop it.
+      if (project) setHomeDraft({ workIn: "worktree", spot: { project, base } });
       newSession(project);
     },
     openPage: (url) => window.brigadier?.openLink(url),
@@ -49,7 +50,8 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   const branch = git.source?.branch ?? null;
   useEffect(() => {
     if (git.target && op.naming && op.naming === branch) named(git.target);
-  }, [git.target, op.naming, branch]);
+    if (git.target && op.rejected && branch && op.rejected.branch !== branch) moved(git.target);
+  }, [git.target, op.naming, op.rejected, branch]);
   return {
     data: {
       source: git.source,

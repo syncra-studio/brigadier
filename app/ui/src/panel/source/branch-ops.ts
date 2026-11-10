@@ -15,7 +15,7 @@ import type { Branch, ForcePush } from "../types";
 export type BranchRead = { branches: Branch[]; base: string | null; host: string | null; page: string | null; working: boolean };
 
 /** Rust's answer for a push turned away: the remote, its ref, and where that ref is; `moved` after a stale lease. */
-type Rejected = { remote: string; ref: string; oid: string; moved: boolean };
+type Rejected = { branch: string; remote: string; ref: string; oid: string; moved: boolean };
 
 type Op = { syncing: boolean; naming: string | null; rejected: ForcePush | null; forcing: ForcePush | null };
 const NONE: Op = { syncing: false, naming: null, rejected: null, forcing: null };
@@ -50,6 +50,7 @@ function run(target: Target, args: string[], onReply: (reply: Record<string, any
 }
 
 const lease = (rejected: Rejected, was: ForcePush | null): ForcePush => ({
+  branch: rejected.branch,
   remote: rejected.remote,
   ref: rejected.ref,
   remoteRef: `${rejected.remote}/${rejected.ref.replace(/^refs\/heads\//, "")}`,
@@ -95,7 +96,7 @@ export function forcePush(target: Target, branch: string): void {
   if (!force) return;
   put(target, { forcing: null });
   const pending = showToast(`Force pushing ${branch}…`, { stays: true });
-  run(target, ["force-push", force.remote, force.ref, force.movedTo ?? force.reviewed], (reply) => {
+  run(target, ["force-push", force.branch, force.remote, force.ref, force.movedTo ?? force.reviewed], (reply) => {
     toastManager.close(pending);
     if (reply.ok) {
       put(target, { rejected: null });
@@ -134,6 +135,9 @@ export function name(target: Target, args: string[], name: string): void {
 
 /** The watch read the branch `name` showed: it's settled. */
 export const named = (target: Target) => put(target, { naming: null });
+
+/** The checkout is on another branch: a rejected push of the last one is no longer offered [D1034]. */
+export const moved = (target: Target) => put(target, { rejected: null, forcing: null });
 
 /** Changes what the session lands into; `done` reads again what follows the base [D1143]. */
 export function setBase(target: Target, base: string, done: () => void): void {

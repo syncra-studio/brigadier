@@ -178,10 +178,10 @@ export function CommitGallery() {
           {(held) => <CreatePrDialog open info={undefined} text={{ title: "", body: "", draft: false }} error="This session has no base to open a PR into." held={held} onText={noop} onRetry={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Force push with lease">
-          {(held) => <ForcePushDialog force={{ remote: "origin", ref: `refs/heads/${BRANCH}`, remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: null }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <ForcePushDialog force={{ branch: BRANCH, remote: "origin", ref: `refs/heads/${BRANCH}`, remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: null }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Force push: the remote moved, asks again">
-          {(held) => <ForcePushDialog force={{ remote: "origin", ref: `refs/heads/${BRANCH}`, remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: "d07b3f1" }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <ForcePushDialog force={{ branch: BRANCH, remote: "origin", ref: `refs/heads/${BRANCH}`, remoteRef: `origin/${BRANCH}`, reviewed: "9c41e2a", movedTo: "d07b3f1" }} branch={BRANCH} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
       </Row>
     </Section>

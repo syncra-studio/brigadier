@@ -228,9 +228,16 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             done
         }
         verb @ ("switch" | "create") => {
-            // No turn starts here meanwhile, and none is under way [D1021, D1082].
+            // No turn starts here meanwhile, and none is under way [D1021, D1082]: each sharing
+            // session's lock, then the fence, in `session::fence`'s order.
+            let mut sharing = branch::sharing(data, &checkout);
+            sharing.sort();
+            let _held = (sharing.iter())
+                .map(|id| brigadier_core::worktrees::lock(&brigadier_core::session_dir(data, id)))
+                .collect::<io::Result<Vec<_>>>()?;
             let _fence = branch::fence(data)?;
-            if working(data, &checkout) > 0 {
+            let all = brigadier_frames::procs::all();
+            if (sharing.iter()).any(|id| super::sessions::busy_now(data, id, &all)) {
                 return Err(io::Error::other(
                     "Branches can't switch while the agent is working.",
                 ));
@@ -251,7 +258,15 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "force-push" => {
             let hooks = sync::trusted(data, &target);
-            sync::force_push(&checkout, word(1)?, word(2)?, word(3)?, hooks, &stop)?;
+            sync::force_push(
+                &checkout,
+                word(1)?,
+                word(2)?,
+                word(3)?,
+                word(4)?,
+                hooks,
+                &stop,
+            )?;
             done
         }
         _ => return Err(io::Error::other(super::USAGE)),

@@ -58,6 +58,8 @@ pub fn url(checkout: &Checkout, remote: &str) -> io::Result<String> {
 /// [D1049]. `moved`: a force push whose lease no longer held, so `oid` is where it is now.
 #[derive(Debug)]
 pub struct Rejected {
+    /// The local branch that was pushed: a force push from another one is refused.
+    pub branch: String,
     pub remote: String,
     pub dest: String,
     pub oid: String,
@@ -80,7 +82,7 @@ impl Rejected {
     }
 
     pub fn json(&self) -> serde_json::Value {
-        serde_json::json!({"remote": self.remote, "ref": self.dest, "oid": self.oid, "moved": self.moved})
+        serde_json::json!({"branch": self.branch, "remote": self.remote, "ref": self.dest, "oid": self.oid, "moved": self.moved})
     }
 }
 
@@ -118,6 +120,19 @@ pub fn push_to(
     stop: &AtomicBool,
 ) -> io::Result<()> {
     let _held = lock(checkout, true, stop)?;
+    push_held(checkout, remote, branch, dest, extra, hooks, stop)
+}
+
+/// `push_to` for a caller that holds the checkout's lock.
+pub(crate) fn push_held(
+    checkout: &Checkout,
+    remote: &str,
+    branch: &str,
+    dest: &str,
+    extra: &[&str],
+    hooks: bool,
+    stop: &AtomicBool,
+) -> io::Result<()> {
     let refspec = format!("refs/heads/{branch}:{dest}");
     let mut command = match hooks {
         true => worktrees::with_hooks(&checkout.root),
@@ -152,6 +167,7 @@ pub fn push_to(
                 }
             };
             return Err(io::Error::other(Rejected {
+                branch: branch.into(),
                 remote: remote.into(),
                 dest: dest.into(),
                 oid,
@@ -185,12 +201,23 @@ pub fn push_to(
     Err(io::Error::other(format!("{plain}\n\n{details}")))
 }
 
-/// The commit `dest` is at on `remote` now, asked of the remote itself.
+/// The commit `dest` is at on `remote` now, asked of where pushes go: its pushurl if it has one.
 fn remote_oid(checkout: &Checkout, remote: &str, dest: &str, stop: &AtomicBool) -> Option<String> {
+    let pushurl = read(
+        &checkout.root,
+        &["config", "--get", &format!("remote.{remote}.pushurl")],
+        stop,
+    )
+    .ok()
+    .map(|out| String::from_utf8_lossy(&out).trim().to_string())
+    .filter(|url| !url.is_empty());
     let mut command = worktrees::command(&checkout.root);
-    command
-        .env("GCM_INTERACTIVE", "never")
-        .args(["ls-remote", "--", remote, dest]);
+    command.env("GCM_INTERACTIVE", "never").args([
+        "ls-remote",
+        "--",
+        pushurl.as_deref().unwrap_or(remote),
+        dest,
+    ]);
     let out = setup::run_until(&mut command, PUSH_SECS, stop).ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     (text.lines())

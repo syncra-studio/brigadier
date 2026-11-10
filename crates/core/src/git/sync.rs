@@ -2,7 +2,7 @@
 //! tracking; force push with a pinned lease [D1034, D1049]; and auto-fetch of every published
 //! branch [D1026]. Git does the work.
 
-use super::push::{self, push_to};
+use super::push::{self, push_held, push_to};
 use super::{Checkout, Target, checkout, lock, read};
 use crate::adapters::setup;
 use crate::{ids, load, projects, session_dir, worktrees};
@@ -28,7 +28,7 @@ pub fn trusted(data: &Path, target: &Target) -> bool {
     project.is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)))
 }
 
-fn config(checkout: &Checkout, key: &str) -> Option<String> {
+pub(super) fn config(checkout: &Checkout, key: &str) -> Option<String> {
     read(
         &checkout.root,
         &["config", "--get", key],
@@ -79,8 +79,21 @@ fn fetch(checkout: &Checkout, remote: &str, stop: &AtomicBool) -> io::Result<()>
 
 /// Pull then push, as VS Code's Sync [D1020]: the branch's own upstream (its remote and branch) is
 /// pulled and pushed to, and its tracking stays. A pull that would conflict changes nothing and
-/// says so, until 2.23's conflict tab (proposed, D1166).
+/// says so, until 2.23's conflict tab (proposed, D1166). The checkout's lock is held throughout,
+/// so no switch changes the branch under it.
 pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<()> {
+    let _held = lock(checkout, true, stop)?;
+    let git_dir = &checkout.git_dir;
+    let stopped = [
+        "MERGE_HEAD",
+        "rebase-merge",
+        "rebase-apply",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+    ];
+    if stopped.iter().any(|name| git_dir.join(name).exists()) {
+        return err("A merge or rebase is under way here. Finish or abort it before syncing.");
+    }
     let branch = branch(checkout)?;
     let (Some(remote), Some(dest)) = (
         config(checkout, &format!("branch.{branch}.remote")),
@@ -108,7 +121,7 @@ pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<(
         pull(checkout, &branch, ahead > 0, hooks, stop)?;
     }
     if counts(stop)?.0 > 0 {
-        push_to(checkout, &remote, &branch, &dest, &[], hooks, stop)?;
+        push_held(checkout, &remote, &branch, &dest, &[], hooks, stop)?;
     }
     Ok(())
 }
@@ -139,7 +152,6 @@ fn pull(
             _ => return err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
         }
     }
-    let _held = lock(checkout, true, stop)?;
     let mut command = net(checkout, hooks);
     command.args(["pull", "--quiet", "--no-edit"]);
     // The user's own choice stands; with none, a merge, as git's own default was.
@@ -152,7 +164,8 @@ fn pull(
     if pulled.is_ok() {
         return Ok(());
     }
-    // Stopped half-way after all: undone, the user's own edits as they were.
+    // Stopped half-way after all (none was under way at the start): undone, the user's own edits
+    // as they were.
     let git_dir = &checkout.git_dir;
     let undo = match () {
         _ if git_dir.join("MERGE_HEAD").exists() => Some("merge"),
@@ -182,6 +195,7 @@ pub fn publish(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Resul
 /// `Rejected` that comes back says where it is now, for the confirm to ask again.
 pub fn force_push(
     checkout: &Checkout,
+    from: &str,
     remote: &str,
     dest: &str,
     oid: &str,
@@ -197,6 +211,11 @@ pub fn force_push(
         return err("That force push isn't one Brigadier offered.");
     }
     let branch = branch(checkout)?;
+    if branch != from {
+        return err(format!(
+            "This checkout is on {branch} now, not {from}, so nothing was pushed."
+        ));
+    }
     let lease = format!("--force-with-lease={dest}:{oid}");
     let mut extra = vec![lease.as_str()];
     if config(checkout, &format!("branch.{branch}.merge")).is_none() {

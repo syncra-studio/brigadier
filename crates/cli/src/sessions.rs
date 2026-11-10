@@ -55,6 +55,12 @@ pub(crate) fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
     let Ok(_fence) = core::worktrees::lock(&dir) else {
         return true;
     };
+    busy_now(data, id, all)
+}
+
+/// `busy` for a caller already holding the session's lock.
+pub(crate) fn busy_now(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
+    let dir = core::session_dir(data, id);
     core::fold(&dir, false).is_ok_and(|f| {
         let live = fold::live(&f.fold, owner::state(data, id), data, all);
         session::busy(&f.fold, &live)

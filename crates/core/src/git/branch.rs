@@ -59,12 +59,11 @@ pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result
             .and_then(|u| host::repo(&u))
     {
         host_name = Some(repo.name());
-        let published = read(
-            &checkout.root,
-            &["rev-parse", "--verify", "--quiet", "@{upstream}"],
-            &stop,
-        );
-        page = published.is_ok().then(|| host::branch_page(&repo, &branch));
+        // The page of the branch it syncs with, whatever that one's called.
+        let published = super::sync::config(checkout, &format!("branch.{branch}.merge"));
+        page = (published.as_deref())
+            .and_then(|merge| merge.strip_prefix("refs/heads/"))
+            .map(|name| host::branch_page(&repo, name));
     }
     Ok(json!({"branches": branches, "base": base, "host": host_name, "page": page}))
 }

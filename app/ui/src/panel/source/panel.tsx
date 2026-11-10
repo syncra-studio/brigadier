@@ -138,7 +138,8 @@ export function SourcePanel({
     setPickerNow(next);
     if (!next || next === "rename" || next === "create" || !branchOps) return;
     setRead(undefined);
-    branchOps.read((answer) => setRead(answer));
+    // A read that failed has said why: the pick closes rather than load for ever.
+    branchOps.read((answer) => (answer ? setRead(answer) : setPickerNow(null)));
   };
   const branchItem = useRef<HTMLDivElement>(null);
   const [discarding, setDiscarding] = useState<Discarding | null>(null);
@@ -316,8 +317,8 @@ export function SourcePanel({
         <QuickPick
           place={{ anchor: branchItem }}
           placeholder={picker === "from" ? "Select a ref to create the branch from" : picker === "base" ? `What ${state.branch ?? "this branch"} lands into` : "Select a branch to start a session from"}
-          // The branches but the checked-out one, as the folder's list has them.
-          items={read === undefined && branchOps ? null : (folderItems(read?.branches ?? data.branches ?? [], state.branch, nowMs)?.slice(2) ?? null)}
+          // The branches but the checked-out one, as the folder's list has them; Home starts a session from a local one.
+          items={read === undefined && branchOps ? null : (folderItems((read?.branches ?? data.branches ?? []).filter((each) => picker !== "newSession" || !each.remote), state.branch, nowMs)?.slice(2) ?? null)}
           onPick={(item) => {
             setPicker(null);
             if (picker === "from") {
