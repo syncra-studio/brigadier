@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncEx
 
 import { cx } from "../components/cx";
 import { GitCard } from "../panel/card";
+import { openPr } from "../panel/open";
 import { useSource } from "../panel/source/view";
 import { useHasPanel } from "./right-panel";
 import { HOME } from "./tab-store";
@@ -154,7 +155,7 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
 export function SummarySlot({ owner, children }: { owner: string; children: ReactNode }) {
   const has = useHasPanel(owner) && owner !== HOME;
   const { data, ops } = useSource(owner);
-  const card = has ? <GitCard data={data} draftKey={owner} ops={ops} nowMs={Date.now()} /> : null;
+  const card = has ? <GitCard data={data} draftKey={owner} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} /> : null;
   return (
     <SummaryPane owner={owner} card={card}>
       {children}

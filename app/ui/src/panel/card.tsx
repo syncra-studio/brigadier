@@ -13,21 +13,21 @@ const TEXT: Record<Tone, string> = { quiet: "text-muted-foreground", good: "text
  * The summary card's git section, direction C [D1048, D1095, D1098]: Source's status, smaller, and the same action
  * button with its pre-check line [D1075]; then the branch's pull requests, a row opening the Pull requests tab on
  * it (2.13) [D1017, D1116]. No branch line, PR clock or commits: those live in Source [D1092, D1095, D1114].
- * It reads Source's data and runs Source's own step and moves [D1145, D1148]; `onPr` opens nothing yet.
+ * It reads Source's data and runs Source's own step and moves [D1145, D1148].
  * Without `ops` (the gallery) it moves nothing; `running`: the gallery's button at work.
  */
-export function GitCard({ data, nowMs, draftKey, ops, onPr, running = false }: {
+export function GitCard({ data, nowMs, draftKey, session = null, ops, onPr, running = false }: {
   data: SourceData;
   nowMs: number;
   draftKey?: string;
+  session?: string | null;
   ops?: SourceOps;
   onPr?: (number: number) => void;
   running?: boolean;
 }) {
   const { source } = data;
-  const prs = data.prs ?? [];
   const offline = data.offline ?? false;
-  const { button, dialogs } = useSourceStep({ data, state: source, draftKey, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
+  const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
 
   if (!source) {
     return (
