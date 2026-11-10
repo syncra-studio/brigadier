@@ -25,7 +25,7 @@ function Spacer({ space }: { space: Space }) {
 
 /**
  * The session's rows, virtualised, with groups and finished turns' work closed until opened. How it scrolls is
- * follow.ts's: a message sent here glides up with space below that its reply grows into. `footer` goes
+ * defined in follow.ts: a message sent here glides up with space below that its reply grows into. `footer` goes
  * under the last row; `id` is the session's, so a source still on another session draws nothing and each session
  * opens where it was left.
  */

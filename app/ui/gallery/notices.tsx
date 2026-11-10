@@ -28,7 +28,7 @@ const base = (id: string, more: Partial<Switch>): Switch => ({
   text: "",
   ...more,
 });
-const MANUAL = base("sw-manual", { error: "Work (fake) isn't signed in any more" });
+const MANUAL = base("sw-manual", { resets: Date.now() + 60_000, error: "Work (fake) isn't signed in any more" });
 const AUTOMATIC = base("sw-auto", { from: "Work (fake)", to: "OpenCode", model: "ollama/fake-coder:7b", handoff: true, automatic: true });
 const REFUSED = base("sw-refused", { reason: "unresumable", from: "Work (fake)", handoff: true });
 

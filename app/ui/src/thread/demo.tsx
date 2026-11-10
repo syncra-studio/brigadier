@@ -87,7 +87,7 @@ export function Demo() {
       <div className="min-h-0 flex-1">
         <Thread key={shown?.key} source={source} ref={thread} footer={running && store ? <Working store={store} /> : null} />
       </div>
-      {/* Stands in for the composer: its height (96 px) and gap to the window's bottom. */}
+      {/* Stands in for the composer, keeping its height and gap to the window's bottom. */}
       <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-3">
         <textarea
           aria-label="Message"
