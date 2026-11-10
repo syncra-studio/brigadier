@@ -10,34 +10,42 @@ import { RightPanelSlot } from "./right-panel";
 import { CHAT, HOME, replaceTab, type Tab, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint hover:bg-fill has-data-popup-open:bg-fill";
-const TOOL = "flex min-h-10 w-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-session-tab px-2.5 py-2 text-start focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled";
+/** A tile [D438]: its icon and key or chevron along the top, its name under them. */
+const TOOL = "flex w-full min-w-0 flex-1 cursor-pointer flex-col items-start gap-3 rounded-session-tab p-3 text-start focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled";
+const TOP = "flex min-h-4.5 w-full items-center justify-between gap-2"; // a key's height, so every tile is as tall
 const ICON = "size-icon-md shrink-0 text-muted-foreground";
-const LABEL = "min-w-0 flex-1 truncate";
+const LABEL = "w-full min-w-0 truncate";
 
 /** The old app's New tab, with no browser or pages yet: what's picked replaces it. Only Terminal goes anywhere so far [D361, D388]. */
 function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: boolean }) {
   const sideChat = (
     <button type="button" aria-label="Side chat" disabled className={TOOL}>
-      <ChatCompose className={ICON} />
+      <span className={TOP}>
+        <ChatCompose className={ICON} />
+        <Kbd>⌥⌘S</Kbd>
+      </span>
       <span className={LABEL}>Side chat</span>
-      <Kbd>⌥⌘S</Kbd>
     </button>
   );
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
         <h2 className="font-medium">Tools</h2>
-        <div className="grid grid-cols-1 gap-x-4 gap-y-1 @new-tab:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-4">
           <div className={CARD}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
-              <Dock className={ICON} />
+              <span className={TOP}>
+                <Dock className={ICON} />
+                <Kbd>⌃`</Kbd>
+              </span>
               <span className={LABEL}>Terminal</span>
-              <Kbd>⌃`</Kbd>
             </button>
           </div>
           <div className={CARD}>
             <button type="button" disabled className={TOOL}>
-              <Document className={ICON} />
+              <span className={TOP}>
+                <Document className={ICON} />
+              </span>
               <span className={LABEL}>New page</span>
             </button>
           </div>
@@ -55,9 +63,11 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
           <div className={CARD}>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
-                <Grid className={ICON} />
+                <span className={TOP}>
+                  <Grid className={ICON} />
+                  <ChevronDown className={ICON} />
+                </span>
                 <span className={LABEL}>More tools…</span>
-                <ChevronDown className={ICON} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem disabled>
