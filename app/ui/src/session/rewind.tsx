@@ -31,7 +31,7 @@ function previewOf(reply: Record<string, any>): RewindPreview {
 function said(reply: Record<string, any>, restore: boolean): string {
   if (reply.already) return "Rewound · check your files";
   if (!restore) return "Rewound · your files are as they were";
-  const count = `${reply.restored} ${reply.restored === 1 ? "file" : "files"} restored`;
+  const count = `${reply.restored} ${reply.restored === 1 ? "file" : "files"} undone`;
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
 }
 

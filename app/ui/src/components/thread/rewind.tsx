@@ -63,9 +63,9 @@ export function RewindForm({ preview, error, onKeep, onRestore, onCancel }: Form
           <Choice value="keep" label="Keep files as they are">
             <Note>Only the chat goes back.</Note>
           </Choice>
-          <Choice value="restore" label="Restore files too">
+          <Choice value="restore" label="Undo the agent's file changes">
             <Note>
-              Puts back {files(paths.length)} the agent changed: {named(paths)}.
+              Undoes {files(paths.length)} the agent changed: {named(paths)}.
             </Note>
             {hand.length > 0 && <Note>Left as you edited them: {named(hand)}.</Note>}
             {leftOut.length > 0 && <Note>Too big to go back: {named(leftOut)}.</Note>}

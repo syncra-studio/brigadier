@@ -363,8 +363,12 @@ fn run(
         .range(cid)
         .ok_or_else(|| refused("gone", "This message can't be rewound to any more."))?;
     let files = if restore {
-        let p = plan_for(data, spec, &f, cid)
-            .map_err(|why| refused("no_restore", format!("The files can't go back ({why}).")))?;
+        let p = plan_for(data, spec, &f, cid).map_err(|why| {
+            refused(
+                "no_restore",
+                format!("The agent's file changes can't be undone ({why})."),
+            )
+        })?;
         Some(p)
     } else {
         None
@@ -404,7 +408,7 @@ fn run(
             return Err(rolled_back(
                 spec,
                 &record,
-                format!("The files couldn't go back: {e}"),
+                format!("The agent's file changes couldn't be undone: {e}"),
             ));
         }
     }
