@@ -10,7 +10,7 @@ import type { ChangeMarks, FolderEntry, Listing, ReplaceOutcome, SearchFile, Sea
 
 /** How long typing pauses before the search runs (the old 250 ms). */
 const TYPING_MS = 250;
-/** How often opened ignored folders are read again: the watch leaves ignored files out [D1002]. */
+/** How often the listing and opened ignored folders are read again while shown: the watch leaves ignored files out [D1002]. */
 const IGNORED_MS = 3000;
 const NO_MARKS: ChangeMarks = { files: {}, folders: {} };
 const OFFLINE = "Not connected. Try again when it's back.";
@@ -27,6 +27,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     setListing({ state: "loading" });
@@ -41,11 +42,18 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setListing({ state: "failed", error: String(reply.error) });
       const { marks: next, ...list } = reply.list;
-      setListing({ state: "listed", list });
-      setMarks(next);
+      // The same listing keeps its objects, so the tree isn't built again.
+      setListing((last) => (last.state === "listed" && JSON.stringify(last.list) === JSON.stringify(list) ? last : { state: "listed", list }));
+      setMarks((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));
+      // An opened ignored folder that's no longer there goes, with what was read under it.
+      const roots = (list.ignored as string[]).filter((entry) => entry.endsWith("/"));
+      setLoaded((last) => {
+        const kept = Object.entries(last).filter(([path]) => roots.some((root) => `${path}/`.startsWith(root)));
+        return kept.length === Object.keys(last).length ? last : Object.fromEntries(kept);
+      });
     });
     return () => void (live = false);
-  }, [key, daemon, version]);
+  }, [key, daemon, version, tick]);
 
   const readIgnored = useCallback(
     (paths: string[]) => {
@@ -53,21 +61,25 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       for (const path of paths)
         ask({ op: "run", args: sourceArgs(target, "folder", path) }, (reply) => {
           if (reply.error === "disconnected") return;
-          // A folder that went is shown empty until the listing drops it.
-          setLoaded((last) => ({ ...last, [path]: reply.ok ? reply.entries : [] }));
+          // A folder that went goes, with what was read under it.
+          setLoaded((last) =>
+            reply.ok ? (JSON.stringify(last[path]) === JSON.stringify(reply.entries) ? last : { ...last, [path]: reply.entries }) : Object.fromEntries(Object.entries(last).filter(([each]) => each !== path && !each.startsWith(`${path}/`))),
+          );
         });
     },
     [key],
   );
-  // shortcut: opened ignored folders are read again every few seconds while shown; a watch of its own would be instant.
+  // shortcut: the listing (for a new ignored folder, which changes no status) and opened ignored folders are read again
+  // every few seconds while shown; a watch of their own would be instant.
   const opened = Object.keys(loaded).join("\n");
   useEffect(() => {
-    if (!opened || !daemon) return;
-    const again = () => document.visibilityState === "visible" && readIgnored(opened.split("\n"));
-    again();
-    const timer = setInterval(again, IGNORED_MS);
+    if (!daemon) return;
+    const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), IGNORED_MS);
     return () => clearInterval(timer);
-  }, [opened, daemon, version, readIgnored]);
+  }, [daemon]);
+  useEffect(() => {
+    if (opened && daemon) readIgnored(opened.split("\n"));
+  }, [opened, daemon, version, tick, readIgnored]);
 
   // The filename search, in Rust over every listed file; an answer to an older query is dropped.
   useEffect(() => {

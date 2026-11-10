@@ -2,7 +2,7 @@
 //! pattern found file by file in the files git lists (ignored files and `.git` stay out), sent in
 //! batches as it goes and stopped when a newer search starts. Replace all is `replace`.
 
-use super::{Checkout, files::listed};
+use super::{Checkout, files::listed, lock};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Value, json};
@@ -157,6 +157,8 @@ pub fn search(
     stop: &AtomicBool,
     mut send: impl FnMut(Vec<Value>) -> bool,
 ) -> io::Result<Option<Value>> {
+    // Shared, so it never reads a Replace all's files half placed [D1060].
+    let _shared = lock(checkout, false, stop)?;
     let paths = listed(checkout, stop)?;
     let (mut files, mut matches, mut capped) = (0u64, 0u64, false);
     let mut batch = vec![];

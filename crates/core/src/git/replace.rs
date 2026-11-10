@@ -112,7 +112,14 @@ pub fn replace(
         return Ok(outcome(0, 0, skipped, unrestored));
     }
     for file in &staged {
-        let _ = fs::remove_file(&file.aside);
+        // A writer that had the file open before it moved aside wrote into the old copy: kept.
+        match fs::read(&file.aside).is_ok_and(|bytes| hash(&bytes) == file.hash) {
+            true => drop(fs::remove_file(&file.aside)),
+            false => {
+                let why = "it was written while it was replaced; that save is in";
+                unrestored.push(skip(&file.path, format!("{why} {}", kept(file).display())));
+            }
+        }
         let _ = fs::remove_file(&file.temp);
     }
     let matches = staged.iter().map(|f| f.matches).sum();
