@@ -318,7 +318,8 @@ export function SourcePanel({
           place={{ anchor: branchItem }}
           placeholder={picker === "from" ? "Select a ref to create the branch from" : picker === "base" ? `What ${state.branch ?? "this branch"} lands into` : "Select a branch to start a session from"}
           // The branches but the checked-out one, as the folder's list has them; Home starts a session from a local one.
-          items={read === undefined && branchOps ? null : (folderItems((read?.branches ?? data.branches ?? []).filter((each) => picker !== "newSession" || !each.remote), state.branch, nowMs)?.slice(2) ?? null)}
+          // The base it lands into now is marked in the row's description, as VS Code marks the current item.
+          items={read === undefined && branchOps ? null : (folderItems((read?.branches ?? data.branches ?? []).filter((each) => picker !== "newSession" || !each.remote), state.branch, nowMs)?.slice(2).map((item) => (picker === "base" && item.title === (read?.base ?? base) ? { ...item, hint: `current · ${item.hint}` } : item)) ?? null)}
           onPick={(item) => {
             setPicker(null);
             if (picker === "from") {
