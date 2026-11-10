@@ -5,7 +5,7 @@
 use crate::adapters::setup;
 use crate::git::{self, Checkout, Target, push};
 use crate::repos::{failed, tool};
-use crate::{session_dir, worktrees};
+use crate::{load, projects, session_dir, worktrees};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
@@ -153,8 +153,12 @@ pub struct Pr {
     checkout: Checkout,
     pub branch: String,
     pub remote: String,
+    /// The base as the session records it (a local or remote-tracking ref), and its name on the host.
+    base_ref: String,
     pub base: String,
     pub repo: Option<Repo>,
+    /// The project is trusted, so its own git hooks run on a push [D166, D211].
+    trusted: bool,
 }
 
 /// The session's PR facts, from Rust's records and git, never from the client.
@@ -173,17 +177,22 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let branch = String::from_utf8_lossy(&out).trim().to_string();
     let remote = push::remote(&checkout, &branch)?;
     // A base taken from a remote branch lands into that branch's name on the host.
-    let base = base
-        .strip_prefix(&format!("{remote}/"))
+    let host_base = (base.strip_prefix(&format!("{remote}/")))
         .unwrap_or(&base)
         .to_string();
+    // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
+    // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
+    let trusted = (load(data, id)?.project)
+        .is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)));
     Ok(Pr {
         checkout,
         branch,
         remote,
-        base,
+        base_ref: base,
+        base: host_base,
         repo,
+        trusted,
     })
 }
 
@@ -206,7 +215,7 @@ impl Pr {
     // shortcut (proposed): from the branch's commits, as `gh pr create --fill` writes it, until
     // 2.19's writer replaces this one function [D1029].
     fn text(&self) -> io::Result<(String, String)> {
-        let range = format!("{}..HEAD", self.base);
+        let range = format!("{}..HEAD", self.base_ref);
         let out = git::read(
             &self.checkout.root,
             &["log", "--reverse", "--format=%s%x00%b%x00", &range, "--"],
@@ -234,6 +243,7 @@ impl Pr {
             &self.checkout,
             &self.remote,
             &self.branch,
+            self.trusted,
             &AtomicBool::new(false),
         )
     }

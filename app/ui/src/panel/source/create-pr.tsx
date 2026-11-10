@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { CheckboxRow } from "../../components/checkbox-row";
 import { ErrorLine } from "../../components/error-line";
@@ -71,12 +71,86 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
   );
 }
 
-const infos = new Map<string, HostInfo | null>();
-const texts = new Map<string, Text>();
-/** Sessions whose create went out and lost its answer: found with the host before another create [D30]. */
-const uncertain = new Set<string>();
+const EMPTY: Text = { title: "", body: "", draft: false };
+
+/**
+ * One session's PR work, kept here rather than in the view, so a create or push that outlives Source (the panel
+ * closed, another session opened) still lands its answer and shows it on return [D30]. `info` is undefined until Rust
+ * reads it and null for no known host; `text` null until edited, so it follows Rust's; `uncertain`: a create went out
+ * and lost its answer, so the host is asked before another.
+ */
+type Op = { info: HostInfo | null | undefined; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean };
+
+const NONE: Op = { info: null, text: null, open: false, busy: null, error: null, uncertain: false };
+const ops = new Map<string, Op>();
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+const opOf = (session: string): Op => {
+  if (!ops.has(session)) ops.set(session, { ...NONE, info: undefined });
+  return ops.get(session)!;
+};
+const put = (session: string, next: Partial<Op>) => {
+  ops.set(session, { ...opOf(session), ...next });
+  for (const listener of listeners) listener();
+};
+const textOf = (op: Op): Text => op.text ?? (op.info ? { title: op.info.title, body: op.info.body, draft: false } : EMPTY);
+const LOST = "Brigadier isn't connected. This waits until it is.";
 
 const run = (session: string, args: string[], onReply: (reply: Record<string, any>) => void) => ask({ op: "run", args: ["host", session, ...args] }, onReply);
+
+function read(session: string) {
+  run(session, ["info"], (reply) => {
+    if (reply.error === "disconnected") return;
+    // An unknown remote, a session with no base: no PR rows, as with no host [D1030].
+    put(session, { info: reply.ok ? reply.info : null });
+  });
+}
+
+function made(session: string, pr: { number: number | null; url: string }) {
+  put(session, { uncertain: false, text: null, busy: null, open: false, error: null });
+  // Proposed words.
+  showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
+}
+
+function create(session: string) {
+  const text = textOf(opOf(session));
+  put(session, { busy: "creating", error: null });
+  run(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], (reply) => {
+    if (reply.ok) return made(session, reply.pr);
+    const lost = reply.error === "disconnected";
+    put(session, { busy: null, uncertain: lost || opOf(session).uncertain, error: lost ? "Brigadier lost its connection. It checks whether the PR was made before making another." : reply.error });
+  });
+}
+
+function confirm(session: string) {
+  if (!opOf(session).uncertain) return create(session);
+  put(session, { busy: "checking", error: null });
+  run(session, ["find"], (reply) => {
+    if (reply.ok && reply.pr) return made(session, reply.pr);
+    if (reply.ok) {
+      put(session, { uncertain: false });
+      return create(session);
+    }
+    put(session, { busy: null, error: reply.error === "disconnected" ? LOST : reply.error });
+  });
+}
+
+/** Push branch, and Open PR page ↗ after it; a toast says it's under way, then how it went. */
+function push(session: string, page: boolean) {
+  const op = opOf(session);
+  const branch = op.info?.branch ?? "the branch";
+  const text = textOf(op);
+  const pending = showToast(`Pushing ${branch}…`);
+  run(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], (reply) => {
+    toastManager.close(pending);
+    if (!reply.ok) return showToast(reply.error === "disconnected" ? "Brigadier isn't connected." : reply.error, { tone: "error" });
+    if (page) window.open(reply.url);
+    else showToast(`Pushed ${branch}`, { tone: "success" });
+  });
+}
 
 /**
  * The action menu's PR rows for a session, wired [D1030]: Create PR… opens its dialog, Push branch pushes, and Open
@@ -84,104 +158,32 @@ const run = (session: string, args: string[], onReply: (reply: Record<string, an
  */
 export function useCreatePr(session: string | null) {
   const connected = !!useDaemon().daemon;
-  const [info, setInfo] = useState<HostInfo | null | undefined>(() => (session ? infos.get(session) : null));
-  const [open, setOpen] = useState(false);
-  const [text, setTextState] = useState<Text>({ title: "", body: "", draft: false });
-  const [busy, setBusy] = useState<"creating" | "checking" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const read = () => {
-    if (!session) return;
-    run(session, ["info"], (reply) => {
-      // An unknown remote, a session with no base: no PR rows, as with no host [D1030].
-      const next: HostInfo | null = reply.ok ? reply.info : null;
-      if (reply.error === "disconnected") return;
-      infos.set(session, next);
-      setInfo(next);
-      if (next && !texts.has(session)) setTextState({ title: next.title, body: next.body, draft: false });
-    });
-  };
+  const op = useSyncExternalStore(subscribe, () => (session ? opOf(session) : NONE));
   useEffect(() => {
-    if (!session) return;
-    setInfo(infos.get(session));
-    setTextState(texts.get(session) ?? { title: "", body: "", draft: false });
-    if (connected) read();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (session && connected) read(session);
   }, [session, connected]);
 
-  const setText = (next: Text) => {
-    setTextState(next);
-    if (session) texts.set(session, next);
-  };
-  const made = (pr: { number: number | null; url: string }) => {
-    if (!session) return;
-    uncertain.delete(session);
-    texts.delete(session);
-    setBusy(null);
-    setOpen(false);
-    // Proposed words.
-    showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
-  };
-  const create = () => {
-    if (!session) return;
-    setBusy("creating");
-    run(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], (reply) => {
-      if (reply.ok) return made(reply.pr);
-      if (reply.error === "disconnected") uncertain.add(session);
-      setBusy(null);
-      setError(reply.error === "disconnected" ? "Brigadier lost its connection. It checks whether the PR was made before making another." : reply.error);
-    });
-  };
-  const confirm = () => {
-    if (!session) return;
-    setError(null);
-    if (!uncertain.has(session)) return create();
-    setBusy("checking");
-    run(session, ["find"], (reply) => {
-      if (reply.ok && reply.pr) return made(reply.pr);
-      if (reply.ok) {
-        uncertain.delete(session);
-        return create();
-      }
-      setBusy(null);
-      setError(reply.error === "disconnected" ? "Brigadier isn't connected. This waits until it is." : reply.error);
-    });
-  };
-  /** Push branch, and Open PR page ↗ after it; a toast says it's under way, then how it went. */
-  const push = (page: boolean) => {
-    if (!session) return;
-    const branch = info?.branch ?? "the branch";
-    const pending = showToast(`Pushing ${branch}…`);
-    const args = page ? ["link", "--title", text.title, "--body", text.body] : ["push"];
-    run(session, args, (reply) => {
-      toastManager.close(pending);
-      if (!reply.ok) return showToast(reply.error === "disconnected" ? "Brigadier isn't connected." : reply.error, { tone: "error" });
-      if (page) window.open(reply.url);
-      else showToast(`Pushed ${branch}`, { tone: "success" });
-    });
-  };
-
   const onPick = (pick: ActionPick) => {
+    if (!session) return;
     if (pick === "createPr") {
-      setOpen(true);
-      setError(null);
-      if (connected) read();
-    } else if (pick === "pushBranch") push(false);
-    else if (pick === "openPrPage") push(true);
+      put(session, { open: true, error: op.busy ? op.error : null });
+      if (connected) read(session);
+    } else if (pick === "pushBranch") push(session, false);
+    else if (pick === "openPrPage") push(session, true);
   };
 
-  const dialog = (
+  const dialog = session && (
     <CreatePrDialog
-      open={open}
-      info={info ?? undefined}
-      text={text}
-      busy={busy}
-      error={error}
+      open={op.open}
+      info={op.info ?? undefined}
+      text={textOf(op)}
+      busy={op.busy}
+      error={op.error}
       offline={!connected}
-      onText={setText}
-      onCancel={() => setOpen(false)}
-      onConfirm={confirm}
+      onText={(text) => put(session, { text })}
+      onCancel={() => put(session, { open: false })}
+      onConfirm={() => confirm(session)}
     />
   );
-  return { way: session ? prWay(info) : ("cli" as PrWay), onPick, dialog };
+  return { way: session ? prWay(op.info) : ("cli" as PrWay), onPick, dialog };
 }

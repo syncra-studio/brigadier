@@ -43,23 +43,31 @@ pub fn remote(checkout: &Checkout, branch: &str) -> io::Result<String> {
     }
 }
 
-/// The URL `remote` was given, before git's `insteadOf` rewrites: what names its host.
+/// Where `remote` pushes, as it was given before git's `insteadOf` rewrites: its pushurl, else
+/// its url. That names the host and the repository the branch lands in.
 pub fn url(checkout: &Checkout, remote: &str) -> io::Result<String> {
-    let key = format!("remote.{remote}.url");
-    let out = read(
-        &checkout.root,
-        &["config", "--get", &key],
-        &AtomicBool::new(false),
-    )?;
+    let never = AtomicBool::new(false);
+    let get = |key: String| read(&checkout.root, &["config", "--get", &key], &never);
+    let out =
+        get(format!("remote.{remote}.pushurl")).or_else(|_| get(format!("remote.{remote}.url")))?;
     Ok(String::from_utf8_lossy(&out).trim().to_string())
 }
 
 /// Pushes `branch` to the same name on `remote` and tracks it there, never asking for a password:
-/// git's reason comes back instead.
-pub fn push(checkout: &Checkout, remote: &str, branch: &str, stop: &AtomicBool) -> io::Result<()> {
+/// git's reason comes back instead. `hooks`: the project is trusted, so its pre-push hook runs.
+pub fn push(
+    checkout: &Checkout,
+    remote: &str,
+    branch: &str,
+    hooks: bool,
+    stop: &AtomicBool,
+) -> io::Result<()> {
     let _held = lock(checkout, true, stop)?;
     let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
-    let mut command = worktrees::command(&checkout.root);
+    let mut command = match hooks {
+        true => worktrees::with_hooks(&checkout.root),
+        false => worktrees::command(&checkout.root),
+    };
     command.env("GCM_INTERACTIVE", "never").args([
         "push",
         "--quiet",

@@ -44,6 +44,15 @@ fn err<T>(message: String) -> io::Result<T> {
 /// Git in `dir` and nowhere else: what the environment says about another repository is dropped,
 /// as the old app's runner did, and it never prompts.
 pub(crate) fn command(dir: &Path) -> Command {
+    let mut command = with_hooks(dir);
+    // Bookkeeping must not run a repository's hooks before its trust gate [D166, D211].
+    command.args(["-c", "core.hooksPath=/dev/null"]);
+    command
+}
+
+/// `command` with the repository's own hooks: only for the user's own git actions in a trusted
+/// project, such as a push, whose pre-push hook (Git LFS's) must run.
+pub(crate) fn with_hooks(dir: &Path) -> Command {
     let mut command = Command::new("git");
     for key in [
         "GIT_DIR",
@@ -59,12 +68,7 @@ pub(crate) fn command(dir: &Path) -> Command {
     ] {
         command.env_remove(key);
     }
-    // Bookkeeping must not run a repository's hooks before its trust gate [D166, D211].
-    command
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .args(["-c", "core.hooksPath=/dev/null"])
-        .arg("-C")
-        .arg(dir);
+    command.env("GIT_TERMINAL_PROMPT", "0").arg("-C").arg(dir);
     command
 }
 
