@@ -113,8 +113,11 @@ export function findFiles(list: FileList, query: string): string[] {
     .map((result) => result.path);
 }
 
+/** What Replace all wrote, by path. */
+const replaced: Record<string, string> = {};
+
 /** A file's text in the fake checkout. */
-export const fakeText = (path: string) => SOURCES[path] ?? (path === "src/pipeline.ts" ? LONG_FILE : `// ${path}\n`);
+export const fakeText = (path: string) => replaced[path] ?? SOURCES[path] ?? (path === "src/pipeline.ts" ? LONG_FILE : `// ${path}\n`);
 
 export function fakeRead(path: string, change: Partial<CheckoutFile> = {}): FileRead {
   const text = fakeText(path);
@@ -123,12 +126,16 @@ export function fakeRead(path: string, change: Partial<CheckoutFile> = {}): File
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const patternOf = (query: SearchQuery) => {
+  const source = query.regex ? query.text : literal(query.text);
+  return new RegExp(query.wholeWord ? `\\b(?:${source})\\b` : source, query.matchCase ? "g" : "gi");
+};
+
 /** Searches the fake checkout as Rust's content search will (step 2.17). */
 export function searchFake(query: SearchQuery, dismissed: ReadonlySet<string> = new Set()): SearchResults {
   let pattern: RegExp;
   try {
-    const source = query.regex ? query.text : literal(query.text);
-    pattern = new RegExp(query.wholeWord ? `\\b(?:${source})\\b` : source, query.matchCase ? "g" : "gi");
+    pattern = patternOf(query);
   } catch (error) {
     return { query, files: [], done: null, error: `The search isn't a valid regular expression: ${(error as Error).message}`, filteredFiles: 0 };
   }
@@ -139,9 +146,12 @@ export function searchFake(query: SearchQuery, dismissed: ReadonlySet<string> = 
     if (query.exclude && query.exclude.split(",").some((glob) => glob.trim() && path.includes(glob.trim().replace(/\*+/g, "")))) continue;
     const lines = fakeText(path)
       .split("\n")
-      .flatMap((preview, index) => {
-        const ranges = [...preview.matchAll(pattern)].filter((found) => found[0]).map((found) => ({ start: found.index, end: found.index + found[0].length }));
-        return ranges.length ? [{ line: index + 1, preview, ranges }] : [];
+      .flatMap((text, index) => {
+        const found = [...text.matchAll(pattern)].filter((each) => each[0]);
+        if (!found.length) return [];
+        // The line's indent is left out, unless a match is in it (the old search.rs preview).
+        const indent = Math.min(text.length - text.trimStart().length, found[0].index);
+        return [{ line: index + 1, preview: text.slice(indent), ranges: found.map((each) => ({ start: each.index - indent, end: each.index - indent + each[0].length })) }];
       });
     if (!lines.length) continue;
     if (dismissed.has(path)) filtered++;
@@ -150,8 +160,9 @@ export function searchFake(query: SearchQuery, dismissed: ReadonlySet<string> = 
   return { query, files, done: { capped: false }, error: null, filteredFiles: filtered };
 }
 
-/** Replace all on the fake checkout: it reports what it would have changed, after a moment. */
-export function replaceFake(results: SearchResults, file?: string): Promise<ReplaceOutcome> {
+/** Replace all on the fake checkout, after a moment: each match becomes `replace`, read back as the file's text. */
+export function replaceFake(results: SearchResults, replace: string, file?: string): Promise<ReplaceOutcome> {
   const files = results.files.filter((each) => !file || each.path === file);
+  for (const each of files) replaced[each.path] = fakeText(each.path).replace(patternOf(results.query), () => replace);
   return new Promise((resolve) => setTimeout(() => resolve({ files: files.length, matches: files.reduce((sum, each) => sum + each.matches, 0), skipped: [], unrestored: [] }), 600));
 }

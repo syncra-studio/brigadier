@@ -56,7 +56,7 @@ function LiveFiles() {
   return (
     <>
       <Panel label="live: open folders, search, click a file">
-        <FilesView owner="g-files-live" onOpen={(path) => setOpen(path)} />
+        <FilesView owner="g-files-live" shown={open} onOpen={(path) => setOpen(path)} />
       </Panel>
       <Tab label="live: the file it opened · ⌘F find · ⌃G go to line" wide>
         <FileViewer path={open} read={fakeRead(open)} active onReveal={noop} />
@@ -86,7 +86,7 @@ export function FilesGallery() {
         <Row name="Loading, failed, empty [D30]">
           <Panel label="loading">{tree("g-files-loading", { listing: { state: "loading" } })}</Panel>
           <Panel label="failed: never “No files”">{tree("g-files-failed", { listing: { state: "failed", error: "git ls-files exited with status 128" } })}</Panel>
-          <Panel label="an empty repo">{tree("g-files-empty", { listing: { state: "listed", list: { files: [], truncated: false, ignored: [] } } })}</Panel>
+          <Panel label="an empty repo">{tree("g-files-empty", { listing: { state: "listed", list: { files: [], truncated: false, ignored: [] } }, marks: { files: {}, folders: {} } })}</Panel>
         </Row>
       </Section>
       <Section title="File viewer">
