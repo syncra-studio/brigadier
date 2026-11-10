@@ -1,8 +1,7 @@
 //! `brigadier git`: a checkout's status as the panel gets it, and with `--watch` what changes after,
 //! one line each, from the same watch the daemon runs [D71]. `brigadier source`: what the panel and
-//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103]. A
-//! session's commits since its base with `git <id> --history`, and one commit's diff with
-//! `--commit <sha> [--file <path>]` [D1041].
+//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103], and a
+//! session's commits since its base and one commit's diff [D1041].
 
 use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
@@ -25,21 +24,6 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let (target, _) = target(args)?;
     let checkout = git::checkout(data, &target)?;
     let never = AtomicBool::new(false);
-    // A session's History and one commit's diff [D1035, D1041].
-    if let Target::Session(id) = target {
-        if has(args, "--history") {
-            let dir = brigadier_core::session_dir(data, id);
-            return Ok(json!({"ok": true, "history": history::history(&checkout, &dir, &never)?}));
-        }
-        if let Some(sha) = flag(args, "--commit") {
-            return Ok(match flag(args, "--file") {
-                Some(path) => {
-                    json!({"ok": true, "contents": history::contents(&checkout, sha, path, flag(args, "--from"), &never)?})
-                }
-                None => json!({"ok": true, "review": history::commit(&checkout, sha, &never)?}),
-            });
-        }
-    }
     if !has(args, "--watch") {
         let status = git::status(&checkout, &never)?;
         return Ok(json!({"ok": true, "n": 0, "git": status.json()}));
@@ -101,6 +85,20 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
             done
         }
         "file" => json!({"ok": true, "file": git::read_file(&checkout, word(1)?)?}),
+        // A session's History and one commit's diff; a project has no base [D1035, D1041].
+        "history" => {
+            let Target::Session(id) = target else {
+                return Err(io::Error::other(super::USAGE));
+            };
+            let dir = brigadier_core::session_dir(data, id);
+            json!({"ok": true, "history": history::history(&checkout, &dir, &stop)?})
+        }
+        "commit" => match args.get(at + 2) {
+            Some(path) => {
+                json!({"ok": true, "contents": history::contents(&checkout, word(1)?, path, from(3), &stop)?})
+            }
+            None => json!({"ok": true, "review": history::commit(&checkout, word(1)?, &stop)?}),
+        },
         _ => return Err(io::Error::other(super::USAGE)),
     })
 }

@@ -24,7 +24,7 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
   const run = useRef(0);
 
   const load = (file: ReviewFile, mine = run.current) =>
-    ask({ op: "run", args: ["git", owner, "--commit", sha, "--file", file.path, ...(file.from ? ["--from", file.from] : [])] }, (reply) => {
+    ask({ op: "run", args: ["source", owner, "commit", sha, file.path, ...(file.from ? [file.from] : [])] }, (reply) => {
       if (mine !== run.current || reply.error === "disconnected") return;
       setContents((now) => new Map(now).set(file.path, reply.ok ? reply.contents : { error: String(reply.error) }));
     });
@@ -32,7 +32,7 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
   const read = () => {
     const mine = ++run.current;
     setLoading(true);
-    ask({ op: "run", args: ["git", owner, "--commit", sha] }, (reply) => {
+    ask({ op: "run", args: ["source", owner, "commit", sha] }, (reply) => {
       if (mine !== run.current) return;
       setLoading(false);
       if (reply.error === "disconnected") return;
