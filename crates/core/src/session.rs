@@ -174,6 +174,11 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         Ok(one) => one,
         Err(e) => return fail(vec![format!("{}: {e}", dir.display())], 0),
     };
+    // A rewind can start after the caller settled it; keep its record recoverable [D35].
+    if crate::rewind::pending(dir) {
+        return json!({"ok": false, "swept": 0, "removed": [],
+            "left": ["A rewind of this session hasn't finished."], "kept_branches": []});
+    }
     if let Err(e) = record(dir, &json!({"op": "delete", "drop_branch": drop_branch})) {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
