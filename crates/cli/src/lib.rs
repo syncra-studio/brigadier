@@ -36,7 +36,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
-       brigadier git <id> | git --project P [--watch]
+       brigadier git <id> | git --project P [--watch] | git <id> --history | git <id> --commit <sha> [--file <path>]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
        brigadier panel [open on|off | width <px> | view <id> files|search|source | shown <id>]
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>

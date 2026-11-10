@@ -1,11 +1,13 @@
 //! `brigadier git`: a checkout's status as the panel gets it, and with `--watch` what changes after,
 //! one line each, from the same watch the daemon runs [D71]. `brigadier source`: what the panel and
-//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
+//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103]. A
+//! session's commits since its base with `git <id> --history`, and one commit's diff with
+//! `--commit <sha> [--file <path>]` [D1041].
 
 use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
-use brigadier_core::git::{self, Status, Target, watch::Watch};
+use brigadier_core::git::{self, Status, Target, history, watch::Watch};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
@@ -22,8 +24,24 @@ fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
 pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let (target, _) = target(args)?;
     let checkout = git::checkout(data, &target)?;
+    let never = AtomicBool::new(false);
+    // A session's History and one commit's diff [D1035, D1041].
+    if let Target::Session(id) = target {
+        if has(args, "--history") {
+            let dir = brigadier_core::session_dir(data, id);
+            return Ok(json!({"ok": true, "history": history::history(&checkout, &dir, &never)?}));
+        }
+        if let Some(sha) = flag(args, "--commit") {
+            return Ok(match flag(args, "--file") {
+                Some(path) => {
+                    json!({"ok": true, "contents": history::contents(&checkout, sha, path, &never)?})
+                }
+                None => json!({"ok": true, "review": history::commit(&checkout, sha, &never)?}),
+            });
+        }
+    }
     if !has(args, "--watch") {
-        let status = git::status(&checkout, &AtomicBool::new(false))?;
+        let status = git::status(&checkout, &never)?;
         return Ok(json!({"ok": true, "n": 0, "git": status.json()}));
     }
     let (tx, rx) = mpsc::channel();
