@@ -157,11 +157,12 @@ export function SourcePanel({
     setLocal((now) => now && (scope === "staged" ? { ...now, staged: keep(now.staged), changes: keep(now.changes) } : { ...now, changes: keep(now.changes) }));
   };
 
-  const { prs, message, setMessage, writing, committing, failed, setFailed, locked, commit, write, button, dialogs } = useSourceStep({
+  const { prs, message, setMessage, writing, committing, failed, error, setFailed, locked, commit, write, button, dialogs } = useSourceStep({
     data,
     state,
     draftKey,
     session,
+    live: ops !== undefined,
     move,
     onCommitted: () => setLocal((now) => now && { ...now, staged: [] }),
   });
@@ -206,6 +207,7 @@ export function SourcePanel({
           busy={committing || writing}
           canWrite={!resolving}
           failed={failed}
+          error={error}
           onWrite={write}
           onCommit={commit}
         />

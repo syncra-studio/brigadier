@@ -1,5 +1,6 @@
 import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
 
+import { commitFiles, writeMessage } from "../git";
 import type { ForcePush, MergeStyle, SourceState } from "../types";
 import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
@@ -33,6 +34,24 @@ function useMessage(key: string | undefined): [string, (next: string) => void] {
   return [message, setMessage];
 }
 
+/** A commit or a write under way, and how the last one ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. */
+type Work = { committing: boolean; writing: boolean; failed: boolean; error: string | null };
+const IDLE: Work = { committing: false, writing: false, failed: false, error: null };
+const works = new Map<string, Work>();
+
+function useWork(key: string | undefined): [Work, (next: Partial<Work>) => void] {
+  const [own, setOwn] = useState(IDLE);
+  const work = useSyncExternalStore(subscribe, () => (key ? (works.get(key) ?? IDLE) : own));
+  const put = (next: Partial<Work>) => {
+    if (!key) return setOwn((now) => ({ ...now, ...next }));
+    works.set(key, { ...(works.get(key) ?? IDLE), ...next });
+    for (const listener of listeners) listener();
+  };
+  return [work, put];
+}
+
+const LOST = "Brigadier isn't connected.";
+
 /** Per session, the view whose Create PR… opened the dialog: its open state is the session's, so one view draws it. */
 const asked = new Map<string, string>();
 
@@ -41,22 +60,23 @@ const asked = new Map<string, string>();
  * the summary card [D1145, D1148], with the branch's PRs and Create PR [D1030]. `session`: whose PR it makes; none in
  * the gallery. `card`: the summary card, which draws Create PR's dialog only when it opened it; Source draws it
  * otherwise. `move`: the files' own move, Rust's or the gallery's local copy. `button` is null
- * while there's no step to show (Rust's step comes with 2.19) or nothing to do.
+ * while there's no step to show (Rust's step comes with 2.22, D1152) or nothing to do.
  */
-export function useSourceStep({ data, state, draftKey, session = null, card = false, move, onCommitted }: {
+export function useSourceStep({ data, state, draftKey, session = null, card = false, live = false, move, onCommitted }: {
   data: SourceData;
   state: SourceState | null;
   draftKey?: string;
   session?: string | null;
   card?: boolean;
+  /** Wired: the commit and the writer are Rust's [D1029]; otherwise the gallery's stand-ins. */
+  live?: boolean;
   move: (paths: string[], to: "staged" | "changes") => void;
   onCommitted?: () => void;
 }) {
   const [message, setMessage] = useMessage(draftKey);
   const [stageAll, setStageAll] = useState<"ask" | "always">("ask");
-  const [writing, setWriting] = useState(false);
-  const [committing, setCommitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [work, put] = useWork(draftKey);
+  const { writing, committing, failed } = work;
   const [mergeStyle, setMergeStyle] = useState<MergeStyle>("merge");
   const [askingStageAll, setAskingStageAll] = useState(false);
   const [squashing, setSquashing] = useState(false);
@@ -83,37 +103,66 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
 
   const commit = () => {
     if (!state || locked || clean) return;
-    if (state.staged.length > 0) return finish();
+    if (state.staged.length > 0) return finish(false);
     if (stageAll === "ask") return setAskingStageAll(true);
-    move(changes.map((file) => file.path), "staged");
-    finish();
+    stageAndFinish();
   };
-  const finish = () => {
-    setFailed(false);
-    if (message.trim()) {
+  // Wired, Rust stages everything with the commit, under one lock, so nothing slips in between.
+  const stageAndFinish = () => {
+    if (!live) move(changes.map((file) => file.path), "staged");
+    finish(true);
+  };
+  /** Rust's answer to a commit or a write: what failed shows in the field, or on the card's button [D1143, D1144]. */
+  const settle = (reply: Record<string, any>, done: () => void) => {
+    put({ committing: false, writing: false });
+    if (reply.ok) return done();
+    if (reply.writer) return put({ failed: true });
+    put({ error: reply.error === "disconnected" ? LOST : String(reply.error) });
+  };
+  const finish = (all: boolean) => {
+    const typed = message.trim();
+    put({ failed: false, error: null });
+    if (live) {
+      // A blank field: Rust writes the message for exactly what it commits, or commits nothing [D1029].
+      put({ committing: true });
+      const sent = commitFiles(all, typed, (reply) =>
+        settle(reply, () => {
+          if (typed) setMessage("");
+          onCommitted?.();
+        }),
+      );
+      if (!sent) put({ committing: false, error: LOST });
+      return;
+    }
+    if (typed) {
       setMessage("");
       onCommitted?.();
       return;
     }
-    // A blank box: the message is written at commit [D1029]. Unwired, the writer fails, so it asks for one.
-    setCommitting(true);
-    setTimeout(() => {
-      setCommitting(false);
-      setFailed(true);
-    }, 1500);
+    // The gallery's writer fails, so it asks for one.
+    put({ committing: true });
+    setTimeout(() => put({ committing: false, failed: true }), 1500);
   };
   const write = () => {
-    setWriting(true);
-    setFailed(false);
-    setTimeout(() => {
-      setWriting(false);
-      setFailed(true);
-    }, 1500);
+    put({ writing: true, failed: false, error: null });
+    if (live) {
+      const sent = writeMessage("commit", state !== null && state.staged.length === 0, (reply) => settle(reply, () => setMessage(String(reply.text))));
+      if (!sent) put({ writing: false, error: LOST });
+      return;
+    }
+    setTimeout(() => put({ writing: false, failed: true }), 1500);
+  };
+  const squash = () => {
+    setSquashing(true);
+    if (!live) return;
+    // The same writer writes the squash's message; until it's in, the user may type one [D1028, D1029].
+    setSquashMessage("");
+    writeMessage("squash", false, (reply) => reply.ok && setSquashMessage((now) => now || String(reply.text)));
   };
   const run = () => {
     if (!step) return;
     if (step.kind === "commit" || step.kind === "folderCommit") commit();
-    else if (step.kind === "merge" && mergeStyle === "squash") setSquashing(true);
+    else if (step.kind === "merge" && mergeStyle === "squash") squash();
     else if (step.kind === "mergePr") setMergingPr(true);
     // Fix with agent and Resolve with agent leave a chip above the composer, sent when the user sends [D1019, D1044]:
     // wired with the composer.
@@ -124,8 +173,10 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       ? {
           step,
           writing: committing && !message.trim(),
+          ...(committing && message.trim() && { running: true }),
           disabled: writing,
-          error: data.stepError ?? null,
+          // The field shows Source's own failures; the card has none, so its button's line does.
+          error: data.stepError ?? (card && (failed || work.error) ? { kind: step.kind, reason: failed ? "no message was written. Type one in Source." : work.error! } : null),
           mergeStyle,
           rejected: data.rejected != null,
           prWay: pr.way,
@@ -149,8 +200,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           setAskingStageAll(false);
           if (answer === "never") return;
           if (answer === "always") setStageAll("always");
-          move(changes.map((file) => file.path), "staged");
-          finish();
+          stageAndFinish();
         }}
       />
       {step?.kind === "merge" && state && (
@@ -173,5 +223,6 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     </>
   );
 
-  return { prs, message, setMessage, writing, committing, failed, setFailed, locked, commit, write, button, dialogs };
+  const setFailed = (failed: boolean) => put({ failed, error: null });
+  return { prs, message, setMessage, writing, committing, failed, error: work.error, setFailed, locked, commit, write, button, dialogs };
 }

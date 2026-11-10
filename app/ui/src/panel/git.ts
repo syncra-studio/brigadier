@@ -237,3 +237,22 @@ export function useFileRead(path: string): FileRead {
   }, [target, path, version, tick]);
   return read;
 }
+
+/**
+ * Source's commit [D1029, D1107]: Rust commits the index, or with `all` every change, with `message`; a blank one is
+ * written first for exactly what's committed. False with no checkout on screen. The watch shows the commit landing.
+ */
+export function commitFiles(all: boolean, message: string, onReply: (reply: Record<string, any>) => void): boolean {
+  const target = git.target;
+  if (!target) return false;
+  ask({ op: "run", args: sourceArgs(target, "make-commit", ...(all ? ["--all"] : []), ...(message ? ["--message", message] : [])) }, onReply);
+  return true;
+}
+
+/** The message writer [D1029]: a commit message for the index (or every change), or a squash's, nothing committed. */
+export function writeMessage(what: "commit" | "squash", all: boolean, onReply: (reply: Record<string, any>) => void): boolean {
+  const target = git.target;
+  if (!target) return false;
+  ask({ op: "run", args: sourceArgs(target, "write", what, ...(all ? ["--all"] : [])) }, onReply);
+  return true;
+}

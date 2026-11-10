@@ -147,6 +147,18 @@ function read(session: string) {
   });
 }
 
+/**
+ * The message writer's title and body [D1029], replacing git's own text while the user hasn't edited it; when it
+ * writes nothing, git's text stays (proposed, D1164).
+ */
+function draft(session: string) {
+  ask({ op: "run", args: ["source", session, "write", "pr"] }, (reply) => {
+    if (!reply.ok || opOf(session).text !== null) return;
+    const [title = "", ...body] = String(reply.text).split("\n");
+    put(session, { text: { title: title.trim(), body: body.join("\n").trim(), draft: false } });
+  });
+}
+
 function made(session: string, pr: { number: number | null; url: string }) {
   const op = opOf(session);
   // Shown in Source's PR icon at once, then read again for its real state.
@@ -215,6 +227,7 @@ export function useCreatePr(session: string | null) {
     if (pick === "createPr") {
       put(session, { open: true, error: op.busy ? op.error : null });
       if (connected) read(session);
+      if (connected && op.text === null && !op.busy) draft(session);
     } else if (pick === "pushBranch") push(session, false);
     else if (pick === "openPrPage") push(session, true);
   };

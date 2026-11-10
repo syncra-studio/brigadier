@@ -27,7 +27,7 @@ export function GitCard({ data, nowMs, draftKey, session = null, ops, onPr, runn
 }) {
   const { source } = data;
   const offline = data.offline ?? false;
-  const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
+  const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, live: ops !== undefined, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
 
   if (!source) {
     return (
