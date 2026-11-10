@@ -179,8 +179,10 @@ export class Follow {
     let frame = 0;
     let start = 0;
     let from = 0;
+    let moved = 0;
+    let remainder = 0;
     let waited = 0;
-    // Spring on the distance from the end, so rows measured or grown on the way don't move where it lands.
+    // Apply only this frame's movement, preserving compensation for rows measured or grown on the way.
     const step = (now: number) => {
       // The space is in the scroll height once the list has measured it.
       if (!start) {
@@ -194,7 +196,11 @@ export class Follow {
       }
       const t = Math.min(1, (now - start) / PLACE_MS);
       const s = (t * PLACE_MS) / 1000;
-      this.setDistance(t >= 1 ? 1 : 1 + from * (1 + PLACE_RATE * s) * Math.exp(-PLACE_RATE * s));
+      const next = t >= 1 ? from : from * (1 - (1 + PLACE_RATE * s) * Math.exp(-PLACE_RATE * s));
+      const distance = Math.max(1, this.distance() + remainder - (next - moved));
+      this.setDistance(distance);
+      remainder = distance - this.distance();
+      moved = next;
       if (t < 1 && from > 0) frame = requestAnimationFrame(step);
       else this.placing = null;
     };
