@@ -201,6 +201,17 @@ export type Item = Base &
         error?: string | null;
         left?: string[] | null;
       }
+    /**
+     * A line across the thread where something changed, its words written here (D487): a usage limit that reset
+     * (`at`, ms); a model the same agent moved to, picked between turns or the CLI's own reroute; the user's Stop
+     * (`ms` since the turn started; null when not known); a turn the agent's automatic reviewer ended; a conversation
+     * continued from another session (forks, D463).
+     */
+    | { kind: "line"; reason: "limit-reset"; at: number }
+    | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string }
+    | { kind: "line"; reason: "stopped"; ms: number | null }
+    | { kind: "line"; reason: "review-ended" }
+    | { kind: "line"; reason: "continued"; session: string; title: string | null }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );

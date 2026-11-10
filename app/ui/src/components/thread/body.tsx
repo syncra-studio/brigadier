@@ -6,6 +6,7 @@ import { duration } from "../../thread/words";
 import { describe } from "../composer/approval";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
+import { ChangeLine } from "./line";
 import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./message";
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
@@ -106,6 +107,8 @@ export function Body({ item, turn, step, dated = false, actions = true }: { item
           }
         />
       );
+    case "line":
+      return <ChangeLine item={item} />;
     case "unknown":
       return <UnknownRow keep={item.id} raw={item.raw} />;
     // The app draws it (its switch needs the session); see thread/rows.tsx.

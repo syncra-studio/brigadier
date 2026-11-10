@@ -183,6 +183,12 @@ impl Thread {
                 // The user's Stop ends the limit: its line stays, without its switch [D51].
                 if item["by"] == "user" {
                     self.end_limit();
+                    // Said in the thread too, out of the work fold, like the user's words [D99, D487].
+                    let ms = self.open.as_ref().map(|o| ts.saturating_sub(o.started));
+                    let at = self.add(json!({"kind": "line", "reason": "stopped", "ms": ms}));
+                    if let Some(o) = self.open.as_mut() {
+                        o.kept.push(at as u64 + 1);
+                    }
                 }
             }
             // A limit (or a refused resume) is no error of the turn: one row that a switch turns into
@@ -202,6 +208,7 @@ impl Thread {
                     "reason": if item["credits"] == true { "credits" } else { super::reason(Some(kind)) }, "backend": backend, "account": account,
                     "handoff": false, "automatic": false, "text": item["message"], "resets": item["resets"]}));
                 self.limit_row = Some(at);
+                self.reset_at = item["resets"].as_u64();
             }
             "sign_in" => {
                 self.break_group();
