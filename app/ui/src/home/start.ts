@@ -50,7 +50,7 @@ export function newSession(project?: string | null): void {
   window.location.hash = "";
 }
 
-/** Home in no project, from the sidebar's New session: a new chat [D421]. */
+/** Home in no project, from the sidebar's New chat [D421]. */
 export function newChat(): void {
   setHomeDraft({ chat: true, focus: draft.get().focus + 1 });
   selectTab(HOME_DRAFT, CHAT);
