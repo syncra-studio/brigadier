@@ -8,6 +8,7 @@ mod asks;
 mod live;
 mod rewind;
 mod status;
+mod turns;
 pub use live::{Live, live, live_groups};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
@@ -202,32 +203,6 @@ impl Fold {
             None => self.efforts.remove(&b),
         };
         self.models.insert(b, model);
-    }
-
-    fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
-        if let Some(turn) = self.turns.first().cloned() {
-            self.end_asks(if outcome == "interrupted" {
-                "withdrawn"
-            } else {
-                outcome
-            });
-            self.turns.remove(0);
-            self.finished = ts;
-            if !turn.edited.is_empty() {
-                self.edited = Some(json!({"at": ts, "files": turn.edited.len()}));
-            }
-            self.bound(&turn);
-            self.last = Some(
-                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
-            );
-        }
-    }
-
-    fn close_all(&mut self, outcome: &str, reason: Value, ts: u64) {
-        while !self.turns.is_empty() {
-            self.close(outcome, reason.clone(), ts);
-        }
     }
 
     pub fn push(&mut self, item: &Value) {
@@ -425,33 +400,19 @@ impl Fold {
                         t.tools_since = ts;
                     }
                     t.tools.insert(str_of("id"));
-                    if item["step"] == "edit" {
-                        let mut paths = paths_of(&item["changes"]);
-                        if paths.is_empty() && !str_of("input").is_empty() {
-                            paths.push(str_of("input"));
-                        }
-                        t.editing.insert(str_of("id"), paths);
-                    }
+                    t.edit_started(item);
                 }
             }
             "tool_done" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.tools.remove(&str_of("id"));
-                    let paths = t.editing.remove(&str_of("id"));
-                    if item["ok"] == true {
-                        t.edited.extend(
-                            paths
-                                .into_iter()
-                                .flatten()
-                                .chain(paths_of(&item["changes"])),
-                        );
-                    }
+                    t.edit_done(item);
                 }
             }
             // The backend's own record of a turn's edits [D95].
             "changes" => {
                 if let Some(t) = self.turns.first_mut() {
-                    t.edited.extend(paths_of(&item["changes"]));
+                    t.edited.extend(turns::paths_of(&item["changes"]));
                 }
             }
             "question" => {
@@ -531,11 +492,4 @@ impl Fold {
             _ => {}
         }
     }
-}
-
-/// The paths a FileChange list names.
-fn paths_of(changes: &Value) -> Vec<String> {
-    (changes.as_array().into_iter().flatten())
-        .filter_map(|c| c["path"].as_str().map(String::from))
-        .collect()
 }

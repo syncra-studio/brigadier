@@ -238,7 +238,7 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
                     b'D' => Ok(Some("deleted")),
                     b'R' => Ok(Some("renamed")),
                     b'C' => Ok(Some("copied")),
-                    b'T' => Ok(Some("typechange")),
+                    b'T' => Ok(Some("typeChanged")),
                     _ => Err(bad(record)),
                 };
                 let codes = parts[1].as_bytes();
