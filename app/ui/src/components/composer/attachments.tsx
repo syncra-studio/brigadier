@@ -140,37 +140,71 @@ export function InlineAttachment({
   );
 }
 
+/**
+ * A tile in the attachments row: an icon in its box, a title over a second line, and its ✕. A file's tile is one;
+ * so is anything else that goes with the next message, such as a comment on a diff.
+ */
+export function Tile({
+  slot,
+  hint,
+  icon,
+  title,
+  detail,
+  invalid = false,
+  remove,
+}: {
+  slot: string;
+  /** The whole title, shown on hover. */
+  hint: string;
+  icon: ReactNode;
+  title: ReactNode;
+  detail: ReactNode;
+  /** A red border, for a tile that failed. */
+  invalid?: boolean;
+  remove: ReactNode;
+}) {
+  return (
+    <div
+      data-slot={slot}
+      title={hint}
+      className={cx(
+        "group/tile relative flex w-attachment-card shrink-0 items-center gap-2 rounded-surface border p-1.5 pe-7",
+        invalid ? "border-invalid" : "border-border",
+      )}
+    >
+      <span className="flex size-control-lg shrink-0 items-center justify-center rounded-icon-button bg-background text-muted-foreground">{icon}</span>
+      <span className="flex min-w-0 flex-col text-start">
+        <span className="truncate text-sm">{title}</span>
+        <span className="truncate text-xs text-muted-foreground">{detail}</span>
+      </span>
+      {remove}
+    </div>
+  );
+}
+
 /** A file's tile: its kind's icon (or a spinner, or the failure's sign), its name and a second line. */
 function FileTile({ attachment, remove }: { attachment: Attachment; remove: ReactNode }) {
   const { name, mime, state } = attachment;
   const failed = state === "failed";
   const Icon = mime.startsWith("image/") ? FileImage : mime.startsWith("text/") || mime === "application/pdf" ? FileDocument : Paperclip;
   return (
-    <div
-      data-slot="attachment-file"
-      title={baseName(name)}
-      className={cx(
-        "group/tile relative flex w-attachment-card shrink-0 items-center gap-2 rounded-surface border p-1.5 pe-7",
-        failed ? "border-invalid" : "border-border",
-      )}
-    >
-      <span className="flex size-control-lg shrink-0 items-center justify-center rounded-icon-button bg-background text-muted-foreground">
-        {failed ? (
+    <Tile
+      slot="attachment-file"
+      hint={baseName(name)}
+      invalid={failed}
+      icon={
+        failed ? (
           <Warning aria-label="Upload failed" className="size-icon-md text-destructive" />
         ) : state === "uploading" ? (
           <Spinner aria-label="Uploading" className="size-icon-md motion-safe:animate-spin" />
         ) : (
           <Icon aria-hidden className="size-icon-md" />
-        )}
-      </span>
-      <span className="flex min-w-0 flex-col text-start">
-        <span className="truncate text-sm">{baseName(name)}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {failed ? (attachment.error ?? "Couldn't attach this file") : state === "uploading" ? "Attaching…" : kindOf(name, mime)}
-        </span>
-      </span>
-      {remove}
-    </div>
+        )
+      }
+      title={baseName(name)}
+      detail={failed ? (attachment.error ?? "Couldn't attach this file") : state === "uploading" ? "Attaching…" : kindOf(name, mime)}
+      remove={remove}
+    />
   );
 }
 
