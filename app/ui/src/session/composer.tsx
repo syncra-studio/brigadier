@@ -58,6 +58,9 @@ function deliver(run: Runner, id: string, message: Sent): Promise<void> {
     if (reply.ok || reply.result === "logged") return;
     setSent(id, (list) => list.map((each) => (each.cid === message.cid ? { ...each, error: failure(reply) } : each)));
     sendFailed(message.cid);
+  }, (cause) => {
+    setSent(id, (list) => list.map((each) => each.cid === message.cid ? { ...each, error: String(cause) } : each));
+    sendFailed(message.cid);
   });
 }
 

@@ -36,10 +36,10 @@ impl Thread {
             self.notices_changed = true;
         }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
-        let model = self
-            .fold
-            .models
-            .get(&t.backend)
+        let model = t
+            .model
+            .as_ref()
+            .or_else(|| self.fold.models.get(&t.backend))
             .cloned()
             .unwrap_or_default();
         if !model.is_empty() {
@@ -77,7 +77,13 @@ impl Thread {
             }
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].
-        if t.retry_of.is_some() && t.origin == "user" {
+        let replaced = t.retry_of.as_ref().is_some_and(|cid| {
+            !self
+                .items
+                .iter()
+                .any(|row| row["kind"] == "message" && row["cid"] == cid.as_str())
+        });
+        if replaced && t.origin == "user" {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }
         if t.cid.is_some() {

@@ -6,13 +6,17 @@ import { ComposerCard } from "../src/components/composer/composer";
 import { ComposerRail, type Notice, Notices } from "../src/components/composer/rail";
 import { DrawBoundary, ErrorState } from "../src/components/thread/error-state";
 import { ChangeLine, InlineStatus } from "../src/components/thread/line";
+import { UserBubble } from "../src/components/thread/message";
+import { Thread, type Source } from "../src/thread/thread";
 import { WorkHeader, WorkingLine } from "../src/components/thread/work";
 import { ShieldExclamation } from "../src/icons";
 import { retiringNotice, sessionNotice } from "../src/session/notices";
-import type { Item, RailNotice } from "../src/thread/item";
+import type { Item, RailNotice, Session } from "../src/thread/item";
 import { Row, Section, State } from "./parts";
 
 const noop = () => {};
+const empty: Session = { id: "empty-retry", title: "", turns: [], items: [] };
+const emptySource: Source = { get: () => empty, subscribe: () => noop };
 const NOW = Date.now();
 const ERROR = "TypeError: The saved reply could not be drawn\n    at Reply (reply.tsx:12:3)";
 type Line = Extract<Item, { kind: "line" }>;
@@ -72,7 +76,8 @@ const RAIL: [string, Notice][] = [
   ["reconnecting", { id: "offline", level: "info", text: "Reconnecting to Brigadier…" }],
   ["start not confirmed", { id: "start", level: "info", text: "Not confirmed yet, so don’t send it again. It’s checked once Brigadier reconnects." }],
   ["couldn’t start", { id: "start", level: "error", text: "Couldn’t start this conversation. The folder could not be opened.", action: action("Try again") }],
-  ["retrying", { id: "retry", level: "error", text: "This turn didn’t finish.", action: <span className="text-xs text-muted-foreground shimmer">Retrying…</span> }],
+  ["retrying", { id: "retry", level: "info", text: "Retrying this turn…" }],
+  ["rewind unconfirmed", { id: "retry", level: "info", text: "Rewind not confirmed yet. It’s checked once Brigadier reconnects." }],
   ["retry refused", { id: "retry", level: "error", text: "Couldn’t retry: this turn can’t be rewound.", action: action("Put back message") }],
 ];
 
@@ -105,6 +110,10 @@ export function ChangesGallery() {
         <State label="no retry"><Column><ErrorState summary="This conversation couldn’t be shown" details={ERROR} /></Column></State>
       </Row>
       <Row name="Live: one broken reply leaves the rest visible"><LiveBoundary /></Row>
+      <Row name="Empty after rewind: pending and refused sends stay visible">
+        <State label="pending"><div className="h-48 w-160 max-w-full"><Thread source={emptySource} footer={<UserBubble keep="empty-pending" text="Retry the saved message" sending />} /></div></State>
+        <State label="refused"><div className="h-48 w-160 max-w-full"><Thread source={emptySource} footer={<UserBubble keep="empty-refused" text="Retry the saved message" failed="The agent isn’t available" onRetry={noop} onDiscard={noop} />} /></div></State>
+      </Row>
       <Row name="Changes across the thread">
         {LINES.map(([label, item]) => <State key={label} label={label}><Column><ChangeLine item={item} /></Column></State>)}
       </Row>

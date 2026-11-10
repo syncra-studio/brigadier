@@ -25,6 +25,9 @@ pub struct Turn {
     pub backend: String,
     pub text: String,
     pub retry_of: Option<String>,
+    /// The model recorded in this turn’s own setup, including the first input.
+    #[serde(default)]
+    pub model: Option<String>,
     /// The account or agent switch this input continues, as logged with it [D51].
     #[serde(default)]
     pub switch: Value,
@@ -329,6 +332,7 @@ impl Fold {
                     backend: str_of("backend"),
                     text: str_of("text"),
                     retry_of,
+                    model: item["setup"]["model"].as_str().map(String::from),
                     switch: item["switch"].clone(),
                     ts,
                     spawning: item["starts_child"] == true,

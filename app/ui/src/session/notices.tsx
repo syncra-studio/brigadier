@@ -1,10 +1,11 @@
-import { type Key, type ReactNode, useState, useSyncExternalStore } from "react";
+import { type Key, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
 import type { RailNotice, SetupStep } from "../thread/item";
 import { retry, useStart } from "../home/start";
+import { store } from "../onboarding/api";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
 import { retryMessage, type Runner } from "./composer";
@@ -62,6 +63,29 @@ export function retiringNotice({ name, at, to }: Retiring): Notice {
   };
 }
 
+// A rewind's pending command survives switching sessions, with the same id after an uncertain reply [D30].
+type Retrying = { turn: string; text: string; op: string; asking: boolean; unknown?: boolean; error?: string };
+const retries = store<ReadonlyMap<string, Retrying>>(new Map());
+function keepRetry(id: string, entry: Retrying | null) {
+  const next = new Map(retries.get());
+  if (entry) next.set(id, entry);
+  else next.delete(id);
+  retries.set(next);
+}
+function rewindRetry(run: Runner, id: string, entry: Retrying) {
+  if (retries.get().get(id)?.asking) return;
+  keepRetry(id, { ...entry, asking: true, unknown: false, error: undefined });
+  void run(["rewind", id, entry.turn, "--op", entry.op]).then(async (back) => {
+    if (retries.get().get(id)?.op !== entry.op) return;
+    if (!back.ok) {
+      keepRetry(id, { ...entry, asking: false, unknown: back.error === "disconnected", error: String(back.message ?? back.error ?? "Refused") });
+      return;
+    }
+    await retryMessage(run, id, entry.text, entry.turn);
+    keepRetry(id, null);
+  }, () => keepRetry(id, { ...entry, asking: false, unknown: true }));
+}
+
 const STEP: Record<SetupStep["kind"], string> = { worktree: "the worktree", setupScript: "the setup script", cli: "the agent's install" };
 
 /**
@@ -77,31 +101,28 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
   const notices: Notice[] = retiring ? [retiringNotice(retiring)] : [];
   // Retry: back to the failed turn's message, files kept, and it again in that attempt's place (D492). Only where
   // Rust offers a rewind to it; shown at once as under way, its refusal said in the notice's place [D30].
-  const [retrying, setRetrying] = useState<{ turn: string; text: string; error?: string } | null>(null);
+  const retrying = retries.use().get(id);
+  useEffect(() => {
+    const entry = retries.get().get(id);
+    if (!offline && entry?.unknown && !entry.asking) rewindRetry(run, id, entry);
+  }, [id, offline, run]);
   const again = (turn: string) => {
     const message = session?.items.find((item) => item.kind === "message" && item.role === "user" && item.turnId === turn);
     if (offline || !message || message.kind !== "message" || !session?.rewind?.includes(turn)) return null;
-    if (retrying?.turn === turn && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
-    const go = async () => {
-      setRetrying({ turn, text: message.text });
-      const back = await run(["rewind", id, turn, "--op", newId()]);
-      if (!back.ok) {
-        setRetrying({ turn, text: message.text, error: String(back.message ?? back.error ?? "Refused") });
-        return;
-      }
-      await retryMessage(run, id, message.text, turn);
-      setRetrying(null);
-    };
+    if (retrying && retrying.turn !== turn) return null;
+    if (retrying && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
     return (
-      <Button variant="link-blue" size="xs" className="-my-0.5" onClick={go}>
+      <Button variant="link-blue" size="xs" className="-my-0.5" disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(run, id, retrying ?? { turn, text: message.text, op: newId(), asking: false })}>
         Retry
       </Button>
     );
   };
   if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => sessionNotice(notice, again(notice.turnId))));
-  if (retrying?.error) notices.push({
-    id: "retry", level: "error", text: `Couldn’t retry: ${retrying.error}`,
-    action: <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => { putBack(id, retrying.text, true); setRetrying(null); }}>Put back message</Button>,
+  if (retrying) notices.push({
+    id: retrying.op,
+    level: retrying.unknown ? "info" : retrying.error ? "error" : "info",
+    text: retrying.unknown ? "Rewind not confirmed yet. It’s checked once Brigadier reconnects." : retrying.error ? `Couldn’t retry: ${retrying.error}` : "Retrying this turn…",
+    action: retrying.error && !retrying.unknown && <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => { putBack(id, retrying.text, true); keepRetry(id, null); }}>Put back message</Button>,
   });
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });
