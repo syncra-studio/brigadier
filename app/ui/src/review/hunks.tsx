@@ -8,13 +8,13 @@ import type { HunkAction, RequestState, ReviewFile, ReviewHunk, ReviewRequest, R
 /**
  * Stage and revert by hunk and by file (D1043): each hunk gets a bar right above its first change with its @@ line,
  * its counts and its actions; the file header gets the same for the whole file. Revert asks first, in the old Source
- * panel's discard words. Branch since base has none: it is already committed.
+ * panel's discard words. Branch since base and a commit have none: they are already committed (D1041).
  */
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** Whether a scope's diff can be staged or reverted (D1035, D1043). */
-export const actionable = (scope: ReviewScope) => scope !== "branch";
+export const actionable = (scope: ReviewScope) => scope !== "branch" && scope !== "commit";
 
 /** "+3 −1" as the old Counts drew it: mono, tabular, green and red, a zero dim. */
 export function Counts({ insertions, deletions }: { insertions: number; deletions: number }) {

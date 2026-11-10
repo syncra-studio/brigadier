@@ -76,26 +76,34 @@ export function ReviewTab(props: ReviewTabProps) {
     if (action === "revert") setAsking({ request, file, hunk });
     else props.onRequest(request);
   };
-  const label = SCOPES.find((entry) => entry.value === scope)!.label(review?.base ?? null);
+  const label = SCOPES.find((entry) => entry.value === scope)?.label(review?.base ?? null);
 
   return (
     <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2">
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
-            {label}
-            <ChevronDown className="size-icon-xs" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
-              {SCOPES.map((entry) => (
-                <DropdownMenuRadioItem key={entry.value} value={entry.value}>
-                  {entry.label(review?.base ?? null)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {scope === "commit" ? (
+          // A commit's tab is that commit: its subject and short id, no picker (D1041).
+          <span className="flex min-w-0 items-center gap-1.5 px-1.5 text-sm text-muted-foreground">
+            <span className="truncate">{review?.commit?.subject ?? "Commit"}</span>
+            {review?.commit && <span className="shrink-0 font-mono text-xs">{review.commit.sha.slice(0, 7)}</span>}
+          </span>
+        ) : (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
+              {label}
+              <ChevronDown className="size-icon-xs" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
+                {SCOPES.map((entry) => (
+                  <DropdownMenuRadioItem key={entry.value} value={entry.value}>
+                    {entry.label(review?.base ?? null)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {review && review.files.length > 0 && <Counts insertions={review.insertions} deletions={review.deletions} />}
         {!connected && <span className="px-1.5 text-xs text-muted-foreground">Reconnecting…</span>}
         <div className="flex-1" />

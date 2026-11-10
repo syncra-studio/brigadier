@@ -5,8 +5,8 @@
 
 import type { FileStatus } from "../panel/status";
 
-/** What a review compares (D1035). */
-export type ReviewScope = "uncommitted" | "staged" | "unstaged" | "branch";
+/** What a review compares (D1035); a commit's own diff opens from History (D1041). */
+export type ReviewScope = "uncommitted" | "staged" | "unstaged" | "branch" | "commit";
 
 export type ReviewFile = {
   path: string;
@@ -48,6 +48,8 @@ export type Review = {
   scope: ReviewScope;
   /** The branch Branch since base compares against. */
   base: string | null;
+  /** The commit a commit review shows: its full id, subject and time (D1041). */
+  commit?: { sha: string; subject: string; atMs: number };
   files: readonly ReviewFile[];
   insertions: number;
   deletions: number;
