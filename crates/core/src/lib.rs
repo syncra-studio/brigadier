@@ -4,6 +4,7 @@
 mod account;
 pub mod adapters;
 pub mod fold;
+pub mod fork;
 pub mod git;
 pub mod norm;
 pub mod projects;
@@ -30,7 +31,7 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
-pub use send::{Call, Running, applied, level, recover, send};
+pub use send::{Call, CallIn, Running, applied, level, recover, send};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {
@@ -55,6 +56,9 @@ pub struct Spec {
     /// Its model's reasoning effort; None: the CLI's own default [D129].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    /// The session it was forked from, which its row nests under [D48, D1063].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_of: Option<String>,
     #[serde(skip)]
     pub dir: PathBuf,
     /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is

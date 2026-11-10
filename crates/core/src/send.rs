@@ -10,6 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
+/// The same, to any session's host, by its id.
+pub type CallIn<'a> = &'a dyn Fn(&str, Value) -> io::Result<Value>;
 
 /// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
 pub type Running = Option<u64>;
@@ -85,6 +87,12 @@ pub fn send(
         run.effort = p.effort.clone();
         match crate::switch::picked(spec, f, &b, &p.model, p.effort.as_deref(), text) {
             Ok((change, sent)) => (Some(change), sent),
+            Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
+        }
+    } else if !f.resume.contains_key(&b) && crate::fork::summary(&spec.dir) {
+        // A fork with no conversation of its own begins from the hand-off, without asking [D90].
+        match crate::switch::forked(spec, f, text) {
+            Ok(sent) => (None, sent),
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
     } else {

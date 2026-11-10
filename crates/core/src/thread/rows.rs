@@ -325,6 +325,30 @@ impl Thread {
         }
     }
 
+    /// A fork's start [D1063]: its source's rows up to the answer it forked at, read only, from
+    /// its own copy, then the line saying where it came from. The copy never reaches this fold:
+    /// its turns aren't the fork's own [D35].
+    pub(crate) fn inherit(&mut self, items: &[Value], forked: &Value) {
+        let mut from = Thread::default();
+        items.iter().for_each(|item| from.push(item));
+        for mut row in from.items.iter().cloned() {
+            row["inherited"] = true.into();
+            self.changed_items.insert(self.items.len());
+            self.items.push(row);
+        }
+        for mut turn in from.turns {
+            turn["inherited"] = true.into();
+            self.changed_turns.insert(self.turns.len());
+            self.turns.push(turn);
+        }
+        self.work.extend(from.work);
+        self.break_group();
+        self.add(
+            json!({"kind": "forked", "source": forked["source"], "where": forked["where"],
+            "summary": forked["summary"], "leftOut": forked["leftOut"]}),
+        );
+    }
+
     /// The messages a rewind can go back to, when they changed [D384].
     pub(super) fn send_points(&mut self, out: &mut Value) -> bool {
         let points = self.fold.points();

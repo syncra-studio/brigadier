@@ -137,7 +137,7 @@ pub fn ensure(
             None => {}
         }
     }
-    if let Err(e) = create(spec, project, base) {
+    if let Err(e) = create(spec, project, base, None) {
         if fresh && !spec.dir.join(RECORD).exists() {
             fs::remove_dir_all(&spec.dir)?;
         }
@@ -176,7 +176,13 @@ pub fn branches(data: &Path, repo: &Path) -> io::Result<serde_json::Value> {
 
 /// Makes the session's worktree from `base`, else the project's current branch, with its files to copy. A failure undoes what
 /// it made; one it can't undo stays recorded for the daemon to retry.
-pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> io::Result<()> {
+/// `at`: a fork's start, the commit its answer's files were taken on, on `base` [D1068].
+pub fn create(
+    spec: &Spec,
+    project: &projects::Project,
+    base: Option<&str>,
+    at: Option<&str>,
+) -> io::Result<()> {
     let (repo, picks) = (Path::new(&project.folder), &project.include);
     let _one = lock(&spec.dir)?;
     if read(&spec.dir)?.is_some() {
@@ -204,6 +210,13 @@ pub fn create(spec: &Spec, project: &projects::Project, base: Option<&str>) -> i
                 .unwrap_or(commit.clone());
             (commit, name)
         }
+    };
+    let base_commit = match at {
+        Some(at) => git(
+            repo,
+            &["rev-parse", "--verify", &format!("{at}^{{commit}}")],
+        )?,
+        None => base_commit,
     };
     let branch = format!("brigadier/{}", spec.id);
     if git(

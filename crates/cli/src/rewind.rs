@@ -48,7 +48,11 @@ pub fn settle_held(data: &Path, spec: &Spec) -> io::Result<()> {
     if core::rewind::pending(&spec.dir) {
         owner::ensure(data, spec)?;
         let call = |req| owner::call(data, &spec.id, req);
-        core::rewind::settle(spec, &call)?;
+        let call_in = |id: &str, req| {
+            owner::ensure(data, &core::load(data, id)?)?;
+            owner::call(data, id, req)
+        };
+        core::rewind::settle(spec, &call, &call_in)?;
     }
     Ok(())
 }

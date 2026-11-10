@@ -11,7 +11,7 @@ pub mod setup;
 mod shell;
 
 pub use model::ModelInfo;
-pub use rewind::{Cut, Failed, Landing, Rewound};
+pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use shell::{shell_step, unwrap_shell};
 
 pub use files::{change, counts, drop_lines, sha1, uuid};
@@ -335,6 +335,10 @@ pub trait Adapter: Sync {
     /// What the CLI's own record shows of a cut begun at `at` (ms) whose outcome wasn't heard.
     fn landed(&self, _spec: &Spec, _resume: &str, _cut: &Cut, _at: u64) -> Landing {
         Landing::NotApplied
+    }
+    /// Its native fork; None: every fork begins from the hand-off [D90, D1063].
+    fn forking(&self) -> Option<&dyn Fork> {
+        None
     }
 }
 

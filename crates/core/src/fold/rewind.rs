@@ -60,6 +60,9 @@ impl Fold {
     /// Resets what the dropped turns left: their boundaries, the last outcome and any limit or
     /// sign-in they ended on. `convs` keeps every conversation, grants and picks stay [D35].
     pub(super) fn rewound(&mut self, item: &Value) {
+        if item["event"] == "forked" {
+            return self.forked(item);
+        }
         if let Some(op) = item["op"].as_str() {
             self.rewinds.insert(op.into());
         }
@@ -82,6 +85,35 @@ impl Fold {
             Some(pin) => self.pin.insert(backend, pin.into()),
             None => self.pin.remove(&backend),
         };
+    }
+
+    /// A fork's start [D1063]: the source's agent and account, and the conversation it holds of
+    /// its own, if any, ending at the answer it forked at: the boundary its first own message
+    /// rewinds to, so that never starts an empty conversation [D384]. None: it begins from the
+    /// hand-off.
+    fn forked(&mut self, item: &Value) {
+        let text = |k: &str| item[k].as_str().unwrap_or("").to_string();
+        let (backend, account) = (text("backend"), text("account"));
+        if !account.is_empty() {
+            self.accounts.insert(backend.clone(), account.clone());
+        }
+        let Some(conv) = item["moved"].as_str() else {
+            return;
+        };
+        self.convs
+            .insert((backend.clone(), account.clone(), conv.into()));
+        self.resume.insert(backend.clone(), conv.into());
+        self.boundaries.push(Boundary {
+            cid: text("at"),
+            origin: "fork".into(),
+            backend,
+            account,
+            conv: conv.into(),
+            generation: self.generation,
+            whole: false,
+            start: None,
+            end: item["end"].as_str().map(String::from),
+        });
     }
 
     /// This conversation's turns: on the agent and account it runs on now, since the last switch.

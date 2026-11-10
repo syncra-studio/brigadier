@@ -276,7 +276,8 @@ impl Index {
                              // A turn whose host is gone has nothing left to stop or queue behind [D60].
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
-                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref())});
+                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()),
+                             "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref())});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

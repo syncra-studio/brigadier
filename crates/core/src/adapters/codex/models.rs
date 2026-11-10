@@ -156,6 +156,20 @@ pub fn drop_fork(spec: &Spec, exe: &Path, cwd: &Path, conv: &str, resume: &str, 
     }
 }
 
+/// The threads forked from `conv` that Brigadier made, on Codex's newest page.
+pub fn forks(spec: &Spec, exe: &Path, cwd: &Path, conv: &str) -> Option<Vec<String>> {
+    short_lived(spec, exe, cwd, 30, |call| {
+        let page = call("thread/list", json!({"limit": 50})).ok()?;
+        let all = page["data"].as_array()?.iter();
+        let mine = all.filter(|t| t["forkedFromId"] == conv && t["originator"] == CLIENT);
+        Some(
+            mine.filter_map(|t| t["id"].as_str().map(String::from))
+                .collect(),
+        )
+    })
+    .flatten()
+}
+
 fn info(m: &Value) -> ModelInfo {
     let efforts = m["supportedReasoningEfforts"]
         .as_array()

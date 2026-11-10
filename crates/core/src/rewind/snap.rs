@@ -82,6 +82,22 @@ impl Store {
         (!dir.starts_with(&cwd)).then_some(Store { dir, git, cwd })
     }
 
+    /// The same store over another folder, a fork's new worktree, to write a snapshot there [D1068].
+    pub fn over(&self, cwd: &Path) -> io::Result<Store> {
+        let (dir, git) = (self.dir.clone(), self.git.clone());
+        Ok(Store {
+            dir,
+            git,
+            cwd: fs::canonicalize(cwd)?,
+        })
+    }
+
+    /// Whether the project's repository still holds `commit`.
+    pub fn has(&self, commit: &str) -> bool {
+        let rev = format!("{commit}^{{commit}}");
+        self.source(&["cat-file", "-e", &rev]).is_ok()
+    }
+
     fn lock(&self) -> io::Result<File> {
         let file = OpenOptions::new()
             .create(true)

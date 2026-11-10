@@ -4,18 +4,21 @@
 //! proof before anything else runs [D54, D300].
 
 mod active;
+pub mod fork;
 mod plan;
 mod snap;
 
 use crate::adapters::{self, Cut, Failed, Landing, Rewound};
 use crate::fold::{Boundary, Fold, Live, Owner};
-use crate::{Call, Spec, as_run, session, session_dir, worktrees, write_atomic};
+use crate::{Call, CallIn, Spec, as_run, session, session_dir, worktrees, write_atomic};
 pub use active::{Active, read_active};
 use brigadier_frames::log::now_ms;
+pub use fork::{end_of, now_of, write_shot};
 use plan::{Files, plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use snap::{Record, Shot, Store};
+pub use snap::Shot;
+use snap::{Record, Store};
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -427,15 +430,17 @@ fn run(
     })
 }
 
-/// Whether a rewind cut short waits to be settled.
+/// Whether a rewind or a fork cut short waits to be settled.
 pub fn pending(dir: &Path) -> bool {
-    dir.join(OP).exists()
+    dir.join(OP).exists() || dir.join(fork::OP).exists()
 }
 
 /// Finishes or rolls back a rewind cut short, by the phase it reached. The caller holds the
 /// queue's lock. A conversation cut is never tried again without proof it didn't happen.
-pub fn settle(spec: &Spec, call: Call) -> io::Result<()> {
+/// `call_in` reaches a fork's own host, for its record.
+pub fn settle(spec: &Spec, call: Call, call_in: CallIn) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
+    fork::settle(spec, call_in)?;
     let Ok(bytes) = fs::read(spec.dir.join(OP)) else {
         return Ok(());
     };

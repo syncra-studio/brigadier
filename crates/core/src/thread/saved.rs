@@ -300,6 +300,9 @@ impl Saved {
                 // A rewind logged after the scan: what came before it is stale.
                 self.rewound |= self.active.newer(frame.seq, &item);
                 if self.active.keep(frame.seq, &item) {
+                    if item["kind"] == "note" && item["event"] == "forked" {
+                        self.thread.inherit(&crate::fork::inherited(dir), &item);
+                    }
                     self.thread.push(&item);
                 }
             }

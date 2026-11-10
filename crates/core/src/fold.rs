@@ -475,7 +475,7 @@ impl Fold {
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
                 Some("setup") => self.setup(item),
-                Some("rewound") => self.rewound(item),
+                Some("rewound" | "forked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);

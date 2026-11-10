@@ -2,10 +2,12 @@
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Landing, Launch, ModelInfo,
-    Retune, Rewound, Timing, base_env, cli_home, drop_lines, home_path, probe_as, s, version,
+    Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
+    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, drop_lines, home_path, probe_as, s,
+    version,
 };
 use crate::Spec;
+use crate::fold::Boundary;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -243,21 +245,15 @@ impl Adapter for Codex {
             &kept.conv,
             kept.end.as_deref().unwrap_or(""),
         )?;
-        // The fork holds the kept turns: Norm counts on from them, so diffs() reads the right one.
-        let turns = rollouts(&cli_home(spec, ".codex", ""), &[format!("-{id}.jsonl")])
-            .pop()
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .map_or(0, |text| {
-                (text.lines())
-                    .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-                    .filter(|v| s(&v["payload"], &["type"]) == "task_started")
-                    .count() as u64
-            });
         Ok(Rewound {
+            turns: held(spec, &id),
             moved: Some(id),
-            turns,
             ..Rewound::default()
         })
+    }
+
+    fn forking(&self) -> Option<&dyn Fork> {
+        Some(self)
     }
 
     /// Its original never changes: whether or not a fork was made, this cut didn't take.
@@ -329,6 +325,65 @@ fn delete_thread(codex: &Codex, spec: &Spec, resume: &str) -> Result<(), String>
         }
         None => Ok(()),
     }
+}
+
+impl Fork for Codex {
+    /// `thread/fork` with the fork's folder as the server's, on the source's account [D1089].
+    fn fork(
+        &self,
+        spec: &Spec,
+        at: &Boundary,
+        _next: Option<&Boundary>,
+        cwd: &Path,
+    ) -> Result<Forked, Failed> {
+        let exe = (self.exe()).ok_or_else(|| Failed::Refused("Codex is not installed".into()))?;
+        let end = at.end.as_deref().unwrap_or("");
+        let conv = models::fork(spec, &exe, cwd, &at.conv, end)?;
+        // Past its creation second, so a rewind's sweep of forks (by second) can't take it [D1089].
+        let ms = brigadier_frames::log::now_ms() % 1000;
+        std::thread::sleep(Duration::from_millis(1000 - ms));
+        Ok(Forked {
+            turns: held(spec, &conv),
+            conv,
+        })
+    }
+
+    fn forks(&self, spec: &Spec, conv: &str) -> Option<Vec<String>> {
+        models::forks(spec, &self.exe()?, Path::new(&spec.cwd), conv)
+    }
+
+    fn unfork(
+        &self,
+        spec: &Spec,
+        conv: &str,
+        before: &[String],
+        owned: &BTreeSet<String>,
+    ) -> Result<(), String> {
+        let exe = self.exe().ok_or("Codex is not installed")?;
+        let cwd = Path::new(&spec.cwd);
+        let now = models::forks(spec, &exe, cwd, conv).ok_or("Codex couldn't list its threads")?;
+        for id in now
+            .iter()
+            .filter(|id| !before.contains(id) && !owned.contains(*id))
+        {
+            models::delete(spec, &exe, cwd, id)?;
+        }
+        Ok(())
+    }
+}
+
+/// The turns thread `id` holds, kept from the one it was forked from: Norm counts on from them, so
+/// diffs() reads the right one.
+fn held(spec: &Spec, id: &str) -> u64 {
+    rollouts(&cli_home(spec, ".codex", ""), &[format!("-{id}.jsonl")])
+        .pop()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map_or(0, |text| {
+            (text.lines())
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .filter(|v| s(&v["payload"], &["type"]) == "task_started")
+                .count() as u64
+        })
 }
 
 /// The thread and the agents it spawned, by the ids its log holds.

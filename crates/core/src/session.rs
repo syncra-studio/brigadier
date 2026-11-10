@@ -47,7 +47,8 @@ pub fn lifecycle(dir: &Path) -> (Option<u64>, Value) {
 pub fn closed(dir: &Path) -> Option<&'static str> {
     let unsettled =
         crate::rewind::pending(dir).then_some("A rewind of this session hasn't finished.");
-    retired(dir).or(unsettled)
+    let forking = (dir.join(crate::fork::FORKING).exists()).then_some("This fork isn't made yet.");
+    retired(dir).or(unsettled).or(forking)
 }
 
 /// Why it can't have a host at all. A rewind cut short needs one to finish.

@@ -163,13 +163,22 @@ pub fn picked(
     Ok((switch, format!("{seed}\n\n{text}")))
 }
 
+/// A fork's first message with no conversation of its own: the hand-off from its inherited copy,
+/// then the user's own words, which alone the log keeps [D90, D1063].
+pub fn forked(spec: &Spec, f: &Fold, text: &str) -> std::io::Result<String> {
+    let from = adapters::get(&spec.backend).map_or("the agent", |a| a.label());
+    let last = (f.last.clone()).unwrap_or_else(|| json!({"ts": brigadier_frames::log::now_ms()}));
+    let seed = handoff(spec, "forked", &last, from)?;
+    Ok(format!("{seed}\n\n{text}"))
+}
+
 /// The hand-off a new conversation starts from (D90 Q1, as in the old app): every user message,
 /// the last exchange verbatim, and the whole thread written to a file in the session folder for
 /// anything older [D35].
 fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<String> {
     let (mut thread, mut asked, mut since) = (String::new(), vec![], 0);
     let mut said = false;
-    crate::rewind::read_active(&spec.dir, |item| {
+    let mut each = |item: &Value| {
         let text = item["text"].as_str().unwrap_or("");
         match item["kind"].as_str().unwrap_or("") {
             // A message a switch sent again is the same message: counted once. A picked agent's
@@ -203,7 +212,10 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
             }
             _ => {}
         }
-    })?;
+    };
+    // A fork's inherited copy first, so a fork of a fork loses nothing [D90].
+    crate::fork::inherited(&spec.dir).iter().for_each(&mut each);
+    crate::rewind::read_active(&spec.dir, each)?;
     let file: PathBuf = spec.dir.join(format!("handoff-{}.md", last["ts"]));
     fs::write(&file, &thread)?;
     let exchange = tail(&thread[since..], LAST_EXCHANGE);
@@ -219,17 +231,23 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
     let reason = match why {
         "unresumable" => "the agent couldn't resume it on this account",
         "picked" => "the user picked you to carry on",
+        "forked" => "the user forked it at one of your answers to try another way from there",
         _ => "its usage limit was reached",
     };
-    let then = if why == "picked" {
+    let then = if why == "picked" || why == "forked" {
         "The user's new message follows."
     } else if last["began"] == true {
         "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done."
     } else {
         "The last message wasn't worked on yet. Do it now."
     };
+    let place = if why == "forked" {
+        "here"
+    } else {
+        "in the same folder"
+    };
     Ok(format!(
-        "[This conversation moved here from {from} because {reason}. You carry on the same work in the same folder. The whole earlier conversation is in {}; read it when you need more than what follows.]\n\nEvery message the user sent, oldest first:\n{messages}\nThe last exchange, verbatim:\n{exchange}\n\n[{then}]",
+        "[This conversation moved here from {from} because {reason}. You carry on the same work {place}. The whole earlier conversation is in {}; read it when you need more than what follows.]\n\nEvery message the user sent, oldest first:\n{messages}\nThe last exchange, verbatim:\n{exchange}\n\n[{then}]",
         file.display()
     ))
 }

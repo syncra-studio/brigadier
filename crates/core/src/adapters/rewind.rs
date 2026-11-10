@@ -1,8 +1,11 @@
 //! What rewinding asks of an agent's CLI [D378, D384]: cutting its conversation at a boundary it
 //! can name exactly. Files are Brigadier's own snapshots, the same for every agent.
 
+use crate::Spec;
 use crate::fold::Boundary;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::path::Path;
 
 /// Where to cut: the last turn kept (none cuts back to before the first), and the first dropped.
 pub struct Cut<'a> {
@@ -36,4 +39,34 @@ pub enum Landing {
     Applied(Rewound),
     NotApplied,
     Unknown(String),
+}
+
+/// A fork's own conversation [D1063]: its id, and the turns it already holds from the original.
+pub struct Forked {
+    pub conv: String,
+    pub turns: u64,
+}
+
+/// An agent's own fork [D1063, D1089], keyed by the forked conversation (`at.conv`) and run with
+/// the source's spec. It takes no model: each adapter sends the session's own on every turn [D1081].
+pub trait Fork {
+    /// A new conversation holding `at.conv` up to turn `at`, for a fork working in `cwd`, that
+    /// outlives the source's delete; `next` is the turn after it. Refused: the hand-off [D90].
+    fn fork(
+        &self,
+        spec: &Spec,
+        at: &Boundary,
+        next: Option<&Boundary>,
+        cwd: &Path,
+    ) -> Result<Forked, Failed>;
+    /// The forks `conv` has now, before one is asked; None: they can't be told, so none is asked.
+    fn forks(&self, spec: &Spec, conv: &str) -> Option<Vec<String>>;
+    /// Removes a fork of `conv` never heard about: one not in `before`, owned by no session [D204].
+    fn unfork(
+        &self,
+        spec: &Spec,
+        conv: &str,
+        before: &[String],
+        owned: &BTreeSet<String>,
+    ) -> Result<(), String>;
 }

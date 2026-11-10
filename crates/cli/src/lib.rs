@@ -3,6 +3,7 @@
 
 mod accounts;
 mod control;
+mod fork;
 mod git;
 pub mod index;
 mod models;
@@ -33,6 +34,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier rename <id> <title> | pin <id> [--off]
        brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore]
+       brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F]
        brigadier stop <id> | recover <id> | archive <id> | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
@@ -278,6 +280,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "stop" => queue::stop(data, arg(args, 1)?),
         "rewind" => rewind::run(data, args),
+        "fork" => fork::run(data, args),
         "side" => side::run(data, args),
         "tabs" => tabs::run(data, args),
         "queue" => queue::run(data, args),
