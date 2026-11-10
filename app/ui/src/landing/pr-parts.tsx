@@ -6,7 +6,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Timeline } from "../components/timeline";
 import { ArrowUpRight, Check, CheckCircle, Comment, Warning } from "../icons";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles, XCircle } from "./icons";
-import { ago, blockers, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
+import { blockers, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
 import { type PrCheck, type PrComment, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
 
 /** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
@@ -80,7 +80,7 @@ export function CheckRow({ check, host, sends, log = false }: { check: PrCheck; 
 
 export function LogTail({ text }: { text: string }) {
   return (
-    <pre className="mx-2 overflow-x-auto rounded-control bg-fill-subtle px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">{text}</pre>
+    <pre className="mx-2 overflow-x-auto rounded-control bg-feedback-field px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">{text}</pre>
   );
 }
 
@@ -92,8 +92,7 @@ export function CommentRow({ comment, sends }: { comment: PrComment; sends: Send
       <span className="flex min-w-0 flex-1 flex-col">
         <span>
           <span className="text-foreground">{comment.author}</span>{" "}
-          {where && <span className="font-mono text-xs text-muted-foreground">{where}</span>}{" "}
-          <span className="text-xs text-muted-foreground">{ago(comment.atMs, sends.now)}</span>
+          {where && <span className="font-mono text-xs text-muted-foreground">{where}</span>}
         </span>
         <span className="whitespace-pre-wrap text-muted-foreground">{comment.body}</span>
       </span>
@@ -126,7 +125,7 @@ export function Overview({ pr, sends }: { pr: PullRequest; sends: Sends }) {
         {pr.comments.length === 0 ? <Quiet>No comments yet</Quiet> : pr.comments.map((comment) => <CommentRow key={comment.id} comment={comment} sends={sends} />)}
       </section>
       {blocked && (
-        <section className="flex items-center gap-3 rounded-control bg-fill-subtle px-3 py-2.5 text-sm">
+        <section className="flex items-center gap-3 rounded-control bg-pr-blocker px-3 py-2.5 text-sm">
           <Warning aria-hidden className="size-icon-sm shrink-0 text-destructive" />
           <span className="min-w-0 flex-1">{blocked}</span>
           <SendButton send={{ kind: "fix" }} label="Send all to agent" sends={sends} />

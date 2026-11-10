@@ -3,6 +3,8 @@ import { type RefObject, useEffect, useRef } from "react";
 
 import { ChangesGallery } from "./changes";
 import { Choices } from "./choices";
+import { ConflictsGallery } from "./conflicts";
+import { PullRequestsGallery } from "./pull-requests";
 import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
 import { RailGallery } from "./rail";
@@ -124,6 +126,10 @@ function GalleryPage() {
             <Area name="Layout">
               <TabsGallery />
               <Panes />
+            </Area>
+            <Area name="Landing the work">
+              <ConflictsGallery />
+              <PullRequestsGallery />
             </Area>
           </main>
         </div>

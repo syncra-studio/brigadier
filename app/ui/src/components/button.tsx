@@ -38,8 +38,10 @@ const SIZES = {
 // no size leaves the type to the caller with the rest of the look.
 function typeClasses(variant: ButtonProps["variant"], size: ButtonProps["size"]): string {
   if (size === null) return "";
-  if (size === "xs" || size === "inline") return "text-xs font-medium";
-  if (variant === "soft" || variant === "soft-destructive") return "text-label font-normal";
+  const soft = variant === "soft" || variant === "soft-destructive";
+  // The old soft buttons kept the regular weight at the small size too.
+  if (size === "xs" || size === "inline") return soft && size === "xs" ? "text-xs font-normal" : "text-xs font-medium";
+  if (soft) return "text-label font-normal";
   return "text-sm font-medium";
 }
 

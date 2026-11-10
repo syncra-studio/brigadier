@@ -45,6 +45,8 @@
   --color-pr-purple: #d080e2;
   --color-pr-purple-wash: color-mix(in oklab, var(--color-pr-purple) 15%, transparent);
   --color-destructive-chip: color-mix(in oklab, var(--color-destructive) 15%, transparent);
+  /* Behind a PR's "Can't merge yet" line. */
+  --color-pr-blocker: color-mix(in oklab, var(--color-muted) 40%, transparent);
   /* A conflict's current side, as the old conflict tab tinted it: its marker, then its lines. */
   --color-conflict-current-head: color-mix(in oklab, var(--color-link) 30%, transparent);
   --color-conflict-current: color-mix(in oklab, var(--color-link) 15%, transparent);
