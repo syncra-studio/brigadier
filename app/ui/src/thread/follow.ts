@@ -111,7 +111,11 @@ export class Follow {
     live.delete(this);
     this.stopPlacing();
     this.stopJump();
-    if (key !== undefined && this.el) left.set(key, { distance: Math.max(0, this.distance() - this.space.get()), mode: this.mode, stick: this.stick });
+    if (!this.el || key === undefined) return;
+    const distance = Math.max(0, this.distance() - this.space.get());
+    // Left at the end, coming back follows it, as a first open does: a reply grown into a send's space ends there
+    // without following, and nothing to bring back would open the list at its top.
+    left.set(key, { distance, mode: this.mode, stick: this.stick || distance <= AT_END });
   }
 
   distance() {
