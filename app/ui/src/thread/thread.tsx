@@ -237,6 +237,9 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
   // A footer shows before the session does: a start from Home has only its message there at first.
   const listed = rows.length > 0 || hasFooter;
+  // The footer stays drawn, so a send's bubble and space count from their first frame even where Virtua draws only the
+  // rows in view (a session opened again at its place); not under an island, where it would ask for every newer page.
+  const footerDrawn = useMemo(() => (after === null ? [data.length - 1] : undefined), [after, data.length]);
   // Read by Virtua once, as the list mounts: made as it appears, from the rows it mounts with (so not on `data`).
   const cache = useMemo(() => (listed ? cacheOf(id, data) : undefined), [listed, id]);
   useLayoutEffect(() => {
@@ -318,6 +321,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
         ref={list}
         data={data}
         cache={cache}
+        keepMounted={footerDrawn}
         shift={shift}
         bufferSize={3200}
         // Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
