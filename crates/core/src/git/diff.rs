@@ -19,17 +19,20 @@ const SIDE_MAX: u64 = 4 * 1024 * 1024;
 const BINARY_PROBE: usize = 8000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Scope {
+pub enum Scope<'a> {
     /// HEAD to the files: everything not committed.
     Uncommitted,
     /// HEAD to the index.
     Staged,
     /// The index to the files.
     Unstaged,
+    /// Where the branch left its base (this commit) to the files: read-only [D1035].
+    Branch(&'a str),
 }
 
-impl Scope {
-    pub fn parse(word: &str) -> io::Result<Scope> {
+impl Scope<'_> {
+    /// The scopes a move takes; Branch is read with `since`.
+    pub fn parse(word: &str) -> io::Result<Scope<'static>> {
         match word {
             "uncommitted" => Ok(Scope::Uncommitted),
             "staged" => Ok(Scope::Staged),
@@ -43,8 +46,15 @@ impl Scope {
             Scope::Uncommitted => "uncommitted",
             Scope::Staged => "staged",
             Scope::Unstaged => "unstaged",
+            Scope::Branch(_) => "branch",
         }
     }
+}
+
+/// Where the session's branch left `base`, the commit Branch since base starts from [D1035].
+pub fn since(checkout: &Checkout, base: &str, stop: &AtomicBool) -> io::Result<String> {
+    let out = read(&checkout.root, &["merge-base", base, "HEAD"], stop)?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
 }
 
 /// What `git diff` compares for a scope: none for the index to the files.
@@ -73,6 +83,7 @@ pub(super) fn base(
         Scope::Uncommitted => vec![head],
         Scope::Staged => vec!["--cached".into(), head],
         Scope::Unstaged => vec![],
+        Scope::Branch(since) => vec![since.into()],
     })
 }
 
@@ -421,6 +432,7 @@ pub fn file(
             Some(format!(":{path}")),
         ),
         Scope::Unstaged => (Some(format!(":{path}")), None),
+        Scope::Branch(since) => (Some(format!("{since}:{old}")), None),
     };
     let before = side(checkout, before, old, stop)?;
     let after = side(checkout, after, path, stop)?;
@@ -431,7 +443,7 @@ pub fn file(
     let patch = patch(checkout, scope, path, from, 3, stop)?;
     let staged = match scope {
         Scope::Staged => vec![true; patch.hunks.len()],
-        Scope::Unstaged => vec![false; patch.hunks.len()],
+        Scope::Unstaged | Scope::Branch(_) => vec![false; patch.hunks.len()],
         // A hunk is staged when nothing between the index and the files touches it.
         Scope::Uncommitted => {
             let unstaged = patch_of(checkout, Scope::Unstaged, path, stop)?;

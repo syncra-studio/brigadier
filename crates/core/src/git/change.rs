@@ -83,6 +83,14 @@ fn known(checkout: &Checkout, path: &str, stop: &AtomicBool) -> io::Result<Known
     })
 }
 
+/// Branch since base is read-only: no move takes it [D1035, D1043].
+fn read_only(scope: Scope) -> io::Result<()> {
+    match scope {
+        Scope::Branch(_) => err("Branch since base is read-only"),
+        _ => Ok(()),
+    }
+}
+
 fn delete(checkout: &Checkout, path: &str) -> io::Result<()> {
     match std::fs::remove_file(inside(checkout, path)?) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
@@ -98,6 +106,7 @@ pub fn files(
     paths: &[String],
     stop: &AtomicBool,
 ) -> io::Result<()> {
+    read_only(scope)?;
     for path in paths {
         inside(checkout, path)?;
     }
@@ -228,6 +237,7 @@ pub fn hunk(
     id: &str,
     stop: &AtomicBool,
 ) -> io::Result<()> {
+    read_only(scope)?;
     inside(checkout, path)?;
     if let Some(from) = from {
         inside(checkout, from)?;
@@ -280,5 +290,6 @@ pub fn hunk(
         (Scope::Staged, Move::Stage) | (Scope::Unstaged, Move::Unstage) => {
             err("That change is already there.")
         }
+        (Scope::Branch(_), _) => read_only(scope),
     }
 }

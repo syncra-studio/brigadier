@@ -16,8 +16,10 @@ use std::time::Duration;
 
 pub mod change;
 pub mod diff;
+pub mod files;
 pub mod history;
 pub mod push;
+pub mod search;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.
