@@ -13,17 +13,6 @@ export function PanelFrame({ children, className = "h-120" }: { children: ReactN
   return <div className={`relative flex w-80 flex-col overflow-hidden rounded-surface border border-border bg-background ${className}`}>{children}</div>;
 }
 
-/** During review only: the old app's own fixture page, captured into old-app/ (never committed). Removed before landing. */
-export function OldApp({ page }: { page: string }) {
-  return (
-    <State label={`Old app · ${page}`}>
-      <div data-old-app className="h-160 w-240 overflow-auto rounded-surface border border-border">
-        <img alt={`Old app: ${page}`} src={new URL(`./old-app/${page}.png`, import.meta.url).href} className="w-full" />
-      </div>
-    </State>
-  );
-}
-
 const HINTS: [string, PanelHint | null][] = [
   ["Nothing to do", null],
   ["Changes", { tone: "changes", count: 3 }],
@@ -84,11 +73,6 @@ export function RightPanelGallery() {
           </div>
           <RightPanelSlot owner="g-panel-live" />
         </div>
-      </Row>
-      <Row name="Old app">
-        <OldApp page="pane-open" />
-        <OldApp page="panes" />
-        <OldApp page="toolbar" />
       </Row>
     </Section>
   );

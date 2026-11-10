@@ -5,7 +5,6 @@ import { BRANCH, BRANCHES, CHANGES, CLEAN, FOLDER, HOST, MERGING, REBASING } fro
 import { BranchItem } from "../src/panel/source/branch";
 import { BranchNameBox, folderItems, QuickPick, sessionItems } from "../src/panel/source/quick-pick";
 import { Row, Section, State } from "./parts";
-import { OldApp } from "./right-panel";
 
 const NOW = Date.now();
 const noop = () => undefined;
@@ -76,10 +75,6 @@ export function BranchGallery() {
         <State label="Rename">
           <Over><BranchNameBox placeholder="New name for the branch" hint={`Enter renames ${BRANCH}`} initial={BRANCH} onClose={noop} /></Over>
         </State>
-      </Row>
-      <Row name="Old app">
-        <OldApp page="wave2-branch" />
-        <OldApp page="wave2-history" />
       </Row>
     </Section>
   );
