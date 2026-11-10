@@ -150,7 +150,7 @@ export function NoticeRow({
 }
 
 /** A notice; `action` (Retry) comes before the pager and ✕. */
-type Notice = { id: Key; level: keyof typeof NOTICE_ICONS; text: string; action?: ReactNode };
+export type Notice = { id: Key; level: keyof typeof NOTICE_ICONS; text: string; action?: ReactNode };
 
 /**
  * The notices one at a time, newest first (owner's D114, D119), with ‹ "2 of 3" › before ✕ while there are more

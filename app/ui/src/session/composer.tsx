@@ -14,6 +14,7 @@ import { sendFailed } from "../thread/follow";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel } from "./model";
+import { SessionNotices } from "./notices";
 import { draftOf, keepDraft, loadDraft } from "./draft";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
@@ -272,6 +273,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   return (
     <Composer>
       <ComposerRail>
+        <SessionNotices id={id} offline={offline} source={source} />
         <QueueCard
           items={items}
           paused={paused}
