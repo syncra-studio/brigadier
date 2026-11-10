@@ -128,7 +128,12 @@ const put = (session: string, next: Partial<Op>) => {
 const textOf = (op: Op): Text => op.text ?? (op.info ? { title: op.info.title, body: op.info.body, draft: false } : EMPTY);
 const LOST = "Brigadier isn't connected. This waits until it is.";
 
-const run = (session: string, args: string[], onReply: (reply: Record<string, any>) => void) => ask({ op: "run", args: ["host", session, ...args] }, onReply);
+// A push or create moves refs the watch may not follow (a new upstream), so Source's sync count reads git again after each.
+const run = (session: string, args: string[], onReply: (reply: Record<string, any>) => void) =>
+  ask({ op: "run", args: ["host", session, ...args] }, (reply) => {
+    if (args[0] !== "info" && args[0] !== "find") ask({ op: "git_refresh" });
+    onReply(reply);
+  });
 
 function read(session: string) {
   run(session, ["info"], (reply) => {
