@@ -50,9 +50,6 @@
   --color-destructive-chip: color-mix(in oklab, var(--color-destructive) 15%, transparent);
   /* Behind a PR's "Can't merge yet" line. */
   --color-pr-blocker: color-mix(in oklab, var(--color-muted) 40%, transparent);
-  /* A conflict's current side, as the old conflict tab tinted it: its marker, then its lines. */
-  --color-conflict-current-head: color-mix(in oklab, var(--color-link) 30%, transparent);
-  --color-conflict-current: color-mix(in oklab, var(--color-link) 15%, transparent);
   /* The old timeline's past dots and event titles. */
   --color-timeline-past: color-mix(in oklab, var(--color-foreground) 40%, transparent);
   --color-timeline-title: color-mix(in oklab, var(--color-foreground) 90%, transparent);

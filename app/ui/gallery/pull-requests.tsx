@@ -1,4 +1,4 @@
-// Step 2.13 on fake data: the PR tab, the two thread rows and the sidebar chip [D1017, D1018, D1031].
+// Step 2.13 on fake data: the PR tab, the checks-failed thread row and the sidebar chip [D1017, D1018].
 import { useState } from "react";
 
 import { NavList } from "../src/components/nav";
@@ -8,7 +8,7 @@ import type { PrChipState } from "../src/landing/pr-chip";
 import type { Sends } from "../src/landing/pr-parts";
 import { type PrView, PrTab } from "../src/landing/pr-tab";
 import { type PullRequest, sendKey } from "../src/landing/pull-requests";
-import { ChecksFailedRow, MergedRow, type Revert } from "../src/landing/thread-rows";
+import { ChecksFailedRow } from "../src/landing/thread-rows";
 import { SessionRowItem } from "../src/sidebar/row";
 import type { SessionRow } from "../src/sidebar/words";
 import { ChipsComposer, TabFrame } from "./landing-parts";
@@ -141,8 +141,6 @@ function SideRow({ row, held }: { row: SessionRow; held?: HTMLElement }) {
 }
 
 export function PullRequestsGallery() {
-  const [revert, setRevert] = useState<Revert>({ state: "none" });
-  const [archived, setArchived] = useState(false);
   return (
     <Section title="Pull requests: tab, thread rows, sidebar chip (step 2.13)">
       <Row name="live: every Send and Fix with agent leaves a chip and sends nothing; Merge asks first">
@@ -191,7 +189,7 @@ export function PullRequestsGallery() {
           <Tab pr={FAILING} offline />
         </State>
       </Row>
-      <Row name="thread rows: checks failed (Send to agent, Open) · merged (Revert, Archive), live">
+      <Row name="thread row: checks failed (Send to agent, Open)">
         <State label="checks failed">
           <ChecksFailedRow number={12} checks={["test (ubuntu-latest)"]} onSend={noop} onOpen={noop} />
         </State>
@@ -200,22 +198,6 @@ export function PullRequestsGallery() {
         </State>
         <State label="disconnected">
           <ChecksFailedRow number={12} checks={["test (ubuntu-latest)", "lint"]} offline onSend={noop} onOpen={noop} />
-        </State>
-        <State label="merged, live: Revert, then Archive">
-          <MergedRow
-            base="main"
-            commits={3}
-            revert={revert}
-            archived={archived}
-            onRevert={() => {
-              setRevert({ state: "pending" });
-              setTimeout(() => setRevert({ state: "done" }), 1000);
-            }}
-            onArchive={() => setArchived(true)}
-          />
-        </State>
-        <State label="revert failed">
-          <MergedRow base="main" commits={1} revert={{ state: "failed", error: "it conflicts in src/upload/retry.ts" }} onRevert={noop} onArchive={noop} />
         </State>
       </Row>
       <Row name="sidebar chip: each state · two PRs, the one that needs you wins and the hover lists both · merged, then seen">

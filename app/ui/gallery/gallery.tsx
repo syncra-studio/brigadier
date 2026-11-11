@@ -4,7 +4,6 @@ import { type RefObject, useEffect, useRef } from "react";
 import { CardGallery } from "./card";
 import { ChangesGallery } from "./changes";
 import { Choices } from "./choices";
-import { ConflictsGallery } from "./conflicts";
 import { PullRequestsGallery } from "./pull-requests";
 import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
@@ -140,7 +139,6 @@ function GalleryPage() {
               <FilesGallery />
             </Area>
             <Area name="Landing the work">
-              <ConflictsGallery />
               <PullRequestsGallery />
             </Area>
             <Area name="Right panel">
