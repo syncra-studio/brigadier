@@ -20,9 +20,9 @@ const OWN_LOGIN = "This computer's login";
 
 /**
  * One agent's accounts on its page, inside a card the caller draws [D51]: the computer's own login, then each
- * added one, each signed in by its agent's own sign-in in a real terminal in its own folder [D45]; ending, for an
- * agent that keeps accounts apart, in a link that adds another and shows its sign-in. An agent that keeps one
- * login shows that login alone.
+ * added one, each signed in by its agent's own sign-in in a real terminal in its own folder [D45]; ending in one
+ * link [D2080]: Sign in while nothing is signed in, then Add another account. An agent that keeps one login shows
+ * that login alone.
  */
 export function AccountRows({
   agent,
@@ -80,7 +80,9 @@ export function AccountRows({
     },
   ]).filter((account) => account.id !== "" || account.check.signed_in === true);
   const anySignedIn = rows.some((account) => account.check.signed_in === true);
-  const addLabel = anySignedIn ? `Add another ${agent.label} account` : `Add a ${agent.label} account`;
+  // One action ends the card [D2080]: the agent's own sign-in while nothing is signed in, then another account,
+  // kept apart where the agent keeps them apart, else its own sign-in again.
+  const adds = anySignedIn && Boolean(accounts?.accounts);
   // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
   const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
 
@@ -116,12 +118,22 @@ export function AccountRows({
         </div>
       ) : (
         <div className="flex flex-col">
-          {/* The agent's own sign-in: always for one that keeps one login, and for the computer's login while it's out [D2072, D2074]. */}
-          {agent.sign_in && (!accounts?.accounts || agent.signed_in !== true) && (
-            <LinkRow label={agent.sign_in} busy={setup.starting === agent.name} disabled={!online || !agent.path || setup.starting !== null} onClick={() => void setup.begin(agent, "sign-in")} />
-          )}
-          {accounts?.accounts && (
-            <LinkRow label={addLabel} busy={starting === "add"} disabled={!online || !accounts.installed || starting !== null} onClick={() => void start("add", () => addAccount(agent.name))} />
+          {adds ? (
+            <LinkRow
+              label={`Add another ${agent.label} account`}
+              busy={starting === "add"}
+              disabled={!online || !accounts?.installed || starting !== null}
+              onClick={() => void start("add", () => addAccount(agent.name))}
+            />
+          ) : (
+            agent.sign_in && (
+              <LinkRow
+                label={anySignedIn ? `Add another ${agent.label} account` : "Sign in"}
+                busy={setup.starting === agent.name}
+                disabled={!online || !agent.path || setup.starting !== null}
+                onClick={() => void setup.begin(agent, "sign-in")}
+              />
+            )
           )}
           {agent.setup?.action === "sign-in" && (
             <ConnectStatus agent={agent} failed={undefined} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 pb-3" />
