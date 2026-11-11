@@ -20,6 +20,7 @@ import { GlobalSearch } from "./palette/palette";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
+import { FolderDrop } from "./shell/folder-drop";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
@@ -151,6 +152,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
       <TrustHost active={active} />
       <ProjectSettingsHost />
       <FeedbackDialog />
+      <FolderDrop />
     </div>
   );
 }

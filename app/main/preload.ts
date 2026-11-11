@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 // A MessagePort can't cross contextBridge, so it reaches the page as a transfer.
 ipcRenderer.on("daemon-port", (event) => {
@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("brigadier", {
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
   ignoreMenuKeys: (on: boolean) => ipcRenderer.send("ignore-menu-keys", on),
   openLink: (url: string) => ipcRenderer.send("open-link", url),
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),
   badge: (count: number) => ipcRenderer.send("badge", count),
   onNoticeClick: (listener: (session: string) => void) => {

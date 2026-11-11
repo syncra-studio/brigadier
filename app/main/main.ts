@@ -132,6 +132,10 @@ function openWindow(): void {
   };
   fork();
   window.webContents.on("did-finish-load", wire);
+  window.webContents.once("did-finish-load", () => {
+    page = window.webContents;
+    if (opened.length > 0) page.send("menu", "open-folders", opened.splice(0));
+  });
   window.webContents.once("did-finish-load", warmFolderPanel);
   // A crash leaves the window blank; reloading draws it again and reconnects to the daemon.
   // shortcut: a page that crashes on every load reloads forever; add a backoff if that ever happens.
@@ -271,6 +275,16 @@ function setMenu(): void {
     ]),
   );
 }
+
+// Folders opened with the app: Finder's Open With, the Dock, `open -a`; one that launches it comes before the window,
+// so it waits for the page. The page takes them as ⌘O's [D165, D2004].
+const opened: string[] = [];
+let page: Electron.WebContents | null = null;
+app.on("open-file", (event, file) => {
+  event.preventDefault();
+  if (page && !page.isDestroyed()) page.send("menu", "open-folders", [file]);
+  else opened.push(file);
+});
 
 void app.whenReady().then(() => {
   setMenu();
