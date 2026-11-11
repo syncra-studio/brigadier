@@ -114,22 +114,20 @@ export function AccountRows({
             <TerminalPane id={`setup-${agent.name}`} title={`${agent.label} · ${agent.sign_in}`} onClose={() => void setup.close(agent.name)} />
           </div>
         </div>
-      ) : !accounts?.accounts ? (
-        agent.sign_in && (
-          <div className="flex flex-col">
-            <LinkRow label={agent.sign_in} busy={setup.starting === agent.name} disabled={!online || !agent.path || setup.starting !== null} onClick={() => void setup.begin(agent, "sign-in")} />
-            {agent.setup?.action === "sign-in" && (
-              <ConnectStatus agent={agent} failed={undefined} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 pb-3" />
-            )}
-          </div>
-        )
       ) : (
-        accounts.accounts && (
-          <div className="flex flex-col">
+        <div className="flex flex-col">
+          {/* The agent's own sign-in: always for one that keeps one login, and for the computer's login while it's out [D2072, D2074]. */}
+          {agent.sign_in && (!accounts?.accounts || agent.signed_in !== true) && (
+            <LinkRow label={agent.sign_in} busy={setup.starting === agent.name} disabled={!online || !agent.path || setup.starting !== null} onClick={() => void setup.begin(agent, "sign-in")} />
+          )}
+          {accounts?.accounts && (
             <LinkRow label={addLabel} busy={starting === "add"} disabled={!online || !accounts.installed || starting !== null} onClick={() => void start("add", () => addAccount(agent.name))} />
-            <ErrorLine error={failed.add} className="px-4 pb-3" />
-          </div>
-        )
+          )}
+          {agent.setup?.action === "sign-in" && (
+            <ConnectStatus agent={agent} failed={undefined} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 pb-3" />
+          )}
+          <ErrorLine error={failed.add} className="px-4 pb-3" />
+        </div>
       )}
     </>
   );

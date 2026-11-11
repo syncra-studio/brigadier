@@ -212,7 +212,7 @@ function Overview({
               <div className="flex items-center gap-3.5 px-4 py-3">
                 <AgentMark agent={agent} idle />
                 <RowText title={agent.label} line="Not installed" />
-                <Button size="sm" disabled={!online || !agent.install || settingUp(agent)} onClick={() => void setup.begin(agent, "install")}>
+                <Button size="sm" aria-label={`Set up ${agent.label}`} disabled={!online || !agent.install || settingUp(agent)} onClick={() => void setup.begin(agent, "install")}>
                   Set up
                 </Button>
               </div>
