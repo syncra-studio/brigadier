@@ -830,6 +830,9 @@
 @utility max-h-available {
   max-height: var(--available-height);
 }
+@utility max-w-available {
+  max-width: var(--available-width);
+}
 @utility min-w-anchor {
   min-width: var(--anchor-width);
 }

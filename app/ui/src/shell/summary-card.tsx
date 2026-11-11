@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { Popover } from "@base-ui/react/popover";
+
 import { cx } from "../components/cx";
 import { useDaemon } from "../daemon";
 import { GitCard } from "../panel/card";
@@ -54,7 +56,7 @@ export function useCardToggle(owner: string) {
   return { shown, toggle: () => setCard(owner, card.layout === "float" ? { floating: !shown, pinned: !shown } : { pinned: !shown }) };
 }
 
-// The card itself.
+// The card itself, pinned or floating.
 const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-raised";
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
@@ -74,6 +76,37 @@ export function SummaryCard({ shown, settled = true, children }: { shown: boolea
         <div className={SURFACE}>{children}</div>
       </aside>
     </div>
+  );
+}
+
+/**
+ * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, under the top bar, at
+ * most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the Context button or
+ * Escape closes it, so `open` is all it follows.
+ */
+function FloatingCard({ open, children }: { open: boolean; children: ReactNode }) {
+  // The pane's whole width, so the card follows the pane's end as the pane narrows.
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  return (
+    <>
+      <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0" />
+      <Popover.Root open={open}>
+        <Popover.Portal>
+          <Popover.Positioner className="z-popup" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
+            <Popover.Popup
+              ref={popup}
+              // The card itself takes the focus, not its first button, whose tip would open with it.
+              initialFocus={popup}
+              aria-label="Context"
+              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
+            >
+              <div className={SURFACE}>{children}</div>
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
+    </>
   );
 }
 
@@ -147,8 +180,10 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       )}
     >
       {children}
+      {has && state.layout === "float" && <FloatingCard open={state.floating}>{card}</FloatingCard>}
       {has && state.layout !== null && (
-        <SummaryCard shown={visible(state)} settled={settled}>
+        // Hidden where it floats, so the pane widening again eases it back in.
+        <SummaryCard shown={state.pinned && state.layout !== "float"} settled={settled}>
           {card}
         </SummaryCard>
       )}
