@@ -46,8 +46,8 @@ export function FolderDrop() {
 
   if (!over) return null;
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 z-popup flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
-      <div className="flex size-full flex-col items-center justify-center gap-3 rounded-surface border-2 border-dashed border-foreground/25 text-center">
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-popup flex items-center justify-center bg-drop-veil p-6 backdrop-blur-sm">
+      <div className="flex size-full flex-col items-center justify-center gap-3 rounded-surface border-2 border-dashed border-drop-edge text-center">
         <FolderPlus className="size-10 text-muted-foreground" />
         <p className="text-lg font-medium">Drop folders to add them as projects</p>
         <p className="text-sm text-muted-foreground">A repository is added right away. A folder that's already a project opens.</p>

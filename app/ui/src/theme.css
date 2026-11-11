@@ -102,6 +102,9 @@
   --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
   /* Behind an open dialog: the page, dimmed. */
   --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
+  /* The folder drop's veil and its dashed edge, the old app's FolderDropZone values. */
+  --color-drop-veil: color-mix(in oklab, var(--color-background) 70%, transparent);
+  --color-drop-edge: color-mix(in oklab, var(--color-foreground) 25%, transparent);
   --color-success-border: color-mix(in oklab, var(--color-success) 30%, transparent);
   --color-destructive-border: color-mix(in oklab, var(--color-destructive) 30%, transparent);
   /* Words that act inside a toast, hovered. */
