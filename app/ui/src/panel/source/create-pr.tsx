@@ -181,9 +181,9 @@ function made(session: string, pr: { number: number | null; url: string }) {
 
 /**
  * With files uncommitted, Create PR, Push branch and Open PR page commit them first, pinned to the step's commits, in
- * one Rust move [D1049, D1203, D1207]; `message` is Edit message…'s, else the writer writes it.
+ * one Rust move [D1049, D1203, D1207]; `message` is Edit message…'s, else the writer writes it, and `sent` clears it once used.
  */
-export type First = { at: StepAt; message: string | null };
+export type First = { at: StepAt; message: string | null; sent: () => void };
 
 const firstArgs = (verb: string, first: First) => ["first", verb, first.at.head, first.at.base ?? "-", ...(first.message ? ["--message", first.message] : [])];
 
@@ -193,6 +193,7 @@ const move = (session: string, args: string[], first: First | null, onReply: (re
   const [verb = "", ...rest] = args;
   ask({ op: "run", args: ["source", session, ...firstArgs(verb === "create" ? "pr" : verb, first), ...rest] }, (reply) => {
     ask({ op: "git_refresh" });
+    if (reply.ok) first.sent();
     onReply(reply);
   });
 };

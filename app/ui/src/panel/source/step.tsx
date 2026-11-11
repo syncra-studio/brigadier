@@ -131,7 +131,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const pending = step && "commit" in step ? (step.commit ?? 0) : 0;
   const pinned = data.at ?? null;
   const saved = message.trim() || null;
-  const pr = useCreatePr(session, pending > 0 && pinned ? { at: pinned, message: saved } : null);
+  const pr = useCreatePr(session, pending > 0 && pinned ? { at: pinned, message: saved, sent: () => saved && setMessage("") } : null);
   const id = useId();
   // The on-screen checkout's rejected push and its confirm [D1034, D1049]; the gallery's own without one.
   const target = useGit().target;
@@ -248,8 +248,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     if (!sent) wrote = false;
   };
   const run = () => {
-    if (!step || working) return;
-    if (step.kind === "merge") mergeLocally();
+    if (!step || working || data.syncing) return;
+    if (step.kind === "commit" || step.kind === "folderCommit") commit();
+    else if (step.kind === "merge") mergeLocally();
     else if (step.kind === "pushPr" && pending > 0) go("push");
     else if (step.kind === "pushPr" && wired) pr.onPick("pushBranch");
     else if ((step.kind === "sync" || step.kind === "publish") && pending === 0 && ops?.branch) ops.branch[step.kind]();
@@ -265,7 +266,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     shown && !idle
       ? {
           step: shown,
-          ...(landing && { running: true }),
+          // Sync, Publish, Pull only and Push only run through the branch store: the button spins until Rust answers.
+          ...((landing || data.syncing) && { running: true }),
           writing: committing,
           disabled: working,
           uncommitted: resolving ? 0 : uncommitted,
@@ -281,7 +283,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           // Another session working in this folder: the pre-check line says so, and Rust refuses [D1082].
           error: landError ?? data.stepError ?? (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null),
           later: landing ? null : later,
-          ...(wired && { can: (pick: ActionPick) => WIRED.includes(pick) }),
+          // Pull only and Push only are your own folder's; Rust refuses them in a session's worktree [D1205].
+          ...(wired && { can: (pick: ActionPick) => WIRED.includes(pick) && (state?.checkout === "folder" || (pick !== "pullOnly" && pick !== "pushOnly")) }),
           mergeStyle,
           rejected: rejected !== null,
           // Landing is the folder owner's alone [D1082].
