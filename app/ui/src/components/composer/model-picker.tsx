@@ -92,7 +92,7 @@ function moveKeys(event: KeyboardEvent<HTMLDivElement>, search: HTMLInputElement
 /**
  * The model pill and its picker, opening upward: a search across every agent on top, then the agents beside the
  * browsed one's models, a check on the one in use, and a footer with its effort levels. It opens on the agent in use
- * with the keyboard in the search; a pick keeps it open. While searching, the matches of every agent set up show in
+ * with the keyboard in the search; a pick closes it, an effort level keeps it open. While searching, the matches of every agent set up show in
  * one list with their marks, and Enter picks the first; Esc clears the search before it closes the picker. An agent
  * not installed or not signed in is dimmed, and shows what it needs and "Set up" in place of its models.
  */
@@ -154,6 +154,7 @@ export function ModelPicker({
       model: next.id,
       effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
     };
+    setOpen(false);
     if (provider === value.provider || !asksSwitch) onChange(choice);
     else setSwitching(choice);
   };
