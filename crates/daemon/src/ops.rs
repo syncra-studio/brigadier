@@ -20,7 +20,7 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 32] = [
+const ROUTED: [&str; 34] = [
     "start",
     "seen",
     "rename",
@@ -36,6 +36,8 @@ const ROUTED: [&str; 32] = [
     "agents",
     "setup",
     "profile",
+    "settings",
+    "awake",
     "projects",
     "accounts",
     "switching",
@@ -217,6 +219,16 @@ pub(super) fn serve(
                         .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),
                     Err(e) => json!({"ok": false, "error": e.to_string()}),
                 };
+                reply["re"] = re;
+                let _ = out.send(reply.to_string());
+            }
+            // Settings › Archived's list, from the rows this daemon holds [D2014].
+            "archived" => {
+                let (rows, projects) = {
+                    let s = state.lock().unwrap();
+                    (s.rows.clone(), s.projects.clone())
+                };
+                let mut reply = brigadier::archived::list(data, &rows, &projects, &req);
                 reply["re"] = re;
                 let _ = out.send(reply.to_string());
             }

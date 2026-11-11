@@ -272,6 +272,7 @@ impl Index {
                 .as_ref()
                 .map(|s| core::as_run(s, &f.fold, backend, None));
             let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
+                             "notice": e.error.is_none().then(|| fold::notice(&f.fold, state.as_str().unwrap_or(""))).flatten(),
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),

@@ -106,6 +106,44 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
     }
 }
 
+/// What a row has to tell the user once, as a notice [D200, D2004]: it needs them (a question, an
+/// approval, a sign-in), or its last turn ended, done or failed. `id` names that one occasion and
+/// reads the same each time, so a reconnect or a new daemon never repeats it. The user's own stop
+/// says nothing.
+pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
+    let turn = fold.turns.first();
+    let (kind, id, text) = match state {
+        "waiting_answer" => {
+            let turn = turn?;
+            match turn.asks.iter().next() {
+                Some((id, ask)) if ask["items"].is_array() => {
+                    ("question", format!("ask:{id}"), turn.question.clone())
+                }
+                Some((id, _)) => ("approval", format!("ask:{id}"), None),
+                None => (
+                    "question",
+                    format!("question:{}", turn.ts),
+                    turn.question.clone(),
+                ),
+            }
+        }
+        "sign_in" => (
+            "sign_in",
+            format!("sign_in:{}", fold.finished),
+            fold.sign_in.clone(),
+        ),
+        _ if turn.is_some() || fold.finished == 0 => return None,
+        "idle" | "idle_jobs" => ("done", format!("end:{}", fold.finished), None),
+        "failed" | "interrupted" | "limited" | "out_of_credits" | "unresumable" => (
+            "failed",
+            format!("end:{}", fold.finished),
+            fold.limit.clone().or(fold.refused.clone()),
+        ),
+        _ => return None,
+    };
+    Some(json!({"id": id, "kind": kind, "text": text}))
+}
+
 fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     let Some(turn) = fold.turns.first() else {
         let outcome = fold

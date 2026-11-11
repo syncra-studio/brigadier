@@ -2,6 +2,7 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 mod accounts;
+pub mod archived;
 mod chips;
 mod commit;
 mod control;
@@ -17,6 +18,7 @@ pub mod queue;
 mod rename;
 pub mod rewind;
 mod sessions;
+mod settings;
 mod setup;
 mod side;
 mod switching;
@@ -54,7 +56,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier panel [open on|off | width <px>]
        brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft] | host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
-       brigadier awake [off|work|always]
+       brigadier awake [off|work|always] | settings [KEY VALUE]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
@@ -108,8 +110,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // Every session id this command names, checked before any path is built from it.
     let ids = match cmd {
         "status" | "up" => &args[1..],
-        "index" | "awake" | "agents" | "setup" | "profile" | "projects" | "accounts"
-        | "switching" | "models" | "title" | "git" | "source" | "panel" => &[][..],
+        "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
+        | "accounts" | "switching" | "models" | "title" | "git" | "source" | "panel" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids
@@ -168,8 +170,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 // Unpicked, Rust's default for the agent and the project's trust [D187, D239].
                 level: flag(args, "--level").map(String::from).or_else(|| {
                     let held = models::held(data, project.as_ref().map(|p| p.id.as_str()));
+                    let chosen = settings::get(data, "default_level");
                     adapters::get(backend)
-                        .and_then(|a| models::default_level(a, held).map(String::from))
+                        .and_then(|a| models::default_level(a, held, &chosen).map(String::from))
                 }),
                 effort: flag(args, "--effort").map(String::from),
                 opts,
@@ -350,6 +353,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "panel" => panel::run(data, args),
         "host" => host::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
+        "settings" => settings::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),
         "awake" => {

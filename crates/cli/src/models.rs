@@ -45,11 +45,11 @@ pub fn held_in(projects: &[core::projects::Project], id: &str) -> bool {
         .any(|p| p.id == id && p.trusted != Some(true))
 }
 
-/// The level a new session starts on [D187]: Ask while held, else Auto where the agent has it,
-/// else its most restrictive (Ask on an agent with no auto mode).
-pub fn default_level(a: &dyn Adapter, held: bool) -> Option<&'static str> {
+/// The level a new session starts on [D187, D201]: Ask while held, else the chosen default where
+/// the agent has it, else its most restrictive (Ask on an agent with no auto mode).
+pub fn default_level(a: &dyn Adapter, held: bool, chosen: &str) -> Option<&'static str> {
     let levels = a.can().levels;
-    let want = if held { "ask" } else { "auto" };
+    let want = if held { "ask" } else { chosen };
     match levels.iter().find(|l| **l == want) {
         None if held => None,
         found => found.or(levels.first()).copied(),
@@ -66,9 +66,9 @@ pub fn next_agent<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
 }
 
 /// An agent's levels and the one its new session starts on there [D129, D175, D187].
-fn levels(name: &Value, held: bool) -> (Value, Value) {
+fn levels(name: &Value, held: bool, chosen: &str) -> (Value, Value) {
     match adapters::get(name.as_str().unwrap_or("")) {
-        Some(a) => (json!(a.can().levels), json!(default_level(a, held))),
+        Some(a) => (json!(a.can().levels), json!(default_level(a, held, chosen))),
         None => (json!([]), Value::Null),
     }
 }
@@ -76,7 +76,7 @@ fn levels(name: &Value, held: bool) -> (Value, Value) {
 /// One agent's check as a picker group. Not installed: no CLI found. Not signed in: nothing to
 /// pick and no sign-in found (a CLI with free or local models lists them signed out) [D45].
 /// A model from a check kept before efforts were reported has none, never guessed [D74].
-fn group(check: &Value, held: bool) -> Value {
+fn group(check: &Value, held: bool, chosen: &str) -> Value {
     let unavailable = if check["path"].is_null() && check.get("path").is_some() {
         json!("install")
     } else if check["models"].as_array().is_none_or(Vec::is_empty) && check["signed_in"] == false {
@@ -91,7 +91,7 @@ fn group(check: &Value, held: bool) -> Value {
                 "default_effort": m["default_effort"], "retiring": m["retiring"]})
         })
         .collect();
-    let (levels, level) = levels(&check["name"], held);
+    let (levels, level) = levels(&check["name"], held, chosen);
     json!({"provider": check["name"], "label": check["label"], "mark": check["mark"],
         "unavailable": unavailable, "models": models, "error": check["error"],
         "levels": levels, "level": level, "held": held})
@@ -114,11 +114,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         ask.push("--cached".into());
     }
     let reply = setup::run(data, &ask)?;
+    let chosen = crate::settings::get(data, "default_level");
     let groups: Vec<Value> = reply["agents"]
         .as_array()
         .into_iter()
         .flatten()
-        .map(|check| group(check, held))
+        .map(|check| group(check, held, &chosen))
         .collect();
     Ok(json!({"ok": true, "groups": groups}))
 }
@@ -150,7 +151,7 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
             "--cached".into(),
         ],
     )?;
-    let g = group(&checks["agents"][0], false);
+    let g = group(&checks["agents"][0], false, "");
     if !g["unavailable"].is_null() {
         return refuse(
             "not_set_up",
