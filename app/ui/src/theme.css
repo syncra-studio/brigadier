@@ -136,6 +136,8 @@
   --color-link-hover: color-mix(in oklab, var(--color-link) 80%, transparent);
   /* A row picked with ⌘- or Shift-click: the old app's bg-link/20. */
   --color-picked: color-mix(in oklab, var(--color-link) 20%, transparent);
+  /* Settings › Archived's picked row (the old app's). */
+  --color-picked-row: color-mix(in oklab, var(--color-link) 15%, transparent);
   /* A reply's blockquote edge, its rules (hr), and the lines between its table rows. */
   --color-quote-edge: color-mix(in oklab, var(--color-muted-foreground) 30%, transparent);
   --color-prose-rule: color-mix(in oklab, var(--color-muted-foreground) 20%, transparent);
@@ -1370,6 +1372,13 @@
 @utility edge-fade-sidebar {
   --edge-size-top: 2.5rem;
   --edge-size-bottom: 4rem;
+  scroll-padding-top: var(--edge-size-top);
+  scroll-padding-bottom: var(--edge-size-bottom);
+}
+/* The Settings nav's fade lengths (the old app's). */
+@utility edge-fade-settings-nav {
+  --edge-size-top: 0.5rem;
+  --edge-size-bottom: 2.5rem;
   scroll-padding-top: var(--edge-size-top);
   scroll-padding-bottom: var(--edge-size-bottom);
 }

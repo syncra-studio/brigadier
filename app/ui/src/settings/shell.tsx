@@ -74,8 +74,7 @@ export function SettingsNav({ current }: { current: string }) {
   return (
     <>
       <NavHeader title="Settings" />
-      {/* Its right edge is the list's, whose scrollbar keeps its room (the old app's overlaid it). */}
-      <div className="ps-2 pe-2.5 pb-2">
+      <div className="px-2 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
           <input
@@ -119,7 +118,8 @@ export function SettingsNav({ current }: { current: string }) {
           )}
         </label>
       </div>
-      <div className="scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2">
+      {/* The scrollbar keeps its room; its last 2px, the thumb's clear border, go under the panel's clipped edge, so rows end 8px in as the old app's did. */}
+      <div className="scroll-edge-fade edge-fade-settings-nav scroll-gutter -me-0.5 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2">
         {results ? (
           results.length === 0 ? (
             <EmptyState title="No settings match." />

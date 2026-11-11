@@ -261,7 +261,7 @@ function ArchivedRowItem({
   return (
     <ContextMenu onOpenChange={(open) => open && onMenu()}>
       <ContextMenuTrigger
-        render={<div data-slot="archived-row" data-picked={picked || undefined} className={cx("flex items-center gap-6 px-4 py-3 data-picked:bg-picked", pending && "opacity-disabled")} />}
+        render={<div data-slot="archived-row" data-picked={picked || undefined} className={cx("flex items-center gap-6 px-4 py-3 data-picked:bg-picked-row", pending && "opacity-disabled")} />}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Icon aria-label={row.project !== null ? "Session" : "Chat"} className="size-icon-md shrink-0 text-quiet-foreground" />
