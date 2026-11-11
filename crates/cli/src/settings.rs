@@ -124,6 +124,14 @@ pub fn get(data: &Path, key: &str) -> String {
     }
 }
 
+/// `awake [off|work|always]`: the keep-awake mode alone, as the sidebar's bulb sets it [D88].
+pub fn awake(data: &Path, mode: Option<&String>) -> io::Result<Value> {
+    if let Some(mode) = mode {
+        run(data, &["settings".into(), "awake".into(), mode.clone()])?;
+    }
+    Ok(json!({"ok": true, "awake": core::awake_mode(data)}))
+}
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let _one = SETTINGS.lock().unwrap();
     let mut saved = read(data);

@@ -30,8 +30,8 @@ export const GROUPS: ModelGroup[] = [
   { provider: "away", label: "Signed-out agent", mark: RING, models: [], unavailable: "sign-in" },
 ];
 
-const AWAY: Agent = { name: "away", label: "Agent", install: true, sign_in: "Sign in", mark: RING, setup: null, path: "/usr/local/bin/away", signed_in: false };
-const SIGN_IN = { id: "setup-away", action: "sign-in", running: true, code: null, signal: null } as const;
+const AWAY: Agent = { name: "away", label: "Agent", install: true, sign_in: "Sign in", mark: RING, enabled: true, update: null, models_off: [], setup: null, path: "/usr/local/bin/away", signed_in: false };
+const SIGN_IN = { id: "setup-away", action: "sign-in", running: true, code: null, signal: null, reason: null } as const;
 const SET_UP: [string, Agent][] = [
   ["sign in", AWAY],
   ["browser", { ...AWAY, setup: { ...SIGN_IN, code_page: null } }],

@@ -356,15 +356,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "settings" => settings::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" => accounts::run(data, args),
-        "awake" => {
-            if let Some(mode) = args.get(1) {
-                if !core::AWAKE_MODES.contains(&mode.as_str()) {
-                    return Err(io::Error::other(USAGE));
-                }
-                core::write_atomic(&data.join("awake"), mode.as_bytes())?;
-            }
-            Ok(json!({"ok": true, "awake": core::awake_mode(data)}))
-        }
+        "awake" => settings::awake(data, args.get(1)),
         "transcript" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;

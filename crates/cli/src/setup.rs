@@ -5,7 +5,7 @@
 use crate::{flag, owner};
 use brigadier_core::adapters::{self, Adapter, setup};
 use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir, writer};
-use brigadier_frames::log::{self, Reader};
+use brigadier_frames::log;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
+
+mod state;
+pub use state::run_state;
 
 static PROFILE: Mutex<()> = Mutex::new(());
 
@@ -304,45 +307,6 @@ fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) -> io::Resu
 /// The agent's setup run: which, whether it still runs, and how it ended.
 fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
     run_state(data, &format!("{SETUP}{}", a.name()), Some(a))
-}
-
-/// A setup run's state; with the agent, the code page or device code a running sign-in printed,
-/// or its own error words once it failed; and once it failed, or an update ended, its last line in
-/// the CLI's own words [D2077].
-pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
-    let Ok(spec) = core::load(data, id) else {
-        return Value::Null;
-    };
-    let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
-    let running = !ping["child"].is_null();
-    let action = spec.opts.get("setup").map(String::as_str);
-    // Its output is read only for an agent's sign-in: its code while it runs, its error after.
-    let page = action == Some("sign-in") && agent.is_some();
-    let (mut exited, mut out) = (Value::Null, Vec::new());
-    if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
-        let wanted = |k| k == log::EXITED || ((page || !running) && k == log::PTY);
-        while let Ok(Some(f)) = r.next_with(wanted) {
-            if f.kind == log::EXITED {
-                exited = serde_json::from_slice(&f.data).unwrap_or_default();
-            } else if f.kind == log::PTY {
-                out.extend_from_slice(&f.data);
-            }
-        }
-    }
-    let text = String::from_utf8_lossy(&out);
-    let device_code = agent.filter(|_| running).and_then(|a| a.device_code(&text));
-    let shows = (running && agent.is_some_and(|a| a.code_page())) || device_code.is_some();
-    let failed = !running && page && exited["code"] != 0;
-    let error = agent
-        .filter(|_| failed)
-        .and_then(|a| a.sign_in_error(&text));
-    let ended_badly =
-        exited["code"].as_i64().is_some_and(|c| c != 0) || !exited["signal"].is_null();
-    let said = ended_badly || (action == Some("update") && !exited.is_null());
-    json!({"id": id, "action": action, "running": running, "code": exited["code"],
-        "signal": exited["signal"], "code_page": setup::code_page(&out).filter(|_| shows),
-        "device_code": device_code, "error": error,
-        "reason": said.then(|| setup::reason(&out)).flatten()})
 }
 
 /// Types a code pasted from the sign-in's code page into the sign-in, as its adapter takes it.
