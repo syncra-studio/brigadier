@@ -169,6 +169,16 @@ pub(super) fn make(
         Target::Session(id) => Some(*id),
         Target::Project(_) => None,
     };
+    // No turn starts in the session while it commits, and none may be working now, whichever way
+    // the commit was asked for; its lock before the checkout's, as a turn start does [D1082, D1235].
+    let _one = me
+        .map(|id| brigadier_core::worktrees::lock(&brigadier_core::session_dir(data, id)))
+        .transpose()?;
+    if let Some(id) = me
+        && super::sessions::working(data, id, &brigadier_frames::procs::all())
+    {
+        return Err(io::Error::other("Waits for the turn to finish."));
+    }
     let folder = brigadier_core::git::folder(data, target)?;
     let _shared = super::sessions::guard(data, &folder, me)?;
     let sha = commit::commit(

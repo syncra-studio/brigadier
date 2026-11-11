@@ -17,7 +17,8 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
 }
 
 /// Merges the base, pinned to the commits the control was worked out on (`head`, `base_at`), into
-/// session `id`'s branch.
+/// session `id`'s branch. The caller holds the session's `worktrees::lock` across it, taken before
+/// any checkout lock, as a turn start does [D1235].
 pub fn catch_up(
     data: &Path,
     id: &str,
@@ -28,9 +29,7 @@ pub fn catch_up(
     if let Some(with) = super::precheck::shared_with(data, id) {
         return err(format!("Catching up stays with {with}."));
     }
-    // The session's lock before the checkout's, as a turn start does [D1235].
     let dir = session_dir(data, id);
-    let _one = worktrees::lock(&dir)?;
     let Some(lands) = worktrees::lands(&dir)? else {
         return err("This session has no base to catch up with.");
     };

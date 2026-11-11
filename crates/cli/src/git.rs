@@ -128,6 +128,13 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         Target::Session(id) => Some(id),
         Target::Project(_) => None,
     };
+    // Catch up's session lock comes before the checkout lock the guard takes, as a turn start's do [D1235].
+    let _one = match (word(0)?, me) {
+        ("catch-up", Some(id)) => Some(brigadier_core::worktrees::lock(
+            &brigadier_core::session_dir(data, id),
+        )?),
+        _ => None,
+    };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
         "sync" | "publish" | "push" | "catch-up" => {
