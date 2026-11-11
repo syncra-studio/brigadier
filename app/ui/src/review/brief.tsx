@@ -41,11 +41,15 @@ export function fileFact(flag: FileFlag): string {
   return { lock: "lock file", manifest: "dependency manifest", build: "CI or build config", migration: "migration" }[flag.kind];
 }
 
+/** A run's result and what changed after it, as Review and Source both say it (D1199). */
+export function runFacts(run: LastRun): { result: string; since: string } {
+  return { result: run.exit === null ? "result unreported" : `exited ${run.exit}`, since: run.changed ? "changed since" : "changed since: unknown" };
+}
+
 /** "last run `cargo test`, exited 0, ran 9:02 AM · changed since: unknown" (D1188, D1192). */
 export function runWords(run: LastRun | null, now = Date.now()): BriefLine {
   if (!run) return { text: "No test or build run this session", tone: "quiet" };
-  const result = run.exit === null ? "result unreported" : `exited ${run.exit}`;
-  const since = run.changed ? "changed since" : "changed since: unknown";
+  const { result, since } = runFacts(run);
   return { text: `last run \`${run.command}\`, ${result}, ran ${sentAt(run.at, now)} · ${since}`, tone: run.exit || run.changed ? "warn" : "quiet" };
 }
 

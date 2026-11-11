@@ -22,8 +22,8 @@ const files = (state: SourceState) => new Set([...state.staged, ...state.changes
 /** Rust's step with what the button commits first [D1203]. */
 const first = (step: Step, state: SourceState): Step => ({ ...step, commit: files(state) }) as Step;
 const RUNNING: Pr = { ...PRS[0]!, health: "running", failed: 0 };
-const PASSED = { command: "pnpm test", exit: 0, atMs: NOW - 3 * MIN, changed: true };
-const FAILED_RUN = { command: "cargo test", exit: 101, atMs: NOW - 9 * MIN, changed: false };
+const PASSED = { command: "pnpm test", exit: 0, at: NOW - 3 * MIN, changed: true };
+const FAILED_RUN = { command: "cargo test", exit: 101, at: NOW - 9 * MIN, changed: false };
 const FLAGS = { "package.json": { kind: "manifest", removed: 0, deleted: false }, "src/upload/retry.test.ts": { kind: "test", removed: 12, deleted: false } } as const;
 const WITH_FLAGS: SourceState = { ...CHANGES, changes: [...CHANGES.changes, file("package.json", "modified", 1, 1), file("src/upload/retry.test.ts", "modified", 3, 12)] };
 const LONG: Step = { ...STEPS.busy, blocked: { why: "busy", folder: "/Users/you/upload-app", files: ["src/upload/client.ts", "src/upload/retry.ts", "src/tray/Progress.tsx"] } };

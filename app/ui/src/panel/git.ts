@@ -7,6 +7,7 @@ import { useHomeProject, useStart } from "../home/start";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
+import type { FileFlag, LastRun } from "../review/types";
 import type { MergeStyle, PanelHint, SourceFile, SourceState, Step, When } from "./types";
 
 /*
@@ -29,6 +30,8 @@ type Head = {
   remote: string | null;
 };
 type Counts = Map<string, { insertions: number; deletions: number }>;
+/** The uncommitted review's brief, Review's own (2.38) [D1188, D1199]: the last run, risky files' flags, and in your own folder the agent's files. */
+export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; agent: string[] | null };
 /** A move sent and not yet seen in a read. `done`: Rust answered, the next read settles it. */
 type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone"; done?: boolean };
 
@@ -60,6 +63,7 @@ type Git = {
   head: Head | null;
   files: Map<string, Entry>;
   counts: Counts;
+  brief: Brief | null;
   error: string | null;
   step: StepRead | null;
   /** Bumped by every read that changed something: Review reads again on it. */
@@ -72,7 +76,7 @@ type Git = {
   restoreError: string | null;
 };
 
-let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
+let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let stepAsk = 0;
 let re = 0;
 let n = 0;
@@ -103,7 +107,11 @@ function count(): void {
   ask({ op: "run", args: sourceArgs(target, "review", "uncommitted") }, (reply) => {
     counting = false;
     // Another checkout's answer is dropped, but a count asked for meanwhile still runs.
-    if (reply.ok && git.target === target) set({ counts: new Map(reply.review.files.map((file: any) => [file.path, { insertions: file.insertions, deletions: file.deletions }])) });
+    if (reply.ok && git.target === target) {
+      const files: any[] = reply.review.files;
+      const flags = Object.fromEntries(files.filter((file) => file.flag).map((file) => [file.path, file.flag]));
+      set({ counts: new Map(files.map((file) => [file.path, { insertions: file.insertions, deletions: file.deletions }])), brief: { run: reply.review.run, flags, agent: reply.review.agent ?? null } });
+    }
     if (recount) {
       recount = false;
       count();
@@ -239,7 +247,7 @@ export function useGitWatch(owner: string | null): void {
     if (key !== git.key) {
       re = 0;
       pending = [];
-      set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null, readAtMs: null, truth: null, restoring: false, restoreError: null });
+      set({ key, target, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, readAtMs: null, truth: null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
@@ -321,12 +329,12 @@ const sum = (file: SourceFile, other?: SourceFile) => ({ added: file.added + (ot
 let shown: { from: Git; pending: Pending[]; source: SourceState | null } | null = null;
 
 /** The on-screen checkout for Source: its state, Rust's dot, the count, and the paths still moving. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
+export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now || shown.pending !== pending) shown = { from: now, pending, source: sourceOf(now) };
   // Rust's step says the dot once it's read; until then the status's count does [D1025].
   const hint = now.step ? now.step.hint : (now.head?.hint ?? null);
-  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
+  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 /** The file moves Source and Review share [D1043, D1103]: Rust's own, under the checkout's lock. */

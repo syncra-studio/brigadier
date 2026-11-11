@@ -5,8 +5,10 @@ import { cx } from "../../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip";
 import { Check, ChevronDown, ChevronRight, FileIcon, Spinner } from "../../icons";
 import { PullRequestMerged, PullRequestOpen } from "../../landing/icons";
-import type { LastRun, Pr, SourceFile } from "../types";
-import { ago, baseName, dirName, prWords, runWords, type Tone } from "../words";
+import { runFacts } from "../../review/brief";
+import type { LastRun } from "../../review/types";
+import type { Pr, SourceFile } from "../types";
+import { ago, baseName, dirName, prWords, type Tone } from "../words";
 
 /**
  * One row of Source's groups and the card, the old card's 28px row [D1198, D1206]: an icon, the title, an optional
@@ -49,11 +51,11 @@ const RUN_TEXT: Record<Tone, string> = { quiet: "", good: "", warn: "text-warnin
 
 /** The agent's last test or build run, as a fact (2.38) [D1188]. */
 export function RunLine({ run, nowMs }: { run: LastRun; nowMs: number }) {
-  const words = runWords(run);
+  const words = { ...runFacts(run), tone: (run.exit === null ? "quiet" : run.exit === 0 ? "good" : "bad") as Tone };
   return (
     <Line
       icon={<span className={cx("size-1.5 rounded-capsule", RUN_DOT[words.tone])} />}
-      sub={<>{ago(run.atMs, nowMs)}<span className={cx(run.changed && "text-warning")}> · {words.since}</span></>}
+      sub={<>{ago(run.at, nowMs)}<span className={cx(run.changed && "text-warning")}> · {words.since}</span></>}
       end={<span className={RUN_TEXT[words.tone]}>{words.result}</span>}
     >
       <span className="font-mono text-xs">{run.command}</span>

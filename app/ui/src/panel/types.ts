@@ -89,15 +89,6 @@ export type Step =
   | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number; commit?: number }
   | { kind: "publish"; branch: string; remote: string; commit?: number };
 
-/** A risky file's flag, from Rust's brief (2.38) [D1188, D1213]: a test deleted or with lines removed, a lock file, a manifest, CI or build config, a migration. */
-export type Flag = { kind: "test" | "lock" | "manifest" | "build" | "migration"; removed: number; deleted: boolean };
-
-/**
- * The session's last test or build run, as its CLI reported it (2.38) [D1188]: `exit` null when it didn't say;
- * `changed` true only when an edit to the listed files began after it, else unknown, never "no" [D74, D1192].
- */
-export type LastRun = { command: string; exit: number | null; atMs: number; changed: boolean };
-
 /** "When it's done"'s pick for a session (2.44): Ask me is no rule at all [D1201, D1206, D1212]. */
 export type WhenRule = "merge" | "pr" | "mergePr" | "pushPr";
 

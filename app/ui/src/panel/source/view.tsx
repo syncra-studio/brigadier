@@ -77,6 +77,9 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       restoreError: git.restoreError,
       freshness: git.step?.freshness ?? git.truth?.base ?? null,
       when: git.step?.when ?? null,
+      run: git.brief?.run,
+      flags: git.brief?.flags,
+      agentPaths: git.brief?.agent ?? null,
       share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {

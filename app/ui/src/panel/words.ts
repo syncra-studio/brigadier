@@ -1,4 +1,4 @@
-import type { Blocked, Flag, LastRun, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
+import type { Blocked, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /* The right panel's words, written from what Rust sends [D65]. */
 
@@ -303,28 +303,3 @@ export function watchWords(event: PrWatch["events"][number]): string {
 
 /** "14:32", the watch's clock time. */
 export const clock = (atMs: number) => new Date(atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-
-/** A flagged file's fact, in amber under its name: what Rust saw, never a verdict [D1188] (proposed words). */
-export function flagWords(flag: Flag): string {
-  switch (flag.kind) {
-    case "test":
-      return flag.deleted ? "test file deleted" : `test file lost ${plural(flag.removed, "line")}`;
-    case "lock":
-      return "lock file changed";
-    case "manifest":
-      return "dependencies changed";
-    case "build":
-      return "CI or build config changed";
-    case "migration":
-      return "migration";
-  }
-}
-
-/** The last run's result as its CLI said it: "exited 0", or "result unreported" [D74, D1188]. */
-export function runWords(run: LastRun): { result: string; tone: Tone; since: string } {
-  return {
-    result: run.exit === null ? "result unreported" : `exited ${run.exit}`,
-    tone: run.exit === null ? "quiet" : run.exit === 0 ? "good" : "bad",
-    since: run.changed ? "changed since" : "changed since: unknown",
-  };
-}

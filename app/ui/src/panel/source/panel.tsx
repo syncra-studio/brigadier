@@ -6,9 +6,11 @@ import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, Commit, Flag, ForcePush, LastRun, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError, When } from "../types";
+import type { FileFlag, LastRun } from "../../review/types";
+import { fileFact } from "../../review/brief";
+import type { Branch, Commit, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError, When } from "../types";
 import { pickWhen, useWhen } from "../when";
-import { flagWords, heroWords } from "../words";
+import { heroWords } from "../words";
 import { ActionButton } from "./action";
 import { BranchLabel } from "./branch";
 import type { BranchRead } from "./branch-ops";
@@ -62,11 +64,11 @@ export type SourceData = {
   restoreError?: string | null;
   /** The base against its own upstream: "main is 3 behind origin/main" on the line, its fetch age in the label's tip [D1187, D1193]. */
   freshness?: Freshness | null;
-  /** The session's last test or build run, from Rust's brief (2.38); none yet, or until it's wired. */
+  /** The session's last test or build run, from the uncommitted review's brief, Review's own (2.38) [D1199]; null with none yet. */
   run?: LastRun | null;
   /** Risky files' flags by path, from Rust's brief (2.38) [D1188, D1213]. */
-  flags?: Record<string, Flag>;
-  /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); unknown until wired [D1192]. */
+  flags?: Record<string, FileFlag>;
+  /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); null in a worktree or until read [D1192, D1213]. */
   agentPaths?: string[] | null;
   /** The session's "When it's done" rule and its state, from Rust's step read (2.44) [D1201, D1206]. */
   when?: When | null;
@@ -279,7 +281,7 @@ export function SourcePanel({
     <FileRow
       key={file.path}
       file={file}
-      fact={flags[file.path] ? flagWords(flags[file.path]!) : null}
+      fact={flags[file.path] ? fileFact(flags[file.path]!) : null}
       staged={stagedPaths.has(file.path)}
       unstaged={unstagedPaths.has(file.path)}
       committed={committed}
