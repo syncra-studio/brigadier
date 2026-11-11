@@ -1,6 +1,6 @@
 //! Title-based branch names, with git's own validation and collisions [D1214, D1217].
 
-use super::{git, lock, read, write};
+use super::{git, read};
 use std::fs::File;
 use std::io;
 use std::path::Path;
@@ -115,31 +115,35 @@ pub fn reserve(
 }
 
 /// Once a push is attempted the name stays put, even if tracking or the remote is later removed.
-pub fn publishing(checkout: &crate::git::Checkout) -> io::Result<()> {
+pub fn publishing(checkout: &crate::git::Checkout, branch: &str) -> io::Result<()> {
     if checkout.worktree {
-        let dir = checkout.root.parent().unwrap();
-        let _one = lock(dir)?;
-        if let Some(mut owned) = read(dir)? {
-            owned.published = true;
-            write(dir, &owned)?;
-        }
+        git(
+            &checkout.root,
+            &[
+                "config",
+                "--local",
+                &format!("branch.{branch}.brigadier-published"),
+                "true",
+            ],
+        )?;
     }
     Ok(())
 }
 
-/// Local evidence of publication, including refs on every remote; uncertain reads refuse rename.
+/// Local evidence of publication, including refs on every remote. The caller holds the session
+/// lock and checkout lock, in that order, so a turn can't deadlock against a title rename.
 pub fn unpublished(dir: &Path) -> io::Result<bool> {
-    let _one = lock(dir)?;
-    let Some(mut owned) = read(dir)? else {
+    let Some(owned) = read(dir)? else {
         return Ok(false);
     };
-    if owned.published {
-        return Ok(false);
-    }
     let Some(branch) = &owned.branch else {
         return Ok(false);
     };
     let repo = Path::new(&owned.repo);
+    let marker = format!("branch.{branch}.brigadier-published");
+    if git(repo, &["config", "--local", "--get", &marker]).is_ok_and(|v| v == "true") {
+        return Ok(false);
+    }
     let upstream = git(
         repo,
         &[
@@ -159,8 +163,7 @@ pub fn unpublished(dir: &Path) -> io::Result<bool> {
                 .any(|f| f == format!("refs/remotes/{r}/{branch}"))
         });
     if published {
-        owned.published = true;
-        write(dir, &owned)?;
+        git(repo, &["config", "--local", &marker, "true"])?;
     }
     Ok(!published)
 }

@@ -134,7 +134,7 @@ pub(crate) fn push_held(
     stop: &AtomicBool,
 ) -> io::Result<()> {
     let refspec = format!("refs/heads/{branch}:{dest}");
-    worktrees::names::publishing(checkout)?;
+    worktrees::names::publishing(checkout, branch)?;
     let mut command = match hooks {
         true => worktrees::with_hooks(&checkout.root),
         false => worktrees::command(&checkout.root),

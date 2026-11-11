@@ -15,6 +15,7 @@ use std::process::Command;
 
 mod branch;
 mod copy;
+pub use branch::rename_held;
 pub use branch::{rename, set_base};
 mod hand;
 mod landing;
@@ -51,8 +52,6 @@ struct Owned {
     landing: Option<Landing>,
     /// The deleted session that made it and handed it on, whose folder holds it [D1080].
     inherited: Option<String>,
-    /// Kept with the worktree record, including when its ownership is handed on.
-    published: bool,
 }
 
 fn err<T>(message: String) -> io::Result<T> {

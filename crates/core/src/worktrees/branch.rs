@@ -20,6 +20,11 @@ pub(super) fn settled(mut owned: Owned) -> Owned {
 /// delete by `lock`.
 pub fn rename(dir: &Path, new: &str) -> io::Result<()> {
     let _one = lock(dir)?;
+    rename_held(dir, new)
+}
+
+/// The title rename holds the session lock before the turn fence and git locks.
+pub fn rename_held(dir: &Path, new: &str) -> io::Result<()> {
     let Some(mut owned) = read(dir)? else {
         return err("This session has no branch of its own.".into());
     };
