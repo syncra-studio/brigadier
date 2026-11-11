@@ -260,6 +260,11 @@
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
+  /* The pinned summary card moving the reading column aside (the old app's --spacing-summary-shift and
+     --container-thread-beside-summary): half the card's 18.75rem and its 0.75rem inset, and the column narrowed to
+     leave the card's 20.25rem stack its gutter. */
+  --spacing-summary-shift: calc((var(--spacing) * 75 + var(--spacing) * 3) / 2);
+  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 81));
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
      room under it; a folded code block's 10 lines, drawn whole but cut there while it searches (the old app's). */
   --spacing-find-row: 2.75rem;
@@ -763,6 +768,8 @@
 /* The strip's mark button hovered or focused: the logo drawn over it gives way. */
 @custom-variant strip-mark-lit (:where([data-slot="sidebar-panel"]:has([data-strip-mark]:is(:hover, :focus-visible))) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
+/* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
+@custom-variant reading-column (& .max-w-reading);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
@@ -1275,6 +1282,16 @@
   transition-property: width;
   transition-timing-function: var(--default-transition-timing-function);
   transition-duration: var(--duration-bar);
+}
+
+/* The pinned summary card easing in from the pane's end and out (the old app's): visible until it has gone. */
+@utility summary-card-motion {
+  transition-property: opacity, translate, scale, visibility;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-summary-card);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 /* The sidebar's column easing between its widths on a spring; still while it is dragged. */

@@ -54,6 +54,9 @@ export function useCardToggle(owner: string) {
   return { shown, toggle: () => setCard(owner, card.layout === "float" ? { floating: !shown, pinned: !shown } : { pinned: !shown }) };
 }
 
+// The card itself.
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-raised";
+
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, children }: { shown: boolean; settled?: boolean; children: ReactNode }) {
   return (
@@ -65,18 +68,18 @@ export function SummaryCard({ shown, settled = true, children }: { shown: boolea
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
           !shown && "invisible translate-x-full scale-80 opacity-0",
-          settled && "motion-safe:transition-all motion-safe:duration-300 motion-safe:ease-summary-card",
+          settled && "summary-card-motion",
         )}
       >
-        <div className="pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-raised">{children}</div>
+        <div className={SURFACE}>{children}</div>
       </aside>
     </div>
   );
 }
 
 /**
- * The thread's pane, laid out for the card by its own width; the column moves aside by padding the pane's end, so
- * the thread and the composer stay centred in what's left. `card` null: no card, the pane as it was.
+ * The thread's pane, laid out for the card by its own width; with too little room beside the reading column, the
+ * column moves aside for it, as the old app's did. `card` null: no card, the pane as it was.
  */
 export function SummaryPane({ owner, card, children }: { owner: string; card: ReactNode | null; children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
@@ -136,10 +139,11 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     <div
       ref={pane}
       className={cx(
-        // Its own stacking context, so the card stays under the tabs drawn over the chat.
-        "relative isolate flex min-h-0 min-w-0 flex-1 flex-col",
-        shift && "pe-81",
-        settled && "motion-safe:transition-all motion-safe:duration-350 motion-safe:ease-summary-shift",
+        // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
+        "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
+        // As the old app: the reading column glides aside and takes its narrower width at once.
+        shift && "reading-column:-translate-x-summary-shift reading-column:max-w-reading-beside-summary",
+        settled && "motion-safe:reading-column:transition-transform motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift",
       )}
     >
       {children}
