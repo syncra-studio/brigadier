@@ -3,7 +3,7 @@
 //! which records the model and effort the next turn takes, or the agent the next message goes to.
 
 use crate::{flag, owner, setup};
-use brigadier_core::adapters::{self, Adapter};
+use brigadier_core::adapters::{self, Adapter, s};
 use brigadier_core::fold::Fold;
 use brigadier_core::{self as core, Spec};
 use serde_json::{Value, json};
@@ -75,8 +75,9 @@ fn levels(name: &Value, held: bool, chosen: &str) -> (Value, Value) {
 
 /// One agent's check as a picker group. Not installed: no CLI found. Not signed in: nothing to
 /// pick and no sign-in found (a CLI with free or local models lists them signed out) [D45].
-/// A model from a check kept before efforts were reported has none, never guessed [D74].
-fn group(check: &Value, held: bool, chosen: &str) -> Value {
+/// A model from a check kept before efforts were reported has none, never guessed [D74]. Models
+/// named in `hidden` (`<agent>/<id>`) are left out [D2082].
+fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
     let unavailable = if check["path"].is_null() && check.get("path").is_some() {
         json!("install")
     } else if check["models"].as_array().is_none_or(Vec::is_empty) && check["signed_in"] == false {
@@ -85,6 +86,10 @@ fn group(check: &Value, held: bool, chosen: &str) -> Value {
         Value::Null
     };
     let models: Vec<Value> = (check["models"].as_array().into_iter().flatten())
+        .filter(|m| {
+            let id = format!("{}/{}", s(check, &["name"]), s(m, &["id"]));
+            !hidden.iter().any(|h| *h == id)
+        })
         .map(|m| {
             json!({"id": m["id"], "name": m.get("name").unwrap_or(&m["id"]), "local": m["local"],
                 "efforts": m.get("efforts").cloned().unwrap_or_else(|| json!([])),
@@ -100,7 +105,7 @@ fn group(check: &Value, held: bool, chosen: &str) -> Value {
 /// `models [--session ID | --project P | --cwd D] [--fresh]`: the groups from each agent's last
 /// check in that folder, at once; `--fresh` checks again first, for the page to ask after the first
 /// answer. Each carries its levels and the one a new session there starts on. Agents turned off
-/// are left out.
+/// and models hidden are left out.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "set" {
         return set(data, args);
@@ -116,21 +121,34 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let reply = setup::run(data, &ask)?;
     let chosen = crate::settings::get(data, "default_level");
-    // An agent turned off is left out, but a session keeps the agents it is on [D2079].
-    let own = match flag(args, "--session") {
+    // An agent turned off or a model hidden is left out, but a session keeps those it is on [D2079, D2082].
+    let (own, on) = match flag(args, "--session") {
         Some(id) => {
             let spec = core::load(data, id)?;
             let f = core::fold(&spec.dir, true)?.fold;
-            vec![next_agent(&spec, &f).to_string(), f.backend, spec.backend]
+            let mut on: Vec<String> = f.models.iter().map(|(b, m)| format!("{b}/{m}")).collect();
+            on.extend(
+                f.picked
+                    .as_ref()
+                    .map(|p| format!("{}/{}", p.backend, p.model)),
+            );
+            on.extend(spec.model.as_ref().map(|m| format!("{}/{m}", spec.backend)));
+            let agents = vec![next_agent(&spec, &f).to_string(), f.backend, spec.backend];
+            (agents, on)
         }
-        None => vec![],
+        None => (vec![], vec![]),
     };
+    let mut hidden = crate::settings::read(data)["models_off"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    hidden.retain(|h| !on.iter().any(|m| h == m));
     let groups: Vec<Value> = reply["agents"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|check| check["enabled"] == true || own.iter().any(|b| check["name"] == *b))
-        .map(|check| group(check, held, &chosen))
+        .map(|check| group(check, held, &chosen, &hidden))
         .collect();
     Ok(json!({"ok": true, "groups": groups}))
 }
@@ -162,7 +180,7 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
             "--cached".into(),
         ],
     )?;
-    let g = group(&checks["agents"][0], false, "");
+    let g = group(&checks["agents"][0], false, "", &[]);
     if !g["unavailable"].is_null() {
         return refuse(
             "not_set_up",

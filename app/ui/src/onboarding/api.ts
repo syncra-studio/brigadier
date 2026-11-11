@@ -82,6 +82,8 @@ export type Agent = {
   enabled: boolean;
   /** The command its Update runs, as typed; none: it can't be updated from here [D2082]. */
   update: string | null;
+  /** Its models hidden from new sessions' pickers [D2082]. */
+  models_off: string[];
   /**
    * A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page; once it
    * failed, a sign-in's own `error` words, and `reason`: its last line in the CLI's own words [D2077].
@@ -147,20 +149,44 @@ export const checkOne = (name: string) => check(["agents", name], name);
  * is thrown. A check asked before it never lands over it.
  */
 export async function setEnabled(name: string, on: boolean): Promise<void> {
-  const mine = ++seq;
   const before = agents.get().list?.find((agent) => agent.name === name)?.enabled ?? true;
-  const show = (enabled: boolean) => {
-    if (shown.get(name) !== mine) return;
-    const now = agents.get();
-    agents.set({ ...now, list: now.list?.map((agent) => (agent.name === name ? { ...agent, enabled } : agent)) });
-  };
-  shown.set(name, mine);
-  show(on);
+  const show = showOn(name);
+  show((agent) => ({ ...agent, enabled: on }));
   try {
     const reply = await run(["settings", "agent", name, on ? "on" : "off"]);
-    show(!(reply.agents_off as string[]).includes(name));
+    show((agent) => ({ ...agent, enabled: !(reply.agents_off as string[]).includes(name) }));
   } catch (cause) {
-    show(before);
+    show((agent) => ({ ...agent, enabled: before }));
+    throw cause;
+  }
+}
+
+/** Changes one agent's card at once; a change shown through it lands only while no newer one came since. */
+function showOn(name: string): (change: (agent: Agent) => Agent) => void {
+  const mine = ++seq;
+  shown.set(name, mine);
+  return (change) => {
+    if (shown.get(name) !== mine) return;
+    const now = agents.get();
+    agents.set({ ...now, list: now.list?.map((agent) => (agent.name === name ? change(agent) : agent)) });
+  };
+}
+
+/**
+ * Hides a model from new sessions' pickers, or shows it again [D2082]: shown at once, then Rust's saved list; on
+ * failure it goes back and the error is thrown.
+ */
+export async function setModelOn(name: string, id: string, on: boolean): Promise<void> {
+  const before = agents.get().list?.find((agent) => agent.name === name)?.models_off ?? [];
+  const show = showOn(name);
+  const others = before.filter((each) => each !== id);
+  show((agent) => ({ ...agent, models_off: on ? others : [...others, id] }));
+  try {
+    const reply = await run(["settings", "model", name, id, on ? "on" : "off"]);
+    const mine = (reply.models_off as string[]).filter((each) => each.startsWith(`${name}/`));
+    show((agent) => ({ ...agent, models_off: mine.map((each) => each.slice(name.length + 1)) }));
+  } catch (cause) {
+    show((agent) => ({ ...agent, models_off: before }));
     throw cause;
   }
 }

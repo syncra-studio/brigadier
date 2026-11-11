@@ -2,7 +2,7 @@
 //! live in `settings.json`; Keep awake stays in its own `awake` file, which the daemon reads each
 //! pass [D88, D2016]. `settings agent NAME on|off` turns an agent on or off, kept as the list
 //! of those off [D2079]; `settings agent-path NAME PATH` runs it from another CLI once that one
-//! proves to be it [D2082].
+//! proves to be it, and `settings model NAME ID on|off` hides a model from pickers [D2082].
 
 use brigadier_core::{self as core, adapters};
 use serde_json::{Map, Value, json};
@@ -51,14 +51,28 @@ pub fn read(data: &Path) -> Value {
         })
         .collect();
     all.insert("awake".into(), core::awake_mode(data).into());
-    let off = saved["agents_off"].as_array().cloned().unwrap_or_default();
-    all.insert("agents_off".into(), off.into());
+    for key in ["agents_off", "models_off"] {
+        let off = saved[key].as_array().cloned().unwrap_or_default();
+        all.insert(key.into(), off.into());
+    }
     let paths = saved["agent_paths"]
         .as_object()
         .cloned()
         .unwrap_or_default();
     all.insert("agent_paths".into(), paths.into());
     Value::Object(all)
+}
+
+/// The ids of an agent's models hidden from new sessions' pickers, kept as `<agent>/<id>` [D2082].
+pub fn models_off(data: &Path, agent: &str) -> Vec<String> {
+    let all = read(data)["models_off"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mine = all
+        .iter()
+        .filter_map(|m| m.as_str()?.strip_prefix(agent)?.strip_prefix('/'));
+    mine.map(String::from).collect()
 }
 
 /// Whether `path` is agent `a`'s CLI: a program whose `--version` answers and names it, in the
@@ -147,9 +161,24 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             saved["agent_paths"][name.as_str()] = path.as_str().into();
             save(data, saved)?;
         }
+        [_, key, name, id, on] if key == "model" && adapters::get(name).is_some() => {
+            let model = format!("{name}/{id}");
+            let off = saved["models_off"].as_array_mut().unwrap();
+            off.retain(|m| *m != model);
+            match on.as_str() {
+                "on" => {}
+                "off" => off.push(model.into()),
+                _ => {
+                    return Err(io::Error::other(format!(
+                        "{model} is on or off, not {on:?}"
+                    )));
+                }
+            }
+            save(data, saved)?;
+        }
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier settings [KEY VALUE | agent NAME on|off | agent-path NAME PATH]",
+                "usage: brigadier settings [KEY VALUE | agent NAME on|off | agent-path NAME PATH | model NAME ID on|off]",
             ));
         }
     }

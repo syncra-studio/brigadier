@@ -172,13 +172,14 @@ fn available() -> Vec<&'static dyn Adapter> {
         .collect()
 }
 
-/// `update`: the command its Update runs, as typed.
+/// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers.
 fn card(data: &Path, a: &dyn Adapter) -> Value {
     let update = a.update().map(|w| format!("{} {}", a.bin().0, w.join(" ")));
     json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
         "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
-        "update": update.or(a.install().map(String::from))})
+        "update": update.or(a.install().map(String::from)),
+        "models_off": crate::settings::models_off(data, a.name())})
 }
 
 fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
