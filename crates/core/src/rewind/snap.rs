@@ -148,6 +148,16 @@ impl Store {
         command
     }
 
+    /// Git on the store, to read two moments apart: Review's Last turn [D1000, D1192].
+    pub fn read(&self, args: &[&str]) -> io::Result<Vec<u8>> {
+        self.run(&self.git.join("index"), args)
+    }
+
+    /// The folder the captures are of.
+    pub fn cwd(&self) -> &Path {
+        &self.cwd
+    }
+
     fn run(&self, index: &Path, args: &[&str]) -> io::Result<Vec<u8>> {
         done(self.store(index, args), args[0])
     }
