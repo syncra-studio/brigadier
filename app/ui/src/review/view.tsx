@@ -64,6 +64,8 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     ask({ op: "run", args: sourceArgs(checkout, "review", scope) }, (reply) => {
       if (read.current !== at) return;
       setLoading(false);
+      // The folder now couldn't be captured at once: what's drawn stays, and it's asked again shortly.
+      if (reply.busy) return void setTimeout(() => read.current === at && setTick((n) => n + 1), 1000);
       if (!reply.ok) return setError(String(reply.error));
       const next: Review = reply.review;
       setError(null);

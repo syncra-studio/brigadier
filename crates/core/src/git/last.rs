@@ -1,7 +1,8 @@
 //! Review's Last turn [D1000, D1035, D1192]: what the session's last turn changed, read from the
 //! two captures rewind already takes of its folder, in the session's own `sessions/<id>/rewind.git`
 //! [D35]. A turn still running, or one whose end capture was missed, compares its start with the
-//! folder now and says so. Read-only, like Branch since base [D1001].
+//! folder now and says so: that one capture is written to the store, under the session's fence.
+//! Nothing in the folder changes: no stage or revert, like Branch since base [D1001].
 
 use super::diff::{Patch, SIDE_MAX, binary, ids_in, shape, text};
 use super::listed::{listed, review_of};
@@ -11,13 +12,14 @@ use crate::fold::Fold;
 use crate::rewind::{Shot, Store};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::io;
 use std::path::Path;
+use std::{fs, io};
 
 const NAME: &str = "last";
 
 /// The last turn's two moments, or why there are none: `noProject`, `noTurn`, `midTurn` (sent
-/// while another turn ran) or `noSnapshot` [D30].
+/// while another turn ran) or `noSnapshot` [D30]; or `busy`: the folder now couldn't be captured
+/// at once, so the app keeps what it drew and asks again.
 pub struct Last {
     store: Store,
     before: Shot,
@@ -59,7 +61,7 @@ pub fn of(spec: &Spec, f: &Fold, checkout: &Checkout) -> Result<Last, &'static s
         .ok_or(if mid { "midTurn" } else { "noSnapshot" })?;
     let (after, missed) = match record.end.filter(|_| !live) {
         Some(end) => (end, false),
-        None => (store.capture().map_err(|_| "noSnapshot")?, !live),
+        None => (now(spec, &store)?, !live),
     };
     let prefix = prefix(&store, checkout);
     Ok(Last {
@@ -70,6 +72,23 @@ pub fn of(spec: &Spec, f: &Fold, checkout: &Checkout) -> Result<Last, &'static s
         missed,
         prefix,
     })
+}
+
+/// The folder now, under the session's fence, tried and never waited for: a delete, a closing
+/// session or a turn starting goes first, and no capture lands in a folder being removed [D35].
+fn now(spec: &Spec, store: &Store) -> Result<Shot, &'static str> {
+    if crate::session::closed(&spec.dir).is_some() {
+        return Err("busy");
+    }
+    let fence = fs::OpenOptions::new()
+        .write(true)
+        .open(spec.dir.join("worktree.lock"))
+        .map_err(|_| "busy")?;
+    fence.try_lock().map_err(|_| "busy")?;
+    if crate::session::closed(&spec.dir).is_some() {
+        return Err("busy");
+    }
+    store.capture().map_err(|_| "noSnapshot")
 }
 
 fn diff(store: &Store, before: &str, after: &str, extra: &[&str]) -> io::Result<Vec<u8>> {

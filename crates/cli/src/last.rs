@@ -40,6 +40,8 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
     let f = brigadier_core::fold(&spec.dir, true)?.fold;
     let mut review = match last::of(&spec, &f, &checkout) {
         Ok(turn) => turn.list()?,
+        // The folder now couldn't be captured at once: the app keeps what it drew and asks again.
+        Err("busy") => return Ok(Some(json!({"ok": false, "busy": true, "error": "busy"}))),
         Err(why) => return none(why),
     };
     // Another session in this folder: its work may be in the turn's diff [D1078].

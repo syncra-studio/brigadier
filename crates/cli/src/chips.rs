@@ -50,8 +50,19 @@ fn went(data: &Path, id: &str, (msg, into): &(String, String)) -> bool {
         return true;
     }
     if into != id {
-        // Send as new: its session exists once it was made, and carries the message from there.
-        return dir.exists();
+        // Send as new: the source's own log holds its intent, and its result once known [D204].
+        // Logged and not refused, it went or is still going; refused, the chip comes back.
+        let (mut intent, mut refused) = (false, false);
+        let _ = core::read(&core::session_dir(data, id), |item| {
+            if item["kind"] == "note" && item["event"] == "side" && item["session"] == into.as_str()
+            {
+                match item["phase"].as_str() {
+                    Some("intent") => intent |= item["cid"] == msg.as_str(),
+                    _ => refused = item["ok"] == false,
+                }
+            }
+        });
+        return intent && !refused;
     }
     let q = queue::row(&dir);
     let has = |v: &Value| v["id"].as_str() == Some(msg);

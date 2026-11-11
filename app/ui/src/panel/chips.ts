@@ -28,6 +28,8 @@ const gone = new Set<string>();
 const dropped = new Set<string>();
 // The connection each session's chips were last read on: a new one reads them again.
 const loaded = new Map<string, unknown>();
+// Each session's handover under way, which a later message waits for.
+const handing = new Map<string, Promise<void>>();
 // One change at a time per session, in order: the daemon runs each on its own thread.
 const chains = new Map<string, Promise<Record<string, any>>>();
 
@@ -96,8 +98,14 @@ export const dropChips = (session: string, ids: readonly string[]) => {
  * Rust couldn't take them nothing is sent, and `refused` says why.
  */
 export function handOff(session: string, sent: readonly Chip[], msg: string, go: () => void, refused: (reply: Record<string, any>) => void, into = session): void {
-  if (sent.length === 0) return go();
-  void tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply)));
+  const before = handing.get(session);
+  // Messages go in the order they were sent [D237]: one without chips waits for an earlier one's handover.
+  if (sent.length === 0 && !before) return go();
+  const next = (before ?? Promise.resolve()).then(() =>
+    sent.length === 0 ? go() : tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply))),
+  );
+  handing.set(session, next);
+  void next.finally(() => handing.get(session) === next && handing.delete(session));
 }
 
 /** Chips a message took leave the composer. */

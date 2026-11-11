@@ -117,7 +117,7 @@ impl Fold {
     }
 
     /// A step ended: a run whose end its CLI reported becomes the last run; one cut off (sent to
-    /// the background, interrupted) stays open, as Claude's end of it may come later [D74].
+    /// the background, interrupted) stays open, as the agent's end of it may come later [D74].
     pub(super) fn run_done(&mut self, item: &Value, ts: u64) {
         let id = item["id"].as_str().unwrap_or_default();
         if let Some(paths) = self.runs.late.remove(id)
