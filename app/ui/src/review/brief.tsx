@@ -41,8 +41,8 @@ export function fileFact(flag: FileFlag): string {
   return { lock: "lock file", manifest: "dependency manifest", build: "CI or build config", migration: "migration" }[flag.kind];
 }
 
-/** A run's result and what changed after it, as Review and Source both say it (D1199). */
-export function runFacts(run: LastRun): { result: string; since: string } {
+/** A run's result and what changed after it, as Review says it (D1199). */
+function runFacts(run: LastRun): { result: string; since: string } {
   return { result: run.exit === null ? "result unreported" : `exited ${run.exit}`, since: run.changed ? "changed since" : "changed since: unknown" };
 }
 

@@ -44,12 +44,6 @@ export type Pr = {
   failed: number | null;
 };
 
-/** What the PR watch saw last, and when it last looked [D1017, D1116]. */
-export type PrWatch = {
-  checkedAtMs: number;
-  events: { atMs: number; pr: number; kind: "opened" | "checksFailed" | "checksPassed" | "changesAsked" | "commented" | "merged"; detail: string }[];
-};
-
 /** Why the base can't take a landing now [D1047, D1082, D1161]: edits there in the way, a merge stopped there, not a local branch, or another session lands. */
 export type Blocked =
   | { why: "busy"; folder: string; files: string[] }

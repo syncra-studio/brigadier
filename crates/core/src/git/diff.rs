@@ -234,7 +234,7 @@ impl Patch {
 
 /// A hunk's id: its lines, numbered among the file's hunks with the same lines, so it holds while
 /// another hunk moves it up or down.
-pub(super) fn ids(scope: Scope, path: &str, hunks: &[Hunk]) -> Vec<String> {
+fn ids(scope: Scope, path: &str, hunks: &[Hunk]) -> Vec<String> {
     ids_in(scope.name(), path, hunks)
 }
 
@@ -260,7 +260,7 @@ pub(super) fn ids_in(scope: &str, path: &str, hunks: &[Hunk]) -> Vec<String> {
 
 /// The file's patch in `scope`, with `context` lines around each change; an untracked file is
 /// one hunk adding it whole.
-pub(super) fn patch(
+fn patch(
     checkout: &Checkout,
     scope: Scope,
     path: &str,
@@ -379,12 +379,7 @@ pub fn file(
 }
 
 /// The file's changes in `scope` cut to the bone (no context), for matching across scopes.
-pub(super) fn patch_of(
-    checkout: &Checkout,
-    scope: Scope,
-    path: &str,
-    stop: &AtomicBool,
-) -> io::Result<Patch> {
+fn patch_of(checkout: &Checkout, scope: Scope, path: &str, stop: &AtomicBool) -> io::Result<Patch> {
     patch(checkout, scope, path, None, 0, stop)
 }
 

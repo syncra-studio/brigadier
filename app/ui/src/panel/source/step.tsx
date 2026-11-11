@@ -112,7 +112,7 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const changes = `${pinned?.head ?? ""}:${uncommittedPaths.join("\n")}`;
   const failed = work.failed === changes;
 
-  /** Commit only · N files: every change, with the saved message or the writer's [D1029, D1203]. */
+  /** The commit: every change, with the typed message or the writer's [D1029, D1203]. */
   const commit = () => {
     if (!state || locked || clean || working) return;
     put({ failed: null, error: null, committing: true });
@@ -135,8 +135,7 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
    * The landing move, committing every change first when there are some (`first`): "Merging…" at once, until the
    * step it led to shows; a refusal stays on the line [D30, D1049, D1203].
    */
-  const go = (verb: "merge" | "push" | "sync" | "publish") => {
-    const at = pinned;
+  const go = (verb: "merge" | "sync" | "publish") => {
     if (!step) return;
     const on = step.kind;
     setLanded({ running: true, error: null, on });
@@ -144,10 +143,10 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     if (!live) return void setTimeout(() => setLanded(STILL), 1500);
     if (pending === 0 && verb === "merge") {
       if (!ops?.land) return setLanded(STILL);
-      return ops.land(at, (error) => setLanded({ running: false, error: error ? { kind: on, reason: error } : null, on }));
+      return ops.land(pinned, (error) => setLanded({ running: false, error: error ? { kind: on, reason: error } : null, on }));
     }
-    if (!target || !at) return setLanded({ running: false, error: { kind: on, reason: "Look again." }, on });
-    first(target, [verb, at.head, at.base ?? "-", ...(saved ? ["--message", saved] : [])], (reply) => {
+    if (!target || !pinned) return setLanded({ running: false, error: { kind: on, reason: "Look again." }, on });
+    first(target, [verb, pinned.head, pinned.base ?? "-", ...(saved ? ["--message", saved] : [])], (reply) => {
       if (reply.ok) {
         if (saved) setMessage("");
         return refreshStep(() => setLanded(STILL));
