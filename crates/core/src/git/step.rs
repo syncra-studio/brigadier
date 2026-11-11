@@ -6,6 +6,7 @@ use super::precheck::{
     Merge, blocked, count, git, merge, merge_base, midway, rebasing, shared_with,
 };
 use super::{Checkout, Status, Target, checkout, push, read, status};
+use crate::worktrees::landing::Landing;
 use crate::worktrees::{self, Lands};
 use crate::{host, load};
 use serde_json::{Map, Value, json};
@@ -270,27 +271,7 @@ fn session(
     .or_else(|_| super::err(format!("{base} isn't in this project any more.")))?;
     let merge_base = merge_base(root, &base_at, head, stop)?;
     let own = count(root, &format!("{merge_base}..{head}"), stop)?;
-    let ancestor =
-        |a: &str, b: &str| read(root, &["merge-base", "--is-ancestor", a, b], stop).is_ok();
-    // The base's own commits since this branch last met it. The session's own landing never
-    // counts, whatever its kind, while it holds [D1229].
-    let landing = (lands.landing.as_ref())
-        .filter(|l| ancestor(&l.commit, &base_at) && ancestor(&l.head, head));
-    let moved = match landing {
-        Some(l) => {
-            let (not_head, not_landing) = (format!("^{head}"), format!("^{}", l.commit));
-            let args = [
-                "rev-list",
-                "--count",
-                &base_at,
-                &not_head,
-                &not_landing,
-                "--",
-            ];
-            git(root, &args, stop)?.parse().map_err(io::Error::other)?
-        }
-        None => count(root, &format!("{head}..{base_at}"), stop)?,
-    };
+    let (moved, landing) = moved(root, lands, &base_at, head, stop)?;
     let landed_at = landing
         .filter(|l| now.files.is_empty() && l.head == head)
         .map(|l| l.at_ms);
@@ -330,6 +311,38 @@ fn session(
         no_host,
         blocked,
     })
+}
+
+/// The base's own commits since this branch last met it, and the session's own landing while it
+/// holds, which never counts, whatever its kind [D1229]. Main moved: nothing goes out until it's
+/// caught up [D1282].
+pub(super) fn moved<'a>(
+    root: &Path,
+    lands: &'a Lands,
+    base_at: &str,
+    head: &str,
+    stop: &AtomicBool,
+) -> io::Result<(u64, Option<&'a Landing>)> {
+    let ancestor =
+        |a: &str, b: &str| read(root, &["merge-base", "--is-ancestor", a, b], stop).is_ok();
+    let landing = (lands.landing.as_ref())
+        .filter(|l| ancestor(&l.commit, base_at) && ancestor(&l.head, head));
+    let moved = match landing {
+        Some(l) => {
+            let (not_head, not_landing) = (format!("^{head}"), format!("^{}", l.commit));
+            let args = [
+                "rev-list",
+                "--count",
+                base_at,
+                &not_head,
+                &not_landing,
+                "--",
+            ];
+            git(root, &args, stop)?.parse().map_err(io::Error::other)?
+        }
+        None => count(root, &format!("{head}..{base_at}"), stop)?,
+    };
+    Ok((moved, landing))
 }
 
 /// What a merge or rebase stopped midway brings in: the branch's own upstream (a pull) or the base

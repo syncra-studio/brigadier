@@ -89,6 +89,10 @@ pub fn land_held(
     if count(root, &format!("{tip}..{now}"), stop)? == 0 {
         return err(format!("Everything here is already in {}.", lands.base));
     }
+    // The step's own rule, so Merge into main can't run while it's greyed [D1282].
+    if super::step::moved(root, &lands, &tip, &now, stop)?.0 > 0 {
+        return err(format!("{} moved. Catch up first.", lands.base));
+    }
     let merge_base = merge_base(root, &tip, &now, stop)?;
     let tree = git(root, &["rev-parse", &format!("{now}^{{tree}}")], stop)?;
     let Merge::Clean(merged) = merge(root, &tip, &merge_base, &tree, stop)? else {
