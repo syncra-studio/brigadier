@@ -86,7 +86,7 @@ export function AgentPage({
                 />
               </SettingsRow>
             )}
-            <AccountRows agent={agent} accounts={accounts} online={online} onRemove={(account) => accounts && onRemove(accounts, account)} />
+            <AccountRows agent={agent} accounts={accounts} online={online} setup={setup} onRemove={(account) => accounts && onRemove(accounts, account)} />
           </SettingsCard>
           <ErrorLine error={failed[`${agent.name}:remove`]} className="px-1" />
         </SettingsSection>
@@ -126,13 +126,16 @@ function Installation({ agent, online, setup }: { agent: Agent; online: boolean;
           </div>
           {action}
         </div>
-        <ConnectStatus
-          agent={agent}
-          failed={setup.failed[agent.name]}
-          onRetry={() => void setup.begin(agent, agent.setup?.action ?? (state === "install" ? "install" : "sign-in"))}
-          onCancel={() => void setup.close(agent.name)}
-          className="pt-3"
-        />
+        {/* A sign-in shows in Accounts, where it runs [D2072]. */}
+        {agent.setup?.action !== "sign-in" && (
+          <ConnectStatus
+            agent={agent}
+            failed={setup.failed[agent.name]}
+            onRetry={() => void setup.begin(agent, agent.setup?.action ?? (state === "install" ? "install" : "sign-in"))}
+            onCancel={() => void setup.close(agent.name)}
+            className="pt-3"
+          />
+        )}
       </div>
       {state !== "install" && (
         <div className="flex items-center gap-6 px-4 py-3">

@@ -6,10 +6,11 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { DotsHorizontal, Plus, Spinner } from "../icons";
+import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
 import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, signIn, signInRun } from "./api";
-import { ROW_LINE, ROW_TITLE, useFailed } from "./parts";
+import { ConnectStatus, ROW_LINE, ROW_TITLE, useFailed } from "./parts";
 
 /** How often the accounts are checked again while a sign-in terminal is open. */
 const RECHECK_MS = 2000;
@@ -27,11 +28,13 @@ export function AccountRows({
   agent,
   accounts,
   online,
+  setup,
   onRemove,
 }: {
   agent: Agent;
   accounts: SwitchAgent | undefined;
   online: boolean;
+  setup: ReturnType<typeof useAgentSetup>;
   onRemove: (account: Account) => void;
 }) {
   const { failed, act } = useFailed();
@@ -78,13 +81,13 @@ export function AccountRows({
   ]).filter((account) => account.id !== "" || account.check.signed_in === true);
   const anySignedIn = rows.some((account) => account.check.signed_in === true);
   const addLabel = anySignedIn ? `Add another ${agent.label} account` : `Add a ${agent.label} account`;
+  // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
+  const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
 
   return (
     <>
       {accounts === undefined && agent.path === undefined ? (
         <p className="px-4 py-3 text-sm text-quiet-foreground">Reading the accounts…</p>
-      ) : !rows.length && !accounts?.accounts ? (
-        <p className="px-4 py-3 text-sm text-quiet-foreground">No {agent.label} account signed in</p>
       ) : (
         rows.map((account) => (
           <AccountRow
@@ -105,24 +108,46 @@ export function AccountRows({
             <TerminalPane key={open} id={signInRun(agent.name, open)} title={`${agent.label} · Sign in`} onClose={() => close(open)} />
           </div>
         </div>
-      ) : (
-        accounts?.accounts && (
+      ) : ownSignIn ? (
+        <div className="px-4 py-3">
+          <div className="flex h-64 overflow-hidden rounded-surface border border-divider">
+            <TerminalPane id={`setup-${agent.name}`} title={`${agent.label} · ${agent.sign_in}`} onClose={() => void setup.close(agent.name)} />
+          </div>
+        </div>
+      ) : !accounts?.accounts ? (
+        agent.sign_in && (
           <div className="flex flex-col">
-            <button
-              type="button"
-              aria-label={addLabel}
-              disabled={!online || !accounts.installed || starting !== null}
-              onClick={() => void start("add", () => addAccount(agent.name))}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-label font-medium text-link hover:underline focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled"
-            >
-              {starting === "add" ? <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" /> : <Plus aria-hidden className="size-icon-sm" />}
-              {addLabel}
-            </button>
+            <LinkRow label={agent.sign_in} busy={setup.starting === agent.name} disabled={!online || !agent.path || setup.starting !== null} onClick={() => void setup.begin(agent, "sign-in")} />
+            {agent.setup?.action === "sign-in" && (
+              <ConnectStatus agent={agent} failed={undefined} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 pb-3" />
+            )}
+          </div>
+        )
+      ) : (
+        accounts.accounts && (
+          <div className="flex flex-col">
+            <LinkRow label={addLabel} busy={starting === "add"} disabled={!online || !accounts.installed || starting !== null} onClick={() => void start("add", () => addAccount(agent.name))} />
             <ErrorLine error={failed.add} className="px-4 pb-3" />
           </div>
         )
       )}
     </>
+  );
+}
+
+/** The card's last row: a link that adds an account or signs in, the old app's. */
+function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-label font-medium text-link hover:underline focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled"
+    >
+      {busy ? <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" /> : <Plus aria-hidden className="size-icon-sm" />}
+      {label}
+    </button>
   );
 }
 
