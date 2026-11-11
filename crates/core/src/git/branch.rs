@@ -65,7 +65,21 @@ pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result
         host_name = Some(repo.name());
         page = Some(host::branch_page(&repo, name));
     }
-    Ok(json!({"branches": branches, "base": base, "host": host_name, "page": page}))
+    let prs = match target {
+        Target::Session(id) => host::pr(data, id)
+            .ok()
+            .and_then(|p| p.list())
+            .and_then(|v| {
+                v.as_array().map(|rows| {
+                    rows.iter()
+                        .filter(|p| p["state"] == "open")
+                        .map(|p| p["number"].clone())
+                        .collect::<Vec<_>>()
+                })
+            }),
+        Target::Project(_) => None,
+    };
+    Ok(json!({"branches": branches, "base": base, "host": host_name, "page": page, "prs": prs}))
 }
 
 /// The sessions that work in this checkout, a subfolder of it included: none may have their branch

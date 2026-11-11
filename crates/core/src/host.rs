@@ -6,6 +6,8 @@ use crate::adapters::setup;
 use crate::git::{self, Checkout, Target, push};
 use crate::repos::{failed, tool};
 use crate::{load, projects};
+
+mod prs;
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
@@ -170,6 +172,7 @@ pub struct Pr {
     pub repo: Option<Repo>,
     /// The project is trusted, so its own git hooks run on a push [D166, D211].
     trusted: bool,
+    record: Option<std::path::PathBuf>,
 }
 
 /// The session's PR facts, from Rust's records and git, never from the client.
@@ -208,6 +211,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         base: host_base,
         repo,
         trusted,
+        record: crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
     })
 }
 
@@ -314,122 +318,6 @@ impl Pr {
             (true, None) => err("gh made no PR it could name."),
         }
     }
-
-    /// The branch's PRs as Source's PR icon shows them [D1017]; None when gh can't say.
-    // shortcut: read once with each info; 2.27's watch keeps them current.
-    fn prs(&self, gh: &str) -> Option<Value> {
-        let repo = self.repo.as_ref()?;
-        let mut command = tool(gh);
-        command.args([
-            "pr",
-            "list",
-            &format!("--repo={}/{}", repo.host, repo.path),
-            &format!("--head={}", self.branch),
-            "--state=all",
-            "--json=number,title,state,mergeable,reviewDecision,statusCheckRollup",
-        ]);
-        let out = setup::run(&mut command, GH_SECS).ok()?;
-        let list: Vec<Value> = serde_json::from_slice(&out.stdout).ok()?;
-        Some(list.iter().map(pr_row).collect())
-    }
-
-    /// The branch's PRs, or None when gh can't say: what the action button's PR steps read [D1019].
-    pub fn list(&self) -> Option<Value> {
-        let gh = self.repo.as_ref().and_then(gh)?;
-        self.prs(&gh)
-    }
-
-    /// The branch's open PR into the base, if any: how a create whose answer was lost is found.
-    pub fn find(&self) -> io::Result<Value> {
-        let Some((repo, gh)) = self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) else {
-            return Ok(Value::Null);
-        };
-        let mut command = tool(&gh);
-        command.args([
-            "pr",
-            "list",
-            &format!("--repo={}/{}", repo.host, repo.path),
-            &format!("--head={}", self.branch),
-            &format!("--base={}", self.base),
-            "--state=open",
-            "--json=url",
-            "--limit=1",
-        ]);
-        let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-        if !out.status.success() {
-            return err(failed(&out));
-        }
-        let list: Vec<Value> = serde_json::from_slice(&out.stdout)?;
-        Ok(list
-            .first()
-            .and_then(|p| p["url"].as_str())
-            .map_or(Value::Null, made))
-    }
-}
-
-/// One of gh's PRs as Source's row and dot say it: its state, and an open one's worst news.
-fn pr_row(pr: &Value) -> Value {
-    let checks = pr["statusCheckRollup"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    // A check run has a status and conclusion; a commit status has only a state.
-    let word = |c: &Value, key: &str| c[key].as_str().unwrap_or("").to_string();
-    let failed = (checks.iter())
-        .filter(|c| {
-            let said = [word(c, "conclusion"), word(c, "state")];
-            said.iter().any(|w| {
-                [
-                    "FAILURE",
-                    "ERROR",
-                    "TIMED_OUT",
-                    "CANCELLED",
-                    "ACTION_REQUIRED",
-                    "STARTUP_FAILURE",
-                ]
-                .contains(&w.as_str())
-            })
-        })
-        .count();
-    let running = (checks.iter())
-        .filter(|c| {
-            let status = word(c, "status");
-            (!status.is_empty() && status != "COMPLETED")
-                || ["PENDING", "EXPECTED"].contains(&word(c, "state").as_str())
-        })
-        .count();
-    let running = running.min(checks.len() - failed);
-    let health = if failed > 0 {
-        "failed"
-    } else if pr["mergeable"] == "CONFLICTING" {
-        "conflicts"
-    } else if pr["reviewDecision"] == "CHANGES_REQUESTED" {
-        "changes"
-    } else if running > 0 {
-        "running"
-    } else {
-        "ready"
-    };
-    json!({
-        "number": pr["number"],
-        "title": pr["title"],
-        "state": pr["state"].as_str().unwrap_or("OPEN").to_lowercase(),
-        "health": health,
-        "failed": failed,
-        // What Merge #N's confirm shows; nothing is guessed from what gh didn't say [D74, D1019].
-        "running": running,
-        "passed": checks.len() - failed - running,
-        "approved": match pr["reviewDecision"].as_str() {
-            Some("APPROVED") => json!(true),
-            Some("REVIEW_REQUIRED" | "CHANGES_REQUESTED") => json!(false),
-            _ => Value::Null,
-        },
-        "mergeable": match pr["mergeable"].as_str() {
-            Some("MERGEABLE") => json!(true),
-            Some("CONFLICTING") => json!(false),
-            _ => Value::Null,
-        },
-    })
 }
 
 /// A PR as the UI gets it: its number, read from its URL, and the URL.
