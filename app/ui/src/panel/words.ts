@@ -203,9 +203,11 @@ export function statusWords(state: SourceState, step: Step | null, files: number
   }
   if (files > 0) return { title: `${plural(files, "file")} changed`, tone: "changes", icon: "changes" };
   switch (step?.kind) {
+    // A merge the button can't make now isn't "ready" (proposed words).
     case "merge":
+      return step.blocked ? { title: `Can't merge into ${step.base} yet`, tone: "warn", icon: "warn" } : { title: "Ready to merge", tone: "good", icon: "clean" };
     case "mergePr":
-      return { title: "Ready to merge", tone: "good", icon: "clean" };
+      return mergePrWords(step).off ? { title: `Waiting on #${step.pr}`, tone: "quiet", icon: "pr" } : { title: "Ready to merge", tone: "good", icon: "clean" };
     case "catchUp":
       return { title: `Would conflict with ${step.base}`, tone: "warn", icon: "warn" };
     case "fixPr": {
