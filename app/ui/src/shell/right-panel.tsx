@@ -10,6 +10,7 @@ import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
+import { keysOf, matches } from "../shortcuts";
 import { HOME, openFile, useTabs } from "./tab-store";
 
 /*
@@ -32,7 +33,7 @@ export function useHasPanel(owner: string): boolean {
 /** The toggle as drawn. */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip="Files" shortcut="⇧⌘E" pressed={open} aria-controls="right-panel-content" {...props}>
+    <TooltipIconButton look="toolbar" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
       <Folders />
     </TooltipIconButton>
   );
@@ -52,9 +53,7 @@ export function RightPanelToggle({ owner, className }: { owner: string; classNam
 
 /** Both Files shortcuts show or hide it [D1284]. */
 function panelKey(event: KeyboardEvent): boolean {
-  if (event.isComposing || event.repeat) return false;
-  const command = event.metaKey && !event.ctrlKey;
-  return command && ((event.altKey && !event.shiftKey && event.code === "KeyB") || (event.shiftKey && !event.altKey && event.code === "KeyE"));
+  return !event.repeat && (matches(event, "right-panel") || matches(event, "show-files"));
 }
 
 /** Files lights up the file whose tab is in front; a click opens it in the preview tab, a double click keeps it. */

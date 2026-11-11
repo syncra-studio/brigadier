@@ -14,6 +14,7 @@ import { setHomeDraft } from "../home/start";
 import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { showToast } from "../components/toast";
+import { keysOf, matches } from "../shortcuts";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
@@ -303,7 +304,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "tab") return;
     const list = event.currentTarget;
     const focus = (id: string) => requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"] [role="tab"]`)?.focus());
-    if (event.key === "Backspace" || event.key === "Delete") {
+    if (matches(event.nativeEvent, "close-focused")) {
       const id = event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId;
       if (!id || id === CHAT) return;
       event.preventDefault();
@@ -344,7 +345,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
             </DragDropProvider>
           </div>
         </div>
-        <TooltipIconButton look="toolbar" tooltip="New tab" shortcut="⌘T" className="app-no-drag ms-0.5" onClick={() => openTab(owner, "new")}>
+        <TooltipIconButton look="toolbar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag ms-0.5" onClick={() => openTab(owner, "new")}>
           <Plus />
         </TooltipIconButton>
         {offline && (

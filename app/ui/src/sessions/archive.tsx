@@ -8,6 +8,7 @@ import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
+import { keysOf, matches } from "../shortcuts";
 import { archive, restore } from "../sidebar/actions";
 import type { SessionRow } from "../sidebar/words";
 
@@ -191,7 +192,7 @@ export function useArchiveKeys(order: SessionRow[], active: string | null, onHom
   useEffect(() => {
     const onInput = () => { typedSinceArchive = true; };
     const onUndoKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || !event.metaKey || event.shiftKey || event.altKey || event.ctrlKey || event.code !== "KeyZ") return;
+      if (event.defaultPrevented || !matches(event, "undo-archive")) return;
       if (!undo || document.querySelector('[role="dialog"], [role="menu"]')) return;
       if (typing(event.target) && (typedSinceArchive || event.target === undoFocus)) return;
       event.preventDefault();
@@ -199,17 +200,17 @@ export function useArchiveKeys(order: SessionRow[], active: string | null, onHom
       undo();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey) return;
+      if (event.defaultPrevented) return;
       // Not behind a dialog or menu, where what it would archive can't be seen.
       const covered = document.querySelector('[role="dialog"], [role="menu"]') !== null;
       const field = typing(event.target);
-      if (event.key === "Escape" && !event.metaKey && !covered && !field) return clearPicked();
-      if (!event.metaKey || covered) return;
+      if (covered) return;
+      if (matches(event, "clear-picked")) return void (field || clearPicked());
       const pick = picked.get();
-      if (event.shiftKey && event.code === "KeyA") {
+      if (matches(event, "archive")) {
         event.preventDefault();
         archiveRows(pick.length > 0 ? pick : order.filter((row) => row.id === active));
-      } else if (!event.shiftKey && !field && (event.key === "Backspace" || event.key === "Delete") && pick.length > 0) {
+      } else if (matches(event, "archive-picked") && !field && pick.length > 0) {
         event.preventDefault();
         archiveRows(pick);
       }
@@ -233,7 +234,7 @@ export function ArchiveMenuItem({ row }: { row: SessionRow }) {
     <DropdownMenuItem onClick={() => archiveRows(several ? pick : [row])}>
       <Archive />
       {several ? `Archive (${pick.length})` : "Archive session"}
-      <DropdownMenuShortcut>⇧⌘A</DropdownMenuShortcut>
+      <DropdownMenuShortcut>{keysOf("archive")[0]}</DropdownMenuShortcut>
     </DropdownMenuItem>
   );
 }

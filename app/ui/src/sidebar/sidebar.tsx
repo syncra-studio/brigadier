@@ -17,7 +17,7 @@ import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
-import { matches } from "../shortcuts";
+import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
@@ -213,7 +213,7 @@ export function AppSidebar({
             <TooltipIconButton tooltip="Send Feedback" look="toolbar" side="bottom" onClick={() => openFeedback()}>
               <FeedbackGlyph />
             </TooltipIconButton>
-            <TooltipIconButton tooltip="Search" shortcut="⌘K" look="toolbar" side="bottom" onClick={openSearch}>
+            <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
               <MagnifyingGlassSmSearch />
             </TooltipIconButton>
           </>
@@ -384,7 +384,7 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
       <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
         <ComposeEditSquare />
       </TooltipIconButton>
-      <TooltipIconButton tooltip="Search" shortcut="⌘K" look="strip" side="right" onClick={openSearch}>
+      <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
         <MagnifyingGlassSmSearch />
       </TooltipIconButton>
       {children}

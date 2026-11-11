@@ -5,6 +5,7 @@ import { Button } from "../components/button";
 import { Tile, TileRemove } from "../components/composer/attachments";
 import { TooltipIconButton } from "../components/icon-button";
 import { Kbd } from "../components/kbd";
+import { keysOf, matches } from "../shortcuts";
 import type { DiffComment } from "./types";
 
 /**
@@ -37,7 +38,7 @@ export function CommentBox({
   const [text, setText] = useState(initial);
   const submit = () => text.trim() && onSubmit(text.trim());
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (matches(event.nativeEvent, "comment")) {
       event.preventDefault();
       submit();
     } else if (event.key === "Escape") onCancel();
@@ -63,7 +64,7 @@ export function CommentBox({
           Cancel
         </Button>
         <Button size="xs" disabled={!text.trim()} onClick={submit}>
-          Comment <Kbd variant="chip">⌘⏎</Kbd>
+          Comment <Kbd variant="chip">{keysOf("comment")[0]}</Kbd>
         </Button>
       </div>
     </div>

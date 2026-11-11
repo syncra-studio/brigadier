@@ -16,6 +16,7 @@ import {
 import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { showToast } from "../components/toast";
+import { keysOf } from "../shortcuts";
 import { pin } from "./actions";
 import { useBranchPreview } from "./rename-branch";
 import type { SessionRow } from "./words";
@@ -28,12 +29,12 @@ export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () 
       <DropdownMenuItem onClick={() => pin(row, !pinned)}>
         {pinned ? <Unpin /> : <Pin />}
         {pinned ? "Unpin" : "Pin"}
-        <DropdownMenuShortcut>⌥⌘P</DropdownMenuShortcut>
+        <DropdownMenuShortcut>{keysOf("pin")[0]}</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onRename}>
         <Pencil />
         Rename
-        <DropdownMenuShortcut>⌥⌘R</DropdownMenuShortcut>
+        <DropdownMenuShortcut>{keysOf("rename")[0]}</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuSub>

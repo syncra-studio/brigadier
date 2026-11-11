@@ -10,6 +10,7 @@ import { FileViewer } from "../files/viewer";
 import { LivePrTab } from "../landing/live";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
+import { keysOf } from "../shortcuts";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
 import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
@@ -41,7 +42,7 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
               <span className={TOP}>
                 <Dock className={ICON} />
-                <Kbd>⌃`</Kbd>
+                <Kbd>{keysOf("terminal")[1]}</Kbd>
               </span>
               <span className={LABEL}>Terminal</span>
             </button>
