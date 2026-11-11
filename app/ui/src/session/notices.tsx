@@ -11,6 +11,7 @@ import type { Source } from "../thread/thread";
 import { retryMessage, type Runner } from "./composer";
 import { newId } from "./store";
 import { putBack } from "./side";
+import { useGitNotice } from "../panel/notice";
 
 /** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. `again` resends its turn. */
 export function sessionNotice(notice: RailNotice, again: ReactNode): Notice {
@@ -145,6 +146,14 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
     );
     notices.push({ id: "start", level: "error", text: `Couldn’t start this conversation. ${start.error}`, action: again });
   }
+  // A git action that failed here, said here and not in a toast [D1264].
+  const git = useGitNotice(id);
+  if (git.notice) notices.push(git.notice);
   if (offline) notices.push({ id: "offline", level: "info", text: "Reconnecting to Brigadier…" });
-  return <Notices notices={notices.filter((notice) => !gone.has(notice.id))} onDismiss={(key) => setGone(new Set(gone).add(key))} />;
+  return (
+    <>
+      <Notices notices={notices.filter((notice) => !gone.has(notice.id))} onDismiss={(key) => git.dismiss(key) || setGone(new Set(gone).add(key))} />
+      {git.dialog}
+    </>
+  );
 }
