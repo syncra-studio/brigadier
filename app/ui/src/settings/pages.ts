@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-import { ACCOUNTS_ROWS, AccountsPage } from "../accounts/page";
+import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
 import { Archive, Branch, type IconProps, KeyboardShortcut, RobotHead, SettingsCog, SettingsSlider } from "../icons";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
@@ -19,7 +19,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "accounts" | "git" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "git" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -28,7 +28,8 @@ type SettingsPageEntry = {
   formerly?: readonly string[];
   icon: ComponentType<IconProps>;
   group: SettingsGroup;
-  component: ComponentType;
+  /** `detail` is what follows the page in its route (an agent, under Providers). */
+  component: ComponentType<{ detail?: string }>;
   rows: readonly SettingsRowCopy[];
 };
 
@@ -38,12 +39,14 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "general", label: "General", icon: SettingsCog, group: "Personal", component: GeneralPage, rows: Object.values(GENERAL_ROWS) },
   { id: "configuration", label: "Configuration", icon: SettingsSlider, group: "Personal", component: ConfigurationPage, rows: Object.values(CONFIGURATION_ROWS) },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardShortcut, group: "Personal", component: ShortcutsPage, rows: SHORTCUTS_ROWS },
-  { id: "accounts", label: "Accounts", formerly: ["Providers", "Usage", "Switching"], icon: RobotHead, group: "Agents", component: AccountsPage, rows: Object.values(ACCOUNTS_ROWS) },
+  { id: "providers", label: "Providers", formerly: ["Accounts", "Usage", "Switching"], icon: RobotHead, group: "Agents", component: ProvidersPage, rows: Object.values(PROVIDERS_ROWS) },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];
 
-export function settingsPage(id: string): SettingsPageEntry {
+/** The page a route names (`providers/<agent>` is Providers). */
+export function settingsPage(route: string): SettingsPageEntry {
+  const id = route.split("/")[0];
   return SETTINGS_PAGES.find((page) => page.id === id) ?? SETTINGS_PAGES[0]!;
 }
 

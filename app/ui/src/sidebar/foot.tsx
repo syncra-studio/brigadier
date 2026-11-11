@@ -99,7 +99,7 @@ function UsageMenu() {
             type="button"
             onClick={() => {
               setOpen(false);
-              openSettings("accounts");
+              openSettings("providers");
             }}
             className="flex cursor-pointer items-center gap-1 text-xs font-medium text-link hover:underline"
           >

@@ -6,6 +6,7 @@ import { SwitchDivider } from "../components/thread/cards";
 import { errorText } from "../onboarding/api";
 import type { Item } from "../thread/item";
 import { loadAccounts, switchSession, useAccounts } from "./api";
+import { agentHref } from "./providers";
 
 /** The session a thread shows, for its switch row's one click; none outside a session (the gallery). */
 export const SessionOfThread = createContext<{ id: string; offline: boolean } | null>(null);
@@ -61,7 +62,7 @@ export function SwitchRow({ item }: { item: Switch }) {
       actions = (
         <>
           <span>· no other signed-in {label} account</span>
-          <a href="#settings/accounts" className="shrink-0 text-link hover:underline">
+          <a href={agentHref(item.backend ?? "")} className="shrink-0 text-link hover:underline">
             Add an account
           </a>
         </>

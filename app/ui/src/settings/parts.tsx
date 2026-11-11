@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 
 import { cx } from "../components/cx";
 import { ScrollFade } from "../components/scroll-fade";
+import { ChevronLeft } from "../icons";
 
 /*
  * The parts every Settings page is built from, the old app's: a page (its title, an optional line and
@@ -9,16 +10,23 @@ import { ScrollFade } from "../components/scroll-fade";
  * rows are the kit's SettingsCard and SettingsRow.
  */
 
-/** A Settings page: its title, then its sections. A page that scrolls its own list passes `scrollable={false}`. */
+/**
+ * A Settings page: its title, then its sections. A page that scrolls its own list passes `scrollable={false}`.
+ * `mark` sits before the title (an agent's); `back` is a page inside another's link back to it, over the title.
+ */
 export function SettingsPage({
   title,
   description,
+  mark,
+  back,
   actions,
   scrollable = true,
   children,
 }: {
   title: ReactNode;
   description?: ReactNode;
+  mark?: ReactNode;
+  back?: { label: string; href: string };
   actions?: ReactNode;
   scrollable?: boolean;
   children: ReactNode;
@@ -37,12 +45,21 @@ export function SettingsPage({
         {/* The band under the titlebar drags the window; it scrolls away with the page. */}
         <div className="app-drag h-settings-band shrink-0" />
         <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-4", scrollable ? "pb-12" : "min-h-0 flex-1")}>
+          {back && (
+            <a href={back.href} className="-ms-1 flex w-fit items-center gap-0.5 text-label text-quiet-foreground hover:text-foreground focus-visible:focus-ring">
+              <ChevronLeft aria-hidden className="size-icon-sm" />
+              {back.label}
+            </a>
+          )}
           <header className="flex shrink-0 items-start gap-4 py-3">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <h1 ref={heading} tabIndex={-1} className="text-page-title font-medium outline-none">
-                {title}
-              </h1>
-              {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            <div className="flex min-w-0 flex-1 items-center gap-3.5">
+              {mark}
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <h1 ref={heading} tabIndex={-1} className="text-page-title font-medium outline-none">
+                  {title}
+                </h1>
+                {description && <div className="text-sm text-muted-foreground">{description}</div>}
+              </div>
             </div>
             {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
           </header>

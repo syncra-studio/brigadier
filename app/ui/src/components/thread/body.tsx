@@ -104,14 +104,14 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
         );
       }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
-      // Sign-in lives on the Accounts page today, the one the Settings gear opens [D347, D381].
+      // Sign-in lives on Settings › Providers [D347, D381, D2054].
       return (
         <NoticeRow
           level="error"
           text={item.text}
           link={
-            <a href="#settings/accounts" className="ms-1.5 whitespace-nowrap text-link hover:underline">
-              Open Accounts
+            <a href="#settings/providers" className="ms-1.5 whitespace-nowrap text-link hover:underline">
+              Open Providers
             </a>
           }
         />

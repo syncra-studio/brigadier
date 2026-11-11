@@ -303,7 +303,7 @@ function DeviceCode({ page, code }: { page: string; code: string }) {
 }
 
 /** For when the browser can't hand the sign-in back: a link to the page that shows a code, and a field to paste it into. */
-function ConnectCode({ agent, page }: { agent: Agent; page: string }) {
+export function ConnectCode({ agent, page }: { agent: Agent; page: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

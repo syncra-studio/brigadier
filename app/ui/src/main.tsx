@@ -50,9 +50,9 @@ const onHash = (listener: () => void) => {
 };
 const useHash = (): string => useSyncExternalStore(onHash, () => window.location.hash);
 
-// The screen that was open comes back when the app reopens; Accounts is in Settings now [D2004].
+// The screen that was open comes back when the app reopens; Accounts is Settings › Providers now [D2004, D2054].
 if (!window.location.hash) window.location.hash = localStorage.getItem("route") ?? "";
-if (window.location.hash === "#accounts") window.location.hash = "#settings/accounts";
+if (window.location.hash === "#accounts" || window.location.hash === "#settings/accounts") window.location.hash = "#settings/providers";
 window.addEventListener("hashchange", () => localStorage.setItem("route", window.location.hash));
 
 function App() {

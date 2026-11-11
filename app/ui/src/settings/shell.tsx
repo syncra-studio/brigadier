@@ -8,7 +8,8 @@ import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSear
 
 /*
  * Settings, the old app's [D2004, D2022]: while it's open the sidebar shows its nav (a search over every row, then
- * the pages in their groups) and the main area the page. Its route is `#settings/<page>`; Esc goes back.
+ * the pages in their groups) and the main area the page. Its route is `#settings/<page>`, `#settings/providers/<agent>` for
+ * an agent's page; Esc goes back.
  */
 
 const PREFIX = "#settings/";
@@ -125,7 +126,7 @@ export function SettingsNav({ current }: { current: string }) {
                   const Icon = page.icon;
                   return (
                     <li key={page.id}>
-                      <NavRow aria-current={page.id === current ? "page" : undefined} onClick={() => openSettings(page.id)}>
+                      <NavRow aria-current={page.id === settingsPage(current).id ? "page" : undefined} onClick={() => openSettings(page.id)}>
                         <Icon className="text-muted-foreground" />
                         <span className="truncate">{page.label}</span>
                       </NavRow>
@@ -147,6 +148,7 @@ const ESC_OWNERS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role=
 /** The main area while Settings is open: the page. Esc goes back to what was shown. */
 export function SettingsView({ page }: { page: string }) {
   const Page = settingsPage(page).component;
+  const detail = page.split("/").slice(1).map(decodeURIComponent).join("/") || undefined;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -162,7 +164,7 @@ export function SettingsView({ page }: { page: string }) {
     <>
       <div className="app-drag h-titlebar shrink-0" />
       <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
-        <Page key={page} />
+        <Page key={page} detail={detail} />
       </main>
     </>
   );

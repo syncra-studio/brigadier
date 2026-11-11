@@ -16,7 +16,6 @@ export type SwitchAgent = {
   name: string;
   label: string;
   installed: boolean;
-  released: boolean;
   accounts: { vendor: string; auto: boolean; list: Account[] } | null;
 };
 
@@ -67,16 +66,10 @@ export async function setSwitching(args: string[], shown: (agents: SwitchAgent[]
   void loadAccounts();
 }
 
-/** Turns an agent's account switching or release on or off, shown at once. */
-export const setAgent = (name: string, key: "auto" | "release", on: boolean) =>
-  setSwitching(["--agent", name, `--${key}`, on ? "on" : "off"], (agents) => ({
-    agents: agents.map((agent) =>
-      agent.name !== name
-        ? agent
-        : key === "release"
-          ? { ...agent, released: on }
-          : { ...agent, accounts: agent.accounts && { ...agent.accounts, auto: on } },
-    ),
+/** Turns an agent's account switching on or off, shown at once. */
+export const setAuto = (name: string, on: boolean) =>
+  setSwitching(["--agent", name, "--auto", on ? "on" : "off"], (agents) => ({
+    agents: agents.map((agent) => (agent.name !== name ? agent : { ...agent, accounts: agent.accounts && { ...agent.accounts, auto: on } })),
   }));
 
 export const setAgents = (on: boolean) => setSwitching(["--agents", on ? "on" : "off"], () => ({ switchAgents: on }));
