@@ -6,6 +6,7 @@ pub mod archived;
 mod chips;
 mod commit;
 mod control;
+mod feedback;
 mod fork;
 mod git;
 mod host;
@@ -58,7 +59,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
+       brigadier feedback NOTE | profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in|close|remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -111,7 +112,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
-        | "accounts" | "switching" | "models" | "title" | "git" | "source" | "panel" => &[][..],
+        | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
+        | "panel" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids
@@ -308,6 +310,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "recover" => recover(data, arg(args, 1)?, false),
         "archive" | "restore" | "delete" => sessions::run(data, args),
         // The short title a first message gives its session, for the app's row before Rust's [D186].
+        "feedback" => Ok(feedback::run(data, arg(args, 1)?)),
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
         "level" => control::level(data, args),
         "answer" => control::answer(data, args),
