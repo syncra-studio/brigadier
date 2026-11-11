@@ -75,8 +75,6 @@ export type SourceOps = {
   land?: (style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void) => void;
   setStyle?: (style: MergeStyle) => void;
   squashOf?: (at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void) => void;
-  /** Reads the step again now, the branch's PRs too. */
-  refreshStep?: () => void;
   /** Re-creates a session's gone folder from its branch [D180, D1187]. */
   restore?: () => void;
 };

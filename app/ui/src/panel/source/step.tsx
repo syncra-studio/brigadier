@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 
 import { commitFiles, readDraft, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
-import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "./action-confirms";
+import { ForcePushDialog, MessageDialog, SquashDialog } from "./action-confirms";
 import { askForce, cancelForce, first, forcePush, useBranchOp, useForcing } from "./branch-ops";
 import { type ActionPick, useCreatePr } from "./create-pr";
 import type { SourceData, SourceOps } from "./data";
@@ -97,7 +97,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const [squashAt, setSquashAt] = useState<StepAt | null>(null);
   const [squashCommits, setSquashCommits] = useState<Commit[] | null>(null);
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
-  const [mergingPr, setMergingPr] = useState(false);
   // Edit message…'s field while it's open; Save keeps it as the next commit's [D1203].
   const [editing, setEditing] = useState<string | null>(null);
   const editingNow = useRef(editing);
@@ -120,10 +119,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const drawsPr = claim === id || claim === undefined;
   useEffect(() => () => void (session && asked.get(session) === id && asked.delete(session)), [session, id]);
 
-  const wired = ops?.land !== undefined;
-  // A PR made or pushed here shows in the step at once, not at the next PR read [D1143].
-  const prKey = prs.map((each) => `${each.number}:${each.state}`).join();
-  useEffect(() => void (wired && ops?.refreshStep?.()), [prKey]);
   // A watch that failed after its first read: the last read stays, read-only, under the error [D30].
   const stale = state !== null && Boolean(data.error);
   const working = data.agentWorking ?? false;
@@ -178,14 +173,14 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     first(target, [verb, at.head, at.base ?? "-", ...(typed ? ["--message", typed] : [])], (reply) => {
       if (reply.ok) {
         if (saved) setMessage("");
-        return refreshStep(true, () => setLanded(STILL));
+        return refreshStep(() => setLanded(STILL));
       }
       if (reply.writer) {
         setLanded(STILL);
         return writerFailed();
       }
       setLanded({ running: false, error: { kind: on, reason: reply.error === "disconnected" ? LOST : String(reply.error) }, on });
-      refreshStep(true);
+      refreshStep();
     });
   };
   const mergeLocally = () => {
@@ -218,11 +213,8 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     if (!step || working || data.syncing) return;
     if (step.kind === "commit" || step.kind === "folderCommit") commit();
     else if (step.kind === "merge") mergeLocally();
-    else if (step.kind === "pushPr" && pending > 0) go("push");
-    else if (step.kind === "pushPr" && wired) pr.onPick("pushBranch");
     else if ((step.kind === "sync" || step.kind === "publish") && pending === 0 && ops?.branch) ops.branch[step.kind]();
     else if (step.kind === "sync" || step.kind === "publish") go(step.kind);
-    else if (step.kind === "mergePr") setMergingPr(true);
     // Fix with agent and Resolve with agent leave a chip above the composer, sent when the user sends [D1019, D1044]:
     // wired with the composer.
   };
@@ -265,9 +257,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
             go("squash", squashMessage, squashAt);
           }}
         />
-      )}
-      {step?.kind === "mergePr" && (
-        <MergePrDialog open={mergingPr} pr={step.pr} base={step.base} checks={step.checks} onCancel={() => setMergingPr(false)} onConfirm={() => setMergingPr(false)} />
       )}
       <ForcePushDialog
         force={forcing}

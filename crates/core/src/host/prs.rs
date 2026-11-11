@@ -32,7 +32,6 @@ impl Pr {
                 row(p, checks.as_deref())
             })
             .collect();
-        git::step::invalidate_prs();
         Some(rows)
     }
 
@@ -61,7 +60,6 @@ impl Pr {
             return Err(io::Error::other(failed(&out)));
         }
         let rows: Vec<Value> = serde_json::from_slice(&out.stdout)?;
-        git::step::invalidate_prs();
         Ok(rows
             .iter()
             .find(|p| belongs(p, repo, &self.branch))

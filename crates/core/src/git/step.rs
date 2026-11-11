@@ -1,35 +1,18 @@
 //! The action button's next step [D1015, D1045, D1152], worked out from git all the time: Rust
 //! sends structure and the UI writes the words [D65].
 
-use super::precheck::{
-    Merge, blocked, count, git, merge, merge_base, midway, next_tree, shared_with,
-};
+use super::precheck::{Merge, blocked, count, git, merge, merge_base, next_tree, shared_with};
 use super::{Checkout, Status, Target, checkout, err, push, status};
 use crate::worktrees::{self, Lands};
-use crate::{host, load, projects, session_dir};
+use crate::{load, projects, session_dir};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-use std::time::{Duration, Instant};
 
-/// Proposed: the branch's PRs are read again after this, or at once when asked, until 2.27's watch.
-const PR_AGE: Duration = Duration::from_secs(120);
-/// Each session's PRs as last read: when, for which HEAD and push count, the host's name and the rows.
-type Read = (Instant, (String, u64), Option<String>, Option<Vec<Value>>);
-static PRS: Mutex<BTreeMap<String, Read>> = Mutex::new(BTreeMap::new());
-
-/// Focus and each new host read bypass the 120 s cache, even a cached empty PR list [D1187].
-pub fn invalidate_prs() {
-    PRS.lock().unwrap().clear();
-}
-
-/// The action button's next step for a session or project [D1015, D1045], what the toolbar's dot
-/// says [D1025], how it lands [D1028], and the commits it was worked out on, which a landing
-/// pins. `fresh`: the PRs are read again now, as after an action.
-pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io::Result<Value> {
+/// The action button's next step for a session or project [D1015, D1045], how it lands [D1028],
+/// and the commits it was worked out on, which a landing pins.
+pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value> {
     let checkout = checkout(data, target)?;
     let now = status(&checkout, stop)?;
     let (id, dir) = match target {
@@ -44,7 +27,7 @@ pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io:
     };
     let (step, at, style) = match (id, lands) {
         (Some(id), Some(lands)) => {
-            let (step, at) = session(data, id, &dir, &checkout, &now, &lands, fresh, stop)?;
+            let (step, at) = session(data, id, &dir, &checkout, &now, &lands, stop)?;
             (
                 step,
                 at,
@@ -94,8 +77,7 @@ fn folder(checkout: &Checkout, now: &Status) -> Value {
 }
 
 /// A session's own worktree: Merge into its base, committing what isn't first, or Catch up, then
-/// landed; with an open PR, the PR's step [D1015, D1016, D1019, D1093, D1102, D1203, D1207].
-#[allow(clippy::too_many_arguments)]
+/// landed [D1015, D1093, D1102, D1203, D1207].
 fn session(
     data: &Path,
     id: &str,
@@ -103,7 +85,6 @@ fn session(
     checkout: &Checkout,
     now: &Status,
     lands: &Lands,
-    fresh: bool,
     stop: &AtomicBool,
 ) -> io::Result<(Value, Value)> {
     let root = &checkout.root;
@@ -118,11 +99,6 @@ fn session(
     )
     .or_else(|_| err(format!("{base} isn't in this project any more.")))?;
     let at = json!({"head": head, "base": base_at});
-    let files = now.files.values();
-    if midway(&checkout.git_dir) {
-        let left = files.filter(|f| f["changes"] == "conflicted").count();
-        return Ok((json!({"kind": "continue", "base": base, "left": left}), at));
-    }
     let merge_base = merge_base(root, lands, &base_at, head, stop)?;
     // The landing step commits every change first, so it's worked out on what that commit would
     // hold [D1203, D1207].
@@ -146,9 +122,6 @@ fn session(
         let ahead = now.head["ahead"].as_u64().unwrap_or(0);
         let step = json!({"kind": "sync", "branch": branch, "remote": remote,
             "behind": behind, "ahead": ahead, "commit": first});
-        return Ok((step, at));
-    }
-    if let Some(step) = pr(data, id, now, base, first, fresh) {
         return Ok((step, at));
     }
     let ahead = count(root, &format!("{merge_base}..{head}"), stop)?;
@@ -185,57 +158,6 @@ fn session(
         }
     };
     Ok((step, at))
-}
-
-/// With an open PR the button follows it [D1016, D1019]: Push to #N while commits aren't on the
-/// host or changes aren't committed, Fix with agent on failed checks, conflicts or changes asked, else Merge #N. None when the
-/// branch isn't published, has no open PR, or gh can't say: then the local steps stand.
-fn pr(data: &Path, id: &str, now: &Status, base: &str, first: usize, fresh: bool) -> Option<Value> {
-    now.head["upstream"].as_str()?;
-    let ahead = now.head["ahead"].as_u64().unwrap_or(0);
-    let key = (now.head["head"].as_str().unwrap_or("").to_string(), ahead);
-    let cached = (PRS.lock().unwrap().get(id).cloned())
-        .filter(|(at, was, ..)| !fresh && *was == key && at.elapsed() < PR_AGE);
-    let (_, _, host_name, rows) = match cached {
-        Some(read) => read,
-        None => {
-            let pr = host::pr(data, id).ok()?;
-            let host_name = pr.repo.as_ref().map(|r| r.name().to_string());
-            let rows = pr.list().and_then(|v| v.as_array().cloned());
-            let read = (Instant::now(), key, host_name, rows);
-            PRS.lock().unwrap().insert(id.to_string(), read.clone());
-            read
-        }
-    };
-    let rows = rows?;
-    if let Some(landed) = super::truth::landing(data, id, now) {
-        return Some(landed);
-    }
-    let open = rows.into_iter().find(|p| p["state"] == "open")?;
-    let number = open["number"].clone();
-    // Uncommitted changes are committed, then pushed to the PR [D1203].
-    if ahead > 0 || first > 0 {
-        return Some(
-            json!({"kind": "pushPr", "base": base, "pr": number, "ahead": ahead,
-            "host": host_name, "commit": first}),
-        );
-    }
-    let why = match open["health"].as_str() {
-        Some("failed") => "checks",
-        Some("conflicts") => "conflicts",
-        Some("changes") => "changes",
-        _ => {
-            let checks = json!({"passed": open["passed"], "failed": open["failed"],
-                "running": open["running"], "approved": open["approved"],
-                "cancelled": open["cancelled"], "skipped": open["skipped"],
-                "blocked": matches!(open["health"].as_str(), Some("unknown" | "cancelled"))});
-            return Some(
-                json!({"kind": "mergePr", "base": base, "pr": number, "checks": checks,
-                "mergeable": open["mergeable"]}),
-            );
-        }
-    };
-    Some(json!({"kind": "fixPr", "base": base, "pr": number, "why": why, "failed": open["failed"]}))
 }
 
 /// The project a target lands in, if any.

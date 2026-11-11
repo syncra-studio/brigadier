@@ -269,7 +269,7 @@ fn advance(data: &Path, id: &str) -> io::Result<()> {
         return Ok(());
     }
     let never = AtomicBool::new(false);
-    let mut read_now = step::step(data, &Target::Session(id), false, &never)?;
+    let mut read_now = step::step(data, &Target::Session(id), &never)?;
     read_now = json!({"step": read_now["step"], "at": read_now["at"], "merge": read_now["merge"]});
     let shown = state(id, &when, &f, &read_now);
     if shown["at"].as_u64().is_none_or(|at| now_ms() < at) {

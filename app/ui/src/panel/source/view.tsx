@@ -16,15 +16,15 @@ function branchOps(target: Target, owner: string, project: string | null, branch
     read: (done) => readBranches(target, done),
     sync: () => sync(target, "sync", branch),
     publish: () => sync(target, "publish", branch),
-    // The step reads the branch's PRs under its new name at once [D1143].
-    rename: (to) => name(target, ["rename", to], to, () => refreshStep(true)),
+    // The step reads the branch under its new name at once [D1143].
+    rename: (to) => name(target, ["rename", to], to, () => refreshStep()),
     switchTo: (to, remote) => name(target, ["switch", to, ...(remote ? ["--remote"] : [])], remote ? to.slice(to.indexOf("/") + 1) : to),
     create: (to, from) => name(target, ["create", to, ...(from ? ["--from", from] : [])], to),
     // What follows the base reads it again at once: History, the step and the PR's facts [D1143].
     setBase: (base) =>
       setBase(target, base, () => {
         refreshHistory(owner);
-        refreshStep(true);
+        refreshStep();
         if (owner !== HOME) readPr(owner);
       }),
     newSession: (base) => {
@@ -85,7 +85,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       land: landBranch,
       setStyle: setMergeStyle,
       squashOf,
-      refreshStep: () => refreshStep(true),
       restore: restoreCheckout,
     },
   };

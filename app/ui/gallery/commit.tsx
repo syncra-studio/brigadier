@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 
 import { BRANCH, CHANGES, COMMITS, DRAFT, STEPS } from "../src/panel/fake";
-import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "../src/panel/source/action-confirms";
+import { ForcePushDialog, MessageDialog, SquashDialog } from "../src/panel/source/action-confirms";
 import { CreatePrDialog, type HostInfo } from "../src/panel/source/create-pr";
 import { Held, Row, Section, State } from "./parts";
 
@@ -34,12 +34,6 @@ export function CommitGallery() {
         </Confirm>
         <Confirm label="Squash, the message being written" tall>
           {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message="" writing onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
-        </Confirm>
-        <Confirm label="Merge #12: ready">
-          {(held) => <MergePrDialog open pr={12} base="main" checks={STEPS.mergePr.checks} held={held} onCancel={noop} onConfirm={noop} />}
-        </Confirm>
-        <Confirm label="Merge #12: not all green">
-          {(held) => <MergePrDialog open pr={12} base="main" checks={{ passed: 4, failed: 1, running: 1, approved: false }} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Create PR: loading" tall>
           {(held) => <CreatePrDialog open info={undefined} text={{ title: "", body: "", draft: false }} held={held} onText={noop} onCancel={noop} onConfirm={noop} />}

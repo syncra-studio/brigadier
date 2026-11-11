@@ -76,7 +76,7 @@ export function useGitNotice(session: string): { notice: Notice | null; dialog: 
         drop(session);
         const sent = commitFiles(true, message, (reply) => {
           if (!reply.ok) gitFailed({ session }, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
-          refreshStep(true);
+          refreshStep();
         });
         if (!sent) gitFailed({ session }, "Couldn't commit.", "This checkout isn't on screen.");
       }}

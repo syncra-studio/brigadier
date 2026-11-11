@@ -2,7 +2,7 @@ import { ConfirmForm } from "../../components/confirm-dialog";
 import { TooltipIconButton } from "../../components/icon-button";
 import { Textarea } from "../../components/textarea";
 import { Check, Spinner, Sparkles, Warning, X } from "../../icons";
-import type { Checks, Commit, ForcePush } from "../types";
+import type { Commit, ForcePush } from "../types";
 import { plural } from "../words";
 import { Confirm, type Held } from "./dialogs";
 
@@ -70,40 +70,6 @@ export function SquashDialog({ open, branch, base, commits, files = [], message,
             <li key={path} className="flex h-control-sm items-center gap-2 ps-2 text-sm">
               <span className="min-w-0 flex-1 truncate">{path}</span>
               <span className="text-xs text-muted-foreground">Uncommitted</span>
-            </li>
-          ))}
-        </ul>
-      </ConfirmForm>
-    </Confirm>
-  );
-}
-
-/** Merge #12's confirm [D1019]: where its checks and review stand, as the host last said. */
-export function MergePrDialog({ open, pr, base, checks, held, onCancel, onConfirm }: {
-  open: boolean;
-  pr: number;
-  base: string;
-  checks: Checks;
-  held?: Held;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const rows = [
-    checks.failed !== null && checks.failed > 0 && { icon: <X className="text-destructive" />, text: `${plural(checks.failed, "check")} failed` },
-    checks.running !== null && checks.running > 0 && { icon: <Spinner className="text-muted-foreground" />, text: `${plural(checks.running, "check")} still running` },
-    checks.passed !== null && checks.passed > 0 && { icon: <Check className="text-success" />, text: `${plural(checks.passed, "check")} passed` },
-    (checks.cancelled ?? 0) > 0 && { icon: <Warning className="text-warning" />, text: `${plural(checks.cancelled ?? 0, "check")} cancelled` },
-    checks.blocked === true && !checks.cancelled && { icon: <Warning className="text-muted-foreground" />, text: "Check state unknown" },
-    checks.approved ? { icon: <Check className="text-success" />, text: "Approved" } : { icon: <Warning className="text-warning" />, text: "Not approved yet" },
-  ].filter((row) => row !== false);
-  return (
-    <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
-      <ConfirmForm title={`Merge #${pr} into ${base}?`} description={`#${pr} is merged on its host and closed.`} confirm={`Merge #${pr}`} disabled={checks.blocked ?? false} onConfirm={onConfirm} onCancel={onCancel}>
-        <ul className="flex flex-col gap-1 text-sm">
-          {rows.map((row) => (
-            <li key={row.text} className="flex items-center gap-2 svg:size-icon-sm">
-              {row.icon}
-              {row.text}
             </li>
           ))}
         </ul>

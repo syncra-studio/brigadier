@@ -226,7 +226,6 @@ pub(super) fn auto_fetch(data: PathBuf) {
 
 /// Window focus: reads `conn`'s checkout again now, and fetches [D1026].
 pub(super) fn refresh(conn: u64) {
-    git::step::invalidate_prs();
     if let Some(focus) = FOCUS.lock().unwrap().as_ref() {
         let _ = focus.send(());
     }

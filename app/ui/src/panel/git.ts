@@ -157,7 +157,7 @@ export function restoreCheckout(): void {
     if (!reply.ok) return;
     watch(target);
     readTruth();
-    refreshStep(true);
+    refreshStep();
     refreshHistory(target.session);
   });
 }
@@ -165,13 +165,13 @@ export function restoreCheckout(): void {
 /**
  * Asks Rust for the step again: after every read, each action and on focus, and every few seconds, since the base
  * moving or its checkout changing isn't this checkout's watch. Only the newest answer for this checkout counts.
- * `fresh`: the branch's PRs are read again too, as after a push or a new PR. `then`: once it's answered.
+ * `then`: once it's answered.
  */
-export function refreshStep(fresh = false, then?: () => void): void {
+export function refreshStep(then?: () => void): void {
   const target = git.target;
   if (!target) return then?.();
   const mine = ++stepAsk;
-  ask({ op: "run", args: sourceArgs(target, "step", ...(fresh ? ["--fresh"] : [])) }, (reply) => {
+  ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
     // A failed read keeps the last step: the next read tries again.
     if (mine === stepAsk && git.target === target && reply.ok) {
       const ran = git.step?.ran;
@@ -189,9 +189,9 @@ export function landBranch(style: MergeStyle, message: string | null, at: StepAt
   if (!target || !at) return done("Nothing to merge yet.");
   ask({ op: "run", args: sourceArgs(target, "land", style, at.head, at.base ?? "-", ...(message === null ? [] : ["--message", message])) }, (reply) => {
     // A landing stays pending until the step it led to shows [D30].
-    if (reply.ok) return refreshStep(true, () => done(null));
+    if (reply.ok) return refreshStep(() => done(null));
     done(reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
-    refreshStep(true);
+    refreshStep();
   });
 }
 
@@ -280,10 +280,10 @@ export function useGitWatch(owner: string | null): void {
     return () => clearTimeout(soon);
   }, [version, working, daemon]);
   useEffect(() => {
-    // On focus the PRs are read again too, so one made elsewhere shows [D1143].
+    // On focus the step is read again too [D1143].
     const refresh = () => {
       ask({ op: "git_refresh" });
-      refreshStep(true);
+      refreshStep();
       readTruth();
     };
     addEventListener("focus", refresh);

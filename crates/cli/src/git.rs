@@ -294,7 +294,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         // The action button's next step, and landing [D1015, D1028, D1049].
         "step" => {
-            let step = step::step(data, &target, has(args, "--fresh"), &stop)?;
+            let step = step::step(data, &target, &stop)?;
             let mut reply = json!({"ok": true, "step": step});
             if let Target::Session(id) = target {
                 super::when::attach(data, id, &mut reply["step"]);

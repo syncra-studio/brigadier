@@ -105,17 +105,3 @@ pub fn base(checkout: &Checkout, name: &str, stop: &AtomicBool) -> io::Result<Va
     let at = remote.and_then(|r| sync::fetched_at(checkout, &r));
     Ok(json!({"name": name, "upstream": upstream, "behind": behind, "fetchedAtMs": at}))
 }
-
-/// A PR read may have just recorded a merge; use it in this same step read [D1187].
-pub(super) fn landing(data: &Path, id: &str, now: &super::Status) -> Option<Value> {
-    if !now.files.is_empty() {
-        return None;
-    }
-    let holder = share::holder(data, &load(data, id).ok()?)?;
-    let lands = worktrees::lands(&holder.dir).ok()??;
-    let landed = lands.landing?;
-    let head = now.head["head"].as_str()?;
-    (now.head["branch"].as_str() == lands.branch.as_deref()
-        && worktrees::landed(&lands.repo, &lands.base, head, &landed))
-    .then(|| json!({"kind": "landed", "base": lands.base, "atMs": landed.at_ms}))
-}

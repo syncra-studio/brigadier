@@ -26,7 +26,7 @@ function send(session: string, word: string, what: Sent): void {
   notify();
   ask({ op: "run", args: ["source", session, "when", word] }, (reply) => {
     if (!reply.ok) showToast(reply.error === "disconnected" ? "Not connected. Try again when it's back." : String(reply.error), { tone: "error" });
-    refreshStep(false, () => {
+    refreshStep(() => {
       if (sent.get(session) === what) sent.delete(session);
       notify();
     });
@@ -55,7 +55,7 @@ export function useWhenClock(when: When | null, nowMs: number): number {
     const every = setInterval(() => {
       setNow(Date.now());
       if (checking) refreshStep();
-      else if (acting || (when?.at !== undefined && Date.now() >= when.at)) refreshStep(true);
+      else if (acting || (when?.at !== undefined && Date.now() >= when.at)) refreshStep();
     }, 1000);
     return () => clearInterval(every);
   }, [counting, acting, checking, when?.at]);

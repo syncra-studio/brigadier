@@ -69,14 +69,14 @@ pub(super) fn run(
     // Everything the move would refuse for is asked before anything is committed.
     let pr = match verb {
         "merge" | "squash" => {
-            let read = step::step(data, target, false, &stop)?;
+            let read = step::step(data, target, &stop)?;
             let (now, pinned) = (&read["step"], &read["at"]);
             if pinned["head"] != head || pinned["base"].as_str() != base {
                 return refuse(MOVED);
             }
             // Merge locally is offered beside a PR's step too; landing checks the rest, and a
             // refusal after the commit takes it back.
-            let behind = matches!(now["kind"].as_str(), Some("catchUp" | "continue"));
+            let behind = now["kind"] == "catchUp";
             if behind || (now["kind"] == "merge" && !now["blocked"].is_null()) {
                 return refuse("It can't merge now. Look again.");
             }
