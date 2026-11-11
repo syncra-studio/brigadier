@@ -112,11 +112,12 @@ const EMPTY: Text = { title: "", body: "", draft: false };
  * One session's PR work, kept here rather than in the view, so a create or push that outlives Source (the panel
  * closed, another session opened) still lands its answer and shows it on return [D30]. `info` is undefined until Rust
  * reads it and null for no known host; `text` null until edited, so it follows Rust's; `uncertain`: a create went out
- * and lost its answer, so the host is asked before another. `prs`: the branch's PRs as last read, a made one added at once.
+ * and lost its answer, so the host is asked before another. `prs`: the branch's PRs as last read, a made one added at once;
+ * `fresh`: the PRs made here, until a read no longer lists them.
  */
-type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean; prs: Pr[] };
+type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean; prs: Pr[]; fresh: Pr[] };
 
-const NONE: Op = { info: null, readError: null, text: null, open: false, busy: null, error: null, uncertain: false, prs: [] };
+const NONE: Op = { info: null, readError: null, text: null, open: false, busy: null, error: null, uncertain: false, prs: [], fresh: [] };
 const ops = new Map<string, Op>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -146,7 +147,8 @@ export function read(session: string) {
     if (reply.error === "disconnected") return;
     // Null PRs: gh couldn't say, so the last ones stay.
     if (reply.ok) {
-      put(session, { info: reply.info, readError: null, ...(reply.info.prs && { prs: reply.info.prs }) });
+      const listed = (pr: Pr) => reply.info.prs?.some((each: Pr) => each.number === pr.number) ?? true;
+      put(session, { info: reply.info, readError: null, fresh: opOf(session).fresh.filter(listed), ...(reply.info.prs && { prs: reply.info.prs }) });
       // The read notes the branch's open PR, which the step's Create PR and Merge rows follow.
       return refreshStep();
     }
@@ -179,7 +181,7 @@ function made(session: string, pr: { number: number | null; url: string }) {
   const op = opOf(session);
   // Shown in the card's PR rows at once, then read again for its real state.
   const shown: Pr[] = pr.number ? [{ number: pr.number, title: textOf(op).title, state: "open", health: "running", failed: 0 }] : [];
-  put(session, { uncertain: false, text: null, busy: null, open: false, error: null, prs: [...shown, ...op.prs.filter((each) => each.number !== pr.number)] });
+  put(session, { uncertain: false, text: null, busy: null, open: false, error: null, prs: [...shown, ...op.prs.filter((each) => each.number !== pr.number)], fresh: [...shown, ...op.fresh] });
   read(session);
   // Rust has noted the PR, so the control's next step is no longer Create PR.
   refreshStep();
@@ -274,5 +276,5 @@ export function useCreatePr(session: string | null) {
   );
   // A read that failed with nothing before it still offers Create PR…, whose dialog says why and tries again [D30].
   const way: PrWay = !session || (op.info === null && op.readError) ? "cli" : prWay(op.info);
-  return { way, onPick, dialog, prs: op.prs };
+  return { way, onPick, dialog, prs: op.prs, fresh: op.fresh };
 }

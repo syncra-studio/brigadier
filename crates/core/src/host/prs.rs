@@ -96,6 +96,14 @@ impl Pr {
         let _one = KEEP.lock().unwrap_or_else(|e| e.into_inner());
         let path = self.dir.join("prs.json");
         let old = kept(&self.dir);
+        // The branch's local head, read even when the host can't be: new commits clear Merged.
+        let head = git::read(
+            &self.checkout.root,
+            &["rev-parse", "HEAD"],
+            &AtomicBool::new(false),
+        )
+        .map(|out| String::from_utf8_lossy(&out).trim().to_string())
+        .ok();
         let next = match read {
             Ok((rows, error)) => {
                 let last = |row: &Value| {
@@ -112,13 +120,6 @@ impl Pr {
                         },
                     )
                     .collect();
-                let head = git::read(
-                    &self.checkout.root,
-                    &["rev-parse", "HEAD"],
-                    &AtomicBool::new(false),
-                )
-                .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-                .ok();
                 let ok_at = if error.is_none() {
                     now_ms().into()
                 } else {
@@ -130,12 +131,14 @@ impl Pr {
             Err(_) if old.is_null() => return old,
             Err(error) => {
                 let mut next = old.clone();
-                next["error"] = error.into();
+                (next["error"], next["head"]) = (error.into(), head.into());
                 next
             }
         };
+        // Its own temp file: a `brigadier host` run from a shell may keep it at the same time.
+        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
         if next != old
-            && let Err(e) = crate::write_atomic(&path, next.to_string().as_bytes())
+            && let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path))
         {
             eprintln!("brigadier: keeping {}: {e}", path.display());
         }

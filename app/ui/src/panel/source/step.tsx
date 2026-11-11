@@ -59,7 +59,7 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
   // The watch's kept PRs [D1009], with a PR just made shown at once until a read keeps it [D30].
   const rows = useDaemon().rows;
   const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
-  const made = pr.prs.filter((each) => !kept?.prs.some((known) => known.number === each.number));
+  const made = pr.fresh.filter((each) => !kept?.prs.some((known) => known.number === each.number));
   const step = data.step;
   const off = data.offline ? "Brigadier isn't connected" : data.error ? "Git can't be read right now" : data.agentWorking ? "Waits for the turn to finish" : null;
 

@@ -9,6 +9,7 @@ use brigadier_core::{host, ids, session_dir};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -17,12 +18,24 @@ const RUNNING: Duration = Duration::from_secs(30);
 const OPEN: Duration = Duration::from_secs(2 * 60);
 const QUIET: Duration = Duration::from_secs(5 * 60);
 
+/// Sessions whose turn began or ended, read on the watch's next tick: a turn may commit or open a PR.
+static DUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub(super) fn turned(ids: &[&str]) {
+    DUE.lock()
+        .unwrap()
+        .extend(ids.iter().map(|id| id.to_string()));
+}
+
 pub(super) fn watch(data: PathBuf, state: Shared) {
     thread::spawn(move || {
         let mut next: HashMap<String, Instant> = HashMap::new();
         loop {
             let ids = ids(&data);
             next.retain(|id, _| ids.contains(id));
+            for id in DUE.lock().unwrap().drain(..) {
+                next.remove(&id);
+            }
             for id in ids {
                 if next.get(&id).is_some_and(|at| *at > Instant::now()) {
                     continue;
