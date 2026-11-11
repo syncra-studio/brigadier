@@ -90,6 +90,7 @@ impl Adapter for Claude {
             } else {
                 vec![]
             },
+            ..Default::default()
         })
     }
 

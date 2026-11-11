@@ -119,6 +119,7 @@ impl Adapter for Codex {
             } else {
                 vec![]
             },
+            ..Default::default()
         })
     }
 

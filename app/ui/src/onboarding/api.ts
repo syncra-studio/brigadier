@@ -87,6 +87,8 @@ export type Agent = {
   version?: string | null;
   signed_in?: boolean;
   how?: string | null;
+  /** Each login of an agent that keeps several in one home. */
+  logins?: string[];
   models?: { id: string; local: boolean }[];
   error?: string;
 };

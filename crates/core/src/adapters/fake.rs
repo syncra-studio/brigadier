@@ -67,6 +67,7 @@ impl Adapter for Fake {
             } else {
                 vec![]
             },
+            ..Default::default()
         })
     }
 

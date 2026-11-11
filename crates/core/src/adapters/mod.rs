@@ -141,13 +141,13 @@ pub struct Timing {
     pub no_start_ms: u64,
 }
 
-/// What a status check found [D45]: where the CLI is, its version, whether it is signed in and
-/// how, and the models a session can pick. Never a credential.
+/// What a status check found [D45]: its version, whether it's signed in and how, each login of a CLI that keeps several in one home, and the models a session can pick. Never a credential.
 #[derive(Default)]
 pub struct Check {
     pub version: String,
     pub signed_in: Option<bool>,
     pub how: String,
+    pub logins: Vec<String>,
     pub models: Vec<ModelInfo>,
 }
 

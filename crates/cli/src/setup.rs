@@ -257,6 +257,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();
                 out["how"] = c.how.into();
+                out["logins"] = c.logins.into();
                 out["models"] = c
                     .models
                     .into_iter()

@@ -70,15 +70,17 @@ export function AccountRows({
     });
 
   // An agent that keeps one login: that login, as onboarding checked it. The computer's login shows only while signed in [D2065].
-  const rows: Account[] = (list ?? [
-    {
-      id: "",
-      name: "",
-      check: { installed: Boolean(agent.path), signed_in: agent.signed_in, how: agent.how ?? undefined },
-      limited_at: null,
-      sign_in: null,
-    },
-  ]).filter((account) => account.id !== "" || account.check.signed_in === true);
+  // An agent that keeps several logins in one home lists each as an account [D2078].
+  const own = (name: string, signedIn: boolean | undefined, how?: string): Account => ({
+    id: "",
+    name,
+    check: { installed: Boolean(agent.path), signed_in: signedIn, how },
+    limited_at: null,
+    sign_in: null,
+  });
+  const rows: Account[] = (
+    list ?? (agent.logins?.length ? agent.logins.map((login) => own(login, true)) : [own("", agent.signed_in, agent.how ?? undefined)])
+  ).filter((account) => account.id !== "" || account.check.signed_in === true);
   const anySignedIn = rows.some((account) => account.check.signed_in === true);
   // One action ends the card [D2080]: the agent's own sign-in while nothing is signed in, then another account,
   // kept apart where the agent keeps them apart, else its own sign-in again.
@@ -93,7 +95,8 @@ export function AccountRows({
       ) : (
         rows.map((account) => (
           <AccountRow
-            key={account.id}
+            key={account.id || account.name}
+            name={list ? undefined : account.name || undefined}
             account={account}
             label={agent.label}
             online={online}
@@ -167,6 +170,7 @@ function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: bool
  */
 function AccountRow({
   account,
+  name,
   label,
   online,
   busy,
@@ -175,6 +179,8 @@ function AccountRow({
   onRemove,
 }: {
   account: Account;
+  /** A login of an agent that keeps several in one home, named by it. */
+  name?: string;
   label: string;
   online: boolean;
   busy: boolean;
@@ -185,7 +191,7 @@ function AccountRow({
   const c = account.check;
   const own = account.id === "";
   const signedIn = c.signed_in === true;
-  const title = own ? OWN_LOGIN : account.name;
+  const title = name ?? (own ? OWN_LOGIN : account.name);
   const line = !c.installed
     ? `${label} isn't installed`
     : account.sign_in?.running

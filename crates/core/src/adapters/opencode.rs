@@ -177,6 +177,7 @@ impl Adapter for OpenCode {
             version,
             signed_in: Some(!saved.is_empty()),
             how: saved.join(", "),
+            logins: saved.iter().map(|n| n.to_string()).collect(),
             models,
         })
     }
