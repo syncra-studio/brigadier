@@ -42,9 +42,10 @@ function run(entry: Pending): void {
   });
 }
 
-/** Starts `text` as a new session from session `source`; `qid`: the queued message it was edited from [D237]. */
-export function sendAsNew(source: string, text: string, qid?: string): void {
-  const entry: Pending = { source, id: sessionId(), cid: newId(), text, title: "", qid, asking: true };
+/** Starts `text` as a new session from session `source`; `qid`: the queued message it was edited from [D237];
+ * `made`: its new session's id and the message's, when chips were handed to it first. */
+export function sendAsNew(source: string, text: string, qid?: string, made = { id: sessionId(), cid: newId() }): void {
+  const entry: Pending = { source, ...made, text, title: "", qid, asking: true };
   pending.set(new Map(pending.get()).set(entry.id, entry));
   run(entry);
 }

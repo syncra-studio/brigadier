@@ -9,7 +9,8 @@ import { SendButton } from "../components/composer/send-button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
-import { type Chip, dropChips, restoreChips, useChips, withChips } from "../panel/chips";
+import { sessionId } from "../home/start";
+import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
 import { CommentChip } from "../review/comments";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
@@ -208,12 +209,16 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)], fail);
   /** The chips a message carries leave with it, and come back if Rust refused to queue it; a lost connection may have
    * queued it, so they stay in its message rather than go twice. */
-  const carry = (sent: readonly Chip[]) => {
-    dropChips(id, sent.map((chip) => chip.id));
-    return (reply: Record<string, any>) => reply.error !== "disconnected" && restoreChips(id, sent);
+  const carry = (sent: readonly Chip[], msg: string) => {
+    leaveChips(id, sent);
+    return (reply: Record<string, any>) => reply.error !== "disconnected" && restoreChips(id, msg, sent);
   };
-  const now = (message: string, steer = false) => {
-    const entry: Sent = { cid: newId(), text: message, steer, at: Date.now() };
+  /** Rust takes the chips for message `msg` first, then it goes; refused, nothing goes and the field keeps it [D1174,
+   * D1195]. `into`: the session it starts. */
+  const going = (sent: readonly Chip[], msg: string, go: (back: (reply: Record<string, any>) => void) => void, into?: string) =>
+    handOff(id, sent, msg, () => go(carry(sent, msg)), (reply) => setError(failure(reply)), into);
+  const now = (message: string, steer = false, cid = newId()) => {
+    const entry: Sent = { cid, text: message, steer, at: Date.now() };
     onSent?.(entry.cid);
     setSent(id, (list) => [...list, entry]);
     deliver(run, id, entry);
@@ -245,8 +250,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
     if (held || (isEmpty({ parts: rest, attachmentIds: [] }) && chips.length === 0)) return;
-    sendAsNew(id, withChips(plainText(rest), chips), take()?.qid);
-    carry(chips);
+    const text = withChips(plainText(rest), chips);
+    const made = { id: sessionId(), cid: newId() };
+    going(chips, made.cid, () => sendAsNew(id, text, take()?.qid, made), made.id);
   };
   usePutBack(id, (message, above) => {
     // A rewound message goes above what's already being typed, never over it [D363].
@@ -272,14 +278,16 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       askingChips.current = chips;
       return setAsking(message);
     }
-    const pulled = take();
-    const back = carry(chips);
-    if (mode === "queue") return queue(message, pulled?.qid, pulled?.slot, back);
-    sendNow(message, pulled, mode === "steer");
+    const msg = (mode === "queue" && editing.current?.qid) || newId();
+    going(chips, msg, (back) => {
+      const pulled = take();
+      if (mode === "queue") return queue(message, msg, pulled?.slot, back);
+      sendNow(message, pulled, mode === "steer", msg);
+    });
   };
   // Sent at once or steered, an edited message's kept copy goes.
-  const sendNow = (message: string, pulled: typeof editing.current, steer = false) => {
-    now(message, steer);
+  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string) => {
+    now(message, steer, cid);
     if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
   };
   const changed = (blank: boolean) => {
@@ -357,15 +365,18 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         waiting={asking === null ? null : items.length}
         onSendNow={() => {
           if (asking !== null) {
-            carry(askingChips.current);
-            sendNow(asking, take());
+            const [text, msg] = [asking, newId()];
+            going(askingChips.current, msg, () => sendNow(text, take(), false, msg));
           }
           setAsking(null);
         }}
         onKeepPaused={() => {
           if (asking !== null) {
-            const pulled = take();
-            queue(asking, pulled?.qid, pulled?.slot, carry(askingChips.current));
+            const [text, msg] = [asking, editing.current?.qid ?? newId()];
+            going(askingChips.current, msg, (back) => {
+              const pulled = take();
+              queue(text, msg, pulled?.slot, back);
+            });
           }
           setAsking(null);
         }}
