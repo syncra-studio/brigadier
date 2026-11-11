@@ -154,15 +154,8 @@ pub fn land(
     let commit = write(root, false, &args, stop)?;
     let trusted = (load(data, id)?.project)
         .is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)));
-    move_base(
-        root,
-        &lands.base,
-        &full,
-        (&tip, &commit),
-        &common,
-        trusted,
-        stop,
-    )?;
+    // Recorded before the base moves, so a crash between can't lose a squash; it counts only once
+    // its commit is in the base, so one that never got there reads as not landed [D35, D1049].
     let at_ms = ms_now();
     let landing = Landing {
         head: now,
@@ -170,7 +163,20 @@ pub fn land(
         style: style.into(),
         at_ms,
     };
-    worktrees::set_landing(&dir, landing)?;
+    worktrees::set_landing(&dir, Some(landing))?;
+    let moved = move_base(
+        root,
+        &lands.base,
+        &full,
+        (&tip, &commit),
+        &common,
+        trusted,
+        stop,
+    );
+    if let Err(e) = moved {
+        let _ = worktrees::set_landing(&dir, lands.landing);
+        return Err(e);
+    }
     // The style it landed with is the project's pick from now on [D1028].
     let _ = set_style(data, &Target::Session(id), style);
     Ok(json!({"commit": commit, "atMs": at_ms}))

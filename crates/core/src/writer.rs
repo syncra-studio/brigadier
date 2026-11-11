@@ -140,6 +140,15 @@ pub fn home(session: &Path) -> PathBuf {
     session.join("writer")
 }
 
+/// The lock a writer run holds shared and a delete takes whole; never made outside the session's folder.
+fn writing(session: &Path) -> std::io::Result<fs::File> {
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(session.join("writer.lock"))
+}
+
 fn records(dir: &Path) -> PathBuf {
     dir.join("writers")
 }
@@ -179,6 +188,16 @@ fn remove(a: &dyn Adapter, run: &Spec, id: &str, named: &[String]) -> Result<(),
 /// One reply from `a` on a new conversation of `run` (its model, effort and account already the
 /// writer's), as a clean message. `account`: the account id the run is on, "" for the computer's own.
 pub fn write(a: &dyn Adapter, run: &Spec, account: &str, prompt: &str) -> Result<String, Failure> {
+    // Held through the run: a delete waits for it, and none starts once one is under way [D35].
+    let session = run.dir.parent().ok_or_else(|| fail("no session folder"))?;
+    let held = writing(session).map_err(|e| fail(e.to_string()))?;
+    held.lock_shared().map_err(|e| fail(e.to_string()))?;
+    if let Some(why) = crate::session::retired(session) {
+        return Err(fail(why));
+    }
+    if !session.join("session.json").exists() {
+        return Err(fail("This session is gone."));
+    }
     fs::create_dir_all(&run.dir).map_err(|e| fail(e.to_string()))?;
     let launch = a.launch(run, None, Some(prompt));
     let (exe, args) = launch
@@ -331,6 +350,11 @@ fn left(dir: &Path) -> Vec<(String, String, String, Vec<String>)> {
 /// keeps the session to try again [D35].
 pub fn forget(spec: &Spec, f: &Fold) -> Vec<String> {
     let mut stayed = vec![];
+    // Runs under way finish first, so each is recorded and found here; none starts after.
+    let _held = match writing(&spec.dir).and_then(|file| file.lock().map(|()| file)) {
+        Ok(file) => file,
+        Err(e) => return vec![format!("writer: {e}")],
+    };
     for (backend, account, id, paths) in left(&home(&spec.dir)) {
         let Some(a) = crate::adapters::get(&backend) else {
             continue;

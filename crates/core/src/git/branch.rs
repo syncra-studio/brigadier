@@ -48,7 +48,9 @@ pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result
         })
         .collect();
     let base = match target {
-        Target::Session(id) => worktrees::base(&session_dir(data, id)),
+        Target::Session(id) => crate::load(data, id)
+            .ok()
+            .and_then(|spec| crate::share::base(data, &spec)),
         Target::Project(_) => None,
     };
     // The page of the branch it syncs with, on the remote that one's on, whatever it's called.

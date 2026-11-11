@@ -6,7 +6,7 @@ use brigadier_core::adapters::{self, ModelInfo};
 use brigadier_core::fold::Fold;
 use brigadier_core::git::commit::{self, Prepared};
 use brigadier_core::git::{Checkout, Target};
-use brigadier_core::{self as core, Spec, projects, worktrees, writer};
+use brigadier_core::{self as core, Spec, projects, writer};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
@@ -182,7 +182,7 @@ pub(super) fn write(
             let Target::Session(id) = target else {
                 return Err(io::Error::other("A project folder has no base."));
             };
-            let base = worktrees::base(&core::session_dir(data, id))
+            let base = core::share::base(data, &core::load(data, id)?)
                 .ok_or_else(|| io::Error::other("This session has no base."))?;
             let (commits, patch) = commit::branch(checkout, &base, &stop)?;
             match what {

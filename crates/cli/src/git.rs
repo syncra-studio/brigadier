@@ -67,9 +67,7 @@ fn since(
     stop: &AtomicBool,
 ) -> io::Result<(String, String)> {
     let base = match target {
-        Target::Session(id) => {
-            brigadier_core::worktrees::base(&brigadier_core::session_dir(data, id))
-        }
+        Target::Session(id) => brigadier_core::share::base(data, &brigadier_core::load(data, id)?),
         Target::Project(_) => None,
     };
     let base =
@@ -111,7 +109,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
-        "stage" | "unstage" | "discard" | "hunk" | "rename" | "sync" | "publish" | "force-push" => {
+        "stage" | "unstage" | "discard" | "hunk" | "sync" | "publish" | "force-push" => {
             super::sessions::guard(data, &git::folder(data, &target)?, me)?
         }
         _ => None,
@@ -212,7 +210,9 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             let Target::Session(id) = target else {
                 return Err(io::Error::other(super::USAGE));
             };
-            let dir = brigadier_core::session_dir(data, id);
+            // A "here" fork's base is its folder holder's [D1082].
+            let holder = brigadier_core::share::holder(data, &brigadier_core::load(data, id)?);
+            let dir = holder.map_or_else(|| brigadier_core::session_dir(data, id), |h| h.dir);
             json!({"ok": true, "history": history::history(&checkout, &dir, &stop)?})
         }
         "commit" => match args.get(at + 2) {
