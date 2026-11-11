@@ -4,14 +4,14 @@
 //! folder's Pull only and Push only [D1205].
 //!
 //! Pinned to the HEAD and base its step was worked out on, checked before the commit is prepared
-//! and again under the commit's lock [D1049]. Refused while an agent works in the folder: the
-//! session's own turn start waits on its lock, and the folder's other sessions on the shared guard,
-//! from just before the commit until the move is done [D1208, D1082, D1165]. A move refused after
-//! the commit takes the commit back, so a refusal never leaves one behind.
+//! and again under the commit's lock [D1049]. Refused while an agent works in the folder, and every
+//! turn start waits on the checkout lock from just before the commit until the move is done
+//! [D1208, D1082, D1165]. A move refused after the commit takes the commit back, so a refusal
+//! never leaves one behind.
 
 use super::{arg, flag, has};
 use brigadier_core::git::{self, Checkout, Target, commit, land, step, sync};
-use brigadier_core::{host, session_dir, share, worktrees};
+use brigadier_core::{host, share};
 use serde_json::{Value, json};
 use std::fs::File;
 use std::io;
@@ -25,22 +25,23 @@ fn refuse<T>(why: impl Into<String>) -> io::Result<T> {
 }
 
 /// Held from just before a change until the move is done: no turn starts in the folder, and none
-/// works there now, the session's own included [D1208, D1082].
-fn hold(data: &Path, target: &Target) -> io::Result<(Option<File>, Option<File>)> {
+/// works there now, the session's own included [D1208, D1082]. The checkout lock, which every turn
+/// start waits on until its turn is logged; not the session's own lock, which the move takes itself.
+fn hold(data: &Path, target: &Target) -> io::Result<File> {
     let me = match target {
         Target::Session(id) => Some(*id),
         Target::Project(_) => None,
     };
-    let mine = me
-        .map(|id| worktrees::lock(&session_dir(data, id)))
-        .transpose()?;
+    let fence = match super::sessions::guard(data, &git::folder(data, target)?, me)? {
+        Some(shared) => shared,
+        None => git::branch::fence(data)?,
+    };
     if let Some(id) = me
         && super::sessions::working(data, id, &brigadier_frames::procs::all())
     {
         return refuse("Waits for the turn to finish.");
     }
-    let shared = super::sessions::guard(data, &git::folder(data, target)?, me)?;
-    Ok((mine, shared))
+    Ok(fence)
 }
 
 pub(super) fn run(
@@ -81,10 +82,13 @@ pub(super) fn run(
         "merge" | "squash" => {
             let read = step::step(data, target, false, &stop)?;
             let (now, pinned) = (&read["step"], &read["at"]);
-            if now["kind"] != "merge" || pinned["head"] != head || pinned["base"].as_str() != base {
+            if pinned["head"] != head || pinned["base"].as_str() != base {
                 return refuse(MOVED);
             }
-            if !now["blocked"].is_null() {
+            // Merge locally is offered beside a PR's step too; landing checks the rest, and a
+            // refusal after the commit takes it back.
+            let behind = matches!(now["kind"].as_str(), Some("catchUp" | "continue"));
+            if behind || (now["kind"] == "merge" && !now["blocked"].is_null()) {
                 return refuse("It can't merge now. Look again.");
             }
             if verb == "squash" && flag(args, "--message").is_none_or(|m| m.trim().is_empty()) {

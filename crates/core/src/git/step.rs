@@ -75,10 +75,13 @@ fn folder(checkout: &Checkout, now: &Status) -> Value {
     let (ahead, behind) = (head["ahead"].as_u64(), head["behind"].as_u64());
     let commit = json!({"kind": "folderCommit", "branch": branch,
         "ahead": ahead.unwrap_or(0), "behind": behind.unwrap_or(0)});
-    // Nowhere to publish: only a commit is left to do.
+    // Nowhere to publish, or no first commit yet: only a commit is left to do.
     let Ok(remote) = push::remote(checkout, branch) else {
         return commit;
     };
+    if head["head"].is_null() {
+        return commit;
+    }
     // Sync or Publish commits what's uncommitted first [D1203, D1207].
     let first = now.files.len();
     if head["upstream"].is_null() {
