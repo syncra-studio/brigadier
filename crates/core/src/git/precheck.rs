@@ -150,6 +150,11 @@ pub(super) fn checkouts(
 /// The branch a detached checkout is rebasing: it gets that branch back when the rebase ends.
 pub(super) fn rebasing(path: &Path, stop: &AtomicBool) -> Option<String> {
     let git_dir = PathBuf::from(git(path, &["rev-parse", "--absolute-git-dir"], stop).ok()?);
+    rebasing_in(&git_dir)
+}
+
+/// The same, for a checkout whose git folder is known.
+pub(super) fn rebasing_in(git_dir: &Path) -> Option<String> {
     ["rebase-merge/head-name", "rebase-apply/head-name"]
         .iter()
         .find_map(|f| fs::read_to_string(git_dir.join(f)).ok())

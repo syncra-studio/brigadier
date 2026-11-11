@@ -3,9 +3,9 @@
 //! the UI writes the words [D65]. Nothing here runs anything [D1203, D1286].
 
 use super::precheck::{
-    Merge, blocked, count, git, merge, merge_base, midway, rebasing, shared_with,
+    Merge, blocked, count, git, merge, merge_base, midway, rebasing_in, shared_with,
 };
-use super::{Checkout, Status, Target, checkout, push, read, status};
+use super::{Checkout, Status, Target, push, read, status};
 use crate::worktrees::landing::Landing;
 use crate::worktrees::{self, Lands};
 use crate::{host, load};
@@ -15,10 +15,15 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 /// The control's step for a session or project, the commits it was worked out on (which Merge
-/// into main and Catch up are pinned to), and the base's freshness [D1049, D1193].
-pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value> {
-    let checkout = checkout(data, target)?;
-    let now = status(&checkout, stop)?;
+/// into main and Catch up are pinned to), and the base's freshness [D1049, D1193]. `checkout`:
+/// `target`'s, as `super::checkout` finds it.
+pub fn step(
+    data: &Path,
+    target: &Target,
+    checkout: &Checkout,
+    stop: &AtomicBool,
+) -> io::Result<Value> {
+    let now = status(checkout, stop)?;
     let id = match target {
         Target::Session(id) => Some(*id),
         Target::Project(_) => None,
@@ -30,17 +35,17 @@ pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value
         None => None,
     };
     // A rebase stopped midway detaches HEAD: its branch is the one it rebases.
-    let rebasing = rebasing(&checkout.root, stop);
+    let rebasing = rebasing_in(&checkout.git_dir);
     let branch =
         (now.head["branch"].as_str()).or_else(|| rebasing.as_deref()?.strip_prefix("refs/heads/"));
     let (step, at) = match branch {
         // Detached: the card's branch row says so, and there's no step [D1187].
         None => (Value::Null, json!({"head": now.head["head"], "base": null})),
-        Some(branch) => control(data, id, &checkout, &now, branch, lands.as_ref(), stop)?,
+        Some(branch) => control(data, id, checkout, &now, branch, lands.as_ref(), stop)?,
     };
     let freshness = holder
         .and_then(|h| worktrees::base(&h.dir))
-        .map(|base| super::truth::base(&checkout, &base, stop))
+        .map(|base| super::truth::base(checkout, &base, stop))
         .transpose()?;
     Ok(json!({"step": step, "at": at, "freshness": freshness}))
 }
@@ -120,9 +125,16 @@ fn control(
     }
 
     let landing = match (id, lands, head) {
-        (Some(id), Some(lands), Some(head)) => {
-            Some(session(data, id, checkout, now, lands, head, stop)?)
-        }
+        (Some(id), Some(lands), Some(head)) => Some(session(
+            data,
+            id,
+            checkout,
+            now,
+            lands,
+            head,
+            remote.as_deref(),
+            stop,
+        )?),
         _ => None,
     };
     let pr = id.and_then(|id| host::open_pr(id, branch));
@@ -252,6 +264,7 @@ struct Session {
     blocked: Option<&'static str>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn session(
     data: &Path,
     id: &str,
@@ -259,6 +272,7 @@ fn session(
     now: &Status,
     lands: &Lands,
     head: &str,
+    remote: Option<&str>,
     stop: &AtomicBool,
 ) -> io::Result<Session> {
     let root = &checkout.root;
@@ -275,28 +289,31 @@ fn session(
     let landed_at = landing
         .filter(|l| now.files.is_empty() && l.head == head)
         .map(|l| l.at_ms);
-    let conflicts = match moved {
-        0 => None,
-        _ => conflicts(root, head, &base_at, stop)?,
-    };
-    let branch = now.head["branch"].as_str().unwrap_or("");
-    let no_host = (push::remote(checkout, branch).ok())
-        .and_then(|r| push::url(checkout, &r).ok())
-        .is_none_or(|url| host::repo(&url).is_none());
-    // Merge into main's own pre-check: the base a remote branch, or its folder busy [D1161, D1228].
-    let blocked = match (own, &conflicts) {
-        (0, _) | (_, Some(_)) => None,
+    // One merge of the base into the branch answers both Catch up's conflicts and Merge into
+    // main's pre-check: the same commits, merge base and tree.
+    let merged = match (moved, own) {
+        (0, 0) => None,
         _ => {
             let tree = git(root, &["rev-parse", &format!("{head}^{{tree}}")], stop)?;
-            match merge(root, &base_at, &merge_base, &tree, stop)? {
-                Merge::Conflicts(_) => Some("moved"),
-                Merge::Clean(merged) => {
-                    match blocked(root, base, &base_at, &merged, stop)?["why"].as_str() {
-                        Some("remote") => Some("remoteBase"),
-                        Some(_) => Some("baseBusy"),
-                        None => None,
-                    }
-                }
+            Some(merge(root, &base_at, &merge_base, &tree, stop)?)
+        }
+    };
+    let conflicts = match (moved, &merged) {
+        (0, _) => None,
+        (_, Some(Merge::Conflicts(files))) => Some(files.clone()),
+        _ => None,
+    };
+    let no_host = (remote.and_then(|r| push::url(checkout, r).ok()))
+        .is_none_or(|url| host::repo(&url).is_none());
+    // Merge into main's own pre-check: the base a remote branch, or its folder busy [D1161, D1228].
+    let blocked = match (own, &conflicts, &merged) {
+        (0, _, _) | (_, Some(_), _) | (_, _, None) => None,
+        (_, _, Some(Merge::Conflicts(_))) => Some("moved"),
+        (_, _, Some(Merge::Clean(merged))) => {
+            match blocked(root, base, &base_at, merged, stop)?["why"].as_str() {
+                Some("remote") => Some("remoteBase"),
+                Some(_) => Some("baseBusy"),
+                None => None,
             }
         }
     };

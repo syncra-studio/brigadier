@@ -245,7 +245,8 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         // The card control's next step, and landing [D1028, D1049, D1286].
         "step" => {
-            let mut reply = json!({"ok": true, "step": step::step(data, &target, &stop)?});
+            let mut reply =
+                json!({"ok": true, "step": step::step(data, &target, &checkout, &stop)?});
             // The last run's end, so the brief is read again when only a run changed [D1199].
             if let Target::Session(id) = target
                 && let Ok(f) = brigadier_core::fold(&brigadier_core::session_dir(data, id), true)
