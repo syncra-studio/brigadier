@@ -1,6 +1,6 @@
 //! Re-create an externally removed worktree from its recorded branch [D180, D1187].
 
-use super::{err, read, registration, restore};
+use super::{Owned, err, read, restore};
 use crate::{Spec, load, projects, share, worktrees};
 use std::fs;
 use std::io;
@@ -33,8 +33,12 @@ pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> i
         Err(e) => return Err(e),
     }
     // Remove only this missing path's verified registration; never prune other worktrees [D35].
-    registration(&owned)?;
-    if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
+    let ours = registration(&owned)?;
+    if let Some(admin) = owned
+        .admin
+        .as_deref()
+        .filter(|a| ours && Path::new(a).exists())
+    {
         fs::remove_dir_all(admin)?;
     }
     let project = spec
@@ -57,4 +61,21 @@ pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> i
         }
     }
     Ok(())
+}
+
+/// Whether the recorded registration is still this checkout's. One that now points at a different
+/// checkout is refused while ours is still there, and is someone else's once ours is gone: git
+/// reuses a freed registration's name for the next worktree.
+pub(super) fn registration(owned: &Owned) -> io::Result<bool> {
+    if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
+        let gitdir = fs::read_to_string(Path::new(admin).join("gitdir"))?;
+        let expected = owned.path.as_deref().map(|p| Path::new(p).join(".git"));
+        if expected.as_deref() != Some(Path::new(gitdir.trim_end_matches('\n'))) {
+            if owned.path.as_deref().is_some_and(|p| Path::new(p).exists()) {
+                return err("The worktree's registration now belongs to another checkout.".into());
+            }
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }

@@ -19,6 +19,7 @@ mod hand;
 pub(crate) mod landing;
 pub mod lost;
 mod missing;
+use missing::registration;
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
@@ -314,26 +315,18 @@ fn make(
     include(repo, &path, picks)
 }
 
-/// Refuse to remove a registration that now points at a different checkout.
-fn registration(owned: &Owned) -> io::Result<()> {
-    if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
-        let gitdir = fs::read_to_string(Path::new(admin).join("gitdir"))?;
-        let expected = owned.path.as_deref().map(|p| Path::new(p).join(".git"));
-        if expected.as_deref() != Some(Path::new(gitdir.trim_end_matches('\n'))) {
-            return err("The worktree's registration now belongs to another checkout.".into());
-        }
-    }
-    Ok(())
-}
-
 /// Removes the worktree and its registration, by their recorded paths only.
 fn unregister(owned: &Owned) -> io::Result<()> {
     let repo = Path::new(&owned.repo);
-    registration(owned)?;
+    let ours = registration(owned)?;
     if let Some(path) = owned.path.as_deref().filter(|p| Path::new(p).exists()) {
         git(repo, &["worktree", "remove", "--force", path])?;
     }
-    if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
+    if let Some(admin) = owned
+        .admin
+        .as_deref()
+        .filter(|a| ours && Path::new(a).exists())
+    {
         fs::remove_dir_all(admin)?;
     }
     Ok(())
