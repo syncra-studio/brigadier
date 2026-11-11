@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
 import { refreshStep } from "../panel/git";
-import { gitFailed } from "../panel/notice";
+import { gitDone, gitFailed } from "../panel/notice";
 import { type AgentChip, chipFor } from "./agent-chip";
 import { PrTab } from "./pr-tab";
 import { type PrSend, type PullRequest, sendKey } from "./pull-requests";
@@ -88,6 +88,11 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
         ask({ op: "run", args: ["host", owner, "merge", String(number), style, head] }, (reply) => {
           setMerging(false);
           if (!reply.ok) gitFailed({ session: owner }, `Couldn't merge #${number}.`, reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
+          else {
+            gitDone({ session: owner });
+            // Merged on the host: shown at once, and the read after settles the rest [D30].
+            setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
+          }
           read();
           refreshStep();
         });

@@ -36,16 +36,45 @@ impl Pr {
         if !super::prs::belongs(&pr, repo, &self.branch) {
             return err(format!("#{number} isn't this branch's PR."));
         }
+        // The rest needs only the PR's number and head, so gh is asked for each at once: one by
+        // one they took about 15 s on GitHub.
+        let gh = gh.as_str();
+        let api = |path: String| move || paged(gh, &format!("repos/{}/{path}", repo.path));
+        let (known, reviews, issue, summaries, timeline, styles) = std::thread::scope(|s| {
+            let known = s.spawn(|| {
+                let known = super::prs::checks(gh, repo, &pr)?;
+                // Each failed check's log tail is its own call, so these go at once too.
+                Some(std::thread::scope(|s| {
+                    let each: Vec<_> = (known.iter())
+                        .map(|c| s.spawn(|| check(gh, repo, c)))
+                        .collect();
+                    each.into_iter()
+                        .map(|h| h.join().unwrap())
+                        .collect::<Vec<_>>()
+                }))
+            });
+            let reviews = s.spawn(api(format!("pulls/{number}/comments")));
+            let issue = s.spawn(api(format!("issues/{number}/comments")));
+            let summaries = s.spawn(api(format!("pulls/{number}/reviews")));
+            let timeline = s.spawn(api(format!("issues/{number}/timeline")));
+            let styles = s.spawn(|| styles(gh, repo));
+            // A panic in one is a panic here, as when they ran one by one.
+            (
+                known.join().unwrap(),
+                reviews.join().unwrap(),
+                issue.join().unwrap(),
+                summaries.join().unwrap(),
+                timeline.join().unwrap(),
+                styles.join().unwrap(),
+            )
+        });
         // None when gh can't say, or the head moved meanwhile: the tab keeps its last read.
-        let Some(known) = super::prs::checks(&gh, repo, &pr) else {
+        let Some(checks) = known else {
             return err("Couldn't read the PR's checks just now.");
         };
-        let checks: Vec<Value> = known.iter().map(|c| check(&gh, repo, c)).collect();
-        let api = |path: &str| paged(&gh, &format!("repos/{}/issues/{number}/{path}", repo.path));
-        let reviews = paged(&gh, &format!("repos/{}/pulls/{number}/comments", repo.path))?;
-        let issue = api("comments")?;
+        let (reviews, issue) = (reviews?, issue?);
         // A sent review's own words, apart from its line comments; one with none says nothing here.
-        let summaries = paged(&gh, &format!("repos/{}/pulls/{number}/reviews", repo.path))?;
+        let summaries = summaries?;
         let summaries = (summaries.iter()).filter(|r| {
             r["state"] != "PENDING" && r["body"].as_str().is_some_and(|b| !b.trim().is_empty())
         });
@@ -62,7 +91,7 @@ impl Pr {
             })
             .collect();
         comments.sort_by_key(|c| c["atMs"].as_u64());
-        let mut events: Vec<Value> = api("timeline")?.iter().filter_map(event).collect();
+        let mut events: Vec<Value> = timeline?.iter().filter_map(event).collect();
         events.push(
             json!({"id": "opened", "atMs": ms(&pr["createdAt"]), "kind": "opened",
             "actor": pr["author"]["login"], "detail": null}),
@@ -94,7 +123,7 @@ impl Pr {
             _ => "ready",
         };
         let blocked = failed > 0 || !changes_by.is_empty() || conflicts;
-        let styles = styles(&gh, repo)?;
+        let styles = styles?;
         if matches!(state, "open" | "draft") {
             super::note_open(&self.id, &self.branch, Some(number));
         } else if super::open_pr(&self.id, &self.branch) == Some(number) {
