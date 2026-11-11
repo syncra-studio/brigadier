@@ -3,7 +3,7 @@
 //! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
 //! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
 
-use super::{GH_SECS, Pr, Repo, failed, gh, setup, tool};
+use super::{GH_SECS, Kind, Pr, Repo, failed, gh, setup, tool};
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -38,7 +38,8 @@ impl Pr {
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         self.current();
-        let repo = self.repo.as_ref()?;
+        // Only GitHub's PRs are read (through gh) until GitLab's (2.32) [D1030].
+        let repo = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub)?;
         let key = format!("branch.{}.remote", self.branch);
         git::read(
             &self.checkout.root,

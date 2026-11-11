@@ -64,6 +64,8 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                     // A window is open while the app is subscribed.
                     let window = !state.lock().unwrap().subs.is_empty();
                     let at = Instant::now() + every(kept.as_ref(), window);
+                    // Under DUE's lock, as the scheduler reads it: a turn noted meanwhile is never lost.
+                    let _due = DUE.lock().unwrap();
                     next.lock().unwrap().insert(id.clone(), at);
                     busy.lock().unwrap().remove(&id);
                 });

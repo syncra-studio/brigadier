@@ -51,4 +51,4 @@ export type Pr = {
  * A session's PRs as Rust's watch keeps them (`prs.json`, proposed) [D1009]: when the last whole read answered (ms),
  * why the last read didn't (null when it did), and each PR's last known facts.
  */
-export type KeptPrs = { okAt: number | null; error: string | null; prs: Pr[] };
+export type KeptPrs = { okAt: number | null; error: string | null; branch?: string; prs: Pr[] };
