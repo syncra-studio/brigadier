@@ -314,10 +314,20 @@ impl Store {
         };
         let entry = String::from_utf8_lossy(&entry);
         let disk = fs::symlink_metadata(self.cwd.join(path));
+        // A file the turn put in a folder's place, or the other way round, leaves its path absent.
+        let gone = |e: io::Error| {
+            matches!(
+                e.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            )
+        };
         let Some((meta, _)) = entry.split_once('\t') else {
-            return disk.is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
+            return disk.is_err_and(gone);
         };
         let meta: Vec<&str> = meta.split(' ').collect();
+        if meta.get(1) == Some(&"tree") {
+            return disk.map_or_else(gone, |m| m.is_dir());
+        }
         let (Ok(disk), &[mode, "blob", blob]) = (disk, &meta[..]) else {
             return false;
         };
