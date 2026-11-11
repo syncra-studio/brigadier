@@ -5,7 +5,7 @@ import { TooltipIconButton, type TooltipIconButtonProps } from "../components/ic
 import { useDaemon } from "../daemon";
 import { FilesView } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
-import { SidebarFloatingLeft } from "../icons";
+import { Folders } from "../icons";
 import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useProjects } from "../projects/projects";
@@ -14,8 +14,7 @@ import { HOME, openFile, useTabs } from "./tab-store";
 /*
  * The right panel [D410, D1014], as the old app's (WorkspacePane): a column at the window's end holding Files [D1284],
  * sliding open and closed as the sidebar does and pushing the chat aside. Its edge drags to resize it; dragged below
- * half its least width, it closes. ⌥⌘B shows or hides it; ⇧⌘E opens it, and pressed while it shows, moves the
- * keyboard into it [D48].
+ * half its least width, it closes. ⌥⌘B and ⇧⌘E show or hide Files [D1284].
  */
 
 /** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
@@ -32,9 +31,8 @@ export function useHasPanel(owner: string): boolean {
 /** The toggle as drawn. */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip="Right sidebar" shortcut="⌥⌘B" pressed={open} aria-controls="right-panel-content" {...props}>
-      {/* The left toggle's folded icon, mirrored. */}
-      <SidebarFloatingLeft className="-scale-x-100" />
+    <TooltipIconButton look="toolbar" tooltip="Files" shortcut="⇧⌘E" pressed={open} aria-controls="right-panel-content" {...props}>
+      <Folders />
     </TooltipIconButton>
   );
 }
@@ -51,13 +49,11 @@ export function RightPanelToggle({ owner, className }: { owner: string; classNam
   );
 }
 
-/** Which key asks what: ⌥⌘B shows or hides it, ⇧⌘E opens Files. */
-function panelKey(event: KeyboardEvent): "toggle" | "files" | null {
-  if (event.isComposing || event.repeat) return null;
+/** Both Files shortcuts show or hide it [D1284]. */
+function panelKey(event: KeyboardEvent): boolean {
+  if (event.isComposing || event.repeat) return false;
   const command = event.metaKey && !event.ctrlKey;
-  if (command && event.altKey && !event.shiftKey && event.code === "KeyB") return "toggle";
-  if (command && event.shiftKey && !event.altKey && event.code === "KeyE") return "files";
-  return null;
+  return command && ((event.altKey && !event.shiftKey && event.code === "KeyB") || (event.shiftKey && !event.altKey && event.code === "KeyE"));
 }
 
 /** Files lights up the file whose tab is in front; a click opens it in the preview tab, a double click keeps it. */
@@ -74,7 +70,6 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   const open = has && memory.open;
   usePanelFromRust();
   useGitWatch(has ? owner : null);
-  const content = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState(false);
   // Its contents stay through the closing slide, then go, so a closed panel reads nothing.
   const [shown, setShown] = useState(open);
@@ -86,13 +81,9 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   useEffect(() => {
     if (!has) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      const asked = panelKey(event);
-      if (!asked || event.defaultPrevented) return;
+      if (!panelKey(event) || event.defaultPrevented) return;
       event.preventDefault();
-      if (asked === "toggle") return setPanelOpen(!memory.open);
-      if (memory.open) {
-        content.current?.querySelector<HTMLElement>('input:not(:disabled), textarea:not(:disabled), button:not(:disabled), [tabindex="0"]')?.focus();
-      } else setPanelOpen(true);
+      setPanelOpen(!memory.open);
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
@@ -101,7 +92,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   if (!has) return null;
   return (
     <aside
-      aria-label="Right sidebar"
+      aria-label="Files"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
       className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
@@ -113,7 +104,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
         className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}
       >
         <div className="right-panel-width flex h-full min-h-0 flex-col">
-          <div ref={content} id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
+          <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
             {shown && <Files key={owner} owner={owner} />}
           </div>
         </div>
@@ -145,7 +136,7 @@ function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizin
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize right sidebar"
+      aria-label="Resize Files"
       data-resizing={resizing || undefined}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
