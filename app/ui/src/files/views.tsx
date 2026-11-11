@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ask, setFoundHandler, useDaemon } from "../daemon";
+import { useStart } from "../home/start";
 import { sourceArgs, useGit } from "../panel/git";
 import { detailsShown, EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "./search";
 import { FileTree, type OnOpen } from "./tree";
@@ -28,6 +29,8 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
   const [tick, setTick] = useState(0);
+  // A new session's checkout isn't made until its start answers: the listing waits, loading, as the watch does [D1259].
+  const starting = useStart(owner)?.asking === true;
 
   useEffect(() => {
     setListing({ state: "loading" });
@@ -36,7 +39,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   }, [key]);
   // Listed again on each watch read that changed something; disconnected, the last listing stays [D30].
   useEffect(() => {
-    if (!target || !daemon) return;
+    if (!target || !daemon || starting) return;
     let live = true;
     ask({ op: "run", args: sourceArgs(target, "files") }, (reply) => {
       if (!live || reply.error === "disconnected") return;
@@ -53,7 +56,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       });
     });
     return () => void (live = false);
-  }, [key, daemon, version, tick]);
+  }, [key, daemon, version, tick, starting]);
 
   const readIgnored = useCallback(
     (paths: string[]) => {
