@@ -11,6 +11,7 @@ import { UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
 import { sessionId } from "../home/start";
 import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
+import { AgentChipTile } from "../landing/agent-chip";
 import { CommentChip } from "../review/comments";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
@@ -338,9 +339,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerCard className={approval ? "hidden" : undefined}>
         {chips.length > 0 && (
           <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
-            {chips.map((chip) => (
-              <CommentChip key={chip.id} comment={chip.comment} onRemove={() => dropChips(id, [chip.id])} />
-            ))}
+            {chips.map((chip) =>
+              chip.kind === "agent" ? (
+                <AgentChipTile key={chip.id} chip={chip.chip} onRemove={() => dropChips(id, [chip.id])} />
+              ) : (
+                <CommentChip key={chip.id} comment={chip.comment} onRemove={() => dropChips(id, [chip.id])} />
+              ),
+            )}
           </div>
         )}
         <ComposerField
