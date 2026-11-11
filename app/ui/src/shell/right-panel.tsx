@@ -57,7 +57,7 @@ export function PanelToggleButton({ hint, open, ...props }: { hint: PanelHint | 
   );
 }
 
-/** The toolbar's rightmost button [D1014]. With a dot, a click opens the view it's about; the dot hides while that shows. */
+/** The toolbar's rightmost button [D1014]: a click always shows or hides the panel, as the old app's; the dot only signals, and hides while Source shows [D1249]. */
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
   const has = useHasPanel(owner);
@@ -70,7 +70,7 @@ export function RightPanelToggle({ owner, className }: { owner: string; classNam
       <PanelToggleButton
         hint={showing ? null : hint}
         open={memory.open}
-        onClick={() => (hint && !showing ? showPanelView(owner, "source") : setPanelOpen(!memory.open))}
+        onClick={() => setPanelOpen(!memory.open)}
       />
     </span>
   );
@@ -127,7 +127,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
       aria-label="Right sidebar"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
-      className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity motion-reduce:before:transition-none", !open && "before:opacity-0")}
+      className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
     >
       <div
         inert={!open}
