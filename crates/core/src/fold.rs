@@ -144,10 +144,6 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
-    /// The latest ended turn that changed files: `{at, files}`, its end and how many files. What
-    /// opens the panel the first time [D1023, D1125]; never inferred from the checkout's state.
-    #[serde(default)]
-    pub edited: Option<Value>,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
     /// delivered), withdrawn, or the outcome of the turn they ended with.
     #[serde(default)]

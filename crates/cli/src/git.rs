@@ -215,7 +215,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             None => json!({"ok": true, "review": history::commit(&checkout, word(1)?, &stop)?}),
         },
-        // Source's commit and the message writer [D1029, D1107].
+        // The card's commit and the message writer [D1029, D1107].
         "make-commit" => {
             // `--all` as a flag, never as the message's own text.
             let all = (args.iter().enumerate())
@@ -233,10 +233,8 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             has(args, "--cached"),
             has(args, "--refresh"),
         )?,
-        // The one button's commit-first move, and Pull only and Push only [D1203, D1205].
-        "first" | "pull-only" | "push-only" => {
-            super::first::run(data, &target, &checkout, args, at)?
-        }
+        // The commit-first move [D1203].
+        "first" => super::first::run(data, &target, &checkout, args, at)?,
         // The branch item [D1020, D1021, D1026, D1034].
         "branches" => {
             let mut read = branch::branches(data, &target, &checkout)?;

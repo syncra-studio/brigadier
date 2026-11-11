@@ -9,7 +9,7 @@ import type { FileFlag, LastRun, NoTurn, Review, ReviewFile } from "./types";
 /**
  * Review's brief (D1188): what changed, which files want a look first, and the session's last test or build run, as
  * facts, never verdicts: "exited 0", never "tests pass". Rust sends the structure, these write the words (D65), and
- * Source's Checks and Changes use the same ones, so the two never disagree (D1199). A `name` in backticks is drawn as
+ * the card uses the same ones, so the two never disagree (D1199). A `name` in backticks is drawn as
  * code by `Ticks`.
  */
 

@@ -311,12 +311,6 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
         );
     }
     head["count"] = files.len().into();
-    // The toggle's dot [D1025]: changes, for now. Ready, would-conflict and failed checks come with
-    // the facts that tell them (the land pre-check, the PR watch); until then none is guessed [D74].
-    head["hint"] = match files.len() {
-        0 => Value::Null,
-        n => json!({"tone": "changes", "count": n}),
-    };
     Ok(Status { head, files })
 }
 

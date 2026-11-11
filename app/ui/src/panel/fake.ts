@@ -1,11 +1,6 @@
-import { useSyncExternalStore } from "react";
+import type { Branch, Commit, Pr, SourceFile, SourceState, Step } from "./types";
 
-import type { Branch, Commit, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
-
-/*
- * Fake data for the right panel while it's unwired [D388]: the app and the gallery draw from it. It goes when the
- * wiring steps (2.15 on) bring Rust's.
- */
+/* Fake data for the gallery's summary card and git confirms; the app reads Rust's [D388]. */
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -57,37 +52,6 @@ export const COMMITTED: SourceState = {
   sinceBase: [...STAGED.staged, ...STAGED.changes, file("src/upload/retry.test.ts", "added", 42)],
 };
 
-/** Every letter Source draws. */
-export const LETTERED: SourceState = {
-  ...CLEAN,
-  changes: [
-    file("src/upload/retry.ts", "modified", 12, 4),
-    file("src/upload/backoff.ts", "added", 30),
-    file("src/upload/legacy.ts", "deleted", 0, 88),
-    file("src/tray/Progress.tsx", "renamed", 2, 2, "src/tray/Bar.tsx"),
-    file("src/tray/Icon.tsx", "copied", 0, 0, "src/tray/Badge.tsx"),
-    file("scripts/run", "typeChanged"),
-    file("notes/todo.md", "untracked", 9),
-  ],
-};
-
-export const MERGING: SourceState = {
-  ...CLEAN,
-  merging: { incoming: "main", message: "Merge branch 'main' into brigadier/912a9469/session" },
-  ahead: 2,
-  commits: COMMITS,
-  staged: [file("src/tray/Progress.tsx", "modified", 6, 1)],
-  changes: [file("src/upload/retry.ts", "conflicted"), file("src/upload/client.ts", "conflicted")],
-};
-
-export const REBASING: SourceState = {
-  ...CLEAN,
-  branch: null,
-  rebasing: { branch: BRANCH, onto: "main", message: "Show upload progress in the tray" },
-  commits: COMMITS,
-  changes: [file("src/tray/Progress.tsx", "conflicted")],
-};
-
 /** The user's own folder: a Local checkout session or the project folder. */
 export const FOLDER: SourceState = {
   ...CLEAN,
@@ -107,26 +71,11 @@ export const BRANCHES: Branch[] = [
   { name: "origin/release/2.4", remote: true, atMs: NOW - 5 * 24 * 60 * MIN, author: "sam-k", subject: "Release 2.4.0" },
 ];
 
-export const GIT_RUNS = [
-  { atMs: NOW - 9 * MIN, command: "git fetch origin", output: "", ok: true },
-  { atMs: NOW - 8 * MIN, command: "git pull --ff-only", output: "Already up to date.", ok: true },
-  { atMs: NOW - 2 * MIN, command: "git push", output: "! [rejected] HEAD -> brigadier/912a9469/session (fetch first)\nerror: failed to push some refs", ok: false },
-];
-
 /** The branch's pull requests: #12 open with a failing check, #11 merged. */
 export const PRS: Pr[] = [
   { number: 12, title: "Retry failed uploads", state: "open", health: "failed", failed: 1 },
   { number: 11, title: "Show upload progress in the tray", state: "merged", health: "ready", failed: 0 },
 ];
-
-export const WATCH: PrWatch = {
-  checkedAtMs: NOW - MIN,
-  events: [
-    { atMs: NOW - 18 * MIN, pr: 12, kind: "checksFailed", detail: "test (ubuntu-latest)" },
-    { atMs: NOW - 30 * MIN, pr: 12, kind: "opened", detail: "by the agent" },
-    { atMs: NOW - 52 * MIN, pr: 11, kind: "merged", detail: "by you" },
-  ],
-};
 
 /** The message drafted for the work so far (2.20), the field's grey text. */
 export const DRAFT = "Retry failed uploads and show progress in the tray";
@@ -151,45 +100,3 @@ export const STEPS = {
   sync: { kind: "sync", branch: "main", remote: "origin", behind: 1, ahead: 2 },
   publish: { kind: "publish", branch: "fix/login", remote: "origin" },
 } satisfies Record<string, Step>;
-
-/** One fake per session or chat, picked by its id, so a few sessions show every dot and tip [D1025]. */
-const FAKES: { source: SourceState; step: Step; hint: PanelHint | null; prs?: Pr[] }[] = [
-  { source: STAGED, step: STEPS.commitWaiting, hint: { tone: "changes", count: 4 }, prs: PRS },
-  { source: { ...COMMITTED, commits: COMMITS.slice(0, 3) }, step: STEPS.merge, hint: { tone: "ready", base: "main" } },
-  { source: { ...COMMITTED, commits: COMMITS.slice(0, 3) }, step: STEPS.catchUp, hint: { tone: "conflict", base: "main" } },
-  { source: COMMITTED, step: STEPS.fixPr, hint: { tone: "failed", pr: 12, why: "checks" }, prs: PRS },
-  { source: CLEAN, step: STEPS.landed, hint: null },
-];
-
-const FOLDER_FAKE = { source: FOLDER, step: STEPS.folderCommit as Step, hint: { tone: "changes", count: 3 } as PanelHint | null, prs: undefined };
-
-/** `folder`: a project chat, on the project's folder [D1039]. */
-export function fakeFor(owner: string, folder: boolean) {
-  if (folder) return FOLDER_FAKE;
-  let hash = 0;
-  for (const char of owner) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return FAKES[hash % FAKES.length]!;
-}
-
-/** The fake's moves (stage, discard, commit) per session, so the toggle and the Source badge follow them. */
-const moved = new Map<string, SourceState>();
-const listeners = new Set<() => void>();
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-export function setFakeSource(owner: string, source: SourceState) {
-  moved.set(owner, source);
-  for (const listener of listeners) listener();
-}
-
-/** `fakeFor` as moved so far, with the files left to commit counted once each. */
-export function useFake(owner: string, folder: boolean) {
-  const fake = fakeFor(owner, folder);
-  const source = useSyncExternalStore(subscribe, () => moved.get(owner) ?? fake.source);
-  const count = new Set([...source.staged, ...source.changes].map((each) => each.path)).size;
-  const hint: PanelHint | null = fake.hint?.tone === "changes" ? (count > 0 ? { tone: "changes", count } : null) : fake.hint;
-  return { ...fake, source, hint, count };
-}

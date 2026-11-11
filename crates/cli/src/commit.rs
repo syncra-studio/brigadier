@@ -1,4 +1,4 @@
-//! `brigadier source <owner> make-commit` and `write`: Source's commit and the message writer
+//! `brigadier source <owner> make-commit` and `write`: the card's commit and the message writer
 //! [D1029, D1107]. The writer is the session's own agent at its cheapest model, and a local model
 //! only when the computer is offline; it never commits a message nobody wrote.
 

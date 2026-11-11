@@ -72,7 +72,7 @@ pub(super) fn sharer(
 }
 
 /// The paths `spec`'s turns that ended on commit `head` changed, from the newest back: what it
-/// added since that commit, for Source's note [D1082] (proposed).
+/// added since that commit, for the card's note [D1082] (proposed).
 pub fn turn_paths(spec: &Spec, head: Option<&str>) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
     let Some(store) = Store::of(spec).filter(|_| head.is_some()) else {

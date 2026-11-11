@@ -12,7 +12,6 @@ import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
 import type { StepAt } from "../git";
 import type { Pr } from "../types";
-import type { ActionPick } from "./action-menus";
 import { failed, keep } from "./branch-ops";
 import { Confirm, type Held } from "./dialogs";
 
@@ -24,6 +23,9 @@ export type HostInfo = { host: string | null; cli: boolean; base: string; branch
 
 /** What the action menu offers for a PR [D1030]: Create PR through the host's CLI, its page, neither, or not known yet. */
 export type PrWay = "cli" | "page" | "none" | "loading";
+
+/** What a pick of the card's git step asks for. */
+export type ActionPick = "commit" | "editMessage" | "createPr" | "pushBranch" | "openPrPage" | "mergeLocally" | "forcePush";
 
 export const prWay = (info: HostInfo | null | undefined): PrWay => (info === undefined ? "loading" : !info?.host ? "none" : info.cli ? "cli" : "page");
 
@@ -131,7 +133,7 @@ const put = (session: string, next: Partial<Op>) => {
 const textOf = (op: Op): Text => op.text ?? (op.info ? { title: op.info.title, body: op.info.body, draft: false } : EMPTY);
 const LOST = "Brigadier isn't connected. This waits until it is.";
 
-// A push or create moves refs the watch may not follow (a new upstream), so Source's sync count reads git again after each.
+// A push or create moves refs the watch may not follow (a new upstream), so the card's sync count reads git again after each.
 const run = (session: string, args: string[], onReply: (reply: Record<string, any>) => void) =>
   ask({ op: "run", args: ["host", session, ...args] }, (reply) => {
     if (args[0] !== "info" && args[0] !== "find") ask({ op: "git_refresh" });
@@ -171,7 +173,7 @@ function draft(session: string) {
 
 function made(session: string, pr: { number: number | null; url: string }) {
   const op = opOf(session);
-  // Shown in Source's PR icon at once, then read again for its real state.
+  // Shown in the card's PR rows at once, then read again for its real state.
   const shown: Pr[] = pr.number ? [{ number: pr.number, title: textOf(op).title, state: "open", health: "running", failed: 0 }] : [];
   put(session, { uncertain: false, text: null, busy: null, open: false, error: null, prs: [...shown, ...op.prs.filter((each) => each.number !== pr.number)] });
   read(session);
@@ -187,7 +189,7 @@ export type First = { at: StepAt; message: string | null; sent: () => void };
 
 const firstArgs = (verb: string, first: First) => ["first", verb, first.at.head, first.at.base ?? "-", ...(first.message ? ["--message", first.message] : [])];
 
-/** A host move, or with `first` the same move after the commit, through Source's commit-first route. */
+/** A host move, or with `first` the same move after the commit, through the commit-first route. */
 const move = (session: string, args: string[], first: First | null, onReply: (reply: Record<string, any>) => void) => {
   if (!first) return run(session, args, onReply);
   const [verb = "", ...rest] = args;

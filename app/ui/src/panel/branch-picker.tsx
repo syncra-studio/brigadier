@@ -2,7 +2,7 @@ import { type RefObject, useEffect, useState } from "react";
 
 import { copyWithToast } from "../components/copy-button";
 import type { BranchRead } from "./source/branch-ops";
-import type { SourceData, SourceOps } from "./source/panel";
+import type { SourceData, SourceOps } from "./source/data";
 import { BranchNameBox, folderItems, QuickPick, sessionItems } from "./source/quick-pick";
 
 /** The quick pick or name box open under the branch: `from`, `base` and `newSession` list branches to pick. */

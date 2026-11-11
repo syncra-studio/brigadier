@@ -1,15 +1,14 @@
 import { useEffect } from "react";
 
 import { useDaemon } from "../../daemon";
-import { refreshHistory, useHistory } from "../../history/store";
+import { refreshHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
-import { HOME, openFile, openTab } from "../../shell/tab-store";
-import { isWorking as working, landBranch, moveFiles, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
+import { HOME } from "../../shell/tab-store";
+import { isWorking as working, landBranch, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
 import { useShare } from "../share";
-import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
-import { type BranchOps, type SourceData, type SourceOps, SourcePanel } from "./panel";
+import type { BranchOps, SourceData, SourceOps } from "./data";
 
 /** The branch item's moves on `target`'s checkout, Rust's [D1020, D1021]. */
 function branchOps(target: Target, owner: string, project: string | null, branch: string): BranchOps {
@@ -38,9 +37,8 @@ function branchOps(target: Target, owner: string, project: string | null, branch
 }
 
 /**
- * `owner`'s checkout as Source shows it, and Rust's moves on it: Source and the summary card read and act on the same
- * [D1145]. Stage, unstage and discard go through the same Rust moves as Review's [D1043, D1103]. The action button
- * is Rust's next step, and lands through Rust (2.22) [D1152]; the branch list and PRs wait for theirs.
+ * `owner`'s checkout as the summary card shows it, and Rust's moves on it [D1145]. Its step is Rust's next step, and
+ * lands through Rust (2.22) [D1152].
  */
 export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   const git = useGit();
@@ -65,7 +63,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       at: git.step?.at ?? null,
       error: git.error,
       offline: offline && git.source !== null,
-      pending: git.pending,
       rejected: op.rejected,
       syncing: op.syncing,
       naming: op.naming,
@@ -83,11 +80,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {
-      stage: (paths) => moveFiles("stage", "uncommitted", paths),
-      unstage: (paths) => moveFiles("unstage", "uncommitted", paths),
-      discard: (paths, scope) => moveFiles("discard", scope === "unstaged" ? "unstaged" : "uncommitted", paths),
-      review: (path) => openReview(owner, path),
-      openFile: (path) => openFile(owner, path, { preview: false }),
       retry: retryGit,
       branch: git.target ? branchOps(git.target, owner, project, branch ?? "the branch") : undefined,
       land: landBranch,
@@ -97,30 +89,4 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       restore: restoreCheckout,
     },
   };
-}
-
-/** The Source view of a session or project chat, on Rust's git; a project chat shows its folder [D1039]. */
-export function SourceView({ owner }: { owner: string }) {
-  const { data, ops } = useSource(owner);
-  // History is Rust's (2.29): the menu lists what the History tab does, and opens its commits and the tab [D1041, D1114].
-  const { history, error } = useHistory(owner);
-  return (
-    <SourcePanel
-      data={{
-        ...data,
-        history: {
-          commits: history?.commits ?? [],
-          base: history?.base ?? null,
-          error,
-          onCommit: (sha) => openTab(owner, "commit", sha),
-          onOpen: () => openTab(owner, "history"),
-          onMenu: () => refreshHistory(owner),
-        },
-      }}
-      draftKey={owner}
-      session={owner === HOME ? null : owner}
-      nowMs={Date.now()}
-      ops={ops}
-    />
-  );
 }

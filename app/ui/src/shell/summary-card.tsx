@@ -178,11 +178,11 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     return () => removeEventListener("keydown", onKeyDown, true);
   }, [floating, owner]);
 
-  // Moving on to another tab or to the right panel's other view closes it where it floats, rather than leave it over
+  // Moving on to another tab or showing or hiding the right panel closes it where it floats, rather than leave it over
   // them; coming back to the chat isn't moving on (the old FloatingSummary).
   const { active } = useTabs(owner);
   const memory = usePanelMemory();
-  const place = `${memory.open}/${memory.views[owner]}`;
+  const place = memory.open;
   const was = useRef({ active, place });
   useEffect(() => {
     const away = place !== was.current.place || (active !== was.current.active && active !== CHAT);

@@ -182,18 +182,6 @@ export function readBranches(target: Target, done: (read: BranchRead | null) => 
   });
 }
 
-/** Pull only or Push only, your own folder's arrow [D1205]: as Sync, the item spinning until Rust answers. */
-export function only(target: Target, verb: "pull-only" | "push-only", branch: string): void {
-  if (opOf(target).syncing) return;
-  put(target, { syncing: true });
-  run(target, [verb], (reply) => {
-    put(target, { syncing: false });
-    if (!reply.ok) return failed(target, reply);
-    if (verb === "push-only") put(target, { rejected: null });
-    showToast(verb === "pull-only" ? `Pulled ${branch}` : `Pushed ${branch}`, { tone: "success" });
-  });
-}
-
 /**
  * The one button's move, which commits every change first [D1203, D1207]: `first <verb> <head> <base>` and its
  * flags. A push it made that was turned away keeps its lease for Force Push [D1034]; `done` gets Rust's reply.

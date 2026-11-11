@@ -9,11 +9,11 @@ import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
 import type { FileFlag, LastRun } from "../review/types";
-import type { MergeStyle, PanelHint, SourceFile, SourceState, Step, When } from "./types";
+import type { MergeStyle, SourceFile, SourceState, Step, When } from "./types";
 
 /*
  * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, each file's counts read
- * after it, and the moves Source and Review make, shown at once and settled by path. One watch per connection, so
+ * after it, and the moves the card makes, shown at once and settled by path. One watch per connection, so
  * one owner at a time: the one on screen. Disconnected, the last read stays, read-only; reconnecting asks again
  * [D1062]. Window focus reads it again now, as the old app did [D48].
  */
@@ -25,7 +25,6 @@ type Head = {
   upstream: string | null;
   ahead: number;
   behind: number;
-  hint: PanelHint | null;
   /** Rust's: a session's own worktree or a folder of the user's, and the remote it syncs or would publish to [D1020, D1021]. */
   checkout: "worktree" | "folder";
   remote: string | null;
@@ -36,15 +35,15 @@ export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; age
 /** A move sent and not yet seen in a read. `done`: Rust answered, the next read settles it. */
 type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone"; done?: boolean };
 
-/**
- * Rust's next step for the checkout [D1015, D1152]: the step, the toolbar's dot [D1025], how the project lands
- * [D1028], and the commits it was worked out on, which a landing pins [D1049].
- */
 /** The base against its own upstream, from Rust [D1187, D1193]: `behind` null where it can't count; `fetchedAtMs` null when unknown. */
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
 
-/** `when`: the session's "When it's done" rule (2.44); `ran`: its last run's end, so the brief is read again when only a run changed [D1199, D1201]. */
-type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; when?: When | null; ran?: number | null };
+/**
+ * Rust's next step for the checkout [D1015, D1152]: the step, how the project lands [D1028], and the commits it was
+ * worked out on, which a landing pins [D1049]. `when`: the session's "When it's done" rule (2.44); `ran`: its last
+ * run's end, so the brief is read again when only a run changed [D1199, D1201].
+ */
+type StepRead = { step: Step | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; when?: When | null; ran?: number | null };
 
 /**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
@@ -344,13 +343,11 @@ const sum = (file: SourceFile, other?: SourceFile) => ({ added: file.added + (ot
 
 let shown: { from: Git; pending: Pending[]; source: SourceState | null } | null = null;
 
-/** The on-screen checkout for Source: its state, Rust's dot, the count, and the paths still moving. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
+/** The on-screen checkout: its state, Rust's step, and the paths still moving. */
+export function useGit(): { source: SourceState | null; step: StepRead | null; error: string | null; pending: string[]; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now || shown.pending !== pending) shown = { from: now, pending, source: sourceOf(now) };
-  // Rust's step says the dot once it's read; until then the status's count does [D1025].
-  const hint = now.step ? now.step.hint : (now.head?.hint ?? null);
-  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
+  return { source: shown.source, step: now.step, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 /** The file moves Source and Review share [D1043, D1103]: Rust's own, under the checkout's lock. */
@@ -408,7 +405,7 @@ export function useFileRead(path: string): FileRead {
 }
 
 /**
- * Source's commit [D1029, D1107]: Rust commits the index, or with `all` every change, with `message`; a blank one is
+ * The card's commit [D1029, D1107]: Rust commits the index, or with `all` every change, with `message`; a blank one is
  * written first for exactly what's committed. False with no checkout on screen. The watch shows the commit landing.
  */
 export function commitFiles(all: boolean, message: string, onReply: (reply: Record<string, any>) => void): boolean {

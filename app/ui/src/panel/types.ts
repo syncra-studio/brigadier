@@ -5,8 +5,6 @@ import type { FileStatus } from "./status";
  * Until the wiring steps (2.15 on) these come from fake.ts.
  */
 
-export type PanelView = "files" | "source";
-
 /** A changed file and its lines added and removed. */
 export type SourceFile = { path: string; status: FileStatus; oldPath: string | null; added: number; removed: number };
 
@@ -28,7 +26,7 @@ export type SourceState = {
   rebasing: { branch: string; onto: string; message: string } | null;
   /** The session's commits since its base, newest first [D1041]; none for a folder. */
   commits: Commit[];
-  /** What the session's branch changed since its base, once committed: Source's "Changed since main" [D1111]. */
+  /** What the session's branch changed since its base, once committed [D1111]. */
   sinceBase: SourceFile[];
 };
 
@@ -105,15 +103,8 @@ export type When = { rule: WhenRule; at?: number; stopped?: WhenStop; working?: 
 /** How a branch lands: merged locally as a merge commit or squashed [D1028]; a PR's host may also rebase. */
 export type MergeStyle = "merge" | "squash" | "rebase";
 
-/** A step that didn't go: Rust's reason, kept on the pre-check line until the next try. */
+/** A step that didn't go: Rust's reason, kept until the next try. */
 export type StepError = { kind: Step["kind"]; reason: string };
-
-/** The dot on the toolbar's toggle and its tip [D1022, D1025]: the most urgent state, and the view it points to. */
-export type PanelHint =
-  | { tone: "changes"; count: number }
-  | { tone: "ready"; base: string }
-  | { tone: "conflict"; base: string }
-  | { tone: "failed"; pr: number; why: "checks" | "changes" };
 
 /**
  * A force push after a rejected one [D1034, D1049]: the local branch pushed, the remote and its ref (`remoteRef` as shown), the remote commit

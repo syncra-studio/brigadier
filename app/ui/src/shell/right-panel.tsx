@@ -2,29 +2,21 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } f
 
 import { cx } from "../components/cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
-import { TitlebarTips } from "../components/tooltip";
 import { useDaemon } from "../daemon";
+import { FilesView } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
 import { SidebarFloatingLeft } from "../icons";
-import { useGit, useGitWatch } from "../panel/git";
-import { setPanelOpen, setPanelWidth, showPanelView, usePanelFromRust, usePanelMemory } from "../panel/memory";
-import type { PanelHint, PanelView } from "../panel/types";
-import { VIEWS } from "../panel/views";
-import { hintWords } from "../panel/words";
+import { useGitWatch } from "../panel/git";
+import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useProjects } from "../projects/projects";
-import { HOME } from "./tab-store";
+import { HOME, openFile, useTabs } from "./tab-store";
 
 /*
- * The right panel [D410, D1014], as the old app's (WorkspacePane, PaneViewTabs): a column at the window's end, its
- * views' icons centred atop it, sliding open and closed as the sidebar does and pushing the chat aside. Its edge
- * drags to resize it; dragged below half its least width, it closes. ⌥⌘B shows or hides it; ⇧⌘E and ⌃⇧G
- * open Files and Source, and pressed while that view shows, move the keyboard into it [D48].
+ * The right panel [D410, D1014], as the old app's (WorkspacePane): a column at the window's end holding Files [D1284],
+ * sliding open and closed as the sidebar does and pushing the chat aside. Its edge drags to resize it; dragged below
+ * half its least width, it closes. ⌥⌘B shows or hides it; ⇧⌘E opens it, and pressed while it shows, moves the
+ * keyboard into it [D48].
  */
-
-const TABS: { view: PanelView; title: string; shortcut: string }[] = [
-  { view: "files", title: "Files", shortcut: "⇧⌘E" },
-  { view: "source", title: "Source", shortcut: "⌃⇧G" },
-];
 
 /** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
 export function useHasPanel(owner: string): boolean {
@@ -37,62 +29,50 @@ export function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** The dot and the count, as Rust sends them for the checkout on screen [D71, D1025]. */
-function usePanelData() {
-  const { hint, source } = useGit();
-  const count = new Set([...(source?.staged ?? []), ...(source?.changes ?? [])].map((each) => each.path)).size;
-  return { hint, count };
-}
-
-const DOT: Record<PanelHint["tone"], string> = { changes: "bg-link", ready: "bg-success", conflict: "bg-warning", failed: "bg-destructive" };
-
-/** The toggle as drawn: its dot and tip follow the most urgent state [D1022, D1025]. */
-export function PanelToggleButton({ hint, open, ...props }: { hint: PanelHint | null; open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
+/** The toggle as drawn. */
+export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip={hintWords(hint)} shortcut="⌥⌘B" pressed={open} dot={hint ? DOT[hint.tone] : undefined} aria-controls="right-panel-content" {...props}>
+    <TooltipIconButton look="toolbar" tooltip="Right sidebar" shortcut="⌥⌘B" pressed={open} aria-controls="right-panel-content" {...props}>
       {/* The left toggle's folded icon, mirrored. */}
       <SidebarFloatingLeft className="-scale-x-100" />
     </TooltipIconButton>
   );
 }
 
-/** The toolbar's rightmost button [D1014]: a click always shows or hides the panel, as the old app's; the dot only signals, and hides while Source shows [D1249]. */
+/** The toolbar's rightmost button [D1014]: a click always shows or hides the panel, as the old app's. */
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
   const has = useHasPanel(owner);
-  const { hint } = usePanelData();
-  const view = memory.views[owner] ?? "files";
-  const showing = memory.open && view === "source";
   if (!has) return null;
   return (
     <span className={cx("app-no-drag flex", className)}>
-      <PanelToggleButton
-        hint={showing ? null : hint}
-        open={memory.open}
-        onClick={() => setPanelOpen(!memory.open)}
-      />
+      <PanelToggleButton open={memory.open} onClick={() => setPanelOpen(!memory.open)} />
     </span>
   );
 }
 
-/** Which key asks what: ⌥⌘B shows or hides it, the others a view. */
-function panelKey(event: KeyboardEvent): "toggle" | PanelView | null {
+/** Which key asks what: ⌥⌘B shows or hides it, ⇧⌘E opens Files. */
+function panelKey(event: KeyboardEvent): "toggle" | "files" | null {
   if (event.isComposing || event.repeat) return null;
   const command = event.metaKey && !event.ctrlKey;
   if (command && event.altKey && !event.shiftKey && event.code === "KeyB") return "toggle";
   if (command && event.shiftKey && !event.altKey && event.code === "KeyE") return "files";
-  if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey && event.code === "KeyG") return "source";
   return null;
+}
+
+/** Files lights up the file whose tab is in front; a click opens it in the preview tab, a double click keeps it. */
+function Files({ owner }: { owner: string }) {
+  const { tabs, active } = useTabs(owner);
+  const front = tabs.find((tab) => tab.id === active && tab.kind === "file")?.target ?? null;
+  return <FilesView owner={owner} shown={front} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />;
 }
 
 /** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]. */
 export function RightPanelSlot({ owner }: { owner: string }) {
   const has = useHasPanel(owner);
   const memory = usePanelMemory();
-  const view = memory.views[owner] ?? "files";
   const open = has && memory.open;
-  const data = usePanelData();
-  usePanelFromRust(owner, useDaemon().rows?.find((each) => each.id === owner)?.finished);
+  usePanelFromRust();
   useGitWatch(has ? owner : null);
   const content = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState(false);
@@ -110,16 +90,15 @@ export function RightPanelSlot({ owner }: { owner: string }) {
       if (!asked || event.defaultPrevented) return;
       event.preventDefault();
       if (asked === "toggle") return setPanelOpen(!memory.open);
-      if (memory.open && view === asked) {
+      if (memory.open) {
         content.current?.querySelector<HTMLElement>('input:not(:disabled), textarea:not(:disabled), button:not(:disabled), [tabindex="0"]')?.focus();
-      } else showPanelView(owner, asked);
+      } else setPanelOpen(true);
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [has, memory.open, view, owner]);
+  }, [has, memory.open]);
 
   if (!has) return null;
-  const { View } = VIEWS[view];
   return (
     <aside
       aria-label="Right sidebar"
@@ -134,61 +113,13 @@ export function RightPanelSlot({ owner }: { owner: string }) {
         className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}
       >
         <div className="right-panel-width flex h-full min-h-0 flex-col">
-          <ViewTabs active={view} count={data.count} onSelect={(next) => showPanelView(owner, next)} />
-          <div ref={content} id="right-panel-content" role="tabpanel" aria-labelledby={`right-panel-${view}`} className="flex min-h-0 flex-1 flex-col">
-            {shown && <View key={owner} owner={owner} />}
+          <div ref={content} id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
+            {shown && <Files key={owner} owner={owner} />}
           </div>
         </div>
       </div>
       {open && <ResizeHandle resizing={resizing} setResizing={setResizing} />}
     </aside>
-  );
-}
-
-/** The row of view icons, as tabs: Files and Source with its count; arrows, Home and End move along it. */
-export function ViewTabs({ active, count, onSelect }: { active: PanelView; count: number; onSelect: (view: PanelView) => void }) {
-  return (
-    <div role="tablist" aria-label="Right sidebar" className="flex h-page-toolbar shrink-0 items-center justify-center gap-1 px-2">
-      <TitlebarTips>
-        {TABS.map(({ view, title, shortcut }, index) => {
-          const { Icon } = VIEWS[view];
-          return (
-            <TooltipIconButton
-              key={view}
-              look="toolbar"
-              role="tab"
-              id={`right-panel-${view}`}
-              aria-controls="right-panel-content"
-              aria-selected={active === view}
-              tabIndex={active === view ? 0 : -1}
-              tooltip={title}
-              shortcut={shortcut}
-              className="relative aria-selected:bg-fill-subtle aria-selected:text-foreground"
-              onClick={() => onSelect(view)}
-              onKeyDown={(event) => {
-                const next =
-                  event.key === "ArrowRight" ? (index + 1) % TABS.length
-                  : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length
-                  : event.key === "Home" ? 0
-                  : event.key === "End" ? TABS.length - 1
-                  : null;
-                if (next === null) return;
-                event.preventDefault();
-                onSelect(TABS[next]!.view);
-                document.getElementById(`right-panel-${TABS[next]!.view}`)?.focus();
-              }}
-            >
-              <Icon />
-              {view === "source" && count > 0 && (
-                <span aria-hidden className="absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-capsule bg-link px-1 text-2xs text-background tabular-nums">
-                  {count > 99 ? "99+" : count}
-                </span>
-              )}
-            </TooltipIconButton>
-          );
-        })}
-      </TitlebarTips>
-    </div>
   );
 }
 

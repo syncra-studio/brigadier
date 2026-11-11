@@ -122,7 +122,7 @@ pub fn flag(file: &Value) -> Option<Value> {
 
 /// Adds the brief to a review: each file's flag, flagged files first in the list, and the last
 /// run with `changed`: whether an edit to this checkout began after the run ended, the run's own
-/// fact, so every scope, Review's and Source's, says the same [D1243]. Nothing proves the files
+/// fact, so every scope, Review's and the card's, says the same [D1243]. Nothing proves the files
 /// didn't change, so the other answer is unknown, never "no" [D1192].
 /// `root`: the checkout; `cwd`: the session's folder, which a step's relative path starts from.
 pub fn brief(review: &mut Value, run: Option<&Run>, root: &Path, cwd: &Path) {

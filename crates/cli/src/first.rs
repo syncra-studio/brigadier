@@ -1,7 +1,6 @@
 //! `source <owner> first <merge|squash|push|link|pr|sync|publish> <head> <base|-> [--message M]
 //! [--title T --body B --draft]`: the one button's move, which commits every change first, then
-//! lands, pushes or syncs, in one click [D1203, D1207]. `pull-only` and `push-only`: your own
-//! folder's Pull only and Push only [D1205].
+//! lands, pushes or syncs, in one click [D1203, D1207].
 //!
 //! Pinned to the HEAD and base its step was worked out on, checked before the commit is prepared
 //! and again under the commit's lock [D1049]. Refused while an agent works in the folder, and every
@@ -57,19 +56,6 @@ pub(super) fn run(
     let stop = AtomicBool::new(false);
     let word = |i: usize| arg(args, at + i);
     let hooks = sync::trusted(data, target);
-    let only = match word(0)? {
-        "pull-only" => Some((true, false)),
-        "push-only" => Some((false, true)),
-        _ => None,
-    };
-    if let Some(only) = only {
-        if checkout.worktree {
-            return refuse("This session lands through its button.");
-        }
-        let _held = hold(data, target)?;
-        sync::sync_only(checkout, hooks, only, &stop)?;
-        return Ok(json!({"ok": true}));
-    }
     let (verb, head) = (word(1)?, word(2)?);
     let base = Some(word(3)?).filter(|b| *b != "-");
     let id = match target {

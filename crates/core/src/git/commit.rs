@@ -1,4 +1,4 @@
-//! A commit from Source's message field [D1029, D1107], under the checkout's lock [D1060]. What it
+//! A commit from the card [D1029, D1107], under the checkout's lock [D1060]. What it
 //! commits is fixed before the message is written: `prepare` reads the tree it will commit (the
 //! index, or with `all` everything, staged in a copy of the index so nothing moves yet) and the HEAD
 //! it goes on. `commit` refuses if either moved since, so the message always fits what lands.

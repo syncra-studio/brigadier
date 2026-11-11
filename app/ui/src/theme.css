@@ -286,8 +286,6 @@
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
-  /* The Source panel's Git Output dialog. */
-  --container-git-output: 42rem;
   /* The ⌘K search palette's card (the old app's). */
   --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
@@ -305,8 +303,6 @@
   /* The window's start edge that peeks the hidden sidebar, and the panel's grab area. */
   --spacing-sidebar-peek-edge: 0.5rem;
   --spacing-resize-handle: 1rem;
-  /* The right panel's row of view icons. */
-  --spacing-page-toolbar: 2.875rem;
   /* A window narrower than this folds the sidebar by itself. */
   --spacing-narrow-window: 60rem;
   /* The page surface's gap to the window's sides. */

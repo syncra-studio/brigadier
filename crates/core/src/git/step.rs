@@ -58,12 +58,11 @@ pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io:
             Value::Null,
         ),
     };
-    let hint = hint(&step, now.files.len());
     let freshness = holder
         .and_then(|h| worktrees::base(&h.dir))
         .map(|base| super::truth::base(&checkout, &base, stop))
         .transpose()?;
-    Ok(json!({"step": step, "hint": hint, "at": at, "merge": style, "freshness": freshness}))
+    Ok(json!({"step": step, "at": at, "merge": style, "freshness": freshness}))
 }
 
 /// The user's own folder: VS Code's Commit, Publish Branch and Sync Changes [D1045].
@@ -237,38 +236,6 @@ fn pr(data: &Path, id: &str, now: &Status, base: &str, first: usize, fresh: bool
         }
     };
     Some(json!({"kind": "fixPr", "base": base, "pr": number, "why": why, "failed": open["failed"]}))
-}
-
-/// The toolbar dot's state, the most urgent first: a failed PR, a conflict, changes, ready [D1025].
-fn hint(step: &Value, changes: usize) -> Value {
-    let base = &step["base"];
-    match step["kind"].as_str() {
-        Some("fixPr") if step["why"] != "conflicts" => {
-            return json!({"tone": "failed", "pr": step["pr"], "why": step["why"]});
-        }
-        Some("fixPr" | "catchUp" | "continue") => return json!({"tone": "conflict", "base": base}),
-        Some("commit") if step["clean"] == false => {
-            return json!({"tone": "conflict", "base": base});
-        }
-        _ => {}
-    }
-    if changes > 0 {
-        return json!({"tone": "changes", "count": changes});
-    }
-    let ready = match step["kind"].as_str() {
-        Some("merge") => step["blocked"].is_null(),
-        Some("mergePr") => {
-            step["mergeable"] == true
-                && step["checks"]["blocked"] != true
-                && step["checks"]["failed"] == 0
-                && step["checks"]["running"] == 0
-        }
-        _ => false,
-    };
-    match ready {
-        true => json!({"tone": "ready", "base": base}),
-        false => Value::Null,
-    }
 }
 
 /// The project a target lands in, if any.

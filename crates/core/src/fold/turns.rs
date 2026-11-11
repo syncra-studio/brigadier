@@ -49,9 +49,6 @@ impl Fold {
             });
             self.turns.remove(0);
             self.finished = ts;
-            if !turn.edited.is_empty() {
-                self.edited = Some(json!({"at": ts, "files": turn.edited.len()}));
-            }
             self.runs.agent.extend(turn.edited.iter().cloned());
             self.bound(&turn);
             self.last = Some(

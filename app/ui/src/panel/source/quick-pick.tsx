@@ -13,7 +13,7 @@ export type PickItem = { id: string; icon: ReactNode; title: string; hint?: stri
 /** Where a quick pick or the name box opens: over the branch item it came from; `held`, the gallery's box. */
 export type Place = { anchor: RefObject<Element | null>; held?: HTMLElement };
 
-/** The popover a quick pick or the name box sits on, below the branch label at Source's top [D1205]; a click outside or Escape closes it. */
+/** The popover a quick pick or the name box sits on, below the card's branch row [D1205]; a click outside or Escape closes it. */
 function Surface({ place, onClose, children }: { place: Place; onClose: () => void; children: ReactNode }) {
   return (
     <Popover open onOpenChange={(open) => !open && onClose()}>
@@ -33,7 +33,7 @@ function Surface({ place, onClose, children }: { place: Place; onClose: () => vo
 }
 
 /**
- * A quick pick over the Source panel (the old BranchPicker): typing narrows it, ↑ ↓ and Enter pick, Escape or a click
+ * A quick pick under the card's branch row (the old BranchPicker): typing narrows it, ↑ ↓ and Enter pick, Escape or a click
  * outside closes it. `items` null while they load. `off`: why nothing can be picked now (the agent is working).
  * `search`: the field that narrows it, only where it lists branches; without it the list keeps the keyboard [D1265].
  */

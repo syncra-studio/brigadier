@@ -1,20 +1,19 @@
-// The summary card [D1014, D1048, D1198]: its data states on fake data (each state beside Source is in Source's section), then its frame at each pane width.
+// The summary card [D1014, D1048, D1198]: its data states on fake data, then its frame at each pane width.
 import { Button } from "../src/components/button";
 import { GitCard } from "../src/panel/card";
-import { COMMITTED, PRS, STAGED, STEPS } from "../src/panel/fake";
-import type { SourceData } from "../src/panel/source/panel";
+import { PRS, STAGED, STEPS } from "../src/panel/fake";
+import type { SourceData } from "../src/panel/source/data";
 import { SummaryCard, SummaryPane, useCardToggle } from "../src/shell/summary-card";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const READY = { ...STEPS.merge, commit: 4 };
 
-/** The card's data states [D30]; its states beside Source's are in the Source section [D1199]. */
-const CARDS: [string, SourceData, boolean?][] = [
+/** The card's data states [D30]. */
+const CARDS: [string, SourceData][] = [
   ["Loading", { source: null, step: null }],
   ["Couldn't read", { source: null, step: null, error: "git exited with 128" }],
   ["Disconnected: Offline · 14:32, read-only", { source: STAGED, step: READY, prs: PRS, offline: true, readAtMs: NOW - 240_000 }],
-  ["Pending: the button at work", { source: COMMITTED, step: STEPS.merge }, true],
 ];
 
 /** A thread pane with a few rows and a composer, so the frame's layouts show what they move. */
@@ -52,12 +51,12 @@ export function CardGallery() {
   return (
     <Section title="Summary card">
       <Row name="Card states">
-        {CARDS.map(([label, data, running]) => (
+        {CARDS.map(([label, data]) => (
           <State key={label} label={label}>
             {/* Its own stacking context, so the card stays under the section's sticky title. */}
             <div className="relative isolate h-72 w-81">
               <SummaryCard shown>
-                <GitCard data={data} project="upload-app" nowMs={NOW} running={running} />
+                <GitCard data={data} project="upload-app" nowMs={NOW} />
               </SummaryCard>
             </div>
           </State>

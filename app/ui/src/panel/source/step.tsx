@@ -1,25 +1,17 @@
-import { type ComponentProps, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { commitFiles, readDraft, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
-import { laterWords } from "../words";
-import { ActionButton } from "./action";
 import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "./action-confirms";
-import type { ActionPick } from "./action-menus";
-import { askForce, cancelForce, first, forcePush, only, useBranchOp, useForcing } from "./branch-ops";
-import { useCreatePr } from "./create-pr";
-import { cancelWhen, useWhen, useWhenClock } from "../when";
-import { whenTrail, whenWords } from "./when";
-import type { SourceData, SourceOps } from "./panel";
-
-/** The picks that run on real data so far [D1029, D1030, D1034, D1152, D1203, D1205]. */
-const WIRED: ActionPick[] = ["commit", "editMessage", "pullOnly", "pushOnly", "createPr", "pushBranch", "openPrPage", "mergeLocally", "forcePush"];
+import { askForce, cancelForce, first, forcePush, useBranchOp, useForcing } from "./branch-ops";
+import { type ActionPick, useCreatePr } from "./create-pr";
+import type { SourceData, SourceOps } from "./data";
 
 const SQUASH_MESSAGE = `Retry failed uploads
 
 Uploads that fail now retry three times with a growing wait, and the tray shows how far each one got.`;
 
-/** Messages saved in Edit message… and not committed yet, by checkout: they outlive the view, and Source and the card share them [D1203]. */
+/** Messages saved in Edit message… and not committed yet, by checkout: they outlive the view [D1203]. */
 const unsent = new Map<string, string>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -40,7 +32,7 @@ function useMessage(key: string | undefined): [string, (next: string) => void] {
   return [message, setMessage];
 }
 
-/** Commit only under way, and how the last commit ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. `failed`: the writer wrote nothing for these changes, named by HEAD and paths, so it goes once they change. */
+/** Commit only under way, and how the last commit ended, by checkout [D1143, D1144, D1148]. `failed`: the writer wrote nothing for these changes, named by HEAD and paths, so it goes once they change. */
 type Work = { committing: boolean; failed: string | null; error: string | null };
 const IDLE: Work = { committing: false, failed: null, error: null };
 const works = new Map<string, Work>();
@@ -59,8 +51,7 @@ function useWork(key: string | undefined): [Work, (next: Partial<Work>) => void]
 const LOST = "Brigadier isn't connected.";
 
 /**
- * A landing under way or refused, by checkout: Source and the card show the same one, and it outlives the view
- * [D30]. `on`: the step it ran from; its refusal shows while that step does.
+ * A landing under way or refused, by checkout: it outlives the view [D30]. `on`: the step it ran from; its refusal shows while that step does.
  */
 type Landing = { running: boolean; error: StepError | null; on: Step["kind"] | null };
 const STILL: Landing = { running: false, error: null, on: null };
@@ -80,43 +71,26 @@ function useLanding(key: string | undefined): [Landing, (next: Landing) => void]
 /** Per session, the view whose Create PR… opened the dialog: its open state is the session's, so one view draws it. */
 const asked = new Map<string, string>();
 
-/** The Source views on screen: Force Push's confirm is drawn by Source, else by the summary card. */
-const sources = new Set<string>();
-const notify = () => {
-  for (const listener of listeners) listener();
-};
-
 /**
- * Source's next step [D1015]: the action button, the commit it runs and the confirms it asks, one set for Source and
- * the summary card [D1145, D1148], with the branch's PRs and Create PR [D1030]. `session`: whose PR it makes; none in
- * the gallery. `card`: the summary card, which draws Create PR's dialog only when it opened it; Source draws it
- * otherwise. `ops`: Rust's moves, landing among them (2.22), whose presence also makes the commit and the writer
- * Rust's [D1029]; none in the gallery. `move`: the files' own move, Rust's or the gallery's local copy. `button` is
- * null while there's no step to show or nothing to do.
+ * The summary card's git step [D1015]: its moves and the confirms they ask [D1145, D1148, D1199], with the branch's
+ * PRs and Create PR [D1030]. With files uncommitted a landing commits them first, in one Rust move pinned to the step
+ * it showed [D1049, D1203, D1207]. Off while the session's agent works [D1208]. `session`: whose PR it makes; none in
+ * the gallery. A card draws Create PR's dialog when it opened it, or when none did. `ops`: Rust's moves, landing among
+ * them (2.22), whose presence also makes the commit and the writer Rust's [D1029]; none in the gallery. `run` takes
+ * the step, `onPick` a pick of its menu.
  */
-/**
- * Source's next step [D1015]: the one button, its moves and the confirms it asks, one set for Source and the summary
- * card [D1145, D1148, D1199], with the branch's PRs and Create PR [D1030]. With files uncommitted the button's landing
- * commits them first, in one Rust move pinned to the step it showed [D1049, D1203, D1207]; Commit only and Edit
- * message… end its arrow [D1191]. Off while the session's agent works [D1208]. `session`: whose PR it makes; none in
- * the gallery. `card`: the summary card, which draws Create PR's dialog only when it opened it; Source draws it
- * otherwise. `ops`: Rust's moves, landing among them (2.22), whose presence also makes the commit and the writer
- * Rust's [D1029]; none in the gallery. `button` is null while there's no step to show or nothing to do.
- */
-export function useSourceStep({ data, state, draftKey, session = null, card = false, ops }: {
+export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   data: SourceData;
   state: SourceState | null;
   draftKey?: string;
   session?: string | null;
-  card?: boolean;
   ops?: SourceOps;
 }) {
   const [message, setMessage] = useMessage(draftKey);
   const [work, put] = useWork(draftKey);
   const { committing } = work;
   const live = ops !== undefined;
-  const [ownStyle, setOwnStyle] = useState<MergeStyle>("merge");
-  const mergeStyle = data.merge ?? ownStyle;
+  const mergeStyle: MergeStyle = data.merge ?? "merge";
   const [landed, setLanded] = useLanding(draftKey);
   const [squashing, setSquashing] = useState(false);
   // The commits a squash confirm showed, and what it lands: pinned when it opened [D1049].
@@ -140,25 +114,14 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const rejected = useBranchOp(target).rejected ?? (target ? null : (data.rejected ?? null));
   const asking = useForcing();
   const forcing = target ? (asking?.force ?? null) : galleryForcing;
-  const drawsForce = useSyncExternalStore(subscribe, () => !card || sources.size === 0);
-  useEffect(() => {
-    if (card) return;
-    sources.add(id);
-    notify();
-    return () => void (sources.delete(id), notify());
-  }, [card, id]);
   // shortcut: the host module's one read of the branch's PRs until 2.27's watch sends them in `data.prs`.
   const prs = data.prs ?? pr.prs;
   const claim = session ? asked.get(session) : undefined;
-  const drawsPr = claim === id || (claim === undefined && card);
+  const drawsPr = claim === id || claim === undefined;
   useEffect(() => () => void (session && asked.get(session) === id && asked.delete(session)), [session, id]);
 
-  // On real data a step whose click comes later is off, saying so [D1143].
   const wired = ops?.land !== undefined;
-  const later = wired && step ? laterWords(step.kind) : null;
-  const landing = landed.running;
-  const landError = landed.on === step?.kind ? landed.error : null;
-  // A PR made or pushed here shows in the button's step at once, not at the next PR read [D1143].
+  // A PR made or pushed here shows in the step at once, not at the next PR read [D1143].
   const prKey = prs.map((each) => `${each.number}:${each.state}`).join();
   useEffect(() => void (wired && ops?.refreshStep?.()), [prKey]);
   // A watch that failed after its first read: the last read stays, read-only, under the error [D30].
@@ -168,11 +131,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const resolving = state?.merging != null || state?.rebasing != null;
   const clean = state !== null && state.staged.length === 0 && state.changes.length === 0 && !resolving;
   const uncommittedPaths = state ? [...new Set([...state.staged, ...state.changes].map((file) => file.path))] : [];
-  const uncommitted = uncommittedPaths.length;
   const changes = `${pinned?.head ?? ""}:${uncommittedPaths.join("\n")}`;
   const failed = work.failed === changes;
-  // Nothing to do and nothing further: no button.
-  const idle = clean && (step?.kind === "commit" || step?.kind === "folderCommit");
 
   /** Commit only · N files: every change, with the saved message or the writer's [D1029, D1203]. */
   const commit = () => {
@@ -267,60 +227,14 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     // wired with the composer.
   };
 
-  // "When it's done": its countdown, why it waits, how it ended, the same in Source and the card [D1199, D1201, D1206].
-  const when = useWhen(live ? session : null, data.when);
-  const clock = useWhenClock(when, Date.now());
-  const rule = step ? whenWords(when, step, clock) : null;
-  const ruleTrail = whenTrail(rule, () => session && cancelWhen(session), () => {
-    if (session) asked.set(session, id);
-    pr.onPick("createPr");
-  });
-  // Merging from a PR's menu reads as a merge while it runs.
-  const shown: Step | null = landing && step && step.kind !== "merge" && step.kind !== "landed" && "base" in step ? { kind: "merge", base: step.base, ready: 0, moved: 0, blocked: null, commit: pending } : step;
-  const button: Omit<ComponentProps<typeof ActionButton>, "nowMs"> | null =
-    shown && !idle
-      ? {
-          step: shown,
-          // Sync, Publish, Pull only and Push only run through the branch store: the button spins until Rust answers.
-          ...((landing || data.syncing || when?.acting) && { running: true }),
-          moving: when?.acting ? (rule?.moving ?? null) : null,
-          trail: ruleTrail,
-          writing: committing,
-          disabled: working,
-          uncommitted: resolving ? 0 : uncommitted,
-          say: working
-            ? { line: "Waits for the turn to finish", tone: "quiet" }
-            : failed
-              ? { line: "Couldn't write a message", tone: "bad" }
-              : work.error
-                ? { line: `Couldn't commit: ${work.error}`, tone: "bad" }
-                : rule && !when?.acting
-                  ? { line: rule.line, tone: rule.tone }
-                  : null,
-          // The base is behind its own upstream: said, never fast-forwarded [D1187, D1193].
-          note: data.freshness?.behind && data.freshness.upstream && "base" in shown ? `${data.freshness.name} is ${data.freshness.behind} behind ${data.freshness.upstream}` : null,
-          // Another session working in this folder: the pre-check line says so, and Rust refuses [D1082].
-          error: landError ?? data.stepError ?? (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null),
-          later: landing ? null : later,
-          // Pull only and Push only are your own folder's; Rust refuses them in a session's worktree [D1205].
-          ...(wired && { can: (pick: ActionPick) => WIRED.includes(pick) && (state?.checkout === "folder" || (pick !== "pullOnly" && pick !== "pushOnly")) }),
-          mergeStyle,
-          rejected: rejected !== null,
-          // Landing is the folder owner's alone [D1082].
-          prWay: data.share?.lands === false ? "none" : pr.way,
-          onMergeStyle: (style: MergeStyle) => (ops?.setStyle ? ops.setStyle(style) : setOwnStyle(style)),
-          onRun: run,
-          onPick: (pick: ActionPick) => {
-            if (session && pick === "createPr") asked.set(session, id);
-            pr.onPick(pick);
-            if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
-            if (pick === "commit") commit();
-            if (pick === "editMessage") edit();
-            if (pick === "mergeLocally") mergeLocally();
-            if ((pick === "pullOnly" || pick === "pushOnly") && target && state?.branch) only(target, pick === "pullOnly" ? "pull-only" : "push-only", state.branch);
-          },
-        }
-      : null;
+  const onPick = (pick: ActionPick) => {
+    if (session && pick === "createPr") asked.set(session, id);
+    pr.onPick(pick);
+    if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
+    if (pick === "commit") commit();
+    if (pick === "editMessage") edit();
+    if (pick === "mergeLocally") mergeLocally();
+  };
 
   const dialogs = (
     <>
@@ -355,17 +269,15 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       {step?.kind === "mergePr" && (
         <MergePrDialog open={mergingPr} pr={step.pr} base={step.base} checks={step.checks} onCancel={() => setMergingPr(false)} onConfirm={() => setMergingPr(false)} />
       )}
-      {drawsForce && (
-        <ForcePushDialog
-          force={forcing}
-          branch={forcing?.branch ?? "…"}
-          onCancel={() => (asking ? cancelForce(asking.target) : setGalleryForcing(null))}
-          onConfirm={() => (asking ? forcePush(asking.target) : setGalleryForcing(null))}
-        />
-      )}
+      <ForcePushDialog
+        force={forcing}
+        branch={forcing?.branch ?? "…"}
+        onCancel={() => (asking ? cancelForce(asking.target) : setGalleryForcing(null))}
+        onConfirm={() => (asking ? forcePush(asking.target) : setGalleryForcing(null))}
+      />
       {drawsPr && pr.dialog}
     </>
   );
 
-  return { prs, locked, button, dialogs };
+  return { prs, locked, work, landing: landed, run, onPick, dialogs };
 }

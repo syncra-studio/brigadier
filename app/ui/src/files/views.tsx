@@ -13,7 +13,7 @@ import type { ChangeMarks, FolderEntry, Listing } from "./types";
 const IGNORED_MS = 3000;
 const NO_MARKS: ChangeMarks = { files: {}, folders: {} };
 
-// Each checkout's last listing, shown at once on coming back to it while it's listed again, as Source's read is (panel/git.ts) [D1258].
+// Each checkout's last listing, shown at once on coming back to it while it's listed again, as the checkout's git read is (panel/git.ts) [D1258].
 const kept = new Map<string, { listing: Listing; marks: ChangeMarks }>();
 
 export function FilesView({ owner, shown = null, onOpen }: { owner: string; shown?: string | null; onOpen: OnOpen }) {
