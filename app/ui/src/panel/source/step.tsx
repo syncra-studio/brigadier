@@ -40,9 +40,9 @@ function useMessage(key: string | undefined): [string, (next: string) => void] {
   return [message, setMessage];
 }
 
-/** Commit only under way, and how the last commit ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. `failed`: the writer wrote nothing. */
-type Work = { committing: boolean; failed: boolean; error: string | null };
-const IDLE: Work = { committing: false, failed: false, error: null };
+/** Commit only under way, and how the last commit ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. `failed`: the writer wrote nothing for these changes, named by HEAD and paths, so it goes once they change. */
+type Work = { committing: boolean; failed: string | null; error: string | null };
+const IDLE: Work = { committing: false, failed: null, error: null };
 const works = new Map<string, Work>();
 
 function useWork(key: string | undefined): [Work, (next: Partial<Work>) => void] {
@@ -113,7 +113,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
 }) {
   const [message, setMessage] = useMessage(draftKey);
   const [work, put] = useWork(draftKey);
-  const { committing, failed } = work;
+  const { committing } = work;
   const live = ops !== undefined;
   const [ownStyle, setOwnStyle] = useState<MergeStyle>("merge");
   const mergeStyle = data.merge ?? ownStyle;
@@ -167,15 +167,18 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const locked = (data.offline ?? false) || stale || committing;
   const resolving = state?.merging != null || state?.rebasing != null;
   const clean = state !== null && state.staged.length === 0 && state.changes.length === 0 && !resolving;
-  const uncommitted = state ? new Set([...state.staged, ...state.changes].map((file) => file.path)).size : 0;
+  const uncommittedPaths = state ? [...new Set([...state.staged, ...state.changes].map((file) => file.path))] : [];
+  const uncommitted = uncommittedPaths.length;
+  const changes = `${pinned?.head ?? ""}:${uncommittedPaths.join("\n")}`;
+  const failed = work.failed === changes;
   // Nothing to do and nothing further: no button.
   const idle = clean && (step?.kind === "commit" || step?.kind === "folderCommit");
 
   /** Commit only · N files: every change, with the saved message or the writer's [D1029, D1203]. */
   const commit = () => {
     if (!state || locked || clean || working) return;
-    put({ failed: false, error: null, committing: true });
-    if (!live) return void setTimeout(() => put({ committing: false, ...(saved ? {} : { failed: true }) }), 1500);
+    put({ failed: null, error: null, committing: true });
+    if (!live) return void setTimeout(() => put({ committing: false, ...(saved ? {} : { failed: changes }) }), 1500);
     const sent = commitFiles(true, saved ?? "", (reply) => {
       put({ committing: false });
       if (reply.ok) return saved && setMessage("");
@@ -186,7 +189,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   };
   // A writer failure commits nothing: the line says so and Edit message… opens to type one [D1029, D1212].
   const writerFailed = () => {
-    put({ failed: true });
+    put({ failed: changes });
     edit();
   };
   // Typed text first, else the draft written for exactly this commit, filled in only while the field is still empty.
@@ -204,7 +207,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     if (!step) return;
     const on = step.kind;
     setLanded({ running: true, error: null, on });
-    put({ failed: false, error: null });
+    put({ failed: null, error: null });
     if (!live) return void setTimeout(() => setLanded(STILL), 1500);
     if (pending === 0 && (verb === "merge" || verb === "squash")) {
       if (!ops?.land) return setLanded(STILL);
@@ -227,6 +230,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   };
   const mergeLocally = () => {
     if (mergeStyle !== "squash") return go("merge");
+    // The confirm writes its own message, so an earlier failure's line doesn't stay behind it.
+    put({ failed: null });
     setSquashing(true);
     const at = pinned;
     if (!ops?.squashOf || !at) return;
@@ -322,12 +327,13 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       <MessageDialog
         open={editing !== null}
         message={editing ?? ""}
+        failed={failed}
         onMessage={setEditing}
         onCancel={() => setEditing(null)}
         onSave={() => {
           setMessage((editing ?? "").trim());
           setEditing(null);
-          put({ failed: false });
+          put({ failed: null });
         }}
       />
       {step && "base" in step && state && (
@@ -336,7 +342,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           branch={state.branch ?? "…"}
           base={step.base}
           commits={squashCommits ?? (ops?.squashOf ? [] : state.commits)}
-          pending={pending}
+          files={pending > 0 ? uncommittedPaths : []}
           message={squashMessage}
           onMessage={setSquashMessage}
           onCancel={() => setSquashing(false)}

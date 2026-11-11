@@ -10,13 +10,13 @@ import { Confirm, type Held } from "./dialogs";
  * Squash's confirm [D1028]: the message, written from the whole branch and editable, then the commits it folds. With
  * files uncommitted it says they're committed first; nothing is committed until it's confirmed [D1203].
  */
-export function SquashDialog({ open, branch, base, commits, pending = 0, message, writing = false, onMessage, onWrite, held, onCancel, onConfirm }: {
+export function SquashDialog({ open, branch, base, commits, files = [], message, writing = false, onMessage, onWrite, held, onCancel, onConfirm }: {
   open: boolean;
   branch: string;
   base: string;
   commits: Commit[];
-  /** Files not committed yet, which go in too. */
-  pending?: number;
+  /** The files not committed yet, which go in too: named, so it's clear what lands. */
+  files?: string[];
   message: string;
   writing?: boolean;
   onMessage: (message: string) => void;
@@ -25,14 +25,16 @@ export function SquashDialog({ open, branch, base, commits, pending = 0, message
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Only what there is: no "0 commits" when everything is still uncommitted.
+  const parts = [commits.length > 0 && plural(commits.length, "commit"), files.length > 0 && plural(files.length, "uncommitted file")].filter(Boolean);
+  const one = commits.length + files.length === 1;
   return (
     <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
       <ConfirmForm
         title={`Squash into ${base}?`}
         description={
           <>
-            {plural(commits.length, "commit")} from <span className="font-mono text-foreground">{branch}</span>
-            {pending > 0 && ` and ${plural(pending, "uncommitted file")}`} become one commit on {base}.
+            {parts.join(" and ")} from <span className="font-mono text-foreground">{branch}</span> {one ? "becomes" : "become"} one commit on {base}.
           </>
         }
         confirm="Squash and merge"
@@ -61,6 +63,12 @@ export function SquashDialog({ open, branch, base, commits, pending = 0, message
             <li key={commit.sha} className="flex h-control-sm items-center gap-2 ps-2 text-sm">
               <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
               <span className="font-mono text-xs text-muted-foreground">{commit.sha}</span>
+            </li>
+          ))}
+          {files.map((path) => (
+            <li key={path} className="flex h-control-sm items-center gap-2 ps-2 text-sm">
+              <span className="min-w-0 flex-1 truncate">{path}</span>
+              <span className="text-xs text-muted-foreground">Uncommitted</span>
             </li>
           ))}
         </ul>
@@ -134,9 +142,11 @@ export function ForcePushDialog({ force, branch, held, onCancel, onConfirm }: { 
  * else the drafted one (2.20). Save keeps it for the button's commit and Commit only; a blank one goes back to the
  * writer's (proposed).
  */
-export function MessageDialog({ open, message, held, onMessage, onCancel, onSave }: {
+export function MessageDialog({ open, message, failed = false, held, onMessage, onCancel, onSave }: {
   open: boolean;
   message: string;
+  /** The writer just failed: it won't write one, so the field asks for it (proposed words). */
+  failed?: boolean;
   held?: Held;
   onMessage: (message: string) => void;
   onCancel: () => void;
@@ -145,7 +155,7 @@ export function MessageDialog({ open, message, held, onMessage, onCancel, onSave
   return (
     <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
       <ConfirmForm title="Commit message" description="The next commit uses it, from the button or Commit only." confirm="Save" onConfirm={onSave} onCancel={onCancel}>
-        <Textarea aria-label="Commit message" placeholder="The writer writes one" value={message} autoFocus onChange={(event) => onMessage(event.target.value)} />
+        <Textarea aria-label="Commit message" placeholder={failed ? "Type the commit message" : "The writer writes one"} value={message} autoFocus onChange={(event) => onMessage(event.target.value)} />
       </ConfirmForm>
     </Confirm>
   );

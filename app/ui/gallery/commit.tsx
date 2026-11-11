@@ -1,7 +1,7 @@
 // The one button [D1008, D1015, D1019, D1028, D1029, D1034, D1045, D1203, D1207]: every state, menu and confirm.
 import type { ReactNode } from "react";
 
-import { BRANCH, COMMITS, DRAFT, STEPS } from "../src/panel/fake";
+import { BRANCH, CHANGES, COMMITS, DRAFT, STEPS } from "../src/panel/fake";
 import { ActionButton } from "../src/panel/source/action";
 import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "../src/panel/source/action-confirms";
 import { CreatePrDialog, type HostInfo } from "../src/panel/source/create-pr";
@@ -121,7 +121,7 @@ export function CommitGallery() {
           {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Squash, with files not committed yet" tall>
-          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} pending={6} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
+          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} files={CHANGES.changes.map((each) => each.path)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Squash, the message being written" tall>
           {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message="" writing onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
