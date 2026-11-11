@@ -44,18 +44,20 @@ export function useWhen(session: string | null, rust: When | null | undefined): 
   return mine.rule === "ask" ? null : rust?.rule === mine.rule ? rust : { rule: mine.rule };
 }
 
-/** The clock a countdown is drawn on, each second while it runs; the step is read again as it ends and while it lands. */
+/** The clock a countdown is drawn on, each second while it runs; the step is read again as it ends, while it lands, and while the run's proof is taken, so the countdown shows as it starts. */
 export function useWhenClock(when: When | null, nowMs: number): number {
   const [now, setNow] = useState(nowMs);
   const counting = when?.at !== undefined;
   const acting = when?.acting === true;
+  const checking = when?.stopped?.why === "checking";
   useEffect(() => {
-    if (!counting && !acting) return;
+    if (!counting && !acting && !checking) return;
     const every = setInterval(() => {
       setNow(Date.now());
-      if (acting || (when?.at !== undefined && Date.now() >= when.at)) refreshStep(true);
+      if (checking) refreshStep();
+      else if (acting || (when?.at !== undefined && Date.now() >= when.at)) refreshStep(true);
     }, 1000);
     return () => clearInterval(every);
-  }, [counting, acting, when?.at]);
+  }, [counting, acting, checking, when?.at]);
   return counting ? Math.max(now, nowMs) : nowMs;
 }

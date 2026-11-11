@@ -255,7 +255,9 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 .any(|(i, a)| a == "--all" && (i == 0 || args[i - 1] != "--message"));
             super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
         }
-        "write" => super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"))?,
+        "write" => {
+            super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"), None)?
+        }
         "draft" => super::message_draft::run(
             data,
             &target,

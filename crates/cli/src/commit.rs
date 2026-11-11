@@ -193,6 +193,7 @@ pub(super) fn write(
     checkout: &Checkout,
     what: &str,
     all: bool,
+    tree: Option<&str>,
 ) -> io::Result<Value> {
     let stop = AtomicBool::new(false);
     let text = match what {
@@ -206,7 +207,7 @@ pub(super) fn write(
             };
             let base = core::share::base(data, &core::load(data, id)?)
                 .ok_or_else(|| io::Error::other("This session has no base."))?;
-            let (commits, patch) = commit::branch(checkout, &base, &stop)?;
+            let (commits, patch) = commit::branch(checkout, &base, tree, &stop)?;
             match what {
                 "pr" => written(data, target, |asks| {
                     writer::pr_prompt(&patch, &commits, asks)

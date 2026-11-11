@@ -57,9 +57,11 @@ struct Done {
     why: Option<String>,
 }
 
-/// Sessions with a rule, read from their folders once; a pick adds one, `ask` or a gone folder
-/// takes it out.
+/// Sessions with a rule, read from their folders every `SCAN` (a rule set from a terminal is
+/// another process's); a pick here adds one at once, `ask` or a gone folder takes it out.
 static RULED: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
+static SCANNED: Mutex<Option<Instant>> = Mutex::new(None);
+const SCAN: Duration = Duration::from_secs(10);
 /// When each was last looked at, and those with a look or a landing under way.
 static SEEN: Mutex<BTreeMap<String, Instant>> = Mutex::new(BTreeMap::new());
 static BUSY: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
@@ -78,6 +80,11 @@ fn save(dir: &Path, when: &When) -> io::Result<()> {
 
 fn fold_of(dir: &Path) -> io::Result<Fold> {
     Ok(fold(dir, true)?.fold)
+}
+
+/// Under the session's lock: the turn whose run was proved is still the last, and none is open.
+pub(super) fn still(data: &Path, id: &str, turn: u64) -> bool {
+    fold_of(&session_dir(data, id)).is_ok_and(|f| f.finished == turn && f.turns.is_empty())
 }
 
 pub(super) fn set(data: &Path, id: &str, word: &str) -> io::Result<Value> {
@@ -197,12 +204,16 @@ fn state(id: &str, when: &When, f: &Fold, read: &Value) -> Value {
 pub fn tick(data: &Path, rows: &BTreeMap<String, Value>) {
     let ruled: Vec<String> = {
         let mut ruled = RULED.lock().unwrap();
-        let all = ruled.get_or_insert_with(|| {
-            (rows.keys())
-                .filter(|id| session_dir(data, id).join(FILE).exists())
-                .cloned()
-                .collect()
-        });
+        let all = ruled.get_or_insert_default();
+        let mut scanned = SCANNED.lock().unwrap();
+        if scanned.is_none_or(|at| at.elapsed() >= SCAN) {
+            *scanned = Some(Instant::now());
+            all.extend(
+                (rows.keys())
+                    .filter(|id| session_dir(data, id).join(FILE).exists())
+                    .cloned(),
+            );
+        }
         all.retain(|id| rows.contains_key(id));
         all.iter().cloned().collect()
     };
@@ -278,7 +289,7 @@ fn advance(data: &Path, id: &str) -> io::Result<()> {
     let tree = (when.proof.as_ref())
         .and_then(|p| p.tree.clone())
         .unwrap_or_default();
-    let why = match act(data, id, &when.rule, &tree, &read_now) {
+    let why = match act(data, id, &when.rule, &tree, f.finished, &read_now) {
         Ok(()) => None,
         Err(e) => Some(e.to_string()),
     };
@@ -327,7 +338,7 @@ fn newer(meta: &fs::Metadata, start: u64) -> bool {
 
 /// Brigadier's own step, the one button's, handed the proved tree: it commits every change first
 /// only when the branch doesn't already hold it, and refuses anything else [D1201, D1203, D1213].
-fn act(data: &Path, id: &str, rule: &str, tree: &str, read: &Value) -> io::Result<()> {
+fn act(data: &Path, id: &str, rule: &str, tree: &str, turn: u64, read: &Value) -> io::Result<()> {
     let target = Target::Session(id);
     let checkout = git::checkout(data, &target)?;
     let at = &read["at"];
@@ -339,13 +350,16 @@ fn act(data: &Path, id: &str, rule: &str, tree: &str, read: &Value) -> io::Resul
         "pr" => "pr",
         _ => "push",
     };
+    let turn = turn.to_string();
     let mut args: Vec<String> = ["source", id, "first", verb, head, base, "--tree", tree]
+        .into_iter()
+        .chain(["--turn", &turn])
         .map(String::from)
-        .to_vec();
+        .collect();
     // The writers write what the button's own dialogs would show; one that can't stops it and the
     // user goes on by hand: no fallback text goes out unseen [D1029, D1212, D1222].
     let written = |what: &str| -> io::Result<String> {
-        let reply = super::commit::write(data, &target, &checkout, what, false)?;
+        let reply = super::commit::write(data, &target, &checkout, what, false, Some(tree))?;
         match reply["text"].as_str() {
             Some(text) if reply["ok"] == true && !text.trim().is_empty() => Ok(text.trim().into()),
             _ => Err(io::Error::other(if what == "pr" {

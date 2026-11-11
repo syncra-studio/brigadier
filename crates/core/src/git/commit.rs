@@ -188,10 +188,12 @@ pub fn subjects(checkout: &Checkout, n: usize, stop: &AtomicBool) -> Vec<String>
 }
 
 /// The branch since `base`: its commits' subjects, oldest first, and its changes as one patch,
-/// what a PR or a squash holds.
+/// what a PR or a squash holds. With `tree`, the patch runs up to that tree instead of HEAD: what
+/// lands once every change is committed.
 pub fn branch(
     checkout: &Checkout,
     base: &str,
+    tree: Option<&str>,
     stop: &AtomicBool,
 ) -> io::Result<(Vec<String>, String)> {
     let range = format!("{base}..HEAD");
@@ -204,21 +206,21 @@ pub fn branch(
         .lines()
         .map(String::from)
         .collect();
-    let since = format!("{base}...HEAD");
-    let patch = read(
-        &checkout.root,
-        &[
-            "diff",
-            "--patch-with-stat",
-            "-M",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            &since,
-            "--",
-        ],
-        stop,
-    )?;
+    let since = match tree {
+        Some(_) => text(read(&checkout.root, &["merge-base", base, "HEAD"], stop)?),
+        None => format!("{base}...HEAD"),
+    };
+    let mut args = vec![
+        "diff",
+        "--patch-with-stat",
+        "-M",
+        "--no-color",
+        "--no-ext-diff",
+    ];
+    args.extend(["--no-textconv", &since]);
+    args.extend(tree);
+    args.push("--");
+    let patch = read(&checkout.root, &args, stop)?;
     Ok((commits, String::from_utf8_lossy(&patch).into_owned()))
 }
 
