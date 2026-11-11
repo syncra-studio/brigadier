@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
-import { ask, setGitHandler, useDaemon } from "../daemon";
+import { ask, type Row, setGitHandler, useDaemon } from "../daemon";
 import { refreshHistory } from "../history/store";
 import { useHomeProject, useStart } from "../home/start";
 import type { ComposerRow } from "../session/composer";
@@ -237,6 +237,9 @@ setGitHandler((frame) => {
   landed();
 });
 
+/** The session's agent is at work: a turn open, stalled or not, or its background jobs still running [D1208, D1252]. */
+export const isWorking = (row: Row | undefined) => (row as ComposerRow | undefined)?.running === true || row?.works === true;
+
 /** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
 export function useGitWatch(owner: string | null): void {
   const { daemon, rows } = useDaemon();
@@ -255,7 +258,7 @@ export function useGitWatch(owner: string | null): void {
   }, [key, daemon, starting]);
   // The background draft: a while after each read that changed something, while the session's agent is idle [D1212].
   const row = owner !== null && owner !== HOME ? rows?.find((each) => each.id === owner) : undefined;
-  const working = (row as ComposerRow | undefined)?.running === true;
+  const working = isWorking(row);
   // A turn's start or end moves the step and "When it's done" even when no file changed [D1201].
   useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
   const version = useSyncExternalStore(subscribe, () => git.version);

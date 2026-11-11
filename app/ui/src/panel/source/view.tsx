@@ -3,9 +3,8 @@ import { useEffect } from "react";
 import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
-import type { ComposerRow } from "../../session/composer";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
-import { landBranch, moveFiles, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
+import { isWorking as working, landBranch, moveFiles, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
 import { useShare } from "../share";
 import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
@@ -71,8 +70,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       syncing: op.syncing,
       naming: op.naming,
       // The session's own agent; a project folder's sessions are guarded in Rust [D1082, D1208].
-      // A turn open, stalled or not: a stall never unlocks landing [D1208, D1252].
-      agentWorking: owner !== HOME && (rows?.find((row) => row.id === owner) as ComposerRow | undefined)?.running === true,
+      agentWorking: owner !== HOME && working(rows?.find((row) => row.id === owner)),
       readAtMs: git.readAtMs,
       truth: git.truth,
       restoring: git.restoring,
