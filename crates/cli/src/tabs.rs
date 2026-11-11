@@ -85,7 +85,11 @@ fn read(path: &Path) -> Tabs {
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
-    if tabs.active.is_empty() {
+    // A saved tab of a kind this build no longer draws would crash the app: it's dropped [D30].
+    let known = |t: &Tab| t.kind == FILE || KINDS.contains(&t.kind.as_str());
+    tabs.tabs.retain(known);
+    tabs.closed.retain(|c| known(&c.tab));
+    if !tabs.tabs.iter().any(|t| t.id == tabs.active) {
         tabs.active = CHAT.into();
     }
     tabs
