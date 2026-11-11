@@ -115,8 +115,10 @@ export function GitControl({ step, off, running, onRun }: { step: GitStep; off: 
   const { label, icon } = face(running ?? next, step);
   const why = off ?? (step.next === null ? (step.off.commit ? whyWords(step.off.commit, step) : null) : null);
   const box = "h-control-xs text-xs svg:size-icon-xs";
+  // The old one button's primary look whenever it can run; grey only when it can't [D1306].
+  const variant = why === null ? "default" : "secondary";
   const main = (
-    <Button size={null} variant="secondary" disabled={why !== null || running !== null} onClick={() => onRun(next)} className={cx("inline-flex min-w-0 items-center justify-center gap-1 rounded-s-capsule px-2.5 font-medium whitespace-nowrap", box)}>
+    <Button size={null} variant={variant} disabled={why !== null || running !== null} onClick={() => onRun(next)} className={cx("inline-flex min-w-0 items-center justify-center gap-1 rounded-s-capsule px-2.5 font-medium whitespace-nowrap", box)}>
       {running ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon}
       <span>{label}</span>
     </Button>
@@ -142,7 +144,7 @@ export function GitControl({ step, off, running, onRun }: { step: GitStep; off: 
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger
           disabled={off !== null || running !== null}
-          render={<Button size={null} variant="secondary" aria-label="Commit, push, create PR, sync, catch up or merge" className={cx("inline-flex items-center rounded-e-capsule border-s border-split-edge px-1.5", box)} />}
+          render={<Button size={null} variant={variant} aria-label="Commit, push, create PR, sync, catch up or merge" className={cx("inline-flex items-center rounded-e-capsule border-s border-split-edge px-1.5", box)} />}
         >
           <ChevronDown />
         </DropdownMenuTrigger>
