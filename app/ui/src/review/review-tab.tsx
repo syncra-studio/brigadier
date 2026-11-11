@@ -12,7 +12,7 @@ import { useKept } from "../thread/kept";
 import { BriefStrip, noTurnWords } from "./brief";
 import type { LineRange } from "./diff-view";
 import { FileSection, type OpenIn } from "./file-section";
-import { type Asking, actionable, Counts, RevertConfirm } from "./hunks";
+import { type Asking, actionable, RevertConfirm } from "./hunks";
 import type { DiffComment, FileContents, HunkAction, RequestState, Review, ReviewFile, ReviewHunk, ReviewRequest, ReviewScope } from "./types";
 
 /**
@@ -69,8 +69,7 @@ export function ReviewTab(props: ReviewTabProps) {
   // A large file starts folded until opened; any other only once folded.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set(target ? [target] : []));
-  // The file list is the one click down to each diff (D1188, D1242); a commit's tab has no brief, so its diffs show open.
-  const folds = scope !== "commit";
+  // The file list is the one click down to each diff (D1188, D1242).
   useEffect(() => {
     if (!target) return;
     setOpened((current) => new Set([...current, target]));
@@ -78,7 +77,7 @@ export function ReviewTab(props: ReviewTabProps) {
   const [asking, setAsking] = useState<Asking | null>(null);
   const files = review?.files ?? [];
   // The file a comment is being written on stays open, so its box comes back after a restart.
-  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path) && props.draft?.path !== file.path);
+  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || (!opened.has(file.path) && props.draft?.path !== file.path);
   const allCollapsed = files.length > 0 && files.every(isCollapsed);
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
@@ -100,31 +99,21 @@ export function ReviewTab(props: ReviewTabProps) {
   return (
     <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2">
-        {scope === "commit" ? (
-          // A commit's tab is that commit: its subject and short id, no picker (D1041).
-          <span className="flex min-w-0 items-center gap-1.5 px-1.5 text-sm text-muted-foreground">
-            <span className="truncate">{review?.commit?.subject ?? "Commit"}</span>
-            {review?.commit && <span className="shrink-0 font-mono text-xs">{review.commit.sha.slice(0, 7)}</span>}
-          </span>
-        ) : (
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
-              {label}
-              <ChevronDown className="size-icon-xs" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
-                {SCOPES.map((entry) => (
-                  <DropdownMenuRadioItem key={entry.value} value={entry.value}>
-                    {entry.label(review?.base ?? null)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {/* Elsewhere the brief says the size. */}
-        {scope === "commit" && review && review.files.length > 0 && <Counts insertions={review.insertions} deletions={review.deletions} />}
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
+            {label}
+            <ChevronDown className="size-icon-xs" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
+              {SCOPES.map((entry) => (
+                <DropdownMenuRadioItem key={entry.value} value={entry.value}>
+                  {entry.label(review?.base ?? null)}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {!connected && <span className="px-1.5 text-xs text-muted-foreground">Reconnecting…</span>}
         <div className="flex-1" />
         <TooltipIconButton tooltip="Refresh" size="icon-sm" disabled={!connected} onClick={props.onRefresh}>
@@ -150,7 +139,7 @@ export function ReviewTab(props: ReviewTabProps) {
       </div>
       <div data-slot="review-diffs" className="min-h-0 min-w-0 flex-1 overflow-auto">
         <ErrorLine size="sm" error={error} className="px-4 py-3" />
-        {review && scope !== "commit" && !review.none && (
+        {review && !review.none && (
           <BriefStrip review={review} />
         )}
         {!review ? (

@@ -49,7 +49,6 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
-       brigadier source <id> history | source <id> commit <sha> [<path> [<from>]]
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
        brigadier source <id> | source --project P [make-commit [--all] [--message M] | write commit [--all] | write pr | write squash | draft [--all] [--cached] [--refresh]]

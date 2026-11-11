@@ -5,9 +5,8 @@
 
 import type { FileStatus } from "../panel/status";
 
-/** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000); a commit's own
- * diff opens from History (D1041). */
-export type ReviewScope = "last" | "uncommitted" | "staged" | "unstaged" | "branch" | "commit";
+/** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000). */
+export type ReviewScope = "last" | "uncommitted" | "staged" | "unstaged" | "branch";
 
 /** Why a file is worth a look first, as Rust classed it (D1188, D1213): a test file deleted or with lines removed, a
  * lock file, a dependency manifest, CI or build config, a migration. */
@@ -64,8 +63,6 @@ export type Review = {
   base: string | null;
   /** Where the branch left it: Branch since base starts there. */
   since?: string;
-  /** The commit a commit review shows: its full id, subject and time (D1041). */
-  commit?: { sha: string; subject: string; atMs: number };
   files: readonly ReviewFile[];
   insertions: number;
   deletions: number;

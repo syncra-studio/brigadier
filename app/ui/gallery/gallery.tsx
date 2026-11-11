@@ -28,7 +28,6 @@ import { ArchiveGallery } from "./archive";
 import { ProjectSettingsGallery } from "./project-settings";
 import { ProjectsGallery } from "./projects";
 import { ReviewGallery } from "./review";
-import { HistoryGallery } from "./history";
 import { SessionGallery } from "./session";
 import { SidebarGallery } from "./sidebar";
 import { Thread } from "./thread";
@@ -134,7 +133,6 @@ function GalleryPage() {
             </Area>
             <Area name="Review">
               <ReviewGallery />
-              <HistoryGallery />
             </Area>
             <Area name="Layout">
               <TabsGallery />

@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 
 import { showToast } from "../components/toast";
 import { ask, type Row, setGitHandler, useDaemon } from "../daemon";
-import { refreshHistory } from "../history/store";
 import { useHomeProject, useStart } from "../home/start";
 import type { ComposerRow } from "../session/composer";
 import { HOME } from "../shell/tab-store";
@@ -158,7 +157,6 @@ export function restoreCheckout(): void {
     watch(target);
     readTruth();
     refreshStep();
-    refreshHistory(target.session);
   });
 }
 
@@ -210,11 +208,6 @@ export function squashOf(at: StepAt, done: (squash: { message: string; commits: 
   ask({ op: "run", args: sourceArgs(target, "squash", at.head, at.base ?? "-") }, (reply) => done(reply.ok ? reply.squash : null));
 }
 
-/** A new commit, or the first read after a (re)subscribe: History reads again (2.29) [D1041, D1130]. */
-function moved(head: Head): void {
-  if (git.target && "session" in git.target && head.head !== git.head?.head) refreshHistory(git.target.session);
-}
-
 function watch(target: Target): void {
   n = 0;
   re = ask({ op: "git", ...target }, (reply) => {
@@ -224,7 +217,6 @@ function watch(target: Target): void {
       return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
     }
     n = reply.n;
-    moved(reply.git.head);
     set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])), readAtMs: Date.now() });
     landed();
   });
@@ -241,7 +233,6 @@ setGitHandler((frame) => {
   const files = new Map(git.files);
   for (const each of frame.files as Entry[]) files.set(each.path, each);
   for (const path of frame.gone as string[]) files.delete(path);
-  moved(frame.head);
   set({ head: frame.head, files, readAtMs: Date.now() });
   landed();
 });

@@ -19,7 +19,6 @@ pub mod change;
 pub mod commit;
 pub mod diff;
 pub mod files;
-pub mod history;
 pub mod land;
 pub mod last;
 mod listed;

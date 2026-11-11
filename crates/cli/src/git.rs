@@ -1,14 +1,12 @@
 //! `brigadier git`: a checkout's status as the panel gets it, and with `--watch` what changes after,
 //! one line each, from the same watch the daemon runs [D71]. `brigadier source`: what the panel and
-//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103], and a
-//! session's commits since its base and one commit's diff [D1041].
+//! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
 
 use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, branch, files, history, land, push::Rejected, step, sync,
-    watch::Watch,
+    self, Checkout, Status, Target, branch, files, land, push::Rejected, step, sync, watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -76,7 +74,7 @@ fn since(
     };
     let base =
         base.ok_or_else(|| io::Error::other("This checkout has no base to compare with."))?;
-    let since = history::since(checkout, &base, stop)?;
+    let since = diff::since(checkout, &base, stop)?;
     Ok((base, since))
 }
 
@@ -199,22 +197,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             file["ignored"] = files::ignored(&checkout, word(1)?).into();
             json!({"ok": true, "file": file})
         }
-        // A session's History and one commit's diff; a project has no base [D1035, D1041].
-        "history" => {
-            let Target::Session(id) = target else {
-                return Err(io::Error::other(super::USAGE));
-            };
-            // A "here" fork's base is its folder holder's [D1082].
-            let holder = brigadier_core::share::holder(data, &brigadier_core::load(data, id)?);
-            let dir = holder.map_or_else(|| brigadier_core::session_dir(data, id), |h| h.dir);
-            json!({"ok": true, "history": history::history(&checkout, &dir, &stop)?})
-        }
-        "commit" => match args.get(at + 2) {
-            Some(path) => {
-                json!({"ok": true, "contents": history::contents(&checkout, word(1)?, path, from(3), &stop)?})
-            }
-            None => json!({"ok": true, "review": history::commit(&checkout, word(1)?, &stop)?}),
-        },
         // The card's commit and the message writer [D1029, D1107].
         "make-commit" => {
             // `--all` as a flag, never as the message's own text.

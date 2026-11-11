@@ -314,7 +314,7 @@ pub(super) fn patch(
 }
 
 /// One side of a file: a blob git holds (`HEAD:path`, `:path`), or the file itself.
-pub(super) fn side(
+fn side(
     checkout: &Checkout,
     spec: Option<String>,
     path: &str,
@@ -440,4 +440,10 @@ pub(super) fn shape(hunk: &Hunk, id: String, staged: bool) -> Value {
     json!({"id": id, "header": hunk.header, "insertions": added.len(), "deletions": removed.len(),
            "staged": staged, "newStart": hunk.new.0.max(1), "leading": leading.unwrap_or(0), "side": side,
            "start": lines.first().copied().unwrap_or(hunk.new.0), "end": lines.last().copied().unwrap_or(hunk.new.0)})
+}
+
+/// Where the session's branch left `base`, the commit Branch since base starts from [D1035].
+pub fn since(checkout: &Checkout, base: &str, stop: &AtomicBool) -> io::Result<String> {
+    let out = read(&checkout.root, &["merge-base", base, "HEAD"], stop)?;
+    Ok(String::from_utf8_lossy(&out).trim().to_string())
 }

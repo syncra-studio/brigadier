@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 
 import { useDaemon } from "../../daemon";
-import { refreshHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME } from "../../shell/tab-store";
 import { isWorking as working, landBranch, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
@@ -20,10 +19,9 @@ function branchOps(target: Target, owner: string, project: string | null, branch
     rename: (to) => name(target, ["rename", to], to, () => refreshStep()),
     switchTo: (to, remote) => name(target, ["switch", to, ...(remote ? ["--remote"] : [])], remote ? to.slice(to.indexOf("/") + 1) : to),
     create: (to, from) => name(target, ["create", to, ...(from ? ["--from", from] : [])], to),
-    // What follows the base reads it again at once: History, the step and the PR's facts [D1143].
+    // What follows the base reads it again at once: the step and the PR's facts [D1143].
     setBase: (base) =>
       setBase(target, base, () => {
-        refreshHistory(owner);
         refreshStep();
         if (owner !== HOME) readPr(owner);
       }),
