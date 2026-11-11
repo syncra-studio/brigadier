@@ -5,13 +5,12 @@ import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
 import { HOME, openFile, setTabScope } from "../shell/tab-store";
 import { ReviewTab } from "./review-tab";
-import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, ReviewScope } from "./types";
+import type { FileContents, Review, ReviewFile, ReviewScope } from "./types";
 
 /**
  * The Review tab on Rust's git [D1035, D1036]: the scope's files and counts first, then each file's patch, a large
- * one's when it's opened. Every watch read that changed something reads it again. Stage, unstage and revert go
- * through the same Rust moves as Source's, by hunk id or path [D1043]. Branch since base is read again when the base
- * moves, which the watch doesn't see [D1035]. A comment waits as a chip above the composer and leaves the diff once
+ * one's when it's opened. Every watch read that changed something reads it again. Branch since base is read again
+ * when the base moves, which the watch doesn't see [D1035]. A comment waits as a chip above the composer and leaves the diff once
  * it's sent [D1040]. `target`: the file it opened on, scrolled to once it's there.
  */
 export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: string; target?: string; tab?: string; kept?: string }) {
@@ -24,7 +23,6 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [states, setStates] = useState<ReadonlyMap<string, RequestState>>(new Map());
   const [tick, setTick] = useState(0);
   const read = useRef(0);
   const panel = useRef<HTMLDivElement>(null);
@@ -38,14 +36,6 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   // A turn's start and end change Last turn and the last run with no git change to say so.
   const row = useDaemon().rows?.find((each) => each.id === owner);
   const kept = useCommentDraft(owner, "review");
-
-  const setState = (id: string, state: RequestState | null) =>
-    setStates((now) => {
-      const next = new Map(now);
-      if (state) next.set(id, state);
-      else next.delete(id);
-      return next;
-    });
 
   const load = (file: ReviewFile, at: number, turn = review?.turn) => {
     if (!checkout) return;
@@ -71,8 +61,6 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       if (!reply.ok) return setError(String(reply.error));
       const next: Review = reply.review;
       setError(null);
-      // A refused move's reason lasts until the diff is read again; what's pending stays.
-      setStates((now) => new Map([...now].filter(([, state]) => "pending" in state)));
       setReview(next);
       // What was drawn stays until its new read lands, so a watch read doesn't blank the diff.
       setContents((now) => new Map([...now].filter(([path]) => next.files.some((file) => file.path === path && !file.large))));
@@ -112,15 +100,6 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     setError(null);
   };
 
-  const request = ({ action, path, hunk }: ReviewRequest) => {
-    if (!checkout) return;
-    const id = hunk ?? path;
-    const from = review?.files.find((file) => file.path === path)?.from ?? null;
-    setState(id, { pending: action });
-    const args = hunk ? sourceArgs(checkout, "hunk", action, scope, path, from ?? "-", hunk) : sourceArgs(checkout, action === "revert" ? "discard" : action, scope, path);
-    ask({ op: "run", args }, (reply) => setState(id, reply.ok ? null : { error: reply.error === "disconnected" ? "Not connected. Try again when it's back." : String(reply.error) }));
-  };
-
   return (
     <div ref={panel} className="flex min-h-0 flex-1 flex-col">
       <ReviewTab
@@ -139,8 +118,6 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
         const file = review?.files.find((each) => each.path === path);
         if (file) load(file, read.current);
       }}
-      states={states}
-      onRequest={request}
       onOpenIn={(path) => openFile(owner, path, { preview: false })}
       comments={chips.flatMap((chip) => (chip.kind === "comment" && chip.on === "review" ? [chip.comment] : []))}
       // Home's composer starts a session and carries no chips, so its diff takes no comments.

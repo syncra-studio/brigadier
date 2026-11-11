@@ -1,14 +1,14 @@
 // The Review tab's fake data, standing in for Rust: a few changed files as runs of unchanged lines and changes, read
-// in each scope, with the changes staged or reverted so far.
+// in each scope, with the changes staged so far.
 import type { FileContents, Review, ReviewFile, ReviewHunk, ReviewScope } from "../src/review/types";
 
 /** Unchanged lines, or a change (old lines, then new ones). */
 type Seg = string[] | { del: string[]; add: string[] };
 type Line = { kind: "ctx" | "del" | "add"; text: string; old: number; new: number; change: number };
 
-/** What the user has done so far, each change named `path:index`. */
-export type Done = { staged: ReadonlySet<string>; reverted: ReadonlySet<string> };
-export const NOTHING_DONE: Done = { staged: new Set(), reverted: new Set() };
+/** What is staged so far, each change named `path:index`. */
+export type Done = { staged: ReadonlySet<string> };
+export const NOTHING_DONE: Done = { staged: new Set() };
 
 /** Both sides of the changes `shown` picks (the rest read as unchanged, new where `applied`), cut into git's hunks. */
 function build(path: string, segs: Seg[], shown: (change: number) => boolean, applied: (change: number) => boolean, staged: (change: number) => boolean) {
@@ -36,14 +36,12 @@ function build(path: string, segs: Seg[], shown: (change: number) => boolean, ap
     if (index > 0 && near[index - 1]) runs.at(-1)!.push(row);
     else runs.push([row]);
   });
-  const changes = new Map<string, string[]>();
   const hunks = runs.map((run): ReviewHunk => {
     const first = run[0]!;
     const added = run.filter((row) => row.kind === "add");
     const deleted = run.filter((row) => row.kind === "del");
     const own = [...new Set(run.filter((row) => row.change >= 0).map((row) => row.change))];
     const id = `${path}:${own.join(",")}`;
-    changes.set(id, own.map((at) => `${path}:${at}`));
     const oldStart = first.kind === "add" ? first.old + 1 : first.old;
     const newStart = first.kind === "del" ? first.new + 1 : first.new;
     const counted = added.length ? added.map((row) => row.new) : deleted.map((row) => row.old);
@@ -62,7 +60,7 @@ function build(path: string, segs: Seg[], shown: (change: number) => boolean, ap
   });
   const side = (kind: "add" | "del") => rows.filter((row) => row.kind !== kind).map((row) => `${row.text}\n`).join("");
   const contents: FileContents = { before: side("add"), after: side("del"), hunks };
-  return { contents, changes, insertions: rows.filter((row) => row.kind === "add").length, deletions: rows.filter((row) => row.kind === "del").length };
+  return { contents, insertions: rows.filter((row) => row.kind === "add").length, deletions: rows.filter((row) => row.kind === "del").length };
 }
 
 const SOURCES: { file: Omit<ReviewFile, "staged">; segs: Seg[] }[] = [
@@ -114,26 +112,23 @@ const SOURCES: { file: Omit<ReviewFile, "staged">; segs: Seg[] }[] = [
 
 const BINARY: ReviewFile = { path: "assets/upload-icon.png", from: null, status: "added", insertions: 0, deletions: 0, binary: true, staged: false, large: false };
 
-/** What Rust would send for `scope`: the list, each file's contents, and which changes each hunk holds. */
+/** What Rust would send for `scope`: the list and each file's contents. */
 export function read(scope: ReviewScope, done: Done) {
   const files: ReviewFile[] = [];
   const contents = new Map<string, FileContents>();
-  const changes = new Map<string, string[]>();
   for (const { file, segs } of SOURCES) {
     const key = (change: number) => `${file.path}:${change}`;
-    const live = (change: number) => !done.reverted.has(key(change));
     const staged = (change: number) => done.staged.has(key(change));
-    const shown = scope === "staged" ? (c: number) => live(c) && staged(c) : scope === "unstaged" ? (c: number) => live(c) && !staged(c) : live;
+    const shown = scope === "staged" ? staged : scope === "unstaged" ? (c: number) => !staged(c) : () => true;
     // Unstaged reads over the index: what's staged there reads as unchanged, already new.
-    const made = build(file.path, segs, shown, (c) => scope === "unstaged" && live(c) && staged(c), staged);
+    const made = build(file.path, segs, shown, (c) => scope === "unstaged" && staged(c), staged);
     if (made.contents.hunks.length === 0) continue;
     files.push({ ...file, insertions: made.insertions, deletions: made.deletions, staged: made.contents.hunks.every((hunk) => hunk.staged) });
     contents.set(file.path, made.contents);
-    for (const [id, own] of made.changes) changes.set(id, own);
   }
   // The binary file is one change: it shows in the scope its staging puts it in.
   const binaryStaged = done.staged.has(BINARY.path);
-  if (!done.reverted.has(BINARY.path) && (scope === "staged" ? binaryStaged : scope !== "unstaged" || !binaryStaged)) files.push({ ...BINARY, staged: binaryStaged });
+  if (scope === "staged" ? binaryStaged : scope !== "unstaged" || !binaryStaged) files.push({ ...BINARY, staged: binaryStaged });
   const review: Review = {
     scope,
     base: "main",
@@ -141,8 +136,8 @@ export function read(scope: ReviewScope, done: Done) {
     insertions: files.reduce((sum, entry) => sum + entry.insertions, 0),
     deletions: files.reduce((sum, entry) => sum + entry.deletions, 0),
   };
-  return { review, contents, changes };
+  return { review, contents };
 }
 
 /** retry.ts's first change already staged, as the round 4 mock showed it. */
-export const FIRST_STAGED: Done = { staged: new Set(["src/upload/retry.ts:0"]), reverted: new Set() };
+export const FIRST_STAGED: Done = { staged: new Set(["src/upload/retry.ts:0"]) };

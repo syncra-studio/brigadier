@@ -12,8 +12,7 @@ import { useKept } from "../thread/kept";
 import { BriefStrip, noTurnWords } from "./brief";
 import type { LineRange } from "./diff-view";
 import { FileSection, type OpenIn } from "./file-section";
-import { type Asking, actionable, RevertConfirm } from "./hunks";
-import type { DiffComment, FileContents, HunkAction, RequestState, Review, ReviewFile, ReviewHunk, ReviewRequest, ReviewScope } from "./types";
+import type { DiffComment, FileContents, Review, ReviewFile, ReviewScope } from "./types";
 
 /**
  * The Review tab (old ReviewTab), a main-area tab (D1032): a scope's diffs, each file under a sticky header, unified
@@ -31,16 +30,11 @@ export type ReviewTabProps = {
   error: string | null;
   /** A read in flight: Refresh spins. */
   loading: boolean;
-  /** The daemon is there: off, the diff stays and its actions wait (D30). */
+  /** The daemon is there: off, the diff stays (D30). */
   connected: boolean;
   onRefresh: () => void;
   /** Ask for a large file's contents, when it's opened (D1036). */
   onLoad: (path: string) => void;
-  /** Stage, unstage and revert in flight or failed, by hunk id or file path. */
-  /** Pending and refused actions by hunk id or path; a refused reason goes on the next read or the next success. */
-  states: ReadonlyMap<string, RequestState>;
-  /** Asked at once for Stage and Unstage, after its confirm for Revert. */
-  onRequest: (request: ReviewRequest) => void;
   onOpenIn: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
   /** None where a comment couldn't reach the agent: no line picking then. */
@@ -74,7 +68,6 @@ export function ReviewTab(props: ReviewTabProps) {
     if (!target) return;
     setOpened((current) => new Set([...current, target]));
   }, [target]);
-  const [asking, setAsking] = useState<Asking | null>(null);
   const files = review?.files ?? [];
   // The file a comment is being written on stays open, so its box comes back after a restart.
   const isCollapsed = (file: ReviewFile) => folded.has(file.path) || (!opened.has(file.path) && props.draft?.path !== file.path);
@@ -89,11 +82,6 @@ export function ReviewTab(props: ReviewTabProps) {
     if (loading || !connected) return;
     for (const file of files) if (file.large && !isCollapsed(file) && !contents.has(file.path)) props.onLoad(file.path);
   }, [review, contents, loading, connected, opened, folded, props.draft?.path]);
-  const act = (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => {
-    const request = { action, path: file.path, hunk: hunk?.id ?? null };
-    if (action === "revert") setAsking({ request, file, hunk });
-    else props.onRequest(request);
-  };
   const label = SCOPES.find((entry) => entry.value === scope)?.label(review?.base ?? null);
 
   return (
@@ -157,10 +145,7 @@ export function ReviewTab(props: ReviewTabProps) {
               look={{ numbered: true, split, wrap, words: true }}
               collapsed={isCollapsed(file)}
               onToggle={() => (isCollapsed(file) ? open([file]) : setFolded((current) => new Set([...current, file.path])))}
-              actions={actionable(scope)}
               connected={connected}
-              states={props.states}
-              onAction={act}
               onRetry={() => props.onLoad(file.path)}
               onOpenIn={props.onOpenIn}
               comments={props.comments.filter((comment) => comment.path === file.path)}
@@ -172,7 +157,6 @@ export function ReviewTab(props: ReviewTabProps) {
           ))
         )}
       </div>
-      <RevertConfirm scope={scope} asking={asking} onClose={() => setAsking(null)} onConfirm={props.onRequest} />
     </div>
   );
 }

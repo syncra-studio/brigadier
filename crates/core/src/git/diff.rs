@@ -1,7 +1,7 @@
 //! What the Review tab shows of a checkout [D1035, D1036]: a scope's file list with its counts,
 //! then each file's two sides and git's hunks over them, asked for one file at a time. Rust cuts
 //! the patches; the UI only draws them [D71]. Hunks keep an id while their lines don't change, so
-//! a stage or revert names the hunk the user saw [D30, D1043].
+//! a comment names the hunk the user saw [D30, D1043].
 
 use super::listed::{listed, review_of};
 use super::{Checkout, err, inside, lock, read};
@@ -189,10 +189,6 @@ impl Hunk {
         a0 <= b1 + 1 && b0 <= a1 + 1
     }
 
-    pub fn meets_old(&self, other: &Hunk) -> bool {
-        Hunk::meets(self.old, other.old)
-    }
-
     pub fn meets_new(&self, other: &Hunk) -> bool {
         Hunk::meets(self.new, other.new)
     }
@@ -233,20 +229,6 @@ impl Patch {
             }
         }
         patch
-    }
-
-    /// The patch with only `hunks`, as `git apply` takes it.
-    pub fn with(&self, hunks: &[&Hunk]) -> String {
-        let mut out = String::new();
-        for line in self.head.iter().chain(
-            hunks
-                .iter()
-                .flat_map(|h| std::iter::once(&h.header).chain(&h.lines)),
-        ) {
-            out.push_str(line);
-            out.push('\n');
-        }
-        out
     }
 }
 

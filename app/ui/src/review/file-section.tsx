@@ -10,8 +10,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { CommentBox, CommentNote } from "./comments";
 import { type DiffLook, type DiffNote, DiffView, type LineRange } from "./diff-view";
 import { fileFact } from "./brief";
-import { Actions, Counts, HunkBar } from "./hunks";
-import type { DiffComment, FileContents, HunkAction, RequestState, ReviewFile, ReviewHunk } from "./types";
+import { Counts } from "./hunks";
+import type { DiffComment, FileContents, ReviewFile } from "./types";
 
 /** Where Open in sends a file: a file tab, its default app, or Finder. */
 export type OpenIn = "tab" | "app" | "finder";
@@ -24,12 +24,8 @@ export type FileProps = {
   look: DiffLook;
   collapsed: boolean;
   onToggle: () => void;
-  /** Stage and Revert, here and on its hunks (none in Branch since base). */
-  actions: boolean;
   /** Off while the daemon is away. */
   connected: boolean;
-  states: ReadonlyMap<string, RequestState>;
-  onAction: (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => void;
   /** Ask for its contents again, after a failed read. */
   onRetry: () => void;
   onOpenIn: (path: string, where: OpenIn) => void;
@@ -67,10 +63,9 @@ function OpenInMenu({ file, onOpenIn }: { file: ReviewFile; onOpenIn: FileProps[
   );
 }
 
-/** One file's diff under its sticky header: icon, path, counts, on hover copy, Open in and fold, then Revert and Stage. */
+/** One file's diff under its sticky header: icon, path, counts, and on hover copy, Open in and fold. */
 export function FileSection(props: FileProps) {
-  const { file, collapsed, onToggle, actions, connected, states, onAction } = props;
-  const state = states.get(file.path);
+  const { file, collapsed, onToggle } = props;
   return (
     <section data-slot="review-file" data-path={file.path}>
       <header className="group/file sticky top-0 z-10 flex h-control-lg items-center gap-2 border-b border-border bg-background px-3 text-sm">
@@ -88,13 +83,6 @@ export function FileSection(props: FileProps) {
             {collapsed ? <ChevronRight /> : <ChevronDown />}
           </TooltipIconButton>
         </span>
-        <span className="flex-1" />
-        {actions && (
-          <>
-            <ErrorLine error={state && "error" in state ? state.error : null} className="min-w-0 truncate" />
-            <Actions staged={file.staged} state={state} disabled={!connected} onAction={(action) => onAction(action, file, null)} />
-          </>
-        )}
       </header>
       {!collapsed && <FileBody {...props} />}
     </section>
@@ -103,10 +91,10 @@ export function FileSection(props: FileProps) {
 
 const muted = (text: ReactNode) => <p className="px-3 py-2 text-sm text-muted-foreground">{text}</p>;
 
-/** What sits under a line: a hunk's bar, a waiting comment, or the box being written. */
-type Note = { kind: "hunk"; hunk: ReviewHunk } | { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange };
+/** What sits under a line: a waiting comment, or the box being written. */
+type Note = { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange };
 
-function FileBody({ file, contents, look, actions, connected, states, onAction, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft }: FileProps) {
+function FileBody({ file, contents, look, connected, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft }: FileProps) {
   const [draft, setRange] = useState<LineRange | null>(kept?.range ?? null);
   const setDraft = (range: LineRange | null) => {
     setRange(range);
@@ -122,12 +110,10 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
   const notes = useMemo(() => {
     if (!sides) return [];
     const all: DiffNote<Note>[] = [];
-    // A hunk's bar goes under the unchanged line just above its first change; one changing line 1 gets it above the diff.
-    if (actions) for (const hunk of sides.hunks) if (hunk.leading > 0) all.push({ side: "additions", lineNumber: hunk.newStart + hunk.leading - 1, metadata: { kind: "hunk", hunk } });
     for (const comment of comments) all.push({ side: comment.side, lineNumber: comment.end, metadata: { kind: "comment", comment } });
     if (draft) all.push({ side: draft.endSide ?? draft.side ?? "additions", lineNumber: draft.end, metadata: { kind: "box", range: draft } });
     return all;
-  }, [sides, actions, comments, draft]);
+  }, [sides, comments, draft]);
   if (file.binary) return muted("Binary file not shown");
   if (contents && "error" in contents) {
     return (
@@ -153,14 +139,9 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
     );
   }
   if (sides.before === sides.after) return muted("No content changes");
-  const hunkBar = (hunk: ReviewHunk) => (
-    <HunkBar key={hunk.id} hunk={hunk} state={states.get(hunk.id)} disabled={!connected} onAction={(action) => onAction(action, file, hunk)} />
-  );
   const sideLines = (side: "additions" | "deletions") => (side === "additions" ? sides.after : sides.before).split("\n");
   const render = ({ metadata }: DiffNote<Note>) =>
-    metadata.kind === "hunk" ? (
-      hunkBar(metadata.hunk)
-    ) : metadata.kind === "comment" ? (
+    metadata.kind === "comment" ? (
       <CommentNote comment={metadata.comment} onRemove={() => onRemoveComment(metadata.comment.id)} />
     ) : (
       <CommentBox
@@ -179,17 +160,14 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
       />
     );
   return (
-    <>
-      {actions && sides.hunks.filter((hunk) => hunk.leading === 0).map(hunkBar)}
-      <DiffView<Note>
-        source={{ kind: "sides", path: file.path, before: sides.before, after: sides.after }}
-        look={look}
-        annotations={notes}
-        renderAnnotation={render}
-        onGutterClick={onComment && pick}
-        onSelect={onComment && pick}
-        selected={draft}
-      />
-    </>
+    <DiffView<Note>
+      source={{ kind: "sides", path: file.path, before: sides.before, after: sides.after }}
+      look={look}
+      annotations={notes}
+      renderAnnotation={render}
+      onGutterClick={onComment && pick}
+      onSelect={onComment && pick}
+      selected={draft}
+    />
   );
 }

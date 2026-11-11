@@ -3,7 +3,6 @@
 //! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
 
 use super::{arg, flag, has};
-use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
     self, Checkout, Status, Target, branch, files, land, push::Rejected, step, sync, watch::Watch,
@@ -130,7 +129,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
-        "stage" | "unstage" | "discard" | "hunk" | "sync" | "publish" | "force-push" => {
+        "sync" | "publish" | "force-push" => {
             super::sessions::guard(data, &git::folder(data, &target)?, me)?
         }
         _ => None,
@@ -173,25 +172,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         "files" => json!({"ok": true, "list": files::list(&checkout, &stop)?}),
         "folder" => json!({"ok": true, "entries": files::folder(&checkout, word(1)?)?}),
         "find" => json!({"ok": true, "found": files::find(&checkout, word(1)?, &stop)?}),
-        verb @ ("stage" | "unstage" | "discard") => {
-            let paths = args.get(at + 2..).unwrap_or_default();
-            if paths.is_empty() {
-                return Err(io::Error::other(super::USAGE));
-            }
-            change::files(
-                &checkout,
-                Scope::parse(word(1)?)?,
-                Move::parse(verb)?,
-                paths,
-                &stop,
-            )?;
-            done
-        }
-        "hunk" => {
-            let (action, scope) = (Move::parse(word(1)?)?, Scope::parse(word(2)?)?);
-            change::hunk(&checkout, scope, action, word(3)?, from(4), word(5)?, &stop)?;
-            done
-        }
         "file" => {
             let mut file = git::read_file(&checkout, word(1)?)?;
             file["ignored"] = files::ignored(&checkout, word(1)?).into();

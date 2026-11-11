@@ -1,19 +1,16 @@
-// The Review tab (steps 2.8–2.10): every scope, a long diff, split and wrap, its states, comments and hunk actions, on
-// fake data, beside the live copy.
+// The Review tab (steps 2.8–2.10): every scope, a long diff, split and wrap, its states and comments, on fake data,
+// beside the live copy.
 import type { ReactNode } from "react";
 
-import { ConfirmForm } from "../src/components/confirm-dialog";
-import { Dialog, DialogContent } from "../src/components/dialog";
 import { showToast } from "../src/components/toast";
 import { CommentBox } from "../src/review/comments";
 import { FileSection, type FileProps } from "../src/review/file-section";
-import { revertWords } from "../src/review/hunks";
 import { ReviewTab, type ReviewTabProps } from "../src/review/review-tab";
-import type { DiffComment, RequestState, ReviewScope } from "../src/review/types";
+import type { DiffComment, ReviewScope } from "../src/review/types";
 import { type Done, FIRST_STAGED, NOTHING_DONE, read } from "./review-data";
 import { LastTurnGallery } from "./review-brief";
 import { ChipComposer, Frame, LiveReview } from "./review-live";
-import { Held, Row, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const ignore = () => {};
 
@@ -32,8 +29,6 @@ export function Tab({ scope, done = FIRST_STAGED, ...change }: { scope: ReviewSc
         connected
         onRefresh={ignore}
         onLoad={ignore}
-        states={new Map()}
-        onRequest={ignore}
         onOpenIn={ignore}
         comments={[]}
         onComment={ignore}
@@ -47,7 +42,6 @@ export function Tab({ scope, done = FIRST_STAGED, ...change }: { scope: ReviewSc
 const RETRY = "src/upload/retry.ts";
 const uncommitted = read("uncommitted", FIRST_STAGED);
 const fileOf = (path: string) => uncommitted.review.files.find((file) => file.path === path)!;
-const retryHunks = uncommitted.contents.get(RETRY)!.hunks;
 
 /** One file's section frozen, in a tab's frame. */
 function File({ path = RETRY, ...change }: { path?: string } & Partial<FileProps>) {
@@ -59,10 +53,7 @@ function File({ path = RETRY, ...change }: { path?: string } & Partial<FileProps
         look={{ numbered: true, split: false, wrap: false, words: true }}
         collapsed={false}
         onToggle={ignore}
-        actions
         connected
-        states={new Map()}
-        onAction={ignore}
         onRetry={ignore}
         onOpenIn={ignore}
         comments={[]}
@@ -79,23 +70,6 @@ const COMMENTS: DiffComment[] = [
   { id: "c2", path: RETRY, side: "additions", start: 30, end: 32, excerpt: "if (!retryable(error)) throw error;", text: "Log the status before deciding, or we lose why it stopped." },
 ];
 
-/** A confirm held open in place. */
-function Confirm({ words }: { words: { title: string; description: string; confirm: string } }) {
-  return (
-    <Held className="h-56 w-120 overflow-hidden rounded-surface">
-      {(box) => (
-        <Dialog open modal={false}>
-          <DialogContent container={box} initialFocus={false}>
-            <ConfirmForm title={words.title} description={words.description} confirm={words.confirm} destructive onConfirm={ignore} onCancel={ignore} />
-          </DialogContent>
-        </Dialog>
-      )}
-    </Held>
-  );
-}
-
-const stateOf = (entries: [string, RequestState][]) => new Map(entries);
-
 export function Wide({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex w-full flex-col gap-2">
@@ -109,7 +83,7 @@ export function ReviewGallery() {
   return (
     <>
       <Section title="Review diff">
-        <Row name="Live: pick a scope, fold, split, wrap, comment, stage and revert">
+        <Row name="Live: pick a scope, fold, split, wrap, comment">
           <LiveReview />
         </Row>
         <Row name="Scopes (D1035)">
@@ -122,7 +96,7 @@ export function ReviewGallery() {
           <Wide label="Changes (not staged)">
             <Tab scope="unstaged" />
           </Wide>
-          <Wide label="Branch since main: committed, so no stage or revert">
+          <Wide label="Branch since main">
             <Tab scope="branch" done={NOTHING_DONE} />
           </Wide>
         </Row>
@@ -155,7 +129,7 @@ export function ReviewGallery() {
           <Wide label="The list couldn't be read: the last one stays under the reason">
             <Tab scope="uncommitted" error="git exited with 128: not a git repository" />
           </Wide>
-          <Wide label="Daemon away: the diff stays, its actions wait">
+          <Wide label="Daemon away: the diff stays">
             <Tab scope="uncommitted" connected={false} />
           </Wide>
           <Wide label="A file's contents couldn't be read">
@@ -184,44 +158,6 @@ export function ReviewGallery() {
               <ChipComposer comments={COMMENTS} onRemove={ignore} onSend={ignore} />
             </div>
           </Wide>
-        </Row>
-      </Section>
-      <Section title="Stage and revert per hunk (D1043)">
-        <Row name="In the file header and over each hunk">
-          <Wide label="Unified: the first hunk staged">
-            <File />
-          </Wide>
-          <Wide label="Split">
-            <File look={{ numbered: true, split: true, wrap: false, words: true }} />
-          </Wide>
-          <Wide label="Staging a hunk: shown at once, settled by its id">
-            <File states={stateOf([[retryHunks[1]!.id, { pending: "stage" }]])} />
-          </Wide>
-          <Wide label="A revert git refused, and the file's own action waiting">
-            <File
-              states={stateOf([
-                [retryHunks[2]!.id, { error: "The file changed since this diff was read. Refresh and try again." }],
-                [RETRY, { pending: "revert" }],
-              ])}
-            />
-          </Wide>
-        </Row>
-        <Row name="Revert asks first, in the old discard words">
-          <State label="Revert hunk">
-            <Confirm words={revertWords("uncommitted", fileOf(RETRY), retryHunks[2]!)} />
-          </State>
-          <State label="Revert a staged hunk">
-            <Confirm words={revertWords("staged", fileOf(RETRY), retryHunks[0]!)} />
-          </State>
-          <State label="Revert (the file), Changes">
-            <Confirm words={revertWords("unstaged", fileOf(RETRY), null)} />
-          </State>
-          <State label="Revert (the file), Uncommitted">
-            <Confirm words={revertWords("uncommitted", fileOf(RETRY), null)} />
-          </State>
-          <State label="Revert a new file nobody tracks">
-            <Confirm words={revertWords("unstaged", { ...fileOf("src/upload/limits.ts"), status: "untracked" }, null)} />
-          </State>
         </Row>
       </Section>
     </>

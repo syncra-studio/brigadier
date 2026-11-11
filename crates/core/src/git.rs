@@ -15,7 +15,6 @@ use std::thread;
 use std::time::Duration;
 
 pub mod branch;
-pub mod change;
 pub mod commit;
 pub mod diff;
 pub mod files;

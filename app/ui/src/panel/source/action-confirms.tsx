@@ -1,7 +1,7 @@
 import { ConfirmForm } from "../../components/confirm-dialog";
 import { TooltipIconButton } from "../../components/icon-button";
 import { Textarea } from "../../components/textarea";
-import { Check, Spinner, Sparkles, Warning, X } from "../../icons";
+import { Spinner, Sparkles } from "../../icons";
 import type { Commit, ForcePush } from "../types";
 import { plural } from "../words";
 import { Confirm, type Held } from "./dialogs";

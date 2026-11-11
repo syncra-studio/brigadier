@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 
-import { showToast } from "../components/toast";
 import { ask, type Row, setGitHandler, useDaemon } from "../daemon";
 import { useHomeProject, useStart } from "../home/start";
 import type { ComposerRow } from "../session/composer";
@@ -11,10 +10,9 @@ import type { FileFlag, LastRun } from "../review/types";
 import type { MergeStyle, SourceFile, SourceState, Step, When } from "./types";
 
 /*
- * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, each file's counts read
- * after it, and the moves the card makes, shown at once and settled by path. One watch per connection, so
- * one owner at a time: the one on screen. Disconnected, the last read stays, read-only; reconnecting asks again
- * [D1062]. Window focus reads it again now, as the old app did [D48].
+ * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, and each file's counts read
+ * after it. One watch per connection, so one owner at a time: the one on screen. Disconnected, the last read stays,
+ * read-only; reconnecting asks again [D1062]. Window focus reads it again now, as the old app did [D48].
  */
 
 type Entry = { path: string; old: string | null; staged: FileStatus | null; changes: FileStatus | null };
@@ -31,8 +29,6 @@ type Head = {
 type Counts = Map<string, { insertions: number; deletions: number }>;
 /** The uncommitted review's brief, Review's own (2.38) [D1188, D1199]: the last run, risky files' flags, and in your own folder the agent's files. */
 export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; agent: string[] | null };
-/** A move sent and not yet seen in a read. `done`: Rust answered, the next read settles it. */
-type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone"; done?: boolean };
 
 /** The base against its own upstream, from Rust [D1187, D1193]: `behind` null where it can't count; `fetchedAtMs` null when unknown. */
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
@@ -79,7 +75,6 @@ let git: Git = { key: null, target: null, head: null, files: new Map(), counts: 
 let stepAsk = 0;
 let re = 0;
 let n = 0;
-let pending: Pending[] = [];
 let counting = false;
 let recount = false;
 const listeners = new Set<() => void>();
@@ -129,7 +124,6 @@ function count(): void {
 }
 
 function landed(): void {
-  pending = pending.filter((each) => !each.done);
   set({ version: git.version + 1, error: null });
   count();
   refreshStep();
@@ -251,7 +245,6 @@ export function useGitWatch(owner: string | null): void {
   useLayoutEffect(() => {
     if (key !== git.key) {
       re = 0;
-      pending = [];
       const last = key ? kept.get(key) : undefined;
       set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, step: last?.step ?? null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
     }
@@ -295,7 +288,7 @@ const file = (entry: Entry, status: FileStatus, counts: Counts, whole: boolean):
   return { path: entry.path, status, oldPath: entry.old, added: whole ? (lines?.insertions ?? 0) : 0, removed: whole ? (lines?.deletions ?? 0) : 0 };
 };
 
-/** The checkout as Source draws it, with the moves still out on top; null until the first read. */
+/** The checkout as the card draws it; null until the first read. */
 function sourceOf(now: Git): SourceState | null {
   if (!now.head) return null;
   const staged: SourceFile[] = [];
@@ -304,7 +297,7 @@ function sourceOf(now: Git): SourceState | null {
     if (entry.staged) staged.push(file(entry, entry.staged, now.counts, true));
     if (entry.changes) changes.push(file(entry, entry.changes, now.counts, !entry.staged));
   }
-  let state: SourceState = {
+  return {
     checkout: now.head.checkout,
     branch: now.head.branch,
     remote: now.head.remote,
@@ -318,51 +311,15 @@ function sourceOf(now: Git): SourceState | null {
     commits: [],
     sinceBase: [],
   };
-  for (const move of pending) {
-    const moving = (list: SourceFile[]) => list.filter((each) => move.paths.includes(each.path));
-    const left = (list: SourceFile[]) => list.filter((each) => !move.paths.includes(each.path));
-    const joined = (list: SourceFile[], into: SourceFile[]) => [...left(into), ...list.map((each) => ({ ...each, ...sum(each, into.find((other) => other.path === each.path)) }))];
-    if (move.to === "dropped") state = { ...state, changes: left(state.changes) };
-    else if (move.to === "gone") state = { ...state, staged: left(state.staged), changes: left(state.changes) };
-    else if (move.to === "staged") state = { ...state, staged: joined(moving(state.changes), state.staged), changes: left(state.changes) };
-    else state = { ...state, changes: joined(moving(state.staged), state.changes), staged: left(state.staged) };
-  }
-  return state;
 }
 
-const sum = (file: SourceFile, other?: SourceFile) => ({ added: file.added + (other?.added ?? 0), removed: file.removed + (other?.removed ?? 0) });
+let shown: { from: Git; source: SourceState | null } | null = null;
 
-let shown: { from: Git; pending: Pending[]; source: SourceState | null } | null = null;
-
-/** The on-screen checkout: its state, Rust's step, and the paths still moving. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; error: string | null; pending: string[]; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
+/** The on-screen checkout: its state and Rust's step. */
+export function useGit(): { source: SourceState | null; step: StepRead | null; error: string | null; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
-  if (shown?.from !== now || shown.pending !== pending) shown = { from: now, pending, source: sourceOf(now) };
-  return { source: shown.source, step: now.step, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
-}
-
-/** The file moves Source and Review share [D1043, D1103]: Rust's own, under the checkout's lock. */
-export function moveFiles(verb: "stage" | "unstage" | "discard", scope: "uncommitted" | "staged" | "unstaged", paths: string[]): void {
-  const target = git.target;
-  if (!target || paths.length === 0) return;
-  const move: Pending = { paths, to: verb === "stage" ? "staged" : verb === "unstage" ? "changes" : scope === "unstaged" ? "dropped" : "gone" };
-  pending = [...pending, move];
-  set({});
-  ask({ op: "run", args: sourceArgs(target, verb, scope, ...paths) }, (reply) => {
-    if (reply.ok) {
-      move.done = true;
-      // A move that changed nothing brings no read: it settles on its own.
-      setTimeout(() => pending.includes(move) && settle(move), 1500);
-      return;
-    }
-    settle(move);
-    showToast(reply.error === "disconnected" ? "Not connected. Try again when it's back." : String(reply.error), { tone: "error" });
-  });
-}
-
-function settle(move: Pending): void {
-  pending = pending.filter((each) => each !== move);
-  set({});
+  if (shown?.from !== now) shown = { from: now, source: sourceOf(now) };
+  return { source: shown.source, step: now.step, error: now.error, version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 /** A checkout file as the viewer shows it, read again on each watch read that changed something [D1002]. */

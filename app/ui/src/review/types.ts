@@ -27,7 +27,7 @@ export type ReviewFile = {
   insertions: number;
   deletions: number;
   binary: boolean;
-  /** All its changes are in the index, so the file's own action is Unstage; known before its contents arrive. */
+  /** All its changes are in the index; known before its contents arrive. */
   staged: boolean;
   /** Over Rust's size threshold: it arrives folded, and its contents are asked for when it's opened (D1036). */
   large: boolean;
@@ -35,9 +35,9 @@ export type ReviewFile = {
   flag?: FileFlag | null;
 };
 
-/** One change as git cuts it, which Stage hunk and Revert hunk take (D1043). */
+/** One change as git cuts it, as Rust sends it (D1043). */
 export type ReviewHunk = {
-  /** Stable while the hunk is unchanged, to reconcile a stage or revert by (D30). */
+  /** Stable while the hunk is unchanged (D30). */
   id: string;
   /** Its `@@ -27,6 +28,8 @@` line. */
   header: string;
@@ -45,10 +45,10 @@ export type ReviewHunk = {
   deletions: number;
   /** Already in the index (an Uncommitted review shows both kinds). */
   staged: boolean;
-  /** Its first line in the new file and the unchanged lines before its first change: its bar sits right above that change. */
+  /** Its first line in the new file and the unchanged lines before its first change. */
   newStart: number;
   leading: number;
-  /** The lines it changes, for its confirm's words: numbered in the new file, or in the old one when it only deletes. */
+  /** The lines it changes: numbered in the new file, or in the old one when it only deletes. */
   side: "additions" | "deletions";
   start: number;
   end: number;
@@ -75,15 +75,6 @@ export type Review = {
   /** The brief's last run; null with none this session. Absent where Rust sent no brief. */
   run?: LastRun | null;
 };
-
-/** What the diff asks of git, by a hunk or a whole file. */
-export type HunkAction = "stage" | "unstage" | "revert";
-
-/** A request from the diff: a hunk's action, or the file's when `hunk` is null. */
-export type ReviewRequest = { action: HunkAction; path: string; hunk: string | null };
-
-/** Where a request stands, by hunk id or, for a whole file, by its path (D30). */
-export type RequestState = { pending: HunkAction } | { error: string };
 
 /** A comment on a range of lines, waiting as a chip to go with the next message (D1040). */
 export type DiffComment = {
