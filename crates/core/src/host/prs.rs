@@ -1,6 +1,6 @@
 //! PR discovery and check aggregation through the unmodified host CLI [D1030, D1187].
 
-use super::{GH_SECS, Pr, Repo, failed, gh, made, setup, tool};
+use super::{GH_SECS, Pr, Repo, failed, gh, setup, tool};
 use crate::{git, worktrees};
 use serde_json::{Value, json};
 use std::io;
@@ -74,7 +74,7 @@ impl Pr {
             .iter()
             .find(|p| belongs(p, repo, &self.branch))
             .and_then(|p| p["url"].as_str())
-            .map_or(Value::Null, made))
+            .map_or(Value::Null, |url| self.made(url)))
     }
 
     fn record_merge(&self, pr: &Value) {

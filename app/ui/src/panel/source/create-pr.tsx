@@ -11,6 +11,7 @@ import { showToast, toastManager } from "../../components/toast";
 import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
 import type { Pr } from "../types";
+import { refreshStep } from "../git";
 import { gitFailed } from "../notice";
 import { failed } from "./branch-ops";
 import { Confirm, type Held } from "./dialogs";
@@ -58,7 +59,7 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
         description={
           info ? (
             <>
-              <span className="font-mono text-foreground">{info.branch}</span> into <span className="font-mono text-foreground">{info.base}</span> on {info.host}. It's pushed first.
+              <span className="font-mono text-foreground">{info.branch}</span> into <span className="font-mono text-foreground">{info.base}</span> on {info.host}.
             </>
           ) : error ? (
             "Couldn't read where this branch goes."
@@ -144,7 +145,11 @@ export function read(session: string) {
   run(session, ["info"], (reply) => {
     if (reply.error === "disconnected") return;
     // Null PRs: gh couldn't say, so the last ones stay.
-    if (reply.ok) return put(session, { info: reply.info, readError: null, ...(reply.info.prs && { prs: reply.info.prs }) });
+    if (reply.ok) {
+      put(session, { info: reply.info, readError: null, ...(reply.info.prs && { prs: reply.info.prs }) });
+      // The read notes the branch's open PR, which the step's Create PR and Merge rows follow.
+      return refreshStep();
+    }
     // A failed read keeps what was read before; with nothing before, no PR rows [D1030] and the dialog says why.
     const before = opOf(session).info;
     put(session, { info: before === undefined ? null : before, readError: reply.error });
@@ -176,8 +181,10 @@ function made(session: string, pr: { number: number | null; url: string }) {
   const shown: Pr[] = pr.number ? [{ number: pr.number, title: textOf(op).title, state: "open", health: "running", failed: 0 }] : [];
   put(session, { uncertain: false, text: null, busy: null, open: false, error: null, prs: [...shown, ...op.prs.filter((each) => each.number !== pr.number)] });
   read(session);
+  // Rust has noted the PR, so the control's next step is no longer Create PR.
+  refreshStep();
   // Proposed words.
-  showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", stays: true, actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
+  showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
 }
 
 function create(session: string) {

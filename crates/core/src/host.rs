@@ -340,17 +340,21 @@ impl Pr {
         let url =
             (said.split_whitespace()).find(|w| w.starts_with("https://") && w.contains("/pull/"));
         match (out.status.success(), url) {
-            (_, Some(url)) => Ok(made(url)),
+            (_, Some(url)) => Ok(self.made(url)),
             (false, None) => err(failed(&out)),
             (true, None) => err("gh made no PR it could name."),
         }
     }
-}
 
-/// A PR as the UI gets it: its number, read from its URL, and the URL.
-fn made(url: &str) -> Value {
-    let number = url.rsplit('/').next().and_then(|n| n.parse::<u64>().ok());
-    json!({"number": number, "url": url})
+    /// A PR made or found for the branch, as the UI gets it: its number, read from its URL, and
+    /// the URL. Noted as the branch's open PR at once, so the step's next read has it.
+    fn made(&self, url: &str) -> Value {
+        let number = url.rsplit('/').next().and_then(|n| n.parse::<u64>().ok());
+        if number.is_some() {
+            note_open(&self.id, &self.branch, number);
+        }
+        json!({"number": number, "url": url})
+    }
 }
 
 /// Clones GitHub's `owner/name` into `dir` through gh, with gh's own sign-in and protocol [D168,
