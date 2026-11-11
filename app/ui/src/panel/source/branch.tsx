@@ -2,7 +2,7 @@ import { cx } from "../../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip";
 import { Branch } from "../../icons";
 import type { SourceState } from "../types";
-import { clock } from "../words";
+import { ago, clock } from "../words";
 
 /** "Offline · 14:32": when the checkout was last read, beside the branch in Source and on the card [D30, D1206]. */
 export function Offline({ readAtMs }: { readAtMs: number | null }) {
@@ -19,17 +19,22 @@ export function Offline({ readAtMs }: { readAtMs: number | null }) {
  * when the watch last read the folder are its tip; disconnected, "Offline · 14:32" shows beside it. During a merge or
  * rebase the old "(merging)" and "(rebasing)" stay. A fork here reads "‹branch› · shared with ‹source›" [D1082].
  */
-export function BranchLabel({ state, locked, offline = false, readAtMs = null, sharedWith = null, open = false, onBranch }: {
+export function BranchLabel({ state, locked, offline = false, readAtMs = null, detached = null, fetchedAtMs, sharedWith = null, open = false, onBranch }: {
   state: SourceState;
   locked: boolean;
   offline?: boolean;
   readAtMs?: number | null;
+  /** A detached HEAD's short id: "Detached at 9c41e2a", never "…" [D1187]. */
+  detached?: string | null;
+  /** When the base's remote was last fetched, null when unknown; left out without a base [D1187]. */
+  fetchedAtMs?: number | null;
   sharedWith?: string | null;
   /** Its quick pick is open. */
   open?: boolean;
   onBranch?: () => void;
 }) {
-  const name = state.branch ?? state.rebasing?.branch ?? "…";
+  const name = state.branch ?? state.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
+  const fetched = fetchedAtMs === undefined ? "" : fetchedAtMs === null ? " · fetch age unknown" : ` · fetched ${ago(fetchedAtMs, Date.now())}`;
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <Tooltip>
@@ -55,7 +60,7 @@ export function BranchLabel({ state, locked, offline = false, readAtMs = null, s
           </span>
           {(state.merging || state.rebasing) && <span className="shrink-0">{state.merging ? "(merging)" : "(rebasing)"}</span>}
         </TooltipTrigger>
-        <TooltipContent>{readAtMs === null ? "Live" : `Live · read ${clock(readAtMs)}`}</TooltipContent>
+        <TooltipContent>{`${readAtMs === null ? "Live" : `Live · read ${clock(readAtMs)}`}${fetched}`}</TooltipContent>
       </Tooltip>
       {offline && <Offline readAtMs={readAtMs} />}
     </span>

@@ -4,7 +4,7 @@ import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
-import { landBranch, moveFiles, refreshStep, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
+import { landBranch, moveFiles, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
 import { useShare } from "../share";
 import { openReview } from "../open";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
@@ -72,6 +72,10 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       // The session's own agent; a project folder's sessions are guarded in Rust [D1082, D1208].
       agentWorking: owner !== HOME && rows?.find((row) => row.id === owner)?.works === true,
       readAtMs: git.readAtMs,
+      truth: git.truth,
+      restoring: git.restoring,
+      restoreError: git.restoreError,
+      freshness: git.step?.freshness ?? git.truth?.base ?? null,
       share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {
@@ -86,6 +90,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       setStyle: setMergeStyle,
       squashOf,
       refreshStep: () => refreshStep(true),
+      restore: restoreCheckout,
     },
   };
 }

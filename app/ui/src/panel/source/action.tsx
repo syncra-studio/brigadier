@@ -43,7 +43,7 @@ function icon(step: Step): ReactNode {
  * Source and the summary card draw the same one, from the same model [D1199].
  * `writing`: Commit only under way, the writer writing its message first [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, say = null, uncommitted = 0, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, say = null, note = null, uncommitted = 0, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
   step: Step;
   nowMs: number;
   running?: boolean;
@@ -52,6 +52,8 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   disabled?: boolean;
   /** A line in place of the pre-check: "Waits for the turn to finish", "Couldn't write a message" [D1208, D1212]. */
   say?: { line: string; tone: Tone } | null;
+  /** Added to the pre-check line: "main is 3 behind origin/main" [D1187, D1193]. */
+  note?: string | null;
   /** Files not committed yet: the arrow ends with Commit only and Edit message… [D1191, D1203]. */
   uncommitted?: number;
   error?: StepError | null;
@@ -69,7 +71,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   const words = stepWords(step, nowMs);
   const busy = running || writing || disabled;
   const label = writing ? "Committing…" : running ? runningWords(step).label : words.label;
-  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? words.line);
+  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? (note ? `${words.line} · ${note}` : words.line));
   const tone = running ? "quiet" : error ? "bad" : say ? say.tone : later ? "quiet" : words.tone;
   const variant = step.kind === "catchUp" ? "secondary" : "default";
   const menu = hasActionMenu(step, uncommitted);

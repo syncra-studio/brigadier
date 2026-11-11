@@ -62,10 +62,12 @@ function blockedWords(base: string, blocked: Blocked): string {
 /** Merge #N's line: what it waits for, or that it's ready. Nothing the host didn't say is taken as passed [D74, D1019]. */
 function mergePrWords(step: Extract<Step, { kind: "mergePr" }>): { line: string; off: boolean } {
   const { pr, checks } = step;
-  if (checks.running > 0) return { line: `#${pr} · ${plural(checks.running, "check")} still running`, off: true };
+  // Cancelled isn't failed, and checks that couldn't be read aren't passed [D74, D1188].
+  if (checks.blocked) return { line: (checks.cancelled ?? 0) > 0 ? `Checks cancelled on #${pr}` : `Check state unknown on #${pr}`, off: true };
+  if (checks.running !== null && checks.running > 0) return { line: `#${pr} · ${plural(checks.running, "check")} still running`, off: true };
   if (step.mergeable === null) return { line: `#${pr} · the host is still checking whether it merges`, off: true };
   if (checks.approved === false) return { line: `#${pr} · waiting for a review`, off: true };
-  const passed = checks.passed > 0 ? "checks passed" : "no checks";
+  const passed = checks.passed === null ? null : checks.passed > 0 ? "checks passed" : "no checks";
   return { line: [`#${pr}`, checks.approved && "approved", passed, "merges cleanly"].filter(Boolean).join(" · "), off: false };
 }
 
@@ -226,7 +228,7 @@ export function discardWords(scope: "staged" | "unstaged", file: SourceFile, oth
  */
 export type Hero = { glyph: "spin" | "check" | "warn" | "bad" | "pr" | "edit" | "merged"; tone: "quiet" | "changes" | "good" | "warn" | "bad" | "pr" | "merged"; sentence: string };
 
-export function heroWords(state: SourceState, step: Step | null, { files, working, rejected }: { files: number; working: boolean; rejected: boolean }): Hero {
+export function heroWords(state: SourceState, step: Step | null, { files, working, rejected, open = null }: { files: number; working: boolean; rejected: boolean; open?: number | null }): Hero {
   if (working) return { glyph: "spin", tone: "quiet", sentence: "Agent working" };
   const resolving = state.merging ?? state.rebasing;
   if (resolving) {
@@ -235,8 +237,9 @@ export function heroWords(state: SourceState, step: Step | null, { files, workin
       ? { glyph: "warn", tone: "warn", sentence: `Conflicts with ${onto}` }
       : { glyph: "edit", tone: "changes", sentence: "Conflicts resolved" };
   }
-  const pr = step && "pr" in step ? ` to #${step.pr}` : "";
-  if (rejected) return { glyph: "bad", tone: "bad", sentence: `Couldn't push${pr || ` ${state.branch ?? ""}`}` };
+  // The PR it pushes to, from the step or the branch's open PR.
+  const pr = step && "pr" in step ? step.pr : open;
+  if (rejected) return { glyph: "bad", tone: "bad", sentence: pr ? `Couldn't push to #${pr}` : "Couldn't push" };
   if (state.checkout === "folder" && files > 0) return { glyph: "edit", tone: "changes", sentence: "Changes in your folder" };
   switch (step?.kind) {
     case "merge":
@@ -244,13 +247,13 @@ export function heroWords(state: SourceState, step: Step | null, { files, workin
       return step.blocked ? { glyph: "warn", tone: "warn", sentence: `Can't merge into ${step.base} yet` } : { glyph: "check", tone: "good", sentence: "Ready to merge" };
     case "mergePr":
       // Waiting on checks or a review [D1228]; yellow while checks run, as the PR row.
-      return mergePrWords(step).off ? { glyph: "pr", tone: step.checks.running > 0 ? "pr" : "quiet", sentence: `Waiting on #${step.pr}` } : { glyph: "check", tone: "good", sentence: "Ready to merge" };
+      return mergePrWords(step).off ? { glyph: "pr", tone: (step.checks.running ?? 0) > 0 ? "pr" : "quiet", sentence: `Waiting on #${step.pr}` } : { glyph: "check", tone: "good", sentence: "Ready to merge" };
     case "catchUp":
       return { glyph: "warn", tone: "warn", sentence: `Would conflict with ${step.base}` };
     case "fixPr":
       if (step.why === "changes") return { glyph: "warn", tone: "warn", sentence: `Changes asked on #${step.pr}` };
       if (step.why === "conflicts") return { glyph: "warn", tone: "warn", sentence: `#${step.pr} conflicts with ${step.base}` };
-      return { glyph: "bad", tone: "bad", sentence: step.failed > 0 ? `${plural(step.failed, "check")} failed on #${step.pr}` : `Checks failed on #${step.pr}` };
+      return { glyph: "bad", tone: "bad", sentence: step.failed ? `${plural(step.failed, "check")} failed on #${step.pr}` : `Checks failed on #${step.pr}` };
     case "pushPr":
       return { glyph: "pr", tone: "changes", sentence: `Ready to push to #${step.pr}` };
     case "sync":
@@ -270,7 +273,7 @@ export function prWords(pr: Pr): { word: string; tone: Tone } {
   if (pr.state === "closed") return { word: "Closed", tone: "quiet" };
   switch (pr.health) {
     case "failed":
-      return { word: `${plural(pr.failed, "check")} failed`, tone: "bad" };
+      return { word: pr.failed ? `${plural(pr.failed, "check")} failed` : "Checks failed", tone: "bad" };
     case "conflicts":
       return { word: "Conflicts", tone: "warn" };
     case "changes":
@@ -279,6 +282,10 @@ export function prWords(pr: Pr): { word: string; tone: Tone } {
       return { word: "Checks running", tone: "quiet" };
     case "ready":
       return { word: "Ready", tone: "good" };
+    case "cancelled":
+      return { word: "Checks cancelled", tone: "warn" };
+    case "unknown":
+      return { word: "Check state unknown", tone: "quiet" };
   }
 }
 

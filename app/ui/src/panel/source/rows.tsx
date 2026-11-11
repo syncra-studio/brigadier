@@ -36,7 +36,7 @@ export function Line({ icon, end, sub, subTone, onClick, children }: { icon?: Re
 const PR_TINT: Record<Tone, string> = { quiet: "text-pr-yellow", good: "text-success", warn: "text-pr-yellow", bad: "text-destructive" };
 export function PrLine({ pr, onClick }: { pr: Pr; onClick?: () => void }) {
   const { word, tone } = prWords(pr);
-  const tint = pr.state === "merged" ? "text-pr-purple" : PR_TINT[tone];
+  const tint = pr.state === "merged" ? "text-pr-purple" : pr.state === "open" && pr.health === "unknown" ? "text-muted-foreground" : PR_TINT[tone];
   return (
     <Line onClick={onClick} icon={<span className={cx("flex", tint)}>{pr.state === "merged" ? <PullRequestMerged /> : <PullRequestOpen />}</span>} end={<span className={tint}>{word}</span>}>
       <span className="text-muted-foreground">#{pr.number}</span> {pr.title}

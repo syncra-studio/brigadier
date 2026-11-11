@@ -36,7 +36,16 @@ type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone";
  * Rust's next step for the checkout [D1015, D1152]: the step, the toolbar's dot [D1025], how the project lands
  * [D1028], and the commits it was worked out on, which a landing pins [D1049].
  */
-type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null };
+/** The base against its own upstream, from Rust [D1187, D1193]: `behind` null where it can't count; `fetchedAtMs` null when unknown. */
+export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
+
+type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null };
+
+/**
+ * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
+ * detached HEAD's short id, the branch it's on against the one the session's record holds, and the base's freshness.
+ */
+export type Truth = { missing: boolean; restorable: boolean; branch: string | null; head: string | null; detached: string | null; recordedBranch: string | null; mismatch: boolean; base: Freshness | null };
 
 /** The session's HEAD and its base's commit a step was worked out on. */
 export type StepAt = { head: string; base: string | null };
@@ -56,9 +65,13 @@ type Git = {
   version: number;
   /** When the watch last read the checkout: Live's tip, and Offline's time [D1205, D1206]. */
   readAtMs: number | null;
+  truth: Truth | null;
+  /** Restore is under way, or how it was refused. */
+  restoring: boolean;
+  restoreError: string | null;
 };
 
-let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, step: null, version: 0, readAtMs: null };
+let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let stepAsk = 0;
 let re = 0;
 let n = 0;
@@ -102,6 +115,32 @@ function landed(): void {
   set({ version: git.version + 1, error: null });
   count();
   refreshStep();
+  readTruth();
+}
+
+/** Reads the checkout's truth again: on open, every read and git error, focus, and after Restore [D1187]. */
+function readTruth(): void {
+  const target = git.target;
+  if (!target) return;
+  ask({ op: "run", args: sourceArgs(target, "truth") }, (reply) => {
+    if (git.target === target && reply.ok) set({ truth: reply.truth });
+  });
+}
+
+/** Restore: re-creates a session's gone folder from its branch, then follows it again [D180, D1187]. */
+export function restoreCheckout(): void {
+  const target = git.target;
+  if (!target || !("session" in target) || git.restoring) return;
+  set({ restoring: true, restoreError: null });
+  ask({ op: "run", args: sourceArgs(target, "restore-checkout") }, (reply) => {
+    if (git.target !== target) return;
+    set({ restoring: false, restoreError: reply.ok ? null : reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error) });
+    if (!reply.ok) return;
+    watch(target);
+    readTruth();
+    refreshStep(true);
+    refreshHistory(target.session);
+  });
 }
 
 /**
@@ -156,7 +195,10 @@ function watch(target: Target): void {
   n = 0;
   re = ask({ op: "git", ...target }, (reply) => {
     if (git.target !== target) return;
-    if (!reply.ok) return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
+    if (!reply.ok) {
+      readTruth();
+      return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
+    }
     n = reply.n;
     moved(reply.git.head);
     set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])), readAtMs: Date.now() });
@@ -166,7 +208,10 @@ function watch(target: Target): void {
 
 setGitHandler((frame) => {
   if (frame.watch !== re || !git.target) return;
-  if (frame.error) return set({ error: String(frame.error) });
+  if (frame.error) {
+    readTruth();
+    return set({ error: String(frame.error) });
+  }
   if (frame.n !== n + 1) return watch(git.target);
   n = frame.n;
   const files = new Map(git.files);
@@ -188,15 +233,17 @@ export function useGitWatch(owner: string | null): void {
     if (key !== git.key) {
       re = 0;
       pending = [];
-      set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null, readAtMs: null });
+      set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null, readAtMs: null, truth: null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
   }, [key, daemon, starting]);
   useEffect(() => {
+    // On focus the PRs are read again too, so one made elsewhere shows [D1143].
     const refresh = () => {
       ask({ op: "git_refresh" });
-      refreshStep();
+      refreshStep(true);
+      readTruth();
     };
     addEventListener("focus", refresh);
     // shortcut: the base moving shows within this; a watch on the base checkout would show it at once.
@@ -256,12 +303,12 @@ const sum = (file: SourceFile, other?: SourceFile) => ({ added: file.added + (ot
 let shown: { from: Git; pending: Pending[]; source: SourceState | null } | null = null;
 
 /** The on-screen checkout for Source: its state, Rust's dot, the count, and the paths still moving. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; target: Target | null; readAtMs: number | null } {
+export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now || shown.pending !== pending) shown = { from: now, pending, source: sourceOf(now) };
   // Rust's step says the dot once it's read; until then the status's count does [D1025].
   const hint = now.step ? now.step.hint : (now.head?.hint ?? null);
-  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, target: now.target, readAtMs: now.readAtMs };
+  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 /** The file moves Source and Review share [D1043, D1103]: Rust's own, under the checkout's lock. */

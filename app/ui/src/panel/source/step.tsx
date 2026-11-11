@@ -269,6 +269,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
               : work.error
                 ? { line: `Couldn't commit: ${work.error}`, tone: "bad" }
                 : null,
+          // The base is behind its own upstream: said, never fast-forwarded [D1187, D1193].
+          note: data.freshness?.behind && data.freshness.upstream && "base" in shown ? `${data.freshness.name} is ${data.freshness.behind} behind ${data.freshness.upstream}` : null,
           // Another session working in this folder: the pre-check line says so, and Rust refuses [D1082].
           error: landError ?? data.stepError ?? (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null),
           later: landing ? null : later,

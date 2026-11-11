@@ -80,14 +80,16 @@ export function MergePrDialog({ open, pr, base, checks, held, onCancel, onConfir
   onConfirm: () => void;
 }) {
   const rows = [
-    checks.failed > 0 && { icon: <X className="text-destructive" />, text: `${plural(checks.failed, "check")} failed` },
-    checks.running > 0 && { icon: <Spinner className="text-muted-foreground" />, text: `${plural(checks.running, "check")} still running` },
-    checks.passed > 0 && { icon: <Check className="text-success" />, text: `${plural(checks.passed, "check")} passed` },
+    checks.failed !== null && checks.failed > 0 && { icon: <X className="text-destructive" />, text: `${plural(checks.failed, "check")} failed` },
+    checks.running !== null && checks.running > 0 && { icon: <Spinner className="text-muted-foreground" />, text: `${plural(checks.running, "check")} still running` },
+    checks.passed !== null && checks.passed > 0 && { icon: <Check className="text-success" />, text: `${plural(checks.passed, "check")} passed` },
+    (checks.cancelled ?? 0) > 0 && { icon: <Warning className="text-warning" />, text: `${plural(checks.cancelled ?? 0, "check")} cancelled` },
+    checks.blocked === true && !checks.cancelled && { icon: <Warning className="text-muted-foreground" />, text: "Check state unknown" },
     checks.approved ? { icon: <Check className="text-success" />, text: "Approved" } : { icon: <Warning className="text-warning" />, text: "Not approved yet" },
   ].filter((row) => row !== false);
   return (
     <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
-      <ConfirmForm title={`Merge #${pr} into ${base}?`} description={`#${pr} is merged on its host and closed.`} confirm={`Merge #${pr}`} onConfirm={onConfirm} onCancel={onCancel}>
+      <ConfirmForm title={`Merge #${pr} into ${base}?`} description={`#${pr} is merged on its host and closed.`} confirm={`Merge #${pr}`} disabled={checks.blocked ?? false} onConfirm={onConfirm} onCancel={onCancel}>
         <ul className="flex flex-col gap-1 text-sm">
           {rows.map((row) => (
             <li key={row.text} className="flex items-center gap-2 svg:size-icon-sm">

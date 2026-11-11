@@ -41,10 +41,13 @@ export type Pr = {
   number: number;
   title: string;
   state: "open" | "merged" | "closed";
-  /** An open PR's worst news: checks failed, conflicts, changes asked, checks still running, or ready to merge. */
-  health: "failed" | "conflicts" | "changes" | "running" | "ready";
-  /** How many checks failed. */
-  failed: number;
+  /**
+   * An open PR's worst news: checks failed, conflicts, changes asked, checks still running, ready to merge, checks
+   * cancelled, or what the checks say couldn't be read (none reported included) [D74].
+   */
+  health: "failed" | "conflicts" | "changes" | "running" | "ready" | "cancelled" | "unknown";
+  /** How many checks failed; null when the host's read couldn't say. */
+  failed: number | null;
 };
 
 /** What the PR watch saw last, and when it last looked [D1017, D1116]. */
@@ -54,7 +57,8 @@ export type PrWatch = {
 };
 
 /** A pull request's checks, as the merge confirm shows them. `approved`: null when the host asks for no review. */
-export type Checks = { passed: number; failed: number; running: number; approved: boolean | null };
+/** Null counts: the host's read couldn't say [D74]. `blocked`: cancelled or unknown checks keep Merge #N off, Rust's call. */
+export type Checks = { passed: number | null; failed: number | null; running: number | null; approved: boolean | null; cancelled?: number | null; skipped?: number | null; blocked?: boolean };
 
 /** Why the base can't take a landing now [D1047, D1082, D1161]: edits there in the way, a merge stopped there, not a local branch, or another session lands. */
 export type Blocked =
@@ -77,7 +81,7 @@ export type Step =
   // No time when it landed outside Brigadier.
   | { kind: "landed"; base: string; atMs: number | null }
   | { kind: "pushPr"; base: string; pr: number; ahead: number; host: string | null; commit?: number }
-  | { kind: "fixPr"; base: string; pr: number; why: "checks" | "changes" | "conflicts"; failed: number }
+  | { kind: "fixPr"; base: string; pr: number; why: "checks" | "changes" | "conflicts"; failed: number | null }
   // `mergeable`: null while the host hasn't said.
   | { kind: "mergePr"; base: string; pr: number; checks: Checks; mergeable: boolean | null }
   // A folder's: VS Code's own [D1045].

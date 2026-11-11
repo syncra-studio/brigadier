@@ -12,7 +12,7 @@ import type { Branch, ForcePush } from "../types";
  */
 
 /** What the quick pick lists, as Rust reads it when it opens. `page`: the branch on its host, once published. */
-export type BranchRead = { branches: Branch[]; base: string | null; host: string | null; page: string | null; working: boolean };
+export type BranchRead = { branches: Branch[]; base: string | null; host: string | null; page: string | null; working: boolean; prs?: number[] | null };
 
 /** Rust's answer for a push turned away: the remote, its ref, and where that ref is; `moved` after a stale lease. */
 type Rejected = { branch: string; remote: string; ref: string; oid: string; moved: boolean };

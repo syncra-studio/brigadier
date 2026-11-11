@@ -245,7 +245,12 @@ export function useCreatePr(session: string | null, first: First | null = null) 
   const connected = !!useDaemon().daemon;
   const op = useSyncExternalStore(subscribe, () => (session ? opOf(session) : NONE));
   useEffect(() => {
-    if (session && connected) read(session);
+    if (!session || !connected) return;
+    read(session);
+    // On focus too, so a PR made elsewhere shows [D1143].
+    const again = () => read(session);
+    addEventListener("focus", again);
+    return () => removeEventListener("focus", again);
   }, [session, connected]);
 
   const onPick = (pick: ActionPick) => {

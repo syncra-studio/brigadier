@@ -5,6 +5,7 @@ import { Skeleton } from "../components/skeleton";
 import { Branch } from "../icons";
 import { ActionButton } from "./source/action";
 import { Offline } from "./source/branch";
+import { Gone } from "./source/hero";
 import { ReadError, type SourceData, type SourceOps } from "./source/panel";
 import { Counts, Line, PrLine } from "./source/rows";
 import { useSourceStep } from "./source/step";
@@ -41,6 +42,16 @@ export function GitCard({ data, nowMs, project = null, draftKey, session = null,
   const offline = data.offline ?? false;
   const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, ops });
 
+  if (data.truth?.missing) {
+    return (
+      <CardSection title={project}>
+        <div className="pb-2">
+          <Gone data={data} onRestore={ops?.restore} />
+        </div>
+      </CardSection>
+    );
+  }
+
   if (!source) {
     return (
       <CardSection title={project}>
@@ -60,7 +71,8 @@ export function GitCard({ data, nowMs, project = null, draftKey, session = null,
   const listed = uncommitted.length > 0 ? uncommitted : source.sinceBase;
   const added = listed.reduce((sum, file) => sum + file.added, 0);
   const removed = listed.reduce((sum, file) => sum + file.removed, 0);
-  const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? "…";
+  const detached = data.truth?.detached;
+  const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
   return (
     <>
       <CardSection title={project}>

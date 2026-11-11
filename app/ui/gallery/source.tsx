@@ -35,7 +35,7 @@ const PANELS: [string, SourceData, string?][] = [
   ["Needs you: checks failed", fake(COMMITTED, STEPS.fixPr, { prs: PRS, watch: WATCH, run: FAILED_RUN })],
   ["Needs you: push turned away", fake(COMMITTED, { kind: "sync", branch: LEASE.branch, remote: "origin", behind: 1, ahead: 2, commit: 0 }, { prs: [RUNNING], rejected: LEASE })],
   ["Ready to merge: flagged files, a run", fake(WITH_FLAGS, first(STEPS.merge, WITH_FLAGS), { run: PASSED, flags: FLAGS })],
-  ["A PR open, checks running", fake(COMMITTED, STEPS.mergePr, { prs: [RUNNING], watch: WATCH })],
+  ["A PR open, checks running", fake(COMMITTED, { ...STEPS.mergePr, checks: { passed: 4, failed: 0, running: 2, approved: true } }, { prs: [RUNNING], watch: WATCH })],
   ["Your own folder", fake(FOLDER, first(STEPS.sync, FOLDER), { agentPaths: [FOLDER.changes[0]?.path ?? ""] })],
   ["Nothing changed", fake(CLEAN, STEPS.commit)],
   ["Disconnected", fake(CHANGES, first(STEPS.merge, CHANGES), { offline: true, readAtMs: NOW - 4 * MIN })],
@@ -45,6 +45,20 @@ const PANELS: [string, SourceData, string?][] = [
   ["Rebasing: the stopped commit", fake(REBASING, { ...STEPS.continue, left: 1 })],
   ["Every kind of change", fake(LETTERED, first(STEPS.merge, LETTERED))],
   ["A row selected: its diff shows", fake(STAGED, first(STEPS.merge, STAGED)), "src/upload/client.ts"],
+];
+
+const TRUTH = { missing: false, restorable: false, branch: LEASE.branch, head: "9c41e2a7", detached: null, recordedBranch: LEASE.branch, mismatch: false, base: null };
+const BLOCKED = (cancelled: number | null): Step => ({ ...STEPS.mergePr, checks: { passed: 4, failed: 0, running: 0, approved: true, cancelled, skipped: 0, blocked: true } });
+
+/** What Rust says about the checkout itself (2.37) [D1187]. */
+const TRUTHS: [string, SourceData][] = [
+  ["The session's folder is gone: Restore", fake(null, null, { truth: { ...TRUTH, missing: true, restorable: true, branch: null, head: null } })],
+  ["Restore refused", fake(null, null, { truth: { ...TRUTH, missing: true, restorable: true, branch: null, head: null }, restoreError: "The branch brigadier/912a9469/session is gone, so the folder can't be made again." })],
+  ["Detached HEAD", fake({ ...COMMITTED, branch: null }, STEPS.merge, { truth: { ...TRUTH, branch: null, detached: "9c41e2a" } })],
+  ["The branch switched outside the app", fake(COMMITTED, STEPS.merge, { truth: { ...TRUTH, branch: "fix/login", mismatch: true } })],
+  ["main behind origin/main, fetched 2 minutes ago", fake(CHANGES, first(STEPS.merge, CHANGES), { freshness: { name: "main", upstream: "origin/main", behind: 3, fetchedAtMs: NOW - 2 * MIN } })],
+  ["Checks cancelled on #12", fake(COMMITTED, BLOCKED(1), { prs: [{ ...RUNNING, health: "cancelled" }] })],
+  ["Check state unknown on #12", fake(COMMITTED, BLOCKED(null), { prs: [{ ...RUNNING, health: "unknown", failed: null }] })],
 ];
 
 const DATA: [string, SourceData][] = [
@@ -81,6 +95,20 @@ export function SourceGallery() {
               </div>
               <PanelFrame className="h-160">
                 <SourcePanel data={data} nowMs={NOW} {...(selected && { selected })} />
+              </PanelFrame>
+            </div>
+          </State>
+        ))}
+      </Row>
+      <Row name="The checkout's truth">
+        {TRUTHS.map(([label, data]) => (
+          <State key={label} label={label}>
+            <div className="flex items-start gap-6">
+              <div className="flex w-75 min-w-0 flex-col rounded-overlay bg-popover py-2.5 shadow-raised">
+                <GitCard data={data} project="upload-app" nowMs={NOW} />
+              </div>
+              <PanelFrame className="h-160">
+                <SourcePanel data={data} nowMs={NOW} />
               </PanelFrame>
             </div>
           </State>
