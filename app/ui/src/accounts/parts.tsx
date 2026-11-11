@@ -30,17 +30,26 @@ export const OVERVIEW_ROWS = {
   notSetUp: "Agents Brigadier can run that aren't installed yet",
 } as const;
 
-/** How an agent stands, for its row and its page: the dot's tone and its line. */
-export function standing(agent: Agent, accounts: SwitchAgent | undefined): { tone: "ready" | "needs" | "off"; line: string } {
+/** What an agent switched off means, on its page's line. */
+const OFF_NOTE = "Off: its models are hidden from the model picker, and it gets no work";
+
+/**
+ * How an agent stands, as the old app's row and page said it: the dot's tone and its line. The row counts its
+ * accounts and gives its version; the page names its maker, which Rust knows only for an agent with kept-apart accounts.
+ */
+export function standing(agent: Agent, accounts: SwitchAgent | undefined, page = false): { tone: "ready" | "needs" | "off"; line: string } {
   const state = stateOf(agent);
+  const signedIn = accounts?.accounts ? accounts.accounts.list.filter((account) => account.check.signed_in === true).length : agent.signed_in ? 1 : 0;
+  // An agent with no account signed in (free or local models) has none to count.
+  const count = signedIn > 0 && `${signedIn} ${signedIn === 1 ? "account" : "accounts"}`;
+  if (agent.enabled === false) return { tone: "off", line: page ? OFF_NOTE : ["Off", count].filter(Boolean).join(" · ") };
   if (state === "checking") return { tone: "off", line: "Checking…" };
   if (state === "running") return { tone: "off", line: agent.setup?.action === "install" ? "Installing…" : "Signing in…" };
   if (state === "error") return { tone: "needs", line: agent.error ?? "Couldn't be checked" };
+  if (state === "install") return { tone: "needs", line: "Not installed" };
   if (state === "signIn") return { tone: "needs", line: "Not signed in" };
-  const signedIn = accounts?.accounts ? accounts.accounts.list.filter((account) => account.check.signed_in === true).length : agent.signed_in ? 1 : 0;
-  // An agent ready with no account signed in (free or local models) has none to count.
-  const count = signedIn > 0 && `${signedIn} ${signedIn === 1 ? "account" : "accounts"}`;
-  return { tone: "ready", line: [state === "noModel" ? "No model available" : "Ready", count, versionText(agent)].filter(Boolean).join(" · ") };
+  if (state === "noModel") return { tone: "ready", line: page ? "No model available" : ["No model available", count, versionText(agent)].filter(Boolean).join(" · ") };
+  return { tone: "ready", line: page ? ["Ready", accounts?.accounts?.vendor].filter(Boolean).join(" · ") : ["Ready", count, versionText(agent)].filter(Boolean).join(" · ") };
 }
 
 /** An agent's version number, whatever words its CLI puts around it ("codex-cli 0.9", "opencode v2.2"). */
@@ -100,7 +109,8 @@ export function setupFailure(agent: Agent, failed: string | undefined): string |
   const setup = agent.setup;
   if (failed) return failed;
   if (!setup || setup.running || setup.code === 0) return null;
-  return setup.action === "install" ? `${agent.label} couldn't be installed. Try again.` : `Signing in to ${agent.label} didn't finish. Try again.`;
+  // The CLI's own last line, else ours.
+  return setup.reason || (setup.action === "install" ? `${agent.label} couldn't be installed. Try again.` : `Signing in to ${agent.label} didn't finish. Try again.`);
 }
 
 /**

@@ -6,7 +6,7 @@ import { SettingsRow } from "../components/settings-row";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { stateOf, type useAgentSetup } from "../onboarding/agents";
-import { type Agent, checkOne } from "../onboarding/api";
+import { type Agent, checkOne, setEnabled } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AccountRows } from "./account-rows";
 import { type Account, type SwitchAgent, loadAccounts } from "./api";
@@ -14,8 +14,8 @@ import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, ROW_LINE, RO
 
 /**
  * An agent's page under Providers, the old app's [D2053]: Providers to go back, its mark, name and how it stands,
- * Enabled and Check again; then where its CLI is installed (its version, Install or Sign in when it needs one,
- * where it runs from), its accounts, and its models.
+ * Enabled and Check again; then where its CLI is installed (its version, Install when it needs it, where it runs
+ * from), its accounts, and, while it's on, its models.
  */
 export function AgentPage({
   agent,
@@ -39,12 +39,14 @@ export function AgentPage({
   onRemove: (agent: SwitchAgent, account: Account) => void;
 }) {
   const state = stateOf(agent);
-  const { tone, line } = standing(agent, accounts);
+  const { tone, line } = standing(agent, accounts, true);
+  const on = agent.enabled !== false;
   const key = `check:${agent.name}`;
+  const enabledKey = `${agent.name}:enabled`;
   return (
     <SettingsPage
       back={{ label: "Providers", href: "#settings/providers" }}
-      mark={<AgentMark agent={agent} size="lg" idle={state === "install"} />}
+      mark={<AgentMark agent={agent} size="lg" idle={state === "install"} dim={!on} />}
       title={agent.label}
       description={
         <span className="flex flex-col gap-1">
@@ -52,15 +54,14 @@ export function AgentPage({
             <StateDot tone={tone} />
             <span className={cx("truncate", tone === "needs" && "text-warning")}>{line}</span>
           </span>
-          <ErrorLine error={failed[key]} />
+          <ErrorLine error={failed[enabledKey] ?? failed[key]} />
         </span>
       }
       actions={
         <>
           <span className="flex items-center gap-2.5 text-label text-quiet-foreground">
             Enabled
-            {/* Drawn only: turning an agent off waits for Rust [D388]. */}
-            <Switch checked disabled aria-label={`Use ${agent.label}`} />
+            <Switch checked={on} disabled={!online} aria-label={`Use ${agent.label}`} onCheckedChange={(next) => void act(enabledKey, () => setEnabled(agent.name, next))} />
           </span>
           <CheckAgainButton
             busy={checking}
@@ -90,7 +91,7 @@ export function AgentPage({
           </SettingsCard>
           <ErrorLine error={failed[`${agent.name}:remove`]} className="px-1" />
         </SettingsSection>
-        <Models agent={agent} />
+        {on && <Models agent={agent} />}
       </div>
     </SettingsPage>
   );
@@ -99,16 +100,14 @@ export function AgentPage({
 /** The Installation card: the CLI's version and its one action, then where it runs from. */
 function Installation({ agent, online, setup }: { agent: Agent; online: boolean; setup: ReturnType<typeof useAgentSetup> }) {
   const state = stateOf(agent);
+  // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
+  const missing = state === "install" || (state === "running" && !agent.path);
   const busy = !online || setup.starting === agent.name || Boolean(agent.setup?.running);
-  const version = state === "checking" ? "Checking…" : state === "install" ? "Not installed" : (versionText(agent) ?? "Version unknown");
+  const version = state === "checking" ? "Checking…" : missing ? "Not installed" : (versionText(agent) ?? "Version unknown");
   const action =
-    state === "checking" ? null : state === "install" ? (
+    state === "checking" ? null : missing ? (
       <Button variant="soft" size="sm" disabled={busy || !agent.install} onClick={() => void setup.begin(agent, "install")}>
         Install
-      </Button>
-    ) : state === "signIn" && agent.sign_in ? (
-      <Button variant="soft" size="sm" disabled={busy} onClick={() => void setup.begin(agent, "sign-in")}>
-        Sign in
       </Button>
     ) : (
       // Drawn only: updating an agent's CLI waits for Rust [D388].
@@ -131,13 +130,13 @@ function Installation({ agent, online, setup }: { agent: Agent; online: boolean;
           <ConnectStatus
             agent={agent}
             failed={setup.failed[agent.name]}
-            onRetry={() => void setup.begin(agent, agent.setup?.action ?? (state === "install" ? "install" : "sign-in"))}
+            onRetry={() => void setup.begin(agent, agent.setup?.action ?? (missing ? "install" : "sign-in"))}
             onCancel={() => void setup.close(agent.name)}
             className="pt-3"
           />
         )}
       </div>
-      {state !== "install" && (
+      {!missing && (
         <div className="flex items-center gap-6 px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className={ROW_TITLE}>Location</span>

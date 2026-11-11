@@ -13,7 +13,7 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { ChevronRight, Plus } from "../icons";
 import { stateOf, useAgentSetup } from "../onboarding/agents";
-import { type Agent, checkAll, useAgents } from "../onboarding/api";
+import { type Agent, checkAll, setEnabled, useAgents } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
 import { type Account, type SwitchAgent, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
@@ -107,12 +107,12 @@ export function ProvidersPage({ detail }: { detail?: string }) {
       ) : (
         <SettingsPage
           title="Providers"
-          description="The coding agents Brigadier runs, and the accounts you use with them."
+          description="The coding agents Brigadier runs, the accounts you use with them, and which models do what."
           actions={<CheckAgainButton busy={checking.has("*") || accounts.loading} label="Check the agents and accounts again" onClick={checkAgain} />}
         >
           {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
           <ErrorLine error={failed.check} />
-          <Overview list={list} online={online} switchAgents={Boolean(accounts.switchAgents)} switchFailed={failed.agents} onSwitchAgents={switchAgentsTo} setup={setup} />
+          <Overview list={list} online={online} switchAgents={Boolean(accounts.switchAgents)} failed={failed} act={act} onSwitchAgents={switchAgentsTo} setup={setup} />
         </SettingsPage>
       )}
       <ConfirmDialog
@@ -152,14 +152,16 @@ function Overview({
   list,
   online,
   switchAgents,
-  switchFailed,
+  failed,
+  act,
   onSwitchAgents,
   setup,
 }: {
   list: Agent[] | undefined;
   online: boolean;
   switchAgents: boolean;
-  switchFailed: string | undefined;
+  failed: Record<string, string>;
+  act: (key: string, work: () => Promise<unknown>) => Promise<void>;
   onSwitchAgents: (on: boolean) => void;
   setup: Setup;
 }) {
@@ -171,7 +173,7 @@ function Overview({
     <div className={cx("flex flex-col gap-10", !online && "opacity-disabled")}>
       <SettingsSection title="Fallback" setting="Fallback">
         <SettingsCard>
-          <SettingsRow label={OVERVIEW_ROWS.switch.label} description={OVERVIEW_ROWS.switch.description} error={switchFailed}>
+          <SettingsRow label={OVERVIEW_ROWS.switch.label} description={OVERVIEW_ROWS.switch.description} error={failed.agents}>
             <Switch checked={switchAgents} disabled={!online} aria-label={OVERVIEW_ROWS.switch.label} onCheckedChange={onSwitchAgents} />
           </SettingsRow>
         </SettingsCard>
@@ -194,11 +196,9 @@ function Overview({
                 key={agent.name}
                 agent={agent}
                 accounts={accounts?.find((each) => each.name === agent.name)}
-                busy={settingUp(agent)}
-                onSignIn={() => {
-                  window.location.hash = agentHref(agent.name);
-                  void setup.begin(agent, "sign-in");
-                }}
+                online={online}
+                error={failed[`${agent.name}:enabled`]}
+                onEnable={(on) => void act(`${agent.name}:enabled`, () => setEnabled(agent.name, on))}
               />
             ))
           )}
@@ -252,12 +252,25 @@ function Overview({
   );
 }
 
-/** One agent: its mark and name, how it stands, Sign in when it needs it, its switch and ›. A press opens its page. */
-function AgentRow({ agent, accounts, busy, onSignIn }: { agent: Agent; accounts: SwitchAgent | undefined; busy: boolean; onSignIn: () => void }) {
+/** One agent: its mark and name, how it stands, its switch and ›. A press opens its page. */
+function AgentRow({
+  agent,
+  accounts,
+  online,
+  error,
+  onEnable,
+}: {
+  agent: Agent;
+  accounts: SwitchAgent | undefined;
+  online: boolean;
+  error: string | undefined;
+  onEnable: (on: boolean) => void;
+}) {
   const { tone, line } = standing(agent, accounts);
+  const on = agent.enabled !== false;
   const open = (event: MouseEvent) => {
-    // The row's switch and Sign in are their own; anywhere else opens the page.
-    if (event.target instanceof Element && event.target.closest('[data-slot="switch"], [data-slot="button"]')) return;
+    // The row's switch toggles the agent; it doesn't open its page.
+    if (event.target instanceof Element && event.target.closest('[data-slot="switch"]')) return;
     window.location.hash = agentHref(agent.name);
   };
   return (
@@ -265,24 +278,19 @@ function AgentRow({ agent, accounts, busy, onSignIn }: { agent: Agent; accounts:
     <div data-setting={agent.label} onClick={open} className="relative flex cursor-pointer items-center gap-3.5 px-4 py-3 transition-colors hover:bg-fill-subtle">
       {/* What opens the page for the keyboard and a screen reader; the pointer goes through it to the row. */}
       <a href={agentHref(agent.name)} aria-label={`${agent.label}: open its accounts and models`} className="pointer-events-none absolute inset-0 focus-visible:focus-ring" />
-      <AgentMark agent={agent} />
+      <AgentMark agent={agent} dim={!on} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className={ROW_TITLE}>{agent.label}</span>
+        <span className={cx(ROW_TITLE, !on && "text-quiet-foreground")}>{agent.label}</span>
         <span className="flex min-w-0 items-center gap-1.75">
           <StateDot tone={tone} />
           <span className={cx("truncate text-xs", tone === "needs" ? "text-warning" : "text-quiet-foreground")}>{line}</span>
         </span>
+        <ErrorLine error={error} />
       </div>
-      <div className="flex w-45 shrink-0 items-center justify-end">
-        {stateOf(agent) === "signIn" && agent.sign_in && (
-          <Button variant="soft" size="sm" disabled={busy} onClick={onSignIn}>
-            Sign in
-          </Button>
-        )}
-      </div>
+      {/* The old row's busiest-limit slot, empty: reading usage waits for Rust [D388]. */}
+      <div className="flex w-45 shrink-0 items-center justify-end" />
       <span aria-hidden className="w-2 shrink-0" />
-      {/* Drawn only: turning an agent off waits for Rust [D388]. */}
-      <Switch checked disabled aria-label={`Use ${agent.label}`} />
+      <Switch checked={on} disabled={!online} aria-label={`Use ${agent.label}`} onCheckedChange={onEnable} />
       <ChevronRight aria-hidden className="size-icon-md shrink-0 text-muted-foreground" />
     </div>
   );
