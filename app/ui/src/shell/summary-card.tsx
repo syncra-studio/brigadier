@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Popover } from "@base-ui/react/popover";
 
 import { cx } from "../components/cx";
+import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { GitCard } from "../panel/card";
 import { usePanelMemory } from "../panel/memory";
@@ -101,8 +102,9 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
           <Popover.Positioner className="z-popup" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
             <Popover.Popup
               ref={popup}
-              // The card itself takes the focus, not its first button, whose tip would open with it.
-              initialFocus={popup}
+              // The card itself takes the focus, not its first button, whose tip would open with it; a dialog the card
+              // opened before it floated keeps it.
+              initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
               className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
             >
@@ -198,6 +200,16 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     floatSurface.current = element;
     (element ?? pinnedSurface.current)?.append(holder);
   }, [holder]);
+  // What it shows is kept while it can be seen and through its easing out, then goes (the old PinnedSummary), so a
+  // hidden card leaves no menu open.
+  const shown = visible(state);
+  const [content, setContent] = useState(shown);
+  if (shown && !content) setContent(true);
+  useEffect(() => {
+    if (shown || !content) return;
+    const timer = setTimeout(() => setContent(false), tokenMs("--duration-fold"));
+    return () => clearTimeout(timer);
+  }, [shown, content]);
 
   const shift = has && state.layout === "shift" && state.pinned;
   return (
@@ -212,7 +224,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       )}
     >
       {children}
-      {has && createPortal(card, holder)}
+      {/* Keyed by its session: what it holds carries across layouts, never to another session. */}
+      {has && content && createPortal(card, holder, owner)}
       {has && state.layout === "float" && (
         <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })} surface={toFloat} />
       )}
