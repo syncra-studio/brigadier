@@ -13,7 +13,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../components/menu";
-import { Copy, Pencil, Pin, Unpin } from "../icons";
+import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { showToast } from "../components/toast";
 import { pin } from "./actions";
@@ -98,9 +98,10 @@ function RenameForm({ session, initial, onClose, onRename }: { session: string; 
           Title
         </label>
         <Input id="rename-session" value={value} disabled={waiting} autoFocus maxLength={200} aria-invalid={error !== null} onChange={(event) => setValue(event.target.value)} />
-        <p className="min-h-4 text-xs text-muted-foreground" role="status">
-          {preview === null ? "Checking branch name…" : preview.state === "ready" && (preview.branch
-            ? <>Branch will be renamed to <span className="font-mono break-words">{preview.branch}</span></>
+        {/* Two lines kept for it, so Rust's answer comes in without a jump or a "checking" line; the branch alone on the second [D1261]. */}
+        <p className="min-h-8 text-xs text-muted-foreground" role="status">
+          {preview?.state === "ready" && (preview.branch
+            ? <>Branch will be renamed to<br /><span className="font-mono font-medium break-words text-foreground">{preview.branch}</span></>
             : preview.reason)}
         </p>
         <ErrorLine error={error ?? (preview && preview.state !== "ready" ? preview.reason : null)} />
@@ -109,7 +110,10 @@ function RenameForm({ session, initial, onClose, onRename }: { session: string; 
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={waiting || !connected}>{waiting ? "Renaming…" : "Rename"}</Button>
+        <Button type="submit" disabled={waiting || !connected}>
+          {waiting && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
+          Rename
+        </Button>
       </DialogFooter>
     </form>
   );
