@@ -4,6 +4,7 @@ import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
+import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
@@ -56,27 +57,44 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
 export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[] };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
 const asking = store<Asking | null>(null);
-/** One check at a time: a repeat press while Rust looks would archive again after an Undo. */
-let checking = false;
+/** Rows Rust checks or the confirm asks about: hidden at once [D198], back on Cancel or a failed check. */
+const pending = new Set<string>();
+function hold(rows: SessionRow[], on: boolean) {
+  for (const row of rows) {
+    if (on) pending.add(row.id);
+    else pending.delete(row.id);
+    hideDeleting(row.id, on);
+  }
+}
+/** A confirm another check's would replace is its Cancel. */
+function ask(next: Asking) {
+  const was = asking.get();
+  if (was) hold(was.rows, false);
+  asking.set(next);
+}
 
 /**
  * Archives the rows; an open one goes Home. Rust checks the batch first: with nothing to say it goes at once, with
  * Undo (and ⌘Z while it shows) [D198]; else the confirm says it first [D1197].
  */
-export function archiveRows(rows: SessionRow[]) {
-  if (rows.length === 0 || checking) return;
-  checking = true;
+export function archiveRows(chosen: SessionRow[]) {
+  // A row already under way isn't checked twice, so a stale answer can't archive it again after an Undo.
+  const rows = chosen.filter((row) => !pending.has(row.id));
+  if (rows.length === 0) return;
+  hold(rows, true);
   const focus = document.activeElement;
+  let asked = false;
   run(["archive", ...rows.map((row) => row.id), "--check"])
     .then(
       (reply) => {
         const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
-        if (check.running.length + check.lost.length === 0) archiveNow(rows, focus);
-        else asking.set({ rows, focus, check });
+        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus);
+        ask({ rows, focus, check });
+        asked = true;
       },
-      (cause) => asking.set({ rows, focus, error: errorText(cause) }),
+      (cause) => ask({ rows, focus, error: errorText(cause) }),
     )
-    .finally(() => (checking = false));
+    .finally(() => !asked && hold(rows, false));
 }
 
 function archiveNow(rows: SessionRow[], focus: Element | null) {
@@ -102,7 +120,6 @@ function archiveNow(rows: SessionRow[], focus: Element | null) {
 }
 
 const titleOf = (row: SessionRow | undefined) => `“${row?.title || "New session"}”`;
-export const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
 
 /** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
 export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
@@ -140,7 +157,10 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
 /** Where archive's confirm shows, mounted once by the sidebar. */
 export function ArchiveAsk() {
   const now = asking.use();
-  const close = () => asking.set(null);
+  const close = () => {
+    if (now) hold(now.rows, false);
+    asking.set(null);
+  };
   return (
     <Dialog open={now !== null} onOpenChange={(next) => !next && close()}>
       <DialogContent showCloseButton={false}>
@@ -150,8 +170,8 @@ export function ArchiveAsk() {
             check={now.check}
             error={now.error}
             onConfirm={() => {
-              close();
               archiveNow(now.rows, now.focus);
+              close();
             }}
             onCancel={close}
           />
