@@ -13,19 +13,18 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-/// Each model an agent's last check listed, in any folder, the first folder's list that has any.
-/// Whether an agent's last check, signed in, lists `model`.
+/// Whether an agent's last check lists `model`, as the picker offers it: an agent on an
+/// environment key or a local server lists models with no saved sign-in.
 fn offered(data: &Path, name: &str, model: &str) -> bool {
     let path = data.join("agents").join(format!("{name}.json"));
     let all: Value = (fs::read(path).ok())
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    (all.as_object().into_iter().flat_map(|m| m.values())).any(|c| {
-        c["signed_in"] != false
-            && (c["models"].as_array().into_iter().flatten()).any(|m| m["id"] == model)
-    })
+    (all.as_object().into_iter().flat_map(|m| m.values()))
+        .any(|c| (c["models"].as_array().into_iter().flatten()).any(|m| m["id"] == model))
 }
 
+/// Each model an agent's last check listed, in any folder, the first folder's list that has any.
 fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
     let path = data.join("agents").join(format!("{name}.json"));
     let all: Value = (fs::read(path).ok())

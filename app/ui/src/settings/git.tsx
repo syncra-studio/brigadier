@@ -4,6 +4,7 @@ import { ModelPicker, type ModelChoice, type ModelGroup } from "../components/co
 import { SelectTrigger } from "../components/select";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
+import { useDaemon } from "../daemon";
 import { errorText, run, setProfile, useProfile } from "../onboarding/api";
 import { asGroups } from "../session/model";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -36,9 +37,12 @@ function WriterRow() {
   const saved = useProfile().value?.git_writer ?? null;
   const [groups, setGroups] = useState<ModelGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const online = Boolean(useDaemon().daemon);
   useEffect(() => {
+    if (!online) return;
+    setError(null);
     run(["models"]).then((reply) => setGroups(asGroups(reply.groups)), (cause) => setError(errorText(cause)));
-  }, []);
+  }, [online]);
   const save = (writer: { backend: string; model: string } | null) => {
     setError(null);
     setProfile(["--git-writer", JSON.stringify(writer)], { git_writer: writer }).catch((cause) => setError(errorText(cause)));
