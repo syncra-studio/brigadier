@@ -111,14 +111,14 @@ pub(super) fn run(
     if prepared.head.as_deref() != Some(head) {
         return refuse(MOVED);
     }
-    // A message typed in Edit message… or a squash's own stands; else the writer writes it, or
-    // nothing is committed [D1029, D1212].
+    // A message typed in Edit message… or a squash's own stands; else the draft for exactly this,
+    // else the writer's, or nothing is committed [D1029, D1212].
     let message = match flag(args, "--message")
         .map(str::trim)
         .filter(|m| !m.is_empty())
     {
         Some(typed) => typed.to_string(),
-        None => match super::commit::written_for(data, target, checkout, &prepared) {
+        None => match super::commit::message_for(data, target, checkout, &prepared) {
             Ok(text) => text,
             Err(reply) => return Ok(reply),
         },

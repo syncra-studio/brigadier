@@ -224,14 +224,17 @@ pub(super) fn write(
     })
 }
 
-/// The writer's message for exactly what `prepared` commits, or the reply saying none was written:
-/// the one button's commit-first route [D1029, D1203].
-pub(super) fn written_for(
+/// The background draft for exactly what `prepared` commits, else the writer's, else the reply
+/// saying none was written: the one button's commit-first route [D1029, D1203, D1212].
+pub(super) fn message_for(
     data: &Path,
     target: &Target,
     checkout: &Checkout,
     prepared: &Prepared,
 ) -> Result<String, Value> {
     let stop = AtomicBool::new(false);
-    written(data, target, commit_prompt(checkout, prepared, &stop)).map_err(unwritten)
+    super::message_draft::cached(data, target, checkout, prepared, true)
+        .map(Ok)
+        .unwrap_or_else(|| written(data, target, commit_prompt(checkout, prepared, &stop)))
+        .map_err(unwritten)
 }
