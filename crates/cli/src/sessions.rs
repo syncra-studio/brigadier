@@ -40,7 +40,7 @@ fn check(data: &Path, ids: &[String]) -> Value {
     let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
     let all = procs::all();
     let running: Vec<&String> = ids.iter().filter(|s| working(data, s, &all)).collect();
-    json!({"ok": true, "running": running, "lost": core::worktrees::losses(data, &ids)})
+    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids)})
 }
 
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
@@ -142,7 +142,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         let working: Vec<_> = ids.iter().filter(|s| busy(data, s, &all)).collect();
         return Ok(json!({"ok": true, "sessions": ids, "working": working,
             "worktrees": worktrees, "bytes": bytes, "merged": merged, "branches": branches,
-            "removing": project.removing, "lost": core::worktrees::losses(data, &ids)}));
+            "removing": project.removing, "lost": core::worktrees::lost::losses(data, &ids)}));
     }
     // Settling needs a host, which is refused once the project is marked as being removed.
     for s in &ids {
