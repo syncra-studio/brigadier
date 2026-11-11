@@ -164,8 +164,8 @@ impl Adapter for Claude {
             argv.push("--allowedTools".into());
             argv.extend(rules);
         }
-        // The commit style the message writer follows, so the agent's own commits match [D1029].
-        argv.extend(["--append-system-prompt".into(), crate::writer::STYLE.into()]);
+        // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
+        argv.extend(["--append-system-prompt".into(), crate::agent::standing()]);
         argv.extend([
             "--settings".into(),
             r#"{"attribution":{"commit":"","pr":""}}"#.into(),

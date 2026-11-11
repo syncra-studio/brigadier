@@ -1,0 +1,77 @@
+//! What every session's agent is given for the `brigadier` command [D2025, D2026, D3030]: the
+//! line it always has, the grant its calls carry, and which calls are Brigadier's own agent
+//! commands, so one approval covers them all.
+
+use crate::Spec;
+use std::fs::OpenOptions;
+use std::io::{Read, Seek, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
+
+/// The session folder and the grant, in the agent's environment.
+pub const SESSION: &str = "BRIGADIER_SESSION";
+pub const GRANT: &str = "BRIGADIER_GRANT";
+
+/// The commands an agent may run [D2026]; the daemon refuses every other.
+pub const COMMANDS: [&str; 6] = ["sessions", "read", "wait", "stop", "models", "help"];
+
+/// The line every session loads, its byte cap checked by `scripts/limits` [D2025].
+pub const LINE: &str = include_str!("agent-line.txt");
+
+/// The standing text an adapter passes at launch: the commit style, then the line.
+pub fn standing() -> String {
+    format!("{} {}", crate::writer::STYLE, LINE.trim())
+}
+
+/// The grant for this launch (proposed lifecycle): one token per owner generation, the host that
+/// holds the session. The first launch under a new host replaces the token of the host before it,
+/// so a launch never revokes a live holder's (the old app's #555), a stale holder loses it, and
+/// the session's delete takes it with its folder. None when it can't be written.
+pub fn grant(spec: &Spec) -> Option<String> {
+    let owner: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(spec.dir.join("owner.json")).unwrap_or_default())
+            .unwrap_or_default();
+    let generation = format!("{}.{}", owner["pid"], owner["start_us"]);
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(spec.dir.join("grant"))
+        .ok()?;
+    file.lock().ok()?;
+    let mut held = String::new();
+    file.read_to_string(&mut held).ok()?;
+    if let Some((g, token)) = held.split_once(' ')
+        && g == generation
+    {
+        return Some(token.to_string());
+    }
+    let token = crate::adapters::uuid();
+    file.set_len(0).ok()?;
+    file.rewind().ok()?;
+    write!(file, "{generation} {token}").ok()?;
+    Some(token)
+}
+
+/// Whether `token` is the session's grant now.
+pub fn granted(dir: &Path, token: &str) -> bool {
+    let held = std::fs::read_to_string(dir.join("grant")).unwrap_or_default();
+    !token.is_empty() && held.split_once(' ').is_some_and(|(_, t)| t == token)
+}
+
+/// Whether a shell command (or an approval's pattern for one) is one plain `brigadier` agent
+/// command: no other program, no shell syntax, so a grant for one can safely cover them all.
+/// `helper` and the app's commands aren't agent commands, so no approval ever covers them.
+pub fn call(command: &str) -> bool {
+    let c = crate::adapters::unwrap_shell(command);
+    let c = c.trim_end_matches(":*").trim_end_matches(" *");
+    if c.contains(|ch: char| "\n;&|<>$`()\\'\"*?{}[]~#!".contains(ch)) {
+        return false;
+    }
+    let mut words = c.split_whitespace();
+    let program = words.next().unwrap_or("");
+    (program == "brigadier" || program.ends_with("/brigadier"))
+        && words.next().is_some_and(|w| COMMANDS.contains(&w))
+}

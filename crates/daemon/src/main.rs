@@ -54,6 +54,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod awake;
+mod caller;
 mod git;
 mod install;
 mod ops;
@@ -63,7 +64,7 @@ mod switch;
 mod term;
 mod watch;
 
-const PROTOCOL_VERSION: u32 = 4;
+const PROTOCOL_VERSION: u32 = wire::DAEMON_PROTOCOL;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // shortcut: polls every log's size each tick (about 10k stats a second at 10k sessions); move to

@@ -49,6 +49,21 @@ impl Agent {
                 }
                 self.say(&format!("ran a shell command on {file}"));
             }
+            // `brigadier:read+s1+--user`: its session's `brigadier` as a shell step, `+` for each
+            // space, then says what it printed, as an agent quotes it [D2026].
+            "brigadier" => {
+                let cmd = format!("brigadier {}", word[10..].replace('+', " "));
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
+                let out = Command::new("/bin/sh").arg("-c").arg(&cmd).output();
+                let (ok, text) = match out {
+                    Ok(o) => (o.status.success(), [o.stdout, o.stderr].concat()),
+                    Err(e) => (false, e.to_string().into_bytes()),
+                };
+                emit(json!({"t": "tool_done", "id": id, "ok": ok}));
+                self.say(String::from_utf8_lossy(&text).trim_end());
+            }
             // `test:N`: a test run whose CLI reports exit N [D1188].
             "test" => {
                 self.tools += 1;

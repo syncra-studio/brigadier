@@ -1,5 +1,6 @@
 //! The daemon's op table: one connection's handshake, then each request routed by its op.
 
+use super::caller;
 use super::git;
 use super::store::Store;
 use super::watch::{self, Shown};
@@ -14,7 +15,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::{process, thread};
 
@@ -71,6 +72,7 @@ pub(super) fn serve(
     if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
         return Ok(());
     }
+    let (caller, here) = (caller::of(&stream, data), Arc::new(AtomicBool::new(true)));
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     let mut version = [0; 4];
     stream.read_exact(&mut version)?;
@@ -106,6 +108,9 @@ pub(super) fn serve(
     while let Ok(text) = wire::read_frame(&mut stream) {
         let req: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         let re = req["id"].clone();
+        if caller::serve(&caller, &req, &out, data, state, &here) {
+            continue;
+        }
         match req["op"].as_str().unwrap_or("") {
             "subscribe" => {
                 let mut s = state.lock().unwrap();
@@ -296,6 +301,7 @@ pub(super) fn serve(
             }
         }
     }
+    here.store(false, Ordering::SeqCst);
     watching.fetch_add(1, Ordering::SeqCst);
     terming.fetch_add(1, Ordering::SeqCst);
     gitting.fetch_add(1, Ordering::SeqCst);

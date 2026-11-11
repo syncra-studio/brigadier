@@ -108,6 +108,26 @@ pub fn peer_uid(stream: &UnixStream) -> io::Result<libc::uid_t> {
     Ok(uid)
 }
 
+/// The pid of the process that connected.
+pub fn peer_pid(stream: &UnixStream) -> io::Result<i32> {
+    let mut pid: libc::pid_t = 0;
+    let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+    let fd = stream.as_raw_fd();
+    let at = (&mut pid as *mut libc::pid_t).cast();
+    if unsafe { libc::getsockopt(fd, libc::SOL_LOCAL, libc::LOCAL_PEERPID, at, &mut len) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(pid)
+}
+
+/// The daemon's own protocol version (its handshake is the same as a host's).
+pub const DAEMON_PROTOCOL: u32 = 4;
+
+/// Connects to the daemon and handshakes, `timeout` bounding every read.
+pub fn connect_daemon(path: &Path, timeout: Duration) -> io::Result<Conn> {
+    connect_as(path, timeout, DAEMON_PROTOCOL)
+}
+
 pub struct Conn {
     stream: UnixStream,
     pub hello: Value,
@@ -116,10 +136,14 @@ pub struct Conn {
 /// Connects and handshakes. `timeout` bounds every read, so a frozen owner reads as an error,
 /// never as a hang.
 pub fn connect(path: &Path, timeout: Duration) -> io::Result<Conn> {
+    connect_as(path, timeout, PROTOCOL_VERSION)
+}
+
+fn connect_as(path: &Path, timeout: Duration, version: u32) -> io::Result<Conn> {
     let mut stream = UnixStream::connect(path)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
-    stream.write_all(&PROTOCOL_VERSION.to_be_bytes())?;
+    stream.write_all(&version.to_be_bytes())?;
     let hello: Value = serde_json::from_str(&read_frame(&mut stream)?)?;
     if hello["status"] != "running" {
         return Err(io::Error::other(

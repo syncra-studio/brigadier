@@ -25,10 +25,12 @@ pub(super) fn covered(grants: &[Value], method: &str, p: &Value) -> Option<&'sta
             "item/commandExecution/requestApproval" if host.is_some() => {
                 scope == "network" && pattern == host
             }
+            // One `brigadier` agent command's grant covers them all, in any folder [D2026].
             "item/commandExecution/requestApproval" => {
+                let agent = |c: Option<&str>| c.is_some_and(crate::agent::call);
                 scope == "command"
-                    && pattern == p["command"].as_str()
-                    && g["cli"]["cwd"] == p["cwd"]
+                    && (pattern == p["command"].as_str() && g["cli"]["cwd"] == p["cwd"]
+                        || agent(pattern) && agent(p["command"].as_str()))
             }
             "item/fileChange/requestApproval" => {
                 let files = p["files"].as_array().filter(|f| !f.is_empty());

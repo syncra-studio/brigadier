@@ -43,6 +43,73 @@ pub fn info(pid: i32) -> Option<Proc> {
     })
 }
 
+/// A process's arguments and the environment it was started with, from the kernel. Only the
+/// same user's processes answer.
+pub fn args(pid: i32) -> Option<(Vec<String>, Vec<String>)> {
+    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    let mut size: libc::size_t = 0;
+    let null = std::ptr::null_mut();
+    if unsafe { libc::sysctl(mib.as_mut_ptr(), 3, null, &mut size, null, 0) } != 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; size];
+    let at = buf.as_mut_ptr().cast();
+    if unsafe { libc::sysctl(mib.as_mut_ptr(), 3, at, &mut size, null, 0) } != 0 {
+        return None;
+    }
+    let argc = i32::from_ne_bytes(buf.get(..4)?.try_into().ok()?) as usize;
+    // The program's path and its padding, then argv, then the environment, each NUL-ended.
+    let mut words = buf[4..size]
+        .split(|b| *b == 0)
+        .filter(|w| !w.is_empty())
+        .map(|w| String::from_utf8_lossy(w).into_owned());
+    words.next()?;
+    let argv: Vec<String> = words.by_ref().take(argc).collect();
+    Some((argv, words.collect()))
+}
+
+/// A process's parent and short name. It answers for every user's processes, the walk's root
+/// ones too (`login`), where the full record doesn't.
+fn short(pid: i32) -> Option<(i32, Vec<u8>)> {
+    let mut b = MaybeUninit::<libc::proc_bsdshortinfo>::zeroed();
+    let size = size_of::<libc::proc_bsdshortinfo>() as i32;
+    let n = unsafe {
+        libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDT_SHORTBSDINFO,
+            0,
+            b.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    let b = (n == size).then(|| unsafe { b.assume_init() })?;
+    let name = (b.pbsi_comm.iter())
+        .take_while(|c| **c != 0)
+        .map(|c| *c as u8)
+        .collect();
+    Some((b.pbsi_ppid as i32, name))
+}
+
+/// The session hosts above `pid`, nearest first: each one's pid, start time and the session folder
+/// it was started for. None when the walk couldn't reach the top, which is never the same as none.
+pub fn hosts_above(pid: i32) -> Option<Vec<(i32, u64, String)>> {
+    let mut found = vec![];
+    let mut ppid = short(pid)?.0;
+    // A parent of 1 is launchd: the top. The bound only guards against a cycle that can't be.
+    for _ in 0..256 {
+        if ppid <= 1 {
+            return Some(found);
+        }
+        let (next, name) = short(ppid)?;
+        if name == b"brigadier-host" {
+            let (argv, _) = args(ppid)?;
+            found.push((ppid, info(ppid)?.start_us, argv.get(1)?.clone()));
+        }
+        ppid = next;
+    }
+    None
+}
+
 /// The process, if `pid` is still the one that started at `start_us`.
 pub fn same(pid: i32, start_us: u64) -> Option<Proc> {
     info(pid).filter(|p| p.start_us == start_us && !p.zombie)

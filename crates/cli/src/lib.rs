@@ -2,6 +2,7 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 mod accounts;
+pub mod agent;
 pub mod archived;
 mod attach;
 mod chips;

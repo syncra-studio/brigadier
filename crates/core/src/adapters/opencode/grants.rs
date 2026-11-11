@@ -165,12 +165,15 @@ pub(super) fn allow(server: &Server, ask: &Value) {
 /// Whether a grant covers every resource of an ask, by OpenCode's own matching rules.
 pub(super) fn granted(grants: &[Value], ask: &Value) -> bool {
     let resources = ask["resources"].as_array().cloned().unwrap_or_default();
+    // One `brigadier` agent command's grant covers them all [D2026].
+    let agent = |v: &Value| crate::agent::call(v.as_str().unwrap_or(""));
     grants.iter().any(|g| {
         let save = g["save"].as_array().cloned().unwrap_or_default();
         g["action"] == ask["action"]
             && resources.iter().all(|r| {
                 save.iter()
                     .any(|p| matches(p.as_str().unwrap_or(""), r.as_str().unwrap_or("")))
+                    || ask["action"] == "bash" && agent(r) && save.iter().any(agent)
             })
     })
 }

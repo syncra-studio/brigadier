@@ -54,11 +54,11 @@ impl OpenCode {
                     .to_string(),
             ),
         ]);
-        // The commit style the message writer follows, so the agent's own commits match [D1029]:
+        // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025]:
         // an instructions file in the session's folder, given as inline config, which OpenCode
         // merges with the user's own and loads beside AGENTS.md.
         let style = spec.dir.join("commit-style.md");
-        if std::fs::write(&style, crate::writer::STYLE).is_ok() {
+        if std::fs::write(&style, crate::agent::standing()).is_ok() {
             let config = json!({"instructions": [style.display().to_string()]});
             env.push(("OPENCODE_CONFIG_CONTENT".into(), config.to_string()));
         }

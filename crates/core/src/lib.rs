@@ -3,6 +3,7 @@
 
 mod account;
 pub mod adapters;
+pub mod agent;
 pub mod feedback;
 pub mod fold;
 pub mod fork;

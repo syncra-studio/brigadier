@@ -80,11 +80,23 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 /// What a session grant allowed, as launch-time rules for a child started anew [D193].
 pub fn rules(grants: &[Value]) -> Vec<String> {
     (grants.iter())
-        .filter_map(|g| {
-            let r = &g["cli"]["rule"];
-            let (tool, content) = (s(r, &["toolName"]), s(r, &["ruleContent"]));
+        .flat_map(|g| widen(&g["cli"]["rule"]))
+        .filter_map(|r| {
+            let (tool, content) = (s(&r, &["toolName"]), s(&r, &["ruleContent"]));
             (!tool.is_empty() && !content.is_empty()).then(|| format!("{tool}({content})"))
         })
+        .collect()
+}
+
+/// A rule for one `brigadier` agent command, as every agent command's, so one approval covers
+/// them all and nothing else [D2026].
+fn widen(rule: &Value) -> Vec<Value> {
+    let content = s(rule, &["ruleContent"]);
+    if rule["toolName"] != "Bash" || !crate::agent::call(content) {
+        return vec![rule.clone()];
+    }
+    (crate::agent::COMMANDS.iter())
+        .map(|c| json!({"toolName": "Bash", "ruleContent": format!("brigadier {c}:*")}))
         .collect()
 }
 
@@ -163,6 +175,11 @@ fn approval(id: &str, r: &Value) -> Event {
         "Bash" => {
             if let Some(c) = content.filter(|c| !c.is_empty()) {
                 let prefix = c.trim_end_matches(" *").trim_end_matches(":*");
+                let prefix = if crate::agent::call(&c) {
+                    "brigadier"
+                } else {
+                    prefix
+                };
                 grant(
                     "command",
                     prefix,
@@ -255,7 +272,7 @@ fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
     Ok(match s(msg, &["decision"]) {
         "allow" => json!({"behavior": "allow"}),
         "allowSession" if r["cli"]["rule"].is_object() => json!({"behavior": "allow",
-            "updatedPermissions": [{"type": "addRules", "rules": [r["cli"]["rule"]], "behavior": "allow", "destination": "session"}]}),
+            "updatedPermissions": [{"type": "addRules", "rules": widen(&r["cli"]["rule"]), "behavior": "allow", "destination": "session"}]}),
         "deny" => {
             let message = match s(msg, &["reason"]).trim() {
                 "" => "The user denied this.".to_string(),

@@ -1,0 +1,1 @@
+You can run `brigadier` in your shell: `brigadier help` lists your tools for other sessions, what they said, and your models.
