@@ -13,7 +13,7 @@ impl Pr {
         let mut command = tool(gh);
         command.args(["pr", "list", &format!("--repo={}/{}", repo.host, repo.path),
             &format!("--head={}", self.branch), "--state=all", "--limit=100",
-            "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit"]);
+            "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,statusCheckRollup"]);
         let out = setup::run(&mut command, GH_SECS).ok()?;
         if !out.status.success() {
             return None;
@@ -103,6 +103,13 @@ fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
 
 /// gh owns newest-run deduplication by name, workflow and event, including legacy contexts.
 fn checks(gh: &str, repo: &Repo, pr: &Value) -> Option<Vec<Value>> {
+    // `gh pr checks` fails on a PR with none; the list's rollup, read with its head, says so.
+    if pr["statusCheckRollup"]
+        .as_array()
+        .is_some_and(Vec::is_empty)
+    {
+        return Some(Vec::new());
+    }
     let number = pr["number"].as_u64()?.to_string();
     let mut command = tool(gh);
     command.args([
