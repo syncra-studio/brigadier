@@ -19,9 +19,15 @@ impl Pr {
             return None;
         }
         let list: Vec<Value> = serde_json::from_slice(&out.stdout).ok()?;
-        let rows = list
-            .iter()
+        let mine: Vec<&Value> = (list.iter())
             .filter(|p| belongs(p, repo, &self.branch))
+            .collect();
+        // The open one into the base, else any open one: the card's step reads it [D1287].
+        let open = |p: &&&Value| p["state"] == "OPEN";
+        let into = (mine.iter().filter(open)).find(|p| p["baseRefName"] == self.base);
+        let open = into.or_else(|| mine.iter().find(open));
+        super::note_open(&self.id, open.and_then(|p| p["number"].as_u64()));
+        let rows = (mine.into_iter())
             .map(|p| {
                 if p["state"] == "MERGED" {
                     self.record_merge(p);
@@ -92,7 +98,7 @@ impl Pr {
     }
 }
 
-fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
+pub(super) fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
     pr["headRefName"] == branch
         && pr["headRepository"]["nameWithOwner"]
             .as_str()
@@ -100,7 +106,7 @@ fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
 }
 
 /// gh owns newest-run deduplication by name, workflow and event, including legacy contexts.
-fn checks(gh: &str, repo: &Repo, pr: &Value) -> Option<Vec<Value>> {
+pub(super) fn checks(gh: &str, repo: &Repo, pr: &Value) -> Option<Vec<Value>> {
     // `gh pr checks` fails on a PR with none; the list's rollup, read with its head, says so.
     if pr["statusCheckRollup"]
         .as_array()
@@ -115,7 +121,7 @@ fn checks(gh: &str, repo: &Repo, pr: &Value) -> Option<Vec<Value>> {
         "checks",
         &number,
         &format!("--repo={}/{}", repo.host, repo.path),
-        "--json=name,bucket,workflow,event,startedAt",
+        "--json=name,bucket,workflow,event,startedAt,completedAt,link",
     ]);
     let out = setup::run(&mut command, GH_SECS).ok()?;
     if !out.status.success() {

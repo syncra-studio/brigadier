@@ -8,9 +8,12 @@ use crate::repos::{failed, tool};
 use crate::{load, projects};
 
 mod prs;
+mod view;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 /// Proposed: gh gets this long for a look, and a create this long.
@@ -23,6 +26,22 @@ const LINK_MAX: usize = 6000;
 
 fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
+}
+
+/// Each session's open PR as its last PR read found it: info's list, a view and a merge.
+static OPEN: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
+
+/// The session's open PR, as the host was last read in this process; None before any read.
+pub fn open_pr(id: &str) -> Option<u64> {
+    OPEN.lock().unwrap().get(id).copied()
+}
+
+fn note_open(id: &str, number: Option<u64>) {
+    let mut open = OPEN.lock().unwrap();
+    match number {
+        Some(n) => open.insert(id.to_string(), n),
+        None => open.remove(id),
+    };
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -163,6 +182,8 @@ fn gh(repo: &Repo) -> Option<String> {
 /// What a session's Create PR works from: its checkout, branch, push remote, the base it lands
 /// into, and the remote's host if one is known.
 pub struct Pr {
+    /// The session's id.
+    id: String,
     checkout: Checkout,
     pub branch: String,
     pub remote: String,
@@ -204,6 +225,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let trusted = (load(data, id)?.project)
         .is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)));
     Ok(Pr {
+        id: id.to_string(),
         checkout,
         branch,
         remote,
