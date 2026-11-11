@@ -13,19 +13,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
-/// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a conflicted file and a pull
-/// request, each with its target, a path or a PR number; the Review diff [D1014, D1032]; History, and
-/// one commit's diff by its full id [D1041].
-const KINDS: [&str; 7] = [
-    "new", "terminal", "conflict", "pr", "review", "history", "commit",
-];
+/// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
+/// number; the Review diff [D1014, D1032].
+const KINDS: [&str; 4] = ["new", "terminal", "pr", "review"];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
 const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
 /// Kinds a session has one of: opening one again brings it to the front, on its new target [D478, D1114].
-const ONE: [&str; 2] = ["history", "review"];
+const ONE: [&str; 1] = ["review"];
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {
@@ -33,7 +30,7 @@ struct Tab {
     kind: String,
     /// The tab it was opened from: where a close goes back to.
     opener: String,
-    /// What a file, conflict or PR tab shows: its file's path, or the PR's number.
+    /// What a file or PR tab shows: its file's path, or the PR's number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     target: Option<String>,
     /// A file tab's line last asked for, and whether it's the preview the next file opened takes
@@ -182,26 +179,21 @@ fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
     }
 }
 
-/// A file, conflict, PR and commit tab need their target, a Review tab may have one (its file), every other kind
-/// refuses one. A file's or conflict's is its file, relative and staying in the session's checkout; a PR's is its
-/// number, written plainly so one PR is one tab [D1032]; a commit's its full id [D1041].
+/// A file and PR tab need their target, a Review tab may have one (its file), every other kind refuses one. A
+/// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
+/// PR is one tab [D1032].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     let ok = match (kind, target) {
         // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
         // A Review tab may open on one file [D1032, D1038].
-        ("file" | "conflict" | "review", Some(path)) => {
+        ("file" | "review", Some(path)) => {
             !path.contains('\0')
                 && path
                     .split('/')
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
         ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
-        // A full commit id, SHA-1 or SHA-256, so one commit is one tab whatever git abbreviates it to.
-        ("commit", Some(sha)) => {
-            matches!(sha.len(), 40 | 64)
-                && sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-        }
-        ("file" | "conflict" | "pr" | "commit", None) => false,
+        ("file" | "pr", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

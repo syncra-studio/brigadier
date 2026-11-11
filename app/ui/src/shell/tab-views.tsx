@@ -6,8 +6,6 @@ import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
-import { CommitReview } from "../history/commit-review";
-import { HistoryTab } from "../history/history-tab";
 import { FileViewer } from "../files/viewer";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
@@ -110,15 +108,11 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
         </div>
         {tabs.map((tab) => (
           <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
-            {/* Each kind until it's wired: the conflict and PR views come with 2.23 and 2.27 [D1014, D1044, D1017]. */}
+            {/* Each kind until it's wired: the PR view comes with 2.27 [D1014, D1017]. */}
             {tab.kind === "file" ? (
               <FileTab key={tab.target} tab={tab} active={tab.id === active} />
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
-            ) : tab.kind === "history" ? (
-              <HistoryTab owner={owner} />
-            ) : tab.kind === "commit" ? (
-              <CommitReview key={tab.target} owner={owner} sha={tab.target ?? ""} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}
