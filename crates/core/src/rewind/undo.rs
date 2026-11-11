@@ -24,9 +24,9 @@ struct Restored {
     paths: BTreeSet<String>,
 }
 
-/// Called as a rewind lands, before its operation is cleared: a restore's record replaces the
-/// last one, any other rewind removes it, so Undo only ever reaches the latest.
-pub(super) fn keep(spec: &Spec, op: &Op) -> io::Result<()> {
+/// A rewind that landed: a restore's record replaces the last one, any other rewind removes it, so
+/// Undo only ever reaches the latest; then its operation goes, never before [D1213].
+pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
     let path = spec.dir.join(FILE);
     match (&op.pre, &op.target) {
         (Some(pre), Some(target)) if !op.paths.is_empty() => {
@@ -42,7 +42,8 @@ pub(super) fn keep(spec: &Spec, op: &Op) -> io::Result<()> {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         },
-    }
+    }?;
+    super::clear(spec)
 }
 
 /// Puts `paths` back as `pre` has them, each only where it's still exactly as `target` has it:

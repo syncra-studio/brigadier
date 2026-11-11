@@ -126,17 +126,7 @@ type Why = (&'static str, Option<String>);
 fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Result<Files, Why> {
     let store = Store::of(spec).ok_or(("no_project", None))?;
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    // No snapshot is ever taken of a folder outside git: said as such [D384].
-    let files = (plan(&store, &turns)).map_err(|why| {
-        (
-            if why == "missing" && !store.is_repo() {
-                "not_git"
-            } else {
-                why
-            },
-            None,
-        )
-    })?;
+    let files = plan(&store, &turns).map_err(|why| (why, None))?;
     // Only files that would go back are any sharer's business [D481].
     if !files.paths.is_empty()
         && let Some((why, with)) = sharer(data, spec, &store, &turns, live)
@@ -216,12 +206,6 @@ fn crash_at(step: &str) {
 
 fn clear(spec: &Spec) -> io::Result<()> {
     fs::remove_file(spec.dir.join(OP))
-}
-
-/// A rewind that landed: what Undo restore needs is kept first, then its operation goes [D1213].
-fn close(spec: &Spec, op: &Op) -> io::Result<()> {
-    undo::keep(spec, op)?;
-    clear(spec)
 }
 
 /// Puts the folder back as it was just before this rewind, only where it's still as the restore
@@ -309,8 +293,7 @@ fn finish(spec: &Spec, op: &mut Op, done: Rewound, call: Call) -> Value {
             format!("The rewind didn't finish: {why}. It finishes before the next message."),
         );
     }
-    // Not cleared without Undo restore's record: it finishes before the next message [D1213].
-    if let Err(e) = close(spec, op) {
+    if let Err(e) = undo::close(spec, op) {
         return refused(
             "unfinished",
             format!("The rewind didn't finish: {e}. It finishes before the next message."),
@@ -495,9 +478,9 @@ pub fn settle(spec: &Spec, call: Call, call_in: CallIn) -> io::Result<()> {
         "files" => undo(&op),
         "landed" => {
             note(spec, &op, call).map_err(io::Error::other)?;
-            close(spec, &op)
+            undo::close(spec, &op)
         }
-        _ if f.rewinds.contains(&op.op) => close(spec, &op),
+        _ if f.rewinds.contains(&op.op) => undo::close(spec, &op),
         _ => match landed(spec, &f, &op) {
             Landing::Applied(done) => match finish(spec, &mut op, done, call) {
                 v if v["ok"] == true => Ok(()),

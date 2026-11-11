@@ -26,7 +26,15 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
             Some((r.before, r.end?))
         })
         .collect();
-    let shots = shots.filter(|s| !s.is_empty()).ok_or("missing")?;
+    // No snapshot is ever taken of a folder outside git: said as such [D384].
+    let missing = || {
+        if store.is_repo() {
+            "missing"
+        } else {
+            "not_git"
+        }
+    };
+    let shots = shots.filter(|s| !s.is_empty()).ok_or_else(missing)?;
     let pre = store.capture().map_err(unread)?;
     let target = shots[0].0.clone();
     let (mut agent, mut gaps) = (BTreeSet::new(), BTreeSet::new());
