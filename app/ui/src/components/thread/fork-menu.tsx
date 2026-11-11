@@ -104,6 +104,11 @@ export function ForkMenu({
   const [sub, setSub] = useState(false);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
   const place = held && { container: held, collisionAvoidance: STILL };
+  const others = (agents ?? [])
+    .map((group) => ({ ...group, models: group.models.filter((each) => group.provider !== current || each.id !== model) }))
+    .filter((group) => !group.unavailable && group.models.length > 0);
+  // Read and nothing else to fork to: no row that opens empty.
+  const another = !agents || Boolean(agentsError) || others.length > 0;
   const pickModel = (group: ModelGroup, model: string) => {
     const choice = { provider: group.provider, model, effort: null };
     // Another model of the same agent forks natively; another vendor's agent asks first [D1081, D90].
@@ -133,39 +138,40 @@ export function ForkMenu({
                   <MenuRow icon={<BranchAlt />} title="Fork chat" />
                 </DropdownMenuItem>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuSub open={held ? openSub : sub} onOpenChange={setSub}>
-                <DropdownMenuSubTrigger onClick={() => setSub(true)}>
-                  <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent {...place}>
-                  {agentsError ? (
-                    <div className="px-2 py-1.5">
-                      <ErrorLine size="sm" error={agentsError} />
-                    </div>
-                  ) : !agents ? (
-                    <DropdownMenuItem disabled>
-                      <MenuRow icon={<Spinner className="animate-spin" />} title="Checking the agents" />
-                    </DropdownMenuItem>
-                  ) : null}
-                  {(agents ?? [])
-                    .map((group) => ({ ...group, models: group.models.filter((each) => group.provider !== current || each.id !== model) }))
-                    .filter((group) => !group.unavailable && group.models.length > 0)
-                    .map((group) => (
-                      <div key={group.provider} role="group" aria-label={group.label}>
-                        <DropdownMenuLabel variant="heading" className="flex items-center gap-2">
-                          <ProviderMark mark={group.mark} className="size-icon-sm" />
-                          {group.label}
-                        </DropdownMenuLabel>
-                        {group.models.map((model) => (
-                          <DropdownMenuItem key={model.id} inset onClick={() => pickModel(group, model.id)}>
-                            {model.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </div>
-                    ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+              {another && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuSub open={held ? openSub : sub} onOpenChange={setSub}>
+                    <DropdownMenuSubTrigger onClick={() => setSub(true)}>
+                      <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent {...place}>
+                      {agentsError ? (
+                        <div className="px-2 py-1.5">
+                          <ErrorLine size="sm" error={agentsError} />
+                        </div>
+                      ) : !agents ? (
+                        <DropdownMenuItem disabled>
+                          <MenuRow icon={<Spinner className="animate-spin" />} title="Checking the agents" />
+                        </DropdownMenuItem>
+                      ) : null}
+                      {others.map((group) => (
+                        <div key={group.provider} role="group" aria-label={group.label}>
+                          <DropdownMenuLabel variant="heading" className="flex items-center gap-2">
+                            <ProviderMark mark={group.mark} className="size-icon-sm" />
+                            {group.label}
+                          </DropdownMenuLabel>
+                          {group.models.map((model) => (
+                            <DropdownMenuItem key={model.id} inset onClick={() => pickModel(group, model.id)}>
+                              {model.name}
+                            </DropdownMenuItem>
+                          ))}
+                        </div>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
+              )}
             </>
           ) : error ? (
             <div className="px-2 py-1.5">

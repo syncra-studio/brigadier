@@ -275,13 +275,9 @@ fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
     data.join("agents").join(format!("{}.json", a.name()))
 }
 
-/// A folder not checked yet (a new worktree) takes another's, naming the models until its own.
 fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
-    let all: serde_json::Map<String, Value> =
-        serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
-    (all.get(cwd.to_str()?).or_else(|| all.values().next()))
-        .filter(|v| v.is_object())
-        .cloned()
+    let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
+    all.get(cwd.to_str()?).filter(|v| v.is_object()).cloned()
 }
 
 /// Keeps the check before releasing the lock, so a waiting caller gets the same result.
