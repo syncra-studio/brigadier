@@ -87,7 +87,9 @@ impl Pr {
                 json!({"id": format!("{tag}{}", c["id"]), "author": c["user"]["login"],
                 "path": c["path"], "line": c["line"].as_u64().or(c["original_line"].as_u64()),
                 "body": c["body"], "atMs": ms(&c["created_at"]).or(ms(&c["submitted_at"])),
-                "url": c["html_url"]})
+                "url": c["html_url"],
+                // GitHub's own mark for an app's account, so bots fold in the tab [D1230] (proposed).
+                "bot": c["user"]["type"] == "Bot"})
             })
             .collect();
         comments.sort_by_key(|c| c["atMs"].as_u64());

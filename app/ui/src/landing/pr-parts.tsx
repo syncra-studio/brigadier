@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 
 import { Button } from "../components/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { Timeline } from "../components/timeline";
-import { ArrowUpRight, Check, CheckCircle, Comment, Warning } from "../icons";
+import { ArrowUpRight, Check, CheckCircle, ChevronRight, Comment, Warning } from "../icons";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles, XCircle } from "./icons";
 import { blockerWords, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
 import { type PrCheck, type PrComment, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
@@ -126,7 +127,7 @@ export function Overview({ pr, sends }: { pr: PullRequest; sends: Sends }) {
       </section>
       <section className="flex flex-col gap-1">
         <Heading end={(pr.blockers?.changesBy.length ?? 0) > 0 && <span className="font-normal tracking-normal text-pr-yellow">changes requested</span>}>REVIEWS</Heading>
-        {pr.comments.length === 0 ? <Quiet>No comments yet</Quiet> : pr.comments.map((comment) => <CommentRow key={comment.id} comment={comment} sends={sends} />)}
+        {pr.comments.length === 0 ? <Quiet>No comments yet</Quiet> : <CommentList comments={pr.comments} sends={sends} />}
       </section>
       {blocked && (
         <section className="flex items-center gap-3 rounded-control bg-pr-blocker px-3 py-2.5 text-sm">
@@ -152,7 +153,34 @@ export function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
 
 export function Comments({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   if (pr.comments.length === 0) return <Quiet>No comments yet</Quiet>;
-  return <div className="flex flex-col">{pr.comments.map((comment) => <CommentRow key={comment.id} comment={comment} sends={sends} />)}</div>;
+  return (
+    <div className="flex flex-col">
+      <CommentList comments={pr.comments} sends={sends} />
+    </div>
+  );
+}
+
+/** People's comments in order, then the bots' folded under one row, so the human ones stand out [D1230]. */
+function CommentList({ comments, sends }: { comments: PrComment[]; sends: Sends }) {
+  const bots = comments.filter((comment) => comment.bot);
+  return (
+    <>
+      {comments.map((comment) => !comment.bot && <CommentRow key={comment.id} comment={comment} sends={sends} />)}
+      {bots.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 rounded-control py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
+            <ChevronRight aria-hidden className="size-icon-xs transition-transform group-data-panel-open:rotate-90" />
+            {bots.length === 1 ? "1 comment from a bot" : `${bots.length} comments from bots`}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {bots.map((comment) => (
+              <CommentRow key={comment.id} comment={comment} sends={sends} />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </>
+  );
 }
 
 // Events the agent can act on: a failure, a request for changes, a comment.

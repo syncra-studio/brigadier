@@ -45,6 +45,8 @@ const FAILING: PullRequest = {
   comments: [
     { id: "m1", author: "sam-k", path: "client.ts", line: 88, body: "Don't retry on a 4xx: those won't get better.", atMs: min(6), url: null },
     { id: "m2", author: "sam-k", path: "retry.ts", line: 12, body: "Cap the wait, or a long outage waits minutes.", atMs: min(5), url: null },
+    { id: "m3", author: "coderabbitai[bot]", path: null, line: null, body: "Walkthrough: the client now retries failed requests with backoff.", atMs: min(5), url: null, bot: true },
+    { id: "m4", author: "vercel[bot]", path: null, line: null, body: "Preview deployment ready.", atMs: min(4), url: null, bot: true },
   ],
   events: [
     { id: "e5", atMs: min(4), kind: "changes_requested", actor: "sam-k", detail: "2 comments" },

@@ -37,7 +37,8 @@ export type PullRequest = {
 
 export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null; url: string | null };
 
-export type PrComment = { id: string; author: string; path: string | null; line: number | null; body: string; atMs: number; url: string | null };
+/** `bot`: written by an app's account, as the host marks it: folded so people's comments stand out [D1230]. */
+export type PrComment = { id: string; author: string; path: string | null; line: number | null; body: string; atMs: number; url: string | null; bot?: boolean };
 
 export type PrEvent = {
   id: string;
