@@ -150,7 +150,7 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   // shortcut: the host module's one read of the branch's PRs until 2.27's watch sends them in `data.prs`.
   const prs = data.prs ?? pr.prs;
   const claim = session ? asked.get(session) : undefined;
-  const drawsPr = claim === id || (claim === undefined && !card);
+  const drawsPr = claim === id || (claim === undefined && card);
   useEffect(() => () => void (session && asked.get(session) === id && asked.delete(session)), [session, id]);
 
   // On real data a step whose click comes later is off, saying so [D1143].

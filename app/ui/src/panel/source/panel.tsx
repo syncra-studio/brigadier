@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
-import { copyWithToast } from "../../components/copy-button";
 import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
@@ -19,9 +18,9 @@ import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type 
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { Gone, HeroLine } from "./hero";
 import { MoreMenu } from "./more-menu";
-import { BranchNameBox, folderItems, QuickPick, sessionItems } from "./quick-pick";
 import { Counts, FileList, FileRow, Group, Heading, PrLine, RunLine } from "./rows";
 import { useSourceStep } from "./step";
+import { type Picker, useBranchPicker } from "../branch-picker";
 
 /** What the Source panel shows: Rust's, once wired (2.14 on); fake until then. */
 export type SourceData = {
@@ -81,9 +80,6 @@ export type SourceData = {
   syncing?: boolean;
   naming?: string | null;
 };
-
-/** The quick pick or name box open over the branch item: `from`, `base` and `newSession` list branches to pick. */
-type Picker = "branch" | "rename" | "create" | "from" | "base" | "newSession" | null;
 
 /** The branch item's moves on Rust's git (2.21) [D1020, D1021]; without them (the gallery) a pick only closes. */
 export type BranchOps = {
@@ -167,19 +163,8 @@ export function SourcePanel({
   useEffect(() => {
     if (local && local !== data.source) onSource?.(local);
   }, [local, data.source, onSource]);
-  const [picker, setPickerNow] = useState<Picker>(initialPicker);
-  // What the quick pick lists, read again each time one opens; undefined while it's read.
-  const [read, setRead] = useState<BranchRead | null | undefined>(undefined);
-  const [from, setFrom] = useState<string | null>(null);
-  const branchOps = ops?.branch;
-  const setPicker = (next: Picker) => {
-    setPickerNow(next);
-    if (!next || next === "create" || !branchOps) return;
-    setRead(undefined);
-    // A read that failed has said why: the pick closes rather than load for ever.
-    branchOps.read((answer) => (answer ? setRead(answer) : setPickerNow(null)));
-  };
   const branchItem = useRef<HTMLDivElement>(null);
+  const branchOps = ops?.branch;
   const [discarding, setDiscarding] = useState<Discarding | null>(null);
   const [stagingConflicts, setStagingConflicts] = useState<{ paths: string[]; marked: number } | null>(null);
   const [droppingStash, setDroppingStash] = useState(false);
@@ -191,10 +176,6 @@ export function SourcePanel({
   const liveWhen = useWhen(session, data.when);
   const [ownWhen, setOwnWhen] = useState<When | null>(data.when ?? null);
   const offline = data.offline ?? false;
-  // The pickers float outside the panel's inert page: a disconnect closes them.
-  useEffect(() => {
-    if (offline) setPicker(null);
-  }, [offline]);
   const pending = new Set(data.pending ?? []);
   const resolving = state?.merging != null || state?.rebasing != null;
   const conflicted = resolving ? (state?.changes.filter((file) => file.status === "conflicted") ?? []) : [];
@@ -208,6 +189,8 @@ export function SourcePanel({
   const listed = uncommitted.length > 0 ? uncommitted : (state?.sinceBase ?? []);
   const folder = state?.checkout === "folder";
   const base = step && "base" in step ? step.base : null;
+  const { picker, open: setPicker, pickers } = useBranchPicker({ data: { ...data, source: state }, ops, base, nowMs, anchor: branchItem });
+  useEffect(() => void (initialPicker && setPicker(initialPicker)), []);
 
   // Fake moves, at once: what Rust will confirm by path [D30].
   const move = (paths: string[], to: "staged" | "changes") =>
@@ -243,10 +226,7 @@ export function SourcePanel({
         unstageAll: () => move(staged.map((file) => file.path), "changes"),
         discardAll: () => setDiscarding({ scope: "unstaged", files: changes }),
         checkout: () => setPicker("branch"),
-        createBranch: () => {
-          setFrom(null);
-          setPicker("create");
-        },
+        createBranch: () => setPicker("create"),
         createFrom: () => setPicker("from"),
         renameBranch: () => setPicker("rename"),
         publish: branchOps?.publish,
@@ -345,61 +325,7 @@ export function SourcePanel({
           On {truth.branch}, not {truth.recordedBranch}
         </p>
       )}
-      {picker === "branch" && state && (
-        <QuickPick
-          place={{ anchor: branchItem }}
-          placeholder={folder ? "Select a branch to switch to" : "This session works on its own branch"}
-          search={folder}
-          items={folder ? folderItems(read === undefined && branchOps ? null : (read?.branches ?? data.branches ?? null), state.branch, nowMs) : sessionItems(read?.base ?? base ?? "main", read ? (read.page && read.host) : (data.host ?? null))}
-          off={folder && (data.agentWorking || read?.working) ? "Branches can't switch while the agent is working." : null}
-          onPick={(item) => {
-            setPicker(null);
-            if (item.id === "rename") setPicker("rename");
-            else if (item.id === "create") {
-              setFrom(null);
-              setPicker("create");
-            } else if (item.id === "createFrom") setPicker("from");
-            else if (item.id === "lands") setPicker("base");
-            else if (item.id === "new") setPicker("newSession");
-            else if (item.id === "copy" && state.branch) copyWithToast(state.branch, "branch name");
-            else if (item.id === "open" && read?.page) branchOps?.openPage(read.page);
-            else if (folder) branchOps?.switchTo(item.title, item.id.startsWith("true:"));
-          }}
-          onClose={() => setPicker(null)}
-        />
-      )}
-      {(picker === "from" || picker === "base" || picker === "newSession") && state && (
-        <QuickPick
-          place={{ anchor: branchItem }}
-          placeholder={picker === "from" ? "Select a ref to create the branch from" : picker === "base" ? `What ${state.branch ?? "this branch"} lands into` : "Select a branch to start a session from"}
-          // The branches but the checked-out one, as the folder's list has them; Home starts a session from a local one.
-          // The base it lands into now is marked in the row's description, as VS Code marks the current item.
-          items={read === undefined && branchOps ? null : (folderItems((read?.branches ?? data.branches ?? []).filter((each) => picker !== "newSession" || !each.remote), state.branch, nowMs)?.slice(2).map((item) => (picker === "base" && item.title === (read?.base ?? base) ? { ...item, hint: `current · ${item.hint}` } : item)) ?? null)}
-          onPick={(item) => {
-            setPicker(null);
-            if (picker === "from") {
-              setFrom(item.title);
-              setPickerNow("create");
-            } else if (picker === "base") branchOps?.setBase(item.title);
-            else branchOps?.newSession(item.title);
-          }}
-          onClose={() => setPicker(null)}
-        />
-      )}
-      {(picker === "rename" || picker === "create") && (
-        <BranchNameBox
-          place={{ anchor: branchItem }}
-          placeholder={picker === "create" ? "New branch name" : "New name for the branch"}
-          hint={picker === "rename" ? `Enter renames ${state?.branch ?? "the branch"}${read?.prs?.length ? " · The PR stays on the old name" : ""}` : `Enter creates it from ${from ?? state?.branch ?? "what is checked out"} and switches to it`}
-          initial={picker === "rename" ? (state?.branch ?? "") : ""}
-          onName={(name) => {
-            setPicker(null);
-            if (picker === "rename") branchOps?.rename(name);
-            else branchOps?.create(name, from);
-          }}
-          onClose={() => setPicker(null)}
-        />
-      )}
+      {pickers}
       <div className={cx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-3", offline && "opacity-disabled")} inert={offline}>
         {gone && <Gone data={data} onRestore={ops?.restore} />}
         {state === null && !data.error && !gone && (

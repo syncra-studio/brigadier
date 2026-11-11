@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
@@ -9,6 +9,7 @@ import { Gone } from "./source/hero";
 import { ReadError, type SourceData, type SourceOps } from "./source/panel";
 import { Counts, Line, PrLine } from "./source/rows";
 import { useSourceStep } from "./source/step";
+import { useBranchPicker } from "./branch-picker";
 
 /** One of the card's parts, a hairline under it as the old card's [D1075, D1198]. */
 function CardSection({ title, children }: { title?: ReactNode; children: ReactNode }) {
@@ -41,6 +42,9 @@ export function GitCard({ data, nowMs, project = null, draftKey, session = null,
   const { source } = data;
   const offline = data.offline ?? false;
   const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, ops });
+  const branchRow = useRef<HTMLDivElement>(null);
+  const step = data.step;
+  const { open, pickers } = useBranchPicker({ data, ops, base: step && "base" in step ? step.base : null, nowMs, anchor: branchRow });
 
   if (data.truth?.missing) {
     return (
@@ -78,9 +82,11 @@ export function GitCard({ data, nowMs, project = null, draftKey, session = null,
       <CardSection title={project}>
         {/* A watch that failed after its first read: the last read stays under it, as in Source [D30]. */}
         {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
-        <Line icon={<Branch />} end={offline ? <Offline readAtMs={data.readAtMs ?? null} /> : (added > 0 || removed > 0) && <Counts added={added} removed={removed} />}>
-          {name}
-        </Line>
+        <div ref={branchRow} className="flex min-w-0">
+          <Line icon={<Branch />} end={offline ? <Offline readAtMs={data.readAtMs ?? null} /> : (added > 0 || removed > 0) && <Counts added={added} removed={removed} />} {...(!offline && { onClick: () => open("branch") })}>
+            {name}
+          </Line>
+        </div>
         {button && (
           <div className={cx("pt-1 pb-1.5", offline && "opacity-disabled")} inert={offline}>
             <ActionButton nowMs={nowMs} running={running} {...button} />
@@ -96,6 +102,7 @@ export function GitCard({ data, nowMs, project = null, draftKey, session = null,
           </div>
         </CardSection>
       )}
+      {pickers}
       {dialogs}
     </>
   );
