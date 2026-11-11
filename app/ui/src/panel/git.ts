@@ -102,6 +102,13 @@ const subscribe = (listener: () => void) => {
 /** Rust's command line for `target`. */
 export const sourceArgs = (target: Target, ...rest: string[]) => ["source", ...("session" in target ? [target.session] : ["--project", target.project]), ...rest];
 
+/** Rust's uncommitted review as the card keeps it: each file's lines, and the brief. */
+function countsOf(review: Record<string, any>): Pick<Git, "counts" | "brief"> {
+  const files: any[] = review.files;
+  const flags = Object.fromEntries(files.filter((file) => file.flag).map((file) => [file.path, file.flag]));
+  return { counts: new Map(files.map((file) => [file.path, { insertions: file.insertions, deletions: file.deletions }])), brief: { run: review.run, flags, agent: review.agent ?? null } };
+}
+
 /** Each file's lines added and removed, read after the status: a file's row shows them. */
 function count(): void {
   const target = git.target;
@@ -111,11 +118,7 @@ function count(): void {
   ask({ op: "run", args: sourceArgs(target, "review", "uncommitted") }, (reply) => {
     counting = false;
     // Another checkout's answer is dropped, but a count asked for meanwhile still runs.
-    if (reply.ok && git.target === target) {
-      const files: any[] = reply.review.files;
-      const flags = Object.fromEntries(files.filter((file) => file.flag).map((file) => [file.path, file.flag]));
-      set({ counts: new Map(files.map((file) => [file.path, { insertions: file.insertions, deletions: file.deletions }])), brief: { run: reply.review.run, flags, agent: reply.review.agent ?? null } });
-    }
+    if (reply.ok && git.target === target) set(countsOf(reply.review));
     if (recount) {
       recount = false;
       count();
@@ -164,7 +167,9 @@ export function refreshStep(then?: () => void): void {
   if (!target) return then?.();
   const mine = ++stepAsk;
   ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
-    // A failed read keeps the last step: the next read tries again.
+    // A failed read keeps the last step: the next read tries again. With none, it's read as no step, so a card
+    // waiting for its first one draws.
+    if (mine === stepAsk && git.target === target && !reply.ok && reply.error !== "disconnected" && !git.step) set({ step: { step: null, at: null } });
     if (mine === stepAsk && git.target === target && reply.ok) {
       const ran = git.step?.ran;
       set({ step: reply.step });
@@ -243,6 +248,9 @@ export function useGitWatch(owner: string | null): void {
     if (daemon && target && !starting) watch(git.target!);
   }, [key, daemon, starting]);
   const row = owner !== null && owner !== HOME ? rows?.find((each) => each.id === owner) : undefined;
+  // The 8 most recent open sessions in a project are read ahead [D1307].
+  const recent = (rows ?? []).filter((each) => each.project && !each.archived).sort((a, b) => b.updated - a.updated).slice(0, 8).map((each) => each.id).join(" ");
+  useEffect(() => void (daemon && warm(recent.split(" ").filter(Boolean))), [daemon, recent]);
   const working = isWorking(row);
   // A turn's start or end moves the step even when no file changed [D1208].
   useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
@@ -264,6 +272,44 @@ export function useGitWatch(owner: string | null): void {
 }
 
 export const retryGit = () => git.target && watch(git.target);
+
+// The sessions to read ahead, newest first; one read at a time; ones whose read failed, not asked again.
+let wanted: string[] = [];
+let warming = false;
+const tried = new Set<string>();
+
+/**
+ * Reads each of `ids` that isn't kept once, in the background and one after another, so a first visit draws its last
+ * known state in the first frame as a return does; its watch then reads it again [D1305, D1307]. Only into room the
+ * cache has, as its oldest, so nothing seen is pushed out.
+ */
+function warm(ids: string[]): void {
+  wanted = ids;
+  if (warming || kept.size >= 8) return;
+  const id = wanted.find((each) => !tried.has(each) && !kept.has(JSON.stringify({ session: each })) && JSON.stringify({ session: each }) !== git.key);
+  if (!id) return;
+  warming = true;
+  const target: Target = { session: id };
+  const key = JSON.stringify(target);
+  const asks = [sourceArgs(target, "status"), sourceArgs(target, "step"), sourceArgs(target, "truth"), sourceArgs(target, "review", "uncommitted")];
+  const replies: Record<string, any>[] = [];
+  const next = () => {
+    if (replies.length < asks.length) return ask({ op: "run", args: asks[replies.length]! }, (reply) => (replies.push(reply), next()));
+    warming = false;
+    const [read, step, truth, review] = replies as [Record<string, any>, Record<string, any>, Record<string, any>, Record<string, any>];
+    if (replies.some((reply) => reply.error === "disconnected")) return;
+    if (!read.ok || !step.ok) tried.add(id);
+    else if (!kept.has(key) && git.key !== key && kept.size < 8) {
+      const entry: Git = { key, target, head: read.git.head, files: new Map(read.git.files.map((each: Entry) => [each.path, each])), counts: new Map(), brief: null, ...(review.ok && countsOf(review.review)), error: null, step: step.step, version: 0, readAtMs: Date.now(), truth: truth.ok ? truth.truth : null, restoring: false, restoreError: null };
+      const seen = [...kept];
+      kept.clear();
+      kept.set(key, entry);
+      for (const [k, v] of seen) kept.set(k, v);
+    }
+    warm(wanted);
+  };
+  next();
+}
 
 const file = (entry: Entry, status: FileStatus, counts: Counts, whole: boolean): SourceFile => {
   const lines = counts.get(entry.path);

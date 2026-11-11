@@ -12,6 +12,8 @@ export type SourceData = {
   step: GitStep | null;
   /** The commits Rust's step was worked out on: a landing is pinned to them [D1049]. */
   at?: StepAt | null;
+  /** False until Rust's step has answered once: a card with nothing kept waits for it [D1307]. */
+  stepRead?: boolean;
   /** The read failed: shown over the last read, if any, which stays read-only. */
   error?: string | null;
   /** The daemon is out of reach: what was last read shows, read-only. */

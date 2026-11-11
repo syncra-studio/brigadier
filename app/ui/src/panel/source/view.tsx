@@ -57,6 +57,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       source: git.source,
       step: git.step?.step ?? null,
       at: git.step?.at ?? null,
+      stepRead: git.step !== null,
       error: git.error,
       offline: offline && git.source !== null,
       syncing: op.syncing,

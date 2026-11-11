@@ -179,6 +179,8 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         // The Files tree, an ignored folder opened in it, and the filename search [D1002].
         "files" => json!({"ok": true, "list": files::list(&checkout, &stop)?}),
+        // One read of the status, as the watch's first: a session read ahead [D1307].
+        "status" => json!({"ok": true, "git": git::status(&checkout, &stop)?.json()}),
         "folder" => json!({"ok": true, "entries": files::folder(&checkout, word(1)?)?}),
         "find" => json!({"ok": true, "found": files::find(&checkout, word(1)?, &stop)?}),
         "file" => {

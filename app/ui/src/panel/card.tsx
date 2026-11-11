@@ -80,7 +80,8 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
     );
   }
 
-  if (!source) {
+  // Nothing kept: the skeleton until the read and its step are both in, so it's drawn once whole [D1307].
+  if (!source || (data.stepRead === false && !data.error && !offline)) {
     return (
       <CardSection title={project}>
         {data.error ? (
