@@ -40,6 +40,11 @@ pub fn lands(dir: &Path) -> io::Result<Option<Lands>> {
 /// Records a landing in the session's record, or puts back the one before (None: none).
 pub fn set_landing(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
     let _one = lock(dir)?;
+    set_landing_held(dir, landing)
+}
+
+/// `set_landing` for a caller that holds the session's `lock`.
+pub fn set_landing_held(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
     let Some(mut owned) = read(dir)? else {
         return err("This session has no worktree.".into());
     };

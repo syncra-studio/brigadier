@@ -22,7 +22,9 @@ mod missing;
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
-pub use landing::{Landing, Lands, external_landing, landed, lands, set_landing, unlanded};
+pub use landing::{
+    Landing, Lands, external_landing, landed, lands, set_landing, set_landing_held, unlanded,
+};
 pub use missing::restore_missing;
 
 const RECORD: &str = "worktree.json";

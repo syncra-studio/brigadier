@@ -11,7 +11,7 @@
 
 use super::{arg, flag, has};
 use brigadier_core::git::{self, Checkout, Target, commit, land, step, sync};
-use brigadier_core::{host, share};
+use brigadier_core::{host, session_dir, share, worktrees};
 use serde_json::{Value, json};
 use std::fs::File;
 use std::io;
@@ -24,14 +24,17 @@ fn refuse<T>(why: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(why.into()))
 }
 
-/// Held from just before a change until the move is done: no turn starts in the folder, and none
-/// works there now, the session's own included [D1208, D1082]. The checkout lock, which every turn
-/// start waits on until its turn is logged; not the session's own lock, which the move takes itself.
-fn hold(data: &Path, target: &Target) -> io::Result<File> {
+/// Held from just before a change until the move is done: no turn starts in the folder, none
+/// works there now, the session's own included, and no archive or delete runs [D1208, D1082]. The
+/// session's lock, then the checkout lock, in a turn start's own order.
+fn hold(data: &Path, target: &Target) -> io::Result<(Option<File>, File)> {
     let me = match target {
         Target::Session(id) => Some(*id),
         Target::Project(_) => None,
     };
+    let mine = me
+        .map(|id| worktrees::lock(&session_dir(data, id)))
+        .transpose()?;
     let fence = match super::sessions::guard(data, &git::folder(data, target)?, me)? {
         Some(shared) => shared,
         None => git::branch::fence(data)?,
@@ -41,7 +44,7 @@ fn hold(data: &Path, target: &Target) -> io::Result<File> {
     {
         return refuse("Waits for the turn to finish.");
     }
-    Ok(fence)
+    Ok((mine, fence))
 }
 
 pub(super) fn run(
@@ -136,9 +139,9 @@ pub(super) fn run(
     );
     let pinned = (made.as_str(), base.unwrap_or(""));
     let moved = match (verb, &pr) {
-        ("merge", _) => land::land(data, session()?, "merge", None, pinned, &stop)
+        ("merge", _) => land::land_held(data, session()?, "merge", None, pinned, &stop)
             .map(|landed| json!({"ok": true, "landed": landed})),
-        ("squash", _) => land::land(data, session()?, "squash", Some(&message), pinned, &stop)
+        ("squash", _) => land::land_held(data, session()?, "squash", Some(&message), pinned, &stop)
             .map(|landed| json!({"ok": true, "landed": landed})),
         ("push", Some(pr)) => pr.push().map(|_| json!({"ok": true})),
         ("link", Some(pr)) => pr

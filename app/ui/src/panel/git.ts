@@ -387,17 +387,18 @@ export function commitFiles(all: boolean, message: string, onReply: (reply: Reco
 
 /**
  * The background draft (2.20) for exactly what every change would commit now: Rust keys it [D1212]. Its ready text
- * goes to `onText`; a pending one is read again, an empty or stale one written, while `wanted()` [T-contract].
+ * goes to `onText`; a pending one is read again, an empty or stale one written, while `wanted()` [T-contract]. One
+ * just written is read once more through the cached check, so files changed meanwhile never fill in an old message.
  */
-export function readDraft(onText: (text: string) => void, wanted: () => boolean, cached = true): void {
+export function readDraft(onText: (text: string) => void, wanted: () => boolean, mode: "read" | "write" | "check" = "read"): void {
   const target = git.target;
   if (!target || !wanted()) return;
-  ask({ op: "run", args: sourceArgs(target, "draft", "--all", ...(cached ? ["--cached"] : [])) }, (reply) => {
+  ask({ op: "run", args: sourceArgs(target, "draft", "--all", ...(mode === "write" ? [] : ["--cached"])) }, (reply) => {
     const state = reply.draft?.state;
     if (git.target !== target || !wanted()) return;
-    if (state === "ready") onText(reply.draft.text);
-    else if (state === "pending") setTimeout(() => readDraft(onText, wanted), 2000);
-    else if (cached && (state === "empty" || state === "stale")) readDraft(onText, wanted, false);
+    if (state === "ready") return mode === "write" ? readDraft(onText, wanted, "check") : onText(reply.draft.text);
+    if (state === "pending") setTimeout(() => readDraft(onText, wanted), 2000);
+    else if (mode === "read" && (state === "empty" || state === "stale")) readDraft(onText, wanted, "write");
   });
 }
 

@@ -71,9 +71,37 @@ pub fn land(
     id: &str,
     style: &str,
     message: Option<&str>,
-    (head, base): (&str, &str),
+    pinned: (&str, &str),
     stop: &AtomicBool,
 ) -> io::Result<Value> {
+    landing(data, id, style, message, pinned, false, stop)
+}
+
+/// `land` for a caller that holds the session's `worktrees::lock` across it [D1208].
+pub fn land_held(
+    data: &Path,
+    id: &str,
+    style: &str,
+    message: Option<&str>,
+    pinned: (&str, &str),
+    stop: &AtomicBool,
+) -> io::Result<Value> {
+    landing(data, id, style, message, pinned, true, stop)
+}
+
+fn landing(
+    data: &Path,
+    id: &str,
+    style: &str,
+    message: Option<&str>,
+    (head, base): (&str, &str),
+    held: bool,
+    stop: &AtomicBool,
+) -> io::Result<Value> {
+    let set_landing = match held {
+        true => worktrees::set_landing_held,
+        false => worktrees::set_landing,
+    };
     let squash = match style {
         "merge" => false,
         "squash" => true,
@@ -165,7 +193,7 @@ pub fn land(
         style: style.into(),
         at_ms,
     };
-    worktrees::set_landing(&dir, Some(landing))?;
+    set_landing(&dir, Some(landing))?;
     let moved = move_base(
         root,
         &lands.base,
@@ -176,7 +204,7 @@ pub fn land(
         stop,
     );
     if let Err(e) = moved {
-        let _ = worktrees::set_landing(&dir, lands.landing);
+        let _ = set_landing(&dir, lands.landing);
         return Err(e);
     }
     // The style it landed with is the project's pick from now on [D1028].
