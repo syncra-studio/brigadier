@@ -4,7 +4,7 @@
 
 use crate::owner;
 use brigadier_core::adapters::{self, Adapter, setup};
-use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
+use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir, writer};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -480,12 +480,12 @@ fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
         p["name"] = name.trim().chars().take(80).collect::<String>().into();
     }
     let has = |f: &str| args.iter().any(|a| a == f);
-    if has("--intro") {
-        p["intro_seen"] = true.into();
+    if has("--git-writer") {
+        let value = flag(args, "--git-writer").ok_or_else(|| io::Error::other(super::USAGE))?;
+        p["git_writer"] = json!(writer::parse_choice(serde_json::from_str(value)?)?);
     }
-    if has("--done") {
-        p["onboarded"] = true.into();
-    }
+    p["intro_seen"] = (p["intro_seen"] == true || has("--intro")).into();
+    p["onboarded"] = (p["onboarded"] == true || has("--done")).into();
     if args.len() > 1 {
         fs::create_dir_all(data)?;
         core::write_atomic(&data.join("profile.json"), p.to_string().as_bytes())?;

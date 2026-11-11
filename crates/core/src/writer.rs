@@ -56,10 +56,15 @@ pub fn choice(data: &Path) -> std::io::Result<Option<Choice>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e),
     };
-    if profile["git_writer"].is_null() {
+    parse_choice(profile["git_writer"].clone())
+}
+
+/// Shared validation for the CLI setter and the saved app setting.
+pub fn parse_choice(value: Value) -> std::io::Result<Option<Choice>> {
+    if value.is_null() {
         return Ok(None);
     }
-    let choice: Choice = serde_json::from_value(profile["git_writer"].clone())?;
+    let choice: Choice = serde_json::from_value(value)?;
     if crate::adapters::get(&choice.backend).is_none() || choice.model.trim().is_empty() {
         return Err(std::io::Error::other(
             "The chosen message writer needs an available agent and a model.",
