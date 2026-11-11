@@ -114,7 +114,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             {tab.kind === "file" ? (
               <FileTab key={tab.target} tab={tab} active={tab.id === active} />
             ) : tab.kind === "review" ? (
-              <ReviewView owner={owner} target={tab.target} />
+              <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
             ) : tab.kind === "history" ? (
               <HistoryTab owner={owner} />
             ) : tab.kind === "commit" ? (

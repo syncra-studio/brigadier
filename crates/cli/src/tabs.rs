@@ -42,6 +42,9 @@ struct Tab {
     line: Option<u32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     preview: bool,
+    /// A Review tab's scope last picked, so it comes back after a restart [D1187].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -208,7 +211,7 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
 }
 
 /// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> | file <tab> <path> <line|-> <keep|preview> |
-/// keep <tab> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
+/// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen]`, for a session or Home.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
@@ -317,6 +320,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     target,
                     line,
                     preview,
+                    ..Tab::default()
                 };
                 // The preview keeps its id, so the bar doesn't grow a tab and shrink back [D419, D424].
                 now.active = match now.tabs.iter().position(|t| t.preview).filter(|_| preview) {
@@ -340,6 +344,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "keep" => {
             if let Some(at) = now.at(arg(args, 3)?) {
                 now.tabs[at].preview = false;
+            }
+        }
+        "scope" => {
+            let scope = arg(args, 4)?;
+            if !["last", "uncommitted", "staged", "unstaged", "branch"].contains(&scope) {
+                return Err(io::Error::other(format!("unknown scope {scope}")));
+            }
+            if let Some(at) = now
+                .at(arg(args, 3)?)
+                .filter(|&at| now.tabs[at].kind == "review")
+            {
+                now.tabs[at].scope = Some(scope.into());
             }
         }
         "replace" => {

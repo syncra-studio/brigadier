@@ -33,7 +33,7 @@ export type TabKind = keyof typeof TAB_KINDS;
  * `target`: a file or conflict tab's path, a PR tab's number, a commit tab's full id [D1014, D1041]. A file tab also has the line last asked for, and
  * whether it's the preview the next file takes.
  */
-export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean };
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string };
 export type Tabs = { tabs: Tab[]; active: string };
 
 type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
@@ -202,6 +202,11 @@ export function openFile(owner: string, path: string, { line, preview }: { line?
 /** A preview file tab stays open for good. */
 export function keepTab(owner: string, id: string): void {
   act(owner, { args: ["keep", id], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, preview: false } : tab)) }) });
+}
+
+/** A Review tab's scope, kept in its record so it comes back after a restart [D1187]. */
+export function setTabScope(owner: string, id: string, scope: string): void {
+  act(owner, { args: ["scope", id, scope], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, scope } : tab)) }) });
 }
 
 export function selectTab(owner: string, id: string): void {
