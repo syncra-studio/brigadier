@@ -34,6 +34,8 @@ export type Row = {
   works?: boolean;
   /** The session it was forked from, which its row sits under [D48]. */
   forkOf?: string | null;
+  /** Where it works: its worktree, else its project's folder; null for a chat with no folder [D348, D2022]. */
+  folder?: string | null;
   /** Its PRs as Rust's watch keeps them, null before any read [D1009]. */
   prs?: KeptPrs | null;
 };
