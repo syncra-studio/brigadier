@@ -353,10 +353,21 @@ export function useGit(): { source: SourceState | null; step: StepRead | null; e
   return { source: shown.source, step: now.step, error: now.error, version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
+// The last files read, by checkout and path (the last 8, as `kept`): one opened again shows at once, then is read
+// again [D1310].
+const files = new Map<string, FileRead>();
+
 /** A checkout file as the viewer shows it, read again on each watch read that changed something [D1002]. */
 export function useFileRead(path: string): FileRead {
   const { target, version } = useSyncExternalStore(subscribe, () => git);
-  const [read, setRead] = useState<FileRead>({ state: "loading" });
+  const key = target && `${JSON.stringify(target)}\0${path}`;
+  const [read, setRead] = useState<FileRead>(() => (key && files.get(key)) || { state: "loading" });
+  // Another file in the same view: its own last read, not the one before's [D1310].
+  const [shownKey, setShownKey] = useState(key);
+  if (shownKey !== key) {
+    setShownKey(key);
+    setRead((key && files.get(key)) || { state: "loading" });
+  }
   const [tick, setTick] = useState(0);
   // shortcut: the watch leaves ignored files out, so an ignored file's tab reads it again every few seconds while the
   // window shows; a watch of the file itself would be instant.
@@ -375,6 +386,7 @@ export function useFileRead(path: string): FileRead {
       if (!reply.ok) return setRead({ state: "failed", error: String(reply.error) });
       if (reply.file.ignored) setIgnored(true);
       const next: FileRead = reply.file.gone ? { state: "gone", carried: false } : { state: "read", file: reply.file };
+      if (key) keep(files, key, next);
       // The same read keeps its object, so the viewer doesn't draw it again.
       setRead((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));
     });

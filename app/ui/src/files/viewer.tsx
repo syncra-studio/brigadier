@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { CopyButton } from "../components/copy-button";
 import { ErrorLine } from "../components/error-line";
@@ -49,12 +49,23 @@ export function FileViewer({
   defaultGoing?: boolean;
 }) {
   const file = read.state === "read" ? read.file : null;
+  // A read that answers within a moment shows with no skeleton before it, as VS Code's does [D1310].
+  const [slow, setSlow] = useState(false);
+  const loading = read.state === "loading";
+  useEffect(() => {
+    setSlow(false);
+    if (!loading) return;
+    const timer = setTimeout(() => setSlow(true), 150);
+    return () => clearTimeout(timer);
+  }, [loading, path]);
   return (
     <div data-slot="file-tab" className="flex min-h-0 flex-1 flex-col">
       <CodeFileHeader path={path} gone={read.state === "gone"} onReveal={onReveal}>
         {file && <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(file.size)}</span>}
       </CodeFileHeader>
-      {read.state === "loading" ? (
+      {loading && !slow ? (
+        <div aria-busy className="flex-1" />
+      ) : loading ? (
         <div aria-busy className="flex flex-col gap-2 px-4 py-3">
           {["w-1/3", "w-1/2", "w-2/5", "w-3/5", "w-1/4", "w-1/2"].map((width, index) => (
             // The same widths repeat; their order never changes.
