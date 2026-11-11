@@ -192,14 +192,16 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
   const setup = agent?.setup;
   const label = agent?.label ?? "";
   const waiting = starting || state === "running";
-  // A run that ended badly stays until tried again; a sign-in's own error words where the agent gives them [D1324].
+  // A run that ended badly stays until tried again: the last line its CLI printed when there is one, else a sign-in's
+  // own error words where the agent gives them [D2078, D1324].
   const runFailed =
     setup && !setup.running && setup.code !== 0
-      ? setup.action === "install"
-        ? `${label} couldn't be installed. Try again.`
-        : setup.error
-          ? `${label}: ${setup.error}`
-          : `Signing in to ${label} didn't finish. Try again.`
+      ? setup.reason ||
+        (setup.action === "install"
+          ? `${label} couldn't be installed. Try again.`
+          : setup.error
+            ? `${label}: ${setup.error}`
+            : `Signing in to ${label} didn't finish. Try again.`)
       : null;
   const problem = failed ?? (state === "error" ? agent?.error : null) ?? runFailed;
   const installing = (starting && state === "install") || setup?.action === "install";
