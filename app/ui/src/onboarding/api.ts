@@ -78,11 +78,13 @@ export type Agent = {
   mark: string | null;
   /** Off: left out of new sessions, onboarding and switching; its sessions keep working [D2079]. */
   enabled: boolean;
+  /** The command its Update runs, as typed; none: it can't be updated from here [D2082]. */
+  update: string | null;
   /**
    * A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page; once it
    * failed, a sign-in's own `error` words, and `reason`: its last line in the CLI's own words [D2077].
    */
-  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null } | null;
+  setup: { id: string; action: "install" | "sign-in" | "update"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null } | null;
   path?: string | null;
   version?: string | null;
   signed_in?: boolean;

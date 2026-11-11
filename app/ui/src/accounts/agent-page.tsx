@@ -97,7 +97,7 @@ export function AgentPage({
   );
 }
 
-/** The Installation card: the CLI's version and its one action, then where it runs from. */
+/** The Installation card: the CLI's version and its one action (Install, else Update: its own updater as a setup run, checked again once it ends [D2082]), then where it runs from. */
 function Installation({ agent, online, setup }: { agent: Agent; online: boolean; setup: ReturnType<typeof useAgentSetup> }) {
   const state = stateOf(agent);
   // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
@@ -110,9 +110,8 @@ function Installation({ agent, online, setup }: { agent: Agent; online: boolean;
         Install
       </Button>
     ) : (
-      // Drawn only: updating an agent's CLI waits for Rust [D388].
-      <Button variant="soft" size="sm" disabled>
-        Update
+      <Button variant="soft" size="sm" disabled={busy || !agent.update} title={agent.update ?? undefined} onClick={() => void setup.begin(agent, "update")}>
+        {agent.setup?.running && agent.setup.action === "update" ? "Updating…" : "Update"}
       </Button>
     );
   return (

@@ -98,6 +98,11 @@ impl Adapter for OpenCode {
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }
 
+    /// `opencode upgrade` (opencode.ai/v2/docs/cli/commands).
+    fn update(&self) -> Option<&'static [&'static str]> {
+        Some(&["upgrade"])
+    }
+
     /// The frame of its mark (opencode.ai/favicon.svg), in the current colour, as the old app drew it [D123].
     fn mark(&self) -> Option<&'static str> {
         Some(

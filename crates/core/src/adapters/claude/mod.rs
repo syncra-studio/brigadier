@@ -39,6 +39,11 @@ impl Adapter for Claude {
         Some("curl -fsSL https://claude.ai/install.sh | bash")
     }
 
+    /// `claude update` (code.claude.com/docs/en/setup#update-manually).
+    fn update(&self) -> Option<&'static [&'static str]> {
+        Some(&["update"])
+    }
+
     /// Claude's spark, from Simple Icons (CC0), in its brand colour (a theme token: the CSP refuses a style attribute), as the old app drew it [D123].
     fn mark(&self) -> Option<&'static str> {
         Some(include_str!("claude.svg"))

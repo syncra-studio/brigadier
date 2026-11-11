@@ -44,11 +44,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Some("close") => close(data, &id).map(|()| json!({"ok": true})),
                 // `setup <agent> code <code>`: a code pasted from its sign-in's code page.
                 Some("code") => send_code(data, a, &id, args.get(3).map_or("", String::as_str)),
-                Some(action @ ("install" | "sign-in")) => {
+                Some(action @ ("install" | "sign-in" | "update")) => {
                     start(data, a, &id, action, size("--cols"), size("--rows"))
                 }
                 _ => Err(io::Error::other(
-                    "usage: brigadier setup <agent> install|sign-in|close|code <code>",
+                    "usage: brigadier setup <agent> install|sign-in|update|close|code <code>",
                 )),
             }
         }
@@ -172,10 +172,13 @@ fn available() -> Vec<&'static dyn Adapter> {
         .collect()
 }
 
+/// `update`: the command its Update runs, as typed.
 fn card(data: &Path, a: &dyn Adapter) -> Value {
+    let update = a.update().map(|w| format!("{} {}", a.bin().0, w.join(" ")));
     json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
-        "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name())})
+        "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
+        "update": update.or(a.install().map(String::from))})
 }
 
 fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
@@ -365,7 +368,8 @@ fn send_code(data: &Path, a: &dyn Adapter, id: &str, code: &str) -> io::Result<V
     Ok(json!({"ok": true}))
 }
 
-/// Runs the vendor's installer, or the CLI's own sign-in, in a terminal on a host [D45, D60].
+/// Runs the vendor's installer, or the CLI's own sign-in or updater (else its installer again), in a
+/// terminal on a host [D45, D60, D2082]. The setup run's action names which.
 /// A run still going is shown again; an ended one is replaced.
 fn start(
     data: &Path,
@@ -379,7 +383,19 @@ fn start(
         return Ok(running);
     }
     let spec = setup_spec(a, id, action);
-    let (argv, env) = if action == "install" {
+    let words = match action {
+        "sign-in" => Some(a.sign_in().ok_or_else(|| io::Error::other("no sign-in"))?.1),
+        "update" => a.update(),
+        _ => None,
+    };
+    let (argv, env) = if let Some(words) = words {
+        let exe = a
+            .exe()
+            .ok_or_else(|| io::Error::other(format!("{} is not installed", a.label())))?;
+        let argv =
+            std::iter::once(exe.display().to_string()).chain(words.iter().map(|w| w.to_string()));
+        (argv.collect(), adapters::base_env(&spec, &exe, a.keys()))
+    } else {
         let line = a
             .install()
             .ok_or_else(|| io::Error::other("no installer"))?;
@@ -390,14 +406,6 @@ fn start(
             format!("set -o pipefail; {line}"),
         ];
         (argv, adapters::base_env(&spec, shell, &[]))
-    } else {
-        let (_, words) = a.sign_in().ok_or_else(|| io::Error::other("no sign-in"))?;
-        let exe = a
-            .exe()
-            .ok_or_else(|| io::Error::other(format!("{} is not installed", a.label())))?;
-        let argv =
-            std::iter::once(exe.display().to_string()).chain(words.iter().map(|w| w.to_string()));
-        (argv.collect(), adapters::base_env(&spec, &exe, a.keys()))
     };
     in_terminal(data, &spec, argv, env, cols, rows)
 }

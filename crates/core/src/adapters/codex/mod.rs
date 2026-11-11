@@ -40,8 +40,9 @@ impl Adapter for Codex {
     }
 
     fn install(&self) -> Option<&'static str> {
-        // Without it the installer asks "Start Codex now?" on the terminal, and a yes starts Codex
-        // inside the install, which fails there and fails the install.
+        // Also its update, run again (learn.chatgpt.com/docs/codex/cli). Without the variable the
+        // installer asks "Start Codex now?" on the terminal, and a yes starts Codex inside the
+        // install, which fails there and fails the install.
         Some("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh")
     }
 

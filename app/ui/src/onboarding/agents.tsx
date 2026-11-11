@@ -75,7 +75,7 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
       (cause) => setFailed((all) => ({ ...all, [name]: errorText(cause) })),
     );
 
-  const begin = async (agent: Agent, action: "install" | "sign-in") => {
+  const begin = async (agent: Agent, action: "install" | "sign-in" | "update") => {
     setFailed(({ [agent.name]: _, ...rest }) => rest);
     setStarting(agent.name);
     try {

@@ -73,6 +73,13 @@ pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
         .find(|p| is_exe(p))
 }
 
+/// The first line of its `--version`.
+pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
+    let out = super::probe(exe, cwd, &[], &["--version"], 10)?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(text.lines().next().unwrap_or("").trim().into())
+}
+
 fn is_exe(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     p.metadata()

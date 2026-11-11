@@ -15,6 +15,7 @@ pub use classify::classify;
 pub use files::{change, counts, drop_lines, sha1, uuid};
 pub use model::ModelInfo;
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
+pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};
 
 use crate::Spec;
@@ -223,6 +224,10 @@ pub trait Adapter: Sync {
     fn install(&self) -> Option<&'static str> {
         None
     }
+    /// Its own updater, as arguments to its binary; None: `install` runs again [D2082].
+    fn update(&self) -> Option<&'static [&'static str]> {
+        None
+    }
     /// Its own sign-in, as arguments to its binary run in a terminal, and the button's words.
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
         None
@@ -428,13 +433,6 @@ pub fn probe_as(
         .envs(base_env(spec, exe, keys))
         .current_dir(cwd);
     setup::run(&mut command, secs)
-}
-
-/// The first line of its `--version`.
-pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
-    let out = probe(exe, cwd, &[], &["--version"], 10)?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(text.lines().next().unwrap_or("").trim().into())
 }
 
 /// A one-question PendingQuestion (D177) from a CLI that asks one at a time.

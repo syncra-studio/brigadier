@@ -44,7 +44,7 @@ export function standing(agent: Agent, accounts: SwitchAgent | undefined, page =
   const count = signedIn > 0 && `${signedIn} ${signedIn === 1 ? "account" : "accounts"}`;
   if (agent.enabled === false) return { tone: "off", line: page ? OFF_NOTE : ["Off", count].filter(Boolean).join(" · ") };
   if (state === "checking") return { tone: "off", line: "Checking…" };
-  if (state === "running") return { tone: "off", line: agent.setup?.action === "install" ? "Installing…" : "Signing in…" };
+  if (state === "running") return { tone: "off", line: { install: "Installing…", update: "Updating…", "sign-in": "Signing in…" }[agent.setup!.action] };
   if (state === "error") return { tone: "needs", line: agent.error ?? "Couldn't be checked" };
   if (state === "install") return { tone: "needs", line: "Not installed" };
   if (state === "signIn") return { tone: "needs", line: "Not signed in" };
@@ -109,12 +109,14 @@ export function setupFailure(agent: Agent, failed: string | undefined): string |
   const setup = agent.setup;
   if (failed) return failed;
   if (!setup || setup.running || setup.code === 0) return null;
-  // The CLI's own last line, else ours.
-  return setup.reason || (setup.action === "install" ? `${agent.label} couldn't be installed. Try again.` : `Signing in to ${agent.label} didn't finish. Try again.`);
+  // The CLI's own last line, else ours; an update's as the old app said it.
+  if (setup.reason) return setup.reason;
+  if (setup.action === "update") return setup.code === null ? "The update was stopped." : `The update stopped with code ${setup.code}.`;
+  return setup.action === "install" ? `${agent.label} couldn't be installed. Try again.` : `Signing in to ${agent.label} didn't finish. Try again.`;
 }
 
 /**
- * An agent's install or sign-in while it runs (with Cancel), or why it failed (with Try again), as the old
+ * An agent's install, update or sign-in while it runs (with Cancel), or why it failed (with Try again), as the old
  * Connect line drew it. Nothing while neither.
  */
 export function ConnectStatus({
@@ -137,7 +139,9 @@ export function ConnectStatus({
     : setup?.running
       ? setup.action === "install"
         ? `Installing ${agent.label}… This takes a minute or two.`
-        : `Finish signing in to ${agent.label} in your browser.`
+        : setup.action === "update"
+          ? `Updating ${agent.label}…`
+          : `Finish signing in to ${agent.label} in your browser.`
       : null;
   if (!text) return null;
   return (
