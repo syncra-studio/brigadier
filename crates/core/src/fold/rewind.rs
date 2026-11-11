@@ -100,8 +100,17 @@ impl Fold {
         let Some(conv) = item["moved"].as_str() else {
             return;
         };
-        self.convs
-            .insert((backend.clone(), account.clone(), conv.into()));
+        // The source's own conversation, which the first launch forks at the answer: not the
+        // fork's to delete [D1089].
+        if item["branch"] == true {
+            self.branching.insert(backend.clone());
+            if let Some(end) = item["end"].as_str() {
+                self.pin.insert(backend.clone(), end.into());
+            }
+        } else {
+            self.convs
+                .insert((backend.clone(), account.clone(), conv.into()));
+        }
         self.resume.insert(backend.clone(), conv.into());
         self.boundaries.push(Boundary {
             cid: text("at"),
@@ -114,6 +123,18 @@ impl Fold {
             start: None,
             end: item["end"].as_str().map(String::from),
         });
+    }
+
+    /// A fork's own conversation, made by its first launch: it holds the fork point [D1089].
+    pub(super) fn branched(&mut self, backend: &str, id: &str) {
+        if self.branching.remove(backend) {
+            let from = self.resume.get(backend);
+            for b in
+                (self.boundaries.iter_mut()).filter(|b| b.origin == "fork" && Some(&b.conv) == from)
+            {
+                b.conv = id.into();
+            }
+        }
     }
 
     /// This conversation's turns: on the agent and account it runs on now, since the last switch.

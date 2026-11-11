@@ -56,6 +56,20 @@ pub fn summary(dir: &Path) -> bool {
     record(dir).is_some_and(|r| r["summary"] == true)
 }
 
+/// Whether the fork's next turn on `backend` begins from the hand-off, without asking [D90]: it
+/// holds no conversation of its own, or its first launch was to fork one that no longer has the
+/// answer, its source deleted first [D1089].
+pub fn handoff(spec: &Spec, f: &Fold, backend: &str) -> bool {
+    if !f.resume.contains_key(backend) {
+        return summary(&spec.dir);
+    }
+    let at = (f.boundaries.iter()).find(|b| b.origin == "fork" && b.backend == backend);
+    let native = at.zip(adapters::get(backend).and_then(|a| a.forking()));
+    let run = || as_run(spec, f, backend, None);
+    f.branching.contains(backend)
+        && !native.is_some_and(|(at, a)| a.fork(&run(), at, None, Path::new(&spec.cwd)).is_ok())
+}
+
 fn inherits(dir: &Path, at: &str) -> bool {
     record(dir)
         .is_some_and(|r| (r["inherited"].as_array()).is_some_and(|a| a.iter().any(|c| c == at)))
@@ -373,6 +387,7 @@ fn build(
     op.record = json!({"fork": ask.fork, "source": src.id, "at": ask.at,
         "where": place, "root": here.then(|| crate::share::root(src)), "summary": forked.is_none(), "leftOut": left_out,
         "backend": op.backend, "account": op.account, "moved": forked.as_ref().map(|k| &k.conv),
+        "branch": forked.as_ref().zip(at).is_some_and(|(k, b)| k.conv == b.conv),
         "turns": forked.as_ref().map(|k| k.turns), "end": at.and_then(|b| b.end.clone()),
         "inherited": inherited});
     rf::write(src, op, "made")?;

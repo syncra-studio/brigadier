@@ -52,6 +52,7 @@ pub struct Forked {
 pub trait Fork {
     /// A new conversation holding `at.conv` up to turn `at`, for a fork working in `cwd`, that
     /// outlives the source's delete; `next` is the turn after it. Refused: the hand-off [D90].
+    /// `at.conv` itself back: the fork's first launch makes it, resuming that with a fork [D1089].
     fn fork(
         &self,
         spec: &Spec,

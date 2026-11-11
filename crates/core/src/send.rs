@@ -82,6 +82,7 @@ pub fn send(
         ..spec.clone()
     };
     let mut run = as_run(spec, f, &b, None);
+    let handoff = picked.is_none() && crate::fork::handoff(spec, f, &b);
     let (change, sent) = if let Some(p) = picked {
         run.model = Some(p.model.clone());
         run.effort = p.effort.clone();
@@ -89,7 +90,7 @@ pub fn send(
             Ok((change, sent)) => (Some(change), sent),
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
-    } else if !f.resume.contains_key(&b) && crate::fork::summary(&spec.dir) {
+    } else if handoff {
         // A fork with no conversation of its own begins from the hand-off, without asking [D90].
         match crate::switch::forked(spec, f, text) {
             Ok(sent) => (None, sent),
@@ -183,7 +184,7 @@ pub fn send(
             return json!({"ok": false, "error": e.to_string()});
         }
     }
-    let resume = if picking {
+    let resume = if picking || handoff {
         None
     } else {
         f.resume.get(&b).map(String::as_str)

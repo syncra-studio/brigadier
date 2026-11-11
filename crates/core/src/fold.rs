@@ -173,6 +173,9 @@ pub struct Fold {
     /// The record's entry each backend must resume at after a rewind, moving with its turns.
     #[serde(default)]
     pub pin: BTreeMap<String, String>,
+    /// Backends whose next launch makes a fork's conversation, forking the one it resumes [D1089].
+    #[serde(default)]
+    pub branching: BTreeSet<String>,
     /// Rewinds done, by the app's op id: one is never done twice [D54].
     #[serde(default)]
     pub rewinds: BTreeSet<String>,
@@ -447,6 +450,7 @@ impl Fold {
                 let (backend, id) = (str_of("backend"), str_of("id"));
                 let account = self.accounts.get(&backend).cloned().unwrap_or_default();
                 self.convs.insert((backend.clone(), account, id.clone()));
+                self.branched(&backend, &id);
                 self.resume.insert(backend, id);
             }
             "limited" => {

@@ -78,6 +78,10 @@ pub struct Spec {
     /// The entry in its CLI's record to resume at, after a rewind that cut there [D384].
     #[serde(skip)]
     pub resume_at: Option<String>,
+    /// Its launch forks the conversation it resumes into a new one: a fork's first, where the
+    /// agent's CLI makes the fork [D1089].
+    #[serde(skip)]
+    pub branch: bool,
 }
 
 pub fn data_dir() -> PathBuf {
