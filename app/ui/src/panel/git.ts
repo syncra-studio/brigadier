@@ -4,6 +4,7 @@ import { showToast } from "../components/toast";
 import { ask, setGitHandler, useDaemon } from "../daemon";
 import { refreshHistory } from "../history/store";
 import { useHomeProject, useStart } from "../home/start";
+import type { ComposerRow } from "../session/composer";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
@@ -254,7 +255,7 @@ export function useGitWatch(owner: string | null): void {
   }, [key, daemon, starting]);
   // The background draft: a while after each read that changed something, while the session's agent is idle [D1212].
   const row = owner !== null && owner !== HOME ? rows?.find((each) => each.id === owner) : undefined;
-  const working = row?.works === true;
+  const working = (row as ComposerRow | undefined)?.running === true;
   // A turn's start or end moves the step and "When it's done" even when no file changed [D1201].
   useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
   const version = useSyncExternalStore(subscribe, () => git.version);

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useDaemon } from "../../daemon";
 import { refreshHistory, useHistory } from "../../history/store";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
+import type { ComposerRow } from "../../session/composer";
 import { HOME, openFile, openTab } from "../../shell/tab-store";
 import { landBranch, moveFiles, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
 import { useShare } from "../share";
@@ -70,7 +71,8 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       syncing: op.syncing,
       naming: op.naming,
       // The session's own agent; a project folder's sessions are guarded in Rust [D1082, D1208].
-      agentWorking: owner !== HOME && rows?.find((row) => row.id === owner)?.works === true,
+      // A turn open, stalled or not: a stall never unlocks landing [D1208, D1252].
+      agentWorking: owner !== HOME && (rows?.find((row) => row.id === owner) as ComposerRow | undefined)?.running === true,
       readAtMs: git.readAtMs,
       truth: git.truth,
       restoring: git.restoring,
