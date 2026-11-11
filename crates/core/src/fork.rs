@@ -232,18 +232,28 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
         return Ok(refused("place", "This answer can't be forked there."));
     }
     let f = crate::fold(&s.src.dir, true)?.fold;
-    let backend = if f.backend.is_empty() {
-        &s.src.backend
-    } else {
-        &f.backend
-    }
-    .clone();
+    let at = (f.boundaries.iter())
+        .find(|b| b.cid == ask.at && !s.gone)
+        .cloned();
+    // The agent and account the answer was on, which may not be the session's now [D1081].
+    let (backend, account) = match &at {
+        Some(b) => (b.backend.clone(), b.account.clone()),
+        None => {
+            let now = if f.backend.is_empty() {
+                &s.src.backend
+            } else {
+                &f.backend
+            };
+            (
+                now.clone(),
+                f.accounts.get(now).cloned().unwrap_or_default(),
+            )
+        }
+    };
     let mut op = rf::Op {
         fork: ask.fork.into(),
-        account: f.accounts.get(&backend).cloned().unwrap_or_default(),
-        at: (f.boundaries.iter())
-            .find(|b| b.cid == ask.at && !s.gone)
-            .cloned(),
+        account,
+        at,
         backend,
         ..rf::Op::default()
     };
@@ -281,7 +291,7 @@ fn build(
 ) -> io::Result<Value> {
     let src = &s.src;
     rf::write(src, op, "files")?;
-    let run = as_run(src, f, &op.backend, None);
+    let run = as_run(src, f, &op.backend, Some(&op.account));
     // Another vendor's agent has no native fork: it begins from the hand-off [D1081, D90].
     let other = ask.to.filter(|(b, ..)| *b != op.backend);
     let worktree = place == "worktree";

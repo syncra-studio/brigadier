@@ -72,6 +72,7 @@ export function ForkMenu({
   offer,
   error,
   agents,
+  agentsError,
   current,
   busy = false,
   onOpen,
@@ -83,8 +84,10 @@ export function ForkMenu({
   chat: boolean;
   offer?: ForkOffer;
   error?: string;
-  /** The agents and models the switch picker lists; `current` is this session's agent. */
-  agents: ModelGroup[];
+  /** The agents and models the switch picker lists, undefined while they're read; `current` is this session's agent. */
+  agents: ModelGroup[] | undefined;
+  /** Why the list couldn't be read; opening the menu again reads it again. */
+  agentsError?: string;
   current: string;
   busy?: boolean;
   onOpen?: () => void;
@@ -131,7 +134,16 @@ export function ForkMenu({
                   <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent {...place}>
-                  {agents
+                  {agentsError ? (
+                    <div className="px-2 py-1.5">
+                      <ErrorLine size="sm" error={agentsError} />
+                    </div>
+                  ) : !agents ? (
+                    <DropdownMenuItem disabled>
+                      <MenuRow icon={<Spinner className="animate-spin" />} title="Checking the agents" />
+                    </DropdownMenuItem>
+                  ) : null}
+                  {(agents ?? [])
                     .filter((group) => !group.unavailable && group.models.length > 0)
                     .map((group) => (
                       <div key={group.provider} role="group" aria-label={group.label}>

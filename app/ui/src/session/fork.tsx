@@ -6,7 +6,7 @@ import { ForkMenu, type ForkOffer } from "../components/thread/fork-menu";
 import { ForkedFrom } from "../components/thread/forked-from";
 import { ask, useDaemon } from "../daemon";
 import { startFork } from "../home/start";
-import { run } from "../onboarding/api";
+import { errorText, run } from "../onboarding/api";
 import type { Item } from "../thread/item";
 import { asGroups } from "./model";
 
@@ -24,12 +24,15 @@ export function ForkAction({ at }: { at: string }) {
   const row = rows?.find((each) => each.id === session?.id);
   const [offer, setOffer] = useState<ForkOffer>();
   const [error, setError] = useState<string>();
-  const [agents, setAgents] = useState<ModelGroup[]>([]);
+  const [agents, setAgents] = useState<ModelGroup[]>();
+  const [agentsError, setAgentsError] = useState<string>();
   if (!session) return null;
   const open = () => {
     setOffer(undefined);
     setError(undefined);
-    run(["models", "--session", session.id]).then((reply) => setAgents(asGroups(reply.groups)), () => {});
+    setAgents(undefined);
+    setAgentsError(undefined);
+    run(["models", "--session", session.id]).then((reply) => setAgents(asGroups(reply.groups)), (cause) => setAgentsError(errorText(cause)));
     ask({ op: "run", args: ["fork", session.id, "--check", at] }, (reply) =>
       reply.ok ? setOffer(reply as unknown as ForkOffer) : setError(String(reply.message ?? reply.error ?? "Couldn't check this answer")),
     );
@@ -40,6 +43,7 @@ export function ForkAction({ at }: { at: string }) {
       offer={offer}
       error={error}
       agents={agents}
+      {...(agentsError && { agentsError })}
       current={offer?.agent ?? row?.backend ?? ""}
       busy={session.offline}
       onOpen={open}
