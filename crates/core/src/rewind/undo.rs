@@ -1,5 +1,5 @@
 //! Undo a restore, one deep [D384, D1196]: the restore's record is kept as it lands [D1213], and
-//! the toast's Undo restore puts back what it changed, only where each path is still exactly as
+//! the toast's Redo file changes puts back what it changed, only where each path is still exactly as
 //! the restore left it [D1192].
 
 use super::shared::{Lives, sharer};
@@ -81,7 +81,12 @@ pub fn undo_restore(data: &Path, spec: &Spec, op: &str, live: Lives) -> io::Resu
 
 fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> {
     let path = spec.dir.join(FILE);
-    let gone = || refused("gone", "This restore can't be undone any more.");
+    let gone = || {
+        refused(
+            "gone",
+            "Only the last rewind's changes can be put back, once.",
+        )
+    };
     let r: Restored = (fs::read(&path).ok())
         .and_then(|b| serde_json::from_slice(&b).ok())
         .filter(|r: &Restored| r.op == op)
@@ -108,7 +113,7 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
         ));
     }
     let kept = put_back(&store, &r.pre.tree, &r.target, &r.paths)
-        .map_err(|e| refused("failed", format!("The restore couldn't be undone: {e}")))?;
+        .map_err(|e| refused("failed", e.to_string()))?;
     // One deep: gone once used. Left behind, a second Undo finds every path changed and keeps it.
     let _ = fs::remove_file(&path);
     Ok(json!({"ok": true, "undone": r.paths.len() - kept.len(), "kept": kept}))

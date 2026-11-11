@@ -30,7 +30,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return Ok(json!({"ok": false, "error": "queued",
             "message": "Messages are waiting to send. Send or remove them first."}));
     }
-    // Undo restore: rewind `op`'s restore put back, behind the queue too [D1196].
+    // Redo file changes: rewind `op`'s restore put back, behind the queue too [D1196, D1246].
     if has(args, "--undo") {
         return core::rewind::undo_restore(data, &spec, op, &live);
     }

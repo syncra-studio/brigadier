@@ -37,14 +37,14 @@ function said(reply: Record<string, any>, restore: boolean): string {
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
 }
 
-/** Undo restore, from the restore's toast, one deep [D1196]: shown at once, then what came back and what stayed. */
+/** Redo file changes, from the restore's toast, one deep [D1196, D1246]: shown at once, then what came back and what stayed. */
 function undoRestore(run: Runner, id: string, cid: string, op: string) {
-  const pending = showToast("Undoing restore…", { stays: true });
+  const pending = showToast("Putting the agent's changes back…", { stays: true });
   void run(["rewind", id, cid, "--op", op, "--undo"]).then((reply) => {
     toastManager.close(pending);
-    if (!reply.ok) return showToast(`Couldn't undo the restore: ${why(reply)}`, { tone: "error" });
+    if (!reply.ok) return showToast(`Couldn't put the agent's changes back: ${why(reply)}`, { tone: "error" });
     const kept: string[] = reply.kept ?? [];
-    const back = `Restore undone · ${files(reply.undone)} back`;
+    const back = `The agent's changes are back · ${files(reply.undone)}`;
     // Proposed words: what changed since the restore keeps its edit [D1192].
     showToast(kept.length > 0 ? `${back}, kept as edited since: ${named(kept)}` : back, { tone: kept.length > 0 ? "neutral" : "success" });
   });
@@ -103,8 +103,8 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
       }
       setRunning((now) => now && { ...now, replied: true });
       putBack(id, text, true);
-      // Rewind removes the message itself, so Undo restore lives on its toast [D1192, D1196].
-      const actions = restore && reply.restored > 0 ? [{ label: "Undo restore", run: () => undoRestore(run, id, cid, op) }] : [];
+      // Rewind removes the message itself, so Redo file changes lives on its toast [D1192, D1196, D1246].
+      const actions = restore && reply.restored > 0 ? [{ label: "Redo file changes", run: () => undoRestore(run, id, cid, op) }] : [];
       showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });
     });
   };
