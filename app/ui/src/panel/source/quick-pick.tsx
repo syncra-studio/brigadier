@@ -13,13 +13,13 @@ export type PickItem = { id: string; icon: ReactNode; title: string; hint?: stri
 /** Where a quick pick or the name box opens: over the branch item it came from; `held`, the gallery's box. */
 export type Place = { anchor: RefObject<Element | null>; held?: HTMLElement };
 
-/** The popover a quick pick or the name box sits on, above its branch item as Home's branch picker; a click outside or Escape closes it. */
+/** The popover a quick pick or the name box sits on, below the branch label at Source's top [D1205]; a click outside or Escape closes it. */
 function Surface({ place, onClose, children }: { place: Place; onClose: () => void; children: ReactNode }) {
   return (
     <Popover open onOpenChange={(open) => !open && onClose()}>
       <PopoverContent
         anchor={place.anchor}
-        side="top"
+        side="bottom"
         align="start"
         container={place.held}
         collisionAvoidance={place.held ? { side: "none", align: "none" } : undefined}

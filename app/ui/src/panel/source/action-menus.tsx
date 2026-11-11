@@ -8,11 +8,12 @@ import { plural } from "../words";
 export type ActionPick =
   | "commit" | "amend" | "commitPush" | "commitSync" | "commitMerge" | "commitPr"
   | "createPr" | "pushBranch" | "openPrPage" | "catchUp" | "catchUpMerge" | "catchUpRebase" | "catchUpAgent"
-  | "continue" | "abortCatchUp" | "mergeLocally" | "forcePush" | "fixChecks" | "fixComments" | "fixConflicts" | "fixAll";
+  | "continue" | "abortCatchUp" | "mergeLocally" | "forcePush" | "fixChecks" | "fixComments" | "fixConflicts" | "fixAll"
+  | "editMessage" | "pullOnly" | "pushOnly";
 
-/** Each step's menu: every other way on from here [D1008, D1015, D1028]. Landed has none. */
-export function hasActionMenu(step: Step): boolean {
-  return step.kind !== "landed";
+/** Each step's menu: every other way on from here [D1008, D1015, D1028]. Landed and a bare Publish have none but Commit only. */
+export function hasActionMenu(step: Step, uncommitted = 0): boolean {
+  return uncommitted > 0 || (step.kind !== "landed" && step.kind !== "publish" && step.kind !== "folderCommit");
 }
 
 /**
@@ -21,8 +22,10 @@ export function hasActionMenu(step: Step): boolean {
  * `rejected`: a push was just turned away, so Force Push is offered [D1034]. `prWay`: Create PR through the host's
  * CLI, else its PR page, else Push branch alone [D1030].
  */
-export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay = "cli", can, onMergeStyle, onPick, held }: {
+export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay = "cli", can, onMergeStyle, onPick, held, uncommitted = 0 }: {
   step: Step;
+  /** The button commits these first; Commit only and Edit message… end the menu [D1191, D1203]. */
+  uncommitted?: number;
   /** Whether a pick works here; every one does without it (the gallery). */
   can?: (pick: ActionPick) => boolean;
   prWay?: PrWay;
@@ -62,18 +65,6 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
   );
   let items;
   switch (step.kind) {
-    case "commit":
-      items = (
-        <>
-          <DropdownMenuItem {...item("commit")}>Commit</DropdownMenuItem>
-          <DropdownMenuItem {...item("amend")}>Commit (Amend)</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem {...item("commitMerge")}>Commit &amp; Merge into {step.base}</DropdownMenuItem>
-          <DropdownMenuItem {...item("commitPush")}>Commit &amp; Push</DropdownMenuItem>
-          <DropdownMenuItem {...item("commitPr")}>Commit &amp; Create PR…</DropdownMenuItem>
-        </>
-      );
-      break;
     case "merge":
       items = (
         <>
@@ -145,24 +136,29 @@ export function ActionMenu({ step, mergeStyle = "merge", rejected = false, prWay
     case "pushPr":
       items = <DropdownMenuItem {...item("mergeLocally")}>Merge into {step.base} locally</DropdownMenuItem>;
       break;
-    case "landed":
-      return null;
-    default:
-      // The user's own folder: the old CommitActionsMenu [D1045].
+    case "sync":
+      // Your own folder: pull or push alone, for the rare manual case [D1205].
       items = (
         <>
-          <DropdownMenuItem {...item("commit")}>Commit</DropdownMenuItem>
-          <DropdownMenuItem {...item("amend")}>Commit (Amend)</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem {...item("commitPush")}>Commit &amp; Push</DropdownMenuItem>
-          <DropdownMenuItem {...item("commitSync")}>Commit &amp; Sync</DropdownMenuItem>
+          <DropdownMenuItem {...item("pullOnly")}>Pull only</DropdownMenuItem>
+          <DropdownMenuItem {...item("pushOnly")}>Push only</DropdownMenuItem>
         </>
       );
+      break;
+    default:
+      items = null;
   }
   return (
     <DropdownMenuContent align="end" className="w-72" {...place}>
       {items}
       {force}
+      {uncommitted > 0 && (
+        <>
+          {(items || force) && <DropdownMenuSeparator />}
+          <DropdownMenuItem {...item("commit")}>Commit only · {plural(uncommitted, "file")}</DropdownMenuItem>
+          <DropdownMenuItem {...item("editMessage")}>Edit message…</DropdownMenuItem>
+        </>
+      )}
     </DropdownMenuContent>
   );
 }

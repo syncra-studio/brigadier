@@ -14,11 +14,12 @@ const DOT: Record<Tone, string> = { quiet: "", good: "bg-success", warn: "bg-war
 
 const place = (held?: HTMLElement) => held && { container: held, collisionAvoidance: { side: "none", align: "none" } as const };
 
-/** Source's title row [D1114]: "Source", then History and PRs when there are some, then More Actions. */
-export function SourceHeader({ children }: { children?: ReactNode }) {
+/** Source's title row [D1114, D1205]: "Source" and the branch label, then History and PRs when there are some, then More Actions. */
+export function SourceHeader({ label, children }: { label?: ReactNode; children?: ReactNode }) {
   return (
-    <header className="flex h-control-md shrink-0 items-center gap-0.5 ps-3 pe-2">
-      <h2 className="min-w-0 flex-1 text-sm font-medium">Source</h2>
+    <header className="flex h-control-md shrink-0 items-center gap-1 ps-3 pe-2">
+      <h2 className="shrink-0 text-sm font-medium">Source</h2>
+      <span className="flex min-w-0 flex-1">{label}</span>
       {children}
     </header>
   );

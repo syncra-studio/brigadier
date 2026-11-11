@@ -69,6 +69,9 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       rejected: op.rejected,
       syncing: op.syncing,
       naming: op.naming,
+      // The session's own agent; a project folder's sessions are guarded in Rust [D1082, D1208].
+      agentWorking: owner !== HOME && rows?.find((row) => row.id === owner)?.works === true,
+      readAtMs: git.readAtMs,
       share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {

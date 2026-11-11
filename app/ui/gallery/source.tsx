@@ -1,13 +1,14 @@
-// The Source panel, direction C [D1098, D1111, D1114]: its states on fake data, its menus and its confirms.
+// The Source panel, the new design [D1200, D1206]: each state beside the summary card's (The mix, D1198) on fake data, then its menus and confirms.
 import type { ReactNode } from "react";
 
 import { BRANCHES, CHANGES, CLEAN, COMMITS, COMMITTED, DRAFT, file, FOLDER, GIT_RUNS, HOST, LETTERED, MERGING, PRS, REBASING, STAGED, STEPS, WATCH } from "../src/panel/fake";
 import { DiscardDialog, DropStashDialog, GitOutputDialog, StageConflictsDialog } from "../src/panel/source/dialogs";
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "../src/panel/source/header";
 import { MoreMenu, type Submenu } from "../src/panel/source/more-menu";
+import { GitCard } from "../src/panel/card";
 import { type SourceData, SourcePanel } from "../src/panel/source/panel";
 import { FileList, FileRow } from "../src/panel/source/rows";
-import type { SourceState } from "../src/panel/types";
+import type { Pr, SourceState, Step } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
 import { PanelFrame } from "./right-panel";
 
@@ -15,28 +16,41 @@ const NOW = Date.now();
 const fake = (source: SourceState | null, step: SourceData["step"], more: Partial<SourceData> = {}): SourceData => ({ source, step, host: HOST, branches: BRANCHES, gitRuns: GIT_RUNS, draft: DRAFT, ...more });
 const CONFLICT_PRS = [{ ...PRS[0]!, health: "conflicts" as const, failed: 0 }, PRS[1]!];
 
-/** The states the owner checks C in [D1098, D1114], then the rest. */
+const MIN = 60_000;
+const files = (state: SourceState) => new Set([...state.staged, ...state.changes].map((each) => each.path)).size;
+/** Rust's step with what the button commits first [D1203]. */
+const first = (step: Step, state: SourceState): Step => ({ ...step, commit: files(state) }) as Step;
+const RUNNING: Pr = { ...PRS[0]!, health: "running", failed: 0 };
+const PASSED = { command: "pnpm test", exit: 0, atMs: NOW - 3 * MIN, changed: true };
+const FAILED_RUN = { command: "cargo test", exit: 101, atMs: NOW - 9 * MIN, changed: false };
+const FLAGS = { "package.json": { kind: "manifest", removed: 0, deleted: false }, "src/upload/retry.test.ts": { kind: "test", removed: 12, deleted: false } } as const;
+const WITH_FLAGS: SourceState = { ...CHANGES, changes: [...CHANGES.changes, file("package.json", "modified", 1, 1), file("src/upload/retry.test.ts", "modified", 3, 12)] };
+const LONG: Step = { ...STEPS.busy, blocked: { why: "busy", folder: "/Users/you/upload-app", files: ["src/upload/client.ts", "src/upload/retry.ts", "src/tray/Progress.tsx"] } };
+const LEASE = { branch: "brigadier/912a9469/session", remote: "origin", ref: "refs/heads/brigadier/912a9469/session", remoteRef: "origin/brigadier/912a9469/session", reviewed: "9c41e2a", movedTo: null };
+
+/** The states the owner checks the new design in, Source and the card side by side [D1199, D1206]. */
 const PANELS: [string, SourceData, string?][] = [
+  ["Agent working, with changes", fake(CHANGES, first(STEPS.merge, CHANGES), { agentWorking: true })],
+  ["Needs you: a conflict", fake(MERGING, { ...STEPS.continue, left: 2 }, { prs: CONFLICT_PRS, watch: WATCH })],
+  ["Needs you: checks failed", fake(COMMITTED, STEPS.fixPr, { prs: PRS, watch: WATCH, run: FAILED_RUN })],
+  ["Needs you: push turned away", fake(COMMITTED, { kind: "sync", branch: LEASE.branch, remote: "origin", behind: 1, ahead: 2, commit: 0 }, { prs: [RUNNING], rejected: LEASE })],
+  ["Ready to merge: flagged files, a run", fake(WITH_FLAGS, first(STEPS.merge, WITH_FLAGS), { run: PASSED, flags: FLAGS })],
+  ["A PR open, checks running", fake(COMMITTED, STEPS.mergePr, { prs: [RUNNING], watch: WATCH })],
+  ["Your own folder", fake(FOLDER, first(STEPS.sync, FOLDER), { agentPaths: [FOLDER.changes[0]?.path ?? ""] })],
   ["Nothing changed", fake(CLEAN, STEPS.commit)],
-  ["Changes: two staged by hand, #12 failing, #11 merged", fake(STAGED, STEPS.commitWaiting, { prs: PRS, watch: WATCH })],
-  ["Ready to merge: everything committed", fake(COMMITTED, STEPS.merge)],
-  ["A PR with failing checks", fake(COMMITTED, STEPS.fixPr, { prs: PRS, watch: WATCH })],
-  ["A conflict: catching up with main", fake(MERGING, STEPS.continue, { prs: CONFLICT_PRS, watch: WATCH })],
+  ["Disconnected", fake(CHANGES, first(STEPS.merge, CHANGES), { offline: true, readAtMs: NOW - 4 * MIN })],
+  ["A long line: cut, with ⓘ", fake(COMMITTED, LONG)],
+  ["Merged: the button stays, off", fake({ ...CLEAN, commits: COMMITS }, STEPS.landed)],
   ["Conflicts resolved: Continue", fake({ ...MERGING, changes: [], staged: [...MERGING.staged, file("src/upload/retry.ts", "modified", 9, 3), file("src/upload/client.ts", "modified", 4, 1)] }, { ...STEPS.continue, left: 0 })],
-  ["Local checkout: your own folder", fake(FOLDER, STEPS.folderCommit)],
-  ["Local checkout, committed: Sync", fake({ ...FOLDER, staged: [], changes: [] }, STEPS.sync)],
   ["Rebasing: the stopped commit", fake(REBASING, { ...STEPS.continue, left: 1 })],
-  ["Landed", fake({ ...CLEAN, commits: COMMITS }, STEPS.landed)],
-  ["No draft yet", fake(CHANGES, STEPS.commitWaiting, { draft: null })],
-  ["Every kind of change", fake(LETTERED, STEPS.commit)],
-  ["A row selected: its diff shows", fake(CHANGES, STEPS.commitWaiting), "src/upload/client.ts"],
+  ["Every kind of change", fake(LETTERED, first(STEPS.merge, LETTERED))],
+  ["A row selected: its diff shows", fake(STAGED, first(STEPS.merge, STAGED)), "src/upload/client.ts"],
 ];
 
 const DATA: [string, SourceData][] = [
   ["Loading", fake(null, null)],
   ["Couldn't read", fake(null, null, { error: "git exited with 128" })],
-  ["Disconnected: last read, read-only", fake(CHANGES, STEPS.commitWaiting, { offline: true })],
-  ["Pending: moved at once, waiting for Rust", fake(STAGED, STEPS.commit, { pending: ["src/upload/client.ts", "README.md"] })],
+  ["Pending: moved at once, waiting for Rust", fake(STAGED, first(STEPS.merge, STAGED), { pending: ["src/upload/client.ts", "README.md"] })],
 ];
 
 function HeldMenu({ state, sub }: { state: SourceState; sub?: Submenu }) {
@@ -61,9 +75,14 @@ export function SourceGallery() {
       <Row name="Panel states">
         {PANELS.map(([label, data, selected]) => (
           <State key={label} label={label}>
-            <PanelFrame className="h-160">
-              <SourcePanel data={data} nowMs={NOW} {...(selected && { selected })} />
-            </PanelFrame>
+            <div className="flex items-start gap-6">
+              <div className="flex w-75 min-w-0 flex-col rounded-overlay bg-popover py-2.5 shadow-raised">
+                <GitCard data={data} project="upload-app" nowMs={NOW} />
+              </div>
+              <PanelFrame className="h-160">
+                <SourcePanel data={data} nowMs={NOW} {...(selected && { selected })} />
+              </PanelFrame>
+            </div>
           </State>
         ))}
       </Row>

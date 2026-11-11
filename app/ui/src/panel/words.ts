@@ -1,4 +1,4 @@
-import type { Blocked, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
+import type { Blocked, Flag, LastRun, PanelHint, Pr, PrWatch, SourceFile, SourceState, Step } from "./types";
 
 /* The right panel's words, written from what Rust sends [D65]. */
 
@@ -74,6 +74,29 @@ function mergePrWords(step: Extract<Step, { kind: "mergePr" }>): { line: string;
  * the button can't be clicked now, `why` its tip.
  */
 export function stepWords(step: Step, nowMs: number): { label: string; line: string; tone: Tone; off?: boolean; why?: string } {
+  const words = landWords(step, nowMs);
+  const first = "commit" in step && typeof step.commit === "number" ? step.commit : 0;
+  // The button commits first, then lands, and its line says so [D1203, D1207].
+  return first > 0 && step.kind !== "commit" && !words.off ? { ...words, line: `${plural(first, "file")} will be committed · ${thenWords(step, words.line)}` } : words;
+}
+
+/** What follows "6 files will be committed ·": the move's own line, shortened. */
+function thenWords(step: Step, line: string): string {
+  switch (step.kind) {
+    case "merge":
+      return step.moved > 0 ? `${step.base} moved ${plural(step.moved, "commit")} · still merges cleanly` : "merges cleanly";
+    case "pushPr":
+      return `then pushed to #${step.pr}`;
+    case "sync":
+      return step.behind > 0 ? `then ${step.behind} to pull, ${step.ahead + 1} to push` : "then pushed";
+    case "publish":
+      return `then published to ${step.remote}`;
+    default:
+      return line;
+  }
+}
+
+function landWords(step: Step, nowMs: number): { label: string; line: string; tone: Tone; off?: boolean; why?: string } {
   switch (step.kind) {
     case "commit": {
       const lands = step.clean ? `merges cleanly into ${step.base}` : `would conflict with ${step.base}`;
@@ -98,19 +121,16 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
       return step.left > 0
         ? { label: "Resolve with agent", line: `Catching up with ${step.base} · ${plural(step.left, "conflict")} left`, tone: "warn" }
         : { label: "Continue", line: `Catching up with ${step.base} · conflicts resolved`, tone: "quiet" };
+    // After landing the button stays, off, saying when [D1206].
     case "landed":
-      return { label: "Commit", line: step.atMs === null ? `Everything is in ${step.base}` : `Everything is in ${step.base} · merged ${ago(step.atMs, nowMs)}`, tone: "quiet", off: true };
+      return { label: `Merge into ${step.base}`, line: step.atMs === null ? `Already in ${step.base}` : `Merged into ${step.base} ${ago(step.atMs, nowMs)}`, tone: "quiet", off: true };
     case "pushPr":
-      return { label: `Push to #${step.pr}`, line: `#${step.pr} open · ${plural(step.ahead, "commit")} not on ${step.host ?? "the remote"} yet`, tone: "quiet" };
+      return { label: `Push to #${step.pr}`, line: `${plural(step.ahead, "commit")} not on ${step.host ?? "the remote"} yet`, tone: "quiet" };
+    // The hero names the failure; the line says what the button does (proposed words) [D1201].
     case "fixPr":
       return {
         label: "Fix with agent",
-        line:
-          step.why === "checks"
-            ? `${plural(step.failed, "check")} failed on #${step.pr}`
-            : step.why === "conflicts"
-              ? `#${step.pr} conflicts with ${step.base}`
-              : `Changes asked on #${step.pr}`,
+        line: `Adds the ${step.why === "checks" ? "failing checks" : step.why === "conflicts" ? "conflicts" : "comments"} to your next message`,
         tone: step.why === "checks" ? "bad" : "warn",
       };
     case "mergePr": {
@@ -126,7 +146,7 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
     case "sync":
       return {
         label: "Sync Changes",
-        line: step.behind > 0 ? `${step.branch} on ${step.remote} has ${plural(step.behind, "new commit")}` : `${plural(step.ahead, "commit")} to push to ${step.remote}`,
+        line: step.behind > 0 ? `${step.remote} has ${plural(step.behind, "commit")} this branch doesn't` : `${plural(step.ahead, "commit")} to push to ${step.remote}`,
         tone: "quiet",
       };
     case "publish":
@@ -134,8 +154,16 @@ export function stepWords(step: Step, nowMs: number): { label: string; line: str
   }
 }
 
-/** While a step runs: the button's label and its line, at once [D30]. */
+/** While a step runs: the button's label and its line, at once [D30]; first the commit, when it makes one [D1203]. */
 export function runningWords(step: Step): { label: string; line: string } {
+  const words = movingWords(step);
+  const first = "commit" in step && typeof step.commit === "number" ? step.commit : 0;
+  if (first === 0 || step.kind === "commit") return words;
+  const then = words.line.charAt(0).toLowerCase() + words.line.slice(1);
+  return { ...words, line: `Committing ${plural(first, "file")}, then ${then}` };
+}
+
+function movingWords(step: Step): { label: string; line: string } {
   switch (step.kind) {
     case "merge":
       return { label: "Merging…", line: step.ready > 0 ? `Merging ${plural(step.ready, "commit")} into ${step.base}` : `Merging into ${step.base}` };
@@ -143,6 +171,8 @@ export function runningWords(step: Step): { label: string; line: string } {
       return { label: "Catching up…", line: `Merging ${step.base} into this branch` };
     case "mergePr":
       return { label: "Merging…", line: `Merging #${step.pr}` };
+    case "landed":
+      return { label: "Merging…", line: `Merging into ${step.base}` };
     case "pushPr":
       return { label: "Pushing…", line: `Pushing to #${step.pr}` };
     case "sync":
@@ -189,43 +219,48 @@ export function discardWords(scope: "staged" | "unstaged", file: SourceFile, oth
   return other ? `${back} Its changes that aren't staged are lost too.` : back;
 }
 
-/** Source's one status at the top [D1098, D1107]: what the work needs now, from Rust's state and step. */
-export type Status = { title: string; tone: "quiet" | "changes" | "good" | "warn" | "bad"; icon: "clean" | "changes" | "warn" | "pr" | "sync" };
+/**
+ * Source's hero [D1200, D1206]: the state's glyph and colour and one sentence naming the state, never the line's or a
+ * row's words. The card leaves it out: its rows say it [D1199]. `working`: the agent's turn runs; `rejected`: a push
+ * was just turned away.
+ */
+export type Hero = { glyph: "spin" | "check" | "warn" | "bad" | "pr" | "edit" | "merged"; tone: "quiet" | "changes" | "good" | "warn" | "bad" | "pr" | "merged"; sentence: string };
 
-/** `step` is null until Rust works out the next step (2.19 on): only the files speak then. */
-export function statusWords(state: SourceState, step: Step | null, files: number, prs: Pr[]): Status {
+export function heroWords(state: SourceState, step: Step | null, { files, working, rejected }: { files: number; working: boolean; rejected: boolean }): Hero {
+  if (working) return { glyph: "spin", tone: "quiet", sentence: "Agent working" };
   const resolving = state.merging ?? state.rebasing;
   if (resolving) {
     const onto = state.merging?.incoming ?? state.rebasing?.onto ?? "";
     return state.changes.some((file) => file.status === "conflicted")
-      ? { title: `Conflicts with ${onto}`, tone: "warn", icon: "warn" }
-      : { title: "Conflicts resolved", tone: "changes", icon: "changes" };
+      ? { glyph: "warn", tone: "warn", sentence: `Conflicts with ${onto}` }
+      : { glyph: "edit", tone: "changes", sentence: "Conflicts resolved" };
   }
-  if (files > 0) return { title: `${plural(files, "file")} changed`, tone: "changes", icon: "changes" };
+  const pr = step && "pr" in step ? ` to #${step.pr}` : "";
+  if (rejected) return { glyph: "bad", tone: "bad", sentence: `Couldn't push${pr || ` ${state.branch ?? ""}`}` };
+  if (state.checkout === "folder" && files > 0) return { glyph: "edit", tone: "changes", sentence: "Changes in your folder" };
   switch (step?.kind) {
-    // A merge the button can't make now isn't "ready" (proposed words).
     case "merge":
-      return step.blocked ? { title: `Can't merge into ${step.base} yet`, tone: "warn", icon: "warn" } : { title: "Ready to merge", tone: "good", icon: "clean" };
+      // D1228's words.
+      return step.blocked ? { glyph: "warn", tone: "warn", sentence: `Can't merge into ${step.base} yet` } : { glyph: "check", tone: "good", sentence: "Ready to merge" };
     case "mergePr":
-      return mergePrWords(step).off ? { title: `Waiting on #${step.pr}`, tone: "quiet", icon: "pr" } : { title: "Ready to merge", tone: "good", icon: "clean" };
+      // Waiting on checks or a review [D1228]; yellow while checks run, as the PR row.
+      return mergePrWords(step).off ? { glyph: "pr", tone: step.checks.running > 0 ? "pr" : "quiet", sentence: `Waiting on #${step.pr}` } : { glyph: "check", tone: "good", sentence: "Ready to merge" };
     case "catchUp":
-      return { title: `Would conflict with ${step.base}`, tone: "warn", icon: "warn" };
-    case "fixPr": {
-      const failed = prs.find((pr) => pr.number === step.pr)?.failed ?? 0;
-      if (step.why === "changes") return { title: `Changes asked on #${step.pr}`, tone: "warn", icon: "pr" };
-      if (step.why === "conflicts") return { title: `Conflicts on #${step.pr}`, tone: "warn", icon: "pr" };
-      return { title: failed > 0 ? `${plural(failed, "check")} failed` : "Checks failed", tone: "bad", icon: "pr" };
-    }
+      return { glyph: "warn", tone: "warn", sentence: `Would conflict with ${step.base}` };
+    case "fixPr":
+      if (step.why === "changes") return { glyph: "warn", tone: "warn", sentence: `Changes asked on #${step.pr}` };
+      if (step.why === "conflicts") return { glyph: "warn", tone: "warn", sentence: `#${step.pr} conflicts with ${step.base}` };
+      return { glyph: "bad", tone: "bad", sentence: step.failed > 0 ? `${plural(step.failed, "check")} failed on #${step.pr}` : `Checks failed on #${step.pr}` };
     case "pushPr":
-      return { title: `${plural(step.ahead, "commit")} to push`, tone: "changes", icon: "sync" };
+      return { glyph: "pr", tone: "changes", sentence: `Ready to push to #${step.pr}` };
     case "sync":
-      return { title: step.behind > 0 ? `${step.behind} to pull, ${step.ahead} to push` : `${step.ahead} to push`, tone: "changes", icon: "sync" };
+      return { glyph: "edit", tone: "changes", sentence: step.behind > 0 ? `Behind ${step.remote}` : `Ahead of ${step.remote}` };
     case "publish":
-      return { title: "Not published yet", tone: "quiet", icon: "sync" };
+      return { glyph: "edit", tone: "quiet", sentence: "Not published yet" };
     case "landed":
-      return { title: `Merged into ${step.base}`, tone: "quiet", icon: "clean" };
+      return { glyph: "merged", tone: "merged", sentence: `Everything is in ${step.base}` };
     default:
-      return { title: "No changes yet", tone: "quiet", icon: "clean" };
+      return files > 0 ? { glyph: "edit", tone: "changes", sentence: `${plural(files, "file")} changed` } : { glyph: "check", tone: "quiet", sentence: "No changes yet" };
   }
 }
 
@@ -261,3 +296,28 @@ export function watchWords(event: PrWatch["events"][number]): string {
 
 /** "14:32", the watch's clock time. */
 export const clock = (atMs: number) => new Date(atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** A flagged file's fact, in amber under its name: what Rust saw, never a verdict [D1188] (proposed words). */
+export function flagWords(flag: Flag): string {
+  switch (flag.kind) {
+    case "test":
+      return flag.deleted ? "test file deleted" : `test file lost ${plural(flag.removed, "line")}`;
+    case "lock":
+      return "lock file changed";
+    case "manifest":
+      return "dependencies changed";
+    case "build":
+      return "CI or build config changed";
+    case "migration":
+      return "migration";
+  }
+}
+
+/** The last run's result as its CLI said it: "exited 0", or "result unreported" [D74, D1188]. */
+export function runWords(run: LastRun): { result: string; tone: Tone; since: string } {
+  return {
+    result: run.exit === null ? "result unreported" : `exited ${run.exit}`,
+    tone: run.exit === null ? "quiet" : run.exit === 0 ? "good" : "bad",
+    since: run.changed ? "changed since" : "changed since: unknown",
+  };
+}

@@ -70,19 +70,29 @@ export type Blocked =
  */
 export type Step =
   | { kind: "commit"; base: string; waiting: number; clean: boolean }
-  | { kind: "merge"; base: string; ready: number; moved: number; blocked: Blocked | null }
-  | { kind: "catchUp"; base: string; conflicts: string[] }
+  // `commit`: files the button commits first, then lands [D1203, D1207].
+  | { kind: "merge"; base: string; ready: number; moved: number; blocked: Blocked | null; commit?: number }
+  | { kind: "catchUp"; base: string; conflicts: string[]; commit?: number }
   | { kind: "continue"; base: string; left: number }
   // No time when it landed outside Brigadier.
   | { kind: "landed"; base: string; atMs: number | null }
-  | { kind: "pushPr"; base: string; pr: number; ahead: number; host: string | null }
+  | { kind: "pushPr"; base: string; pr: number; ahead: number; host: string | null; commit?: number }
   | { kind: "fixPr"; base: string; pr: number; why: "checks" | "changes" | "conflicts"; failed: number }
   // `mergeable`: null while the host hasn't said.
   | { kind: "mergePr"; base: string; pr: number; checks: Checks; mergeable: boolean | null }
   // A folder's: VS Code's own [D1045].
   | { kind: "folderCommit"; branch: string; behind: number; ahead: number }
-  | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number }
-  | { kind: "publish"; branch: string; remote: string };
+  | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number; commit?: number }
+  | { kind: "publish"; branch: string; remote: string; commit?: number };
+
+/** A risky file's flag, from Rust's brief (2.38) [D1188, D1213]: a test deleted or with lines removed, a lock file, a manifest, CI or build config, a migration. */
+export type Flag = { kind: "test" | "lock" | "manifest" | "build" | "migration"; removed: number; deleted: boolean };
+
+/**
+ * The session's last test or build run, as its CLI reported it (2.38) [D1188]: `exit` null when it didn't say;
+ * `changed` true only when an edit to the listed files began after it, else unknown, never "no" [D74, D1192].
+ */
+export type LastRun = { command: string; exit: number | null; atMs: number; changed: boolean };
 
 /** How a branch lands: merged locally as a merge commit or squashed [D1028]; a PR's host may also rebase. */
 export type MergeStyle = "merge" | "squash" | "rebase";

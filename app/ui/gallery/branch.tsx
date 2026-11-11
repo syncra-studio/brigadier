@@ -1,8 +1,8 @@
-// The branch and sync item and its quick picks [D1020, D1021]: every sync state, both lists and the name box.
+// The branch label at Source's top and its quick picks [D1021, D1205]: its states, both lists and the name box.
 import { type ReactNode, useRef } from "react";
 
-import { BRANCH, BRANCHES, CHANGES, CLEAN, FOLDER, HOST, MERGING, REBASING } from "../src/panel/fake";
-import { BranchItem } from "../src/panel/source/branch";
+import { BRANCH, BRANCHES, CHANGES, FOLDER, HOST, MERGING, REBASING } from "../src/panel/fake";
+import { BranchLabel } from "../src/panel/source/branch";
 import { BranchNameBox, folderItems, type Place, QuickPick, sessionItems } from "../src/panel/source/quick-pick";
 import { Held, Row, Section, State } from "./parts";
 
@@ -13,16 +13,16 @@ function Line({ children }: { children: ReactNode }) {
   return <div className="w-80 rounded-surface border border-border bg-background p-2">{children}</div>;
 }
 
-/** A pick above the branch item it opens from; inert, so its field doesn't take the page's focus. */
+/** A pick below the branch label it opens from; inert, so its field doesn't take the page's focus. */
 function Over({ children }: { children: (place: Place) => ReactNode }) {
   const anchor = useRef<HTMLDivElement>(null);
   return (
     <div inert>
-      <Held className="flex h-96 w-96 flex-col justify-end rounded-surface border border-border bg-background p-2">
+      <Held className="flex h-96 w-96 flex-col rounded-surface border border-border bg-background p-2">
         {(held) => (
           <>
-            <div ref={anchor}>
-              <BranchItem state={CHANGES} locked={false} open />
+            <div ref={anchor} className="flex">
+              <BranchLabel state={CHANGES} locked={false} readAtMs={NOW} open />
             </div>
             {children({ anchor, held })}
           </>
@@ -34,37 +34,28 @@ function Over({ children }: { children: (place: Place) => ReactNode }) {
 
 export function BranchGallery() {
   return (
-    <Section title="Branch and sync item">
-      <Row name="The item">
-        <State label="Published, 2 to push">
-          <Line><BranchItem state={CHANGES} locked={false} /></Line>
+    <Section title="Branch label">
+      <Row name="The label">
+        <State label="Live (its tip)">
+          <Line><BranchLabel state={CHANGES} locked={false} readAtMs={NOW} /></Line>
         </State>
-        <State label="1 to pull, 2 to push">
-          <Line><BranchItem state={FOLDER} locked={false} /></Line>
-        </State>
-        <State label="In step">
-          <Line><BranchItem state={CLEAN} locked={false} /></Line>
-        </State>
-        <State label="Never published: the cloud">
-          <Line><BranchItem state={{ ...CLEAN, upstream: null }} locked={false} /></Line>
-        </State>
-        <State label="Syncing">
-          <Line><BranchItem state={FOLDER} locked={false} syncing /></Line>
+        <State label="Your own folder">
+          <Line><BranchLabel state={FOLDER} locked={false} readAtMs={NOW} /></Line>
         </State>
         <State label="A fork here: shared with its source">
-          <Line><BranchItem state={CHANGES} locked={false} sharedWith="Login" /></Line>
+          <Line><BranchLabel state={CHANGES} locked={false} readAtMs={NOW} sharedWith="Login" /></Line>
         </State>
         <State label="Merging">
-          <Line><BranchItem state={MERGING} locked={false} /></Line>
+          <Line><BranchLabel state={MERGING} locked={false} readAtMs={NOW} /></Line>
         </State>
         <State label="Rebasing">
-          <Line><BranchItem state={REBASING} locked={false} /></Line>
+          <Line><BranchLabel state={REBASING} locked={false} readAtMs={NOW} /></Line>
         </State>
-        <State label="Busy: off">
-          <Line><BranchItem state={CHANGES} locked /></Line>
+        <State label="Offline">
+          <Line><BranchLabel state={CHANGES} locked offline readAtMs={NOW - 120_000} /></Line>
         </State>
         <State label="Hovered" frozen="hover">
-          <Line><BranchItem state={CHANGES} locked={false} /></Line>
+          <Line><BranchLabel state={CHANGES} locked={false} readAtMs={NOW} /></Line>
         </State>
       </Row>
       <Row name="Quick picks">

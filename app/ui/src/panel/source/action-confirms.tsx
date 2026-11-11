@@ -1,16 +1,22 @@
 import { ConfirmForm } from "../../components/confirm-dialog";
 import { TooltipIconButton } from "../../components/icon-button";
+import { Textarea } from "../../components/textarea";
 import { Check, Spinner, Sparkles, Warning, X } from "../../icons";
 import type { Checks, Commit, ForcePush } from "../types";
 import { plural } from "../words";
 import { Confirm, type Held } from "./dialogs";
 
-/** Squash's confirm [D1028]: the message, written from the whole branch and editable, then the commits it folds. */
-export function SquashDialog({ open, branch, base, commits, message, writing = false, onMessage, onWrite, held, onCancel, onConfirm }: {
+/**
+ * Squash's confirm [D1028]: the message, written from the whole branch and editable, then the commits it folds. With
+ * files uncommitted it says they're committed first; nothing is committed until it's confirmed [D1203].
+ */
+export function SquashDialog({ open, branch, base, commits, pending = 0, message, writing = false, onMessage, onWrite, held, onCancel, onConfirm }: {
   open: boolean;
   branch: string;
   base: string;
   commits: Commit[];
+  /** Files not committed yet, which go in too. */
+  pending?: number;
   message: string;
   writing?: boolean;
   onMessage: (message: string) => void;
@@ -25,7 +31,8 @@ export function SquashDialog({ open, branch, base, commits, message, writing = f
         title={`Squash into ${base}?`}
         description={
           <>
-            {plural(commits.length, "commit")} from <span className="font-mono text-foreground">{branch}</span> become one commit on {base}.
+            {plural(commits.length, "commit")} from <span className="font-mono text-foreground">{branch}</span>
+            {pending > 0 && ` and ${plural(pending, "uncommitted file")}`} become one commit on {base}.
           </>
         }
         confirm="Squash and merge"
@@ -116,6 +123,28 @@ export function ForcePushDialog({ force, branch, held, onCancel, onConfirm }: { 
           onCancel={onCancel}
         />
       )}
+    </Confirm>
+  );
+}
+
+/**
+ * Edit message… [D1191, D1203]: the next commit's message in the kit's multi-line field, filled with what was saved,
+ * else the drafted one (2.20). Save keeps it for the button's commit and Commit only; a blank one goes back to the
+ * writer's (proposed).
+ */
+export function MessageDialog({ open, message, held, onMessage, onCancel, onSave }: {
+  open: boolean;
+  message: string;
+  held?: Held;
+  onMessage: (message: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
+      <ConfirmForm title="Commit message" description="The next commit uses it, from the button or Commit only." confirm="Save" onConfirm={onSave} onCancel={onCancel}>
+        <Textarea aria-label="Commit message" placeholder="The writer writes one" value={message} autoFocus onChange={(event) => onMessage(event.target.value)} />
+      </ConfirmForm>
     </Confirm>
   );
 }

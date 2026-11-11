@@ -39,7 +39,7 @@ type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone";
 type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null };
 
 /** The session's HEAD and its base's commit a step was worked out on. */
-export type StepAt = { head: string; base: string };
+export type StepAt = { head: string; base: string | null };
 
 /** Whose checkout, as Rust's commands name it: a session's, or a project's folder. */
 export type Target = { session: string } | { project: string };
@@ -54,9 +54,11 @@ type Git = {
   step: StepRead | null;
   /** Bumped by every read that changed something: Review reads again on it. */
   version: number;
+  /** When the watch last read the checkout: Live's tip, and Offline's time [D1205, D1206]. */
+  readAtMs: number | null;
 };
 
-let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, step: null, version: 0 };
+let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, step: null, version: 0, readAtMs: null };
 let stepAsk = 0;
 let re = 0;
 let n = 0;
@@ -122,7 +124,7 @@ export function refreshStep(fresh = false, then?: () => void): void {
 export function landBranch(style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void): void {
   const target = git.target;
   if (!target || !at) return done("Nothing to merge yet.");
-  ask({ op: "run", args: sourceArgs(target, "land", style, at.head, at.base, ...(message === null ? [] : ["--message", message])) }, (reply) => {
+  ask({ op: "run", args: sourceArgs(target, "land", style, at.head, at.base ?? "-", ...(message === null ? [] : ["--message", message])) }, (reply) => {
     // A landing stays pending until the step it led to shows [D30].
     if (reply.ok) return refreshStep(true, () => done(null));
     done(reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
@@ -142,7 +144,7 @@ export function setMergeStyle(style: MergeStyle): void {
 export function squashOf(at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void): void {
   const target = git.target;
   if (!target) return done(null);
-  ask({ op: "run", args: sourceArgs(target, "squash", at.head, at.base) }, (reply) => done(reply.ok ? reply.squash : null));
+  ask({ op: "run", args: sourceArgs(target, "squash", at.head, at.base ?? "-") }, (reply) => done(reply.ok ? reply.squash : null));
 }
 
 /** A new commit, or the first read after a (re)subscribe: History reads again (2.29) [D1041, D1130]. */
@@ -157,7 +159,7 @@ function watch(target: Target): void {
     if (!reply.ok) return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
     n = reply.n;
     moved(reply.git.head);
-    set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])) });
+    set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])), readAtMs: Date.now() });
     landed();
   });
 }
@@ -171,7 +173,7 @@ setGitHandler((frame) => {
   for (const each of frame.files as Entry[]) files.set(each.path, each);
   for (const path of frame.gone as string[]) files.delete(path);
   moved(frame.head);
-  set({ head: frame.head, files });
+  set({ head: frame.head, files, readAtMs: Date.now() });
   landed();
 });
 
@@ -186,7 +188,7 @@ export function useGitWatch(owner: string | null): void {
     if (key !== git.key) {
       re = 0;
       pending = [];
-      set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null });
+      set({ key, target, head: null, files: new Map(), counts: new Map(), error: null, step: null, readAtMs: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
@@ -254,12 +256,12 @@ const sum = (file: SourceFile, other?: SourceFile) => ({ added: file.added + (ot
 let shown: { from: Git; pending: Pending[]; source: SourceState | null } | null = null;
 
 /** The on-screen checkout for Source: its state, Rust's dot, the count, and the paths still moving. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; target: Target | null } {
+export function useGit(): { source: SourceState | null; step: StepRead | null; hint: PanelHint | null; error: string | null; pending: string[]; version: number; target: Target | null; readAtMs: number | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now || shown.pending !== pending) shown = { from: now, pending, source: sourceOf(now) };
   // Rust's step says the dot once it's read; until then the status's count does [D1025].
   const hint = now.step ? now.step.hint : (now.head?.hint ?? null);
-  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, target: now.target };
+  return { source: shown.source, step: now.step, hint, error: now.error, pending: pending.flatMap((each) => each.paths), version: now.version, target: now.target, readAtMs: now.readAtMs };
 }
 
 /** The file moves Source and Review share [D1043, D1103]: Rust's own, under the checkout's lock. */

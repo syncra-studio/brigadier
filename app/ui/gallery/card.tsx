@@ -1,24 +1,19 @@
-// The summary card [D1014, D1048, D1098]: its git section in each state on fake data, then its frame at each pane width.
+// The summary card [D1014, D1048, D1198]: its data states on fake data (each state beside Source is in Source's section), then its frame at each pane width.
 import { Button } from "../src/components/button";
 import { GitCard } from "../src/panel/card";
-import { CLEAN, COMMITTED, MERGING, PRS, STAGED, STEPS } from "../src/panel/fake";
+import { COMMITTED, PRS, STAGED, STEPS } from "../src/panel/fake";
 import type { SourceData } from "../src/panel/source/panel";
 import { SummaryCard, SummaryPane, useCardToggle } from "../src/shell/summary-card";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
-const CONFLICT_PRS = [{ ...PRS[0]!, health: "conflicts" as const, failed: 0 }, PRS[1]!];
+const READY = { ...STEPS.merge, commit: 4 };
 
-/** The states the owner checks the card in [D1048, D1098], then the data states [D30]. */
+/** The card's data states [D30]; its states beside Source's are in the Source section [D1199]. */
 const CARDS: [string, SourceData, boolean?][] = [
-  ["Nothing changed", { source: CLEAN, step: STEPS.commit }],
-  ["Changes: #12 failing, #11 merged", { source: STAGED, step: STEPS.commitWaiting, prs: PRS }],
-  ["Ready to merge", { source: COMMITTED, step: STEPS.merge }],
-  ["A PR with failing checks", { source: COMMITTED, step: STEPS.fixPr, prs: PRS }],
-  ["A conflict: catching up with main", { source: MERGING, step: STEPS.continue, prs: CONFLICT_PRS }],
   ["Loading", { source: null, step: null }],
   ["Couldn't read", { source: null, step: null, error: "git exited with 128" }],
-  ["Disconnected: last read, read-only", { source: STAGED, step: STEPS.commitWaiting, prs: PRS, offline: true }],
+  ["Disconnected: Offline · 14:32, read-only", { source: STAGED, step: READY, prs: PRS, offline: true, readAtMs: NOW - 240_000 }],
   ["Pending: the button at work", { source: COMMITTED, step: STEPS.merge }, true],
 ];
 
@@ -34,7 +29,7 @@ function Pane({ owner, width, label }: { owner: string; width: string; label: st
             {shown ? "Hide the card" : "Show the card"}
           </Button>
           <div className={`flex h-120 overflow-hidden rounded-surface border border-border bg-background ${width}`}>
-            <SummaryPane owner={owner} card={<GitCard data={{ source: STAGED, step: STEPS.commitWaiting, prs: PRS }} nowMs={NOW} />}>
+            <SummaryPane owner={owner} card={<GitCard data={{ source: STAGED, step: READY, prs: PRS }} project="upload-app" nowMs={NOW} />}>
               <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pt-8">
                 {["Make failed uploads retry three times with a growing wait.", "Done: uploads retry with a growing wait, capped at 30 seconds, and 4xx errors don't retry.", "Show the progress in the tray too."].map((text, index) => (
                   <p key={text} className={`mx-auto w-full max-w-reading px-6 text-sm ${index % 2 === 0 ? "text-end" : ""}`}>
@@ -62,7 +57,7 @@ export function CardGallery() {
             {/* Its own stacking context, so the card stays under the section's sticky title. */}
             <div className="relative isolate h-72 w-81">
               <SummaryCard shown>
-                <GitCard data={data} nowMs={NOW} running={running} />
+                <GitCard data={data} project="upload-app" nowMs={NOW} running={running} />
               </SummaryCard>
             </div>
           </State>

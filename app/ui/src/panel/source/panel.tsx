@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
 import { copyWithToast } from "../../components/copy-button";
@@ -6,18 +6,18 @@ import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
 import type { StepAt } from "../git";
-import type { Branch, Commit, ForcePush, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
-import { statusWords } from "../words";
+import { CheckCircle, EditPencil, ExclamationMarkCircle, Spinner, Warning } from "../../icons";
+import { PullRequestMerged, PullRequestOpen } from "../../landing/icons";
+import type { Branch, Commit, Flag, ForcePush, LastRun, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
+import { flagWords, type Hero, heroWords } from "../words";
 import { ActionButton } from "./action";
-import { BranchItem } from "./branch";
+import { BranchLabel } from "./branch";
 import type { BranchRead } from "./branch-ops";
-import { CommitBox } from "./commit-box";
 import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type GitRun, StageConflictsDialog } from "./dialogs";
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { MoreMenu } from "./more-menu";
 import { BranchNameBox, folderItems, QuickPick, sessionItems } from "./quick-pick";
-import { FileList, FileRow, Group, Heading } from "./rows";
-import { StatusLine } from "./status-line";
+import { Counts, FileList, FileRow, Group, Heading, PrLine, RunLine } from "./rows";
 import { useSourceStep } from "./step";
 
 /** What the Source panel shows: Rust's, once wired (2.14 on); fake until then. */
@@ -51,12 +51,20 @@ export type SourceData = {
    * made changes still uncommitted here; `lands` false, no PR or merge from here. Null until Rust's first read.
    */
   share?: { with: string | null; busy: string | null; includes: string | null; lands: boolean } | null;
-  /** The agent is working, so the user's own folder can't switch branches [D1021]. */
+  /** The session's agent is working: the button waits for its turn [D1208], and the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
+  /** When the watch last read the checkout: the branch label's tip, and "Offline · 14:32" [D1205, D1206]. */
+  readAtMs?: number | null;
+  /** The session's last test or build run, from Rust's brief (2.38); none yet, or until it's wired. */
+  run?: LastRun | null;
+  /** Risky files' flags by path, from Rust's brief (2.38) [D1188, D1213]. */
+  flags?: Record<string, Flag>;
+  /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); unknown until wired [D1192]. */
+  agentPaths?: string[] | null;
   /** The branch's pull requests and what their watch saw (2.13); none without a host [D1030]. */
   prs?: Pr[];
   watch?: PrWatch | null;
-  /** The message drafted for the work so far (2.20), the field's grey text [D1107]. */
+  /** The message drafted for the work so far (2.20), Edit message…'s first text [D1212]. */
   draft?: string | null;
   /** A sync or publish is under way; the name a rename or switch is moving to, until the watch reads it [D30]. */
   syncing?: boolean;
@@ -98,6 +106,26 @@ export type SourceOps = {
   refreshStep?: () => void;
 };
 
+const HERO_TONE: Record<Hero["tone"], string> = {
+  quiet: "text-muted-foreground",
+  changes: "text-link",
+  good: "text-success",
+  warn: "text-warning",
+  bad: "text-destructive",
+  pr: "text-pr-yellow",
+  merged: "text-pr-purple",
+};
+
+const GLYPH: Record<Hero["glyph"], ReactNode> = {
+  spin: <Spinner className="animate-spin motion-reduce:animate-none" />,
+  check: <CheckCircle />,
+  warn: <Warning />,
+  bad: <ExclamationMarkCircle />,
+  pr: <PullRequestOpen />,
+  edit: <EditPencil />,
+  merged: <PullRequestMerged />,
+};
+
 /** One entry for a path that is partly staged: its staged and unstaged lines together. */
 const sum = (file: SourceFile, other?: SourceFile): SourceFile => (other ? { ...file, added: file.added + other.added, removed: file.removed + other.removed } : file);
 
@@ -116,9 +144,10 @@ export function ReadError({ error, onRetry }: { error: string; onRetry?: () => v
 }
 
 /**
- * The Source panel, direction C [D1098]: the title row with History, PRs and More Actions; one status; the message
- * field, the action button and Review changes; one list of files; the branch item in the footer [D1094, D1111].
- * Unwired: its actions move rows in a local copy, or do nothing [D388]. `selected`: the row whose diff shows.
+ * The Source panel, the new design [D1200, D1206]: the title row with the branch label, History, PRs and More Actions
+ * [D1205]; the hero, the state's glyph and sentence over the one button and its line; then Checks and Changes,
+ * fixed in place [D1201]. No footer, no message field [D1191, D1205]. Without `ops` its actions move rows in a local
+ * copy, or do nothing [D388]. `selected`: the row whose diff shows.
  */
 export function SourcePanel({
   data,
@@ -129,6 +158,7 @@ export function SourcePanel({
   picker: initialPicker = null,
   onSource,
   ops,
+  notice = null,
 }: {
   data: SourceData;
   draftKey?: string;
@@ -140,6 +170,8 @@ export function SourcePanel({
   /** The local copy after each fake move, for the toggle and the Source badge (unwired). */
   onSource?: (source: SourceState) => void;
   ops?: SourceOps;
+  /** A line under the title row about the checkout itself (2.37's), when there's one. */
+  notice?: ReactNode;
 }) {
   const [local, setLocal] = useState(data.source);
   useEffect(() => {
@@ -205,23 +237,10 @@ export function SourcePanel({
     setLocal((now) => now && (scope === "staged" ? { ...now, staged: keep(now.staged), changes: keep(now.changes) } : { ...now, changes: keep(now.changes) }));
   };
 
-  const { prs, message, setMessage, writing, committing, failed, error, setFailed, locked, commit, write, button, dialogs } = useSourceStep({
-    data,
-    state,
-    draftKey,
-    session,
-    ops,
-    move,
-    onCommitted: () => setLocal((now) => now && { ...now, staged: [] }),
-  });
-
-  // Git's merge message fills the box unless the user wrote one, as the old CommitBox did; before paint, as it shows.
-  const merge = state?.merging?.message ?? null;
-  const prefilled = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    if (merge !== null && merge !== prefilled.current && !message) setMessage(merge);
-    prefilled.current = merge;
-  }, [merge]);
+  const { prs, locked, button, dialogs } = useSourceStep({ data, state, draftKey, session, ops });
+  const flags = data.flags ?? {};
+  // Conflicts first, then flagged files, then the rest [D1188, D1201].
+  const ordered = (files: SourceFile[]) => [...files].sort((one, other) => Number(!flags[one.path]) - Number(!flags[other.path]));
 
   const more = (
     <MoreMenu
@@ -244,35 +263,25 @@ export function SourcePanel({
     />
   );
 
-  const top = state && (
-    <div className="flex flex-col gap-3">
-      <StatusLine status={statusWords(state, step, uncommitted.length, prs)} files={resolving ? uncommitted : listed} />
-      {(uncommitted.length > 0 || resolving) && (
-        <CommitBox
-          message={message}
-          onMessage={(next) => {
-            setMessage(next);
-            setFailed(false);
-          }}
-          branch={state.branch}
-          draft={data.draft ?? null}
-          rebaseMessage={state.rebasing?.message ?? null}
-          writing={writing}
-          busy={committing || writing}
-          canWrite={!resolving}
-          failed={failed}
-          error={error}
-          includes={data.share?.includes ?? null}
-          onWrite={write}
-          onCommit={commit}
-        />
-      )}
+  const hero = state && heroWords(state, step, { files: uncommitted.length, working: data.agentWorking ?? false, rejected: data.rejected != null });
+  const added = listed.reduce((sum, file) => sum + file.added, 0);
+  const removed = listed.reduce((sum, file) => sum + file.removed, 0);
+  // Source's hero [D1200, D1206]: the state's glyph, one sentence, the counts and what's uncommitted; then the button.
+  const top = state && hero && (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col items-center gap-1 pt-5 text-center">
+        <span className={cx("flex svg:size-8", HERO_TONE[hero.tone])}>{GLYPH[hero.glyph]}</span>
+        <span className="text-base font-medium">{hero.sentence}</span>
+        {listed.length > 0 ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+            {(added > 0 || removed > 0) && <Counts added={added} removed={removed} />}
+            {uncommitted.length > 0 && <span>· {uncommitted.length} uncommitted</span>}
+          </span>
+        ) : (
+          !resolving && <span className="text-xs text-muted-foreground">What the agent changes shows here.</span>
+        )}
+      </div>
       {button && <ActionButton nowMs={nowMs} {...button} />}
-      {listed.length > 0 && (
-        <Button variant="soft" size="sm" className="self-start" onClick={() => ops?.review()}>
-          Review changes
-        </Button>
-      )}
     </div>
   );
 
@@ -281,6 +290,7 @@ export function SourcePanel({
     <FileRow
       key={file.path}
       file={file}
+      fact={flags[file.path] ? flagWords(flags[file.path]!) : null}
       staged={stagedPaths.has(file.path)}
       unstaged={unstagedPaths.has(file.path)}
       committed={committed}
@@ -297,17 +307,43 @@ export function SourcePanel({
     />
   );
 
+  const label = state && (
+    <div ref={branchItem} className="flex min-w-0">
+      <BranchLabel
+        state={data.naming ? { ...state, branch: data.naming } : state}
+        locked={locked}
+        offline={offline}
+        readAtMs={data.readAtMs ?? null}
+        sharedWith={data.share?.with ?? null}
+        open={picker === "branch"}
+        onBranch={() => setPicker("branch")}
+      />
+    </div>
+  );
+  const review = (
+    <Button size="inline" variant="link-blue" onClick={() => ops?.review()}>
+      Review
+    </Button>
+  );
+  // In your own folder the agent's files and the rest are listed apart, once Rust says which are the agent's [D1192, D1213].
+  const agentPaths = folder && data.agentPaths ? new Set(data.agentPaths) : null;
+  const theirs = agentPaths ? merged.filter((file) => agentPaths.has(file.path)) : listed;
+  const others = agentPaths ? merged.filter((file) => !agentPaths.has(file.path)) : [];
+
   return (
-    <div className={cx("relative flex min-h-0 flex-1 flex-col", offline && "opacity-disabled")} inert={offline}>
-      <SourceHeader>
-        {data.history ? (
-          (data.history.error || (data.history.base && data.history.commits.length > 0)) && <HistoryMenu {...data.history} />
-        ) : (
-          state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />
-        )}
-        {prs.length > 0 && <PrMenu prs={prs} watch={data.watch ?? null} nowMs={nowMs} />}
-        <MoreButton locked={locked || state === null} menu={more} />
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <SourceHeader label={label}>
+        <span className={cx("flex shrink-0 items-center gap-0.5", offline && "opacity-disabled")} inert={offline}>
+          {data.history ? (
+            (data.history.error || (data.history.base && data.history.commits.length > 0)) && <HistoryMenu {...data.history} />
+          ) : (
+            state && base && state.commits.length > 0 && <HistoryMenu commits={state.commits} base={base} />
+          )}
+          {prs.length > 0 && <PrMenu prs={prs} watch={data.watch ?? null} nowMs={nowMs} />}
+          <MoreButton locked={locked || state === null} menu={more} />
+        </span>
       </SourceHeader>
+      {notice}
       {picker === "branch" && state && (
         <QuickPick
           place={{ anchor: branchItem }}
@@ -362,54 +398,47 @@ export function SourcePanel({
           onClose={() => setPicker(null)}
         />
       )}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-1 pb-3">
+      <div className={cx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-3", offline && "opacity-disabled")} inert={offline}>
         {state === null && !data.error && (
-          <div aria-busy className="flex flex-col gap-2">
-            <Skeleton className="h-6 w-1/2" />
-            <Skeleton className="h-control-md" />
-            <Skeleton className="h-control-sm" />
-            <Skeleton className="h-control-sm w-3/4" />
+          <div aria-busy className="flex flex-col items-center gap-2 pt-5">
+            <Skeleton className="size-8 rounded-capsule" />
+            <Skeleton className="h-5 w-1/2" />
+            <Skeleton className="h-control-sm w-full" />
           </div>
         )}
-        {data.error && (!offline || state === null) && (
-          <ReadError error={data.error} onRetry={ops?.retry} />
-        )}
+        {data.error && (!offline || state === null) && <ReadError error={data.error} onRetry={ops?.retry} />}
         {top}
-        {state && (conflicted.length > 0 ? (
-          <div className="flex flex-col gap-1 border-t border-divider pt-2">
-            <Heading title="Conflicts" count={conflicted.length} />
+        {state && step && (data.run || prs.length > 0) && (
+          <section className="flex flex-col">
+            <Heading title="Checks" />
+            {data.run && <RunLine run={data.run} nowMs={nowMs} />}
+            {prs.map((pr) => <PrLine key={pr.number} pr={pr} />)}
+          </section>
+        )}
+        {state && conflicted.length > 0 && (
+          <section className="flex flex-col">
+            <Heading title="Conflicts" count={conflicted.length} end={review} />
             <FileList>{conflicted.map((file) => row(file))}</FileList>
             {merged.length > 0 && (
               <Group title="Merged cleanly" count={merged.length} defaultOpen={false}>
-                {merged.map((file) => row(file))}
+                {ordered(merged).map((file) => row(file))}
               </Group>
             )}
-          </div>
-        ) : listed.length > 0 ? (
-          <div className="flex flex-col gap-1 border-t border-divider pt-2">
-            <Heading title={uncommitted.length > 0 ? "Files" : `Changed since ${base ?? "the base"}`} count={listed.length} />
-            <FileList>{listed.map((file) => row(file, uncommitted.length === 0))}</FileList>
-          </div>
-        ) : (
-          !resolving && <p className="text-xs text-muted-foreground">What the agent changes shows here.</p>
-        ))}
+          </section>
+        )}
+        {state && conflicted.length === 0 && theirs.length > 0 && (
+          <section className="flex flex-col">
+            <Heading title={agentPaths ? "From the agent" : uncommitted.length > 0 ? "Changes" : `Changed since ${base ?? "the base"}`} count={theirs.length} end={review} />
+            <FileList>{ordered(theirs).map((file) => row(file, uncommitted.length === 0))}</FileList>
+          </section>
+        )}
+        {state && conflicted.length === 0 && others.length > 0 && (
+          <section className="flex flex-col">
+            <Heading title="Other changes" count={others.length} />
+            <FileList>{ordered(others).map((file) => row(file))}</FileList>
+          </section>
+        )}
       </div>
-      {state && (
-        <footer className="flex shrink-0 items-center border-t border-divider ps-2 pe-1.5 py-1.5">
-          <div ref={branchItem} className="min-w-0 flex-1">
-            <BranchItem
-              state={data.naming ? { ...state, branch: data.naming } : state}
-              locked={locked}
-              sharedWith={data.share?.with ?? null}
-              syncing={data.syncing}
-              open={picker === "branch"}
-              onBranch={() => setPicker("branch")}
-              onSync={branchOps?.sync}
-              onPublish={branchOps?.publish}
-            />
-          </div>
-        </footer>
-      )}
 
       <DiscardDialog
         discarding={discarding}

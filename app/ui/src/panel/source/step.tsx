@@ -1,24 +1,23 @@
 import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, type StepAt, useGit, writeMessage } from "../git";
+import { commitFiles, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
 import { laterWords } from "../words";
 import { ActionButton } from "./action";
-import { ForcePushDialog, MergePrDialog, SquashDialog } from "./action-confirms";
+import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "./action-confirms";
 import type { ActionPick } from "./action-menus";
-import { askForce, cancelForce, forcePush, useBranchOp, useForcing } from "./branch-ops";
+import { askForce, cancelForce, first, forcePush, only, useBranchOp, useForcing } from "./branch-ops";
 import { useCreatePr } from "./create-pr";
-import { StageAllDialog } from "./dialogs";
 import type { SourceData, SourceOps } from "./panel";
 
-/** The picks that run on real data so far: Commit, J's PR ways, landing and Force Push [D1029, D1030, D1034, D1152]. */
-const WIRED: ActionPick[] = ["commit", "createPr", "pushBranch", "openPrPage", "mergeLocally", "forcePush"];
+/** The picks that run on real data so far [D1029, D1030, D1034, D1152, D1203, D1205]. */
+const WIRED: ActionPick[] = ["commit", "editMessage", "pullOnly", "pushOnly", "createPr", "pushBranch", "openPrPage", "mergeLocally", "forcePush"];
 
 const SQUASH_MESSAGE = `Retry failed uploads
 
 Uploads that fail now retry three times with a growing wait, and the tray shows how far each one got.`;
 
-/** Messages typed and not committed, by checkout: they outlive the view, as the old CommitBox's did, and Source and the card share them. */
+/** Messages saved in Edit message… and not committed yet, by checkout: they outlive the view, and Source and the card share them [D1203]. */
 const unsent = new Map<string, string>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -39,9 +38,9 @@ function useMessage(key: string | undefined): [string, (next: string) => void] {
   return [message, setMessage];
 }
 
-/** A commit or a write under way, and how the last one ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. */
-type Work = { committing: boolean; writing: boolean; failed: boolean; error: string | null };
-const IDLE: Work = { committing: false, writing: false, failed: false, error: null };
+/** Commit only under way, and how the last commit ended, by checkout: Source and the card show the same [D1143, D1144, D1148]. `failed`: the writer wrote nothing. */
+type Work = { committing: boolean; failed: boolean; error: string | null };
+const IDLE: Work = { committing: false, failed: false, error: null };
 const works = new Map<string, Work>();
 
 function useWork(key: string | undefined): [Work, (next: Partial<Work>) => void] {
@@ -93,33 +92,44 @@ const notify = () => {
  * Rust's [D1029]; none in the gallery. `move`: the files' own move, Rust's or the gallery's local copy. `button` is
  * null while there's no step to show or nothing to do.
  */
-export function useSourceStep({ data, state, draftKey, session = null, card = false, ops, move, onCommitted }: {
+/**
+ * Source's next step [D1015]: the one button, its moves and the confirms it asks, one set for Source and the summary
+ * card [D1145, D1148, D1199], with the branch's PRs and Create PR [D1030]. With files uncommitted the button's landing
+ * commits them first, in one Rust move pinned to the step it showed [D1049, D1203, D1207]; Commit only and Edit
+ * message… end its arrow [D1191]. Off while the session's agent works [D1208]. `session`: whose PR it makes; none in
+ * the gallery. `card`: the summary card, which draws Create PR's dialog only when it opened it; Source draws it
+ * otherwise. `ops`: Rust's moves, landing among them (2.22), whose presence also makes the commit and the writer
+ * Rust's [D1029]; none in the gallery. `button` is null while there's no step to show or nothing to do.
+ */
+export function useSourceStep({ data, state, draftKey, session = null, card = false, ops }: {
   data: SourceData;
   state: SourceState | null;
   draftKey?: string;
   session?: string | null;
   card?: boolean;
   ops?: SourceOps;
-  move: (paths: string[], to: "staged" | "changes") => void;
-  onCommitted?: () => void;
 }) {
   const [message, setMessage] = useMessage(draftKey);
-  const [stageAll, setStageAll] = useState<"ask" | "always">("ask");
   const [work, put] = useWork(draftKey);
-  const { writing, committing, failed } = work;
+  const { committing, failed } = work;
   const live = ops !== undefined;
   const [ownStyle, setOwnStyle] = useState<MergeStyle>("merge");
   const mergeStyle = data.merge ?? ownStyle;
   const [landed, setLanded] = useLanding(draftKey);
-  const [askingStageAll, setAskingStageAll] = useState(false);
   const [squashing, setSquashing] = useState(false);
   // The commits a squash confirm showed, and what it lands: pinned when it opened [D1049].
   const [squashAt, setSquashAt] = useState<StepAt | null>(null);
   const [squashCommits, setSquashCommits] = useState<Commit[] | null>(null);
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
   const [mergingPr, setMergingPr] = useState(false);
+  // Edit message…'s field while it's open; Save keeps it as the next commit's [D1203].
+  const [editing, setEditing] = useState<string | null>(null);
   const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
-  const pr = useCreatePr(session);
+  const step = data.step;
+  const pending = step && "commit" in step ? (step.commit ?? 0) : 0;
+  const pinned = data.at ?? null;
+  const saved = message.trim() || null;
+  const pr = useCreatePr(session, pending > 0 && pinned ? { at: pinned, message: saved } : null);
   const id = useId();
   // The on-screen checkout's rejected push and its confirm [D1034, D1049]; the gallery's own without one.
   const target = useGit().target;
@@ -139,7 +149,6 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const drawsPr = claim === id || (claim === undefined && !card);
   useEffect(() => () => void (session && asked.get(session) === id && asked.delete(session)), [session, id]);
 
-  const step = data.step;
   // On real data a step whose click comes later is off, saying so [D1143].
   const wired = ops?.land !== undefined;
   const later = wired && step ? laterWords(step.kind) : null;
@@ -150,75 +159,67 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   useEffect(() => void (wired && ops?.refreshStep?.()), [prKey]);
   // A watch that failed after its first read: the last read stays, read-only, under the error [D30].
   const stale = state !== null && Boolean(data.error);
-  const locked = (data.offline ?? false) || stale || committing || writing;
+  const working = data.agentWorking ?? false;
+  const locked = (data.offline ?? false) || stale || committing;
   const resolving = state?.merging != null || state?.rebasing != null;
-  const changes = state?.changes.filter((file) => !resolving || file.status !== "conflicted") ?? [];
   const clean = state !== null && state.staged.length === 0 && state.changes.length === 0 && !resolving;
-  // Nothing to commit and nothing further to do: no button.
-  const idle = clean && (step?.kind === "commit" || step?.kind === "folderCommit" || step?.kind === "landed");
+  const uncommitted = state ? new Set([...state.staged, ...state.changes].map((file) => file.path)).size : 0;
+  // Nothing to do and nothing further: no button.
+  const idle = clean && (step?.kind === "commit" || step?.kind === "folderCommit");
 
+  /** Commit only · N files: every change, with the saved message or the writer's [D1029, D1203]. */
   const commit = () => {
-    if (!state || locked || clean) return;
-    if (state.staged.length > 0) return finish(false);
-    if (stageAll === "ask") return setAskingStageAll(true);
-    stageAndFinish();
+    if (!state || locked || clean || working) return;
+    put({ failed: false, error: null, committing: true });
+    if (!live) return void setTimeout(() => put({ committing: false, ...(saved ? {} : { failed: true }) }), 1500);
+    const sent = commitFiles(true, saved ?? "", (reply) => {
+      put({ committing: false });
+      if (reply.ok) return saved && setMessage("");
+      if (reply.writer) return writerFailed();
+      put({ error: reply.error === "disconnected" ? LOST : String(reply.error) });
+    });
+    if (!sent) put({ committing: false, error: LOST });
   };
-  // Wired, Rust stages everything with the commit, under one lock, so nothing slips in between.
-  const stageAndFinish = () => {
-    if (!live) move(changes.map((file) => file.path), "staged");
-    finish(true);
+  // A writer failure commits nothing: the line says so and Edit message… opens to type one [D1029, D1212].
+  const writerFailed = () => {
+    put({ failed: true });
+    edit();
   };
-  /** Rust's answer to a commit or a write: what failed shows in the field, or on the card's button [D1143, D1144]. */
-  const settle = (reply: Record<string, any>, done: () => void) => {
-    put({ committing: false, writing: false });
-    if (reply.ok) return done();
-    if (reply.writer) return put({ failed: true });
-    put({ error: reply.error === "disconnected" ? LOST : String(reply.error) });
-  };
-  const finish = (all: boolean) => {
-    const typed = message.trim();
-    put({ failed: false, error: null });
-    if (live) {
-      // A blank field: Rust writes the message for exactly what it commits, or commits nothing [D1029].
-      put({ committing: true });
-      const sent = commitFiles(all, typed, (reply) =>
-        settle(reply, () => {
-          if (typed) setMessage("");
-          onCommitted?.();
-        }),
-      );
-      if (!sent) put({ committing: false, error: LOST });
-      return;
-    }
-    if (typed) {
-      setMessage("");
-      onCommitted?.();
-      return;
-    }
-    // The gallery's writer fails, so it asks for one.
-    put({ committing: true });
-    setTimeout(() => put({ committing: false, failed: true }), 1500);
-  };
-  const write = () => {
-    put({ writing: true, failed: false, error: null });
-    if (live) {
-      const sent = writeMessage("commit", state !== null && state.staged.length === 0, (reply) => settle(reply, () => setMessage(String(reply.text))));
-      if (!sent) put({ writing: false, error: LOST });
-      return;
-    }
-    setTimeout(() => put({ writing: false, failed: true }), 1500);
-  };
-  /** Lands through Rust: "Merging…" at once, until the step it led to shows; a refusal stays on the line [D30, D1049]. */
-  const land = (style: MergeStyle, text: string | null, at: StepAt | null) => {
-    if (!ops?.land || !step) return;
+  const edit = () => setEditing(message || data.draft || "");
+
+  /**
+   * The landing move, committing every change first when there are some (`first`): "Merging…" at once, until the
+   * step it led to shows; a refusal stays on the line [D30, D1049, D1203]. `text`: a squash's message.
+   */
+  const go = (verb: "merge" | "squash" | "push" | "sync" | "publish", text: string | null = null, at: StepAt | null = pinned) => {
+    if (!step) return;
     const on = step.kind;
     setLanded({ running: true, error: null, on });
-    ops.land(style, text, at, (error) => setLanded({ running: false, error: error ? { kind: "merge", reason: error } : null, on }));
+    put({ failed: false, error: null });
+    if (!live) return void setTimeout(() => setLanded(STILL), 1500);
+    if (pending === 0 && (verb === "merge" || verb === "squash")) {
+      if (!ops?.land) return setLanded(STILL);
+      return ops.land(verb, text, at, (error) => setLanded({ running: false, error: error ? { kind: on, reason: error } : null, on }));
+    }
+    if (!target || !at) return setLanded({ running: false, error: { kind: on, reason: "Look again." }, on });
+    const typed = text ?? saved;
+    first(target, [verb, at.head, at.base ?? "-", ...(typed ? ["--message", typed] : [])], (reply) => {
+      if (reply.ok) {
+        if (saved) setMessage("");
+        return refreshStep(true, () => setLanded(STILL));
+      }
+      if (reply.writer) {
+        setLanded(STILL);
+        return writerFailed();
+      }
+      setLanded({ running: false, error: { kind: on, reason: reply.error === "disconnected" ? LOST : String(reply.error) }, on });
+      refreshStep(true);
+    });
   };
   const mergeLocally = () => {
-    if (mergeStyle !== "squash") return land("merge", null, data.at ?? null);
+    if (mergeStyle !== "squash") return go("merge");
     setSquashing(true);
-    const at = data.at ?? null;
+    const at = pinned;
     if (!ops?.squashOf || !at) return;
     setSquashAt(at);
     setSquashCommits(null);
@@ -240,33 +241,36 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     if (!sent) wrote = false;
   };
   const run = () => {
-    if (!step) return;
-    if (step.kind === "commit" || step.kind === "folderCommit") commit();
-    else if (step.kind === "merge") mergeLocally();
+    if (!step || working) return;
+    if (step.kind === "merge") mergeLocally();
+    else if (step.kind === "pushPr" && pending > 0) go("push");
     else if (step.kind === "pushPr" && wired) pr.onPick("pushBranch");
-    else if ((step.kind === "sync" || step.kind === "publish") && ops?.branch) ops.branch[step.kind]();
+    else if ((step.kind === "sync" || step.kind === "publish") && pending === 0 && ops?.branch) ops.branch[step.kind]();
+    else if (step.kind === "sync" || step.kind === "publish") go(step.kind);
     else if (step.kind === "mergePr") setMergingPr(true);
     // Fix with agent and Resolve with agent leave a chip above the composer, sent when the user sends [D1019, D1044]:
     // wired with the composer.
   };
 
   // Merging from a PR's menu reads as a merge while it runs.
-  const shown: Step | null = landing && step && step.kind !== "merge" && "base" in step ? { kind: "merge", base: step.base, ready: 0, moved: 0, blocked: null } : step;
+  const shown: Step | null = landing && step && step.kind !== "merge" && step.kind !== "landed" && "base" in step ? { kind: "merge", base: step.base, ready: 0, moved: 0, blocked: null, commit: pending } : step;
   const button: Omit<ComponentProps<typeof ActionButton>, "nowMs"> | null =
     shown && !idle
       ? {
           step: shown,
           ...(landing && { running: true }),
-          writing: committing && !message.trim(),
-          ...(committing && message.trim() && { running: true }),
-          disabled: writing,
-          // The field shows Source's own failures; the card has none, so its button's line does. Another session working
-          // in this folder: the pre-check line says so, and Rust refuses [D1082].
-          error:
-            landError ??
-            data.stepError ??
-            (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null) ??
-            (card && (failed || work.error) ? { kind: shown.kind, reason: failed ? "no message was written. Type one in Source." : work.error! } : null),
+          writing: committing,
+          disabled: working,
+          uncommitted: resolving ? 0 : uncommitted,
+          say: working
+            ? { line: "Waits for the turn to finish", tone: "quiet" }
+            : failed
+              ? { line: "Couldn't write a message", tone: "bad" }
+              : work.error
+                ? { line: `Couldn't commit: ${work.error}`, tone: "bad" }
+                : null,
+          // Another session working in this folder: the pre-check line says so, and Rust refuses [D1082].
+          error: landError ?? data.stepError ?? (data.share?.busy ? { kind: shown.kind, reason: `${data.share.busy} is working in this folder. Wait for its turn to end.` } : null),
           later: landing ? null : later,
           ...(wired && { can: (pick: ActionPick) => WIRED.includes(pick) }),
           mergeStyle,
@@ -280,21 +284,24 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
             pr.onPick(pick);
             if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
             if (pick === "commit") commit();
+            if (pick === "editMessage") edit();
             if (pick === "mergeLocally") mergeLocally();
+            if ((pick === "pullOnly" || pick === "pushOnly") && target && state?.branch) only(target, pick === "pullOnly" ? "pull-only" : "push-only", state.branch);
           },
         }
       : null;
 
   const dialogs = (
     <>
-      <StageAllDialog
-        open={askingStageAll}
-        onClose={() => setAskingStageAll(false)}
-        onAnswer={(answer) => {
-          setAskingStageAll(false);
-          if (answer === "never") return;
-          if (answer === "always") setStageAll("always");
-          stageAndFinish();
+      <MessageDialog
+        open={editing !== null}
+        message={editing ?? ""}
+        onMessage={setEditing}
+        onCancel={() => setEditing(null)}
+        onSave={() => {
+          setMessage((editing ?? "").trim());
+          setEditing(null);
+          put({ failed: false });
         }}
       />
       {step && "base" in step && state && (
@@ -303,12 +310,13 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
           branch={state.branch ?? "…"}
           base={step.base}
           commits={squashCommits ?? (ops?.squashOf ? [] : state.commits)}
+          pending={pending}
           message={squashMessage}
           onMessage={setSquashMessage}
           onCancel={() => setSquashing(false)}
           onConfirm={() => {
             setSquashing(false);
-            land("squash", squashMessage, squashAt);
+            go("squash", squashMessage, squashAt);
           }}
         />
       )}
@@ -327,6 +335,5 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     </>
   );
 
-  const setFailed = (failed: boolean) => put({ failed, error: null });
-  return { prs, message, setMessage, writing, committing, failed, error: work.error, setFailed, locked, commit, write, button, dialogs };
+  return { prs, locked, button, dialogs };
 }

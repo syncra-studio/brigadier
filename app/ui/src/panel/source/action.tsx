@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/button";
 import { cx } from "../../components/cx";
 import { DropdownMenu, DropdownMenuTrigger } from "../../components/menu";
+import { InfoTip } from "../../components/thread/tip";
 import { ArrowDown, ArrowUp, Branch, Check, ChevronDown, Publish, Sparkles, Spinner, SyncGlyph, Warning } from "../../icons";
 import type { MergeStyle, Step, StepError } from "../types";
 import { errorWords, runningWords, stepWords, type Tone } from "../words";
@@ -39,15 +40,20 @@ function icon(step: Step): ReactNode {
  * and the grey pre-check line under it saying what clicking does and whether it will work. The arrow holds every
  * other way. Fix with agent and Resolve with agent only leave a chip above the composer, sent when the user sends
  * [D1019, D1044].
- * `writing`: Commit pressed with a blank box, the message being written [D1029]. `held`: the gallery's open menu.
+ * Source and the summary card draw the same one, from the same model [D1199].
+ * `writing`: Commit only under way, the writer writing its message first [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, say = null, uncommitted = 0, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
   step: Step;
   nowMs: number;
   running?: boolean;
   writing?: boolean;
-  /** Off for now (✨ is writing a message). */
+  /** Off for now: the agent works, or the daemon's out of reach [D1208, D30]. */
   disabled?: boolean;
+  /** A line in place of the pre-check: "Waits for the turn to finish", "Couldn't write a message" [D1208, D1212]. */
+  say?: { line: string; tone: Tone } | null;
+  /** Files not committed yet: the arrow ends with Commit only and Edit message… [D1191, D1203]. */
+  uncommitted?: number;
   error?: StepError | null;
   /** Its click comes with a later step: off, and the line says so [D1143]. */
   later?: string | null;
@@ -62,11 +68,11 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
 }) {
   const words = stepWords(step, nowMs);
   const busy = running || writing || disabled;
-  const label = writing ? "Writing message…" : running ? runningWords(step).label : words.label;
-  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (later ?? words.line);
-  const tone = running ? "quiet" : error ? "bad" : later ? "quiet" : words.tone;
+  const label = writing ? "Committing…" : running ? runningWords(step).label : words.label;
+  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? words.line);
+  const tone = running ? "quiet" : error ? "bad" : say ? say.tone : later ? "quiet" : words.tone;
   const variant = step.kind === "catchUp" ? "secondary" : "default";
-  const menu = hasActionMenu(step);
+  const menu = hasActionMenu(step, uncommitted);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex" title={later ?? words.why}>
@@ -93,20 +99,47 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
                 size={null}
                 variant={variant}
                 aria-label="More actions"
-                disabled={busy || !menu}
+                disabled={busy || !menu || (step.kind === "landed" && uncommitted === 0)}
                 className={cx(SPLIT, "rounded-e-capsule border-s border-split-edge px-1.5")}
               />
             }
           >
             <ChevronDown />
           </DropdownMenuTrigger>
-          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} can={can} onMergeStyle={onMergeStyle} onPick={onPick} held={held} />}
+          {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} can={can} onMergeStyle={onMergeStyle} onPick={onPick} held={held} uncommitted={uncommitted} />}
         </DropdownMenu>
       </div>
-      <p className={cx("px-1 text-xs", TONE[tone])}>
-        {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && !later && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
+      <OneLine text={line} className={TONE[tone]}>
+        {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && !later && !say && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
         {line}
-      </p>
+      </OneLine>
     </div>
+  );
+}
+
+/** The grey line: one line at most, cut with an ellipsis; an ⓘ shows the whole line only when it doesn't fit [D1198]. */
+function OneLine({ text, className, children }: { text: string; className: string; children: ReactNode }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current!;
+    const check = () => setCut(el.scrollWidth > el.clientWidth);
+    check();
+    void document.fonts.ready.then(check);
+    const watch = new ResizeObserver(check);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [text]);
+  return (
+    <p className={cx("flex min-w-0 items-center px-1 text-xs", className)}>
+      <span ref={box} className="min-w-0 truncate">
+        {children}
+      </span>
+      {cut && (
+        <span className="flex shrink-0 text-muted-foreground">
+          <InfoTip text={text} />
+        </span>
+      )}
+    </p>
   );
 }

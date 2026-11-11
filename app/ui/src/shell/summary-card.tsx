@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { cx } from "../components/cx";
+import { useDaemon } from "../daemon";
 import { GitCard } from "../panel/card";
 import { openPr } from "../panel/open";
 import { useSource } from "../panel/source/view";
@@ -67,7 +68,7 @@ export function SummaryCard({ shown, settled = true, children }: { shown: boolea
           settled && "motion-safe:transition-all motion-safe:duration-300 motion-safe:ease-summary-card",
         )}
       >
-        <div className="pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-surface bg-popover py-2.5 shadow-raised">{children}</div>
+        <div className="pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-raised">{children}</div>
       </aside>
     </div>
   );
@@ -155,7 +156,10 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
 export function SummarySlot({ owner, children }: { owner: string; children: ReactNode }) {
   const has = useHasPanel(owner) && owner !== HOME;
   const { data, ops } = useSource(owner);
-  const card = has ? <GitCard data={data} draftKey={owner} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} /> : null;
+  const { rows, projects } = useDaemon();
+  const projectId = rows?.find((row) => row.id === owner)?.project;
+  const project = projects?.find((each) => each.id === projectId)?.name ?? null;
+  const card = has ? <GitCard data={data} project={project} draftKey={owner} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} /> : null;
   return (
     <SummaryPane owner={owner} card={card}>
       {children}

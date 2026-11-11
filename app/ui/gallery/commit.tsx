@@ -1,12 +1,10 @@
-// The commit message field and the action button [D1008, D1015, D1019, D1028, D1029, D1034, D1045]: every state, menu and confirm.
+// The one button [D1008, D1015, D1019, D1028, D1029, D1034, D1045, D1203, D1207]: every state, menu and confirm.
 import type { ReactNode } from "react";
 
-import { BRANCH, COMMITS, DRAFT, MERGING, STEPS } from "../src/panel/fake";
+import { BRANCH, COMMITS, DRAFT, STEPS } from "../src/panel/fake";
 import { ActionButton } from "../src/panel/source/action";
-import { ForcePushDialog, MergePrDialog, SquashDialog } from "../src/panel/source/action-confirms";
-import { CommitBox } from "../src/panel/source/commit-box";
+import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "../src/panel/source/action-confirms";
 import { CreatePrDialog, type HostInfo } from "../src/panel/source/create-pr";
-import { StageAllDialog } from "../src/panel/source/dialogs";
 import type { Step } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
 import { Confirm } from "./source";
@@ -15,14 +13,12 @@ const NOW = Date.now();
 const noop = () => undefined;
 const TYPED = "Retry failed uploads three times\n\nThe upload client retries with a growing wait.";
 
-/** The panel's top, at its width: the box, then the button. */
+/** The button at Source's width. */
 function Top({ children }: { children: ReactNode }) {
   return <div className="flex w-80 flex-col gap-2 rounded-surface border border-border bg-background p-2">{children}</div>;
 }
 
 const BUTTONS: [string, Step, Partial<Parameters<typeof ActionButton>[0]>?][] = [
-  ["1 · Commit", STEPS.commit],
-  ["2 · Commit, commits waiting", STEPS.commitWaiting],
   ["3 · Merge into main", STEPS.merge],
   ["4 · main moved, still clean", STEPS.mergeMoved],
   ["5 · Would conflict: Catch up", STEPS.catchUp],
@@ -31,7 +27,7 @@ const BUTTONS: [string, Step, Partial<Parameters<typeof ActionButton>[0]>?][] = 
   ["7 · main busy in your folder", STEPS.busy],
   ["8 · Merging", STEPS.merge, { running: true }],
   ["9 · Couldn't", STEPS.merge, { error: { kind: "merge", reason: "main moved while merging. Checked again: still clean, try once more." } }],
-  ["10 · Landed", STEPS.landed],
+  ["10 · Landed: stays, off", STEPS.landed],
   ["11 · Push to #12", STEPS.pushPr],
   ["12 · Fix with agent: checks", STEPS.fixPr],
   ["12 · Fix with agent: changes asked", STEPS.fixPrChanges],
@@ -43,7 +39,6 @@ const BUTTONS: [string, Step, Partial<Parameters<typeof ActionButton>[0]>?][] = 
 ];
 
 const MENUS: [string, Step, boolean?][] = [
-  ["Commit", STEPS.commit],
   ["Merge into main", STEPS.merge],
   ["Catch up", STEPS.catchUp],
   ["Resolve with agent", STEPS.continue],
@@ -51,8 +46,19 @@ const MENUS: [string, Step, boolean?][] = [
   ["Fix with agent", STEPS.fixPr],
   ["Merge #12", STEPS.mergePr],
   ["Push to #12", STEPS.pushPr],
-  ["Your folder", STEPS.folderCommit],
+  ["Your folder: Pull only, Push only", STEPS.sync],
   ["After a rejected push", STEPS.sync, true],
+];
+
+const FIRST: [string, Step, Partial<Parameters<typeof ActionButton>[0]>?][] = [
+  ["Merge into main", { ...STEPS.merge, commit: 6 }],
+  ["Push to #12", { ...STEPS.pushPr, commit: 6 }],
+  ["Your folder · Sync Changes", { ...STEPS.sync, commit: 6 }],
+  ["Your folder · Publish Branch", { ...STEPS.publish, commit: 6 }],
+  ["Committing, then merging", { ...STEPS.merge, commit: 6 }, { running: true }],
+  ["Commit only: Committing…", { ...STEPS.merge, commit: 6 }, { writing: true }],
+  ["The agent works: waits", { ...STEPS.merge, commit: 6 }, { disabled: true, say: { line: "Waits for the turn to finish", tone: "quiet" } }],
+  ["The writer failed: nothing committed", { ...STEPS.merge, commit: 6 }, { say: { line: "Couldn't write a message", tone: "bad" } }],
 ];
 
 const PR_INFO: HostInfo = { host: "GitHub", cli: true, base: "main", branch: BRANCH, title: "Retry failed uploads", body: "- Retry failed uploads\n- Show upload progress in the tray" };
@@ -60,63 +66,24 @@ const PR_TEXT = { title: PR_INFO.title, body: PR_INFO.body, draft: false };
 
 export function CommitGallery() {
   return (
-    <Section title="Commit message and the action button">
-      <Row name="The message field">
-        <State label="Blank: the draft in grey, committed as it is">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite />
-            <ActionButton step={STEPS.commit} nowMs={NOW} />
-          </Top>
+    <Section title="The one button">
+      <Row name="Commits first, then lands">
+        {FIRST.map(([label, step, more]) => (
+          <State key={label} label={label}>
+            <Top>
+              <ActionButton step={step} nowMs={NOW} uncommitted={6} {...more} />
+            </Top>
+          </State>
+        ))}
+        <State label="A long line: cut, with ⓘ">
+          <div className="flex w-64 flex-col rounded-surface border border-border bg-background p-2">
+            <ActionButton step={{ ...STEPS.mergeMoved, commit: 6 }} nowMs={NOW} uncommitted={6} />
+          </div>
         </State>
-        <State label="Blank, no draft yet: written at commit">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite />
-            <ActionButton step={STEPS.commit} nowMs={NOW} />
-          </Top>
+        <State label="Its arrow: Commit only, Edit message…">
+          <Held className="h-72 w-80">{(held) => <ActionButton step={{ ...STEPS.merge, commit: 6 }} nowMs={NOW} uncommitted={6} held={held} />}</Held>
         </State>
-        <State label="Shared folder: includes another session's changes, which works there now">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite includes="Login" />
-            <ActionButton step={STEPS.commit} nowMs={NOW} error={{ kind: "commit", reason: "Login is working in this folder. Wait for its turn to end." }} />
-          </Top>
-        </State>
-        <State label="Typed: subject and body">
-          <Top>
-            <CommitBox message={TYPED} onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite />
-            <ActionButton step={STEPS.commit} nowMs={NOW} />
-          </Top>
-        </State>
-        <State label="✨ writing">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} draft={DRAFT} canWrite writing busy />
-            <ActionButton step={STEPS.commit} nowMs={NOW} disabled />
-          </Top>
-        </State>
-        <State label="Commit with no draft: Writing message…">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite busy />
-            <ActionButton step={STEPS.commit} nowMs={NOW} writing />
-          </Top>
-        </State>
-        <State label="The write failed: nothing committed">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={BRANCH} canWrite failed />
-            <ActionButton step={STEPS.commit} nowMs={NOW} />
-          </Top>
-        </State>
-        <State label="During a merge: git's message">
-          <Top>
-            <CommitBox message={MERGING.merging!.message} onMessage={noop} branch={BRANCH} canWrite={false} />
-            <ActionButton step={STEPS.continue} nowMs={NOW} />
-          </Top>
-        </State>
-        <State label="Rebasing: the stopped commit's message">
-          <Top>
-            <CommitBox message="" onMessage={noop} branch={null} rebaseMessage="Show upload progress in the tray" canWrite={false} />
-            <ActionButton step={{ ...STEPS.continue, left: 1 }} nowMs={NOW} />
-          </Top>
-        </State>
-        <Confirm label="Nothing staged: stage all?">{(held) => <StageAllDialog open held={held} onClose={noop} onAnswer={noop} />}</Confirm>
+        <Confirm label="Edit message…">{(held) => <MessageDialog open message={DRAFT} held={held} onMessage={noop} onCancel={noop} onSave={noop} />}</Confirm>
       </Row>
       <Row name="The action button: every step">
         {BUTTONS.map(([label, step, more]) => (
@@ -152,6 +119,9 @@ export function CommitGallery() {
       <Row name="Confirms">
         <Confirm label="Squash, its message editable" tall>
           {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
+        </Confirm>
+        <Confirm label="Squash, with files not committed yet" tall>
+          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} pending={6} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
         </Confirm>
         <Confirm label="Squash, the message being written" tall>
           {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message="" writing onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}

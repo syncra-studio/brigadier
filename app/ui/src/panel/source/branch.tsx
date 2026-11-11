@@ -1,73 +1,63 @@
 import { cx } from "../../components/cx";
-import { ArrowDown, ArrowUp, Branch, Publish, Spinner, SyncGlyph } from "../../icons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip";
+import { Branch } from "../../icons";
 import type { SourceState } from "../types";
+import { clock } from "../words";
+
+/** "Offline · 14:32": when the checkout was last read, beside the branch in Source and on the card [D30, D1206]. */
+export function Offline({ readAtMs }: { readAtMs: number | null }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="size-1.5 rounded-capsule bg-warning" />
+      {readAtMs === null ? "Offline" : `Offline · ${clock(readAtMs)}`}
+    </span>
+  );
+}
 
 /**
- * The branch line under the action button, as VS Code's two-part item [D1020]: the branch (a click opens its quick
- * pick) and the sync item (↓ to pull, ↑ to push, one click doing both; a cloud when it was never published). During a
- * merge or rebase the old "(merging)" and "(rebasing)" stay. Off while something is under way.
+ * The branch, a small label beside Source's title [D1205]: a click opens its quick pick below it [D1021]; "Live" and
+ * when the watch last read the folder are its tip; disconnected, "Offline · 14:32" shows beside it. During a merge or
+ * rebase the old "(merging)" and "(rebasing)" stay. A fork here reads "‹branch› · shared with ‹source›" [D1082].
  */
-export function BranchItem({ state, locked, sharedWith = null, syncing = false, open = false, onBranch, onSync, onPublish }: {
+export function BranchLabel({ state, locked, offline = false, readAtMs = null, sharedWith = null, open = false, onBranch }: {
   state: SourceState;
   locked: boolean;
-  /** Another session works on this branch's folder and lands it: "‹branch› · shared with ‹it›" [D1082]. */
+  offline?: boolean;
+  readAtMs?: number | null;
   sharedWith?: string | null;
-  syncing?: boolean;
   /** Its quick pick is open. */
   open?: boolean;
   onBranch?: () => void;
-  onSync?: () => void;
-  onPublish?: () => void;
 }) {
   const name = state.branch ?? state.rebasing?.branch ?? "…";
-  const publish = state.branch !== null && state.upstream === null && state.remote !== null;
-  const sync = state.branch !== null && state.upstream !== null;
-  const moveLabel = publish ? "Publish Branch" : `Pull ${state.behind} and push ${state.ahead} commits`;
   return (
-    <div className="flex h-control-sm min-w-0 items-center gap-1 text-sm">
-      <button
-        type="button"
-        title={`${name}, switch or manage`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={locked}
-        onClick={onBranch}
-        className={cx(
-          "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-control px-1 text-start text-muted-foreground hover:bg-muted focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled",
-          open && "bg-muted",
-        )}
-      >
-        <Branch className="size-icon-sm shrink-0" />
-        <span className="min-w-0 truncate text-foreground">
-          {name}
-          {sharedWith && <span className="text-muted-foreground"> · shared with {sharedWith}</span>}
-        </span>
-        {(state.merging || state.rebasing) && <span className="shrink-0 text-foreground">{state.merging ? "(merging)" : "(rebasing)"}</span>}
-      </button>
-      {(sync || publish) && (
-        <button
-          type="button"
-          title={moveLabel}
-          aria-label={moveLabel}
-          disabled={locked || syncing}
-          onClick={publish ? onPublish : onSync}
-          className="flex h-full shrink-0 cursor-pointer items-center gap-1 rounded-control px-1.5 text-xs text-muted-foreground tabular-nums hover:bg-muted hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled"
+    <span className="flex min-w-0 items-center gap-1.5">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={open}
+              disabled={locked}
+              onClick={onBranch}
+              className={cx(
+                "flex h-control-sm min-w-0 cursor-pointer items-center gap-1 rounded-control px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:focus-ring disabled:cursor-default",
+                open && "bg-muted",
+              )}
+            />
+          }
         >
-          {syncing ? <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" /> : publish ? <Publish className="size-icon-sm" /> : <SyncGlyph className="size-icon-sm" />}
-          {sync && (
-            <>
-              <span className="flex items-center">
-                <ArrowDown className="size-icon-xs" />
-                {state.behind}
-              </span>
-              <span className="flex items-center">
-                <ArrowUp className="size-icon-xs" />
-                {state.ahead}
-              </span>
-            </>
-          )}
-        </button>
-      )}
-    </div>
+          <Branch className="size-icon-xs shrink-0" />
+          <span className="min-w-0 truncate">
+            {name}
+            {sharedWith && ` · shared with ${sharedWith}`}
+          </span>
+          {(state.merging || state.rebasing) && <span className="shrink-0">{state.merging ? "(merging)" : "(rebasing)"}</span>}
+        </TooltipTrigger>
+        <TooltipContent>{readAtMs === null ? "Live" : `Live · read ${clock(readAtMs)}`}</TooltipContent>
+      </Tooltip>
+      {offline && <Offline readAtMs={readAtMs} />}
+    </span>
   );
 }

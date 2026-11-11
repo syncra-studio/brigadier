@@ -3,9 +3,63 @@ import { Children, createContext, isValidElement, type ReactElement, type ReactN
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/context-menu";
 import { cx } from "../../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/tooltip";
-import { Check, ChevronDown, ChevronRight, FileIcon, Spinner, Warning } from "../../icons";
-import type { SourceFile } from "../types";
-import { baseName, dirName } from "../words";
+import { Check, ChevronDown, ChevronRight, FileIcon, Spinner } from "../../icons";
+import { PullRequestMerged, PullRequestOpen } from "../../landing/icons";
+import type { LastRun, Pr, SourceFile } from "../types";
+import { ago, baseName, dirName, prWords, runWords, type Tone } from "../words";
+
+/**
+ * One row of Source's groups and the card, the old card's 28px row [D1198, D1206]: an icon, the title, an optional
+ * second line (`sub`, in `subTone`), and what ends it. `onClick` makes it a button with the row's hover.
+ */
+export function Line({ icon, end, sub, subTone, onClick, children }: { icon?: ReactNode; end?: ReactNode; sub?: ReactNode; subTone?: string; onClick?: () => void; children: ReactNode }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      {...(onClick && { type: "button" as const, onClick })}
+      className={cx(
+        "relative isolate flex min-h-7 w-full min-w-0 items-center gap-2 py-0.5 text-start text-label font-prose",
+        onClick && "cursor-pointer before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-muted focus-visible:focus-ring",
+      )}
+    >
+      {icon && <span aria-hidden className="flex min-w-icon-md shrink-0 items-center justify-center text-muted-foreground svg:size-icon-md">{icon}</span>}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate">{children}</span>
+        {sub && <span className={cx("truncate text-xs", subTone ?? "text-muted-foreground")}>{sub}</span>}
+      </span>
+      {end && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground tabular-nums">{end}</span>}
+    </Tag>
+  );
+}
+
+/** A PR's icon, word and colour: prWords' words, the old card's colours (yellow running, purple merged) [D1198]. */
+const PR_TINT: Record<Tone, string> = { quiet: "text-pr-yellow", good: "text-success", warn: "text-pr-yellow", bad: "text-destructive" };
+export function PrLine({ pr, onClick }: { pr: Pr; onClick?: () => void }) {
+  const { word, tone } = prWords(pr);
+  const tint = pr.state === "merged" ? "text-pr-purple" : PR_TINT[tone];
+  return (
+    <Line onClick={onClick} icon={<span className={cx("flex", tint)}>{pr.state === "merged" ? <PullRequestMerged /> : <PullRequestOpen />}</span>} end={<span className={tint}>{word}</span>}>
+      <span className="text-muted-foreground">#{pr.number}</span> {pr.title}
+    </Line>
+  );
+}
+
+const RUN_DOT: Record<Tone, string> = { quiet: "bg-muted-foreground", good: "bg-success", warn: "bg-warning", bad: "bg-destructive" };
+const RUN_TEXT: Record<Tone, string> = { quiet: "", good: "", warn: "text-warning", bad: "text-destructive" };
+
+/** The agent's last test or build run, as a fact (2.38) [D1188]. */
+export function RunLine({ run, nowMs }: { run: LastRun; nowMs: number }) {
+  const words = runWords(run);
+  return (
+    <Line
+      icon={<span className={cx("size-1.5 rounded-capsule", RUN_DOT[words.tone])} />}
+      sub={<>{ago(run.atMs, nowMs)}<span className={cx(run.changed && "text-warning")}> · {words.since}</span></>}
+      end={<span className={RUN_TEXT[words.tone]}>{words.result}</span>}
+    >
+      <span className="font-mono text-xs">{run.command}</span>
+    </Line>
+  );
+}
 
 /** "+62 −8": lines added and removed, each only when there are some. */
 export function Counts({ added, removed }: { added: number; removed: number }) {
@@ -16,13 +70,13 @@ export function Counts({ added, removed }: { added: number; removed: number }) {
   );
 }
 
-/** A quiet heading over the list: a name and its count. */
-export function Heading({ title, count }: { title: string; count: number }) {
+/** A group's quiet heading: "Changes · 6", and what ends it (Review) [D1201]. */
+export function Heading({ title, count, end }: { title: string; count?: number; end?: ReactNode }) {
   return (
-    <h3 className="flex h-control-xs items-center gap-1.5 px-2 text-xs font-normal text-muted-foreground">
-      <span>{title}</span>
-      <span className="tabular-nums">{count}</span>
-    </h3>
+    <header className="flex h-7 items-center gap-2 text-label text-muted-foreground">
+      <h3 className="min-w-0 flex-1 truncate font-normal">{count === undefined ? title : `${title} · ${count}`}</h3>
+      {end}
+    </header>
   );
 }
 
@@ -35,10 +89,9 @@ export function Group({ title, count, defaultOpen = true, children }: { title: s
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-2 text-start text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring"
+        className="flex h-7 cursor-pointer items-center gap-1 rounded-control text-start text-label text-muted-foreground hover:text-foreground focus-visible:focus-ring"
       >
-        <span>{title}</span>
-        <span className="tabular-nums">{count}</span>
+        <span>{`${title} · ${count}`}</span>
         {open ? <ChevronDown className="size-icon-xs" /> : <ChevronRight className="size-icon-xs" />}
       </button>
       {open && <FileList>{children}</FileList>}
@@ -64,6 +117,8 @@ type RowProps = {
   selected?: boolean;
   locked?: boolean;
   pending?: boolean;
+  /** A flagged file's fact, in amber under its name (2.38) [D1188]. */
+  fact?: string | null;
   actions?: RowActions;
 };
 
@@ -143,7 +198,7 @@ function MenuItems({ file, staged = false, unstaged = !staged, committed = false
  * staged, a warning when conflicted. A click opens its diff (a conflicted one its conflict tab); a right-click opens
  * its FileList's menu. `pending`: moved at once, waiting for Rust's answer [D30].
  */
-export function FileRow({ file, staged = false, committed = false, selected = false, pending = false, actions = {} }: RowProps) {
+export function FileRow({ file, staged = false, committed = false, selected = false, pending = false, fact = null, actions = {} }: RowProps) {
   const conflicted = file.status === "conflicted";
   const folder = dirName(file.path);
   const pick = use(PickMenu);
@@ -161,12 +216,17 @@ export function FileRow({ file, staged = false, committed = false, selected = fa
           pick({ path: file.path, row: event.currentTarget });
         }}
         className={cx(
-          "flex h-control-sm w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-muted focus-visible:focus-ring",
-          selected && "bg-muted",
+          "relative isolate flex min-h-7 w-full cursor-pointer items-center gap-2 py-0.5 text-start text-label font-prose before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-muted focus-visible:focus-ring",
+          selected && "before:bg-muted",
         )}
       >
-        <FileIcon name={baseName(file.path)} size="sm" />
-        <span className={cx("min-w-0 flex-1 truncate", file.status === "deleted" && "line-through")}>{baseName(file.path)}</span>
+        <span aria-hidden className="flex min-w-icon-md shrink-0 items-center justify-center">
+          <FileIcon name={baseName(file.path)} size="sm" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className={cx("truncate", file.status === "deleted" && "line-through")}>{baseName(file.path)}</span>
+          {fact && <span className="truncate text-xs text-warning">{fact}</span>}
+        </span>
         {staged && (
           <Tooltip>
             <TooltipTrigger render={<span className="flex shrink-0 text-muted-foreground svg:size-icon-xs" />}>
@@ -178,7 +238,7 @@ export function FileRow({ file, staged = false, committed = false, selected = fa
         {pending ? (
           <Spinner className="size-icon-xs shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />
         ) : conflicted ? (
-          <Warning aria-label="Conflicted" className="size-icon-sm shrink-0 text-warning" />
+          <span className="shrink-0 text-xs text-warning">Conflict</span>
         ) : (
           <Counts added={file.added} removed={file.removed} />
         )}

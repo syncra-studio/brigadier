@@ -90,29 +90,6 @@ export function DropStashDialog({ open, held, onCancel, onConfirm }: { open: boo
   );
 }
 
-/** Commit with nothing staged: Cursor's question and answers, as the old panel asked it. Escape leaves it unanswered. */
-export function StageAllDialog({ open, held, onClose, onAnswer }: { open: boolean; held?: Held; onClose: () => void; onAnswer: (answer: "yes" | "always" | "never") => void }) {
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()} modal={held ? false : undefined}>
-      <DialogContent container={held} initialFocus={held ? false : undefined} showCloseButton={false}>
-        <DialogTitle className="sr-only">Commit</DialogTitle>
-        <DialogDescription className="text-sm text-foreground">There are no staged changes to commit. Would you like to stage all your changes and commit them directly?</DialogDescription>
-        <DialogFooter data-confirm>
-          <Button variant="ghost" onClick={() => onAnswer("never")}>
-            Never
-          </Button>
-          <Button variant="secondary" onClick={() => onAnswer("always")}>
-            Always
-          </Button>
-          <Button autoFocus onClick={() => onAnswer("yes")}>
-            Yes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export type GitRun = { atMs: number; command: string; output: string; ok: boolean };
 
 const time = (atMs: number) => new Date(atMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });

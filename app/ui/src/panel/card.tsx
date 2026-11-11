@@ -1,24 +1,36 @@
+import type { ReactNode } from "react";
+
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
+import { Branch } from "../icons";
 import { ActionButton } from "./source/action";
-import { PrGlyph } from "./source/header";
+import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/panel";
-import { StatusLine } from "./source/status-line";
+import { Counts, Line, PrLine } from "./source/rows";
 import { useSourceStep } from "./source/step";
-import { prWords, statusWords, type Tone } from "./words";
 
-const TEXT: Record<Tone, string> = { quiet: "text-muted-foreground", good: "text-success", warn: "text-warning", bad: "text-destructive" };
+/** One of the card's parts, a hairline under it as the old card's [D1075, D1198]. */
+function CardSection({ title, children }: { title?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="relative flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:origin-bottom after:scale-y-50 after:bg-divider last:pb-0 last:after:hidden">
+      {title && <header className="flex h-7 min-w-0 items-center ps-5 pe-3.5 text-label text-muted-foreground">{title}</header>}
+      <div className="flex min-w-0 flex-col gap-0.5 px-5">{children}</div>
+    </section>
+  );
+}
 
 /**
- * The summary card's git section, direction C [D1048, D1095, D1098]: Source's status, smaller, and the same action
- * button with its pre-check line [D1075]; then the branch's pull requests, a row opening the Pull requests tab on
- * it (2.13) [D1017, D1116]. No branch line, PR clock or commits: those live in Source [D1092, D1095, D1114].
- * It reads Source's data and runs Source's own step and moves [D1145, D1148].
+ * The summary card's git part, The mix [D1186, D1198]: the project as a quiet title, the branch row with its +/−
+ * counts (no uncommitted count, D1209), the one button and its line under it, a hairline, then the branch's pull
+ * requests in the old card's icons, words and colours, a row opening the Pull requests tab on it [D1017, D1116].
+ * No status sentence: the rows say it. The button, its line and the PR rows are Source's, from the same model and
+ * moves [D1145, D1148, D1199]. Disconnected, "Offline · 14:32" takes the counts' place and the rest dims [D30, D1206].
  * Without `ops` (the gallery) it moves nothing; `running`: the gallery's button at work.
  */
-export function GitCard({ data, nowMs, draftKey, session = null, ops, onPr, running = false }: {
+export function GitCard({ data, nowMs, project = null, draftKey, session = null, ops, onPr, running = false }: {
   data: SourceData;
   nowMs: number;
+  project?: string | null;
   draftKey?: string;
   session?: string | null;
   ops?: SourceOps;
@@ -27,59 +39,52 @@ export function GitCard({ data, nowMs, draftKey, session = null, ops, onPr, runn
 }) {
   const { source } = data;
   const offline = data.offline ?? false;
-  const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, ops, move: (paths, to) => ops?.[to === "staged" ? "stage" : "unstage"](paths) });
+  const { prs, button, dialogs } = useSourceStep({ data, state: source, draftKey, session, card: true, ops });
 
   if (!source) {
     return (
-      <div className="px-4 pb-1">
+      <CardSection title={project}>
         {data.error ? (
           <ReadError error={data.error} onRetry={ops?.retry} />
         ) : (
-          <div aria-busy className="flex flex-col gap-2">
+          <div aria-busy className="flex flex-col gap-2 py-1">
             <Skeleton className="h-5 w-1/2" />
             <Skeleton className="h-control-sm" />
           </div>
         )}
-      </div>
+      </CardSection>
     );
   }
 
   const uncommitted = [...source.staged, ...source.changes];
-  const resolving = source.merging != null || source.rebasing != null;
-  const count = new Set(uncommitted.map((file) => file.path)).size;
+  const listed = uncommitted.length > 0 ? uncommitted : source.sinceBase;
+  const added = listed.reduce((sum, file) => sum + file.added, 0);
+  const removed = listed.reduce((sum, file) => sum + file.removed, 0);
+  const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? "…";
   return (
-    <div className={cx("flex flex-col gap-1", offline && "opacity-disabled")} inert={offline}>
-      <div className="flex flex-col gap-2 px-4 pb-1">
+    <>
+      <CardSection title={project}>
         {/* A watch that failed after its first read: the last read stays under it, as in Source [D30]. */}
         {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
-        <StatusLine small status={statusWords(source, data.step, count, prs)} files={count > 0 || resolving ? uncommitted : source.sinceBase} />
-        {button && <ActionButton nowMs={nowMs} running={running} {...button} />}
-      </div>
+        <Line icon={<Branch />} end={offline ? <Offline readAtMs={data.readAtMs ?? null} /> : (added > 0 || removed > 0) && <Counts added={added} removed={removed} />}>
+          {name}
+        </Line>
+        {button && (
+          <div className={cx("pt-1 pb-1.5", offline && "opacity-disabled")} inert={offline}>
+            <ActionButton nowMs={nowMs} running={running} {...button} />
+          </div>
+        )}
+      </CardSection>
       {prs.length > 0 && (
-        <>
-          <h3 className="flex h-control-xs items-center px-4 text-xs text-muted-foreground">Pull requests</h3>
-          <ul className="flex flex-col px-1.5">
-            {prs.map((pr) => {
-              const words = prWords(pr);
-              return (
-                <li key={pr.number}>
-                  <button
-                    type="button"
-                    onClick={() => onPr?.(pr.number)}
-                    className="flex h-control-sm w-full min-w-0 cursor-pointer items-center gap-2 rounded-control px-2.5 text-start text-sm hover:bg-muted focus-visible:focus-ring svg:size-icon-sm"
-                  >
-                    <PrGlyph pr={pr} />
-                    <span className="shrink-0 text-muted-foreground">#{pr.number}</span>
-                    <span className="min-w-0 flex-1 truncate">{pr.title}</span>
-                    <span className={cx("shrink-0 text-xs", TEXT[words.tone])}>{words.word}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </>
+        <CardSection title="Pull requests">
+          <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>
+            {prs.map((pr) => (
+              <PrLine key={pr.number} pr={pr} onClick={() => onPr?.(pr.number)} />
+            ))}
+          </div>
+        </CardSection>
       )}
       {dialogs}
-    </div>
+    </>
   );
 }
