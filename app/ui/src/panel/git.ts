@@ -74,7 +74,7 @@ type Git = {
 let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let stepAsk = 0;
 let shownAsk = 0;
-const waiting: { after: number; then: () => void }[] = [];
+const waiting: { after: number; target: Target; then: () => void }[] = [];
 let re = 0;
 let n = 0;
 let counting = false;
@@ -168,7 +168,7 @@ export function refreshStep(then?: () => void): void {
   const target = git.target;
   if (!target) return then?.();
   const mine = ++stepAsk;
-  if (then) waiting.push({ after: mine, then });
+  if (then) waiting.push({ after: mine, target, then });
   ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
     // Answers can come back out of order: one older than the step shown is dropped, but with none yet any answer
     // counts, so a checkout changing faster than its step is worked out still gets its first [D1307].
@@ -183,9 +183,12 @@ export function refreshStep(then?: () => void): void {
       // A run that ended without changing a file still changes the brief [D1199].
       if (ran !== undefined && reply.step.ran !== ran) count();
     }
-    // Each `then` waits for an answer asked at or after it, so a move's toast never shows before the step it led to,
-    // and polling meanwhile can't hold it back.
-    for (const each of waiting.filter((one) => one.after <= mine)) {
+    // Each `then` waits for a step of its checkout asked at or after it to show, so a move's toast never shows before
+    // the step it led to and polling can't hold it back; its own read failing, or its checkout leaving, ends it too.
+    const shown = counts && reply.ok;
+    for (const each of [...waiting]) {
+      const done = (shown && each.target === target && each.after <= mine) || (each.after === mine && !reply.ok) || git.target !== each.target;
+      if (!done) continue;
       waiting.splice(waiting.indexOf(each), 1);
       each.then();
     }

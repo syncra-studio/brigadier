@@ -172,17 +172,20 @@ fn control(
                 }
             }
             // Its PR into this base merged on the host with nothing new since: there's no PR to make
-            // [D1018]. A remote-tracking base lands into its name on the host, as `host::pr` reads it.
+            // [D1018]. A remote-tracking base lands into its name on the host, as `host::pr` reads it;
+            // the remotes are asked only when such a PR is kept.
             let kept = id.map_or(Value::Null, |id| host::kept(&crate::session_dir(data, id)));
-            let on_host = (remote.as_deref())
-                .and_then(|r| s.base.strip_prefix(&format!("{r}/")))
-                .unwrap_or(&s.base);
-            if kept["branch"] == branch
-                && (kept["prs"].as_array().into_iter().flatten()).any(|p| {
-                    p["state"] == "merged" && p["head"].as_str() == head && p["base"] == on_host
-                })
-            {
-                why("createPr", "prMerged");
+            let merged: Vec<&Value> = (kept["prs"].as_array().into_iter().flatten())
+                .filter(|p| p["state"] == "merged" && p["head"].as_str() == head)
+                .collect();
+            if kept["branch"] == branch && !merged.is_empty() {
+                let remotes = git(root, &["remote"], stop).unwrap_or_default();
+                let on_host = (remotes.lines())
+                    .find_map(|r| s.base.strip_prefix(&format!("{r}/")))
+                    .unwrap_or(&s.base);
+                if merged.iter().any(|p| p["base"] == on_host) {
+                    why("createPr", "prMerged");
+                }
             }
             if pr.is_some() {
                 why("createPr", "prOpen");
