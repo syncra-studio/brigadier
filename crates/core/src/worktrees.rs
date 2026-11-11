@@ -16,15 +16,13 @@ mod copy;
 pub use branch::rename_held;
 pub use branch::{rename, set_base};
 mod hand;
-mod landing;
+pub(crate) mod landing;
 pub mod lost;
 mod missing;
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
-pub use landing::{
-    Landing, Lands, external_landing, landed, lands, set_landing, set_landing_held, unlanded,
-};
+pub use landing::{Landing, Lands, external_landing, landed, lands, set_landing, unlanded};
 pub use missing::restore_missing;
 
 const RECORD: &str = "worktree.json";

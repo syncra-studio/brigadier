@@ -99,7 +99,7 @@ fn landing(
     stop: &AtomicBool,
 ) -> io::Result<Value> {
     let set_landing = match held {
-        true => worktrees::set_landing_held,
+        true => worktrees::landing::set_landing_held,
         false => worktrees::set_landing,
     };
     let squash = match style {
