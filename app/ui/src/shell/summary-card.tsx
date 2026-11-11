@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, type Ref, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 
 import { Popover } from "@base-ui/react/popover";
 
@@ -61,24 +62,22 @@ export function useCardToggle(owner: string) {
 const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-summary";
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
-export function SummaryCard({ shown, settled = true, children }: { shown: boolean; settled?: boolean; children: ReactNode }) {
-  // What it shows stays for its easing out, then goes, so a hidden card holds no second copy of its actions.
-  const [content, setContent] = useState(shown);
-  if (shown && !content) setContent(true);
+export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
     <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col">
       <aside
         aria-label="Context"
         aria-hidden={!shown || undefined}
-        onTransitionEnd={(event) => event.target === event.currentTarget && !shown && setContent(false)}
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
           !shown && "invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
-        <div className={SURFACE}>{content && children}</div>
+        <div ref={surface} className={SURFACE}>
+          {children}
+        </div>
       </aside>
     </div>
   );
@@ -89,7 +88,7 @@ export function SummaryCard({ shown, settled = true, children }: { shown: boolea
  * most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the Context button or
  * Escape closes it, so `open` is all it follows.
  */
-function FloatingCard({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
   // The pane's whole width, so the card follows the pane's end as the pane narrows.
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -107,7 +106,7 @@ function FloatingCard({ open, onClose, children }: { open: boolean; onClose: () 
               aria-label="Context"
               className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
             >
-              <div className={SURFACE}>{children}</div>
+              <div ref={surface} className={SURFACE} />
             </Popover.Popup>
           </Popover.Positioner>
         </Popover.Portal>
@@ -185,6 +184,21 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     if (away && cardOf(owner).floating) setCard(owner, { floating: false });
   }, [active, place, owner]);
 
+  // One card for the pane, carried between the pinned surface and the floating one, so what it holds (an open dialog,
+  // a message being edited) stays as the layout changes. It goes back to the pinned surface once the floating one has
+  // gone, after its fade.
+  const [holder] = useState(() => Object.assign(document.createElement("div"), { className: "contents" }));
+  const pinnedSurface = useRef<HTMLDivElement | null>(null);
+  const floatSurface = useRef<HTMLDivElement | null>(null);
+  const toPinned = useCallback((element: HTMLDivElement | null) => {
+    pinnedSurface.current = element;
+    if (element && !floatSurface.current) element.append(holder);
+  }, [holder]);
+  const toFloat = useCallback((element: HTMLDivElement | null) => {
+    floatSurface.current = element;
+    (element ?? pinnedSurface.current)?.append(holder);
+  }, [holder]);
+
   const shift = has && state.layout === "shift" && state.pinned;
   return (
     <div
@@ -198,16 +212,13 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       )}
     >
       {children}
+      {has && createPortal(card, holder)}
       {has && state.layout === "float" && (
-        <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })}>
-          {card}
-        </FloatingCard>
+        <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })} surface={toFloat} />
       )}
       {has && state.layout !== null && (
         // Hidden where it floats, so the pane widening again eases it back in.
-        <SummaryCard shown={state.pinned && state.layout !== "float"} settled={settled}>
-          {!floating && card}
-        </SummaryCard>
+        <SummaryCard shown={state.pinned && state.layout !== "float"} settled={settled} surface={toPinned} />
       )}
     </div>
   );
