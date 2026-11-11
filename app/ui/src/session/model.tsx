@@ -77,6 +77,13 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     if (!offline && !starting) load();
     return () => { asked.current++; };
   }, [id, offline, starting]);
+  // Signed in or installed some other way meanwhile (a terminal): it shows when the window comes back, the list kept meanwhile.
+  const missing = groups?.some((group) => group.unavailable);
+  useEffect(() => {
+    if (!missing || offline || starting) return;
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [missing, id, offline, starting]);
 
   // Settled once Rust's row has taken it.
   if (pending && row?.setup_op === pending.op) setPending(null);

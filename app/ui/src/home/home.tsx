@@ -83,6 +83,13 @@ export function HomeDraft() {
     if (daemon) load();
     return () => { asked.current++; };
   }, [daemon, id, trusted]);
+  // Signed in or installed some other way meanwhile (a terminal): it shows when the window comes back, the list kept meanwhile.
+  const missing = groups?.some((group) => group.unavailable);
+  useEffect(() => {
+    if (!missing || !daemon) return;
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [missing, daemon, id, trusted]);
 
   const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
     Boolean(choice && groups?.some((group) => !group.unavailable && group.provider === choice.provider && group.models.some((each) => each.id === choice.model)));
