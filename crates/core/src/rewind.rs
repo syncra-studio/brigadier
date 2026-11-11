@@ -16,11 +16,11 @@ use crate::{Call, CallIn, Spec, as_run, session, session_dir, worktrees, write_a
 pub use active::{Active, read_active};
 use brigadier_frames::log::now_ms;
 pub use fork::{end_of, now_of, write_shot};
-use plan::{Files, plan};
+use plan::plan_for;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use shared::Lives;
 pub use shared::turn_paths;
-use shared::{Lives, sharer};
 use snap::Record;
 pub use snap::{Shot, Store};
 use std::collections::BTreeSet;
@@ -119,21 +119,6 @@ pub(crate) fn checkout_lock(data: &Path, exclusive: bool) -> io::Result<File> {
         file.lock_shared()?
     }
     Ok(file)
-}
-
-type Why = (&'static str, Option<String>);
-
-fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Result<Files, Why> {
-    let store = Store::of(spec).ok_or(("no_project", None))?;
-    let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    let files = plan(&store, &turns).map_err(|why| (why, None))?;
-    // Only files that would go back are any sharer's business [D481].
-    if !files.paths.is_empty()
-        && let Some((why, with)) = sharer(data, spec, &store, &turns, live)
-    {
-        return Err((why, Some(with)));
-    }
-    Ok(files)
 }
 
 /// What the confirmation shows: whether the folder can go back, and what it would and wouldn't do.

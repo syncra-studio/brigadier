@@ -1,8 +1,11 @@
 //! What a restore would put back, from the turn snapshots [D384].
 
+use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
-use crate::fold::Boundary;
+use crate::Spec;
+use crate::fold::{Boundary, Fold};
 use std::collections::BTreeSet;
+use std::path::Path;
 
 /// What a restore would do.
 pub(super) struct Files {
@@ -80,4 +83,32 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         left_out,
         nested,
     })
+}
+
+/// Why a folder can't go back, and the session holding its files, if one does.
+pub(super) type Why = (&'static str, Option<String>);
+
+/// What a restore to `cid` would do, or why it can't.
+pub(super) fn plan_for(
+    data: &Path,
+    spec: &Spec,
+    f: &Fold,
+    cid: &str,
+    live: Lives,
+) -> Result<Files, Why> {
+    // A project whose folder is gone is said apart from a chat with none [D1247].
+    let none = match spec.project.is_some() && !Path::new(&spec.cwd).exists() {
+        true => "no_folder",
+        false => "no_project",
+    };
+    let store = Store::of(spec).ok_or((none, None))?;
+    let (_, turns) = f.range(cid).ok_or(("missing", None))?;
+    let files = plan(&store, &turns).map_err(|why| (why, None))?;
+    // Only files that would go back are any sharer's business [D481].
+    if !files.paths.is_empty()
+        && let Some((why, with)) = sharer(data, spec, &store, &turns, live)
+    {
+        return Err((why, Some(with)));
+    }
+    Ok(files)
 }

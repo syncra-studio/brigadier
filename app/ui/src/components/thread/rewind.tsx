@@ -54,12 +54,21 @@ function Choice({ value, label, children }: { value: string; label: string; chil
  * The confirmation, drawn whole from Rust's answer [D446, D480]: its title, line, Cancel and Rewind; where
  * files can go back, the choice to keep or restore them first [D384, D481].
  */
+/** Rust's reason no file can go back, in one line (D1247's words, the rest proposed); a chat with no project has none to say. */
+const CANT: Record<string, string> = {
+  unreadable: "Files stay: this turn's snapshot couldn't be read.",
+  not_git: "Files can't go back: this folder isn't a git folder.",
+  no_folder: "Files can't go back: this session's folder is missing.",
+  missing: "Files can't go back: no snapshot was taken of this turn.",
+};
+
 export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCancel }: FormProps) {
   const [choice, setChoice] = useState("keep");
   const { paths, hand, leftOut, nested, commits } = preview;
   const big = leftOut.filter((path) => !nested.includes(path));
   const can = paths.length > 0;
   const kept = hand.length + leftOut.length > 0;
+  const cant = preview.why === undefined ? undefined : CANT[preview.why];
   return (
     <ConfirmForm
       title="Rewind to this message?"
@@ -91,11 +100,11 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
           </Choice>
         </RadioGroup>
       )}
-      {/* Where nothing can go back, no file line [D481]; only why some can't, or that the snapshot can't be read. */}
-      {!can && !preview.sharer && preview.error === undefined && (preview.why === "unreadable" || (preview.why === undefined && kept)) && (
+      {/* Where nothing can go back, one line says why (D1247, over D481's none); else why some can't. */}
+      {!can && !preview.sharer && preview.error === undefined && (cant || (preview.why === undefined && kept)) && (
         <div className="flex flex-col gap-0.5">
-          {preview.why === "unreadable" ? (
-            <Note>Files stay: this turn's snapshot couldn't be read.</Note>
+          {cant ? (
+            <Note>{cant}</Note>
           ) : (
             <>
               <Note>Files stay: nothing the agent changed can go back.</Note>
