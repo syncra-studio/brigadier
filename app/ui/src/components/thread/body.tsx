@@ -110,7 +110,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
           level="error"
           text={item.text}
           link={
-            <a href="#accounts" className="ms-1.5 whitespace-nowrap text-link hover:underline">
+            <a href="#settings/accounts" className="ms-1.5 whitespace-nowrap text-link hover:underline">
               Open Accounts
             </a>
           }

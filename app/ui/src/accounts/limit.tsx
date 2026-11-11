@@ -61,7 +61,7 @@ export function SwitchRow({ item }: { item: Switch }) {
       actions = (
         <>
           <span>· no other signed-in {label} account</span>
-          <a href="#accounts" className="shrink-0 text-link hover:underline">
+          <a href="#settings/accounts" className="shrink-0 text-link hover:underline">
             Add an account
           </a>
         </>
