@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ask, setFoundHandler, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
-import { sourceArgs, useGit } from "../panel/git";
+import { keep, sourceArgs, useGit } from "../panel/git";
 import { detailsShown, EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "./search";
 import { FileTree, type OnOpen } from "./tree";
 import type { ChangeMarks, FolderEntry, Listing, ReplaceOutcome, SearchFile, SearchQuery, SearchResults } from "./types";
@@ -16,15 +16,26 @@ const IGNORED_MS = 3000;
 const NO_MARKS: ChangeMarks = { files: {}, folders: {} };
 const OFFLINE = "Not connected. Try again when it's back.";
 
+// Each checkout's last listing, shown at once on coming back to it while it's listed again, as Source's read is (panel/git.ts) [D1258].
+const kept = new Map<string, { listing: Listing; marks: ChangeMarks }>();
+
 const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? OFFLINE : String(reply.error));
 
 export function FilesView({ owner, shown = null, onOpen }: { owner: string; shown?: string | null; onOpen: OnOpen }) {
   const { target, version } = useGit();
   const { daemon } = useDaemon();
   const key = target && JSON.stringify(target);
-  const [listing, setListing] = useState<Listing>({ state: "loading" });
-  const [marks, setMarks] = useState<ChangeMarks>(NO_MARKS);
+  const [listing, setListing] = useState<Listing>(() => (key && kept.get(key)?.listing) || { state: "loading" });
+  const [marks, setMarks] = useState<ChangeMarks>(() => (key && kept.get(key)?.marks) || NO_MARKS);
   const [loaded, setLoaded] = useState<Record<string, FolderEntry[]>>({});
+  // Set in the render, not an effect, so the paint never shows the last checkout's tree or a frame of loading [D1258].
+  const [listed, setListed] = useState(key);
+  if (listed !== key) {
+    setListed(key);
+    setListing((key && kept.get(key)?.listing) || { state: "loading" });
+    setMarks((key && kept.get(key)?.marks) || NO_MARKS);
+    setLoaded({});
+  }
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
@@ -32,11 +43,6 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   // A new session's checkout isn't made until its start answers: the listing waits, loading, as the watch does [D1259].
   const starting = useStart(owner)?.asking === true;
 
-  useEffect(() => {
-    setListing({ state: "loading" });
-    setMarks(NO_MARKS);
-    setLoaded({});
-  }, [key]);
   // Listed again on each watch read that changed something; disconnected, the last listing stays [D30].
   useEffect(() => {
     if (!target || !daemon || starting) return;
@@ -45,6 +51,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setListing({ state: "failed", error: String(reply.error) });
       const { marks: next, ...list } = reply.list;
+      if (key) keep(kept, key, { listing: { state: "listed", list }, marks: next });
       // The same listing keeps its objects, so the tree isn't built again.
       setListing((last) => (last.state === "listed" && JSON.stringify(last.list) === JSON.stringify(list) ? last : { state: "listed", list }));
       setMarks((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));

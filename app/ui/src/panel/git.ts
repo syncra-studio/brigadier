@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, type Row, setGitHandler, useDaemon } from "../daemon";
@@ -85,9 +85,19 @@ let pending: Pending[] = [];
 let counting = false;
 let recount = false;
 const listeners = new Set<() => void>();
+// Each checkout's last read, shown at once on coming back to it while the watch reads it again: the old app's kept
+// entries, the last 8 checkouts (CHECKOUTS_KEPT) [D1258].
+const kept = new Map<string, Git>();
+/** Keeps `value` as `key`'s last read, dropping the longest unvisited past the old app's 8. */
+export function keep<T>(map: Map<string, T>, key: string, value: T): void {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > 8) map.delete(map.keys().next().value!);
+}
 
 function set(next: Partial<Git>): void {
   git = { ...git, ...next };
+  if (git.key) keep(kept, git.key, git);
   for (const listener of listeners) listener();
 }
 
@@ -247,11 +257,13 @@ export function useGitWatch(owner: string | null): void {
   const starting = useStart(owner ?? "")?.asking === true;
   const target: Target | null = owner === null ? null : owner !== HOME ? { session: owner } : project ? { project: project.id } : null;
   const key = target && JSON.stringify(target);
-  useEffect(() => {
+  // Before the paint, so a switch never shows the last checkout's read or an empty one for a frame [D1258].
+  useLayoutEffect(() => {
     if (key !== git.key) {
       re = 0;
       pending = [];
-      set({ key, target, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, readAtMs: null, truth: null, restoring: false, restoreError: null });
+      const last = key ? kept.get(key) : undefined;
+      set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, step: last?.step ?? null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
