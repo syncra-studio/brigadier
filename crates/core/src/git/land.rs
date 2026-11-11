@@ -79,13 +79,13 @@ pub fn land(
         "squash" => true,
         _ => return err(format!("not a merge style: {style:?}")),
     };
+    if let Some(with) = shared_with(data, id) {
+        return err(format!("Landing stays with {with}."));
+    }
     let dir = session_dir(data, id);
     let Some(lands) = worktrees::lands(&dir)? else {
         return err("This session has no base to land into.");
     };
-    if let Some(with) = shared_with(data, id) {
-        return err(format!("Landing stays with {with}."));
-    }
     let session = checkout(data, &Target::Session(id))?;
     let root = &session.root;
     // One landing at a time per repository: the main checkout's own lock, always taken first, then

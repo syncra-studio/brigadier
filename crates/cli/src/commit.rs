@@ -144,6 +144,14 @@ pub(super) fn make(
             Err(why) => return Ok(unwritten(why)),
         },
     };
+    // Our own commit in a folder others share waits for no other session's turn; the message is
+    // written first, so no turn waits on the writer [D1082].
+    let me = match target {
+        Target::Session(id) => Some(*id),
+        Target::Project(_) => None,
+    };
+    let folder = brigadier_core::git::folder(data, target)?;
+    let _shared = super::sessions::guard(data, &folder, me)?;
     let sha = commit::commit(
         checkout,
         &prepared,

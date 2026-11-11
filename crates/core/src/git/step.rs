@@ -31,9 +31,11 @@ pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io:
         Target::Session(id) => (Some(*id), session_dir(data, id)),
         Target::Project(_) => (None, PathBuf::new()),
     };
-    let lands = match id {
-        Some(_) if worktrees::made(&dir) => worktrees::lands(&dir)?,
-        _ => None,
+    // A "here" fork in another session's worktree reads that session's record [D1082].
+    let holder = id.and_then(|id| crate::share::holder(data, &load(data, id).ok()?));
+    let lands = match holder {
+        Some(holder) => worktrees::lands(&holder.dir)?,
+        None => None,
     };
     let (step, at, style) = match (id, lands) {
         (Some(id), Some(lands)) => {

@@ -318,7 +318,6 @@ pub(super) fn merge_base(
 }
 
 /// The session that keeps landing while it shares this one's folder [D1082].
-// shortcut: no session shares a folder until 2.35 (stream O); then this reads O's `share::lands`.
-pub(super) fn shared_with(_data: &Path, _id: &str) -> Option<String> {
-    None
+pub(super) fn shared_with(data: &Path, id: &str) -> Option<String> {
+    crate::share::lands(data, id)
 }

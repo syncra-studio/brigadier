@@ -111,7 +111,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
-        "stage" | "unstage" | "discard" | "hunk" => {
+        "stage" | "unstage" | "discard" | "hunk" | "rename" | "sync" | "publish" | "force-push" => {
             super::sessions::guard(data, &git::folder(data, &target)?, me)?
         }
         _ => None,
