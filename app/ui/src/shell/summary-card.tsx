@@ -57,7 +57,7 @@ export function useCardToggle(owner: string) {
 }
 
 // The card itself, pinned or floating.
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-raised";
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-summary";
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, children }: { shown: boolean; settled?: boolean; children: ReactNode }) {
