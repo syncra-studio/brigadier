@@ -166,14 +166,22 @@ pub(super) fn allow(server: &Server, ask: &Value) {
 pub(super) fn granted(grants: &[Value], ask: &Value) -> bool {
     let resources = ask["resources"].as_array().cloned().unwrap_or_default();
     // One `brigadier` agent command's grant covers them all [D2026].
+    // and a `brigadier …` pattern covers nothing else (`helper`, later `mcp call`).
     let agent = |v: &Value| crate::agent::call(v.as_str().unwrap_or(""));
+    let ours = |v: &Value| {
+        let program = v.as_str().unwrap_or("").split_whitespace().next();
+        program.is_some_and(|w| w == "brigadier" || w.ends_with("/brigadier"))
+    };
     grants.iter().any(|g| {
         let save = g["save"].as_array().cloned().unwrap_or_default();
         g["action"] == ask["action"]
             && resources.iter().all(|r| {
-                save.iter()
-                    .any(|p| matches(p.as_str().unwrap_or(""), r.as_str().unwrap_or("")))
-                    || ask["action"] == "bash" && agent(r) && save.iter().any(agent)
+                let mine = agent(r);
+                save.iter().any(|p| {
+                    (mine && (agent(p) || ours(p)))
+                        || !(ours(p) && ours(r))
+                            && matches(p.as_str().unwrap_or(""), r.as_str().unwrap_or(""))
+                })
             })
     })
 }
