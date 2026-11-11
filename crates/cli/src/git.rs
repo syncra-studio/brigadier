@@ -260,6 +260,10 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             has(args, "--cached"),
             has(args, "--refresh"),
         )?,
+        // The one button's commit-first move, and Pull only and Push only [D1203, D1205].
+        "first" | "pull-only" | "push-only" => {
+            super::first::run(data, &target, &checkout, args, at)?
+        }
         // The branch item [D1020, D1021, D1026, D1034].
         "branches" => {
             let mut read = branch::branches(data, &target, &checkout)?;

@@ -4,6 +4,7 @@
 mod accounts;
 mod commit;
 mod control;
+mod first;
 mod fork;
 mod git;
 mod host;

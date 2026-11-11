@@ -221,3 +221,24 @@ pub fn branch(
     )?;
     Ok((commits, String::from_utf8_lossy(&patch).into_owned()))
 }
+
+/// The checkout's HEAD now, none before its first commit.
+pub fn head_now(checkout: &Checkout, stop: &AtomicBool) -> Option<String> {
+    head(checkout, stop)
+}
+
+/// Takes back a commit-first commit, `made`, when the move after it was refused, so no commit is
+/// left behind a refusal [D1203, D1049]: HEAD goes back to `to` with the changes staged. Left as is
+/// once HEAD moved on or the commit reached a remote. Whether it was taken back.
+pub fn take_back(checkout: &Checkout, made: &str, to: &str, stop: &AtomicBool) -> bool {
+    let Ok(_held) = lock(checkout, true, stop) else {
+        return false;
+    };
+    let left = read(&checkout.root, &["branch", "-r", "--contains", made], stop);
+    if head(checkout, stop).as_deref() != Some(made) || !matches!(left, Ok(out) if out.is_empty()) {
+        return false;
+    }
+    let mut reset = worktrees::command(&checkout.root);
+    reset.args(["reset", "--soft", "--quiet", to]);
+    run(&mut reset, "Couldn't take the commit back.", stop).is_ok()
+}

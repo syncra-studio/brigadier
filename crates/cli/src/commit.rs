@@ -223,3 +223,15 @@ pub(super) fn write(
         Err(why) => unwritten(why),
     })
 }
+
+/// The writer's message for exactly what `prepared` commits, or the reply saying none was written:
+/// the one button's commit-first route [D1029, D1203].
+pub(super) fn written_for(
+    data: &Path,
+    target: &Target,
+    checkout: &Checkout,
+    prepared: &Prepared,
+) -> Result<String, Value> {
+    let stop = AtomicBool::new(false);
+    written(data, target, commit_prompt(checkout, prepared, &stop)).map_err(unwritten)
+}

@@ -112,6 +112,17 @@ fn fetch(checkout: &Checkout, remote: &str, stop: &AtomicBool) -> io::Result<()>
 /// says so, until 2.23's conflict tab (proposed, D1166). The checkout's lock is held throughout,
 /// so no switch changes the branch under it.
 pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<()> {
+    sync_only(checkout, hooks, (true, true), stop)
+}
+
+/// `sync`, the pull or the push alone: Pull only and Push only in your own folder's arrow
+/// [D1205], the same tracking, conflict check and rejected push.
+pub fn sync_only(
+    checkout: &Checkout,
+    hooks: bool,
+    (pulls, pushes): (bool, bool),
+    stop: &AtomicBool,
+) -> io::Result<()> {
     let _held = lock(checkout, true, stop)?;
     let git_dir = &checkout.git_dir;
     let stopped = [
@@ -147,10 +158,10 @@ pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<(
         Ok((n.next().unwrap_or(0), n.next().unwrap_or(0)))
     };
     let (ahead, behind) = counts(stop)?;
-    if behind > 0 {
+    if pulls && behind > 0 {
         pull(checkout, &branch, ahead > 0, hooks, stop)?;
     }
-    if counts(stop)?.0 > 0 {
+    if pushes && counts(stop)?.0 > 0 {
         push_held(checkout, &remote, &branch, &dest, &[], hooks, stop)?;
     }
     Ok(())
