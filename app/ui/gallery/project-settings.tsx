@@ -7,7 +7,7 @@ import { DotsHorizontal } from "../src/icons";
 import { ProjectMenuItems } from "../src/projects/menu";
 import type { Project } from "../src/projects/projects";
 import { type Preview, RemoveFlow, Removed } from "../src/projects/remove";
-import { ProjectSettings, type SettingsSource } from "../src/projects/settings";
+import { ProjectSettings, type Refused, SETTINGS_FRAME, type SettingsSource } from "../src/projects/settings";
 import { TrustForm } from "../src/projects/trust";
 import { Held, Row, Section, State } from "./parts";
 
@@ -36,7 +36,7 @@ const ready = (preview: Preview) => ({ state: "ready" as const, preview });
 export function Frozen({ label, frame, tall, children }: { label: string; frame: string; tall?: boolean; children: ReactNode }) {
   return (
     <State label={label}>
-      <Held className={`${tall ? "h-232" : "h-80"} w-160 overflow-hidden rounded-surface`}>
+      <Held className={`${tall ? "h-232 w-200" : "h-80 w-160"} overflow-hidden rounded-surface`}>
         {(box) => (
           <Dialog open modal={false}>
             <DialogContent container={box} initialFocus={false} frame={frame} showCloseButton={!!tall}>
@@ -49,9 +49,9 @@ export function Frozen({ label, frame, tall, children }: { label: string; frame:
   );
 }
 
-const Settings = ({ label, project = SET, source = FAKE }: { label: string; project?: Project; source?: SettingsSource }) => (
-  <Frozen label={label} frame="project-dialog max-w-project-dialog gap-7 p-6" tall>
-    <ProjectSettings project={project} source={source} onClose={() => {}} />
+const Settings = ({ label, project = SET, source = FAKE, refused }: { label: string; project?: Project; source?: SettingsSource; refused?: Refused }) => (
+  <Frozen label={label} frame={SETTINGS_FRAME} tall>
+    <ProjectSettings project={project} source={source} refused={refused} onClose={() => {}} />
   </Frozen>
 );
 
@@ -118,10 +118,11 @@ export function ProjectSettingsGallery() {
           <Removed name={SET.name} repo={SET.folder} kept={["brigadier/s-2"]} onClose={() => {}} />
         </Frozen>
       </Row>
-      <Row name="Project settings: unanswered with a long path">
+      <Row name="Project settings: unanswered with a long path · a refused prefix, opened again on what was typed">
         <Settings label="default prefix" project={LONG} />
         <Settings label="custom prefix" project={{ ...SET, branch_prefix: "feature/" }} />
         <Settings label="no prefix" project={{ ...SET, branch_prefix: "" }} />
+        <Settings label="refused prefix" refused={{ change: { branch_prefix: "bad..x/" }, error: "That prefix doesn't make a valid git branch name." }} />
       </Row>
     </Section>
   );

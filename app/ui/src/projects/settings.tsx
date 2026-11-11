@@ -2,13 +2,14 @@ import { type FormEvent, type ReactNode, useId, useState } from "react";
 
 import { Button } from "../components/button";
 import { CodeEditor } from "../components/code-editor";
-import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { Switch } from "../components/switch";
 import { Plus, Trash } from "../icons";
 import { useDaemon } from "../daemon";
-import { errorText, run, store } from "../onboarding/api";
+import { showToast } from "../components/toast";
+import { errorText, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, setProject, useProjects } from "./projects";
 import { plural, RemoveProjectHost } from "./remove";
@@ -17,7 +18,8 @@ import { daemonSource, type FolderCheck } from "./store";
 /*
  * Project settings, the old app's dialog [D171, D178, D202]: Name, Folder, Trust, the ignored files
  * copied into each new worktree, and the setup script. All kept on Brigadier's record, nothing written
- * into the repo [D211]. Trust applies at once; the rest on Save, shown at once and kept by Rust [D30].
+ * into the repo [D211]. Trust applies at once; Save closes at once with the change shown, and a refusal opens it
+ * again on what was typed, the refused field marked [D30, D1257, D1260].
  */
 
 /** Where the dialog's data comes from: the daemon, or the gallery's Fake. */
@@ -34,19 +36,35 @@ export const daemonSettings: SettingsSource = {
   save: setProject,
 };
 
-const opened = store<string | null>(null);
+/** A save Rust refused: what was typed, and why. */
+export type Refused = { change: Partial<Project>; error: string };
+
+/** As wide as Add project, its sibling, laid out as the app's other dialogs [D1257]. */
+export const SETTINGS_FRAME = "project-dialog max-w-add-project gap-4 p-5";
+
+const opened = store<{ id: string; refused?: Refused } | null>(null);
 /** Opens Project settings for a project, from its menu. */
-export const openProjectSettings = (id: string) => opened.set(id);
+export const openProjectSettings = (id: string) => opened.set({ id });
 
 /** Mounted once beside the sidebar, with Remove project…. */
 export function ProjectSettingsHost() {
-  const id = opened.use();
-  const project = useProjects()?.find((each) => each.id === id && !each.pending);
+  const open = opened.use();
+  const project = useProjects()?.find((each) => each.id === open?.id && !each.pending);
   return (
     <>
-    <Dialog open={project !== undefined} onOpenChange={(open) => !open && opened.set(null)}>
-      <DialogContent frame="project-dialog max-w-project-dialog gap-7 p-6">
-        {project && <ProjectSettings key={project.id} project={project} source={daemonSettings} onClose={() => opened.set(null)} />}
+    <Dialog open={project !== undefined} onOpenChange={(next) => !next && opened.set(null)}>
+      <DialogContent frame={SETTINGS_FRAME}>
+        {project && (
+          <ProjectSettings
+            key={project.id}
+            project={project}
+            source={daemonSettings}
+            refused={open?.refused}
+            onClose={() => opened.set(null)}
+            // Opened again on what was typed, unless another project's is open by now.
+            onRefused={(refused) => (opened.get() === null || opened.get()?.id === project.id ? opened.set({ id: project.id, refused }) : showToast(refused.error, { tone: "error" }))}
+          />
+        )}
       </DialogContent>
     </Dialog>
     {/* Remove project… mounts here too, so main.tsx is untouched (PROPOSED). */}
@@ -73,24 +91,31 @@ function Field({ label, aside, htmlFor, children }: { label: string; aside?: str
 export function ProjectSettings({
   project,
   source,
+  refused,
   onClose,
+  onRefused,
 }: {
   project: Project;
   source: SettingsSource;
+  /** The last save, refused: shown again as typed, its error on its field. */
+  refused?: Refused;
   onClose: () => void;
+  onRefused?: (refused: Refused) => void;
 }) {
   const id = useId();
-  const [name, setName] = useState(project.name);
-  const [folder, setFolder] = useState(project.folder);
+  const typed = refused?.change ?? {};
+  // Rust's prefix refusal is the only one naming the prefix: it marks that field.
+  const prefixRefused = refused && typed.branch_prefix !== undefined && /prefix/i.test(refused.error) ? refused.error : null;
+  const [name, setName] = useState(typed.name ?? project.name);
+  const [folder, setFolder] = useState(typed.folder ?? project.folder);
   const [folderError, setFolderError] = useState<string | null>(null);
   // Rust refuses a new folder while the project has sessions (D234 P11): don't lead there.
   const sessions = useDaemon().rows?.filter((row) => row.project === project.id).length ?? 0;
-  const [files, setFiles] = useState(project.include);
-  const [setup, setSetup] = useState(project.setup);
-  const [prefix, setPrefix] = useState(project.branch_prefix ?? "brigadier/");
-  const [error, setError] = useState<string | null>(null);
-  const [prefixError, setPrefixError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState(typed.include ?? project.include);
+  const [setup, setSetup] = useState(typed.setup ?? project.setup);
+  const [prefix, setPrefix] = useState(typed.branch_prefix ?? project.branch_prefix ?? "brigadier/");
+  const [error, setError] = useState<string | null>(refused && !prefixRefused ? refused.error : null);
+  const [prefixError, setPrefixError] = useState<string | null>(prefixRefused);
 
   const change = async () => {
     setFolderError(null);
@@ -105,7 +130,7 @@ export function ProjectSettings({
     }
   };
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return setError("Name can't be empty.");
     const include = files.map((each) => each.trim()).filter(Boolean);
@@ -123,26 +148,16 @@ export function ProjectSettings({
       ...(changed.setup === undefined ? [] : ["--setup", changed.setup]),
       ...(changed.branch_prefix === undefined ? [] : ["--branch-prefix", changed.branch_prefix ?? ""]),
     ];
-    if (!args.length) return onClose();
-    setBusy(true);
-    setError(null);
-    setPrefixError(null);
-    try {
-      await source.save(project, changed, args);
-      onClose();
-    } catch (cause) {
-      const text = errorText(cause);
-      // Rust's prefix refusal is the only one naming the prefix: it shows under its field.
-      if (changed.branch_prefix !== undefined && /prefix/i.test(text)) setPrefixError(text);
-      else setError(text);
-      setBusy(false);
-    }
+    onClose();
+    if (args.length) source.save(project, changed, args).catch((cause) => onRefused?.({ change: changed, error: errorText(cause) }));
   };
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="flex min-h-0 min-w-0 flex-col gap-7">
-      <DialogTitle>Project settings</DialogTitle>
-      <div className="scroll-gutter -mx-6 flex min-h-0 flex-col gap-5.5 overflow-y-auto ps-6 pe-3.5 py-1">
+    <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col gap-4">
+      <DialogHeader>
+        <DialogTitle>Project settings</DialogTitle>
+      </DialogHeader>
+      <div className="scroll-gutter -mx-5 flex min-h-0 flex-col gap-5.5 overflow-y-auto ps-5 pe-2.5 py-1">
         <Field label="Name" htmlFor={`${id}-name`}>
           <Input id={`${id}-name`} value={name} autoFocus maxLength={80} onChange={(event) => setName(event.target.value)} />
         </Field>
@@ -159,7 +174,15 @@ export function ProjectSettings({
         </Field>
         {folder === project.folder && <TrustRow project={project} source={source} />}
         <Field label="Branch prefix" aside="Starts new session branch names; leave empty for no prefix" htmlFor={`${id}-prefix`}>
-          <Input id={`${id}-prefix`} value={prefix} onChange={(event) => setPrefix(event.target.value)} />
+          <Input
+            id={`${id}-prefix`}
+            value={prefix}
+            aria-invalid={prefixError !== null}
+            onChange={(event) => {
+              setPrefix(event.target.value);
+              setPrefixError(null);
+            }}
+          />
           <ErrorLine error={prefixError} />
         </Field>
         <PathRows files={files} onFiles={setFiles} />
@@ -168,14 +191,12 @@ export function ProjectSettings({
         </Field>
         <ErrorLine error={error} />
       </div>
-      <div className="flex shrink-0 justify-end gap-2">
+      <DialogFooter data-confirm className="shrink-0">
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
-        </Button>
-      </div>
+        <Button type="submit">Save</Button>
+      </DialogFooter>
     </form>
   );
 }
