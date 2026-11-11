@@ -284,7 +284,11 @@ impl Index {
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
                              "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()),
-                             "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref())});
+                             "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref()),
+                             // Its last turn was the user's Stop: Send and the queue offer Resume [D373, D2004].
+                             "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
+                             // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
+                             "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch"))});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);
