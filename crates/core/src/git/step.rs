@@ -124,6 +124,7 @@ fn control(
         }
         _ => None,
     };
+    let pr = id.and_then(|id| host::open_pr(id, branch));
     let at = json!({"head": head, "base": landing.as_ref().map(|s| s.base_at.clone())});
     match landing {
         None => {
@@ -134,7 +135,7 @@ fn control(
         Some(s) => {
             facts["base"] = s.base.as_str().into();
             facts["moved"] = s.moved.into();
-            facts["pr"] = s.pr.into();
+            facts["pr"] = pr.into();
             facts["landedAtMs"] = s.landed_at.into();
             if s.own == 0 && upstream.is_none() {
                 why(
@@ -157,7 +158,7 @@ fn control(
                     why(row, "shared");
                 }
             }
-            if s.pr.is_some() {
+            if pr.is_some() {
                 why("createPr", "prOpen");
                 why("merge", "inPrTab");
             }
@@ -227,7 +228,7 @@ fn control(
 }
 
 /// What a session's worktree adds: its base, how far it moved, its own commits, a landing that
-/// holds, an open PR, and why Merge into main can't run.
+/// holds, and why Merge into main can't run.
 struct Session {
     base: String,
     base_at: String,
@@ -238,7 +239,6 @@ struct Session {
     /// Merged into the base on this machine, nothing since [D1229].
     landed_at: Option<u64>,
     shared: Option<String>,
-    pr: Option<u64>,
     no_host: bool,
     blocked: Option<&'static str>,
 }
@@ -319,7 +319,6 @@ fn session(
         conflicts,
         landed_at,
         shared: shared_with(data, id),
-        pr: host::open_pr(id),
         no_host,
         blocked,
     })

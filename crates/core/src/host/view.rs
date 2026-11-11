@@ -96,9 +96,9 @@ impl Pr {
         let blocked = failed > 0 || !changes_by.is_empty() || conflicts;
         let styles = styles(&gh, repo)?;
         if matches!(state, "open" | "draft") {
-            super::note_open(&self.id, Some(number));
-        } else if super::open_pr(&self.id) == Some(number) {
-            super::note_open(&self.id, None);
+            super::note_open(&self.id, &self.branch, Some(number));
+        } else if super::open_pr(&self.id, &self.branch) == Some(number) {
+            super::note_open(&self.id, &self.branch, None);
         }
         Ok(json!({
             "id": number.to_string(), "number": number, "title": pr["title"], "url": pr["url"],

@@ -26,7 +26,11 @@ impl Pr {
         let open = |p: &&&Value| p["state"] == "OPEN";
         let into = (mine.iter().filter(open)).find(|p| p["baseRefName"] == self.base);
         let open = into.or_else(|| mine.iter().find(open));
-        super::note_open(&self.id, open.and_then(|p| p["number"].as_u64()));
+        super::note_open(
+            &self.id,
+            &self.branch,
+            open.and_then(|p| p["number"].as_u64()),
+        );
         let rows = (mine.into_iter())
             .map(|p| {
                 if p["state"] == "MERGED" {

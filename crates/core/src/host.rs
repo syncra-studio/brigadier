@@ -28,19 +28,24 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
 }
 
-/// Each session's open PR as its last PR read found it: info's list, a view and a merge.
-static OPEN: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
+/// Each session branch's open PR as its last PR read found it: info's list, a view and a merge.
+/// Keyed by branch too, so a renamed or switched branch never takes the old one's PR.
+static OPEN: Mutex<BTreeMap<(String, String), u64>> = Mutex::new(BTreeMap::new());
 
-/// The session's open PR, as the host was last read in this process; None before any read.
-pub fn open_pr(id: &str) -> Option<u64> {
-    OPEN.lock().unwrap().get(id).copied()
+/// The session branch's open PR, as the host was last read in this process; None before any read.
+pub fn open_pr(id: &str, branch: &str) -> Option<u64> {
+    OPEN.lock()
+        .unwrap()
+        .get(&(id.into(), branch.into()))
+        .copied()
 }
 
-fn note_open(id: &str, number: Option<u64>) {
+fn note_open(id: &str, branch: &str, number: Option<u64>) {
     let mut open = OPEN.lock().unwrap();
+    let key = (id.to_string(), branch.to_string());
     match number {
-        Some(n) => open.insert(id.to_string(), n),
-        None => open.remove(id),
+        Some(n) => open.insert(key, n),
+        None => open.remove(&key),
     };
 }
 
