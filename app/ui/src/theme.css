@@ -772,6 +772,10 @@
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
+/* The thread's pane as its own width lays the summary card out, set the moment it's measured (summary-card.tsx, the
+   old app's data-summary): the card pinned with the column moved aside for it, or the card in a pane that floats it. */
+@custom-variant summary-shift (&[data-pinned][data-summary="shift"]);
+@custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));

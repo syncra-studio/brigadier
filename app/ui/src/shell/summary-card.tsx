@@ -72,7 +72,8 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-hidden={!shown || undefined}
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
-          !shown && "invisible translate-x-full scale-80 opacity-0",
+          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's).
+          shown ? "summary-floats:invisible summary-floats:translate-x-full summary-floats:scale-80 summary-floats:opacity-0" : "invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
@@ -143,6 +144,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       windowWidth = innerWidth;
       const before = cardOf(owner);
       const layout = layoutOf(width);
+      // On the element at once, for CSS: the column's move and the card's hiding land in this frame, not the next.
+      element.dataset.summary = layout;
       // A shown card stays shown as the window narrows, floating; a side panel narrowing the pane is moving on to
       // it, so the card waits behind the Context button rather than cover the thread.
       if (layout === "float") {
@@ -155,6 +158,7 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
+      delete element.dataset.summary;
       // The next session's first layout lands in place too, not eased in [D423].
       setSettled(false);
       setCard(owner, { layout: null, floating: false });
@@ -211,15 +215,15 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     return () => clearTimeout(timer);
   }, [shown, content]);
 
-  const shift = has && state.layout === "shift" && state.pinned;
   return (
     <div
       ref={pane}
+      data-pinned={(has && state.pinned) || undefined}
       className={cx(
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
         // As the old app: the reading column glides aside and takes its narrower width at once.
-        shift && "reading-column:-translate-x-summary-shift reading-column:max-w-reading-beside-summary",
+        "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
         settled && "motion-safe:reading-column:transition-transform motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift",
       )}
     >
@@ -230,8 +234,8 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
         <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })} surface={toFloat} />
       )}
       {has && state.layout !== null && (
-        // Hidden where it floats, so the pane widening again eases it back in.
-        <SummaryCard shown={state.pinned && state.layout !== "float"} settled={settled} surface={toPinned} />
+        // Hidden where it floats (summary-floats), so the pane widening again eases it back in.
+        <SummaryCard shown={state.pinned} settled={settled} surface={toPinned} />
       )}
     </div>
   );
