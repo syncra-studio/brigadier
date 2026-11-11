@@ -376,6 +376,12 @@ export function commitFiles(all: boolean, message: string, onReply: (reply: Reco
   return true;
 }
 
+/** The background draft (2.20) if it was written for exactly what every change would commit now; nothing is written [D1212]. */
+export function readDraft(onText: (text: string) => void): void {
+  const target = git.target;
+  if (target) ask({ op: "run", args: sourceArgs(target, "draft", "--all", "--cached") }, (reply) => reply.draft?.state === "ready" && onText(reply.draft.text));
+}
+
 /** The message writer [D1029]: a commit message for the index (or every change), or a squash's, nothing committed. */
 export function writeMessage(what: "commit" | "squash", all: boolean, onReply: (reply: Record<string, any>) => void): boolean {
   const target = git.target;

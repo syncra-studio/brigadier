@@ -1,6 +1,6 @@
 import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, refreshStep, type StepAt, useGit, writeMessage } from "../git";
+import { commitFiles, readDraft, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
 import { laterWords } from "../words";
 import { ActionButton } from "./action";
@@ -185,7 +185,11 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     put({ failed: true });
     edit();
   };
-  const edit = () => setEditing(message || data.draft || "");
+  // Typed text first, else the draft written for exactly this commit, filled in only while the field is still empty.
+  const edit = () => {
+    setEditing(message || data.draft || "");
+    if (live && !message) readDraft((text) => setEditing((now) => (now === "" ? text : now)));
+  };
 
   /**
    * The landing move, committing every change first when there are some (`first`): "Merging…" at once, until the
