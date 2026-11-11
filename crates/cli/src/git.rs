@@ -183,6 +183,14 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" => json!({"ok": true, "git": git::status(&checkout, &stop)?.json()}),
         "folder" => json!({"ok": true, "entries": files::folder(&checkout, word(1)?)?}),
         "find" => json!({"ok": true, "found": files::find(&checkout, word(1)?, &stop)?}),
+        // A Files row's Reveal in Finder, kept inside the checkout [D1226] (proposed).
+        "reveal" => {
+            let path = git::inside(&checkout, word(1)?)?;
+            if !std::process::Command::new("open").arg("-R").arg(&path).status()?.success() {
+                return Err(io::Error::other(format!("Couldn't reveal {}", word(1)?)));
+            }
+            done
+        }
         "file" => {
             let mut file = git::read_file(&checkout, word(1)?)?;
             file["ignored"] = files::ignored(&checkout, word(1)?).into();

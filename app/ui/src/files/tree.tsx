@@ -1,11 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { Skeleton } from "../components/skeleton";
-import { ChevronDown, ChevronRight } from "../icons";
+import { ChevronDown, ChevronRight, FolderOpen } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { LETTERS, type FileStatus } from "../panel/status";
 import { PLAIN_FIELD } from "./field";
@@ -20,6 +21,22 @@ import type { ChangeMarks, FileList, FolderEntry, Listing } from "./types";
 
 /** Opens `path`: in the preview tab, or with `keep` in a tab of its own. */
 export type OnOpen = (path: string, keep: boolean) => void;
+
+/** A row's right-click menu, Reveal in Finder as VS Code's [D1226]; none without `onReveal` (the gallery). */
+function Revealable({ path, onReveal, children }: { path: string; onReveal?: (path: string) => void; children: ReactElement }) {
+  if (!onReveal) return children;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger render={children} />
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => onReveal(path)}>
+          <FolderOpen />
+          Reveal in Finder
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 /** The folders open in each session's (or project folder's) tree, kept while the app runs. */
 const openFolders = new Map<string, ReadonlySet<string>>();
@@ -111,6 +128,7 @@ export function FileTree({
   defaultQuery = "",
   onQuery,
   onOpen,
+  onReveal,
   searchRequest = 0,
   defaultOpen,
 }: {
@@ -129,6 +147,8 @@ export function FileTree({
   defaultQuery?: string;
   onQuery: (query: string) => void;
   onOpen: OnOpen;
+  /** Shows a row in Finder; without it, rows have no menu. */
+  onReveal?: (path: string) => void;
   /** Counts up to put the keyboard in the search field (⌘P). */
   searchRequest?: number;
   /** The folders open before any was opened or closed here (the gallery's frozen states). */
@@ -201,28 +221,30 @@ export function FileTree({
           ) : (
             <ul aria-label="Matching files">
               {found.map((path, index) => (
-                <li key={path}>
-                  <button
-                    type="button"
-                    title={path}
-                    data-active={index === active || undefined}
-                    onClick={() => onOpen(path, false)}
-                    onDoubleClick={() => onOpen(path, true)}
-                    onPointerMove={() => setActive(index)}
-                    className="flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm focus-visible:focus-ring data-active:bg-muted"
-                  >
-                    <FileIcon name={path} />
-                    <span className="shrink-0">{baseName(path)}</span>
-                    <span className="min-w-0 truncate text-muted-foreground">{dirName(path)}</span>
-                  </button>
-                </li>
+                <Revealable key={path} path={path} onReveal={onReveal}>
+                  <li>
+                    <button
+                      type="button"
+                      title={path}
+                      data-active={index === active || undefined}
+                      onClick={() => onOpen(path, false)}
+                      onDoubleClick={() => onOpen(path, true)}
+                      onPointerMove={() => setActive(index)}
+                      className="flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm focus-visible:focus-ring data-active:bg-muted"
+                    >
+                      <FileIcon name={path} />
+                      <span className="shrink-0">{baseName(path)}</span>
+                      <span className="min-w-0 truncate text-muted-foreground">{dirName(path)}</span>
+                    </button>
+                  </li>
+                </Revealable>
               ))}
             </ul>
           )
         ) : (
           <ul aria-label="Files" role="tree">
             {rows.map((row) => (
-              <TreeRow key={`${row.kind}:${row.path}`} row={row} selected={row.kind === "file" && row.path === shown} onToggle={toggle} onOpen={onOpen} />
+              <TreeRow key={`${row.kind}:${row.path}`} row={row} selected={row.kind === "file" && row.path === shown} onToggle={toggle} onOpen={onOpen} onReveal={onReveal} />
             ))}
           </ul>
         )}
@@ -236,38 +258,40 @@ export function FileTree({
   );
 }
 
-const TreeRow = memo(function TreeRow({ row, selected, onToggle, onOpen }: { row: Row; selected: boolean; onToggle: (path: string) => void; onOpen: OnOpen }) {
+const TreeRow = memo(function TreeRow({ row, selected, onToggle, onOpen, onReveal }: { row: Row; selected: boolean; onToggle: (path: string) => void; onOpen: OnOpen; onReveal?: (path: string) => void }) {
   const folder = row.kind === "folder";
   const mark = row.status ? LETTERS[row.status] : null;
   return (
-    <li role="treeitem" aria-expanded={folder ? row.open : undefined} aria-selected={selected}>
-      <button
-        type="button"
-        title={mark ? `${row.path} · ${mark.label}` : row.ignored ? `${row.path} · Ignored` : row.path}
-        onClick={() => (folder ? onToggle(row.path) : onOpen(row.path, false))}
-        onDoubleClick={() => !folder && onOpen(row.path, true)}
-        // Each level indents by one step of the spacing scale (tree-indent, theme.css).
-        data-depth={row.depth}
-        className={cx(
-          "tree-indent flex h-control-sm w-full cursor-pointer items-center gap-1.5 rounded-control pe-2 text-start text-sm hover:bg-muted focus-visible:focus-ring",
-          mark ? mark.className : "text-foreground",
-          row.ignored && "opacity-ignored",
-          selected && "bg-muted",
-        )}
-      >
-        {folder ? (
-          row.open ? <ChevronDown className="size-icon-xs shrink-0" /> : <ChevronRight className="size-icon-xs shrink-0" />
-        ) : (
-          <FileIcon name={row.path} size="xs" />
-        )}
-        <span className={cx("min-w-0 flex-1 truncate", !folder && row.status === "deleted" && "line-through")}>{row.name}</span>
-        {mark &&
-          (folder ? (
-            <span aria-hidden className="size-1.5 shrink-0 rounded-capsule bg-current" />
+    <Revealable path={row.path} onReveal={onReveal}>
+      <li role="treeitem" aria-expanded={folder ? row.open : undefined} aria-selected={selected}>
+        <button
+          type="button"
+          title={mark ? `${row.path} · ${mark.label}` : row.ignored ? `${row.path} · Ignored` : row.path}
+          onClick={() => (folder ? onToggle(row.path) : onOpen(row.path, false))}
+          onDoubleClick={() => !folder && onOpen(row.path, true)}
+          // Each level indents by one step of the spacing scale (tree-indent, theme.css).
+          data-depth={row.depth}
+          className={cx(
+            "tree-indent flex h-control-sm w-full cursor-pointer items-center gap-1.5 rounded-control pe-2 text-start text-sm hover:bg-muted focus-visible:focus-ring",
+            mark ? mark.className : "text-foreground",
+            row.ignored && "opacity-ignored",
+            selected && "bg-muted",
+          )}
+        >
+          {folder ? (
+            row.open ? <ChevronDown className="size-icon-xs shrink-0" /> : <ChevronRight className="size-icon-xs shrink-0" />
           ) : (
-            <span aria-hidden className="w-3 shrink-0 text-center text-xs">{mark.letter}</span>
-          ))}
-      </button>
-    </li>
+            <FileIcon name={row.path} size="xs" />
+          )}
+          <span className={cx("min-w-0 flex-1 truncate", !folder && row.status === "deleted" && "line-through")}>{row.name}</span>
+          {mark &&
+            (folder ? (
+              <span aria-hidden className="size-1.5 shrink-0 rounded-capsule bg-current" />
+            ) : (
+              <span aria-hidden className="w-3 shrink-0 text-center text-xs">{mark.letter}</span>
+            ))}
+        </button>
+      </li>
+    </Revealable>
   );
 });

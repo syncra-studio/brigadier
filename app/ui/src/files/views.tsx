@@ -2,6 +2,7 @@
 // listing, marks and filename search, and an ignored folder's contents.
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { keep, sourceArgs, useGit } from "../panel/git";
@@ -98,6 +99,16 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
     });
   }, [query, key, version]);
 
+  // Rust keeps the path inside the checkout; a failure is a toast, as the project menu's Reveal in Finder (D1226).
+  const reveal = useCallback(
+    (path: string) =>
+      target &&
+      ask({ op: "run", args: sourceArgs(target, "reveal", path) }, (reply) => {
+        if (!reply.ok) showToast(`Couldn't reveal ${path}: ${String(reply.error)}`, { tone: "error" });
+      }),
+    [key],
+  );
+
   return (
     <FileTree
       scope={owner}
@@ -109,6 +120,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       results={query ? results : null}
       onQuery={setQuery}
       onOpen={onOpen}
+      onReveal={reveal}
     />
   );
 }
