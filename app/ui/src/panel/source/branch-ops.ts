@@ -23,8 +23,15 @@ const ops = new Map<string, Op>();
 const listeners = new Set<() => void>();
 const keyOf = (target: Target) => JSON.stringify(target);
 const opOf = (target: Target | null) => (target && ops.get(keyOf(target))) || NONE;
+/** Each checkout's refused-push toast: it stays until the refusal is settled, then goes with it. */
+const refusals = new Map<string, ReturnType<typeof showToast>>();
 const put = (target: Target, next: Partial<Op>) => {
-  ops.set(keyOf(target), { ...opOf(target), ...next });
+  const key = keyOf(target);
+  if (next.rejected === null && refusals.has(key)) {
+    toastManager.close(refusals.get(key)!);
+    refusals.delete(key);
+  }
+  ops.set(key, { ...opOf(target), ...next });
   for (const listener of listeners) listener();
 };
 const subscribe = (listener: () => void) => {
@@ -80,7 +87,7 @@ export function failed(target: Target, reply: Record<string, any>): void {
   if (reply.error === "disconnected") return void showToast("Brigadier isn't connected.", { tone: "error" });
   const [said, details] = split(String(reply.error));
   const rejected = keep(target, reply);
-  showToast(said, {
+  const toast = showToast(said, {
     tone: "error",
     actions: [
       ...(details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : []),
@@ -89,6 +96,7 @@ export function failed(target: Target, reply: Record<string, any>): void {
     // A refused push waits for the user's choice instead of leaving before they've read it.
     stays: rejected !== null,
   });
+  if (rejected) refusals.set(keyOf(target), toast);
 }
 
 /** Keeps a rejected push's lease, from any push (Sync, Publish, Create PR's), so Force Push is offered [D1034]. */
