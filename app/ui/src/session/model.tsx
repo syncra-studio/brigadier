@@ -23,6 +23,8 @@ type Rust = { provider: string; label: string; mark: string | null; unavailable:
 export const asGroups = (groups: Rust[]): ModelGroup[] =>
   groups.map((group) => ({ ...group, models: group.models.map(({ default_effort, ...model }) => ({ ...model, defaultEffort: default_effort ?? undefined })) }));
 
+let lastGroups: ModelGroup[] | null = null;
+
 /** Opens a session's model picker: a notice's "Choose another model" (D487). */
 export const askModel = new EventTarget();
 
@@ -53,7 +55,9 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     return () => askModel.removeEventListener("ask", ask);
   }, []);
   const starting = useStart(id)?.asking === true;
-  const [groups, setGroups] = useState<ModelGroup[] | null>(null);
+  // The last list any session read names this one's model in its first frame (a fork's), until its own lands.
+  const [groups, setGroups] = useState<ModelGroup[] | null>(lastGroups);
+  if (groups) lastGroups = groups;
   const [listError, setListError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ op: string; choice: ModelChoice } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +77,8 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     run(["models", "--session", id, "--fresh"]).then((reply) => land(reply, true), fail);
   };
   useEffect(() => {
-    // Home opens this view before Rust has made the session and its worktree.
+    // Home opens this view before Rust has made the session and its worktree: until then the last list names its model.
+    if (!offline && starting) run(["models"]).then((reply) => setGroups((now) => now ?? asGroups(reply.groups)), () => {});
     if (!offline && !starting) load();
     return () => { asked.current++; };
   }, [id, offline, starting]);
@@ -124,7 +129,7 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
   return (
     <div className="flex min-w-0 items-center justify-end gap-2">
       <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
-      <ModelPicker groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} disabled={offline || groups === null} asked={chooseAsked} />
+      <ModelPicker groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} disabled={offline || starting || groups === null} asked={chooseAsked} />
       <SetUpAgentDialog
         name={setUp}
         onClose={() => {

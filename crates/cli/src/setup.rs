@@ -2,7 +2,7 @@
 //! terminal on a host (`setup-<agent>`, see `core::SETUP`), and the profile onboarding fills in.
 //! Nothing here names a provider; each adapter says how it is found, installed and signed in.
 
-use crate::owner;
+use crate::{flag, owner};
 use brigadier_core::adapters::{self, Adapter, setup};
 use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir, writer};
 use brigadier_frames::log::{self, Reader};
@@ -16,11 +16,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
 
 static PROFILE: Mutex<()> = Mutex::new(());
-
-fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    let i = args.iter().position(|a| a == name)?;
-    args.get(i + 1).map(String::as_str)
-}
 
 fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
     adapters::get(name)
@@ -280,9 +275,13 @@ fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
     data.join("agents").join(format!("{}.json", a.name()))
 }
 
+/// A folder not checked yet (a new worktree) takes another's, naming the models until its own.
 fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
-    let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
-    all.get(cwd.to_str()?).filter(|v| v.is_object()).cloned()
+    let all: serde_json::Map<String, Value> =
+        serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
+    (all.get(cwd.to_str()?).or_else(|| all.values().next()))
+        .filter(|v| v.is_object())
+        .cloned()
 }
 
 /// Keeps the check before releasing the lock, so a waiting caller gets the same result.
