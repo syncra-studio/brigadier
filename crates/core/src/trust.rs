@@ -301,28 +301,37 @@ fn write(
 ) -> io::Result<()> {
     let e = entries[i].clone();
     let mut recorded = false;
-    edit(&e, |text, doc| {
-        let now = doc::get(doc, &e.key)?;
-        if now.as_ref() == Some(&v) {
-            return Ok(None);
-        }
-        let mut new = doc::parse(text, e.toml)?;
-        let made = doc::set(&mut new, &e.key, &v)?;
-        let entry = &mut entries[i];
-        if entry.applied.is_none() && entry.pending.is_none() {
-            // The first write: the baseline restore always goes back to.
-            entry.before = now;
-            entry.made = made;
-            entry.made_file = text.is_none();
-            entry.made_dir = !e.file.parent().is_some_and(Path::exists);
-        }
-        entry.pending = Some(v.clone());
-        let mut all = records.clone();
-        all.insert(id.into(), entries.to_vec());
-        save(data, &all)?;
-        recorded = true;
-        Ok(Some(doc::render(&new, text)))
-    })?;
+    // Already there, as at every turn start after the first: the CLI's own lock, which it may
+    // hold for seconds, isn't waited for. A file mid-write reads as not there.
+    let there = read(&e.file)
+        .ok()
+        .flatten()
+        .and_then(|t| doc::parse(Some(&t), e.toml).ok());
+    let there = there.and_then(|d| doc::get(&d, &e.key).ok().flatten()) == Some(v.clone());
+    if !there {
+        edit(&e, |text, doc| {
+            let now = doc::get(doc, &e.key)?;
+            if now.as_ref() == Some(&v) {
+                return Ok(None);
+            }
+            let mut new = doc::parse(text, e.toml)?;
+            let made = doc::set(&mut new, &e.key, &v)?;
+            let entry = &mut entries[i];
+            if entry.applied.is_none() && entry.pending.is_none() {
+                // The first write: the baseline restore always goes back to.
+                entry.before = now;
+                entry.made = made;
+                entry.made_file = text.is_none();
+                entry.made_dir = !e.file.parent().is_some_and(Path::exists);
+            }
+            entry.pending = Some(v.clone());
+            let mut all = records.clone();
+            all.insert(id.into(), entries.to_vec());
+            save(data, &all)?;
+            recorded = true;
+            Ok(Some(doc::render(&new, text)))
+        })?;
+    }
     // The file holds `v` now; while any value there is Brigadier's, this one is too.
     let entry = &mut entries[i];
     if recorded || entry.applied.is_some() || entry.pending.is_some() {
