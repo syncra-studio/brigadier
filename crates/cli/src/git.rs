@@ -37,7 +37,15 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let _watch = Watch::start(checkout, move |read| tx.send(read).is_ok());
     let (mut last, mut n) = (None::<Status>, 0u64);
     for read in rx {
-        let status = read?;
+        let status = match read {
+            Ok(status) => status,
+            Err(e) => {
+                let mut stdout = io::stdout().lock();
+                writeln!(stdout, "{}", json!({"error": e.to_string()}))?;
+                stdout.flush()?;
+                continue;
+            }
+        };
         let line = match last.as_ref().and_then(|old| status.delta(old)) {
             Some(mut delta) => {
                 n += 1;
