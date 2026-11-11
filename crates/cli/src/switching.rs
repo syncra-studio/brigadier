@@ -68,6 +68,11 @@ fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
         .into_iter()
         .find(|(x, _)| x == id)
         .map_or_else(|| id.to_string(), |(_, n)| n);
+    let name = if name.is_empty() {
+        "this computer's login"
+    } else {
+        &name
+    };
     format!("{name} ({})", a.label())
 }
 

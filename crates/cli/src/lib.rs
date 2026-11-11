@@ -59,7 +59,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
-       brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
+       brigadier accounts [add <agent> [--name N] | sign-in|close|remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
 
@@ -184,7 +184,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let fresh = !core::session_dir(data, id).join("session.json").exists();
             let spec = if fresh {
-                core::create(data, &spec)?
+                core::create(data, &accounts::starting(data, spec))?
             } else {
                 core::load(data, id)?
             };

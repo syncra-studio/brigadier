@@ -23,15 +23,17 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 /// `accounts.json`: the extra accounts, which agents switch accounts automatically, whether agents
-/// switch, and when each account last hit a limit.
+/// switch, when each account last hit a limit, the account each agent's new sessions start on
+/// (`use`, none: the computer's login) and the name given to each agent's computer login [D2082].
 pub(crate) fn load(data: &Path) -> Value {
     let v: Value = fs::read(data.join("accounts.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-    json!({"accounts": list("accounts"), "auto": list("auto"),
-        "agents": v["agents"] == true, "limited": v["limited"].as_object().cloned().unwrap_or_default()})
+    let map = |k: &str| v[k].as_object().cloned().unwrap_or_default();
+    json!({"accounts": list("accounts"), "auto": list("auto"), "agents": v["agents"] == true,
+        "limited": map("limited"), "use": map("use"), "names": map("names")})
 }
 
 pub(crate) fn save(data: &Path, v: &Value) -> io::Result<()> {
@@ -59,10 +61,12 @@ pub(crate) fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
         .ok_or_else(|| io::Error::other(format!("unknown agent {name}")))
 }
 
-/// An agent's accounts in order: the computer's login (""), then the extra ones as added.
+/// An agent's accounts in order: the computer's login ("", named "" until renamed), then the extra
+/// ones as added.
 pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
     let extra = v["accounts"].as_array().into_iter().flatten();
-    std::iter::once((String::new(), "this computer's login".to_string()))
+    let own = v["names"][agent].as_str().unwrap_or("").to_string();
+    std::iter::once((String::new(), own))
         .chain(extra.filter(|e| e["agent"] == agent).map(|e| {
             (
                 e["id"].as_str().unwrap_or("").to_string(),
@@ -70,6 +74,24 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
             )
         }))
         .collect()
+}
+
+/// Signed in with a kind its home keeps apart: an account work can run on.
+fn usable(c: &Value) -> bool {
+    c["signed_in"] == true && c["kept_apart"] == true
+}
+
+/// A new session's spec with the account it starts on [D2082]: the one picked with Use while it is
+/// still added and usable, else the computer's login. A session already made never moves.
+pub(crate) fn starting(data: &Path, spec: Spec) -> Spec {
+    let v = load(data);
+    let id = v["use"][&spec.backend].as_str().unwrap_or("");
+    let home = adapters::home_path("").display().to_string();
+    let added = !id.is_empty() && accounts_of(&v, &spec.backend).iter().any(|(x, _)| x == id);
+    let starts_on = (added.then(|| agent(&spec.backend).ok()).flatten())
+        .filter(|a| usable(&check(*a, data, id, &home)))
+        .map(|_| id.to_string());
+    Spec { starts_on, ..spec }
 }
 
 fn on_account(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Spec {
@@ -130,6 +152,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             setup::close(data, &sign_in_id(a.name(), &id)).map(|()| json!({"ok": true}))
         }
         ("accounts", Some("remove")) => remove(data, args.get(2).map_or("", String::as_str)),
+        ("accounts", Some(op @ ("use" | "rename"))) => {
+            let arg = |i: usize| args.get(i).map_or("", String::as_str);
+            name_or_use(data, op, agent(arg(2))?, arg(3), arg(4))
+        }
         ("switching", _) => switching::set(data, args),
         ("switch", Some(id)) => switching::switch_session(
             data,
@@ -165,7 +191,11 @@ fn list(data: &Path) -> Value {
                                     "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), None))})
                             })
                             .collect();
-                        json!({"vendor": acc.vendor, "list": rows, "auto": listed(v, "auto", a.name())})
+                        // The account picked with Use, while it is usable; else the computer's login.
+                        let picked = v["use"][a.name()].as_str().unwrap_or("");
+                        let in_use = rows.iter().find(|r| r["id"] == picked && usable(&r["check"]));
+                        json!({"vendor": acc.vendor, "list": rows, "auto": listed(v, "auto", a.name()),
+                            "use": in_use.map_or("", |_| picked)})
                     });
                     json!({"name": a.name(), "label": a.label(), "installed": a.exe().is_some(), "accounts": rows})
                 })
@@ -174,6 +204,41 @@ fn list(data: &Path) -> Value {
         jobs.into_iter().filter_map(|j| j.join().ok()).collect()
     });
     json!({"ok": true, "agents": out, "switch_agents": v["agents"]})
+}
+
+/// `accounts use <agent> <id>`: new sessions of the agent start on the account ("" the computer's
+/// login). `accounts rename <agent> <id> <name>`: names it; emptied, an added one is "Account N"
+/// again and the computer's login its fixed title [D2082].
+fn name_or_use(data: &Path, op: &str, a: &dyn Adapter, id: &str, name: &str) -> io::Result<Value> {
+    let _one = STORE.lock().unwrap();
+    let mut v = load(data);
+    let Some(n) = accounts_of(&v, a.name()).iter().position(|(x, _)| x == id) else {
+        return Err(io::Error::other(format!("no account {id}")));
+    };
+    let name: String = name.trim().chars().take(60).collect();
+    match (op, id) {
+        ("use", "") => {
+            v["use"].as_object_mut().unwrap().remove(a.name());
+        }
+        ("use", _) => v["use"][a.name()] = id.into(),
+        (_, "") if name.is_empty() => {
+            v["names"].as_object_mut().unwrap().remove(a.name());
+        }
+        (_, "") => v["names"][a.name()] = name.into(),
+        _ => {
+            let e = (v["accounts"].as_array_mut().unwrap().iter_mut())
+                .find(|e| e["id"] == id)
+                .unwrap();
+            e["name"] = if name.is_empty() {
+                format!("Account {}", n + 1)
+            } else {
+                name
+            }
+            .into();
+        }
+    }
+    save(data, &v)?;
+    Ok(json!({"ok": true}))
 }
 
 /// Finds an extra account by id: its agent and id.
@@ -324,6 +389,9 @@ fn remove(data: &Path, id: &str) -> io::Result<Value> {
         .as_object_mut()
         .unwrap()
         .remove(&format!("{}/{id}", a.name()));
+    if v["use"][a.name()] == id.as_str() {
+        v["use"].as_object_mut().unwrap().remove(a.name());
+    }
     save(data, &v)?;
     Ok(json!({"ok": true, "note": note}))
 }

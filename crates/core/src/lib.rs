@@ -63,6 +63,10 @@ pub struct Spec {
     /// The session it was forked from, which its row nests under [D48, D1063].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_of: Option<String>,
+    /// The added account it started on, picked with Use; None: the computer's login. Its log's
+    /// switches move it from there [D2082].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starts_on: Option<String>,
     #[serde(skip)]
     pub dir: PathBuf,
     /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is
@@ -219,6 +223,11 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
             v: norm::VERSION,
             ..Default::default()
         };
+        let spec = fs::read(dir.join("session.json")).ok();
+        let spec = spec.and_then(|b| serde_json::from_slice::<Spec>(&b).ok());
+        if let Some((backend, id)) = spec.and_then(|s| Some((s.backend, s.starts_on?))) {
+            f.fold.accounts.insert(backend, id);
+        }
     }
     let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
     if log_len > f.pos {
