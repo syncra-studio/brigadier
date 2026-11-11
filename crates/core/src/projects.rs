@@ -38,6 +38,8 @@ pub struct Project {
     /// How its sessions land, once picked: "merge" or "squash" [D1028].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub merge: Option<String>,
+    /// Prefix for new session branches; absent uses brigadier/ [D1214].
+    pub branch_prefix: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -154,6 +156,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         added,
         removing: false,
         merge: None,
+        branch_prefix: None,
     }
 }
 
@@ -293,6 +296,7 @@ pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
 /// What `set` changes; None leaves a field as it is.
 #[derive(Default)]
 pub struct Change {
+    pub branch_prefix: Option<String>,
     pub name: Option<String>,
     pub folder: Option<String>,
     pub trusted: Option<Option<bool>>,
@@ -305,6 +309,9 @@ pub struct Change {
 /// Every trust change goes through here; its caller then syncs the CLIs' own entries (1i).
 pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
     let name = new.name.as_deref().map(clean).transpose()?;
+    if let Some(prefix) = &new.branch_prefix {
+        crate::worktrees::names::check_prefix(prefix)?;
+    }
     let folder = new.folder.map(|f| repo(data, &f)).transpose()?;
     let include = new
         .include
@@ -336,6 +343,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
             p.trusted = None;
         }
         let p = find(list, id)?;
+        if let Some(prefix) = new.branch_prefix {
+            p.branch_prefix = Some(prefix);
+        }
         if let Some(name) = name {
             p.name = name;
         }

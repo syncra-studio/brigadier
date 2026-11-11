@@ -1,5 +1,5 @@
 //! A worktree per session [D35, D160, D210]: `sessions/<id>/worktree`, on a new branch
-//! `brigadier/<id>` from the project's current branch, with the git-ignored files its
+//! named from its title on the project's current branch, with the git-ignored files its
 //! `.worktreeinclude` names copied in [D178] and the project's setup script run before the first
 //! turn, only in a trusted project [D166, D202, D211]. `worktree.json` records each piece as it's
 //! made, so a failed create and a delete remove only what the session owns [D35, D181].
@@ -19,6 +19,7 @@ pub use branch::{rename, set_base};
 mod hand;
 mod landing;
 mod missing;
+pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
 pub use landing::external_landing;
@@ -50,6 +51,8 @@ struct Owned {
     landing: Option<Landing>,
     /// The deleted session that made it and handed it on, whose folder holds it [D1080].
     inherited: Option<String>,
+    /// Kept with the worktree record, including when its ownership is handed on.
+    published: bool,
 }
 
 fn err<T>(message: String) -> io::Result<T> {
@@ -143,6 +146,7 @@ pub fn ensure(
     project: &projects::Project,
     fresh: bool,
     base: Option<&str>,
+    title: &str,
 ) -> io::Result<()> {
     {
         let _one = lock(&spec.dir)?;
@@ -155,7 +159,7 @@ pub fn ensure(
             None => {}
         }
     }
-    if let Err(e) = create(spec, project, base, None) {
+    if let Err(e) = create(spec, project, base, None, title) {
         if fresh && !spec.dir.join(RECORD).exists() {
             fs::remove_dir_all(&spec.dir)?;
         }
@@ -200,6 +204,7 @@ pub fn create(
     project: &projects::Project,
     base: Option<&str>,
     at: Option<&str>,
+    title: &str,
 ) -> io::Result<()> {
     let (repo, picks) = (Path::new(&project.folder), &project.include);
     let _one = lock(&spec.dir)?;
@@ -238,7 +243,7 @@ pub fn create(
         )?,
         None => base_commit,
     };
-    let branch = format!("brigadier/{}", spec.id);
+    let (_names, branch) = names::reserve(repo, project.branch_prefix.as_deref(), title, None)?;
     if git(
         repo,
         &[

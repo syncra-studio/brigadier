@@ -91,6 +91,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let include =
                         flag(args, "--include").map(|v| v.lines().map(String::from).collect());
                     let change = projects::Change {
+                        branch_prefix: flag(args, "--branch-prefix").map(String::from),
                         name: flag(args, "--name").map(String::from),
                         folder: flag(args, "--folder").map(String::from),
                         trusted,

@@ -87,6 +87,7 @@ export function ProjectSettings({
   const sessions = useDaemon().rows?.filter((row) => row.project === project.id).length ?? 0;
   const [files, setFiles] = useState(project.include);
   const [setup, setSetup] = useState(project.setup);
+  const [prefix, setPrefix] = useState(project.branch_prefix ?? "brigadier/");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -113,11 +114,13 @@ export function ProjectSettings({
     if (folder !== project.folder) Object.assign(changed, { folder, trusted: null });
     if (include.join("\n") !== project.include.join("\n")) changed.include = include;
     if (setup !== project.setup) changed.setup = setup;
+    if (prefix !== (project.branch_prefix ?? "brigadier/")) changed.branch_prefix = prefix;
     const args = [
       ...(changed.name === undefined ? [] : ["--name", changed.name]),
       ...(changed.folder === undefined ? [] : ["--folder", changed.folder]),
       ...(changed.include === undefined ? [] : ["--include", changed.include.join("\n")]),
       ...(changed.setup === undefined ? [] : ["--setup", changed.setup]),
+      ...(changed.branch_prefix === undefined ? [] : ["--branch-prefix", changed.branch_prefix ?? ""]),
     ];
     if (!args.length) return onClose();
     setBusy(true);
@@ -150,6 +153,9 @@ export function ProjectSettings({
           <ErrorLine error={folderError} />
         </Field>
         {folder === project.folder && <TrustRow project={project} source={source} />}
+        <Field label="Branch prefix" aside="Starts new session branch names; leave empty for no prefix" htmlFor={`${id}-prefix`}>
+          <Input id={`${id}-prefix`} value={prefix} onChange={(event) => setPrefix(event.target.value)} />
+        </Field>
         <PathRows files={files} onFiles={setFiles} />
         <Field label="Setup script" aside="Runs in each new worktree before its first turn, only while the folder is trusted" htmlFor={`${id}-setup`}>
           <CodeEditor id={`${id}-setup`} value={setup} onChange={setSetup} language="bash" label="Setup script" placeholder="pnpm install" className="h-29 shrink-0 rounded-control bg-fill" />

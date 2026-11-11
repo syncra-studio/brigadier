@@ -317,7 +317,13 @@ fn build(
             None => now_of(src)?,
         };
         let base = crate::share::base(data, src);
-        worktrees::create(&new, &project, base.as_deref(), shot.head.as_deref())?;
+        worktrees::create(
+            &new,
+            &project,
+            base.as_deref(),
+            shot.head.as_deref(),
+            ask.title,
+        )?;
         write_shot(src, &shot, &cwd)?
     } else if here {
         vec![]

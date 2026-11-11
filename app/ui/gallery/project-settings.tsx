@@ -116,7 +116,9 @@ export function ProjectSettingsGallery() {
         </Frozen>
       </Row>
       <Row name="Project settings: unanswered with a long path">
-        <Settings label="unanswered, long path, empty" project={LONG} />
+        <Settings label="default prefix" project={LONG} />
+        <Settings label="custom prefix" project={{ ...SET, branch_prefix: "feature/" }} />
+        <Settings label="no prefix" project={{ ...SET, branch_prefix: "" }} />
       </Row>
     </Section>
   );

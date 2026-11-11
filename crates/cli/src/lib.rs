@@ -8,18 +8,19 @@ mod fork;
 mod git;
 mod host;
 pub mod index;
-mod models;
 mod message_draft;
+mod models;
 pub mod owner;
 mod panel;
 pub mod queue;
+mod rename;
 pub mod rewind;
 mod sessions;
 mod setup;
 mod side;
 mod switching;
 mod tabs;
-mod title;
+pub use brigadier_core::title;
 
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Spec, adapters};
@@ -194,7 +195,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
-                core::worktrees::ensure(&spec, &project, fresh, base)?;
+                core::worktrees::ensure(
+                    &spec,
+                    &project,
+                    fresh,
+                    base,
+                    &title::from(flag(args, "--text").unwrap_or("")),
+                )?;
             }
             drop(projects_lock);
             owner::ensure(data, &spec)?;
@@ -248,8 +255,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let dir = core::session_dir(data, id);
             match args[0].as_str() {
                 "rename" => {
-                    let name = title::clean(arg(args, 2)?).map_err(io::Error::other)?;
-                    core::write_atomic(&dir.join("title"), name.as_bytes())?;
+                    return rename::run(data, args);
                 }
                 _ if has(args, "--off") => remove(&dir.join("pinned"))?,
                 _ => core::write_atomic(&dir.join("pinned"), log::now_ms().to_string().as_bytes())?,

@@ -16,6 +16,7 @@ pub mod session;
 pub mod share;
 pub mod switch;
 pub mod thread;
+pub mod title;
 pub mod trust;
 mod worktree_setup;
 pub mod worktrees;
