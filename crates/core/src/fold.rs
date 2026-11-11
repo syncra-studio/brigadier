@@ -7,6 +7,7 @@ use crate::adapters;
 mod asks;
 mod live;
 mod rewind;
+pub mod runs;
 mod status;
 mod turns;
 pub use live::{Live, live, live_groups};
@@ -179,6 +180,8 @@ pub struct Fold {
     /// Rewinds done, by the app's op id: one is never done twice [D54].
     #[serde(default)]
     pub rewinds: BTreeSet<String>,
+    #[serde(default)]
+    pub runs: runs::Runs,
 }
 
 impl Fold {
@@ -395,6 +398,7 @@ impl Fold {
             }
             "mark" => self.mark(item),
             "tool" => {
+                self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     if t.tools.is_empty() {
                         t.tools_since = ts;
@@ -404,6 +408,7 @@ impl Fold {
                 }
             }
             "tool_done" => {
+                self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.tools.remove(&str_of("id"));
                     t.edit_done(item);

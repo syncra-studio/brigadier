@@ -10,11 +10,10 @@ mod rewind;
 pub mod setup;
 mod shell;
 
+pub use files::{change, counts, drop_lines, sha1, uuid};
 pub use model::ModelInfo;
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use shell::{shell_step, unwrap_shell};
-
-pub use files::{change, counts, drop_lines, sha1, uuid};
 
 use crate::Spec;
 use serde_json::Value;
@@ -116,13 +115,14 @@ pub struct Tool {
     pub at: Option<u64>,
 }
 
-/// A tool call as it ends.
+/// A tool call as it ends; `cut`: a command sent to the background or interrupted [D74].
 #[derive(Debug, PartialEq, Default)]
 pub struct Done {
     pub id: String,
     pub output: String,
     pub ok: bool,
     pub exit: Option<i64>,
+    pub cut: bool,
     pub changes: Vec<Value>,
     /// A subagent's own session id.
     pub child: Option<String>,

@@ -321,6 +321,7 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
             output,
             ok: status == "completed" && meta["exit"].as_i64().is_none_or(|c| c == 0),
             exit: meta["exit"].as_i64(),
+            cut: false,
             changes,
             child,
             parent: None,

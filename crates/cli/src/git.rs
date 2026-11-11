@@ -18,7 +18,7 @@ use std::sync::mpsc;
 
 /// Whose checkout: `--project <id>` only right after the command, so a search or a replacement
 /// that reads `--project` stays text.
-fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
+pub(super) fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
     Ok(match arg(args, 1)? {
         "--project" => (Target::Project(arg(args, 2)?), 3),
         session => (Target::Session(session), 2),
@@ -101,7 +101,11 @@ fn working(data: &Path, checkout: &git::Checkout) -> usize {
 }
 
 pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
-    source_of(data, args).or_else(rejected)
+    if let Some(reply) = super::last::route(data, args)? {
+        return Ok(reply);
+    }
+    let reply = source_of(data, args).or_else(rejected)?;
+    Ok(super::last::briefed(data, args, reply))
 }
 
 fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {

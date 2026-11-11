@@ -3,6 +3,7 @@
 //! the patches; the UI only draws them [D71]. Hunks keep an id while their lines don't change, so
 //! a stage or revert names the hunk the user saw [D30, D1043].
 
+use super::listed::{listed, review_of};
 use super::{Checkout, err, inside, lock, read};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -14,7 +15,7 @@ use std::sync::atomic::AtomicBool;
 /// opened [D1036].
 pub(super) const LARGE_LINES: u64 = 1500;
 /// Proposed: a side bigger than this isn't sent; the file says why instead.
-const SIDE_MAX: u64 = 4 * 1024 * 1024;
+pub(super) const SIDE_MAX: u64 = 4 * 1024 * 1024;
 /// A NUL in a file's first bytes makes it binary, as git and the old viewer decide.
 const BINARY_PROBE: usize = 8000;
 
@@ -122,11 +123,11 @@ fn bytes_of(checkout: &Checkout, rel: &str, max: u64) -> io::Result<Option<(Vec<
     Ok(Some((bytes, size > max)))
 }
 
-fn binary(bytes: &[u8]) -> bool {
+pub(super) fn binary(bytes: &[u8]) -> bool {
     bytes[..bytes.len().min(BINARY_PROBE)].contains(&0)
 }
 
-fn text(bytes: Vec<u8>) -> String {
+pub(super) fn text(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
@@ -136,56 +137,7 @@ pub fn list(checkout: &Checkout, scope: Scope, stop: &AtomicBool) -> io::Result<
     let _shared = lock(checkout, false, stop)?;
     let names = diff(checkout, scope, &["--name-status", "-z"], stop)?;
     let counts = diff(checkout, scope, &["--numstat", "-z"], stop)?;
-    let mut files: BTreeMap<String, Value> = BTreeMap::new();
-    let names = String::from_utf8_lossy(&names);
-    let mut parts = names.split('\0').filter(|p| !p.is_empty());
-    while let Some(code) = parts.next() {
-        let (status, from) = match code.as_bytes()[0] {
-            b'R' | b'C' => (
-                if code.starts_with('R') {
-                    "renamed"
-                } else {
-                    "copied"
-                },
-                parts.next(),
-            ),
-            b'A' => ("added", None),
-            b'D' => ("deleted", None),
-            b'T' => ("typeChanged", None),
-            b'U' => ("conflicted", None),
-            _ => ("modified", None),
-        };
-        let Some(path) = parts.next() else { break };
-        files.insert(
-            path.into(),
-            json!({"path": path, "from": from, "status": status, "insertions": 0, "deletions": 0,
-                   "binary": false, "staged": scope == Scope::Staged, "large": false}),
-        );
-    }
-    // `--numstat -z`: "added\tremoved\tpath\0", or for a rename "added\tremoved\t\0old\0new\0".
-    let counts = String::from_utf8_lossy(&counts);
-    let mut parts = counts.split('\0');
-    while let Some(record) = parts.next() {
-        let mut fields = record.splitn(3, '\t');
-        let (Some(added), Some(removed), Some(path)) =
-            (fields.next(), fields.next(), fields.next())
-        else {
-            continue;
-        };
-        let path = match path {
-            "" => {
-                parts.next();
-                parts.next().unwrap_or("")
-            }
-            path => path,
-        };
-        if let Some(file) = files.get_mut(path) {
-            let lines = |n: &str| n.parse::<u64>().ok();
-            file["binary"] = (added == "-").into();
-            file["insertions"] = lines(added).unwrap_or(0).into();
-            file["deletions"] = lines(removed).unwrap_or(0).into();
-        }
-    }
+    let mut files = listed(&names, &counts, scope == Scope::Staged);
     if scope != Scope::Staged {
         for path in untracked(checkout, stop)? {
             let Ok(Some((bytes, _))) = bytes_of(checkout, &path, SIDE_MAX) else {
@@ -214,20 +166,7 @@ pub fn list(checkout: &Checkout, scope: Scope, stop: &AtomicBool) -> io::Result<
                 (file["status"] != "untracked" && !unstaged.contains(&path.as_str())).into();
         }
     }
-    let (mut insertions, mut deletions) = (0, 0);
-    for file in files.values_mut() {
-        let (i, d) = (
-            file["insertions"].as_u64().unwrap_or(0),
-            file["deletions"].as_u64().unwrap_or(0),
-        );
-        insertions += i;
-        deletions += d;
-        file["large"] = (i + d > LARGE_LINES).into();
-    }
-    Ok(
-        json!({"scope": scope.name(), "base": null, "files": files.into_values().collect::<Vec<_>>(),
-              "insertions": insertions, "deletions": deletions}),
-    )
+    Ok(review_of(scope.name(), files))
 }
 
 /// One hunk of a patch as git cut it: its `@@` line, where it sits on each side, and its lines.
@@ -314,11 +253,15 @@ impl Patch {
 /// A hunk's id: its lines, numbered among the file's hunks with the same lines, so it holds while
 /// another hunk moves it up or down.
 pub(super) fn ids(scope: Scope, path: &str, hunks: &[Hunk]) -> Vec<String> {
+    ids_in(scope.name(), path, hunks)
+}
+
+pub(super) fn ids_in(scope: &str, path: &str, hunks: &[Hunk]) -> Vec<String> {
     let mut seen: BTreeMap<u32, u32> = BTreeMap::new();
     (hunks.iter())
         .map(|hunk| {
             let mut hash = crc32fast::Hasher::new();
-            for part in [scope.name(), path]
+            for part in [scope, path]
                 .into_iter()
                 .chain(hunk.lines.iter().map(String::as_str))
             {
@@ -465,7 +408,7 @@ pub(super) fn patch_of(
 
 /// A hunk as `ReviewHunk`: its counts; its first new line and the unchanged lines before its first
 /// change, where its bar sits; and the lines it changes, on the new side unless it only deletes.
-fn shape(hunk: &Hunk, id: String, staged: bool) -> Value {
+pub(super) fn shape(hunk: &Hunk, id: String, staged: bool) -> Value {
     let (mut old_at, mut new_at) = (hunk.old.0, hunk.new.0);
     let (mut added, mut removed, mut leading) = (vec![], vec![], None::<u64>);
     for line in &hunk.lines {

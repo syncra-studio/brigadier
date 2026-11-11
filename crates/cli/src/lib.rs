@@ -9,6 +9,7 @@ mod fork;
 mod git;
 mod host;
 pub mod index;
+mod last;
 mod message_draft;
 mod models;
 pub mod owner;

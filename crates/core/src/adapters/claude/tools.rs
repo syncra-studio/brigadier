@@ -135,11 +135,27 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event>
         }
         None => text(&b["content"]),
     };
+    // A command sent to the background or interrupted hasn't ended here. One that ended and
+    // failed names its code on its first line, as the old app read it; success names none [D74].
+    let failed = b["is_error"].as_bool() == Some(true);
+    let cut = result["interrupted"] == true || result["backgroundTaskId"].is_string();
+    let exit = (failed && !cut)
+        .then(|| {
+            output
+                .lines()
+                .next()?
+                .strip_prefix("Exit code ")?
+                .trim()
+                .parse()
+                .ok()
+        })
+        .flatten();
     vec![Event::ToolEnd(Done {
         id: id.into(),
         output,
-        ok: b["is_error"].as_bool() != Some(true),
-        exit: None,
+        ok: !failed,
+        exit,
+        cut,
         changes,
         child,
         parent,
