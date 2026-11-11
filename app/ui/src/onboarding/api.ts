@@ -173,6 +173,8 @@ function showOn(name: string): (change: (agent: Agent) => Agent) => void {
   };
 }
 
+const models = new Map<string, Promise<unknown>>();
+
 /**
  * Hides a model from new sessions' pickers, or shows it again [D2082]: shown at once, then Rust's saved list; on
  * failure it goes back and the error is thrown.
@@ -183,7 +185,10 @@ export async function setModelOn(name: string, id: string, on: boolean): Promise
   const others = before.filter((each) => each !== id);
   show((agent) => ({ ...agent, models_off: on ? others : [...others, id] }));
   try {
-    const reply = await run(["settings", "model", name, id, on ? "on" : "off"]);
+    // One agent's changes go one after another, so the last reply holds all of them.
+    const sent = (models.get(name) ?? Promise.resolve()).catch(() => {}).then(() => run(["settings", "model", name, id, on ? "on" : "off"]));
+    models.set(name, sent);
+    const reply = await sent;
     const mine = (reply.models_off as string[]).filter((each) => each.startsWith(`${name}/`));
     show((agent) => ({ ...agent, models_off: mine.map((each) => each.slice(name.length + 1)) }));
   } catch (cause) {
