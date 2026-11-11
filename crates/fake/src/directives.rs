@@ -34,6 +34,21 @@ impl Agent {
                 emit(json!({"t": "tool_done", "id": id, "ok": ok}));
                 self.say(&format!("wrote {file}"));
             }
+            // A file changed through a shell command, with no edit step, as `>>` in a real CLI [D1187].
+            "shell" => {
+                let file = word.split_once(':').map_or("", |w| w.1);
+                let line = format!("written by a shell in turn {}", self.conv().len());
+                if !self.tool(
+                    word,
+                    0,
+                    done_before,
+                    true,
+                    &format!("echo '{line}' >> '{file}'"),
+                ) {
+                    return false;
+                }
+                self.say(&format!("ran a shell command on {file}"));
+            }
             "tree" => {
                 let cmd = format!("sleep {left} & sleep {left} & wait");
                 if !self.tool(word, n, done_before, false, &cmd) {

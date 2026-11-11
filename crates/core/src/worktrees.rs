@@ -19,11 +19,13 @@ mod hand;
 mod landing;
 mod missing;
 pub mod names;
+mod lost;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
 pub use landing::external_landing;
 pub use landing::{Landing, Lands, landed, lands, set_landing, unlanded};
 pub use missing::restore_missing;
+pub use lost::losses;
 
 const RECORD: &str = "worktree.json";
 /// Proposed: making or removing a worktree of a big repository can take a while.

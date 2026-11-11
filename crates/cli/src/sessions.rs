@@ -17,19 +17,30 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     match args[0].as_str() {
         // Settled first too: an archived session gets no host to settle with.
+        "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
         "archive" => crate::rewind::settled(data, &spec)
             .and_then(|()| core::git::recover::settled(data, id))
             .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {
-            return Ok(
-                json!({"ok": true, "branch": session::unlanded(&spec)?, "stays": session::stays(&spec)}),
-            );
+            let mut reply = check(data, &args[1..2]);
+            reply["branch"] = session::unlanded(&spec)?.into();
+            reply["stays"] = session::stays(&spec).into();
+            return Ok(reply);
         }
         _ => return delete(data, id, flag(args, "--branch") == Some("delete"), "delete"),
     }
     Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
+}
+
+/// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
+/// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
+fn check(data: &Path, ids: &[String]) -> Value {
+    let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
+    let all = procs::all();
+    let running: Vec<&String> = ids.iter().filter(|s| working(data, s, &all)).collect();
+    json!({"ok": true, "running": running, "lost": core::worktrees::losses(data, &ids)})
 }
 
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
@@ -131,7 +142,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         let working: Vec<_> = ids.iter().filter(|s| busy(data, s, &all)).collect();
         return Ok(json!({"ok": true, "sessions": ids, "working": working,
             "worktrees": worktrees, "bytes": bytes, "merged": merged, "branches": branches,
-            "removing": project.removing}));
+            "removing": project.removing, "lost": core::worktrees::losses(data, &ids)}));
     }
     // Settling needs a host, which is refused once the project is marked as being removed.
     for s in &ids {

@@ -1,4 +1,4 @@
-//! `rewind <id> <cid> --preview | --op OP [--restore]` [D384]: what the app calls, and the two
+//! `rewind <id> <cid> --preview | --op OP [--restore | --undo]` [D384, D1196]: what the app calls, and the two
 //! passes that keep it honest. Takes the queue's lock, then core's fence, through to the end.
 
 use crate::{arg, flag, has, owner, queue};
@@ -29,6 +29,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if waiting {
         return Ok(json!({"ok": false, "error": "queued",
             "message": "Messages are waiting to send. Send or remove them first."}));
+    }
+    // Undo restore: rewind `op`'s restore put back, behind the queue too [D1196].
+    if has(args, "--undo") {
+        return core::rewind::undo_restore(data, &spec, op, &live);
     }
     let call = |req| owner::call(data, id, req);
     let restore = has(args, "--restore");

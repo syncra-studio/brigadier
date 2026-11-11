@@ -11,6 +11,8 @@ pub(super) struct Files {
     pub paths: BTreeSet<String>,
     pub hand: Vec<String>,
     pub left_out: Vec<String>,
+    /// Of `left_out`, the nested repositories; the rest are untracked files too big to keep.
+    pub nested: Vec<String>,
     pub commits: bool,
 }
 
@@ -47,8 +49,18 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         .collect();
     let paths = wanted.difference(&blocked).cloned().collect();
     hand.extend(blocked);
-    let left_out = (out.iter())
+    let left_out: Vec<String> = (out.iter())
         .filter(|p| target.out.get(*p) != pre.out.get(*p))
+        .cloned()
+        .collect();
+    // A big file's stamp is "size:time"; a nested repository's is its commit.
+    let nested = (left_out.iter())
+        .filter(|p| {
+            [target.out.get(*p), pre.out.get(*p)]
+                .iter()
+                .flatten()
+                .any(|v| !v.contains(':'))
+        })
         .cloned()
         .collect();
     Ok(Files {
@@ -58,5 +70,6 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         paths,
         hand: hand.into_iter().collect(),
         left_out,
+        nested,
     })
 }

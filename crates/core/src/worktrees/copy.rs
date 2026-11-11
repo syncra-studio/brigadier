@@ -10,30 +10,7 @@ use std::path::Path;
 /// ignores [D178, D211]. Links stay links; neither the source nor destination may traverse a
 /// linked directory.
 pub(super) fn include(repo: &Path, to: &Path, picks: &[String]) -> io::Result<()> {
-    let mut args = names(repo, picks);
-    if args.is_empty() {
-        return Ok(());
-    }
-    args.splice(
-        0..0,
-        ["ls-files", "-z", "--others", "--ignored"].map(String::from),
-    );
-    let named = git(repo, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
-    if named.is_empty() {
-        return Ok(());
-    }
-    let ignored = git(
-        repo,
-        &[
-            "ls-files",
-            "-z",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-        ],
-    )?;
-    let ignored: HashSet<&str> = ignored.split('\0').filter(|p| !p.is_empty()).collect();
-    for rel in named.split('\0').filter(|p| ignored.contains(p)) {
+    for rel in &selected(repo, picks)? {
         let (src, dst) = (repo.join(rel), to.join(rel));
         let parent = dst.parent().unwrap_or(to);
         let existing = parent.ancestors().find(|p| p.exists()).unwrap_or(to);
@@ -53,6 +30,37 @@ pub(super) fn include(repo: &Path, to: &Path, picks: &[String]) -> io::Result<()
         }
     }
     Ok(())
+}
+
+/// The paths `include` copies from `repo`: named by its rules, and ignored by git.
+pub(super) fn selected(repo: &Path, picks: &[String]) -> io::Result<Vec<String>> {
+    let mut args = names(repo, picks);
+    if args.is_empty() {
+        return Ok(vec![]);
+    }
+    args.splice(
+        0..0,
+        ["ls-files", "-z", "--others", "--ignored"].map(String::from),
+    );
+    let named = git(repo, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    if named.is_empty() {
+        return Ok(vec![]);
+    }
+    let ignored = git(
+        repo,
+        &[
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+        ],
+    )?;
+    let ignored: HashSet<&str> = ignored.split('\0').filter(|p| !p.is_empty()).collect();
+    Ok((named.split('\0'))
+        .filter(|p| ignored.contains(p))
+        .map(String::from)
+        .collect())
 }
 
 /// Git's rules for what's copied: the repo's own `.worktreeinclude`, and each pick anchored at

@@ -8,6 +8,7 @@ pub mod fork;
 mod plan;
 mod shared;
 mod snap;
+mod undo;
 
 use crate::adapters::{self, Cut, Failed, Landing, Rewound};
 use crate::fold::{Boundary, Fold, Live, Owner};
@@ -28,6 +29,7 @@ use std::io;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+pub use undo::undo_restore;
 
 const OP: &str = "rewind.json";
 /// How long after a turn ends its folder still counts as its result (proposed): covers the daemon's
@@ -52,6 +54,9 @@ struct Op {
     paths: BTreeSet<String>,
     hand: Vec<String>,
     left_out: Vec<String>,
+    /// Of `left_out`, the nested repositories.
+    #[serde(default)]
+    nested: Vec<String>,
     commits: bool,
     done: Option<Rewound>,
 }
@@ -121,7 +126,17 @@ type Why = (&'static str, Option<String>);
 fn plan_for(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Result<Files, Why> {
     let store = Store::of(spec).ok_or(("no_project", None))?;
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    let files = plan(&store, &turns).map_err(|why| (why, None))?;
+    // No snapshot is ever taken of a folder outside git: said as such [D384].
+    let files = (plan(&store, &turns)).map_err(|why| {
+        (
+            if why == "missing" && !store.is_repo() {
+                "not_git"
+            } else {
+                why
+            },
+            None,
+        )
+    })?;
     // Only files that would go back are any sharer's business [D481].
     if !files.paths.is_empty()
         && let Some((why, with)) = sharer(data, spec, &store, &turns, live)
@@ -138,7 +153,7 @@ pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Va
     }
     match plan_for(data, spec, f, cid, live) {
         Ok(p) => json!({"ok": true, "restore": true, "paths": p.paths, "hand": p.hand,
-            "leftOut": p.left_out, "commits": p.commits}),
+            "leftOut": p.left_out, "nested": p.nested, "commits": p.commits}),
         Err((why, with)) => json!({"ok": true, "restore": false, "why": why, "with": with}),
     }
 }
@@ -203,16 +218,17 @@ fn clear(spec: &Spec) -> io::Result<()> {
     fs::remove_file(spec.dir.join(OP))
 }
 
+/// A rewind that landed: what Undo restore needs is kept first, then its operation goes [D1213].
+fn close(spec: &Spec, op: &Op) -> io::Result<()> {
+    undo::keep(spec, op)?;
+    clear(spec)
+}
+
 /// Puts the folder back as it was just before this rewind, only where it's still as the restore
 /// left it: a path changed since keeps its edit, another session's in a shared folder [D1078].
 fn undo(spec: &Spec, op: &Op) -> io::Result<()> {
     if let (Some(pre), Some(target), Some(store)) = (&op.pre, &op.target, Store::of(spec)) {
-        let restored = Shot {
-            tree: target.clone(),
-            ..Shot::default()
-        };
-        let since = store.diff(&restored, &store.capture()?)?;
-        store.write_back(&pre.tree, &op.paths.difference(&since).cloned().collect())?;
+        undo::put_back(&store, &pre.tree, target, &op.paths)?;
     }
     Ok(())
 }
@@ -269,7 +285,7 @@ fn landed(spec: &Spec, f: &Fold, op: &Op) -> Landing {
 fn reply(op: &Op) -> Value {
     let complete = op.hand.is_empty() && op.left_out.is_empty();
     json!({"ok": true, "op": op.op, "restored": op.paths.len(), "hand": op.hand,
-        "leftOut": op.left_out, "commits": op.commits, "complete": complete})
+        "leftOut": op.left_out, "nested": op.nested, "commits": op.commits, "complete": complete})
 }
 
 /// The outcome can't be told: said plainly, and the record stays until it can [D54, D300].
@@ -293,7 +309,13 @@ fn finish(spec: &Spec, op: &mut Op, done: Rewound, call: Call) -> Value {
             format!("The rewind didn't finish: {why}. It finishes before the next message."),
         );
     }
-    let _ = clear(spec);
+    // Not cleared without Undo restore's record: it finishes before the next message [D1213].
+    if let Err(e) = close(spec, op) {
+        return refused(
+            "unfinished",
+            format!("The rewind didn't finish: {e}. It finishes before the next message."),
+        );
+    }
     reply(op)
 }
 
@@ -396,10 +418,10 @@ fn run(
     let resume = (f.resume.get(&backend).cloned())
         .ok_or_else(|| refused("gone", "This conversation has no record to cut."))?;
     let (mut pre, mut target, mut paths) = (None, None, BTreeSet::new());
-    let (mut hand, mut left_out, mut commits) = (vec![], vec![], false);
+    let (mut hand, mut left_out, mut nested, mut commits) = (vec![], vec![], vec![], false);
     if let Some(p) = files {
         (pre, target, paths) = (Some(p.pre), Some(p.target), p.paths);
-        (hand, left_out, commits) = (p.hand, p.left_out, p.commits);
+        (hand, left_out, nested, commits) = (p.hand, p.left_out, p.nested, p.commits);
     }
     let mut record = Op {
         phase: String::new(),
@@ -415,6 +437,7 @@ fn run(
         paths,
         hand,
         left_out,
+        nested,
         commits,
         done: None,
     };
@@ -472,9 +495,9 @@ pub fn settle(spec: &Spec, call: Call, call_in: CallIn) -> io::Result<()> {
         "files" => undo(&op),
         "landed" => {
             note(spec, &op, call).map_err(io::Error::other)?;
-            clear(spec)
+            close(spec, &op)
         }
-        _ if f.rewinds.contains(&op.op) => clear(spec),
+        _ if f.rewinds.contains(&op.op) => close(spec, &op),
         _ => match landed(spec, &f, &op) {
             Landing::Applied(done) => match finish(spec, &mut op, done, call) {
                 v if v["ok"] == true => Ok(()),

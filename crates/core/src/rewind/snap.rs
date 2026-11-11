@@ -300,6 +300,42 @@ impl Store {
         })
     }
 
+    /// Whether the folder is a git repository: snapshots are taken only of one.
+    pub fn is_repo(&self) -> bool {
+        self.source(&["rev-parse", "--git-dir"]).is_ok()
+    }
+
+    /// Whether `path` is now exactly as `tree` has it, by type, mode and bytes; absent where it
+    /// has none. Anything that can't be read, or a nested repository, isn't.
+    pub fn holds(&self, tree: &str, path: &str) -> bool {
+        let index = self.git.join("index");
+        let Ok(entry) = self.run(&index, &["ls-tree", "-z", tree, "--", path]) else {
+            return false;
+        };
+        let entry = String::from_utf8_lossy(&entry);
+        let disk = fs::symlink_metadata(self.cwd.join(path));
+        let Some((meta, _)) = entry.split_once('\t') else {
+            return disk.is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
+        };
+        let meta: Vec<&str> = meta.split(' ').collect();
+        let (Ok(disk), &[mode, "blob", blob]) = (disk, &meta[..]) else {
+            return false;
+        };
+        let bytes = match mode {
+            "120000" if disk.is_symlink() => {
+                fs::read_link(self.cwd.join(path)).map(|l| l.into_os_string().into_encoded_bytes())
+            }
+            "100644" | "100755"
+                if disk.is_file() && (disk.mode() & 0o100 != 0) == (mode == "100755") =>
+            {
+                fs::read(self.cwd.join(path))
+            }
+            _ => return false,
+        };
+        let stored = self.run(&index, &["cat-file", "blob", blob]);
+        matches!((bytes, stored), (Ok(a), Ok(b)) if a == b)
+    }
+
     /// Puts `paths` back as `tree` has them; those it doesn't have are removed, emptied folders
     /// with them. Nothing else in the folder is touched.
     pub fn write_back(&self, tree: &str, paths: &BTreeSet<String>) -> io::Result<()> {
