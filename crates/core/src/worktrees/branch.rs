@@ -53,6 +53,17 @@ pub fn set_base(dir: &Path, base: &str) -> io::Result<()> {
     let Some(mut owned) = read(dir)? else {
         return err("This session has no base to change.".into());
     };
+    let full = git(
+        Path::new(&owned.repo),
+        &["rev-parse", "--symbolic-full-name", base],
+    )?;
+    if owned
+        .branch
+        .as_ref()
+        .is_some_and(|b| full == format!("refs/heads/{b}"))
+    {
+        return err("A session can't land into its own branch.".into());
+    }
     git(
         Path::new(&owned.repo),
         &[

@@ -1,0 +1,56 @@
+//! Re-create an externally removed worktree from its recorded branch [D180, D1187].
+
+use super::{err, read, restore, unregister};
+use crate::{Spec, load, projects, share, worktrees};
+use std::fs;
+use std::io;
+use std::path::Path;
+
+pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> io::Result<()> {
+    crate::check_id(id)?;
+    let spec = load(data, id)?;
+    let holder = share::holder(data, &spec)
+        .ok_or_else(|| io::Error::other("This session has no worktree to restore."))?;
+    let _one = worktrees::lock(&holder.dir)?;
+    let _fence = crate::rewind::checkout_lock(data, true)?;
+    if let Some(why) = crate::session::closed(&spec.dir) {
+        return err(why.into());
+    }
+    for user in share::in_folder(data, Path::new(&spec.cwd), None) {
+        if busy(&user) {
+            return err("A session using this folder is busy. Restore it once it is idle.".into());
+        }
+    }
+    let owned =
+        read(&holder.dir)?.ok_or_else(|| io::Error::other("Its worktree record is gone."))?;
+    let path = owned
+        .path
+        .as_deref()
+        .ok_or_else(|| io::Error::other("Its worktree path is unknown."))?;
+    match fs::symlink_metadata(path) {
+        Ok(_) => return err("This session's folder is already there. Read it again.".into()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    // Remove only this missing path's verified registration; never prune other worktrees [D35].
+    unregister(&owned)?;
+    let project = spec
+        .project
+        .as_deref()
+        .map(|id| projects::get(data, id))
+        .transpose()?;
+    let picks = project
+        .as_ref()
+        .map(|p| p.include.as_slice())
+        .unwrap_or_default();
+    restore(&holder.dir, picks)?;
+    if project.is_some_and(|p| p.trusted == Some(true)) {
+        for name in ["setup.started", "setup.exit", "setup.log"] {
+            match fs::remove_file(holder.dir.join(name)) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}

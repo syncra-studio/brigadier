@@ -6,11 +6,33 @@ use super::push::{self, push_held, push_to};
 use super::{Checkout, Target, checkout, lock, read};
 use crate::adapters::setup;
 use crate::{ids, load, projects, session_dir, worktrees};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+
+// Unknown after a daemon restart; a failed fetch never advances a successful fetch's time.
+static FETCHED: Mutex<BTreeMap<(PathBuf, String), u64>> = Mutex::new(BTreeMap::new());
+
+fn common(checkout: &Checkout) -> Option<PathBuf> {
+    let out = read(
+        &checkout.root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        &AtomicBool::new(false),
+    )
+    .ok()?;
+    fs::canonicalize(String::from_utf8_lossy(&out).trim()).ok()
+}
+
+pub fn fetched_at(checkout: &Checkout, remote: &str) -> Option<u64> {
+    FETCHED
+        .lock()
+        .unwrap()
+        .get(&(common(checkout)?, remote.into()))
+        .copied()
+}
 
 /// Proposed: a pull or fetch gives up after this.
 const NET_SECS: u64 = 120;
@@ -74,7 +96,14 @@ fn run(mut command: std::process::Command, stop: &AtomicBool) -> io::Result<()> 
 fn fetch(checkout: &Checkout, remote: &str, stop: &AtomicBool) -> io::Result<()> {
     let mut command = net(checkout, false);
     command.args(["fetch", "--quiet", "--", remote]);
-    run(command, stop)
+    run(command, stop)?;
+    if let Some(common) = common(checkout) {
+        FETCHED
+            .lock()
+            .unwrap()
+            .insert((common, remote.into()), brigadier_frames::log::now_ms());
+    }
+    Ok(())
 }
 
 /// Pull then push, as VS Code's Sync [D1020]: the branch's own upstream (its remote and branch) is

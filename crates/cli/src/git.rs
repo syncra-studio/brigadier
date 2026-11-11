@@ -98,6 +98,21 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     let (target, at) = target(args)?;
+    if arg(args, at)? == "truth" {
+        return Ok(
+            json!({"ok": true, "truth": git::truth::state(data, &target, &AtomicBool::new(false))?}),
+        );
+    }
+    if arg(args, at)? == "restore-checkout" {
+        let Target::Session(id) = target else {
+            return Err(io::Error::other(super::USAGE));
+        };
+        let all = brigadier_frames::procs::all();
+        brigadier_core::worktrees::restore_missing(data, id, &|s| {
+            super::sessions::working(data, &s.id, &all)
+        })?;
+        return Ok(json!({"ok": true}));
+    }
     let checkout = git::checkout(data, &target)?;
     let stop = AtomicBool::new(false);
     let word = |i: usize| arg(args, at + i);

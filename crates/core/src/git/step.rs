@@ -21,6 +21,11 @@ const PR_AGE: Duration = Duration::from_secs(120);
 type Read = (Instant, (String, u64), Option<String>, Option<Vec<Value>>);
 static PRS: Mutex<BTreeMap<String, Read>> = Mutex::new(BTreeMap::new());
 
+/// Focus and each new host read bypass the 120 s cache, even a cached empty PR list [D1187].
+pub fn invalidate_prs() {
+    PRS.lock().unwrap().clear();
+}
+
 /// The action button's next step for a session or project [D1015, D1045], what the toolbar's dot
 /// says [D1025], how it lands [D1028], and the commits it was worked out on, which a landing
 /// pins. `fresh`: the PRs are read again now, as after an action.
@@ -33,7 +38,7 @@ pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io:
     };
     // A "here" fork in another session's worktree reads that session's record [D1082].
     let holder = id.and_then(|id| crate::share::holder(data, &load(data, id).ok()?));
-    let lands = match holder {
+    let lands = match holder.as_ref() {
         Some(holder) => worktrees::lands(&holder.dir)?,
         None => None,
     };
@@ -49,7 +54,11 @@ pub fn step(data: &Path, target: &Target, fresh: bool, stop: &AtomicBool) -> io:
         _ => (folder(&checkout, &now), Value::Null, Value::Null),
     };
     let hint = hint(&step, now.files.len());
-    Ok(json!({"step": step, "hint": hint, "at": at, "merge": style}))
+    let freshness = holder
+        .and_then(|h| worktrees::base(&h.dir))
+        .map(|base| super::truth::base(&checkout, &base, stop))
+        .transpose()?;
+    Ok(json!({"step": step, "hint": hint, "at": at, "merge": style, "freshness": freshness}))
 }
 
 /// The user's own folder: VS Code's Commit, Publish Branch and Sync Changes [D1045].
@@ -176,7 +185,11 @@ fn pr(data: &Path, id: &str, now: &Status, base: &str, fresh: bool) -> Option<Va
             read
         }
     };
-    let open = rows?.into_iter().find(|p| p["state"] == "open")?;
+    let rows = rows?;
+    if let Some(landed) = super::truth::landing(data, id, now) {
+        return Some(landed);
+    }
+    let open = rows.into_iter().find(|p| p["state"] == "open")?;
     let number = open["number"].clone();
     if ahead > 0 {
         return Some(

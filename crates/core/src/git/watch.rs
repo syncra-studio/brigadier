@@ -41,15 +41,37 @@ pub struct Watch {
 
 impl Watch {
     /// Starts watching. `send` gets the first read, then each one that differs from the last, or
-    /// the error that ends the watch; it returns false to end it.
+    /// a read error. Errors retry on a backoff; returning false ends the watch.
     pub fn start(
         checkout: Checkout,
-        send: impl FnMut(io::Result<Status>) -> bool + Send + 'static,
+        mut send: impl FnMut(io::Result<Status>) -> bool + Send + 'static,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let (events, stopped) = (tx.clone(), stop.clone());
-        let thread = thread::spawn(move || run(checkout, events, rx, &stopped, send));
+        let thread = thread::spawn(move || {
+            let mut backoff = Duration::from_secs(1);
+            while !stopped.load(Ordering::SeqCst) {
+                let began = Instant::now();
+                if !run(checkout.clone(), events.clone(), &rx, &stopped, &mut send) {
+                    break;
+                }
+                if began.elapsed() > Duration::from_secs(30) {
+                    backoff = Duration::from_secs(1);
+                }
+                let until = Instant::now() + backoff;
+                while !stopped.load(Ordering::SeqCst) && Instant::now() < until {
+                    match rx
+                        .recv_timeout(until.saturating_duration_since(Instant::now()).min(SETTLE))
+                    {
+                        Ok(Msg::Poke) => break,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                        _ => {}
+                    }
+                }
+                backoff = (backoff * 2).min(Duration::from_secs(30));
+            }
+        });
         Self {
             tx,
             stop,
@@ -73,12 +95,19 @@ impl Drop for Watch {
 }
 
 fn run(
-    checkout: Checkout,
+    mut checkout: Checkout,
     events: Sender<Msg>,
-    rx: Receiver<Msg>,
+    rx: &Receiver<Msg>,
     stop: &AtomicBool,
     mut send: impl FnMut(io::Result<Status>) -> bool,
-) {
+) -> bool {
+    // Restore can give the same path a new registration; never keep the removed git folder.
+    let reopened = read(&checkout.root, &["rev-parse", "--absolute-git-dir"], stop)
+        .and_then(|out| std::fs::canonicalize(String::from_utf8_lossy(&out).trim()));
+    match reopened {
+        Ok(dir) => checkout.git_dir = dir,
+        Err(e) => return !stop.load(Ordering::SeqCst) && send(Err(e)),
+    }
     let mut watcher = notify::recommended_watcher(move |e| {
         let _ = events.send(Msg::Fs(e));
     })
@@ -110,14 +139,11 @@ fn run(
                 Ok(s) => {
                     last = Some(s.clone());
                     if !send(Ok(s)) {
-                        return;
+                        return false;
                     }
                 }
                 Err(e) => {
-                    if !stop.load(Ordering::SeqCst) {
-                        send(Err(e));
-                    }
-                    return;
+                    return !stop.load(Ordering::SeqCst) && send(Err(e));
                 }
             }
             continue;
@@ -135,7 +161,7 @@ fn run(
                 }
                 continue;
             }
-            Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Disconnected) => return false,
         };
         // A change is read after its own few events.
         let mut batch = vec![first];
@@ -160,6 +186,7 @@ fn run(
             }
         }
     }
+    false
 }
 
 /// Which reported paths change what the panel shows.

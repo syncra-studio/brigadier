@@ -47,6 +47,52 @@ pub fn set_landing(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
     write(dir, &owned)
 }
 
+/// A host-verified merge is recorded only while the recorded branch, base and clean HEAD agree.
+/// The caller holds the checkout lock; the ordinary landing/delete guards recheck it later.
+pub fn external_landing(
+    dir: &Path,
+    branch: &str,
+    base: &str,
+    head: &str,
+    commit: &str,
+) -> io::Result<()> {
+    let oid = |s: &str| matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit());
+    if !oid(head) || !oid(commit) {
+        return Ok(());
+    }
+    let _one = lock(dir)?;
+    let Some(mut owned) = read(dir)? else {
+        return Ok(());
+    };
+    if owned.branch.as_deref() != Some(branch) || owned.base != base {
+        return Ok(());
+    }
+    let Some(path) = owned.path.as_deref().map(Path::new) else {
+        return Ok(());
+    };
+    let same = git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])? == branch
+        && git(path, &["rev-parse", "HEAD"])? == head
+        && git(path, &["status", "--porcelain", "--untracked-files=all"])?.is_empty();
+    let repo = Path::new(&owned.repo);
+    if !same || git(repo, &["merge-base", "--is-ancestor", commit, base]).is_err() {
+        return Ok(());
+    }
+    if owned
+        .landing
+        .as_ref()
+        .is_some_and(|l| l.head == head && l.commit == commit)
+    {
+        return Ok(());
+    }
+    owned.landing = Some(Landing {
+        head: head.into(),
+        commit: commit.into(),
+        style: "host".into(),
+        at_ms: brigadier_frames::log::now_ms(),
+    });
+    write(dir, &owned)
+}
+
 /// Whether `landing` still holds: its commit is in the base, and the branch is still at the HEAD
 /// it landed. Anything git can't answer counts as not landed, so delete asks [D181, D1049].
 pub fn landed(repo: &Path, base: &str, tip: &str, landing: &Landing) -> bool {

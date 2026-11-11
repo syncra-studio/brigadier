@@ -3,7 +3,7 @@
 //! `{"id", "op": "git", "session" | "project"}` answers `{"re", "ok", "n", "git": {"head", "files"}}`,
 //! the checkout's status at N, then pushes `{"git": <that id>, "watch": <re>, "n": N+1, "head",
 //! "files", "gone"}`: the head whole, the files new or changed by path, the paths no longer changed.
-//! A read that fails pushes `{"git", "watch", "error"}` once and ends the watch. One git watch per
+//! A read that fails pushes `{"git", "watch", "error"}` and retries on a backoff. One git watch per
 //! connection: a new request ends the last. Every connection on one checkout shares its watcher,
 //! which goes with the last of them. `{"id", "op": "git_refresh"}` reads it again now, as on window
 //! focus; a turn's start or end in a session does the same for its checkout.
@@ -32,8 +32,8 @@ struct Seen {
     n: u64,
     last: Option<Status>,
     subs: Vec<Sub>,
-    /// Its watch ended on an error: the next request starts a new one.
-    ended: bool,
+    /// Force a recovery update, even when the checkout's status is unchanged.
+    failed: bool,
 }
 
 struct Watched {
@@ -52,7 +52,7 @@ fn sweep(all: &mut BTreeMap<PathBuf, Watched>, conn: u64) -> Vec<Watched> {
         .filter(|(_, w)| {
             let mut seen = w.seen.lock().unwrap();
             seen.subs.retain(|s| s.conn != conn);
-            seen.subs.is_empty() || seen.ended
+            seen.subs.is_empty()
         })
         .map(|(root, _)| root.clone())
         .collect();
@@ -60,24 +60,38 @@ fn sweep(all: &mut BTreeMap<PathBuf, Watched>, conn: u64) -> Vec<Watched> {
 }
 
 /// Sends a watcher's read to everyone on it: the snapshot to those waiting for one, what changed to
-/// the rest. An error goes to all, and ends it.
+/// the rest. An error keeps the subscriptions, so a retry can recover without a UI action.
 fn deliver(seen: &Mutex<Seen>, read: io::Result<Status>) -> bool {
     let mut seen = seen.lock().unwrap();
     let status = match read {
         Ok(status) => status,
         Err(e) => {
-            for sub in seen.subs.drain(..) {
+            seen.subs.retain_mut(|sub| {
                 let error = match sub.waiting {
                     true => json!({"re": sub.re, "ok": false, "error": e.to_string()}),
                     false => json!({"git": sub.name, "watch": sub.re, "error": e.to_string()}),
                 };
-                let _ = sub.out.send(error.to_string());
-            }
-            seen.ended = true;
-            return false;
+                sub.waiting = false;
+                sub.out.send(error.to_string()).is_ok()
+            });
+            seen.failed = true;
+            return !seen.subs.is_empty();
         }
     };
-    let delta = seen.last.as_ref().and_then(|old| status.delta(old));
+    let delta = if seen.failed {
+        let gone: Vec<_> = seen
+            .last
+            .iter()
+            .flat_map(|s| s.files.keys())
+            .filter(|path| !status.files.contains_key(*path))
+            .collect();
+        Some(
+            json!({"head": status.head, "files": status.files.values().collect::<Vec<_>>(), "gone": gone}),
+        )
+    } else {
+        seen.last.as_ref().and_then(|old| status.delta(old))
+    };
+    seen.failed = false;
     seen.n += delta.is_some() as u64;
     let (n, snapshot) = (seen.n, status.json());
     seen.subs.retain_mut(|sub| {
@@ -147,10 +161,12 @@ pub(super) fn subscribe(
     if let Some(w) = all.get(&checkout.root) {
         // Under its lock, so it can't end between the look and the join.
         let mut seen = w.seen.lock().unwrap();
-        if !seen.ended {
+        {
             let mut joined = sub.take().unwrap();
             // Joined at its last read: its snapshot goes now, numbered where the others are.
-            if let Some(last) = &seen.last {
+            if let Some(last) = &seen.last
+                && !seen.failed
+            {
                 let snapshot =
                     json!({"re": joined.re, "ok": true, "n": seen.n, "git": last.json()});
                 joined.waiting = false;
@@ -210,6 +226,7 @@ pub(super) fn auto_fetch(data: PathBuf) {
 
 /// Window focus: reads `conn`'s checkout again now, and fetches [D1026].
 pub(super) fn refresh(conn: u64) {
+    git::step::invalidate_prs();
     if let Some(focus) = FOCUS.lock().unwrap().as_ref() {
         let _ = focus.send(());
     }

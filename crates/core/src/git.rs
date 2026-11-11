@@ -28,6 +28,7 @@ pub mod replace;
 pub mod search;
 pub mod step;
 pub mod sync;
+pub mod truth;
 pub mod watch;
 
 /// Proposed: a read gives up after this, so a hung git never holds its watch.
