@@ -5,10 +5,11 @@ import { Popover } from "@base-ui/react/popover";
 import { cx } from "../components/cx";
 import { useDaemon } from "../daemon";
 import { GitCard } from "../panel/card";
+import { usePanelMemory } from "../panel/memory";
 import { openPr } from "../panel/open";
 import { useSource } from "../panel/source/view";
 import { useHasPanel } from "./right-panel";
-import { HOME } from "./tab-store";
+import { CHAT, HOME, useTabs } from "./tab-store";
 
 /*
  * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end. Where the pane
@@ -61,19 +62,23 @@ const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, children }: { shown: boolean; settled?: boolean; children: ReactNode }) {
+  // What it shows stays for its easing out, then goes, so a hidden card holds no second copy of its actions.
+  const [content, setContent] = useState(shown);
+  if (shown && !content) setContent(true);
   return (
     // Over the thread's top fade (z-10).
     <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col">
       <aside
         aria-label="Context"
         aria-hidden={!shown || undefined}
+        onTransitionEnd={(event) => event.target === event.currentTarget && !shown && setContent(false)}
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
           !shown && "invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
-        <div className={SURFACE}>{children}</div>
+        <div className={SURFACE}>{content && children}</div>
       </aside>
     </div>
   );
@@ -84,14 +89,15 @@ export function SummaryCard({ shown, settled = true, children }: { shown: boolea
  * most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the Context button or
  * Escape closes it, so `open` is all it follows.
  */
-function FloatingCard({ open, children }: { open: boolean; children: ReactNode }) {
+function FloatingCard({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   // The pane's whole width, so the card follows the pane's end as the pane narrows.
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const popup = useRef<HTMLDivElement>(null);
   return (
     <>
       <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0" />
-      <Popover.Root open={open}>
+      {/* Focus is on the card, so its own Escape closes it; a click elsewhere leaves it shown. */}
+      <Popover.Root open={open} onOpenChange={(next, details) => !next && details.reason === "escape-key" && onClose()}>
         <Popover.Portal>
           <Popover.Positioner className="z-popup" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
             <Popover.Popup
@@ -167,6 +173,18 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
     return () => removeEventListener("keydown", onKeyDown, true);
   }, [floating, owner]);
 
+  // Moving on to another tab or to the right panel's other view closes it where it floats, rather than leave it over
+  // them; coming back to the chat isn't moving on (the old FloatingSummary).
+  const { active } = useTabs(owner);
+  const memory = usePanelMemory();
+  const place = `${memory.open}/${memory.views[owner]}`;
+  const was = useRef({ active, place });
+  useEffect(() => {
+    const away = place !== was.current.place || (active !== was.current.active && active !== CHAT);
+    was.current = { active, place };
+    if (away && cardOf(owner).floating) setCard(owner, { floating: false });
+  }, [active, place, owner]);
+
   const shift = has && state.layout === "shift" && state.pinned;
   return (
     <div
@@ -180,11 +198,15 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       )}
     >
       {children}
-      {has && state.layout === "float" && <FloatingCard open={state.floating}>{card}</FloatingCard>}
+      {has && state.layout === "float" && (
+        <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })}>
+          {card}
+        </FloatingCard>
+      )}
       {has && state.layout !== null && (
         // Hidden where it floats, so the pane widening again eases it back in.
         <SummaryCard shown={state.pinned && state.layout !== "float"} settled={settled}>
-          {card}
+          {!floating && card}
         </SummaryCard>
       )}
     </div>
