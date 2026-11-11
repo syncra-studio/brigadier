@@ -167,10 +167,13 @@ export function refreshStep(then?: () => void): void {
   if (!target) return then?.();
   const mine = ++stepAsk;
   ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
+    // Only the newest answer counts, but with none yet any answer does, so a checkout changing faster than its step
+    // is worked out still gets its first [D1307].
+    const counts = (mine === stepAsk || !git.step) && git.target === target;
     // A failed read keeps the last step: the next read tries again. With none, it's read as no step, so a card
     // waiting for its first one draws.
-    if (mine === stepAsk && git.target === target && !reply.ok && reply.error !== "disconnected" && !git.step) set({ step: { step: null, at: null } });
-    if (mine === stepAsk && git.target === target && reply.ok) {
+    if (counts && !reply.ok && reply.error !== "disconnected" && !git.step) set({ step: { step: null, at: null } });
+    if (counts && reply.ok) {
       const ran = git.step?.ran;
       set({ step: reply.step });
       // A run that ended without changing a file still changes the brief [D1199].

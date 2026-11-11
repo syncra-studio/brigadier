@@ -90,8 +90,9 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
           if (!reply.ok) gitFailed({ session: owner }, `Couldn't merge #${number}.`, reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
           else {
             gitDone({ session: owner });
-            // Merged on the host: shown at once, and the read after settles the rest [D30].
-            setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
+            // Merged on the host, as Rust checked (a merge queue only queues it): shown at once, and the read after
+            // settles the rest [D30].
+            if (reply.merged) setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
           }
           read();
           refreshStep();

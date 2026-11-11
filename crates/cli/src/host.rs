@@ -44,8 +44,8 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         "find" => json!({"ok": true, "pr": pr.find()?}),
         "view" => json!({"ok": true, "pr": pr.view(number(args)?)?}),
         "merge" => {
-            pr.merge(number(args)?, arg(args, 4)?, arg(args, 5)?)?;
-            json!({"ok": true})
+            let merged = pr.merge(number(args)?, arg(args, 4)?, arg(args, 5)?)?;
+            json!({"ok": true, "merged": merged})
         }
         _ => return Err(io::Error::other(super::USAGE)),
     })
