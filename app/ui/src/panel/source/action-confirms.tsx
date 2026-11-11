@@ -19,7 +19,19 @@ export function MessageDialog({ open, message, failed = false, held, onMessage, 
   return (
     <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
       <ConfirmForm title="Commit message" description="Commits every change with this message." confirm="Commit" disabled={!message.trim()} onConfirm={onSave} onCancel={onCancel}>
-        <Textarea aria-label="Commit message" placeholder={failed ? "Type the commit message" : "The writer writes one"} value={message} autoFocus onChange={(event) => onMessage(event.target.value)} />
+        <Textarea
+          aria-label="Commit message"
+          placeholder={failed ? "Type the commit message" : "The writer writes one"}
+          value={message}
+          autoFocus
+          onChange={(event) => onMessage(event.target.value)}
+          // Return commits and Shift+Return breaks the line, as in a message box.
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            if (message.trim()) onSave();
+          }}
+        />
       </ConfirmForm>
     </Confirm>
   );
