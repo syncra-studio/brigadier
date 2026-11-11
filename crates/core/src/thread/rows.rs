@@ -321,6 +321,14 @@ impl Thread {
                     self.changed_items.insert(at);
                 }
             }
+            // A native fork whose first launch fell to the hand-off: its line says so [D90].
+            "note" if item["event"] == "unforked" => {
+                let forked = self.items.iter().rposition(|r| r["kind"] == "forked");
+                if let Some(at) = forked {
+                    self.items[at]["summary"] = true.into();
+                    self.changed_items.insert(at);
+                }
+            }
             _ => {}
         }
     }
