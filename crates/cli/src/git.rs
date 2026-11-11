@@ -186,7 +186,12 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         // A Files row's Reveal in Finder, kept inside the checkout [D1226] (proposed).
         "reveal" => {
             let path = git::inside(&checkout, word(1)?)?;
-            if !std::process::Command::new("open").arg("-R").arg(&path).status()?.success() {
+            if !std::process::Command::new("open")
+                .arg("-R")
+                .arg(&path)
+                .status()?
+                .success()
+            {
                 return Err(io::Error::other(format!("Couldn't reveal {}", word(1)?)));
             }
             done
