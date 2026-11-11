@@ -45,6 +45,9 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         "view" => json!({"ok": true, "pr": pr.view(number(args)?)?}),
         "merge" => {
             let merged = pr.merge(number(args)?, arg(args, 4)?, arg(args, 5)?)?;
+            // The list read that records the landing goes on after the answer, so Merging… ends
+            // with the merge; a shell's run that exits first leaves it to the watch.
+            std::thread::spawn(move || pr.list());
             json!({"ok": true, "merged": merged})
         }
         _ => return Err(io::Error::other(super::USAGE)),

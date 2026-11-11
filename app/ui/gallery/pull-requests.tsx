@@ -121,10 +121,10 @@ function Live() {
   );
 }
 
-function Tab({ pr, view, ...rest }: { pr: PullRequest | undefined; view?: PrView; error?: string; offline?: boolean; added?: string[]; merging?: boolean }) {
+function Tab({ pr, view, ...rest }: { pr: PullRequest | undefined; view?: PrView; error?: string; offline?: boolean; added?: string[]; merging?: boolean; refused?: string }) {
   return (
     <TabFrame tall>
-      <PrTab pr={pr} view={view} error={rest.error} merging={rest.merging} sends={sends(rest.added, rest.offline)} onMerge={noop} />
+      <PrTab pr={pr} view={view} error={rest.error} merging={rest.merging} refused={rest.refused} sends={sends(rest.added, rest.offline)} onMerge={noop} />
     </TabFrame>
   );
 }
@@ -164,6 +164,9 @@ export function PullRequestsGallery() {
         </State>
         <State label="merging">
           <Tab pr={READY} merging />
+        </State>
+        <State label="a merge the host refused: why, in the tab">
+          <Tab pr={READY} refused="Couldn't merge #12: Head branch was modified. Review and try the merge again." />
         </State>
         <State label="merged · timeline">
           <Tab pr={MERGED} view="timeline" />

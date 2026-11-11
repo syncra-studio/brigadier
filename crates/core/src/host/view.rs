@@ -149,8 +149,9 @@ impl Pr {
     }
 
     /// Merges PR `number` on the host with `method`, only if its head is still `head`, the one its
-    /// confirm showed [D1028, D1077]. The PR list is read after, which records the landing. True
-    /// once the host says it's merged: with a merge queue, gh's success may only have queued it.
+    /// confirm showed [D1028, D1077]. True once the host says it's merged: with a merge queue,
+    /// gh's success may only have queued it. The PR list read that records the landing is the
+    /// caller's, after it answers (`list`).
     pub fn merge(&self, number: u64, method: &str, head: &str) -> io::Result<bool> {
         if !matches!(method, "merge" | "squash" | "rebase") {
             return err(format!("not a merge method: {method:?}"));
@@ -169,7 +170,6 @@ impl Pr {
         if !out.status.success() {
             return err(failed(&out));
         }
-        let _ = self.prs(&gh);
         let slug = format!("--repo={}/{}", repo.host, repo.path);
         let now = run_json(
             &gh,

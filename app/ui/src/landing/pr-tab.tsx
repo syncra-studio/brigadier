@@ -30,6 +30,7 @@ export function PrTab({
   error,
   view,
   merging = false,
+  refused = null,
   sends,
   onMerge,
 }: {
@@ -40,6 +41,8 @@ export function PrTab({
   view?: PrView;
   /** A merge on its way to the host; its refusal is said above the composer [D1264]. */
   merging?: boolean;
+  /** Why the host refused the last merge, said under the header too. */
+  refused?: string | null;
   sends: Sends;
   /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
   onMerge: (style: MergeStyle, head: string) => void;
@@ -84,7 +87,7 @@ export function PrTab({
             <span className="text-foreground">{pr.base}</span> · opened by {pr.openedBy} {ago(pr.openedAtMs, sends.now)}
             {sends.offline ? " · Reconnecting…" : !pr.problem && pr.checkedAtMs !== null && ` · checked ${ago(pr.checkedAtMs, sends.now)}`}
           </p>
-          <ErrorLine error={pr.problem} />
+          <ErrorLine error={pr.problem ?? refused} />
         </header>
         <Tabs.Root defaultValue={view ?? "overview"} className="flex flex-col gap-5">
           <Tabs.List className="flex gap-1 border-b border-border pb-2">

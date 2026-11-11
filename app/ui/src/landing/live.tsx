@@ -37,6 +37,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [merging, setMerging] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
   const chips = useChips(owner);
   // One read at a time: one asked while another is out runs once that answers, so an action's is never lost.
   const reading = useRef(false);
@@ -73,6 +74,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
       pr={pr}
       error={error}
       merging={merging}
+      refused={refused}
       sends={{
         now: Date.now(),
         offline: !daemon,
@@ -89,10 +91,15 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
       }}
       onMerge={(style, head) => {
         setMerging(true);
+        setRefused(null);
         ask({ op: "run", args: ["host", owner, "merge", String(number), style, head] }, (reply) => {
           setMerging(false);
-          if (!reply.ok) gitFailed({ session: owner }, `Couldn't merge #${number}.`, reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
-          else {
+          if (!reply.ok) {
+            const why = reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error);
+            gitFailed({ session: owner }, `Couldn't merge #${number}.`, why);
+            // Said in the tab too, where Merge was clicked: the host's own first line.
+            setRefused(`Couldn't merge #${number}: ${why.split("\n")[0]}`);
+          } else {
             gitDone({ session: owner });
             // Merged on the host, as Rust checked (a merge queue only queues it): shown at once, and the read after
             // settles the rest [D30].
