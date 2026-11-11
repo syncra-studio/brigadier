@@ -59,7 +59,8 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     if sync::branch(checkout)? != old {
                         reason = "The checkout is on another branch, so its name stays.";
                     } else if !worktrees::names::unpublished(&spec.dir)? {
-                        reason = "The branch was published or a push was attempted, so its name stays.";
+                        reason =
+                            "The branch was published or a push was attempted, so its name stays.";
                     } else {
                         let same = match &observed {
                             Some(was) => core::host::pr(data, id).is_ok_and(|now| {
