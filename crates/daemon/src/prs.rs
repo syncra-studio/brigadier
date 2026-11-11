@@ -8,10 +8,10 @@ use super::Shared;
 use brigadier_core::{host, ids, session_dir};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 const TICK: Duration = Duration::from_secs(10);
 const RUNNING: Duration = Duration::from_secs(30);
@@ -31,9 +31,10 @@ pub(super) fn turned(ids: &[&str]) {
 
 pub(super) fn watch(data: PathBuf, state: Shared) {
     thread::spawn(move || {
-        // When each session is read next, and those being read now: one slow host never holds up
-        // the others, and no session is read twice at once.
-        let next: Arc<Mutex<HashMap<String, Instant>>> = Arc::default();
+        // When each session is read next, with its `prs.json` as that read left it, and those
+        // being read now: one slow host never holds up the others, no session is read twice at
+        // once, and PRs another read kept (Create PR's, on focus) set its pace at once.
+        let next: Arc<Mutex<HashMap<String, Next>>> = Arc::default();
         let busy: Arc<Mutex<HashSet<String>>> = Arc::default();
         loop {
             let ids = ids(&data);
@@ -44,11 +45,12 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                 busy.lock().unwrap().contains(id)
             });
             for id in ids {
+                let now_at = kept_at(&data, &id);
                 let due = !next
                     .lock()
                     .unwrap()
                     .get(&id)
-                    .is_some_and(|at| *at > Instant::now());
+                    .is_some_and(|(at, left)| *at > Instant::now() && *left == now_at);
                 let mut reading = busy.lock().unwrap();
                 if !due || reading.len() >= AT_ONCE || !reading.insert(id.clone()) {
                     continue;
@@ -66,13 +68,24 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                     let at = Instant::now() + every(kept.as_ref(), window);
                     // Under DUE's lock, as the scheduler reads it: a turn noted meanwhile is never lost.
                     let _due = DUE.lock().unwrap();
-                    next.lock().unwrap().insert(id.clone(), at);
+                    next.lock()
+                        .unwrap()
+                        .insert(id.clone(), (at, kept_at(&data, &id)));
                     busy.lock().unwrap().remove(&id);
                 });
             }
             thread::sleep(TICK);
         }
     });
+}
+
+/// When a session is read next, and its `prs.json` as that read left it.
+type Next = (Instant, Option<SystemTime>);
+
+fn kept_at(data: &Path, id: &str) -> Option<SystemTime> {
+    std::fs::metadata(session_dir(data, id).join("prs.json"))
+        .and_then(|m| m.modified())
+        .ok()
 }
 
 fn every(kept: Option<&Value>, window: bool) -> Duration {
