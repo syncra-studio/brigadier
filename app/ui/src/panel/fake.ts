@@ -1,4 +1,5 @@
-import type { Branch, Pr, SourceFile, SourceState, Step } from "./types";
+import type { GitStep } from "./control";
+import type { Branch, Pr, SourceFile, SourceState } from "./types";
 
 /* Fake data for the gallery's summary card and git confirms; the app reads Rust's [D388]. */
 
@@ -9,7 +10,7 @@ const file = (path: string, status: SourceFile["status"], added = 0, removed = 0
 
 export const BRANCH = "brigadier/912a9469/session";
 
-const CLEAN: SourceState = {
+export const CLEAN: SourceState = {
   checkout: "worktree",
   branch: BRANCH,
   remote: "origin",
@@ -23,7 +24,7 @@ const CLEAN: SourceState = {
   sinceBase: [],
 };
 
-const CHANGES: SourceState = {
+export const CHANGES: SourceState = {
   ...CLEAN,
   ahead: 2,
   changes: [file("src/upload/retry.ts", "modified", 62, 8), file("src/upload/client.ts", "modified", 21, 3), file("src/tray/Progress.tsx", "added", 58)],
@@ -51,6 +52,21 @@ export const PRS: Pr[] = [
 /** The host the fake branch publishes to; the UI names none of its own [D1030]. */
 export const HOST = "GitHub";
 
+const step = (over: Partial<GitStep>): GitStep => ({ next: null, off: {}, base: "main", branch: BRANCH, ahead: 0, behind: 0, moved: 0, files: 0, pr: null, sharedWith: null, resolve: null, landedAtMs: null, ...over });
+const SETTLED = { commit: "clean", sync: "synced", catchUp: "upToDate" } as const;
+
+/** The control's states as Rust sends them (2.48), the order a session goes through them [D1285, D1286, D1287]. */
 export const STEPS = {
-  merge: { kind: "merge", base: "main", ready: 3, moved: 0, blocked: null },
-} satisfies Record<string, Step>;
+  changes: step({ next: "commit", files: 3, off: { sync: "unpublished", push: "commitFirst", createPr: "commitFirst", merge: "commitFirst", catchUp: "commitFirst" } }),
+  committed: step({ next: "push", off: { commit: "clean", sync: "unpublished", createPr: "pushFirst", catchUp: "upToDate" } }),
+  pushed: step({ next: "createPr", off: { ...SETTLED, push: "pushed" } }),
+  prOpen: step({ pr: 12, off: { ...SETTLED, push: "pushed", createPr: "prOpen", merge: "inPrTab" } }),
+  sync: step({ next: "sync", ahead: 1, behind: 1, off: { commit: "clean", push: "behind", createPr: "pushFirst", catchUp: "upToDate" } }),
+  syncConflicts: step({ next: "resolve", ahead: 1, behind: 1, resolve: { op: "pull", ref: `origin/${BRANCH}`, files: ["src/upload/retry.ts"] }, off: { commit: "clean", sync: "conflicts", push: "behind", createPr: "pushFirst", catchUp: "upToDate" } }),
+  moved: step({ next: "catchUp", moved: 3, off: { commit: "clean", sync: "unpublished", push: "moved", createPr: "moved", merge: "moved" } }),
+  catchUpConflicts: step({ next: "resolve", moved: 3, resolve: { op: "merge", ref: "main", files: ["src/upload/retry.ts", "src/upload/client.ts"] }, off: { commit: "clean", sync: "unpublished", catchUp: "conflicts", push: "moved", createPr: "moved", merge: "moved" } }),
+  noHost: step({ off: { commit: "clean", sync: "unpublished", push: "noRemote", createPr: "pushFirst", catchUp: "upToDate" } }),
+  landed: step({ landedAtMs: NOW - 5 * MIN, off: { ...SETTLED, push: "pushed", createPr: "landed", merge: "landed" } }),
+  shared: step({ next: "commit", files: 2, sharedWith: "Fix the login form", off: { sync: "unpublished", push: "commitFirst", createPr: "shared", merge: "shared", catchUp: "commitFirst" } }),
+  folder: step({ next: "push", base: null, branch: "main", ahead: 2, off: { commit: "clean", sync: "synced", createPr: "noBase", catchUp: "noBase", merge: "noBase" } }),
+} satisfies Record<string, GitStep>;

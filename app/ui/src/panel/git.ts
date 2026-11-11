@@ -7,7 +7,8 @@ import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
 import type { FileFlag, LastRun } from "../review/types";
-import type { SourceFile, SourceState, Step } from "./types";
+import type { GitStep } from "./control";
+import type { SourceFile, SourceState } from "./types";
 
 /*
  * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, and each file's counts read
@@ -37,7 +38,7 @@ export type Freshness = { name: string; upstream: string | null; behind: number 
  * Rust's next step for the checkout [D1015, D1152]: the step and the commits it was worked out on, which a landing
  * pins [D1049]. `ran`: its last run's end, so the brief is read again when only a run changed [D1199].
  */
-type StepRead = { step: Step | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
+type StepRead = { step: GitStep | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
 
 /**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
@@ -174,17 +175,23 @@ export function refreshStep(then?: () => void): void {
   });
 }
 
-/** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]: `done` gets Rust's refusal, or null. */
-export function landBranch(at: StepAt | null, done: (error: string | null) => void): void {
+/**
+ * One of the control's moves on the checkout (`land`, `catch-up`, `sync`, `publish`), Rust's: `done` gets Rust's
+ * refusal, or null once the step it led to shows [D30, D1286]. A move changes refs the watch may not follow.
+ */
+export function gitMove(args: string[], done: (error: string | null) => void): void {
   const target = git.target;
-  if (!target || !at) return done("Nothing to merge yet.");
-  ask({ op: "run", args: sourceArgs(target, "land", at.head, at.base ?? "-") }, (reply) => {
-    // A landing stays pending until the step it led to shows [D30].
+  if (!target) return done("This checkout isn't on screen.");
+  ask({ op: "run", args: sourceArgs(target, ...args) }, (reply) => {
+    ask({ op: "git_refresh" });
     if (reply.ok) return refreshStep(() => done(null));
     done(reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
     refreshStep();
   });
 }
+
+/** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]. */
+export const landBranch = (at: StepAt | null, done: (error: string | null) => void) => (at ? gitMove(["land", at.head, at.base ?? "-"], done) : done("Nothing to merge yet."));
 
 function watch(target: Target): void {
   n = 0;

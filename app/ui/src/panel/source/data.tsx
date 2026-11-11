@@ -1,14 +1,15 @@
 import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, Pr, SourceState, Step } from "../types";
+import type { GitStep } from "../control";
+import type { Branch, Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
 
 /** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
 export type SourceData = {
   /** Null while the first read is under way. */
   source: SourceState | null;
-  step: Step | null;
+  step: GitStep | null;
   /** The commits Rust's step was worked out on: a landing is pinned to them [D1049]. */
   at?: StepAt | null;
   /** The read failed: shown over the last read, if any, which stays read-only. */

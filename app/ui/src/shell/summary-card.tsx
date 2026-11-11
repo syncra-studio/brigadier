@@ -8,7 +8,7 @@ import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { GitCard } from "../panel/card";
 import { usePanelMemory } from "../panel/memory";
-import { openPr } from "../panel/open";
+import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
 import { useHasPanel } from "./right-panel";
 import { CHAT, HOME, useTabs } from "./tab-store";
@@ -248,7 +248,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const { rows, projects } = useDaemon();
   const projectId = rows?.find((row) => row.id === owner)?.project;
   const project = projects?.find((each) => each.id === projectId)?.name ?? null;
-  const card = has ? <GitCard data={data} project={project} draftKey={owner} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} /> : null;
+  const card = has ? <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} /> : null;
   return (
     <SummaryPane owner={owner} card={card}>
       {children}

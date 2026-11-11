@@ -43,30 +43,3 @@ export type Pr = {
   /** How many checks failed; null when the host's read couldn't say. */
   failed: number | null;
 };
-
-/** Why the base can't take a landing now [D1047, D1082, D1161]: edits there in the way, a merge stopped there, not a local branch, or another session lands. */
-export type Blocked =
-  | { why: "busy"; folder: string; files: string[] }
-  | { why: "midway"; folder: string }
-  | { why: "remote" }
-  | { why: "commit" }
-  | { why: "shared"; with: string };
-
-/**
- * The card's next git step, which Rust works out from git all the time [D1015, D1045]. Each carries the facts its
- * words are written from. `base` is what the session lands into.
- */
-export type Step =
-  | { kind: "commit"; base: string; waiting: number; clean: boolean }
-  // `commit`: files the button commits first, then lands [D1203, D1207].
-  | { kind: "merge"; base: string; ready: number; moved: number; blocked: Blocked | null; commit?: number }
-  | { kind: "catchUp"; base: string; conflicts: string[]; commit?: number }
-  // No time when it landed outside Brigadier.
-  | { kind: "landed"; base: string; atMs: number | null }
-  // A folder's: VS Code's own [D1045].
-  | { kind: "folderCommit"; branch: string; behind: number; ahead: number }
-  | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number; commit?: number }
-  | { kind: "publish"; branch: string; remote: string; commit?: number };
-
-/** A step that didn't go: Rust's reason, kept until the next try. */
-export type StepError = { kind: Step["kind"]; reason: string };

@@ -12,7 +12,7 @@ export type GitAct = "commit" | "push" | "createPr" | "sync" | "catchUp" | "merg
 /** Why a row can't run, as Rust says it. */
 export type GitWhy =
   | "clean" | "commitFirst" | "pushFirst" | "pushed" | "synced" | "unpublished" | "prOpen" | "inPrTab" | "moved"
-  | "upToDate" | "conflicts" | "landed" | "noBase" | "noCommits" | "remoteBase" | "baseBusy" | "shared";
+  | "upToDate" | "conflicts" | "landed" | "noBase" | "noCommits" | "remoteBase" | "baseBusy" | "shared" | "noRemote" | "behind" | "noHost";
 /**
  * Rust's step for the card's control (2.48): the next step, null when there's nothing to do (a grey Commit, D1287);
  * each row's reason when it can't run; and the facts the words need. `resolve`: catching up or syncing would conflict,
@@ -94,6 +94,12 @@ export function whyWords(why: GitWhy, step: GitStep): string {
       return `Can't merge into ${base} yet`;
     case "shared":
       return `Landing stays with ${step.sharedWith ?? "the other session"}`;
+    case "noRemote":
+      return "No remote to push to";
+    case "behind":
+      return "Sync first";
+    case "noHost":
+      return "No host to open a PR on";
   }
 }
 
@@ -111,7 +117,7 @@ export function GitControl({ step, off, running, onRun }: { step: GitStep; off: 
   const box = "h-control-xs text-xs svg:size-icon-xs";
   const main = (
     <Button size={null} variant="secondary" disabled={why !== null || running !== null} onClick={() => onRun(next)} className={cx("inline-flex min-w-0 items-center justify-center gap-1 rounded-s-capsule px-2.5 font-medium whitespace-nowrap", box)}>
-      {running ? <Spinner /> : icon}
+      {running ? <Spinner className="animate-spin motion-reduce:animate-none" /> : icon}
       <span>{label}</span>
     </Button>
   );
