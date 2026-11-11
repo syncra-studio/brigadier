@@ -6,7 +6,7 @@ import type { GitAct, GitStep } from "../control";
 import { useDaemon } from "../../daemon";
 import { commitFiles, gitMove, landBranch, refreshStep, type Target, useGit } from "../git";
 import { gitDone, gitFailed } from "../notice";
-import { useCreatePr } from "./create-pr";
+import { read as readPr, useCreatePr } from "./create-pr";
 import type { SourceData } from "./data";
 
 /** The control's act under way, by checkout: it outlives the view, and ends once the step it led to shows [D30, D1143]. */
@@ -77,6 +77,8 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
       if (error) return failed(target, said, error);
       gitDone(target);
       showToast(ok, { tone: "success" });
+      // A push may have published the branch: its PRs are read now, which the watch then follows [D1047].
+      if (act === "push" || act === "sync") readPr(session);
     };
     const base = step.base ?? "main";
     const branch = data.source?.branch ?? step.branch ?? "the branch";
@@ -86,8 +88,11 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
         const sent = commitFiles(true, "", (reply) => {
           if (reply.ok) {
             gitDone(target);
-            showToast(committed(reply.message), { tone: "success" });
-            return refreshStep(() => setRunning(key, null));
+            // The toast with the step it led to, not before it [D1309].
+            return refreshStep(() => {
+              setRunning(key, null);
+              showToast(committed(reply.message), { tone: "success" });
+            });
           }
           setRunning(key, null);
           if (reply.writer) gitFailed(target, "Couldn't write a commit message.", "", true);

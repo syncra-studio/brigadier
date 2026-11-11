@@ -12,7 +12,7 @@ export type GitAct = "commit" | "push" | "createPr" | "sync" | "catchUp" | "merg
 /** Why a row can't run, as Rust says it. */
 export type GitWhy =
   | "clean" | "commitFirst" | "pushFirst" | "pushed" | "synced" | "unpublished" | "prOpen" | "inPrTab" | "moved"
-  | "upToDate" | "conflicts" | "landed" | "noBase" | "noCommits" | "remoteBase" | "baseBusy" | "shared" | "noRemote" | "behind" | "noHost";
+  | "upToDate" | "conflicts" | "landed" | "prMerged" | "noBase" | "noCommits" | "remoteBase" | "baseBusy" | "shared" | "noRemote" | "behind" | "noHost";
 /**
  * Rust's step for the card's control (2.48): the next step, null when there's nothing to do (a grey Commit, D1287);
  * each row's reason when it can't run; and the facts the words need. `resolve`: catching up or syncing would conflict,
@@ -84,6 +84,8 @@ export function whyWords(why: GitWhy, step: GitStep): string {
       return "It would conflict: resolve with the agent";
     case "landed":
       return `Already in ${base}`;
+    case "prMerged":
+      return "Its PR is merged · nothing new";
     case "noBase":
       return "No branch to land into here";
     case "noCommits":

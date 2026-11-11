@@ -171,6 +171,14 @@ fn control(
                     why(row, "shared");
                 }
             }
+            // Its PR merged on the host with nothing new since: there's no PR to make [D1018].
+            let kept = id.map_or(Value::Null, |id| host::kept(&crate::session_dir(data, id)));
+            if kept["branch"] == branch
+                && (kept["prs"].as_array().into_iter().flatten())
+                    .any(|p| p["state"] == "merged" && p["head"].as_str() == head)
+            {
+                why("createPr", "prMerged");
+            }
             if pr.is_some() {
                 why("createPr", "prOpen");
                 why("merge", "inPrTab");

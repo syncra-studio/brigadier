@@ -33,6 +33,8 @@ const CONTROL: [string, SourceData][] = [
   ["main moved: Catch up with main; Push, PR and Merge off", { source: LOCAL, step: STEPS.moved }],
   ["Catch up would conflict: Resolve with agent, merging main", { source: LOCAL, step: STEPS.catchUpConflicts }],
   ["No remote: Merge into main from the menu", { source: { ...LOCAL, remote: null }, step: STEPS.noHost }],
+  ["Its PR merged on the host, nothing new: no Create PR", { source: PUSHED, step: STEPS.prMerged, prs: [PRS[1]!] }],
+  ["Its PR conflicts with main: the row says Conflict", { source: PUSHED, step: STEPS.prOpen, prs: [{ ...PRS[0]!, health: "conflicts", failed: 0 }] }],
   ["Merged on this machine", { source: { ...PUSHED, sinceBase: [] }, step: STEPS.landed }],
   ["The agent works: off, waiting for the turn", { source: { ...CHANGES, ahead: 0, upstream: null }, step: STEPS.changes, agentWorking: true }],
   ["Your own folder: nothing to land into", { source: { ...CLEAN, checkout: "folder", branch: "main", upstream: "origin/main", ahead: 2 }, step: STEPS.folder }],

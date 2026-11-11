@@ -73,6 +73,7 @@ type Git = {
 
 let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let stepAsk = 0;
+const waiting: (() => void)[] = [];
 let re = 0;
 let n = 0;
 let counting = false;
@@ -165,6 +166,7 @@ export function restoreCheckout(): void {
 export function refreshStep(then?: () => void): void {
   const target = git.target;
   if (!target) return then?.();
+  if (then) waiting.push(then);
   const mine = ++stepAsk;
   ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
     // Only the newest answer counts, but with none yet any answer does, so a checkout changing faster than its step
@@ -179,7 +181,9 @@ export function refreshStep(then?: () => void): void {
       // A run that ended without changing a file still changes the brief [D1199].
       if (ran !== undefined && reply.step.ran !== ran) count();
     }
-    then?.();
+    // Each `then` waits for the answer that shows: a newer ask's, when one went out meanwhile, so a move's toast never
+    // shows before the step it led to.
+    if (counts || mine === stepAsk) for (const each of waiting.splice(0)) each();
   });
 }
 
@@ -201,18 +205,21 @@ export function gitMove(args: string[], done: (error: string | null) => void): v
 /** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]. */
 export const landBranch = (at: StepAt | null, done: (error: string | null) => void) => (at ? gitMove(["land", at.head, at.base ?? "-"], done) : done("Nothing to merge yet."));
 
-function watch(target: Target): void {
+function watch(target: Target, tries = 0): void {
   n = 0;
-  re = ask({ op: "git", ...target }, (reply) => {
+  const mine = (re = ask({ op: "git", ...target }, (reply) => {
     if (git.target !== target) return;
     if (!reply.ok) {
       readTruth();
+      // A checkout never read may still be in the making (a fork's worktree): it's asked again for a few seconds before
+      // that's an error, so its first read needs no Try again. A gone one shows Gone from its truth meanwhile.
+      if (reply.error !== "disconnected" && !git.head && tries < 10) return void setTimeout(() => re === mine && git.target === target && watch(target, tries + 1), 1000);
       return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
     }
     n = reply.n;
     set({ head: reply.git.head, files: new Map(reply.git.files.map((each: Entry) => [each.path, each])), readAtMs: Date.now() });
     landed();
-  });
+  }));
 }
 
 setGitHandler((frame) => {
@@ -256,7 +263,8 @@ export function useGitWatch(owner: string | null): void {
   useEffect(() => void (daemon && warm(recent.split(" ").filter(Boolean))), [daemon, recent]);
   const working = isWorking(row);
   // A turn's start or end moves the step even when no file changed [D1208].
-  useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
+  // So does a PR read: one made or merged elsewhere changes Create PR [D1018].
+  useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working, JSON.stringify(row?.prs?.prs)]);
   useEffect(() => {
     // On focus the step is read again too [D1143].
     const refresh = () => {

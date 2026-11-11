@@ -66,6 +66,7 @@ export const STEPS = {
   moved: step({ next: "catchUp", moved: 3, off: { commit: "clean", sync: "unpublished", push: "moved", createPr: "moved", merge: "moved" } }),
   catchUpConflicts: step({ next: "resolve", moved: 3, resolve: { op: "merge", ref: "main", files: ["src/upload/retry.ts", "src/upload/client.ts"] }, off: { commit: "clean", sync: "unpublished", catchUp: "conflicts", push: "moved", createPr: "moved", merge: "moved" } }),
   noHost: step({ off: { commit: "clean", sync: "unpublished", push: "noRemote", createPr: "pushFirst", catchUp: "upToDate" } }),
+  prMerged: step({ off: { ...SETTLED, push: "pushed", createPr: "prMerged" } }),
   landed: step({ landedAtMs: NOW - 5 * MIN, off: { ...SETTLED, push: "pushed", createPr: "landed", merge: "landed" } }),
   shared: step({ next: "commit", files: 2, sharedWith: "Fix the login form", off: { sync: "unpublished", push: "commitFirst", createPr: "shared", merge: "shared", catchUp: "commitFirst" } }),
   folder: step({ next: "push", base: null, branch: "main", ahead: 2, off: { commit: "clean", sync: "synced", createPr: "noBase", catchUp: "noBase", merge: "noBase" } }),

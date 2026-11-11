@@ -249,7 +249,8 @@ export function useCreatePr(session: string | null) {
   const onPick = (pick: ActionPick) => {
     if (!session) return;
     if (pick === "createPr") {
-      put(session, { open: true, error: op.busy ? op.error : null });
+      // Read again as it opens: an earlier read's failure (the checkout not made yet) isn't shown over this one.
+      put(session, { open: true, error: op.busy ? op.error : null, ...(connected && { readError: null }) });
       if (connected) read(session);
       if (connected && op.text === null && !op.busy) draft(session);
     } else if (pick === "pushBranch") push(session, false);

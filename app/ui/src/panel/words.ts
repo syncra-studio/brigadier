@@ -29,7 +29,7 @@ export function prWords(pr: Pr): { word: string; tone: Tone } {
     case "failed":
       return { word: pr.failed ? `${plural(pr.failed, "check")} failed` : "Checks failed", tone: "bad" };
     case "conflicts":
-      return { word: "Conflicts", tone: "warn" };
+      return { word: "Conflict", tone: "warn" };
     case "changes":
       return { word: "Changes asked", tone: "warn" };
     case "running":

@@ -71,7 +71,11 @@ pub fn base_of(data: &Path, target: &Target) -> Option<String> {
 pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
     let folder = folder(data, target)?;
     if !folder.is_dir() {
-        return Err(io::ErrorKind::NotFound.into());
+        // Its kind is what callers read; the words are what a person sees, not "entity not found".
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "This checkout's folder isn't there.",
+        ));
     }
     let never = AtomicBool::new(false);
     let out = read(
