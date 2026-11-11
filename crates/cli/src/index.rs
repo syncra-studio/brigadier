@@ -59,6 +59,9 @@ struct Marks {
     lifecycle: Value,
     /// The follow-up queue (`queue.json`), null when empty.
     queue: Value,
+    /// Its PRs as the last read kept them (`prs.json`), and the sidebar chip they make [D1018].
+    prs: Value,
+    pr: Value,
 }
 
 impl Marks {
@@ -66,6 +69,7 @@ impl Marks {
         let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
         let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
         let (archived, lifecycle) = core::session::lifecycle(dir);
+        let prs = core::host::kept(dir);
         Marks {
             at,
             title: text("title").filter(|t| !t.is_empty()),
@@ -74,6 +78,8 @@ impl Marks {
             archived,
             lifecycle,
             queue: crate::queue::row(dir),
+            pr: core::host::chip(dir, &prs),
+            prs,
         }
     }
 }
@@ -272,7 +278,7 @@ impl Index {
                              "project": project, "model": run.as_ref().and_then(|s| s.model.as_ref()),
                              "archived": e.marks.archived, "lifecycle": e.marks.lifecycle,
                              "effort": run.as_ref().and_then(|s| s.effort.as_ref()), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
-                             "queue": e.marks.queue, "steer": steer,
+                             "queue": e.marks.queue, "steer": steer, "prs": e.marks.prs, "pr": e.marks.pr,
                              // A turn whose host is gone has nothing left to stop or queue behind [D60].
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,

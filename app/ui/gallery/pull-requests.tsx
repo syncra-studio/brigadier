@@ -132,6 +132,7 @@ function Tab({ pr, view, ...rest }: { pr: PullRequest | undefined; view?: PrView
 const sessionRow = (id: string, title: string, pr: PrChipState | null): SessionRow => ({ id, title, state: "idle", mark: null, resets: null, sent: 0, finished: 0, project: "p1", pr });
 const CHIPS: [string, PrChipState][] = [
   ["Retry failed uploads", { chip: "checks_failed", prs: [{ number: 12, mark: "checks_failed" }] }],
+  ["Rebase the importer", { chip: "conflict", prs: [{ number: 11, mark: "conflict" }] }],
   ["Fix the login form", { chip: "changes_asked", prs: [{ number: 9, mark: "changes_asked" }] }],
   ["Add dark mode", { chip: "ready", prs: [{ number: 7, mark: "ready" }] }],
   ["Upload progress in tray", { chip: "merged", prs: [{ number: 5, mark: "merged" }] }],

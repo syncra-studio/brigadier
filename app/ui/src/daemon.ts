@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import type { KeptPrs } from "./panel/types";
 import type { Mark } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
@@ -33,6 +34,8 @@ export type Row = {
   works?: boolean;
   /** The session it was forked from, which its row sits under [D48]. */
   forkOf?: string | null;
+  /** Its PRs as Rust's watch keeps them, null before any read [D1009]. */
+  prs?: KeptPrs | null;
 };
 
 export type View = {

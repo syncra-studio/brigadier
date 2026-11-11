@@ -9,6 +9,7 @@ use crate::{load, projects};
 
 mod prs;
 mod view;
+pub use prs::{chip, kept, opened};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io;
@@ -199,6 +200,8 @@ pub struct Pr {
     /// The project is trusted, so its own git hooks run on a push [D166, D211].
     trusted: bool,
     record: Option<std::path::PathBuf>,
+    /// The session's own folder, where its PRs are kept (`prs.json`).
+    dir: std::path::PathBuf,
 }
 
 /// The session's PR facts, from Rust's records and git, never from the client.
@@ -239,6 +242,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         repo,
         trusted,
         record: crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
+        dir: crate::session_dir(data, id),
     })
 }
 

@@ -24,6 +24,7 @@ import { FeedbackDialog } from "./feedback/dialog";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
+import { ChecksFailedRows, failing } from "./landing/live";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { RewindProvider } from "./session/rewind";
@@ -207,13 +208,14 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || sides) && (
+                      (line || sending || starting || sides || failing(row).length > 0) && (
                         <>
                           <StartingBubble id={id} />
                           <StartingLine id={id} />
                           {line}
                           <SentBubbles id={id} />
                           <PendingSideLines source={id} />
+                          <ChecksFailedRows owner={id} row={row} />
                         </>
                       )
                     }

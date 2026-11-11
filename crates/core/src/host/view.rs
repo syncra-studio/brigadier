@@ -42,7 +42,7 @@ impl Pr {
         let api = |path: String| move || paged(gh, &format!("repos/{}/{path}", repo.path));
         let (known, reviews, issue, summaries, timeline, styles) = std::thread::scope(|s| {
             let known = s.spawn(|| {
-                let known = super::prs::checks(gh, repo, &pr)?;
+                let known = super::prs::checks(gh, repo, &pr).ok()?;
                 // Each failed check's log tail is its own call, so these go at once too.
                 Some(std::thread::scope(|s| {
                     let each: Vec<_> = (known.iter())

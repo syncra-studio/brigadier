@@ -19,6 +19,7 @@ const CARDS: [string, SourceData][] = [
   ["Loading", { source: null, step: null }],
   ["Couldn't read", { source: null, step: null, error: "git exited with 128" }],
   ["Disconnected: Offline · 14:32, read-only", { source: STAGED, step: READY, prs: PRS, offline: true, readAtMs: NOW - 240_000 }],
+  ["The watch couldn't check: the last PRs stay, with their age and why", { source: PUSHED, step: STEPS.prOpen, kept: { okAt: NOW - 14 * 60_000, error: "error connecting to api.github.com", prs: PRS } }],
 ];
 
 /** The control's states, each from Rust's step: the label is the next step, the arrow's menu each row's reason (2.48) [D1285, D1286, D1287]. */

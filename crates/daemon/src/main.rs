@@ -57,6 +57,7 @@ mod awake;
 mod git;
 mod install;
 mod ops;
+mod prs;
 mod store;
 mod switch;
 mod term;
@@ -114,6 +115,7 @@ fn main() -> io::Result<()> {
     let listener = wire::bind(&data.join("daemon.sock"))?;
     let state = Shared::default();
     let store = Arc::new(store::Store::default());
+    prs::watch(data.clone(), state.clone());
     {
         let (state, data, store) = (state.clone(), data.clone(), store.clone());
         thread::spawn(move || {

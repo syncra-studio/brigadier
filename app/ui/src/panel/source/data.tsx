@@ -2,7 +2,7 @@ import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, StepAt, Truth } from "../git";
 import type { GitStep } from "../control";
-import type { Branch, Pr, SourceState } from "../types";
+import type { Branch, KeptPrs, Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
 
 /** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
@@ -43,6 +43,8 @@ export type SourceData = {
   agentPaths?: string[] | null;
   /** The branch's pull requests (2.13); none without a host [D1030]. */
   prs?: Pr[];
+  /** The watch's last read, kept: a gallery's stand-in for the session row's [D1009]. */
+  kept?: KeptPrs;
   /** A sync or publish is under way; the name a rename or switch is moving to, until the watch reads it [D30]. */
   syncing?: boolean;
   naming?: string | null;

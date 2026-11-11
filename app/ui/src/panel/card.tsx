@@ -11,6 +11,7 @@ import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
 import { Counts, Line, Note, PrLine } from "./source/rows";
 import { useSourceStep } from "./source/step";
+import { ago } from "../landing/pr-words";
 import { plural } from "./words";
 import { useBranchPicker } from "./branch-picker";
 
@@ -161,6 +162,10 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
             {prs.map((pr) => (
               <PrLine key={pr.number} pr={pr} onClick={() => onPr?.(pr.number)} />
             ))}
+            {/* A watch read that failed: the last PRs stay above, with their age and why [D1009]. */}
+            {control.kept?.error && (
+              <Note warn text={["Couldn't check", control.kept.okAt && ago(control.kept.okAt, nowMs), control.kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />
+            )}
           </div>
         </CardSection>
       )}

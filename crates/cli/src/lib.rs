@@ -239,6 +239,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map_err(|_| io::Error::other(format!("bad time {at:?}")))?;
             core::load(data, id)?;
             let dir = core::session_dir(data, id);
+            core::host::opened(&dir)?;
             let old: u64 = fs::read_to_string(dir.join("seen"))
                 .ok()
                 .and_then(|s| s.trim().parse().ok())

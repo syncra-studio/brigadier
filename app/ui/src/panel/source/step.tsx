@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { showToast } from "../../components/toast";
 import { addChip } from "../chips";
 import type { GitAct, GitStep } from "../control";
+import { useDaemon } from "../../daemon";
 import { commitFiles, gitMove, landBranch, refreshStep, type Target, useGit } from "../git";
 import { gitDone, gitFailed } from "../notice";
 import { useCreatePr } from "./create-pr";
@@ -55,6 +56,10 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
   const key = keyOf(target);
   const now = useSyncExternalStore(subscribe, () => running.get(key) ?? null);
   const pr = useCreatePr(session);
+  // The watch's kept PRs [D1009], with a PR just made shown at once until a read keeps it [D30].
+  const rows = useDaemon().rows;
+  const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
+  const made = pr.prs.filter((each) => !kept?.prs.some((known) => known.number === each.number));
   const step = data.step;
   const off = data.offline ? "Brigadier isn't connected" : data.error ? "Git can't be read right now" : data.agentWorking ? "Waits for the turn to finish" : null;
 
@@ -103,5 +108,5 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
     }
   };
 
-  return { prs: data.prs ?? pr.prs, step, off, running: now, run, dialogs: pr.dialog };
+  return { prs: data.prs ?? (kept ? [...kept.prs, ...made] : pr.prs), kept, step, off, running: now, run, dialogs: pr.dialog };
 }

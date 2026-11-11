@@ -42,4 +42,13 @@ export type Pr = {
   health: "failed" | "conflicts" | "changes" | "running" | "ready" | "cancelled" | "unknown";
   /** How many checks failed; null when the host's read couldn't say. */
   failed: number | null;
+  url?: string;
+  /** The failed checks' names, as the thread's row says them; null when the host's read couldn't say. */
+  failedChecks?: string[] | null;
 };
+
+/**
+ * A session's PRs as Rust's watch keeps them (`prs.json`, proposed) [D1009]: when the last whole read answered (ms),
+ * why the last read didn't (null when it did), and each PR's last known facts.
+ */
+export type KeptPrs = { okAt: number | null; error: string | null; prs: Pr[] };
