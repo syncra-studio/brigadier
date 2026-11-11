@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Folders, Spinner } from "../icons";
 import { FileIcon } from "../icons/file-types";
@@ -37,6 +37,9 @@ export type FileProps = {
   /** None where a comment couldn't reach the agent: no line picking then. */
   onComment?: (comment: DiffComment) => void;
   onRemoveComment: (id: string) => void;
+  /** The comment being written on this file, kept through a restart (D1195), and where its changes go. */
+  draft?: { range: LineRange; text: string } | null;
+  onDraft?: (draft: { range: LineRange; text: string } | null) => void;
 };
 
 /** A changed file's "Open in" menu (old OpenInMenu): a file tab, its default app, or Finder. */
@@ -103,10 +106,18 @@ const muted = (text: ReactNode) => <p className="px-3 py-2 text-sm text-muted-fo
 /** What sits under a line: a hunk's bar, a waiting comment, or the box being written. */
 type Note = { kind: "hunk"; hunk: ReviewHunk } | { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange };
 
-function FileBody({ file, contents, look, actions, connected, states, onAction, onRetry, comments, onComment, onRemoveComment }: FileProps) {
-  const [draft, setDraft] = useState<LineRange | null>(null);
+function FileBody({ file, contents, look, actions, connected, states, onAction, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft }: FileProps) {
+  const [draft, setRange] = useState<LineRange | null>(kept?.range ?? null);
+  const setDraft = (range: LineRange | null) => {
+    setRange(range);
+    onDraft?.(range && { range, text: "" });
+  };
+  // Kept from before a restart, it opens again once it arrives.
+  useEffect(() => {
+    if (kept && !draft) setRange(kept.range);
+  }, [kept?.range.start, kept?.range.end]);
   // A pick across both sides keeps its end's line: a comment's numbers are one side's.
-  const pick = useCallback((range: LineRange) => setDraft(range.endSide && range.endSide !== range.side ? { start: range.end, end: range.end, side: range.endSide } : range), []);
+  const pick = useCallback((range: LineRange) => setDraft(range.endSide && range.endSide !== range.side ? { start: range.end, end: range.end, side: range.endSide } : range), [onDraft]);
   const sides = contents && "hunks" in contents ? contents : null;
   const notes = useMemo(() => {
     if (!sides) return [];
@@ -155,6 +166,8 @@ function FileBody({ file, contents, look, actions, connected, states, onAction, 
       <CommentBox
         start={Math.min(metadata.range.start, metadata.range.end)}
         end={Math.max(metadata.range.start, metadata.range.end)}
+        initial={kept && kept.range.start === metadata.range.start && kept.range.end === metadata.range.end ? kept.text : ""}
+        onText={(text) => onDraft?.({ range: metadata.range, text })}
         onCancel={() => setDraft(null)}
         onSubmit={(text) => {
           const side = metadata.range.side ?? "additions";

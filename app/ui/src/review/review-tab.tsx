@@ -10,6 +10,7 @@ import { EmptyState } from "../components/empty-state";
 import { Skeleton } from "../components/skeleton";
 import { useKept } from "../thread/kept";
 import { BriefStrip, noTurnWords } from "./brief";
+import type { LineRange } from "./diff-view";
 import { FileSection, type OpenIn } from "./file-section";
 import { type Asking, actionable, Counts, RevertConfirm } from "./hunks";
 import type { DiffComment, FileContents, HunkAction, RequestState, Review, ReviewFile, ReviewHunk, ReviewRequest, ReviewScope } from "./types";
@@ -45,6 +46,9 @@ export type ReviewTabProps = {
   /** None where a comment couldn't reach the agent: no line picking then. */
   onComment?: (comment: DiffComment) => void;
   onRemoveComment: (id: string) => void;
+  /** The comment being written, kept through a restart (D1195): its file, lines and words. */
+  draft?: { path: string; range: LineRange; text: string } | null;
+  onDraft?: (draft: { path: string; range: LineRange; text: string } | null) => void;
   /** The file it was opened on: shown open whatever else waits behind the one click. */
   target?: string;
   /** The one click between the brief and the diff (D1188): a "Show diff" row, or the file list, each file's name
@@ -78,7 +82,8 @@ export function ReviewTab(props: ReviewTabProps) {
   }, [target]);
   const [asking, setAsking] = useState<Asking | null>(null);
   const files = review?.files ?? [];
-  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path));
+  // The file a comment is being written on stays open, so its box comes back after a restart.
+  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path) && props.draft?.path !== file.path);
   const allCollapsed = files.length > 0 && files.every(isCollapsed);
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
@@ -153,6 +158,7 @@ export function ReviewTab(props: ReviewTabProps) {
             below={
               below === "row" &&
               !shown &&
+              !props.draft &&
               review.files.length > 0 && (
                 <Button size="xs" variant="soft" className="mt-1 self-start" onClick={() => setShown(true)}>
                   Show diff
@@ -167,7 +173,7 @@ export function ReviewTab(props: ReviewTabProps) {
           <EmptyState variant="centered" title={noTurnWords(review.none)} />
         ) : review.files.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No changes</p>
-        ) : below === "row" && !shown ? null : (
+        ) : below === "row" && !shown && !props.draft ? null : (
           review.files.map((file) => (
             <FileSection
               key={file.path}
@@ -185,6 +191,8 @@ export function ReviewTab(props: ReviewTabProps) {
               comments={props.comments.filter((comment) => comment.path === file.path)}
               onComment={props.onComment}
               onRemoveComment={props.onRemoveComment}
+              draft={props.draft?.path === file.path ? props.draft : null}
+              onDraft={props.onDraft && ((draft) => props.onDraft?.(draft && { path: file.path, ...draft }))}
             />
           ))
         )}

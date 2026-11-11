@@ -2,6 +2,7 @@
 //! app's one way to every host. Each command answers one JSON value.
 
 mod accounts;
+mod chips;
 mod commit;
 mod control;
 mod first;
@@ -38,6 +39,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
+       brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F]
@@ -45,7 +47,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier git <id> | git --project P [--watch]
-       brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
+       brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | stage|unstage|discard <scope> <path>… | hunk stage|unstage|revert <scope> <path> <from|-> <hunk> | file <path>]
        brigadier source <id> history | source <id> commit <sha> [<path> [<from>]]
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since | search <query-json> | replace <query-json> <replacement> <files-json>
@@ -300,6 +302,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),
         "tabs" => tabs::run(data, args),
+        "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;

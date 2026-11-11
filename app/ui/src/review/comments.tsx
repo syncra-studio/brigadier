@@ -18,8 +18,23 @@ const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 export const lineWords = (start: number, end: number) => (start === end ? `line ${start}` : `lines ${start}–${end}`);
 
 /** The box under the picked lines: Comment (⌘⏎) makes it a chip, Cancel (Esc) drops it. */
-export function CommentBox({ start, end, onCancel, onSubmit }: { start: number; end: number; onCancel: () => void; onSubmit: (text: string) => void }) {
-  const [text, setText] = useState("");
+export function CommentBox({
+  start,
+  end,
+  initial = "",
+  onText,
+  onCancel,
+  onSubmit,
+}: {
+  start: number;
+  end: number;
+  /** Its words as kept from before a restart (D1195). */
+  initial?: string;
+  onText?: (text: string) => void;
+  onCancel: () => void;
+  onSubmit: (text: string) => void;
+}) {
+  const [text, setText] = useState(initial);
   const submit = () => text.trim() && onSubmit(text.trim());
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -36,7 +51,10 @@ export function CommentBox({ start, end, onCancel, onSubmit }: { start: number; 
         rows={2}
         value={text}
         aria-label={`Comment on ${lineWords(start, end)}`}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setText(event.target.value);
+          onText?.(event.target.value);
+        }}
         onKeyDown={onKeyDown}
         className="min-h-14 resize-none rounded-control bg-fill px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:focus-ring"
       />

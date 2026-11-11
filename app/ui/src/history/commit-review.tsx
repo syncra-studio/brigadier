@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ask, useDaemon } from "../daemon";
-import { addChip, dropChips, useChips } from "../panel/chips";
+import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { ReviewTab } from "../review/review-tab";
 import type { FileContents, Review, ReviewFile } from "../review/types";
 import { openFile } from "../shell/tab-store";
@@ -21,6 +21,7 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
   const [loading, setLoading] = useState(false);
   // A comment waits as a chip above the session's composer [D1040].
   const chips = useChips(owner);
+  const kept = useCommentDraft(owner, sha);
   // Bumped by each read, so an older read's answers are dropped.
   const run = useRef(0);
 
@@ -75,6 +76,7 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
       comments={chips.filter((chip) => chip.on === sha).map((chip) => chip.comment)}
       onComment={(comment) => addChip(owner, { kind: "comment", id: comment.id, on: sha, comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
+      {...kept}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ask, useDaemon } from "../daemon";
-import { addChip, dropChips, useChips } from "../panel/chips";
+import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
 import { HOME, openFile } from "../shell/tab-store";
 import { ReviewTab } from "./review-tab";
@@ -32,6 +32,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
   const checkout = git.target;
   const key = checkout && JSON.stringify(checkout);
   const chips = useChips(owner);
+  const kept = useCommentDraft(owner, "review");
 
   const setState = (id: string, state: RequestState | null) =>
     setStates((now) => {
@@ -130,6 +131,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
       target={target}
+      {...(owner === HOME ? {} : kept)}
       />
     </div>
   );
