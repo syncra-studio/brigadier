@@ -207,7 +207,12 @@ pub(super) fn write(
             };
             let base = core::share::base(data, &core::load(data, id)?)
                 .ok_or_else(|| io::Error::other("This session has no base."))?;
-            let (commits, patch) = commit::branch(checkout, &base, tree, &stop)?;
+            // The landing commits every change first, so the message covers those too [D1203].
+            let next = match tree {
+                None => commit::prepare(checkout, true, &stop).ok().map(|p| p.tree),
+                Some(tree) => Some(tree.to_string()),
+            };
+            let (commits, patch) = commit::branch(checkout, &base, next.as_deref(), &stop)?;
             match what {
                 "pr" => written(data, target, |asks| {
                     writer::pr_prompt(&patch, &commits, asks)
