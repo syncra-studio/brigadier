@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ask, useDaemon } from "../daemon";
 import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
-import { HOME, openFile } from "../shell/tab-store";
+import { HOME, openFile, setTabScope } from "../shell/tab-store";
 import { ReviewTab } from "./review-tab";
 import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, ReviewScope } from "./types";
 
@@ -14,11 +14,12 @@ import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, Rev
  * moves, which the watch doesn't see [D1035]. A comment waits as a chip above the composer and leaves the diff once
  * it's sent [D1040]. `target`: the file it opened on, scrolled to once it's there.
  */
-export function ReviewView({ owner, target }: { owner: string; target?: string }) {
+export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: string; target?: string; tab?: string; kept?: string }) {
   const git = useGit();
   const { daemon } = useDaemon();
   // Last turn first: what the agent just did (D1188). Home's Review is a project's, with no turns.
-  const [scope, setScope] = useState<ReviewScope>(owner === HOME ? "uncommitted" : "last");
+  // The tab's record keeps the one picked last [D1187].
+  const [scope, setScope] = useState<ReviewScope>((keptScope as ReviewScope | undefined) ?? (owner === HOME ? "uncommitted" : "last"));
   const [review, setReview] = useState<Review | null>(null);
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       onScope={(next) => {
         // Another scope's diff isn't shown under this one's loading or error.
         setScope(next);
+        if (tab) setTabScope(owner, tab, next);
         setReview(null);
         setContents(new Map());
         setError(null);
