@@ -24,7 +24,10 @@ const TEMP = /(?:\/private)?\/(?:var\/folders|tmp)\/\S+/g;
 export function gitFailed(target: Target | null, said: string, details = "", writer = false): void {
   said = said.replace(TEMP, "…").trim();
   details = details.replace(TEMP, "…").trim();
-  if (!target || !("session" in target)) return void showToast(details ? `${said}\n\n${details}` : said, { tone: "error" });
+  if (!target || !("session" in target)) return void showToast(said, {
+    tone: "error",
+    actions: details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : [],
+  });
   notices.set(new Map(notices.get()).set(target.session, { id: ++last, text: said, details, writer }));
 }
 
