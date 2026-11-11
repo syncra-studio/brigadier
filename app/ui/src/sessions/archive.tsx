@@ -1,9 +1,12 @@
 import { useEffect } from "react";
 
+import { ConfirmForm } from "../components/confirm-dialog";
+import { Dialog, DialogContent } from "../components/dialog";
+import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
 import { toastManager } from "../components/toast";
 import { Archive } from "../icons";
-import { store } from "../onboarding/api";
+import { errorText, run, store } from "../onboarding/api";
 import { archive, restore } from "../sidebar/actions";
 import type { SessionRow } from "../sidebar/words";
 
@@ -46,11 +49,34 @@ let typedSinceArchive = false;
 /** The open session and the way Home, kept by `useArchiveKeys`. */
 let view: { active: string | null; onHome: () => void } = { active: null, onHome: () => {} };
 
-/** Archives the rows; an open one goes Home. Undo (and ⌘Z while it shows) brings them back. */
+/**
+ * Rust's check before archiving [D1197]: whose agent is working, and per folder the batch frees, the ignored files
+ * it deletes for good (or why they couldn't be listed).
+ */
+export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[] };
+type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
+const asking = store<Asking | null>(null);
+
+/**
+ * Archives the rows; an open one goes Home. Rust checks the batch first: with nothing to say it goes at once, with
+ * Undo (and ⌘Z while it shows) [D198]; else the confirm says it first [D1197].
+ */
 export function archiveRows(rows: SessionRow[]) {
-  const { active, onHome } = view;
   if (rows.length === 0) return;
-  undoFocus = document.activeElement;
+  const focus = document.activeElement;
+  run(["archive", ...rows.map((row) => row.id), "--check"]).then(
+    (reply) => {
+      const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
+      if (check.running.length + check.lost.length === 0) archiveNow(rows, focus);
+      else asking.set({ rows, focus, check });
+    },
+    (cause) => asking.set({ rows, focus, error: errorText(cause) }),
+  );
+}
+
+function archiveNow(rows: SessionRow[], focus: Element | null) {
+  const { active, onHome } = view;
+  undoFocus = focus;
   typedSinceArchive = false;
   clearPicked();
   for (const row of rows) archive(row);
@@ -68,6 +94,66 @@ export function archiveRows(rows: SessionRow[]) {
     data: { actions: [{ label: "Undo", run: back }] },
     onClose: () => undo === back && (undo = null),
   });
+}
+
+const titleOf = (row: SessionRow | undefined) => `“${row?.title || "New session"}”`;
+export const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
+
+/** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
+export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
+  const one = rows.length === 1;
+  const byId = (id: string) => rows.find((row) => row.id === id);
+  const whose = (ids: string[]) => (one ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
+  return (
+    <ConfirmForm
+      title={one ? "Archive session?" : `Archive ${rows.length} sessions?`}
+      description={one ? `This archives ${titleOf(rows[0])}. Restore brings it back.` : "Restore brings each one back."}
+      confirm="Archive"
+      destructive={!!check?.lost.some((each) => each.files)}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      {(check?.running ?? []).map((id) => (
+        <p key={id} className="text-xs text-muted-foreground">
+          {one ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
+        </p>
+      ))}
+      {(check?.lost ?? []).map((each) =>
+        each.files ? (
+          <p key={each.ids.join()} className="text-xs break-words text-muted-foreground">
+            {whose(each.ids)}Its ignored files are deleted for good, and restore won't bring them back: <span className="text-foreground">{named(each.files)}</span>.
+          </p>
+        ) : (
+          <ErrorLine key={each.ids.join()} error={`${whose(each.ids)}Couldn't list its ignored files: ${each.error}`} />
+        ),
+      )}
+      <ErrorLine error={error && `Couldn't check what archiving loses: ${error}`} />
+    </ConfirmForm>
+  );
+}
+
+/** Where archive's confirm shows, mounted once by the sidebar. */
+export function ArchiveAsk() {
+  const now = asking.use();
+  const close = () => asking.set(null);
+  return (
+    <Dialog open={now !== null} onOpenChange={(next) => !next && close()}>
+      <DialogContent showCloseButton={false}>
+        {now && (
+          <ArchiveForm
+            rows={now.rows}
+            check={now.check}
+            error={now.error}
+            onConfirm={() => {
+              close();
+              archiveNow(now.rows, now.focus);
+            }}
+            onCancel={close}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** A field that types text keeps ⌘⌫ for itself. */

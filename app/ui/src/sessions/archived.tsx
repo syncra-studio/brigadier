@@ -18,7 +18,7 @@ import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
 import { useStored } from "../sidebar/sidebar";
 import type { SessionRow } from "../sidebar/words";
-import { hideDeleting } from "./archive";
+import { type ArchiveCheck, hideDeleting, named } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
@@ -104,8 +104,8 @@ export function ArchivedSection({
   );
 }
 
-/** `stays`: another session still works in its folder, which stays [D1080]. */
-type Check = { state: "checking" } | { state: "done"; branch: string | null; stays?: string | null } | { state: "failed"; error: string };
+/** `stays`: another session still works in its folder, which stays [D1080]. `running`, `lost`: as archive's [D1197]. */
+type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
 
 /**
  * Delete's confirm [D35, D181]: a branch with work that never landed is named, kept unless asked. Delete
@@ -121,7 +121,7 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
     let live = true;
     setCheck({ state: "checking" });
     run(["delete", row.id, "--check"]).then(
-      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null }),
+      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [] }),
       (cause) => live && setCheck({ state: "failed", error: errorText(cause) }),
     );
     return () => {
@@ -158,6 +158,17 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
           </Button>
         </div>
       )}
+      {check.state === "done" && (check.running?.length ?? 0) > 0 && <p className="text-xs text-muted-foreground">Its agent is working and will be stopped.</p>}
+      {check.state === "done" &&
+        check.lost?.map((each) =>
+          each.files ? (
+            <p key={each.ids.join()} className="text-xs break-words text-muted-foreground">
+              Its ignored files are deleted for good: <span className="text-foreground">{named(each.files)}</span>.
+            </p>
+          ) : (
+            <ErrorLine key={each.ids.join()} error={`Couldn't list its ignored files: ${each.error}`} />
+          ),
+        )}
       {check.state === "done" && check.stays && (
         <p className="text-xs text-muted-foreground">Its folder stays: {rows?.find((each) => each.id === check.stays)?.title ?? "another session"} still works there.</p>
       )}

@@ -11,6 +11,7 @@ import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Branch, Chats, ChevronRightAlt, Folder, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
+import { type ArchiveCheck, named } from "../sessions/archive";
 import { shortPath } from "./add-project";
 import { type Project, useProjects } from "./projects";
 
@@ -29,6 +30,8 @@ export type Preview = {
   merged: number;
   branches: { id: string; branch: string }[];
   removing?: boolean;
+  /** Per worktree it frees, the ignored files deleted for good, as archive's [D179, D1197]. */
+  lost?: ArchiveCheck["lost"];
 };
 type Look = { state: "looking" } | { state: "failed"; error: string } | { state: "ready"; preview: Preview };
 /** form; removing (its reply due); watching (no reply coming: the connection dropped, or another run holds it); removed with kept branches. */
@@ -170,6 +173,15 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
           </ul>
         )}
         {preview && preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
+        {preview?.lost?.map((each) =>
+          each.files ? (
+            <p key={each.ids.join()} className="text-xs break-words text-muted-foreground">
+              {each.ids.map((id) => `“${titleOf(id)}”`).join(", ")} loses its ignored files for good: <span className="text-foreground">{named(each.files)}</span>.
+            </p>
+          ) : (
+            <ErrorLine key={each.ids.join()} error={`${each.ids.map((id) => `“${titleOf(id)}”`).join(", ")}: its ignored files couldn't be listed: ${each.error}`} />
+          ),
+        )}
         {preview && preview.branches.length > 1 && <ManyBranches branches={preview.branches} titleOf={titleOf} drops={drops} onDrops={setDrops} />}
         {preview?.branches.length === 1 && preview.branches.map(({ id, branch }) => (
           <div key={id} className="flex flex-col gap-2.5">

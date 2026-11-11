@@ -14,9 +14,10 @@ export const RewindContext = createContext<{
 
 /**
  * Rust's answer: what a restore would put back and leave alone. No paths, no file choice [D481]. `sharer`: the files
- * stay because another session in this folder worked during these turns, or works now [D1078].
+ * stay because another session in this folder worked during these turns, or works now [D1078]. `nested`: the
+ * nested repositories among `leftOut`. `why`: Rust's reason only keep is offered, when it has one [D384].
  */
-export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean } };
+export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean }; why?: string };
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
 const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
@@ -24,6 +25,25 @@ const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
 
 function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs break-words text-muted-foreground">{children}</p>;
+}
+
+/** Why only the chat can go back, in one line (proposed words) [D384, D1192]. */
+const KEEP_ONLY: Record<string, string> = {
+  no_project: "Files stay: this session has no project folder.",
+  not_git: "Files stay: this folder isn't a git repository, so no snapshots are taken.",
+  missing: "Files stay: there's no snapshot of the files from this turn.",
+  unreadable: "Files stay: this turn's snapshot couldn't be read.",
+};
+
+/** What stays as it is: edited since, too big to keep, nested repositories. */
+function Stays({ hand, big, nested }: { hand: string[]; big: string[]; nested: string[] }) {
+  return (
+    <>
+      {hand.length > 0 && <Note>Left as you edited them: {named(hand)}.</Note>}
+      {big.length > 0 && <Note>Too big to go back: {named(big)}.</Note>}
+      {nested.length > 0 && <Note>Nested repositories stay as they are: {named(nested)}.</Note>}
+    </>
+  );
 }
 
 function Choice({ value, label, children }: { value: string; label: string; children: ReactNode }) {
@@ -44,8 +64,10 @@ function Choice({ value, label, children }: { value: string; label: string; chil
  */
 export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCancel }: FormProps) {
   const [choice, setChoice] = useState("keep");
-  const { paths, hand, leftOut, commits } = preview;
+  const { paths, hand, leftOut, nested, commits } = preview;
+  const big = leftOut.filter((path) => !nested.includes(path));
   const can = paths.length > 0;
+  const kept = hand.length + leftOut.length > 0;
   return (
     <ConfirmForm
       title="Rewind to this message?"
@@ -70,11 +92,26 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
             <Note>
               Undoes {files(paths.length)} the agent changed: {named(paths)}.
             </Note>
-            {hand.length > 0 && <Note>Left as you edited them: {named(hand)}.</Note>}
-            {leftOut.length > 0 && <Note>Too big to go back: {named(leftOut)}.</Note>}
+            <Stays hand={hand} big={big} nested={nested} />
+            {/* Snapshots keep no ignored files, so which ones changed can't be said [D1192]. */}
+            <Note>Ignored files (like .env) aren't in snapshots and stay as they are.</Note>
             {commits && <Note>Commits made since then stay.</Note>}
           </Choice>
         </RadioGroup>
+      )}
+      {!can && !preview.sharer && preview.error === undefined && (
+        <div className="flex flex-col gap-0.5">
+          {preview.why !== undefined ? (
+            <Note>{KEEP_ONLY[preview.why] ?? `Files stay: they can't be put back (${preview.why}).`}</Note>
+          ) : kept ? (
+            <>
+              <Note>Files stay: nothing the agent changed can go back.</Note>
+              <Stays hand={hand} big={big} nested={nested} />
+            </>
+          ) : (
+            <Note>Files stay: they're already as they were before this message.</Note>
+          )}
+        </div>
       )}
       {preview.sharer && (
         // Proposed words, shown to the owner on screen [D1078].

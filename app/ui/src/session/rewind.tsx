@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 
 import { Dialog, DialogContent } from "../components/dialog";
 import { RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
-import { showToast } from "../components/toast";
+import { showToast, toastManager } from "../components/toast";
 import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
 import { type ComposerRow, daemonRun, type Runner } from "./composer";
@@ -23,11 +23,11 @@ type Running = { cid: string; n: number | undefined; replied: boolean };
 const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
 
 function previewOf(reply: Record<string, any>): RewindPreview {
-  const none = { paths: [], hand: [], leftOut: [], commits: false };
+  const none = { paths: [], hand: [], leftOut: [], nested: [], commits: false };
   if (!reply.ok) return { ...none, error: why(reply) };
-  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], commits: reply.commits === true };
-  // Another session in the folder keeps the files [D1078].
-  return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : none;
+  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], nested: reply.nested ?? [], commits: reply.commits === true };
+  // Another session in the folder keeps the files [D1078]; else Rust's reason [D384].
+  return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : { ...none, why: String(reply.why) };
 }
 
 function said(reply: Record<string, any>, restore: boolean): string {
@@ -35,6 +35,21 @@ function said(reply: Record<string, any>, restore: boolean): string {
   if (!restore) return "Rewound · your files are as they were";
   const count = `${reply.restored} ${reply.restored === 1 ? "file" : "files"} undone`;
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
+}
+
+const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
+
+/** Undo restore, from the restore's toast, one deep [D1196]: shown at once, then what came back and what stayed. */
+function undoRestore(run: Runner, id: string, cid: string, op: string) {
+  const pending = showToast("Undoing restore…", { stays: true });
+  void run(["rewind", id, cid, "--op", op, "--undo"]).then((reply) => {
+    toastManager.close(pending);
+    if (!reply.ok) return showToast(`Couldn't undo the restore: ${why(reply)}`, { tone: "error" });
+    const kept: string[] = reply.kept ?? [];
+    const back = `Restore undone · ${files(reply.undone)} back`;
+    // Proposed words: what changed since the restore keeps its edit [D1192].
+    showToast(kept.length > 0 ? `${back}, ${kept.length} kept as edited since` : back, { tone: kept.length > 0 ? "neutral" : "success" });
+  });
 }
 
 /** The session's rewind [D384]: what its messages offer, the confirmation, and the rows dimmed until Rust's thread comes back. */
@@ -90,7 +105,9 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
       }
       setRunning((now) => now && { ...now, replied: true });
       putBack(id, text, true);
-      showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success" });
+      // Rewind removes the message itself, so Undo restore lives on its toast [D1192, D1196].
+      const actions = restore && reply.restored > 0 ? [{ label: "Undo restore", run: () => undoRestore(run, id, cid, op) }] : [];
+      showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });
     });
   };
   return (

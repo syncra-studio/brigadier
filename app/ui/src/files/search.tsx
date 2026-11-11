@@ -228,11 +228,11 @@ export function SearchPanel({
   );
 }
 
-/** Replace all's confirm, in the old words. */
+/** Replace all's confirm, in the old words, and that it can't be undone [D1003, D1194]. */
 export const replaceTitle = (matches: number, files: number) => `Replace ${plural(matches, "match", "matches")} in ${plural(files, "file")}?`;
 export const replaceDescription = (replace: string): ReactNode => (
   <>
-    {replace ? <>Each becomes “{replace}”.</> : "Each is deleted."} If a file changed since the search, none is replaced.
+    {replace ? <>Each becomes “{replace}”.</> : "Each is deleted."} If a file changed since the search, none is replaced. This can't be undone.
   </>
 );
 

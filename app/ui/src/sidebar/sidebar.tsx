@@ -14,7 +14,7 @@ import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { openFeedback } from "../feedback/dialog";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
-import { clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
+import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
 import { pin, rename, useShown } from "./actions";
@@ -294,6 +294,7 @@ export function AppSidebar({
           <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
         </div>
       </ViewMenu>
+      <ArchiveAsk />
       <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title) => renaming && rename(renaming, title)} />
     </SidebarPanel>

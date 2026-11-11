@@ -85,7 +85,7 @@ export function ProjectSettingsGallery() {
           </Held>
         </State>
       </Row>
-      <Row name="Remove project: looking · nothing made · what goes · branches to ask about · one working · partly failed · lost the connection · removed, branches kept">
+      <Row name="Remove project: looking · nothing made · what goes · branches to ask about · ignored files lost · one working · partly failed · lost the connection · removed, branches kept">
         <Frozen label="looking" frame={REMOVE}>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: { state: "looking" } }} />
         </Frozen>
@@ -97,6 +97,9 @@ export function ProjectSettingsGallery() {
         </Frozen>
         <Frozen label="branches to ask about" frame={REMOVE} tall>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready(BRANCHES) }} />
+        </Frozen>
+        <Frozen label="ignored files lost" frame={REMOVE}>
+          <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready({ ...PREVIEW, lost: [{ ids: ["s-1"], files: [".env", "notes/todo.md"] }] }) }} />
         </Frozen>
         <Frozen label="one working" frame={REMOVE}>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready({ ...PREVIEW, working: ["s-1"] }) }} />
