@@ -59,6 +59,6 @@ export function searchSettings(query: string): SettingsSearchResult[] {
   const matches = (text: string) => words.every((word) => text.toLowerCase().includes(word));
   return [
     ...SETTINGS_PAGES.filter((page) => matches([page.label, ...(page.formerly ?? [])].join(" "))).map((page) => ({ page, row: null })),
-    ...SETTINGS_PAGES.flatMap((page) => page.rows.filter((row) => matches(`${row.label} ${row.description ?? ""}`)).map((row) => ({ page, row }))),
+    ...SETTINGS_PAGES.flatMap((page) => page.rows.filter((row) => matches(`${row.label} ${row.description ?? ""} ${row.section ?? ""}`)).map((row) => ({ page, row }))),
   ];
 }

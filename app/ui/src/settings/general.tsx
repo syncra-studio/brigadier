@@ -15,14 +15,14 @@ import { SettingsPage, SettingsSection } from "./parts";
 
 /** The General page's rows, for the page and for Settings search (the old app's words). */
 export const GENERAL_ROWS = {
-  followUp: { label: "Follow-up behaviour", description: "What a message sent while an agent works does" },
-  notifyFinished: { label: "Notify when a session finishes", description: "A notification when a chat or session is done" },
-  needsYou: { label: "When something needs you", description: "Approvals and questions waiting for your answer" },
-  sound: { label: "Play a sound", description: "macOS's notification sound with each notification" },
-  keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open" },
-  lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake" },
-  version: { label: "Version", description: "The Brigadier you're running" },
-  build: { label: "Build", description: "The build this Brigadier was made as" },
+  followUp: { label: "Follow-up behaviour", description: "What a message sent while an agent works does", section: "Composer" },
+  notifyFinished: { label: "Notify when a session finishes", description: "A notification when a chat or session is done", section: "Notifications" },
+  needsYou: { label: "When something needs you", description: "Approvals and questions waiting for your answer", section: "Notifications" },
+  sound: { label: "Play a sound", description: "macOS's notification sound with each notification", section: "Notifications" },
+  keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open", section: "Power" },
+  lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake", section: "Power" },
+  version: { label: "Version", description: "The Brigadier you're running", section: "About" },
+  build: { label: "Build", description: "The build this Brigadier was made as", section: "About" },
 } as const;
 
 export const KEEP_AWAKE: readonly { value: Settings["awake"]; label: string; hint: string }[] = [
