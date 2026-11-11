@@ -43,11 +43,17 @@ export function AccountRows({
   const [open, setOpen] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
 
+  // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
+  const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
+  // Read again while a sign-in runs, and once more when it ends, so the login it made shows.
   useEffect(() => {
-    if (!open || !online) return;
+    if (!(open || ownSignIn) || !online) return;
     const timer = window.setInterval(() => void loadAccounts(), RECHECK_MS);
-    return () => clearInterval(timer);
-  }, [open, online]);
+    return () => {
+      clearInterval(timer);
+      void loadAccounts();
+    };
+  }, [open, ownSignIn, online]);
   const list = accounts?.accounts?.list;
   // A sign-in that ended well closes by itself.
   const signing = open !== null ? list?.find((account) => account.id === open) : undefined;
@@ -86,9 +92,6 @@ export function AccountRows({
   // One action ends the card [D2080]: the agent's own sign-in while nothing is signed in, then another account,
   // kept apart where the agent keeps them apart, else its own sign-in again.
   const adds = anySignedIn && Boolean(accounts?.accounts);
-  // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
-  const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
-
   return (
     <>
       {accounts === undefined && agent.path === undefined ? (
