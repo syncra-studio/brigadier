@@ -24,6 +24,8 @@ const drafts = new Map<string, CommentDraft | null>();
 const listeners = new Set<() => void>();
 // Chips removed or handed to a message while the app runs: a read from Rust doesn't bring them back.
 const gone = new Set<string>();
+// Of those, the ones removed by hand: a read that still finds one tells Rust again.
+const dropped = new Set<string>();
 // The connection each session's chips were last read on: a new one reads them again.
 const loaded = new Map<string, unknown>();
 // One change at a time per session, in order: the daemon runs each on its own thread.
@@ -47,9 +49,14 @@ function load(session: string): void {
   void tell(session, []).then((reply) => {
     if (!reply.ok) return;
     const now = chips.get(session) ?? NONE;
-    const kept = (reply.chips as Chip[]).filter((chip) => !gone.has(chip.id) && !now.some((each) => each.id === chip.id));
+    const theirs = reply.chips as Chip[];
+    const kept = theirs.filter((chip) => !gone.has(chip.id) && !now.some((each) => each.id === chip.id));
     if (!drafts.has(session)) drafts.set(session, reply.draft ?? null);
     set(session, [...kept, ...now]);
+    // What changed here while Rust was away reaches it now, by id.
+    for (const chip of now) if (!theirs.some((each) => each.id === chip.id)) void tell(session, ["add", JSON.stringify(chip)]);
+    const stale = theirs.filter((chip) => dropped.has(chip.id)).map((chip) => chip.id);
+    if (stale.length > 0) void tell(session, ["drop", ...stale]);
   });
 }
 
@@ -76,7 +83,10 @@ export const addChip = (session: string, chip: Chip) => {
 
 /** Takes chips away by hand. */
 export const dropChips = (session: string, ids: readonly string[]) => {
-  for (const id of ids) gone.add(id);
+  for (const id of ids) {
+    gone.add(id);
+    dropped.add(id);
+  }
   set(session, (chips.get(session) ?? NONE).filter((chip) => !ids.includes(chip.id)));
   void tell(session, ["drop", ...ids]);
 };
@@ -98,6 +108,7 @@ export const leaveChips = (session: string, sent: readonly Chip[]) => {
 
 /** Puts back chips a send couldn't take, before any added since. */
 export const restoreChips = (session: string, msg: string, back: readonly Chip[]) => {
+  if (back.length === 0) return;
   for (const chip of back) gone.delete(chip.id);
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
   void tell(session, ["back", msg]);

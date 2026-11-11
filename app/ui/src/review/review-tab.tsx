@@ -95,8 +95,8 @@ export function ReviewTab(props: ReviewTabProps) {
   // reconnect (D1036).
   useEffect(() => {
     if (loading || !connected) return;
-    for (const file of files) if (file.large && opened.has(file.path) && !folded.has(file.path) && !contents.has(file.path)) props.onLoad(file.path);
-  }, [review, contents, loading, connected, opened, folded]);
+    for (const file of files) if (file.large && !isCollapsed(file) && !contents.has(file.path)) props.onLoad(file.path);
+  }, [review, contents, loading, connected, opened, folded, props.draft?.path]);
   const act = (action: HunkAction, file: ReviewFile, hunk: ReviewHunk | null) => {
     const request = { action, path: file.path, hunk: hunk?.id ?? null };
     if (action === "revert") setAsking({ request, file, hunk });

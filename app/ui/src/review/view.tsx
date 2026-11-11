@@ -33,6 +33,8 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   const checkout = git.target;
   const key = checkout && JSON.stringify(checkout);
   const chips = useChips(owner);
+  // A turn's start and end change Last turn and the last run with no git change to say so.
+  const row = useDaemon().rows?.find((each) => each.id === owner);
   const kept = useCommentDraft(owner, "review");
 
   const setState = (id: string, state: RequestState | null) =>
@@ -72,7 +74,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       setContents((now) => new Map([...now].filter(([path]) => next.files.some((file) => file.path === path && !file.large))));
       for (const file of next.files) if (!file.large) load(file, at, next.turn);
     });
-  }, [key, daemon, scope, git.version, tick]);
+  }, [key, daemon, scope, git.version, tick, row?.sent, row?.finished]);
 
   // shortcut: Branch since base asks every few seconds, while the window shows, whether the base moved; a watch of
   // the base's ref would be instant.
