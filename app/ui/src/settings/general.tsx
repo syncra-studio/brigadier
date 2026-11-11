@@ -19,6 +19,7 @@ export const GENERAL_ROWS = {
   notifyFinished: { label: "Notify when a session finishes", description: "A notification when a chat or session is done", section: "Notifications" },
   needsYou: { label: "When something needs you", description: "Approvals and questions waiting for your answer", section: "Notifications" },
   sound: { label: "Play a sound", description: "macOS's notification sound with each notification", section: "Notifications" },
+  systemSettings: { label: "macOS notifications", description: "Allow, banners and Focus are set in System Settings", section: "Notifications" },
   keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open", section: "Power" },
   lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake", section: "Power" },
   version: { label: "Version", description: "The Brigadier you're running", section: "About" },
@@ -129,6 +130,14 @@ function NotificationsSection({ settings }: { settings: Settings }) {
         </SettingsRow>
         <SwitchRow dimmed={off} row={GENERAL_ROWS.needsYou} checked={settings.notify_needs_you} save={needs} onChange={(on) => setSetting("notify_needs_you", on)} />
         <SwitchRow dimmed={off} row={GENERAL_ROWS.sound} checked={settings.sound} save={sound} onChange={(on) => setSetting("sound", on)} />
+        {/* Always there but when the off line already holds the button: macOS doesn't tell an app it was turned off later [D2086]. */}
+        {settings.notices !== "blocked" && (
+          <SettingsRow label={GENERAL_ROWS.systemSettings.label} description={GENERAL_ROWS.systemSettings.description} error={status.error}>
+            <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
+              Notification settings…
+            </Button>
+          </SettingsRow>
+        )}
       </SettingsCard>
     </SettingsSection>
   );
