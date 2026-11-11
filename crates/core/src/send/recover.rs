@@ -117,6 +117,10 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 true => (format!("{old}.r{now}"), "user", "resent"),
                 false => (format!("rs{now}"), "system", "continued"),
             };
+            // With no agent alive and no conversation to resume, the line would start a new one without the request.
+            if !resend && child.is_none() && !f.resume.contains_key(backend.unwrap_or(&f.backend)) {
+                return json!({"ok": false, "error": "The agent stopped before its conversation began, so there's nothing to carry on. Send your message again."});
+            }
             let text = if resend {
                 last["text"].as_str().unwrap_or("")
             } else {
