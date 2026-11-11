@@ -171,11 +171,16 @@ fn control(
                     why(row, "shared");
                 }
             }
-            // Its PR merged on the host with nothing new since: there's no PR to make [D1018].
+            // Its PR into this base merged on the host with nothing new since: there's no PR to make
+            // [D1018]. A remote-tracking base lands into its name on the host, as `host::pr` reads it.
             let kept = id.map_or(Value::Null, |id| host::kept(&crate::session_dir(data, id)));
+            let on_host = (remote.as_deref())
+                .and_then(|r| s.base.strip_prefix(&format!("{r}/")))
+                .unwrap_or(&s.base);
             if kept["branch"] == branch
-                && (kept["prs"].as_array().into_iter().flatten())
-                    .any(|p| p["state"] == "merged" && p["head"].as_str() == head)
+                && (kept["prs"].as_array().into_iter().flatten()).any(|p| {
+                    p["state"] == "merged" && p["head"].as_str() == head && p["base"] == on_host
+                })
             {
                 why("createPr", "prMerged");
             }

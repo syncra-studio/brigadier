@@ -73,7 +73,8 @@ type Git = {
 
 let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let stepAsk = 0;
-const waiting: (() => void)[] = [];
+let shownAsk = 0;
+const waiting: { after: number; then: () => void }[] = [];
 let re = 0;
 let n = 0;
 let counting = false;
@@ -160,30 +161,34 @@ export function restoreCheckout(): void {
 
 /**
  * Asks Rust for the step again: after every read, each action and on focus, and every few seconds, since the base
- * moving or its checkout changing isn't this checkout's watch. Only the newest answer for this checkout counts.
- * `then`: once it's answered.
+ * moving or its checkout changing isn't this checkout's watch. An answer older than one already shown is dropped.
+ * `then`: once this ask's answer, or a newer one, has shown.
  */
 export function refreshStep(then?: () => void): void {
   const target = git.target;
   if (!target) return then?.();
-  if (then) waiting.push(then);
   const mine = ++stepAsk;
+  if (then) waiting.push({ after: mine, then });
   ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
-    // Only the newest answer counts, but with none yet any answer does, so a checkout changing faster than its step
-    // is worked out still gets its first [D1307].
-    const counts = (mine === stepAsk || !git.step) && git.target === target;
+    // Answers can come back out of order: one older than the step shown is dropped, but with none yet any answer
+    // counts, so a checkout changing faster than its step is worked out still gets its first [D1307].
+    const counts = (mine > shownAsk || !git.step) && git.target === target;
     // A failed read keeps the last step: the next read tries again. With none, it's read as no step, so a card
     // waiting for its first one draws.
     if (counts && !reply.ok && reply.error !== "disconnected" && !git.step) set({ step: { step: null, at: null } });
     if (counts && reply.ok) {
       const ran = git.step?.ran;
+      shownAsk = Math.max(shownAsk, mine);
       set({ step: reply.step });
       // A run that ended without changing a file still changes the brief [D1199].
       if (ran !== undefined && reply.step.ran !== ran) count();
     }
-    // Each `then` waits for the answer that shows: a newer ask's, when one went out meanwhile, so a move's toast never
-    // shows before the step it led to.
-    if (counts || mine === stepAsk) for (const each of waiting.splice(0)) each();
+    // Each `then` waits for an answer asked at or after it, so a move's toast never shows before the step it led to,
+    // and polling meanwhile can't hold it back.
+    for (const each of waiting.filter((one) => one.after <= mine)) {
+      waiting.splice(waiting.indexOf(each), 1);
+      each.then();
+    }
   });
 }
 
