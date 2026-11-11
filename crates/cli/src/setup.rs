@@ -256,7 +256,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     let exe = a.exe();
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
-        match a.check(&Spec::default(), &exe, cwd) {
+        match a.check(&crate::accounts::check_as(data, a, cwd), &exe, cwd) {
             Ok(c) => {
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();

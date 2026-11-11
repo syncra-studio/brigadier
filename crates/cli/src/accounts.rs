@@ -94,6 +94,19 @@ pub(crate) fn starting(data: &Path, spec: Spec) -> Spec {
     Spec { starts_on, ..spec }
 }
 
+/// What Home's agent check runs as: the account new sessions start on [D2082], so the models offered
+/// are the ones a session there gets; the computer's login otherwise.
+pub(crate) fn check_as(data: &Path, a: &dyn Adapter, cwd: &Path) -> Spec {
+    let spec = Spec {
+        backend: a.name().into(),
+        ..Default::default()
+    };
+    match starting(data, spec).starts_on {
+        Some(id) => on_account(a, data, &id, &cwd.display().to_string()),
+        None => Spec::default(),
+    }
+}
+
 fn on_account(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Spec {
     Spec {
         cwd: cwd.into(),
