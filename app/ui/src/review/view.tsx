@@ -30,6 +30,8 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   const panel = useRef<HTMLDivElement>(null);
   // The file it was last brought to: a new target brings its file into view again.
   const scrolled = useRef<string | null>(null);
+  // The file Last turn was found not to hold, shown once in Uncommitted, where Source and older turns' rows have it.
+  const sought = useRef<string | null>(null);
   const checkout = git.target;
   const key = checkout && JSON.stringify(checkout);
   const chips = useChips(owner);
@@ -93,6 +95,10 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   // Once the opened-on file is drawn (a large one folded, with no contents), it comes into view.
   useEffect(() => {
     const file = review?.files.find((each) => each.path === target);
+    if (target && !file && review?.scope === "last" && sought.current !== target) {
+      sought.current = target;
+      return setScope("uncommitted");
+    }
     if (!target || scrolled.current === target || !file || (!file.large && !contents.has(target))) return;
     scrolled.current = target;
     panel.current?.querySelector(`[data-slot="review-file"][data-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: "start" });
