@@ -9,9 +9,10 @@ use crate::{load, projects};
 
 mod prs;
 mod view;
-pub use prs::{chip, kept, opened};
+pub use prs::{chip, kept, moved_on, opened};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
@@ -356,6 +357,12 @@ impl Pr {
         let number = url.rsplit('/').next().and_then(|n| n.parse::<u64>().ok());
         if number.is_some() {
             note_open(&self.id, &self.branch, number);
+            // `prs.json` touched, so the app's watch reads the branch at once, made from a shell too.
+            let kept = fs::File::options()
+                .append(true)
+                .create(true)
+                .open(self.dir.join("prs.json"));
+            let _ = kept.and_then(|f| f.set_modified(std::time::SystemTime::now()));
         }
         json!({"number": number, "url": url})
     }

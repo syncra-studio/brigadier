@@ -1,6 +1,6 @@
 //! The PR watch [D1009, D1017, D1047, D1192]: every published, unarchived session's PRs read on
 //! the host's own CLI on a schedule, as VS Code's PR extension polls: every 30 s while
-//! checks run, 2 min with a PR open, 5 min otherwise or with no window open (proposed, D1047).
+//! checks run, 2 min with a PR open or none yet, 5 min otherwise or with no window open (proposed, D1047).
 //! Each read keeps `prs.json` in the session's folder, whose change the index publishes on the
 //! session's row. It never wakes the agent [D1027].
 
@@ -50,7 +50,8 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                     .lock()
                     .unwrap()
                     .get(&id)
-                    .is_some_and(|(at, left)| *at > Instant::now() && *left == now_at);
+                    .is_some_and(|(at, left)| *at > Instant::now() && *left == now_at)
+                    || host::moved_on(&data, &id);
                 let mut reading = busy.lock().unwrap();
                 if !due || reading.len() >= AT_ONCE || !reading.insert(id.clone()) {
                     continue;
@@ -89,10 +90,13 @@ fn kept_at(data: &Path, id: &str) -> Option<SystemTime> {
 }
 
 fn every(kept: Option<&Value>, window: bool) -> Duration {
-    let prs = kept.and_then(|k| k["prs"].as_array()).into_iter().flatten();
-    let open: Vec<&Value> = prs.filter(|p| p["state"] == "open").collect();
+    let prs: Vec<&Value> = (kept.and_then(|k| k["prs"].as_array()).into_iter().flatten()).collect();
+    let open: Vec<&&Value> = prs.iter().filter(|p| p["state"] == "open").collect();
     match () {
-        _ if !window || open.is_empty() => QUIET,
+        _ if !window => QUIET,
+        // Published with no PR yet: one made outside the app (gh, the host's page) shows soon.
+        _ if kept.is_some() && prs.is_empty() => OPEN,
+        _ if open.is_empty() => QUIET,
         _ if open
             .iter()
             .any(|p| p["running"].as_u64().is_some_and(|n| n > 0)) =>

@@ -68,7 +68,16 @@ impl Pr {
         Value::Null
     }
 
+    /// A PR pushed to mid-read (its head moved between the list and its checks) is read once more,
+    /// so a push, or a merge it refused, isn't kept as a read that couldn't check.
     fn read(&self, gh: &str) -> Read {
+        match self.read_once(gh) {
+            Ok((_, Some(_))) => self.read_once(gh),
+            read => read,
+        }
+    }
+
+    fn read_once(&self, gh: &str) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
         };
@@ -307,6 +316,21 @@ pub fn kept(dir: &Path) -> Value {
     (fs::read(dir.join("prs.json")).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or(Value::Null)
+}
+
+/// The session's Merged chip shows but its branch has moved on (a new local commit): its next read
+/// is due now, so the chip clears without waiting for the host's pace [D1018].
+pub fn moved_on(data: &Path, id: &str) -> bool {
+    let dir = crate::session_dir(data, id);
+    let kept = kept(&dir);
+    if chip(&dir, &kept)["chip"] != "merged" {
+        return false;
+    }
+    let Ok(folder) = git::folder(data, &git::Target::Session(id)) else {
+        return false;
+    };
+    git::read(&folder, &["rev-parse", "HEAD"], &AtomicBool::new(false))
+        .is_ok_and(|out| kept["head"] != String::from_utf8_lossy(&out).trim())
 }
 
 /// The merged PRs the user has seen (`pr-seen`, numbers): opening the session sees them all.
