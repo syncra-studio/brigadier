@@ -67,7 +67,8 @@ export type Agent = {
   sign_in: string | null;
   /** Its mark, one SVG from its adapter [D118, D123]; none: a generic terminal. */
   mark: string | null;
-  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null } | null;
+  /** A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page. */
+  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null } | null;
   path?: string | null;
   version?: string | null;
   signed_in?: boolean;

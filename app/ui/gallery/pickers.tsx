@@ -3,7 +3,10 @@ import { useState } from "react";
 
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
-import { Section } from "./parts";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../src/components/dialog";
+import { AgentCard } from "../src/onboarding/agents";
+import type { Agent } from "../src/onboarding/api";
+import { Held, Row, Section, State } from "./parts";
 
 // Stand-in marks: no agent's real logo in gallery code (onboarding takes them from the adapters).
 const RING = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5.5"/></svg>';
@@ -27,6 +30,35 @@ export const GROUPS: ModelGroup[] = [
   { provider: "away", label: "Signed-out agent", mark: RING, models: [], unavailable: "sign-in" },
 ];
 
+const AWAY: Agent = { name: "away", label: "Agent", install: true, sign_in: "Sign in", mark: RING, setup: null, path: "/usr/local/bin/away", signed_in: false };
+const SIGN_IN = { id: "setup-away", action: "sign-in", running: true, code: null, signal: null } as const;
+const SET_UP: [string, Agent][] = [
+  ["sign in", AWAY],
+  ["browser", { ...AWAY, setup: { ...SIGN_IN, code_page: null } }],
+  ["device code", { ...AWAY, setup: { ...SIGN_IN, code_page: "https://example.com/device", device_code: "ABCD-12345" } }],
+  ["code page", { ...AWAY, setup: { ...SIGN_IN, code_page: "https://example.com/code" } }],
+];
+
+/** The model picker's Set up dialog, as `SetUpAgentDialog` draws it, held open. */
+function SetUp({ agent }: { agent: Agent }) {
+  return (
+    <Held className="h-80 w-128 overflow-hidden rounded-surface">
+      {(box) => (
+        <Dialog open modal={false}>
+          <DialogContent container={box} initialFocus={false}>
+            <DialogHeader>
+              <DialogTitle>Set up {agent.label}</DialogTitle>
+            </DialogHeader>
+            <ul className="flex min-w-0 flex-col">
+              <AgentCard agent={agent} online starting={false} retrying={false} failed={undefined} onAction={() => {}} onCancel={() => {}} onRetry={() => {}} />
+            </ul>
+          </DialogContent>
+        </Dialog>
+      )}
+    </Held>
+  );
+}
+
 const LARGE: ModelChoice = { provider: "cloud", model: "large", effort: "high" };
 
 export function PickersGallery() {
@@ -38,6 +70,13 @@ export function PickersGallery() {
         <div className="self-start">
           <ModelPicker groups={GROUPS} value={model} onChange={setModel} />
         </div>
+        <Row name="Set up: sign in · in the browser · device code · code page">
+          {SET_UP.map(([label, agent]) => (
+            <State key={label} label={label}>
+              <SetUp agent={agent} />
+            </State>
+          ))}
+        </Row>
       </Section>
       <Section title="Permission picker">
         <div className="self-start">

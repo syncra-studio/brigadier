@@ -1,11 +1,12 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
+import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { useDaemon } from "../daemon";
-import { Check, Spinner, Terminal } from "../icons";
+import { ArrowUpRight, Check, Spinner, Terminal } from "../icons";
 import { type Agent, checkAll, checkOne, errorText, run, useAgents } from "./api";
 import { MAC, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
@@ -277,9 +278,25 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
           )
         )}
       </div>
-      {/* The browser couldn't hand the sign-in back: the code its page shows goes in here. */}
-      {state === "running" && setup?.code_page && agent && <ConnectCode agent={agent} page={setup.code_page} />}
+      {/* A device code to enter on its page; or, when the browser couldn't hand the sign-in back, the code its page shows goes in here. */}
+      {state === "running" && setup?.code_page && agent && (setup.device_code ? <DeviceCode page={setup.code_page} code={setup.device_code} /> : <ConnectCode agent={agent} page={setup.code_page} />)}
     </li>
+  );
+}
+
+/** A device code sign-in: its one-time code in a mono chip with Copy, and the page to enter it on, as the old app's GitHub sign-in. */
+function DeviceCode({ page, code }: { page: string; code: string }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <span className="flex h-control-md items-center gap-1.5 rounded-control border border-fill-hover bg-fill-subtle ps-3 pe-1">
+        <span className="font-mono text-base font-medium tracking-widest">{code}</span>
+        <CopyButton text={code} tooltip="Copy code" size="icon-xs" className="text-muted-foreground" />
+      </span>
+      <Button variant="ghost" size="sm" nativeButton={false} render={<a href={page} target="_blank" rel="noreferrer" />}>
+        Open the sign-in page
+        <ArrowUpRight className="size-icon-sm text-muted-foreground" />
+      </Button>
+    </div>
   );
 }
 

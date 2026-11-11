@@ -52,8 +52,29 @@ impl Adapter for Codex {
         )
     }
 
+    /// The device code sign-in: no callback to this computer's browser, so it works whatever opens
+    /// the page.
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
-        Some(("Sign in", &["login"]))
+        Some(("Sign in", &["login", "--device-auth"]))
+    }
+
+    /// "2. Enter this one-time code (expires in 15 minutes)", then the code on the next line in
+    /// colour (codex-cli 0.167.1).
+    fn device_code(&self, out: &str) -> Option<String> {
+        let after = &out[out.find("one-time code")?..];
+        let line = after.split_once('\n')?.1;
+        let mut code = String::new();
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                // A colour escape, `ESC [ … m`.
+                '\x1b' => while chars.next().is_some_and(|c| !c.is_ascii_alphabetic()) {},
+                c if c.is_ascii_alphanumeric() || c == '-' => code.push(c),
+                _ if code.is_empty() => {}
+                _ => break,
+            }
+        }
+        (code.len() >= 6).then_some(code)
     }
 
     /// `codex login status` exits 0 when signed in and says how on stderr. Only the kind of

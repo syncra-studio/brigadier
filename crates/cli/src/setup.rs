@@ -303,20 +303,19 @@ fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) -> io::Resu
 
 /// The agent's setup run: which, whether it still runs, and how it ended.
 fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
-    run_state(data, &format!("{SETUP}{}", a.name()), a.code_page())
+    run_state(data, &format!("{SETUP}{}", a.name()), Some(a))
 }
 
-/// A setup run's state: which, whether it still runs, and how it ended; with `code_pages`, the
-/// code page a running sign-in printed.
-pub fn run_state(data: &Path, id: &str, code_pages: bool) -> Value {
+/// A setup run's state; with the agent, the code page or device code a running sign-in printed.
+pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let Ok(spec) = core::load(data, id) else {
         return Value::Null;
     };
     let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
     let running = !ping["child"].is_null();
     let action = spec.opts.get("setup").map(String::as_str);
-    // Its output is read only while a sign-in that offers a code page runs.
-    let page = running && action == Some("sign-in") && code_pages;
+    // Its output is read only while an agent's sign-in runs.
+    let page = running && action == Some("sign-in") && agent.is_some();
     let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
         let wanted = |k| k == log::EXITED || (page && k == log::PTY);
@@ -328,14 +327,17 @@ pub fn run_state(data: &Path, id: &str, code_pages: bool) -> Value {
             }
         }
     }
+    let text = String::from_utf8_lossy(&out);
+    let device_code = agent.and_then(|a| a.device_code(&text));
+    let shows = agent.is_some_and(|a| a.code_page()) || device_code.is_some();
     json!({"id": id, "action": action, "running": running, "code": exited["code"],
-        "signal": exited["signal"], "code_page": code_page(&out)})
+        "signal": exited["signal"], "code_page": code_page(&text).filter(|_| shows),
+        "device_code": device_code})
 }
 
 /// The first `https` link a sign-in printed, up to a space or a control character (a terminal
 /// link's own escape ends it).
-fn code_page(out: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(out);
+fn code_page(text: &str) -> Option<String> {
     let start = text.find("https://")?;
     let page = text[start..]
         .chars()

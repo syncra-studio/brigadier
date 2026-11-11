@@ -162,7 +162,7 @@ fn list(data: &Path) -> Value {
                             .map(|(id, name, c)| {
                                 json!({"id": id, "name": name, "check": c,
                                     "limited_at": v["limited"][format!("{}/{id}", a.name())],
-                                    "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), false))})
+                                    "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), None))})
                             })
                             .collect();
                         json!({"vendor": acc.vendor, "list": rows, "auto": listed(v, "auto", a.name())})
@@ -269,7 +269,7 @@ fn sign_in(
 fn remove(data: &Path, id: &str) -> io::Result<Value> {
     let (a, id) = find(data, id)?;
     let run = sign_in_id(a.name(), &id);
-    if setup::run_state(data, &run, false)["running"] == true {
+    if setup::run_state(data, &run, None)["running"] == true {
         return Ok(
             json!({"ok": false, "error": "signing_in", "message": "Its sign-in is still open."}),
         );

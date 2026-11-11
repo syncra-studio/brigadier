@@ -29,7 +29,7 @@ export function SetUpAgentDialog({ name, onClose }: { name: string | null; onClo
         <DialogHeader>
           <DialogTitle>Set up {agent?.label ?? name}</DialogTitle>
         </DialogHeader>
-        <ul className="flex flex-col">
+        <ul className="flex min-w-0 flex-col">
           <AgentCard
             agent={agent}
             online={online}

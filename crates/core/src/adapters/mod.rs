@@ -1,5 +1,6 @@
 //! One small adapter per backend. Nothing outside this folder names a provider.
 
+mod classify;
 mod claude;
 mod codex;
 mod fake;
@@ -10,6 +11,7 @@ mod rewind;
 pub mod setup;
 mod shell;
 
+pub use classify::classify;
 pub use files::{change, counts, drop_lines, sha1, uuid};
 pub use model::ModelInfo;
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
@@ -235,6 +237,11 @@ pub trait Adapter: Sync {
     fn code_page(&self) -> bool {
         false
     }
+    /// The one-time code its sign-in printed for the user to enter on its page, the first `https`
+    /// link it prints (a device code: nothing is pasted back), found in what it printed so far.
+    fn device_code(&self, _out: &str) -> Option<String> {
+        None
+    }
     /// A code pasted from that page, as its sign-in takes it, or why it isn't one.
     fn sign_in_code(&self, code: &str) -> Result<String, String> {
         Ok(code.trim().into())
@@ -452,49 +459,4 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
 /// Text of a JSON line's field, or empty.
 pub fn s<'a>(v: &'a Value, path: &[&str]) -> &'a str {
     path.iter().fold(v, |v, k| &v[*k]).as_str().unwrap_or("")
-}
-
-/// Classifies an error message the way every backend needs: no credits, a limit, a sign-in, or
-/// neither.
-pub fn classify(message: &str) -> Option<Event> {
-    let m = message.to_lowercase();
-    let credits = [
-        "insufficient account funds",
-        "insufficient funds",
-        "insufficient credit",
-        "insufficient_quota",
-        "credit balance",
-        "out of credits",
-        "billing_error",
-        "payment required",
-    ];
-    if credits.iter().any(|k| m.contains(k)) {
-        return Some(Event::OutOfCredits);
-    }
-    let limit = [
-        "429",
-        "rate limit",
-        "rate_limit",
-        "usage limit",
-        "quota",
-        "too many requests",
-    ];
-    let auth = [
-        "401",
-        "403",
-        "unauthorized",
-        "login",
-        "log in",
-        "sign in",
-        "expired",
-        "invalid api key",
-        "authentication",
-    ];
-    if limit.iter().any(|k| m.contains(k)) {
-        Some(Event::Limited(message.to_string(), None))
-    } else if auth.iter().any(|k| m.contains(k)) {
-        Some(Event::SignIn(message.to_string()))
-    } else {
-        None
-    }
 }
