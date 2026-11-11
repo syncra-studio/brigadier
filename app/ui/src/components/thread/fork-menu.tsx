@@ -28,6 +28,10 @@ import {
 export type ForkOffer = {
   worktree: "snapshot" | "none" | "gone" | "sourceGone" | null;
   here: "worktree" | "folder" | null;
+  /** The one destination rule's place, where a fork with another agent goes (proposed). */
+  default: "worktree" | "here" | "chat";
+  /** The agent the answer's conversation is on, which forks natively; null from an inherited copy [D1081]. */
+  agent: string | null;
   fingerprint: string;
 };
 
@@ -74,7 +78,6 @@ export function ForkMenu({
   onPick,
   held,
   openSub = false,
-  later = false,
 }: {
   /** A chat's words: "Fork chat from here". */
   chat: boolean;
@@ -89,8 +92,6 @@ export function ForkMenu({
   /** The gallery's box: the menu held open in it, and its agent submenu with `openSub`. */
   held?: HTMLElement;
   openSub?: boolean;
-  /** Fork with another agent, drawn but not offered yet (2.36). */
-  later?: boolean;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
@@ -126,7 +127,7 @@ export function ForkMenu({
               )}
               <DropdownMenuSeparator />
               <DropdownMenuSub {...(held && { open: openSub })}>
-                <DropdownMenuSubTrigger disabled={later}>
+                <DropdownMenuSubTrigger>
                   <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent {...place}>

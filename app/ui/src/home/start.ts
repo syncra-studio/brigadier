@@ -143,9 +143,11 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
 }
 
 /** Forks session `source` at answer `at` and opens the fork at once, pending, under the title Rust gives it [D30, D1063]. */
-export function startFork(source: string, project: string | null, at: string, where: string, fingerprint: string, title: string): void {
+export function startFork(source: string, project: string | null, at: string, where: string, fingerprint: string, title: string, to?: ModelChoice): void {
   const id = sessionId();
   const args = ["fork", source, id, "--at", at, "--where", where, "--fingerprint", fingerprint];
+  // Another agent or model goes on from there [D1081].
+  if (to) args.push("--to", to.provider, "--model", to.model, ...(to.effort ? ["--effort", to.effort] : []));
   const entry: Starting = { id, cid: at, project, text: "", title, args, sent: Date.now(), asking: true, fork: { source, where } };
   starting.set(new Map(starting.get()).set(id, entry));
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

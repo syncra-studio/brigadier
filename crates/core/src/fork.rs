@@ -28,13 +28,15 @@ pub struct Source {
 }
 
 /// What the command was asked: the new session's id and title, the answer (its turn's message
-/// id), the place (else the one rule's) and the menu's fingerprint.
+/// id), the place (else the one rule's), the menu's fingerprint, and the agent, model and effort
+/// it goes on with when another was picked [D1081].
 pub struct Ask<'a> {
     pub fork: &'a str,
     pub title: &'a str,
     pub at: &'a str,
     pub place: Option<&'a str>,
     pub fingerprint: Option<&'a str>,
+    pub to: Option<(&'a str, &'a str, Option<&'a str>)>,
 }
 
 pub fn record(dir: &Path) -> Option<Value> {
@@ -92,19 +94,19 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     if session::lifecycle(&spec.dir).0.is_some() {
         return refused("archived", "Restore this session to fork from it.");
     }
-    let standing = if s.gone {
-        inherits(&s.src.dir, at)
+    // The agent whose conversation the answer is in: picking it forks natively [D1081].
+    let agent = if s.gone {
+        inherits(&s.src.dir, at).then_some(None)
     } else {
-        crate::fold(&s.src.dir, true).is_ok_and(|f| {
-            f.fold
-                .boundaries
-                .iter()
-                .any(|b| b.cid == at && b.origin != "fork")
+        crate::fold(&s.src.dir, true).ok().and_then(|f| {
+            (f.fold.boundaries.into_iter())
+                .find(|b| b.cid == at && b.origin != "fork")
+                .map(|b| Some(b.backend))
         })
     };
-    if !standing {
+    let Some(agent) = agent else {
         return refused("gone", "This answer can't be forked any more.");
-    }
+    };
     let project = (s.src.project.as_deref()).and_then(|p| projects::get(data, p).ok());
     let git = project
         .as_ref()
@@ -135,7 +137,7 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     print += &format!(":{worktree:?}:{here:?}");
     let mut hash = DefaultHasher::new();
     print.hash(&mut hash);
-    json!({"ok": true, "worktree": worktree, "here": here, "default": place,
+    json!({"ok": true, "worktree": worktree, "here": here, "default": place, "agent": agent,
         "fingerprint": format!("{:016x}", hash.finish())})
 }
 
@@ -211,6 +213,9 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
             "This answer changed. Open the menu again.",
         ));
     }
+    if ask.to.is_some_and(|(b, ..)| adapters::get(b).is_none()) {
+        return Ok(refused("agent", "That agent isn't available."));
+    }
     if session_dir(data, ask.fork).exists() {
         return Ok(refused("taken", "There's already a session with that id."));
     }
@@ -277,6 +282,8 @@ fn build(
     let src = &s.src;
     rf::write(src, op, "files")?;
     let run = as_run(src, f, &op.backend, None);
+    // Another vendor's agent has no native fork: it begins from the hand-off [D1081, D90].
+    let other = ask.to.filter(|(b, ..)| *b != op.backend);
     let worktree = place == "worktree";
     let here = place == "here";
     let cwd = if worktree {
@@ -290,12 +297,16 @@ fn build(
         data,
         &Spec {
             id: ask.fork.into(),
-            backend: op.backend.clone(),
+            backend: other.map_or(op.backend.clone(), |(b, ..)| b.into()),
             mode: "pipe".into(),
             cwd: cwd.display().to_string(),
             project: src.project.clone(),
-            model: run.model.clone(),
-            effort: run.effort.clone(),
+            // The picked model in the fork's own record, as a model switch; no effort is the CLI's
+            // default, as `set` [D1081, D1089].
+            model: ask.to.map_or(run.model.clone(), |(_, m, _)| Some(m.into())),
+            effort: ask
+                .to
+                .map_or(run.effort.clone(), |(.., e)| e.map(String::from)),
             // Full access isn't carried into a session nobody picked it for [D187].
             level: src.level.clone().filter(|l| l != "full"),
             opts: src.opts.clone(),
@@ -336,7 +347,10 @@ fn build(
         .map(|item| format!("{item}\n"))
         .collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;
-    let forked = conversation(src, f, op, &run, &cwd)?;
+    let forked = match other {
+        Some(_) => None,
+        None => conversation(src, f, op, &run, &cwd)?,
+    };
     let mut inherited: Vec<&str> = order
         .iter()
         .map(String::as_str)

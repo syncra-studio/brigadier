@@ -166,7 +166,11 @@ pub fn picked(
 /// A fork's first message with no conversation of its own: the hand-off from its inherited copy,
 /// then the user's own words, which alone the log keeps [D90, D1063].
 pub fn forked(spec: &Spec, f: &Fold, text: &str) -> std::io::Result<String> {
-    let from = adapters::get(&spec.backend).map_or("the agent", |a| a.label());
+    // The agent the thread came from, which a fork to another agent doesn't run on [D1081].
+    let source = crate::fork::record(&spec.dir).map(|r| r["backend"].clone());
+    let from = (source.as_ref().and_then(Value::as_str))
+        .and_then(adapters::get)
+        .map_or("the agent", |a| a.label());
     let last = (f.last.clone()).unwrap_or_else(|| json!({"ts": brigadier_frames::log::now_ms()}));
     let seed = handoff(spec, "forked", &last, from)?;
     Ok(format!("{seed}\n\n{text}"))

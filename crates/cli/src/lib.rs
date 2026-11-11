@@ -40,7 +40,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <id> [open|replace <tab> <kind> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
-       brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F]
+       brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]

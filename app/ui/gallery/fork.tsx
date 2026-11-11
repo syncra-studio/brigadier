@@ -15,7 +15,7 @@ import { GROUPS } from "./pickers";
 import { PROJECTS } from "./sidebar";
 
 const noop = () => undefined;
-const offer = (worktree: ForkOffer["worktree"], here: ForkOffer["here"]): ForkOffer => ({ worktree, here, fingerprint: "f1" });
+const offer = (worktree: ForkOffer["worktree"], here: ForkOffer["here"]): ForkOffer => ({ worktree, here, default: worktree ? "worktree" : here ? "here" : "chat", agent: "cloud", fingerprint: "f1" });
 const MENUS: [string, ForkOffer | undefined, boolean, string?][] = [
   ["worktree session", offer("snapshot", "worktree"), false],
   ["Local checkout", offer("snapshot", "folder"), false],

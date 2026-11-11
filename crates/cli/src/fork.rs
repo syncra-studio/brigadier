@@ -1,5 +1,6 @@
 //! `fork <id> --check <cid>`: what the Fork menu offers on an answer; `fork <id> <new-id> --at <cid>
-//! [--where worktree|chat] [--fingerprint F]`: the fork, settled and fenced on the answer's source
+//! [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E]]`: the fork, on
+//! agent B's model M when picked [D1081], settled and fenced on the answer's source
 //! [D1063, D1089]. Run again under the same ids, it finishes or rolls back what its record proves.
 
 use crate::{USAGE, arg, flag, owner, rewind, title};
@@ -47,6 +48,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         at,
         place: flag(args, "--where"),
         fingerprint: flag(args, "--fingerprint"),
+        to: match (flag(args, "--to"), flag(args, "--model")) {
+            (Some(b), Some(m)) => Some((b, m, flag(args, "--effort"))),
+            (None, None) => None,
+            _ => return Err(io::Error::other(USAGE)),
+        },
     };
     fork::fork(data, &spec, &s, &ask, &call_in)
 }
