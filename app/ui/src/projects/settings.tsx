@@ -43,6 +43,7 @@ export type Refused = { change: Partial<Project>; error: string };
 export const SETTINGS_FRAME = "project-dialog max-w-add-project gap-4 p-5";
 
 const opened = store<{ id: string; refused?: Refused } | null>(null);
+let refusals = 0;
 /** Opens Project settings for a project, from its menu. */
 export const openProjectSettings = (id: string) => opened.set({ id });
 
@@ -56,13 +57,18 @@ export function ProjectSettingsHost() {
       <DialogContent frame={SETTINGS_FRAME}>
         {project && (
           <ProjectSettings
-            key={project.id}
+            // A refusal that comes while it's open again shows too.
+            key={`${project.id}:${open?.refused ? refusals : 0}`}
             project={project}
             source={daemonSettings}
             refused={open?.refused}
             onClose={() => opened.set(null)}
             // Opened again on what was typed, unless another project's is open by now.
-            onRefused={(refused) => (opened.get() === null || opened.get()?.id === project.id ? opened.set({ id: project.id, refused }) : showToast(refused.error, { tone: "error" }))}
+            onRefused={(refused) => {
+              if (opened.get() !== null && opened.get()?.id !== project.id) return void showToast(refused.error, { tone: "error" });
+              refusals += 1;
+              opened.set({ id: project.id, refused });
+            }}
           />
         )}
       </DialogContent>
