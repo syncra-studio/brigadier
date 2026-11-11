@@ -6,11 +6,13 @@ import { cx } from "../../components/cx";
 import { ErrorLine } from "../../components/error-line";
 import { Skeleton } from "../../components/skeleton";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, Commit, Flag, ForcePush, LastRun, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError } from "../types";
+import type { Branch, Commit, Flag, ForcePush, LastRun, MergeStyle, Pr, PrWatch, SourceFile, SourceState, Step, StepError, When } from "../types";
+import { pickWhen, useWhen } from "../when";
 import { flagWords, heroWords } from "../words";
 import { ActionButton } from "./action";
 import { BranchLabel } from "./branch";
 import type { BranchRead } from "./branch-ops";
+import { WhenRow } from "./when";
 import { type Discarding, DiscardDialog, DropStashDialog, GitOutputDialog, type GitRun, StageConflictsDialog } from "./dialogs";
 import { HistoryMenu, MoreButton, PrMenu, SourceHeader } from "./header";
 import { Gone, HeroLine } from "./hero";
@@ -66,6 +68,8 @@ export type SourceData = {
   flags?: Record<string, Flag>;
   /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); unknown until wired [D1192]. */
   agentPaths?: string[] | null;
+  /** The session's "When it's done" rule and its state, from Rust's step read (2.44) [D1201, D1206]. */
+  when?: When | null;
   /** The branch's pull requests and what their watch saw (2.13); none without a host [D1030]. */
   prs?: Pr[];
   watch?: PrWatch | null;
@@ -181,6 +185,9 @@ export function SourcePanel({
 
   const state = ops ? data.source : local;
   const step = data.step;
+  // The gallery's pick is its own.
+  const liveWhen = useWhen(session, data.when);
+  const [ownWhen, setOwnWhen] = useState<When | null>(data.when ?? null);
   const offline = data.offline ?? false;
   // The pickers float outside the panel's inert page: a disconnect closes them.
   useEffect(() => {
@@ -429,6 +436,16 @@ export function SourcePanel({
             <Heading title="Other changes" count={others.length} />
             <FileList>{ordered(others).map((file) => row(file))}</FileList>
           </section>
+        )}
+        {/* Never in your own folder: it always asks [D1201]. */}
+        {state && !gone && !folder && (
+          <WhenRow
+            when={ops ? liveWhen : ownWhen}
+            step={step}
+            prs={prs}
+            disabled={locked}
+            onPick={(rule) => (ops ? session && pickWhen(session, rule) : setOwnWhen(rule === "ask" ? null : { rule }))}
+          />
         )}
       </div>
 

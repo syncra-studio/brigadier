@@ -98,6 +98,19 @@ export type Flag = { kind: "test" | "lock" | "manifest" | "build" | "migration";
  */
 export type LastRun = { command: string; exit: number | null; atMs: number; changed: boolean };
 
+/** "When it's done"'s pick for a session (2.44): Ask me is no rule at all [D1201, D1206, D1212]. */
+export type WhenRule = "merge" | "pr" | "mergePr" | "pushPr";
+
+/** Why the rule waits, from Rust: no run, its result unreported or not 0, not one plain command, files changed after it, its capture still being taken, or the step itself [D74, D1201, D1213]. */
+export type WhenStop = { why: "noRun" | "unreported" | "changed" | "checking" | "step" } | { why: "exit"; exit: number } | { why: "compound"; command: string };
+
+/**
+ * The session's rule as Rust's step read has it [D1201, D1206]: its countdown's end (`at`, ms), why it waits, that the
+ * agent works, that it lands now, or how this turn's landing ended (`done`: null when it landed, else `cancelled`,
+ * `writer`, `prText` or Rust's refusal).
+ */
+export type When = { rule: WhenRule; at?: number; stopped?: WhenStop; working?: boolean; acting?: boolean; done?: string | null };
+
 /** How a branch lands: merged locally as a merge commit or squashed [D1028]; a PR's host may also rebase. */
 export type MergeStyle = "merge" | "squash" | "rebase";
 

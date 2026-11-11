@@ -8,7 +8,8 @@ import { MoreMenu, type Submenu } from "../src/panel/source/more-menu";
 import { GitCard } from "../src/panel/card";
 import { type SourceData, SourcePanel } from "../src/panel/source/panel";
 import { FileList, FileRow } from "../src/panel/source/rows";
-import type { Pr, SourceState, Step } from "../src/panel/types";
+import { WhenRow } from "../src/panel/source/when";
+import type { Pr, SourceState, Step, When } from "../src/panel/types";
 import { Held, Row, Section, State } from "./parts";
 import { PanelFrame } from "./right-panel";
 
@@ -59,6 +60,21 @@ const TRUTHS: [string, SourceData][] = [
   ["main behind origin/main, fetched 2 minutes ago", fake(CHANGES, first(STEPS.merge, CHANGES), { freshness: { name: "main", upstream: "origin/main", behind: 3, fetchedAtMs: NOW - 2 * MIN } })],
   ["Checks cancelled on #12", fake(COMMITTED, BLOCKED(1), { prs: [{ ...RUNNING, health: "cancelled" }] })],
   ["Check state unknown on #12", fake(COMMITTED, BLOCKED(null), { prs: [{ ...RUNNING, health: "unknown", failed: null }] })],
+];
+
+/** "When it's done" (2.44), its states in Source and the card alike [D1201, D1206] (proposed words). */
+const READY = (when: When, more: Partial<SourceData> = {}) => fake(CHANGES, first(STEPS.merge, CHANGES), { run: { ...PASSED, changed: false }, when, ...more });
+const RULES: [string, SourceData][] = [
+  ["Ask me: the default", READY({ rule: "merge" } as When, { when: null })],
+  ["Merge into main: the countdown", READY({ rule: "merge", at: NOW + 8_000 })],
+  ["Landing: committing, then merging", READY({ rule: "merge", acting: true })],
+  ["Create PR: creating it", READY({ rule: "pr", acting: true })],
+  ["Checking the last test run", READY({ rule: "merge", stopped: { why: "checking" } })],
+  ["A failing test leaves it asking", READY({ rule: "merge", stopped: { why: "exit", exit: 1 } }, { run: { ...FAILED_RUN, exit: 1 } })],
+  ["Files changed after the run", READY({ rule: "merge", stopped: { why: "changed" } }, { run: PASSED })],
+  ["No result reported", READY({ rule: "merge", stopped: { why: "unreported" } }, { run: { ...PASSED, exit: null, changed: false } })],
+  ["Cancelled", READY({ rule: "merge", done: "cancelled" })],
+  ["The PR's text couldn't be written", READY({ rule: "pr", done: "prText" })],
 ];
 
 const DATA: [string, SourceData][] = [
@@ -113,6 +129,25 @@ export function SourceGallery() {
             </div>
           </State>
         ))}
+      </Row>
+      <Row name="When it's done">
+        {RULES.map(([label, data]) => (
+          <State key={label} label={label}>
+            <div className="flex items-start gap-6">
+              <div className="flex w-75 min-w-0 flex-col rounded-overlay bg-popover py-2.5 shadow-raised">
+                <GitCard data={data} project="upload-app" nowMs={NOW} />
+              </div>
+              <PanelFrame className="h-160">
+                <SourcePanel data={data} nowMs={NOW} />
+              </PanelFrame>
+            </div>
+          </State>
+        ))}
+        <State label="The choices, with a PR open">
+          <Held className="h-80 w-80">
+            {(box) => <WhenRow when={null} step={STEPS.merge} prs={[RUNNING]} onPick={noop} held={box} />}
+          </Held>
+        </State>
       </Row>
       <Row name="Data states">
         {DATA.map(([label, data]) => (

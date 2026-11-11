@@ -62,6 +62,8 @@ export type SelectOption<T extends string> = {
   hint?: ReactNode;
   /** What the pill shows when chosen, if not the label. */
   shown?: ReactNode;
+  /** Shown, not pickable: `hint` says why. */
+  disabled?: boolean;
 };
 
 /**
@@ -117,6 +119,7 @@ export function Select<T extends string>({
                 <DropdownMenuRadioItem
                   key={option.value}
                   value={option.value}
+                  disabled={option.disabled}
                   indicator={<Check className="size-icon-md" />}
                   className={option.hint ? "py-2" : undefined}
                 >

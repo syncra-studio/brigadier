@@ -7,7 +7,7 @@ import { useHomeProject, useStart } from "../home/start";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
-import type { MergeStyle, PanelHint, SourceFile, SourceState, Step } from "./types";
+import type { MergeStyle, PanelHint, SourceFile, SourceState, Step, When } from "./types";
 
 /*
  * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, each file's counts read
@@ -39,7 +39,8 @@ type Pending = { paths: string[]; to: "staged" | "changes" | "dropped" | "gone";
 /** The base against its own upstream, from Rust [D1187, D1193]: `behind` null where it can't count; `fetchedAtMs` null when unknown. */
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
 
-type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null };
+/** `when`: the session's "When it's done" rule (2.44); `ran`: its last run's end, so the brief is read again when only a run changed [D1199, D1201]. */
+type StepRead = { step: Step | null; hint: PanelHint | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; when?: When | null; ran?: number | null };
 
 /**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
@@ -154,7 +155,12 @@ export function refreshStep(fresh = false, then?: () => void): void {
   const mine = ++stepAsk;
   ask({ op: "run", args: sourceArgs(target, "step", ...(fresh ? ["--fresh"] : [])) }, (reply) => {
     // A failed read keeps the last step: the next read tries again.
-    if (mine === stepAsk && git.target === target && reply.ok) set({ step: reply.step });
+    if (mine === stepAsk && git.target === target && reply.ok) {
+      const ran = git.step?.ran;
+      set({ step: reply.step });
+      // A run that ended without changing a file still changes the brief [D1199].
+      if (ran !== undefined && reply.step.ran !== ran) count();
+    }
     then?.();
   });
 }
@@ -239,7 +245,10 @@ export function useGitWatch(owner: string | null): void {
     if (daemon && target && !starting) watch(git.target!);
   }, [key, daemon, starting]);
   // The background draft: a while after each read that changed something, while the session's agent is idle [D1212].
-  const working = owner !== null && owner !== HOME && rows?.find((row) => row.id === owner)?.works === true;
+  const row = owner !== null && owner !== HOME ? rows?.find((each) => each.id === owner) : undefined;
+  const working = row?.works === true;
+  // A turn's start or end moves the step and "When it's done" even when no file changed [D1201].
+  useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
   const version = useSyncExternalStore(subscribe, () => git.version);
   useEffect(() => {
     const target = git.target;

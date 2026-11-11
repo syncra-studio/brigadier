@@ -8,6 +8,8 @@ import { ForcePushDialog, MergePrDialog, MessageDialog, SquashDialog } from "./a
 import type { ActionPick } from "./action-menus";
 import { askForce, cancelForce, first, forcePush, only, useBranchOp, useForcing } from "./branch-ops";
 import { useCreatePr } from "./create-pr";
+import { cancelWhen, useWhen, useWhenClock } from "../when";
+import { whenTrail, whenWords } from "./when";
 import type { SourceData, SourceOps } from "./panel";
 
 /** The picks that run on real data so far [D1029, D1030, D1034, D1152, D1203, D1205]. */
@@ -260,6 +262,14 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
     // wired with the composer.
   };
 
+  // "When it's done": its countdown, why it waits, how it ended, the same in Source and the card [D1199, D1201, D1206].
+  const when = useWhen(live ? session : null, data.when);
+  const clock = useWhenClock(when, Date.now());
+  const rule = step ? whenWords(when, step, clock) : null;
+  const ruleTrail = whenTrail(rule, () => session && cancelWhen(session), () => {
+    if (session) asked.set(session, id);
+    pr.onPick("createPr");
+  });
   // Merging from a PR's menu reads as a merge while it runs.
   const shown: Step | null = landing && step && step.kind !== "merge" && step.kind !== "landed" && "base" in step ? { kind: "merge", base: step.base, ready: 0, moved: 0, blocked: null, commit: pending } : step;
   const button: Omit<ComponentProps<typeof ActionButton>, "nowMs"> | null =
@@ -267,7 +277,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
       ? {
           step: shown,
           // Sync, Publish, Pull only and Push only run through the branch store: the button spins until Rust answers.
-          ...((landing || data.syncing) && { running: true }),
+          ...((landing || data.syncing || when?.acting) && { running: true }),
+          moving: when?.acting ? (rule?.moving ?? null) : null,
+          trail: ruleTrail,
           writing: committing,
           disabled: working,
           uncommitted: resolving ? 0 : uncommitted,
@@ -277,7 +289,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
               ? { line: "Couldn't write a message", tone: "bad" }
               : work.error
                 ? { line: `Couldn't commit: ${work.error}`, tone: "bad" }
-                : null,
+                : rule && !when?.acting
+                  ? { line: rule.line, tone: rule.tone }
+                  : null,
           // The base is behind its own upstream: said, never fast-forwarded [D1187, D1193].
           note: data.freshness?.behind && data.freshness.upstream && "base" in shown ? `${data.freshness.name} is ${data.freshness.behind} behind ${data.freshness.upstream}` : null,
           // Another session working in this folder: the pre-check line says so, and Rust refuses [D1082].

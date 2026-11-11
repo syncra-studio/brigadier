@@ -43,7 +43,7 @@ function icon(step: Step): ReactNode {
  * Source and the summary card draw the same one, from the same model [D1199].
  * `writing`: Commit only under way, the writer writing its message first [D1029]. `held`: the gallery's open menu.
  */
-export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, say = null, note = null, uncommitted = 0, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held }: {
+export function ActionButton({ step, nowMs, running = false, writing = false, disabled = false, say = null, note = null, uncommitted = 0, error = null, later = null, can, mergeStyle, rejected, prWay, onMergeStyle, onRun, onPick, held, moving = null, trail = null }: {
   step: Step;
   nowMs: number;
   running?: boolean;
@@ -67,11 +67,16 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   onRun?: () => void;
   onPick?: (pick: ActionPick) => void;
   held?: HTMLElement;
+  /** While running, words other than the step's own: "When it's done" creating a PR from a merge step [D1201]. */
+  moving?: { label: string; line: string } | null;
+  /** After the line: the countdown's Cancel [D1201, D1206]. */
+  trail?: ReactNode;
 }) {
   const words = stepWords(step, nowMs);
   const busy = running || writing || disabled;
-  const label = writing ? "Committing…" : running ? runningWords(step).label : words.label;
-  const line = running ? runningWords(step).line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? (note ? `${words.line} · ${note}` : words.line));
+  const runWords = moving ?? runningWords(step);
+  const label = writing ? "Committing…" : running ? runWords.label : words.label;
+  const line = running ? runWords.line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? (note ? `${words.line} · ${note}` : words.line));
   const tone = running ? "quiet" : error ? "bad" : say ? say.tone : later ? "quiet" : words.tone;
   const variant = step.kind === "catchUp" ? "secondary" : "default";
   const menu = hasActionMenu(step, uncommitted);
@@ -111,7 +116,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
           {menu && <ActionMenu step={step} mergeStyle={mergeStyle} rejected={rejected} prWay={prWay} can={can} onMergeStyle={onMergeStyle} onPick={onPick} held={held} uncommitted={uncommitted} />}
         </DropdownMenu>
       </div>
-      <OneLine text={line} className={TONE[tone]}>
+      <OneLine text={line} className={TONE[tone]} trail={trail}>
         {(step.kind === "fixPr" || (step.kind === "continue" && step.left > 0)) && !running && !error && !later && !say && <Warning className="me-1 inline size-icon-xs align-text-bottom" />}
         {line}
       </OneLine>
@@ -120,7 +125,7 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
 }
 
 /** The grey line: one line at most, cut with an ellipsis; an ⓘ shows the whole line only when it doesn't fit [D1198]. */
-function OneLine({ text, className, children }: { text: string; className: string; children: ReactNode }) {
+function OneLine({ text, className, trail, children }: { text: string; className: string; trail?: ReactNode; children: ReactNode }) {
   const box = useRef<HTMLSpanElement>(null);
   const [cut, setCut] = useState(false);
   useLayoutEffect(() => {
@@ -142,6 +147,7 @@ function OneLine({ text, className, children }: { text: string; className: strin
           <InfoTip text={text} />
         </span>
       )}
+      {trail && <span className="ms-1.5 shrink-0">{trail}</span>}
     </p>
   );
 }

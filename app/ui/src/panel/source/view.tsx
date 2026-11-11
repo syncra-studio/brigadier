@@ -76,6 +76,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       restoring: git.restoring,
       restoreError: git.restoreError,
       freshness: git.step?.freshness ?? git.truth?.base ?? null,
+      when: git.step?.when ?? null,
       share: share && { with: title(share.with), busy: title(share.busy), includes: title(share.includes), lands: share.lands },
     },
     ops: {
