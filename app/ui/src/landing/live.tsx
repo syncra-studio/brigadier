@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
 import { refreshStep } from "../panel/git";
@@ -92,7 +93,10 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
             gitDone({ session: owner });
             // Merged on the host, as Rust checked (a merge queue only queues it): shown at once, and the read after
             // settles the rest [D30].
-            if (reply.merged) setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
+            if (reply.merged) {
+              setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
+              showToast(`Merged #${number}`, { tone: "success" });
+            }
           }
           read();
           refreshStep();

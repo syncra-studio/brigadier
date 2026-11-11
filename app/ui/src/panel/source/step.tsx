@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { showToast } from "../../components/toast";
 import { addChip } from "../chips";
 import type { GitAct, GitStep } from "../control";
 import { commitFiles, gitMove, landBranch, refreshStep, type Target, useGit } from "../git";
@@ -28,6 +29,9 @@ function failed(target: Target | null, said: string, error: string) {
   if (!error.includes("\n")) return gitFailed(target, error);
   gitFailed(target, said, error);
 }
+
+/** A commit's success toast: its subject, shown under "Committed" [D1309]. */
+const committed = (message: unknown) => `Committed · ${String(message ?? "").split("\n")[0]}`;
 
 /** What Resolve with agent's chip asks: the operation and ref that really conflict, from Rust [D1093, D1290]. */
 function resolveChip(session: string, step: GitStep) {
@@ -62,35 +66,40 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
     if (act === "resolve") return resolveChip(session, step);
     const at = data.at ?? null;
     setRunning(key, act);
-    const done = (said: string) => (error: string | null) => {
+    // A failure is the composer's notice [D1264]; a success one short toast that goes by itself, in short words [D1309].
+    const done = (said: string, ok: string) => (error: string | null) => {
       setRunning(key, null);
-      if (error) failed(target, said, error);
-      else gitDone(target);
+      if (error) return failed(target, said, error);
+      gitDone(target);
+      showToast(ok, { tone: "success" });
     };
+    const base = step.base ?? "main";
+    const branch = data.source?.branch ?? step.branch ?? "the branch";
     switch (act) {
       case "commit": {
         // One click, the writer's message; a writer failure commits nothing and offers Type a message… [D1281, D1293].
         const sent = commitFiles(true, "", (reply) => {
           if (reply.ok) {
             gitDone(target);
+            showToast(committed(reply.message), { tone: "success" });
             return refreshStep(() => setRunning(key, null));
           }
           setRunning(key, null);
           if (reply.writer) gitFailed(target, "Couldn't write a commit message.", "", true);
           else failed(target, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
         });
-        if (!sent) done("Couldn't commit.")("This checkout isn't on screen.");
+        if (!sent) done("Couldn't commit.", "")("This checkout isn't on screen.");
         return;
       }
       case "push":
         // A branch with no upstream is published [D1045]; one with an upstream only pushed, nothing pulled.
-        return gitMove([data.source?.upstream ? "push" : "publish"], done("Couldn't push."));
+        return gitMove([data.source?.upstream ? "push" : "publish"], done("Couldn't push.", `Pushed ${branch}`));
       case "sync":
-        return gitMove(["sync"], done("Couldn't sync."));
+        return gitMove(["sync"], done("Couldn't sync.", `Synced ${branch}`));
       case "catchUp":
-        return at ? gitMove(["catch-up", at.head, at.base ?? "-"], done("Couldn't catch up.")) : done("")("Look again.");
+        return at ? gitMove(["catch-up", at.head, at.base ?? "-"], done("Couldn't catch up.", `Caught up with ${base}`)) : done("", "")("Look again.");
       case "merge":
-        return landBranch(at, done(`Couldn't merge into ${step.base ?? "main"}.`));
+        return landBranch(at, done(`Couldn't merge into ${base}.`, `Merged into ${base}`));
     }
   };
 

@@ -105,6 +105,7 @@ export function useGitNotice(session: string): { notice: Notice | null; dialog: 
           drop(session);
           ask({ op: "run", args: sourceArgs({ session }, "make-commit", "--all", "--message", message) }, (reply) => {
             if (!reply.ok) gitFailed({ session }, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
+            else showToast(`Committed · ${message.split("\n")[0]}`, { tone: "success" });
             ask({ op: "git_refresh" });
             refreshStep();
           });
