@@ -224,7 +224,7 @@ setGitHandler((frame) => {
 
 /** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
 export function useGitWatch(owner: string | null): void {
-  const { daemon } = useDaemon();
+  const { daemon, rows } = useDaemon();
   const project = useHomeProject();
   const starting = useStart(owner ?? "")?.asking === true;
   const target: Target | null = owner === null ? null : owner !== HOME ? { session: owner } : project ? { project: project.id } : null;
@@ -238,6 +238,15 @@ export function useGitWatch(owner: string | null): void {
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
   }, [key, daemon, starting]);
+  // The background draft: a while after each read that changed something, while the session's agent is idle [D1212].
+  const working = owner !== null && owner !== HOME && rows?.find((row) => row.id === owner)?.works === true;
+  const version = useSyncExternalStore(subscribe, () => git.version);
+  useEffect(() => {
+    const target = git.target;
+    if (!daemon || working || !target || git.files.size === 0) return;
+    const soon = setTimeout(() => ask({ op: "run", args: sourceArgs(target, "draft", "--all") }, () => {}), 3000);
+    return () => clearTimeout(soon);
+  }, [version, working, daemon]);
   useEffect(() => {
     // On focus the PRs are read again too, so one made elsewhere shows [D1143].
     const refresh = () => {
@@ -376,10 +385,20 @@ export function commitFiles(all: boolean, message: string, onReply: (reply: Reco
   return true;
 }
 
-/** The background draft (2.20) if it was written for exactly what every change would commit now; nothing is written [D1212]. */
-export function readDraft(onText: (text: string) => void): void {
+/**
+ * The background draft (2.20) for exactly what every change would commit now: Rust keys it [D1212]. Its ready text
+ * goes to `onText`; a pending one is read again, an empty or stale one written, while `wanted()` [T-contract].
+ */
+export function readDraft(onText: (text: string) => void, wanted: () => boolean, cached = true): void {
   const target = git.target;
-  if (target) ask({ op: "run", args: sourceArgs(target, "draft", "--all", "--cached") }, (reply) => reply.draft?.state === "ready" && onText(reply.draft.text));
+  if (!target || !wanted()) return;
+  ask({ op: "run", args: sourceArgs(target, "draft", "--all", ...(cached ? ["--cached"] : [])) }, (reply) => {
+    const state = reply.draft?.state;
+    if (git.target !== target || !wanted()) return;
+    if (state === "ready") onText(reply.draft.text);
+    else if (state === "pending") setTimeout(() => readDraft(onText, wanted), 2000);
+    else if (cached && (state === "empty" || state === "stale")) readDraft(onText, wanted, false);
+  });
 }
 
 /** The message writer [D1029]: a commit message for the index (or every change), or a squash's, nothing committed. */

@@ -1,4 +1,4 @@
-import { type ComponentProps, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { type ComponentProps, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { commitFiles, readDraft, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
@@ -124,6 +124,8 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   const [mergingPr, setMergingPr] = useState(false);
   // Edit message…'s field while it's open; Save keeps it as the next commit's [D1203].
   const [editing, setEditing] = useState<string | null>(null);
+  const editingNow = useRef(editing);
+  editingNow.current = editing;
   const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
   const step = data.step;
   const pending = step && "commit" in step ? (step.commit ?? 0) : 0;
@@ -187,8 +189,9 @@ export function useSourceStep({ data, state, draftKey, session = null, card = fa
   };
   // Typed text first, else the draft written for exactly this commit, filled in only while the field is still empty.
   const edit = () => {
-    setEditing(message || data.draft || "");
-    if (live && !message) readDraft((text) => setEditing((now) => (now === "" ? text : now)));
+    editingNow.current = message || data.draft || "";
+    setEditing(editingNow.current);
+    if (live && !message) readDraft((text) => setEditing((now) => (now === "" ? text : now)), () => editingNow.current === "");
   };
 
   /**
