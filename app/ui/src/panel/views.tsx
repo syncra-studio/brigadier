@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 
-import { FilesView, SearchView } from "../files/views";
-import { Branch, Folders, Search } from "../icons";
+import { FilesView } from "../files/views";
+import { Branch, Folders } from "../icons";
 import { openFile, useTabs } from "../shell/tab-store";
 import { SourceView } from "./source/view";
 import type { PanelView } from "./types";
@@ -20,6 +20,5 @@ function Files({ owner }: { owner: string }) {
 
 export const VIEWS: Record<PanelView, { Icon: ComponentType; View: ComponentType<{ owner: string }> }> = {
   files: { Icon: Folders, View: Files },
-  search: { Icon: Search, View: ({ owner }) => <SearchView onOpen={(path, line, keep) => openFile(owner, path, { line, preview: !keep })} /> },
   source: { Icon: Branch, View: SourceView },
 };

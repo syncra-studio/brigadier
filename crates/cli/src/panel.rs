@@ -14,7 +14,7 @@ use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
 
-const VIEWS: [&str; 3] = ["files", "search", "source"];
+const VIEWS: [&str; 2] = ["files", "source"];
 /// The view a session shows before it's picked one, as the old app [D48].
 const FIRST: &str = "files";
 

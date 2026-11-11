@@ -5,7 +5,7 @@ import type { FileStatus } from "./status";
  * Until the wiring steps (2.15 on) these come from fake.ts.
  */
 
-export type PanelView = "files" | "search" | "source";
+export type PanelView = "files" | "source";
 
 /** A changed file and its lines added and removed. */
 export type SourceFile = { path: string; status: FileStatus; oldPath: string | null; added: number; removed: number };

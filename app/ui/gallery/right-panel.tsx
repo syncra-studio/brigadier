@@ -21,7 +21,7 @@ const HINTS: [string, PanelHint | null][] = [
   ["Checks failed", { tone: "failed", pr: 12, why: "checks" }],
 ];
 
-const TABS: PanelView[] = ["files", "search", "source"];
+const TABS: PanelView[] = ["files", "source"];
 
 export function RightPanelGallery() {
   return (
@@ -61,7 +61,7 @@ export function RightPanelGallery() {
           <ViewTabs active="files" count={0} onSelect={() => undefined} />
         </State>
       </Row>
-      <Row name="Live: the toggle, ⌥⌘B, ⇧⌘E ⇧⌘F ⌃⇧G, and the edge drags to resize (below half its least width, it closes)">
+      <Row name="Live: the toggle, ⌥⌘B, ⇧⌘E ⌃⇧G, and the edge drags to resize (below half its least width, it closes)">
         <div className="flex h-140 w-full min-w-200 overflow-hidden rounded-surface border border-border bg-chrome">
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-titlebar shrink-0 items-center justify-end px-2">

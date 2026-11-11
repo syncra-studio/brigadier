@@ -1,13 +1,9 @@
-// The gallery's live Files and Search on the fake checkout: the app's own (src/files/views.tsx) read Rust [D1002, D1003].
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// The gallery's live Files on the fake checkout: the app's own (src/files/views.tsx) read Rust [D1002].
+import { useCallback, useMemo, useState } from "react";
 
-import { FILES, findFiles, IGNORED, MARKS, replaceFake, searchFake } from "../src/files/fake";
-import { detailsShown, EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "../src/files/search";
+import { FILES, findFiles, IGNORED, MARKS } from "../src/files/fake";
 import { FileTree, type OnOpen } from "../src/files/tree";
-import type { FolderEntry, SearchQuery, SearchResults } from "../src/files/types";
-
-/** How long typing pauses before the search runs (the old 250 ms). */
-const TYPING_MS = 250;
+import type { FolderEntry } from "../src/files/types";
 
 export function FilesView({ owner, shown = null, onOpen = () => {} }: { owner: string; shown?: string | null; onOpen?: OnOpen }) {
   const [query, setQuery] = useState("");
@@ -27,50 +23,6 @@ export function FilesView({ owner, shown = null, onOpen = () => {} }: { owner: s
       shown={shown}
       results={results}
       onQuery={setQuery}
-      onOpen={onOpen}
-    />
-  );
-}
-
-export function SearchView({ owner: _owner, onOpen = () => {} }: { owner: string; onOpen?: (path: string, line: number, keep: boolean) => void }) {
-  const [form, setForm] = useState<SearchForm>(() => ({ ...EMPTY_FORM, details: detailsShown }));
-  const [results, setResults] = useState<SearchResults | null>(null);
-  const dismissed = useRef<ReadonlySet<string>>(new Set());
-  const [asked, setAsked] = useState(0);
-  // Keyed on what the query asks, as in the old app: typing in Replace doesn't search again.
-  const query = searchQuery(form);
-  const key = query ? JSON.stringify(query) : "";
-  useEffect(() => {
-    if (!key) return setResults(null);
-    const next = JSON.parse(key) as SearchQuery;
-    // Searching… while typing pauses, then what the fake checkout holds.
-    setResults((last) => (last ? { ...last, done: null } : { query: next, files: [], done: null, error: null, filteredFiles: 0 }));
-    const timer = setTimeout(() => setResults(searchFake(next, dismissed.current)), TYPING_MS);
-    return () => clearTimeout(timer);
-  }, [key, asked]);
-  return (
-    <SearchPanel
-      form={form}
-      onForm={(change) => setForm((last) => ({ ...last, ...change }))}
-      results={results}
-      onSearch={() => {
-        dismissed.current = new Set();
-        setAsked((count) => count + 1);
-      }}
-      // The old app found again after a replace changed the checkout.
-      onReplace={(file) =>
-        results
-          ? replaceFake(results, form.replace, file).then((outcome) => {
-              setAsked((count) => count + 1);
-              return outcome;
-            })
-          : Promise.reject(new Error("Nothing to replace"))
-      }
-      // Gone from the results at once, as in the old app; searches until Enter leave it out.
-      onDismiss={(path) => {
-        dismissed.current = new Set([...dismissed.current, path]);
-        setResults((last) => last && { ...last, files: last.files.filter((file) => file.path !== path), filteredFiles: last.filteredFiles + 1 });
-      }}
       onOpen={onOpen}
     />
   );

@@ -1,22 +1,12 @@
 //! Replace all's record of a run under way, and putting right a run cut short [D1173].
 
-use super::replace::{Staged, keep_copy, put_back, rename_into};
-use super::search::hash;
-use super::{Checkout, Target, lock};
+use super::{Checkout, lock};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::hash::{DefaultHasher, Hasher};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-
-/// Where a Replace all under way keeps its record: the session's folder, or the project's in the
-/// app's data.
-pub fn record(data: &Path, target: &Target) -> PathBuf {
-    match target {
-        Target::Session(id) => crate::session_dir(data, id).join(RECORD),
-        Target::Project(id) => data.join("projects").join(id).join(RECORD),
-    }
-}
 
 const RECORD: &str = "replacing.json";
 
@@ -53,7 +43,7 @@ pub fn settled(data: &Path, id: &str) -> io::Result<()> {
     }
 }
 
-pub(super) const LEFT: &str =
+const LEFT: &str =
     "An earlier Replace all left files it couldn't put back; Brigadier tries again when it starts.";
 
 /// `settle` under the checkout's lock: a run still going holds it, and settles its record itself.
@@ -80,7 +70,7 @@ fn read(path: &Path) -> Option<Record> {
 /// every file goes back as it was; once all were placed, only their old copies go. A file
 /// something else changed stays, and the log says where its text from before is. One still
 /// missing with its text aside stays recorded, to try again; then this answers false.
-pub(super) fn settle(path: &Path) -> bool {
+fn settle(path: &Path) -> bool {
     let Some(mut run) = read(path) else {
         return true;
     };
@@ -167,4 +157,141 @@ fn aside(
             kept(file, &file.aside).display()
         )),
     }
+}
+
+/// One listed file's rewrite, ready to go: its new text written beside it, not yet in place.
+#[derive(Serialize, Deserialize)]
+struct Staged {
+    path: String,
+    full: PathBuf,
+    /// What the search found in it, and what the rewrite holds.
+    hash: String,
+    new_hash: String,
+    matches: u64,
+    temp: PathBuf,
+    /// Where the file is moved aside while the rewrite takes its place, until all are in.
+    aside: PathBuf,
+    /// Where what's in its place goes while a rollback checks it.
+    undone: PathBuf,
+    /// Whether its folder takes hard links, probed before any original is moved.
+    hard_links: bool,
+}
+
+/// Moves a rewrite or original into an empty path, refusing a concurrent writer atomically.
+#[cfg(target_os = "macos")]
+fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let from = CString::new(from.as_os_str().as_bytes()).map_err(io::Error::other)?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(io::Error::other)?;
+    // SAFETY: both paths are NUL-terminated and live for the whole call.
+    match unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) } {
+        0 => Ok(()),
+        _ => Err(io::Error::last_os_error()),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn rename_into(from: &Path, to: &Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let from = CString::new(from.as_os_str().as_bytes()).map_err(io::Error::other)?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(io::Error::other)?;
+    // SAFETY: both paths are NUL-terminated and live for the whole call.
+    let done = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            from.as_ptr(),
+            libc::AT_FDCWD,
+            to.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    match done {
+        0 => Ok(()),
+        _ => Err(io::Error::last_os_error()),
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn rename_into(_: &Path, _: &Path) -> io::Result<()> {
+    // Without an exclusive rename, the probe fails before an original moves.
+    Err(io::ErrorKind::Unsupported.into())
+}
+
+/// Puts back a file `place` placed: its rewrite (if still as written) goes, and the file from
+/// before comes back. What's in its place is moved off first and checked there, so a save that
+/// lands meanwhile is never deleted: when something else is in its place, both stay, and the
+/// reason says where the text from before is.
+fn put_back(file: &Staged, kept: &impl Fn(&Staged, &Path) -> PathBuf) -> Result<(), String> {
+    let changed = || {
+        format!(
+            "it changed while the files were being replaced; its text from before is in {}",
+            kept(file, &file.aside).display()
+        )
+    };
+    let off = &file.undone;
+    // Exclusive: a save a rollback cut short left there is never written over.
+    match rename_into(&file.full, off) {
+        Ok(()) if fs::read(off).is_ok_and(|bytes| hash(&bytes) == file.new_hash) => {
+            let _ = fs::remove_file(off);
+        }
+        // Someone else's save: it goes back where it was, unless yet another took the place.
+        Ok(()) => {
+            return Err(match rename_into(off, &file.full) {
+                Ok(()) => changed(),
+                Err(_) => {
+                    let off = kept(file, off);
+                    format!("{}; a newer save of it is in {}", changed(), off.display())
+                }
+            });
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("couldn't undo it: {e}")),
+    }
+    restore(file, kept)
+}
+
+/// Moves a file moved aside back into its place, refusing anything that took the place.
+fn restore(file: &Staged, kept: &impl Fn(&Staged, &Path) -> PathBuf) -> Result<(), String> {
+    let restored = match file.hard_links {
+        true => fs::hard_link(&file.aside, &file.full).and_then(|()| fs::remove_file(&file.aside)),
+        false => rename_into(&file.aside, &file.full),
+    };
+    restored.map_err(|e| {
+        let kept = kept(file, &file.aside);
+        format!(
+            "couldn't undo it ({e}); its text from before is in {}",
+            kept.display()
+        )
+    })
+}
+
+/// Where a copy of the file at `of` stays when it can't go back: moved into `keep` (the session's
+/// folder, so delete takes it [D35]), else beside it.
+// shortcut: when the session's own folder can't take the copy, it stays beside the file, named in
+// the reason but recorded nowhere, as no record could be written there either.
+fn keep_copy(copy: &Path, of: &Path, keep: Option<&Path>) -> PathBuf {
+    let Some(keep) = keep else {
+        return copy.to_path_buf();
+    };
+    let name = of.file_name().unwrap_or_default().to_string_lossy();
+    let to = keep.join(format!("{}-{name}", crate::adapters::uuid()));
+    let moved = fs::create_dir_all(keep)
+        .and_then(|()| fs::copy(copy, &to))
+        .and_then(|_| fs::remove_file(copy));
+    match moved {
+        Ok(()) => to,
+        Err(_) => {
+            let _ = fs::remove_file(&to);
+            copy.to_path_buf()
+        }
+    }
+}
+
+/// Tells one version of a file from another, within this build.
+fn hash(bytes: &[u8]) -> String {
+    let mut hasher = DefaultHasher::new();
+    hasher.write(bytes);
+    format!("{:016x}-{}", hasher.finish(), bytes.len())
 }

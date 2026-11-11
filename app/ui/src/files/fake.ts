@@ -1,8 +1,8 @@
-// Fake data for the gallery's Files, viewer and Search; the app reads Rust [D1002, D1003]. What Rust works out
-// (marks, filename search, content search, Replace all) is faked here, never in the views.
+// Fake data for the gallery's Files and viewer; the app reads Rust [D1002]. What Rust works out (marks, filename
+// search) is faked here, never in the views.
 import { fuzzyMatch } from "../components/composer/menus";
 import { baseName } from "./tree";
-import type { ChangeMarks, CheckoutFile, FileList, FileRead, FolderEntry, ReplaceOutcome, SearchFile, SearchQuery, SearchResults } from "./types";
+import type { ChangeMarks, CheckoutFile, FileList, FileRead, FolderEntry } from "./types";
 
 const SOURCES: Record<string, string> = {
   "src/upload/retry.ts": `import { sleep } from "../lib/time";
@@ -113,56 +113,7 @@ export function findFiles(list: FileList, query: string): string[] {
     .map((result) => result.path);
 }
 
-/** What Replace all wrote, by path. */
-const replaced: Record<string, string> = {};
-
-/** A file's text in the fake checkout. */
-export const fakeText = (path: string) => replaced[path] ?? SOURCES[path] ?? (path === "src/pipeline.ts" ? LONG_FILE : `// ${path}\n`);
-
 export function fakeRead(path: string, change: Partial<CheckoutFile> = {}): FileRead {
-  const text = fakeText(path);
+  const text = SOURCES[path] ?? (path === "src/pipeline.ts" ? LONG_FILE : `// ${path}\n`);
   return { state: "read", file: { size: text.length, text, truncated: false, ...change } };
-}
-
-const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const patternOf = (query: SearchQuery) => {
-  const source = query.regex ? query.text : literal(query.text);
-  return new RegExp(query.wholeWord ? `\\b(?:${source})\\b` : source, query.matchCase ? "g" : "gi");
-};
-
-/** Searches the fake checkout as Rust's content search will (step 2.17). */
-export function searchFake(query: SearchQuery, dismissed: ReadonlySet<string> = new Set()): SearchResults {
-  let pattern: RegExp;
-  try {
-    pattern = patternOf(query);
-  } catch (error) {
-    return { query, files: [], done: null, error: `The search isn't a valid regular expression: ${(error as Error).message}`, filteredFiles: 0 };
-  }
-  const files: SearchFile[] = [];
-  let filtered = 0;
-  for (const path of [...Object.keys(SOURCES), "src/pipeline.ts"]) {
-    if (query.include && !query.include.split(",").some((glob) => path.includes(glob.trim().replace(/\*+/g, "")))) continue;
-    if (query.exclude && query.exclude.split(",").some((glob) => glob.trim() && path.includes(glob.trim().replace(/\*+/g, "")))) continue;
-    const lines = fakeText(path)
-      .split("\n")
-      .flatMap((text, index) => {
-        const found = [...text.matchAll(pattern)].filter((each) => each[0]);
-        if (!found.length) return [];
-        // The line's indent is left out, unless a match is in it (the old search.rs preview).
-        const indent = Math.min(text.length - text.trimStart().length, found[0].index);
-        return [{ line: index + 1, preview: text.slice(indent), ranges: found.map((each) => ({ start: each.index - indent, end: each.index - indent + each[0].length })) }];
-      });
-    if (!lines.length) continue;
-    if (dismissed.has(path)) filtered++;
-    else files.push({ path, matches: lines.reduce((sum, line) => sum + line.ranges.length, 0), hash: path, lines });
-  }
-  return { query, files, done: { capped: false }, error: null, filteredFiles: filtered };
-}
-
-/** Replace all on the fake checkout, after a moment: each match becomes `replace`, read back as the file's text. */
-export function replaceFake(results: SearchResults, replace: string, file?: string): Promise<ReplaceOutcome> {
-  const files = results.files.filter((each) => !file || each.path === file);
-  for (const each of files) replaced[each.path] = fakeText(each.path).replace(patternOf(results.query), () => replace);
-  return new Promise((resolve) => setTimeout(() => resolve({ files: files.length, matches: files.reduce((sum, each) => sum + each.matches, 0), skipped: [], unrestored: [] }), 600));
 }

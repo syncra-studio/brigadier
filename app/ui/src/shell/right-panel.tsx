@@ -17,13 +17,12 @@ import { HOME } from "./tab-store";
 /*
  * The right panel [D410, D1014], as the old app's (WorkspacePane, PaneViewTabs): a column at the window's end, its
  * views' icons centred atop it, sliding open and closed as the sidebar does and pushing the chat aside. Its edge
- * drags to resize it; dragged below half its least width, it closes. ⌥⌘B shows or hides it; ⇧⌘E, ⇧⌘F and ⌃⇧G
- * open Files, Search and Source, and pressed while that view shows, move the keyboard into it [D48].
+ * drags to resize it; dragged below half its least width, it closes. ⌥⌘B shows or hides it; ⇧⌘E and ⌃⇧G
+ * open Files and Source, and pressed while that view shows, move the keyboard into it [D48].
  */
 
 const TABS: { view: PanelView; title: string; shortcut: string }[] = [
   { view: "files", title: "Files", shortcut: "⇧⌘E" },
-  { view: "search", title: "Search", shortcut: "⇧⌘F" },
   { view: "source", title: "Source", shortcut: "⌃⇧G" },
 ];
 
@@ -82,7 +81,6 @@ function panelKey(event: KeyboardEvent): "toggle" | PanelView | null {
   const command = event.metaKey && !event.ctrlKey;
   if (command && event.altKey && !event.shiftKey && event.code === "KeyB") return "toggle";
   if (command && event.shiftKey && !event.altKey && event.code === "KeyE") return "files";
-  if (command && event.shiftKey && !event.altKey && event.code === "KeyF") return "search";
   if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey && event.code === "KeyG") return "source";
   return null;
 }
@@ -147,7 +145,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   );
 }
 
-/** The row of view icons, as tabs: Files, Search and Source with its count; arrows, Home and End move along it. */
+/** The row of view icons, as tabs: Files and Source with its count; arrows, Home and End move along it. */
 export function ViewTabs({ active, count, onSelect }: { active: PanelView; count: number; onSelect: (view: PanelView) => void }) {
   return (
     <div role="tablist" aria-label="Right sidebar" className="flex h-page-toolbar shrink-0 items-center justify-center gap-1 px-2">

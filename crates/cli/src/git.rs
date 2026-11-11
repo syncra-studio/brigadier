@@ -7,8 +7,8 @@ use super::{arg, flag, has};
 use brigadier_core::git::change::{self, Move};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, branch, files, history, land, push::Rejected, recover, replace,
-    search, step, sync, watch::Watch,
+    self, Checkout, Status, Target, branch, files, history, land, push::Rejected, step, sync,
+    watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -16,8 +16,8 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 
-/// Whose checkout: `--project <id>` only right after the command, so a search or a replacement
-/// that reads `--project` stays text.
+/// Whose checkout: `--project <id>` only right after the command, so a query that reads
+/// `--project` stays text.
 pub(super) fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
     Ok(match arg(args, 1)? {
         "--project" => (Target::Project(arg(args, 2)?), 3),
@@ -60,10 +60,6 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         last = Some(status);
     }
     Ok(Value::Null)
-}
-
-fn parse(text: &str) -> io::Result<Value> {
-    serde_json::from_str(text).map_err(io::Error::other)
 }
 
 /// A session's base, and where its branch left it: Branch since base's start. A project or a
@@ -179,35 +175,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         "files" => json!({"ok": true, "list": files::list(&checkout, &stop)?}),
         "folder" => json!({"ok": true, "entries": files::folder(&checkout, word(1)?)?}),
         "find" => json!({"ok": true, "found": files::find(&checkout, word(1)?, &stop)?}),
-        // Search in one answer (the app streams it through the daemon's `grep`), and Replace all [D1003].
-        "search" => {
-            let matcher = search::Matcher::new(&parse(word(1)?)?)?;
-            let mut found = vec![];
-            let done = search::search(&checkout, &matcher, &stop, |batch| {
-                found.extend(batch);
-                true
-            })?;
-            json!({"ok": true, "files": found, "done": done})
-        }
-        "replace" => {
-            let matcher = search::Matcher::new(&parse(word(1)?)?)?;
-            let files = parse(word(3)?)?;
-            let keep = match target {
-                Target::Session(id) => Some(brigadier_core::session_dir(data, id).join("replaced")),
-                Target::Project(_) => None,
-            };
-            let files = files.as_array().map_or(&[][..], Vec::as_slice);
-            let outcome = replace::replace(
-                &checkout,
-                &matcher,
-                word(2)?,
-                files,
-                keep.as_deref(),
-                &recover::record(data, &target),
-                &stop,
-            )?;
-            json!({"ok": true, "outcome": outcome})
-        }
         verb @ ("stage" | "unstage" | "discard") => {
             let paths = args.get(at + 2..).unwrap_or_default();
             if paths.is_empty() {
