@@ -376,6 +376,14 @@ window.addEventListener("message", (event) => {
   };
 });
 
+/** Resolves once the daemon has said hello: a folder Finder opens the app with reaches the page before it does. */
+export const connected = (): Promise<void> =>
+  new Promise((done) => {
+    const check = () => void (view.daemon && (listeners.delete(check), done()));
+    listeners.add(check);
+    check();
+  });
+
 export const useDaemon = (): View =>
   useSyncExternalStore(
     (listener) => {

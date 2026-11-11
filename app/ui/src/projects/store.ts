@@ -1,4 +1,5 @@
 import { showToast } from "../components/toast";
+import { connected } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 import { addProject, newProjectId } from "./projects";
 
@@ -104,4 +105,4 @@ export const daemonSource: Source = {
 
 /** The app menu's View › Add project… and File › Open Folder… (⌘O) [D165]; called once by the app. */
 export const listenToMenu = () =>
-  window.brigadier?.onMenu((command, paths) => (command === "add-project" ? openAddProject() : command === "open-folders" && void openFolders(daemonSource, paths ?? [])));
+  window.brigadier?.onMenu((command, paths) => (command === "add-project" ? openAddProject() : command === "open-folders" && void connected().then(() => openFolders(daemonSource, paths ?? []))));
