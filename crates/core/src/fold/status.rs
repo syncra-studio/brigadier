@@ -132,16 +132,27 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
             format!("sign_in:{}", fold.finished),
             fold.sign_in.clone(),
         ),
+        // A crash ends a turn before any record says so (`status` closes it in a copy); the
+        // record written later names the same turn, so it doesn't tell twice.
+        "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
         _ if turn.is_some() || fold.finished == 0 => return None,
-        "idle" | "idle_jobs" => ("done", format!("end:{}", fold.finished), None),
+        "idle" | "idle_jobs" => ("done", ended(fold), None),
         "failed" | "interrupted" | "limited" | "out_of_credits" | "unresumable" => (
             "failed",
-            format!("end:{}", fold.finished),
+            ended(fold),
             fold.limit.clone().or(fold.refused.clone()),
         ),
         _ => return None,
     };
     Some(json!({"id": id, "kind": kind, "text": text}))
+}
+
+/// The last turn's end, named by that turn (its time for a log older than turn ids).
+fn ended(fold: &Fold) -> String {
+    match fold.last.as_ref().and_then(|l| l["id"].as_str()) {
+        Some(id) if !id.is_empty() => format!("end:{id}"),
+        _ => format!("end:{}", fold.finished),
+    }
 }
 
 fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {

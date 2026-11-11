@@ -19,6 +19,8 @@ declare global {
       /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
       closesTab(on: boolean): void;
+      /** Whether the app menu's key shortcuts are off for this page (while a press is recorded). */
+      ignoreMenuKeys(on: boolean): void;
       /** Opens an https link in the browser, with no click needed. */
       openLink(url: string): void;
       /** A macOS notice; what macOS did with it: shown, blocked (notifications are off for Brigadier), or failed. */

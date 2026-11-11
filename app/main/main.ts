@@ -168,6 +168,8 @@ async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: s
 }
 ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fromWebContents(event.sender), options));
 ipcMain.on("text-undo", (event) => event.sender.undo());
+// While Settings › Keyboard shortcuts records a press, the menu's own keys (⌘N, ⌘W…) don't fire either.
+ipcMain.on("ignore-menu-keys", (event, on: boolean) => event.sender.setIgnoreMenuShortcuts(on));
 // A web link opens in the browser: from window.open, or from the page once a click's wait is over (a push, then its PR page).
 function openLink(url: string): void {
   if (/^https:/.test(url)) void shell.openExternal(url);

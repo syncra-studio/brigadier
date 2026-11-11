@@ -16,22 +16,37 @@ const settings = store<{ value?: Settings; error?: string }>({});
 export const useSettings = settings.use;
 export const getSettings = () => settings.get().value;
 
+// Rust's last word, and the changes still on their way, oldest first: what's shown is the one with the others on top.
+let confirmed: Settings | undefined;
+const pending: { key: keyof Settings; value: unknown }[] = [];
+let saving: Promise<unknown> = Promise.resolve();
+const show = () => confirmed && settings.set({ value: pending.reduce((all, { key, value }) => ({ ...all, [key]: value }), confirmed) });
+
 /** Asked on each connect until known; a failure keeps what was shown. */
 export function loadSettings(): void {
   run(["settings"]).then(
-    (reply) => settings.set({ value: reply as Settings }),
+    (reply) => {
+      confirmed = reply as Settings;
+      show();
+    },
     (cause) => settings.get().value || settings.set({ error: errorText(cause) }),
   );
 }
 
-/** Shown at once, then Rust's reply replaces it; on failure it goes back, and the caller says why [D30]. */
+/**
+ * Shown at once, saved one at a time so Rust's replies come in order; each reply keeps the changes still pending on
+ * top, and a failure drops only its own change, and the caller says why [D30].
+ */
 export async function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
-  const before = settings.get().value;
-  if (before) settings.set({ value: { ...before, [key]: value } });
+  const change = { key, value };
+  pending.push(change);
+  show();
+  const save = saving.then(() => run(["settings", key, String(value)]));
+  saving = save.catch(() => undefined);
   try {
-    settings.set({ value: (await run(["settings", key, String(value)])) as Settings });
-  } catch (cause) {
-    if (before) settings.set({ value: before });
-    throw cause;
+    confirmed = (await save) as Settings;
+  } finally {
+    pending.splice(pending.indexOf(change), 1);
+    show();
   }
 }

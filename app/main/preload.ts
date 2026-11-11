@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("brigadier", {
     return () => void ipcRenderer.off("menu", heard);
   },
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
+  ignoreMenuKeys: (on: boolean) => ipcRenderer.send("ignore-menu-keys", on),
   openLink: (url: string) => ipcRenderer.send("open-link", url),
   notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),
   badge: (count: number) => ipcRenderer.send("badge", count),

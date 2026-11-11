@@ -98,6 +98,7 @@ export function matches(event: KeyboardEvent, id: string): boolean {
 export function recordKeyPress(onPress: (press: string | null) => void): () => void {
   let on = true;
   recording = true;
+  window.brigadier?.ignoreMenuKeys(true);
   const swallow = (event: KeyboardEvent) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -105,6 +106,7 @@ export function recordKeyPress(onPress: (press: string | null) => void): () => v
   const stop = () => {
     if (!on) return;
     on = recording = false;
+    window.brigadier?.ignoreMenuKeys(false);
     removeEventListener("keydown", onKeyDown, true);
     removeEventListener("keyup", swallow, true);
   };
