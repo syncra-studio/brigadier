@@ -56,22 +56,27 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
 export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[] };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
 const asking = store<Asking | null>(null);
+/** One check at a time: a repeat press while Rust looks would archive again after an Undo. */
+let checking = false;
 
 /**
  * Archives the rows; an open one goes Home. Rust checks the batch first: with nothing to say it goes at once, with
  * Undo (and ⌘Z while it shows) [D198]; else the confirm says it first [D1197].
  */
 export function archiveRows(rows: SessionRow[]) {
-  if (rows.length === 0) return;
+  if (rows.length === 0 || checking) return;
+  checking = true;
   const focus = document.activeElement;
-  run(["archive", ...rows.map((row) => row.id), "--check"]).then(
-    (reply) => {
-      const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
-      if (check.running.length + check.lost.length === 0) archiveNow(rows, focus);
-      else asking.set({ rows, focus, check });
-    },
-    (cause) => asking.set({ rows, focus, error: errorText(cause) }),
-  );
+  run(["archive", ...rows.map((row) => row.id), "--check"])
+    .then(
+      (reply) => {
+        const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
+        if (check.running.length + check.lost.length === 0) archiveNow(rows, focus);
+        else asking.set({ rows, focus, check });
+      },
+      (cause) => asking.set({ rows, focus, error: errorText(cause) }),
+    )
+    .finally(() => (checking = false));
 }
 
 function archiveNow(rows: SessionRow[], focus: Element | null) {
