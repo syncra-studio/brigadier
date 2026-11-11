@@ -11,16 +11,33 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = core::load(data, id)?;
     let name = title::clean(arg(args, 2)?).map_err(io::Error::other)?;
-    let preview = has(args, "--preview");
+    // Hosted reads take no session, checkout or turn locks. Their identity is checked again below.
+    let checkout = git::checkout(data, &Target::Session(id)).ok();
+    let all = brigadier_frames::procs::all();
+    let busy = checkout.as_ref().is_some_and(|c| {
+        branch::sharing(data, c)
+            .iter()
+            .any(|id| sessions::working(data, id, &all))
+    });
+    let observed = match &checkout {
+        Some(c) if c.worktree && !busy && worktrees::names::has_remotes(&c.root)? => {
+            core::host::pr(data, id).ok()
+        }
+        _ => None,
+    };
+    let prs = observed.as_ref().and_then(|p| p.list());
     let _session = worktrees::lock(&spec.dir)?;
-    let _fence = branch::fence(data)?;
+    let spec = core::load(data, id)?;
+    // Never wait for a lock held by an operation that may need this session's lock.
+    let _fence = worktrees::names::turn_fence(data)?;
     let current = worktrees::lands(&spec.dir)?;
+    let checkout = git::checkout(data, &Target::Session(id)).ok();
     let mut next = None;
     let mut reason = "This session has no branch of its own.";
-    // Archived worktrees aren't moved by renaming their chat.
-    let checkout = git::checkout(data, &Target::Session(id)).ok();
-    let mut locks = None;
-    if let (Some(lands), Some(checkout)) = (&current, &checkout)
+    let mut checkout_lock = None;
+    if _fence.is_none() {
+        reason = "A source action is running, so the branch keeps its name.";
+    } else if let (Some(lands), Some(checkout)) = (&current, &checkout)
         && let Some(old) = lands.branch.as_deref()
         && checkout.worktree
     {
@@ -31,49 +48,63 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         {
             reason = "The branch keeps its name while an agent works in this folder.";
         } else {
-            let checkout_lock = std::fs::File::open(&checkout.git_dir)?;
-            match checkout_lock.try_lock() {
+            let file = std::fs::File::open(&checkout.git_dir)?;
+            match file.try_lock() {
                 Err(std::fs::TryLockError::WouldBlock) => {
                     reason = "A source action is running, so the branch keeps its name."
                 }
                 Err(std::fs::TryLockError::Error(e)) => return Err(e),
                 Ok(()) => {
-                    locks = Some(checkout_lock);
-                    let prefix = spec
-                        .project
-                        .as_deref()
-                        .map(|p| projects::get(data, p))
-                        .transpose()?
-                        .and_then(|p| p.branch_prefix);
-                    let candidate =
-                        worktrees::names::choose(&lands.repo, prefix.as_deref(), &name, Some(old))?;
+                    checkout_lock = Some(file);
                     if sync::branch(checkout)? != old {
                         reason = "The checkout is on another branch, so its name stays.";
                     } else if !worktrees::names::unpublished(&spec.dir)? {
                         reason = "The branch has been published, so its name stays.";
                     } else {
-                        // No remotes means no hosted PR. Otherwise a failed/unsupported read proves nothing.
-                        let prs = match !worktrees::names::has_remotes(&checkout.root)? {
-                            true => Some(json!([])),
-                            false => core::host::pr(data, id).ok().and_then(|p| p.list()),
+                        let same = match &observed {
+                            Some(was) => core::host::pr(data, id).is_ok_and(|now| {
+                                now.branch == was.branch
+                                    && now.remote == was.remote
+                                    && now.repo == was.repo
+                            }),
+                            None => !worktrees::names::has_remotes(&checkout.root)?,
                         };
-                        match prs.as_ref().and_then(Value::as_array) {
-                            Some(prs) if prs.is_empty() => {
-                                next = Some(candidate);
-                                reason = "";
-                            }
-                            Some(_) => reason = "The branch has a pull request, so its name stays.",
-                            None => {
-                                reason =
-                                    "Couldn't check pull requests, so the branch keeps its name."
-                            }
+                        let no_pr = if observed.is_none() {
+                            same
+                        } else {
+                            same && prs
+                                .as_ref()
+                                .and_then(Value::as_array)
+                                .is_some_and(Vec::is_empty)
+                        };
+                        if no_pr {
+                            let prefix = spec
+                                .project
+                                .as_deref()
+                                .map(|p| projects::get(data, p))
+                                .transpose()?
+                                .and_then(|p| p.branch_prefix);
+                            next = Some(worktrees::names::choose(
+                                &lands.repo,
+                                prefix.as_deref(),
+                                &name,
+                                Some(old),
+                            )?);
+                            reason = "";
+                        } else {
+                            reason = match prs.as_ref().and_then(Value::as_array) {
+                                Some(prs) if !prs.is_empty() => {
+                                    "The branch has a pull request, so its name stays."
+                                }
+                                _ => "Couldn't check pull requests, so the branch keeps its name.",
+                            };
                         }
                     }
                 }
             }
         }
     }
-    if preview {
+    if has(args, "--preview") {
         return Ok(json!({"ok": true, "branch": next, "reason": reason}));
     }
     if let Some(expected) = flag(args, "--branch")
@@ -89,6 +120,6 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         worktrees::rename_held(&spec.dir, next)?;
     }
     core::write_atomic(&spec.dir.join("title"), name.as_bytes())?;
-    drop(locks);
+    drop(checkout_lock);
     Ok(json!({"ok": true, "at": index::touched(&spec.dir), "branch": next, "reason": reason}))
 }

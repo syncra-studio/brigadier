@@ -127,8 +127,11 @@ pub fn without_attribution(message: &str) -> String {
     message
         .lines()
         .filter(|line| {
-            let line = line.trim().to_ascii_lowercase();
-            !line.starts_with("co-authored-by:") && !line.contains("generated with")
+            let line = line
+                .trim()
+                .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
+                .to_ascii_lowercase();
+            !line.starts_with("co-authored-by:") && !line.starts_with("generated with ")
         })
         .collect::<Vec<_>>()
         .join("\n")

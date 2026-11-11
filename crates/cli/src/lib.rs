@@ -35,7 +35,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
-       brigadier rename <id> <title> | pin <id> [--off]
+       brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
        brigadier tabs <id> [open|replace <tab> <kind> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F]
@@ -47,7 +47,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> history | source <id> commit <sha> [<path> [<from>]]
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since | search <query-json> | replace <query-json> <replacement> <files-json>
-       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write commit [--all] | write pr | write squash]
+       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write commit [--all] | write pr | write squash | draft [--all] [--cached] [--refresh]]
        brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish | force-push <branch> <remote> <ref> <oid>; source <id> base <ref>
        brigadier source <id> | source --project P step [--fresh] | style merge|squash | source <id> land merge|squash <head> <base> [--message M] | squash <head> <base>
        brigadier panel [open on|off | width <px> | view <id> files|search|source | shown <id>]
@@ -55,7 +55,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
-       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] | reveal I | remove I]
+       brigadier profile [--name N] [--intro] [--done] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
        brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";

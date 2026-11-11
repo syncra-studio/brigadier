@@ -1,8 +1,6 @@
-//! A worktree per session [D35, D160, D210]: `sessions/<id>/worktree`, on a new branch
-//! named from its title on the project's current branch, with the git-ignored files its
-//! `.worktreeinclude` names copied in [D178] and the project's setup script run before the first
-//! turn, only in a trusted project [D166, D202, D211]. `worktree.json` records each piece as it's
-//! made, so a failed create and a delete remove only what the session owns [D35, D181].
+//! A title-named worktree at `sessions/<id>/worktree` [D35, D160, D210, D1217].
+//! Copies `.worktreeinclude` files [D178] and runs trusted project setup before the first turn
+//! [D166, D202, D211]. `worktree.json` records each owned piece for rollback and delete [D35, D181].
 
 use crate::adapters::setup;
 pub use crate::worktree_setup::{Startup, setup_state, wrap};
@@ -139,7 +137,6 @@ pub fn path(data: &Path, id: &str) -> PathBuf {
 /// here, its unfinished create undone first. A failed create on a `fresh` session (made by this
 /// start) that undid itself takes the session away too; on a retry the session keeps its log and
 /// first message, and the error says why. One it couldn't undo stays recorded [D35].
-/// Takes what `create` takes, so a change there changes only this call.
 pub fn ensure(
     spec: &Spec,
     project: &projects::Project,

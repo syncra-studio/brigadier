@@ -11,6 +11,21 @@ pub fn has_remotes(repo: &Path) -> io::Result<bool> {
     Ok(!git(repo, &["remote"])?.is_empty())
 }
 
+/// A title rename must not wait while holding a session lock: another action can hold this
+/// fence while waiting for that session. Failure to acquire simply keeps the branch name.
+pub fn turn_fence(data: &Path) -> io::Result<Option<File>> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join("checkout.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
 /// A prefix is literal, so appending a plain slug must still make a valid branch.
 pub fn check_prefix(prefix: &str) -> io::Result<()> {
     let mut command = std::process::Command::new("git");
@@ -87,6 +102,9 @@ pub fn choose(
         } else {
             format!("{stem}-{suffix}")
         };
+        if git(repo, &["check-ref-format", "--branch", &name]).is_err() {
+            continue;
+        }
         if !branches
             .iter()
             .filter(|b| Some(b.as_str()) != old)

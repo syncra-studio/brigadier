@@ -99,7 +99,13 @@ pub(super) fn run(
     let mut draft = json!({"state": "pending", "text": null, "head": prepared.head, "tree": prepared.tree,
         "root": checkout.root, "all": all, "atMs": now_ms()});
     write_atomic(&path, &serde_json::to_vec(&draft)?)?;
-    match written_for(data, &spec, &f, &_active, commit_prompt(checkout, &prepared, &stop)) {
+    match written_for(
+        data,
+        &spec,
+        &f,
+        &_active,
+        commit_prompt(checkout, &prepared, &stop),
+    ) {
         Ok(text) => {
             draft["state"] = "ready".into();
             draft["text"] = text.into();
