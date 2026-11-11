@@ -84,7 +84,9 @@ export function ReviewTab(props: ReviewTabProps) {
   const files = review?.files ?? [];
   // The file a comment is being written on stays open, so its box comes back after a restart.
   const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path) && props.draft?.path !== file.path);
-  const allCollapsed = files.length > 0 && files.every(isCollapsed);
+  // Behind the "Show diff" row, every file counts as folded, and Expand all shows them.
+  const hidden = below === "row" && !shown && !props.draft;
+  const allCollapsed = files.length > 0 && (hidden || files.every(isCollapsed));
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
     setFolded((current) => new Set([...current].filter((path) => !shown.some((file) => file.path === path))));
@@ -142,7 +144,11 @@ export function ReviewTab(props: ReviewTabProps) {
           tooltip={allCollapsed ? "Expand all diffs" : "Collapse all diffs"}
           size="icon-sm"
           disabled={files.length === 0}
-          onClick={() => (allCollapsed ? open(files) : setFolded(new Set(files.map((file) => file.path))))}
+          onClick={() => {
+            setShown(true);
+            if (allCollapsed) open(files);
+            else setFolded(new Set(files.map((file) => file.path)));
+          }}
         >
           {allCollapsed ? <ChevronUpDown /> : <ChevronDownUp />}
         </TooltipIconButton>
@@ -173,7 +179,7 @@ export function ReviewTab(props: ReviewTabProps) {
           <EmptyState variant="centered" title={noTurnWords(review.none)} />
         ) : review.files.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No changes</p>
-        ) : below === "row" && !shown && !props.draft ? null : (
+        ) : hidden ? null : (
           review.files.map((file) => (
             <FileSection
               key={file.path}
