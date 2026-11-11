@@ -221,9 +221,11 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const back = carry(sent, msg);
     handOff(id, sent, msg, () => go(pulled, back), (reply) => {
       restoreChips(id, msg, sent);
-      editing.current = pulled;
-      field.current?.set(parts);
-      setEmpty(isEmpty({ parts, attachmentIds: [] }));
+      editing.current ??= pulled;
+      // The refused words go back above anything typed meanwhile, never over it, as a put-back does [D363].
+      const typed = field.current?.parts() ?? [];
+      field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...typed]);
+      setEmpty(isEmpty({ parts, attachmentIds: [] }) && isEmpty({ parts: typed, attachmentIds: [] }));
       setError(failure(reply));
     }, into);
   };

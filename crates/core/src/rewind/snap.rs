@@ -148,7 +148,8 @@ impl Store {
         command
     }
 
-    /// Git on the store, to read two moments apart: Review's Last turn [D1000, D1192].
+    /// Git on the store, to compare two captures it holds: Review's Last turn [D1000, D1192]. It
+    /// writes nothing; Last turn's capture of the folder now goes through `capture`.
     pub fn read(&self, args: &[&str]) -> io::Result<Vec<u8>> {
         self.run(&self.git.join("index"), args)
     }
