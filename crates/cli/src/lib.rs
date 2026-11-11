@@ -5,7 +5,6 @@ mod accounts;
 mod chips;
 mod commit;
 mod control;
-mod first;
 mod fork;
 mod git;
 mod host;
@@ -50,8 +49,8 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
        brigadier source <id> | source --project P [make-commit [--all] [--message M] | write pr]
-       brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish; source <id> base <ref>
-       brigadier source <id> | source --project P step | source <id> land <head> <base>
+       brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish | push; source <id> base <ref>
+       brigadier source <id> | source --project P step | source <id> land <head> <base> | source <id> catch-up <head> <base>
        brigadier panel [open on|off | width <px>]
        brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft] | host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>

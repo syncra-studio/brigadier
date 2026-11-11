@@ -10,7 +10,6 @@ import { Textarea } from "../../components/textarea";
 import { showToast, toastManager } from "../../components/toast";
 import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
-import type { StepAt } from "../git";
 import type { Pr } from "../types";
 import { gitFailed } from "../notice";
 import { failed } from "./branch-ops";
@@ -181,30 +180,11 @@ function made(session: string, pr: { number: number | null; url: string }) {
   showToast(pr.number ? `Opened #${pr.number}` : "Opened the pull request", { tone: "success", stays: true, actions: [{ label: "Open ↗", run: () => window.open(pr.url) }] });
 }
 
-/**
- * With files uncommitted, Create PR, Push branch and Open PR page commit them first, pinned to the step's commits, in
- * one Rust move [D1049, D1203, D1207]; `message` is the typed one, else the writer writes it, and `sent` clears it once used.
- */
-export type First = { at: StepAt; message: string | null; sent: () => void };
-
-const firstArgs = (verb: string, first: First) => ["first", verb, first.at.head, first.at.base ?? "-", ...(first.message ? ["--message", first.message] : [])];
-
-/** A host move, or with `first` the same move after the commit, through the commit-first route. */
-const move = (session: string, args: string[], first: First | null, onReply: (reply: Record<string, any>) => void) => {
-  if (!first) return run(session, args, onReply);
-  const [verb = "", ...rest] = args;
-  ask({ op: "run", args: ["source", session, ...firstArgs(verb === "create" ? "pr" : verb, first), ...rest] }, (reply) => {
-    ask({ op: "git_refresh" });
-    if (reply.ok) first.sent();
-    onReply(reply);
-  });
-};
-
-function create(session: string, first: First | null) {
+function create(session: string) {
   dropDraft(session);
   const text = textOf(opOf(session));
   put(session, { busy: "creating", error: null });
-  move(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], first, (reply) => {
+  run(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], (reply) => {
     if (reply.ok) return made(session, reply.pr);
     const lost = reply.error === "disconnected";
     put(session, { busy: null, open: false, uncertain: lost || opOf(session).uncertain, error: null });
@@ -213,14 +193,14 @@ function create(session: string, first: First | null) {
   });
 }
 
-function confirm(session: string, first: First | null) {
-  if (!opOf(session).uncertain) return create(session, first);
+function confirm(session: string) {
+  if (!opOf(session).uncertain) return create(session);
   put(session, { busy: "checking", error: null });
   run(session, ["find"], (reply) => {
     if (reply.ok && reply.pr) return made(session, reply.pr);
     if (reply.ok) {
       put(session, { uncertain: false });
-      return create(session, first);
+      return create(session);
     }
     put(session, { busy: null, open: false, error: null });
     failed({ session }, reply);
@@ -228,12 +208,12 @@ function confirm(session: string, first: First | null) {
 }
 
 /** Push branch, and Open PR page ↗ after it; a toast says it's under way, then how it went. */
-function push(session: string, page: boolean, first: First | null) {
+function push(session: string, page: boolean) {
   const op = opOf(session);
   const branch = op.info?.branch ?? "the branch";
   const text = textOf(op);
   const pending = showToast(`Pushing ${branch}…`, { stays: true });
-  move(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], first, (reply) => {
+  run(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], (reply) => {
     toastManager.close(pending);
     if (!reply.ok) return failed({ session }, reply);
     // Past the click, so window.open would be blocked: main opens it [D1142].
@@ -246,7 +226,7 @@ function push(session: string, page: boolean, first: First | null) {
  * The action menu's PR rows for a session, wired [D1030]: Create PR… opens its dialog, Push branch pushes, and Open
  * PR page ↗ pushes then opens the host's page. Every move shows at once and Rust's answer settles it [D30].
  */
-export function useCreatePr(session: string | null, first: First | null = null) {
+export function useCreatePr(session: string | null) {
   const connected = !!useDaemon().daemon;
   const op = useSyncExternalStore(subscribe, () => (session ? opOf(session) : NONE));
   useEffect(() => {
@@ -264,8 +244,8 @@ export function useCreatePr(session: string | null, first: First | null = null) 
       put(session, { open: true, error: op.busy ? op.error : null });
       if (connected) read(session);
       if (connected && op.text === null && !op.busy) draft(session);
-    } else if (pick === "pushBranch") push(session, false, first);
-    else if (pick === "openPrPage") push(session, true, first);
+    } else if (pick === "pushBranch") push(session, false);
+    else if (pick === "openPrPage") push(session, true);
   };
 
   const dialog = session && (
@@ -282,7 +262,7 @@ export function useCreatePr(session: string | null, first: First | null = null) 
       }}
       onRetry={() => read(session)}
       onCancel={() => put(session, { open: false })}
-      onConfirm={() => confirm(session, first)}
+      onConfirm={() => confirm(session)}
     />
   );
   // A read that failed with nothing before it still offers Create PR…, whose dialog says why and tries again [D30].

@@ -197,9 +197,7 @@ pub(super) fn write(
             };
             let base = core::share::base(data, &core::load(data, id)?)
                 .ok_or_else(|| io::Error::other("This session has no base."))?;
-            // The landing commits every change first, so the message covers those too [D1203].
-            let next = commit::prepare(checkout, true, &stop).ok().map(|p| p.tree);
-            let (commits, patch) = commit::branch(checkout, &base, next.as_deref(), &stop)?;
+            let (commits, patch) = commit::branch(checkout, &base, &stop)?;
             written(data, target, |asks| {
                 writer::pr_prompt(&patch, &commits, asks)
             })
@@ -210,16 +208,4 @@ pub(super) fn write(
         Ok(text) => json!({"ok": true, "text": text}),
         Err(why) => unwritten(why),
     })
-}
-
-/// The writer's message for exactly what `prepared` commits, else the reply saying none was
-/// written: the commit-first route [D1029, D1203].
-pub(super) fn message_for(
-    data: &Path,
-    target: &Target,
-    checkout: &Checkout,
-    prepared: &Prepared,
-) -> Result<String, Value> {
-    let stop = AtomicBool::new(false);
-    written(data, target, commit_prompt(checkout, prepared, &stop)).map_err(unwritten)
 }

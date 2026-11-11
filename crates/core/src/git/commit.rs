@@ -188,12 +188,10 @@ pub fn subjects(checkout: &Checkout, n: usize, stop: &AtomicBool) -> Vec<String>
 }
 
 /// The branch since `base`: its commits' subjects, oldest first, and its changes as one patch,
-/// what a PR holds. With `tree`, the patch runs up to that tree instead of HEAD: what
-/// lands once every change is committed.
+/// what a PR holds.
 pub fn branch(
     checkout: &Checkout,
     base: &str,
-    tree: Option<&str>,
     stop: &AtomicBool,
 ) -> io::Result<(Vec<String>, String)> {
     let range = format!("{base}..HEAD");
@@ -206,10 +204,7 @@ pub fn branch(
         .lines()
         .map(String::from)
         .collect();
-    let since = match tree {
-        Some(_) => text(read(&checkout.root, &["merge-base", base, "HEAD"], stop)?),
-        None => format!("{base}...HEAD"),
-    };
+    let since = format!("{base}...HEAD");
     let mut args = vec![
         "diff",
         "--patch-with-stat",
@@ -218,29 +213,7 @@ pub fn branch(
         "--no-ext-diff",
     ];
     args.extend(["--no-textconv", &since]);
-    args.extend(tree);
     args.push("--");
     let patch = read(&checkout.root, &args, stop)?;
     Ok((commits, String::from_utf8_lossy(&patch).into_owned()))
-}
-
-/// The checkout's HEAD now, none before its first commit.
-pub fn head_now(checkout: &Checkout, stop: &AtomicBool) -> Option<String> {
-    head(checkout, stop)
-}
-
-/// Takes back a commit-first commit, `made`, when the move after it was refused, so no commit is
-/// left behind a refusal [D1203, D1049]: HEAD goes back to `to` with the changes staged. Left as is
-/// once HEAD moved on or the commit reached a remote. Whether it was taken back.
-pub fn take_back(checkout: &Checkout, made: &str, to: &str, stop: &AtomicBool) -> bool {
-    let Ok(_held) = lock(checkout, true, stop) else {
-        return false;
-    };
-    let left = read(&checkout.root, &["branch", "-r", "--contains", made], stop);
-    if head(checkout, stop).as_deref() != Some(made) || !matches!(left, Ok(out) if out.is_empty()) {
-        return false;
-    }
-    let mut reset = worktrees::command(&checkout.root);
-    reset.args(["reset", "--soft", "--quiet", to]);
-    run(&mut reset, "Couldn't take the commit back.", stop).is_ok()
 }

@@ -95,11 +95,3 @@ export function readBranches(target: Target, done: (read: BranchRead | null) => 
     done(reply.ok ? reply.branches : null);
   });
 }
-
-/**
- * The move that commits every change first [D1203, D1207]: `first <verb> <head> <base>` and its flags; `done` gets
- * Rust's reply.
- */
-export function first(target: Target, args: string[], done: (reply: Record<string, any>) => void): void {
-  run(target, ["first", ...args], done);
-}

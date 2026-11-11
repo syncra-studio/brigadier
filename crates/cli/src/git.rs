@@ -186,8 +186,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
         }
         "write" => super::commit::write(data, &target, &checkout, word(1)?)?,
-        // The commit-first move [D1203].
-        "first" => super::first::run(data, &target, &checkout, args, at)?,
         // The branch item [D1020, D1021, D1026, D1034].
         "branches" => {
             let mut read = branch::branches(data, &target, &checkout)?;
