@@ -74,6 +74,7 @@ export function ForkMenu({
   agents,
   agentsError,
   current,
+  model,
   busy = false,
   onOpen,
   onPick,
@@ -89,6 +90,8 @@ export function ForkMenu({
   /** Why the list couldn't be read; opening the menu again reads it again. */
   agentsError?: string;
   current: string;
+  /** This session's model: forking to it isn't another agent, so it's left out with `current`. */
+  model?: string | null;
   busy?: boolean;
   onOpen?: () => void;
   onPick: (pick: ForkPick) => void;
@@ -97,6 +100,8 @@ export function ForkMenu({
   openSub?: boolean;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
+  // Held so a click opens it too: a hover-opening submenu ignores mouse presses.
+  const [sub, setSub] = useState(false);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
   const place = held && { container: held, collisionAvoidance: STILL };
   const pickModel = (group: ModelGroup, model: string) => {
@@ -107,7 +112,7 @@ export function ForkMenu({
   };
   return (
     <>
-      <DropdownMenu modal={false} {...(held && { open: true })} onOpenChange={(open) => open && onOpen?.()}>
+      <DropdownMenu modal={false} {...(held && { open: true })} onOpenChange={(open) => (open ? onOpen?.() : setSub(false))}>
         <DropdownMenuTrigger
           render={<TooltipIconButton tooltip={tooltip} size="icon-answer" disabled={busy} aria-busy={busy || undefined} />}
         >
@@ -129,8 +134,8 @@ export function ForkMenu({
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuSub {...(held && { open: openSub })}>
-                <DropdownMenuSubTrigger>
+              <DropdownMenuSub open={held ? openSub : sub} onOpenChange={setSub}>
+                <DropdownMenuSubTrigger onClick={() => setSub(true)}>
                   <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent {...place}>
@@ -144,6 +149,7 @@ export function ForkMenu({
                     </DropdownMenuItem>
                   ) : null}
                   {(agents ?? [])
+                    .map((group) => ({ ...group, models: group.models.filter((each) => group.provider !== current || each.id !== model) }))
                     .filter((group) => !group.unavailable && group.models.length > 0)
                     .map((group) => (
                       <div key={group.provider} role="group" aria-label={group.label}>

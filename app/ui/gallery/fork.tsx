@@ -37,7 +37,7 @@ function HeldMenu({ chat, value, error, sub = false }: { chat: boolean; value?: 
       {(box) => (
         <AnswerMarks
           text="Done."
-          fork={<ForkMenu chat={chat} {...(value && { offer: value })} {...(error && { error })} agents={GROUPS} current="cloud" onPick={noop} held={box} openSub={sub} />}
+          fork={<ForkMenu chat={chat} {...(value && { offer: value })} {...(error && { error })} agents={GROUPS} current="cloud" model="large" onPick={noop} held={box} openSub={sub} />}
         />
       )}
     </Held>
@@ -65,7 +65,7 @@ export function ForkGallery() {
     <Section title="Fork">
       <Row name="the icon on an answer, after Copy · session · chat · hover · focus">
         <State label="session">
-          <AnswerMarks text="Done." fork={<ForkMenu chat={false} agents={GROUPS} current="cloud" onPick={noop} />} />
+          <AnswerMarks text="Done." fork={<ForkMenu chat={false} offer={offer("snapshot", "worktree")} agents={GROUPS} current="cloud" model="large" onPick={noop} />} />
         </State>
         <State label="chat">
           <AnswerMarks text="Done." fork={<ForkMenu chat agents={GROUPS} current="cloud" onPick={noop} />} />
@@ -94,7 +94,7 @@ export function ForkGallery() {
         ))}
       </Row>
       <Row name="Fork with another agent ›">
-        <State label="submenu: the agents and models the switch picker lists">
+        <State label="submenu: the agents and models the switch picker lists, but this session's own (Large model)">
           <HeldMenu chat={false} value={offer("snapshot", "worktree")} sub />
         </State>
       </Row>

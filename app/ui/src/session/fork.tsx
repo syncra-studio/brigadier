@@ -45,6 +45,7 @@ export function ForkAction({ at }: { at: string }) {
       agents={agents}
       {...(agentsError && { agentsError })}
       current={offer?.agent ?? row?.backend ?? ""}
+      model={(row as { model?: string | null } | undefined)?.model}
       busy={session.offline}
       onOpen={open}
       onPick={(pick) => {
