@@ -216,9 +216,10 @@ pub trait Adapter: Sync {
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
         ("", &[])
     }
+    /// The CLI the user chose in Settings › Providers first, else the one found [D2082].
     fn exe(&self) -> Option<PathBuf> {
         let (bin, folders) = self.bin();
-        setup::find(bin, folders)
+        setup::chosen(self.name()).or_else(|| setup::find(bin, folders))
     }
     /// The vendor's own install command, a shell line run in a terminal [D45].
     fn install(&self) -> Option<&'static str> {

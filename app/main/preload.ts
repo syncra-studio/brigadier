@@ -13,12 +13,13 @@ ipcRenderer.on("menu", (_event, command) => {
   if (target.dispatchEvent(key)) ipcRenderer.send("text-undo");
 });
 
-// What the page asks of main (main.ts): the native folder pickers, the menu's commands, and the intro's window staging (intro.ts).
+// What the page asks of main (main.ts): the native folder and file pickers, the menu's commands, and the intro's window staging (intro.ts).
 ipcRenderer.on("full-screen", (_event, on: boolean) => document.documentElement.toggleAttribute("data-fullscreen", on));
 
 contextBridge.exposeInMainWorld("brigadier", {
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFolders: (options?: { at?: string; multi?: boolean }) => ipcRenderer.invoke("pick-folders", options),
+  pickFile: (title: string, at?: string) => ipcRenderer.invoke("pick-file", { title, at }),
   onMenu: (listener: (command: string, paths?: string[]) => void) => {
     const heard = (_event: unknown, command: string, paths?: string[]) => listener(command, paths);
     ipcRenderer.on("menu", heard);

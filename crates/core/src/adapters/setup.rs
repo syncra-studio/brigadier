@@ -73,6 +73,15 @@ pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
         .find(|p| is_exe(p))
 }
 
+/// The CLI the user chose for agent `name` in Settings › Providers (`agent_paths` in the settings),
+/// while it is still a program; one that went away falls back to the one found [D2082].
+pub fn chosen(name: &str) -> Option<PathBuf> {
+    let settings = std::fs::read(crate::data_dir().join("settings.json")).ok()?;
+    let saved: serde_json::Value = serde_json::from_slice(&settings).ok()?;
+    let path = PathBuf::from(saved["agent_paths"][name].as_str()?);
+    is_exe(&path).then_some(path)
+}
+
 /// The first line of its `--version`.
 pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
     let out = super::probe(exe, cwd, &[], &["--version"], 10)?;

@@ -16,6 +16,8 @@ declare global {
       pickFolder(): Promise<string | null>;
       /** Folders picked, several with `multi`, starting at `at` (`~/` is home); none when cancelled. */
       pickFolders(options?: { at?: string; multi?: boolean }): Promise<string[]>;
+      /** A file picked, under `title`, starting in the folder `at`; null when cancelled. */
+      pickFile(title: string, at?: string): Promise<string | null>;
       /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
       closesTab(on: boolean): void;
@@ -161,6 +163,17 @@ export async function setEnabled(name: string, on: boolean): Promise<void> {
     show(before);
     throw cause;
   }
+}
+
+/**
+ * Change: the native file picker in the folder of the CLI it runs now, then Rust checks the file is that agent's CLI
+ * and keeps it, and the agent is checked again from it [D2082]. Nothing when cancelled; Rust's reason when refused.
+ */
+export async function changeAgentPath(agent: Agent): Promise<void> {
+  const picked = await window.brigadier?.pickFile(`Choose the ${agent.label}`, agent.path?.replace(/\/[^/]*$/, ""));
+  if (!picked) return;
+  await run(["settings", "agent-path", agent.name, picked]);
+  await checkOne(agent.name);
 }
 
 /** What onboarding keeps [D45]: undefined until loaded. */

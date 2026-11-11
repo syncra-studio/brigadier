@@ -158,6 +158,13 @@ ipcMain.handle("pick-folder", async (event) => {
   const picked = await (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options));
   return picked.canceled ? null : (picked.filePaths[0] ?? null);
 });
+// A file the user picks, titled `title` and starting in `at`, or null; what it is for is checked in Rust.
+ipcMain.handle("pick-file", async (event, { title, at }: { title: string; at?: string }) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const options = { title, message: title, defaultPath: at || app.getPath("home"), properties: ["openFile" as const] };
+  const picked = await (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options));
+  return picked.canceled ? null : (picked.filePaths[0] ?? null);
+});
 // Folders the user picks, several with `multi`, starting at `at` (`~/` is home); what they're for is checked in Rust.
 async function pickFolders(window: BrowserWindow | null, { at, multi }: { at?: string; multi?: boolean } = {}): Promise<string[]> {
   const home = app.getPath("home");

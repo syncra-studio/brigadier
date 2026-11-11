@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { cx } from "../components/cx";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
@@ -6,7 +8,7 @@ import { SettingsRow } from "../components/settings-row";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { stateOf, type useAgentSetup } from "../onboarding/agents";
-import { type Agent, checkOne, setEnabled } from "../onboarding/api";
+import { type Agent, changeAgentPath, checkOne, setEnabled } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AccountRows } from "./account-rows";
 import { type Account, type SwitchAgent, loadAccounts } from "./api";
@@ -73,7 +75,7 @@ export function AgentPage({
     >
       <div className={cx("flex flex-col gap-10", !online && "opacity-disabled")}>
         <SettingsSection title="Installation" setting="Installation">
-          <Installation agent={agent} online={online} setup={setup} />
+          <Installation agent={agent} online={online} setup={setup} failed={failed} act={act} />
         </SettingsSection>
         <SettingsSection title="Accounts" setting="Accounts">
           <SettingsCard>
@@ -97,8 +99,26 @@ export function AgentPage({
   );
 }
 
-/** The Installation card: the CLI's version and its one action (Install, else Update: its own updater as a setup run, checked again once it ends [D2082]), then where it runs from. */
-function Installation({ agent, online, setup }: { agent: Agent; online: boolean; setup: ReturnType<typeof useAgentSetup> }) {
+type Act = (key: string, work: () => Promise<unknown>) => Promise<void>;
+
+/**
+ * The Installation card: the CLI's version and its one action (Install, else Update: its own updater as a setup
+ * run, checked again once it ends), then where it runs from, with Change to run another CLI file [D2082].
+ */
+function Installation({
+  agent,
+  online,
+  setup,
+  failed,
+  act,
+}: {
+  agent: Agent;
+  online: boolean;
+  setup: ReturnType<typeof useAgentSetup>;
+  failed: Record<string, string>;
+  act: Act;
+}) {
+  const [choosing, setChoosing] = useState(false);
   const state = stateOf(agent);
   // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
   const missing = state === "install" || (state === "running" && !agent.path);
@@ -114,6 +134,12 @@ function Installation({ agent, online, setup }: { agent: Agent; online: boolean;
         {agent.setup?.running && agent.setup.action === "update" ? "Updating…" : "Update"}
       </Button>
     );
+  const pathKey = `${agent.name}:path`;
+  const change = async () => {
+    setChoosing(true);
+    await act(pathKey, () => changeAgentPath(agent));
+    setChoosing(false);
+  };
   return (
     <SettingsCard>
       <div className="flex flex-col px-4 py-3">
@@ -142,9 +168,9 @@ function Installation({ agent, online, setup }: { agent: Agent; online: boolean;
             <span className={cx(ROW_LINE, "truncate font-mono")} title={agent.path ?? undefined}>
               {agent.path ?? "Checking…"}
             </span>
+            <ErrorLine error={failed[pathKey]} />
           </div>
-          {/* Drawn only: choosing another CLI waits for Rust [D388]. */}
-          <Button variant="soft" size="sm" disabled>
+          <Button variant="soft" size="sm" disabled={!online || choosing} onClick={() => void change()}>
             Change
           </Button>
         </div>
