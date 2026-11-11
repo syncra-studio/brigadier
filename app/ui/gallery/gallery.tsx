@@ -34,6 +34,8 @@ import { Thread } from "./thread";
 import { RightPanelGallery } from "./right-panel";
 import { CommitGallery } from "./commit";
 import { BranchGallery } from "./branch";
+import { WorkersGallery } from "./workers";
+import { PeersGallery } from "./peers";
 import "./gallery.css";
 
 const SCROLL_KEY = "gallery-scroll";
@@ -148,6 +150,10 @@ function GalleryPage() {
               <CardGallery />
               <CommitGallery />
               <BranchGallery />
+            </Area>
+            <Area name="Workers and messages">
+              <WorkersGallery />
+              <PeersGallery />
             </Area>
           </main>
         </div>

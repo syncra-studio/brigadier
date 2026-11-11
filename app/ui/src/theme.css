@@ -163,6 +163,15 @@
   --color-file-grey: #6d8086;
   --color-file-white: #d4d7d6;
   --color-file-ignore: #41535b;
+  /* Workers' glyphs: one hue each, told apart at a glance in rows, the panel and the card (the old tokens.css). */
+  --color-glyph-1: oklch(0.72 0.16 300);
+  --color-glyph-2: oklch(0.74 0.12 190);
+  --color-glyph-3: oklch(0.72 0.17 350);
+  --color-glyph-4: oklch(0.76 0.16 145);
+  --color-glyph-5: oklch(0.8 0.15 80);
+  --color-glyph-6: oklch(0.7 0.15 250);
+  --color-glyph-7: oklch(0.72 0.16 30);
+  --color-glyph-8: oklch(0.82 0.15 115);
   /* The line between a split button's halves (the old border-background/40). */
   --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
   /* The composer card, and a field's placeholder in it. */
@@ -190,6 +199,9 @@
   --text-xs--line-height: 1rem;
   --text-label: 0.8125rem;
   --text-label--line-height: 1.125rem;
+  /* The caption over a message another session sent. */
+  --text-peer-caption: 0.8125rem;
+  --text-peer-caption--line-height: 1.21875rem;
   --text-code: 0.8125rem;
   --text-code--line-height: 1.25rem;
   --text-sm: 0.875rem;
@@ -475,6 +487,14 @@
     from {
       opacity: 0;
       scale: 0.75;
+    }
+  }
+  /* A worker's glyph joins a row sliding in from the left and settling with a slight overshoot. */
+  --animate-glyph-in: glyph-in 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  @keyframes glyph-in {
+    from {
+      opacity: 0;
+      transform: translate(calc(var(--spacing) * -2), var(--spacing)) scale(0.92);
     }
   }
   --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
