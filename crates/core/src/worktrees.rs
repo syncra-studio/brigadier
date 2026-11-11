@@ -313,9 +313,8 @@ fn make(
     include(repo, &path, picks)
 }
 
-/// Removes the worktree and its registration, by their recorded paths only.
-fn unregister(owned: &Owned) -> io::Result<()> {
-    let repo = Path::new(&owned.repo);
+/// Refuse to remove a registration that now points at a different checkout.
+fn registration(owned: &Owned) -> io::Result<()> {
     if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
         let gitdir = fs::read_to_string(Path::new(admin).join("gitdir"))?;
         let expected = owned.path.as_deref().map(|p| Path::new(p).join(".git"));
@@ -323,6 +322,13 @@ fn unregister(owned: &Owned) -> io::Result<()> {
             return err("The worktree's registration now belongs to another checkout.".into());
         }
     }
+    Ok(())
+}
+
+/// Removes the worktree and its registration, by their recorded paths only.
+fn unregister(owned: &Owned) -> io::Result<()> {
+    let repo = Path::new(&owned.repo);
+    registration(owned)?;
     if let Some(path) = owned.path.as_deref().filter(|p| Path::new(p).exists()) {
         git(repo, &["worktree", "remove", "--force", path])?;
     }
@@ -449,15 +455,17 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
         ));
     }
     crate::worktree_setup::begin(dir, &branch, &owned.base)?;
-    let added = git(&repo, &["worktree", "add", "--quiet", &path, &branch]);
+    if let Err(e) = git(&repo, &["worktree", "add", "--quiet", &path, &branch]) {
+        // A folder may have reappeared since the check: a failed add owns nothing to remove.
+        crate::worktree_setup::finish(dir, Some(e.to_string()))?;
+        return Err(e);
+    }
     owned.admin = git(
         Path::new(&path),
         &["rev-parse", "--path-format=absolute", "--git-dir"],
     )
     .ok();
-    let made = added
-        .and_then(|_| write(dir, &owned))
-        .and_then(|()| include(&repo, Path::new(&path), picks));
+    let made = write(dir, &owned).and_then(|()| include(&repo, Path::new(&path), picks));
     if let Err(e) = made {
         let step = crate::worktree_setup::finish(dir, Some(e.to_string()));
         unregister(&owned).map_err(|r| io::Error::other(format!("{e}; rollback failed: {r}")))?;

@@ -1,6 +1,6 @@
 //! Re-create an externally removed worktree from its recorded branch [D180, D1187].
 
-use super::{err, read, restore, unregister};
+use super::{err, read, registration, restore};
 use crate::{Spec, load, projects, share, worktrees};
 use std::fs;
 use std::io;
@@ -33,7 +33,10 @@ pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> i
         Err(e) => return Err(e),
     }
     // Remove only this missing path's verified registration; never prune other worktrees [D35].
-    unregister(&owned)?;
+    registration(&owned)?;
+    if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
+        fs::remove_dir_all(admin)?;
+    }
     let project = spec
         .project
         .as_deref()
@@ -44,6 +47,7 @@ pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> i
         .map(|p| p.include.as_slice())
         .unwrap_or_default();
     restore(&holder.dir, picks)?;
+    crate::git::checkout(data, &crate::git::Target::Session(id))?;
     if project.is_some_and(|p| p.trusted == Some(true)) {
         for name in ["setup.started", "setup.exit", "setup.log"] {
             match fs::remove_file(holder.dir.join(name)) {

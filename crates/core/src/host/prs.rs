@@ -139,6 +139,8 @@ fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
         "changes"
     } else if running.is_some_and(|n| n > 0) {
         "running"
+    } else if count("cancel").is_some_and(|n| n > 0) {
+        "cancelled"
     } else if checks.is_none() {
         "unknown"
     } else {

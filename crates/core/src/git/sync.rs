@@ -27,10 +27,11 @@ fn common(checkout: &Checkout) -> Option<PathBuf> {
 }
 
 pub fn fetched_at(checkout: &Checkout, remote: &str) -> Option<u64> {
+    let common = common(checkout)?;
     FETCHED
         .lock()
         .unwrap()
-        .get(&(common(checkout)?, remote.into()))
+        .get(&(common, remote.into()))
         .copied()
 }
 

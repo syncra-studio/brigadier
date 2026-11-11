@@ -203,7 +203,9 @@ fn pr(data: &Path, id: &str, now: &Status, base: &str, fresh: bool) -> Option<Va
         Some("changes") => "changes",
         _ => {
             let checks = json!({"passed": open["passed"], "failed": open["failed"],
-                "running": open["running"], "approved": open["approved"]});
+                "running": open["running"], "approved": open["approved"],
+                "cancelled": open["cancelled"], "skipped": open["skipped"],
+                "blocked": matches!(open["health"].as_str(), Some("unknown" | "cancelled"))});
             return Some(
                 json!({"kind": "mergePr", "base": base, "pr": number, "checks": checks,
                 "mergeable": open["mergeable"]}),
@@ -233,6 +235,7 @@ fn hint(step: &Value, changes: usize) -> Value {
         Some("merge") => step["blocked"].is_null(),
         Some("mergePr") => {
             step["mergeable"] == true
+                && step["checks"]["blocked"] != true
                 && step["checks"]["failed"] == 0
                 && step["checks"]["running"] == 0
         }

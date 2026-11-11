@@ -9,10 +9,13 @@ use std::sync::atomic::AtomicBool;
 
 /// Facts survive a missing worktree; a missing folder of the user's is an ordinary read error.
 pub fn state(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value> {
+    let mut active = true;
     let holder = match target {
         Target::Session(id) => {
             crate::check_id(id)?;
-            share::holder(data, &load(data, id)?)
+            let spec = load(data, id)?;
+            active = crate::session::closed(&spec.dir).is_none();
+            share::holder(data, &spec)
         }
         Target::Project(_) => None,
     };
@@ -31,11 +34,7 @@ pub fn state(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Valu
         "head": null, "detached": null, "recordedBranch": lands.as_ref().and_then(|l| l.branch.as_ref()),
         "mismatch": false, "base": null});
     if missing {
-        truth["restorable"] = (holder
-            .as_ref()
-            .is_some_and(|s| crate::session::closed(&s.dir).is_none())
-            && lands.as_ref().is_some_and(|l| l.branch.is_some()))
-        .into();
+        truth["restorable"] = (active && lands.as_ref().is_some_and(|l| l.branch.is_some())).into();
         return Ok(truth);
     }
     let checkout = checkout(data, target)?;
@@ -90,8 +89,9 @@ pub fn base(checkout: &Checkout, name: &str, stop: &AtomicBool) -> io::Result<Va
                 &checkout.root,
                 &["rev-list", "--count", &format!("{name}..{up}")],
                 stop,
-            )?;
-            behind = String::from_utf8_lossy(&count).trim().parse::<u64>().ok();
+            )
+            .ok();
+            behind = count.and_then(|out| String::from_utf8_lossy(&out).trim().parse::<u64>().ok());
         } else if *full == format!("refs/remotes/{name}") {
             upstream = Some(name.to_string());
             let remotes = read(&checkout.root, &["remote"], stop)?;
