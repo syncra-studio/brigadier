@@ -1,6 +1,6 @@
 //! The background commit draft, pinned to exactly what will be committed [D1212].
 
-use super::commit::{author, commit_prompt, written};
+use super::commit::{author, commit_prompt, written_for};
 use brigadier_core::git::commit::{self, Prepared};
 use brigadier_core::git::{Checkout, Target};
 use brigadier_core::{write_atomic, writer};
@@ -66,12 +66,13 @@ pub(super) fn run(
         }
         Err(e) => return Err(e),
     };
-    let Some(path) = path(data, target) else {
+    let Some((spec, f)) = author(data, target) else {
         return Ok(reply(
             json!({"state": "error", "text": null, "error": "No session here has an agent to write with."}),
         ));
     };
-    fs::create_dir_all(path.parent().unwrap())?;
+    let _active = writer::hold(&spec.dir)?;
+    let path = writer::home(&spec.dir).join("commit-draft.json");
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -98,7 +99,7 @@ pub(super) fn run(
     let mut draft = json!({"state": "pending", "text": null, "head": prepared.head, "tree": prepared.tree,
         "root": checkout.root, "all": all, "atMs": now_ms()});
     write_atomic(&path, &serde_json::to_vec(&draft)?)?;
-    match written(data, target, commit_prompt(checkout, &prepared, &stop)) {
+    match written_for(data, &spec, &f, commit_prompt(checkout, &prepared, &stop)) {
         Ok(text) => {
             draft["state"] = "ready".into();
             draft["text"] = text.into();

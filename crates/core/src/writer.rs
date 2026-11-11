@@ -122,7 +122,7 @@ pub fn asks(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-/// The reply as a message: no fences, no wrapping quotes; empty when it said nothing.
+/// Writer and squash text without co-author trailers or generated-with lines [D16].
 pub fn without_attribution(message: &str) -> String {
     message
         .lines()
@@ -143,7 +143,6 @@ fn clean(reply: &str) -> String {
     without_attribution(
         (lines.join("\n").trim())
             .trim_matches(|c| c == '"' || c == '`')
-            .trim()
             .trim(),
     )
 }
@@ -155,13 +154,30 @@ pub fn home(session: &Path) -> PathBuf {
     session.join("writer")
 }
 
-/// The lock a writer run holds shared and a delete takes whole; never made outside the session's folder.
+/// The lock a writer run holds shared and a delete takes whole.
 fn writing(session: &Path) -> std::io::Result<fs::File> {
     OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
         .open(session.join("writer.lock"))
+}
+
+/// Creation takes the session fence briefly; background writing never blocks turn starts.
+pub fn hold(session: &Path) -> std::io::Result<fs::File> {
+    let _creating = crate::worktrees::lock(session)?;
+    // An archived Local checkout can still supply its account for an independent project writer.
+    if !session.join("session.json").is_file()
+        || crate::session::lifecycle(session).1["op"].is_string()
+    {
+        return Err(std::io::Error::other(
+            "This session is no longer available.",
+        ));
+    }
+    let active = writing(session)?;
+    active.lock_shared()?;
+    fs::create_dir_all(home(session))?;
+    Ok(active)
 }
 
 fn records(dir: &Path) -> PathBuf {
@@ -202,17 +218,13 @@ fn remove(a: &dyn Adapter, run: &Spec, id: &str, named: &[String]) -> Result<(),
 
 /// One reply from `a` on a new conversation of `run` (its model, effort and account already the
 /// writer's), as a clean message. `account`: the account id the run is on, "" for the computer's own.
-pub fn write(a: &dyn Adapter, run: &Spec, account: &str, prompt: &str) -> Result<String, Failure> {
-    // Held through the run: a delete waits for it, and none starts once one is under way [D35].
-    let session = run.dir.parent().ok_or_else(|| fail("no session folder"))?;
-    let held = writing(session).map_err(|e| fail(e.to_string()))?;
-    held.lock_shared().map_err(|e| fail(e.to_string()))?;
-    if let Some(why) = crate::session::retired(session) {
-        return Err(fail(why));
-    }
-    if !session.join("session.json").exists() {
-        return Err(fail("This session is gone."));
-    }
+pub fn write(
+    a: &dyn Adapter,
+    run: &Spec,
+    account: &str,
+    prompt: &str,
+    _active: &fs::File,
+) -> Result<String, Failure> {
     fs::create_dir_all(&run.dir).map_err(|e| fail(e.to_string()))?;
     let launch = a.launch(run, None, Some(prompt));
     let (exe, args) = launch

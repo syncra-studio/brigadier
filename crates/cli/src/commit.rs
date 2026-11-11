@@ -62,6 +62,17 @@ pub(super) fn written(
     prompt: impl Fn(&[String]) -> String,
 ) -> Result<String, String> {
     let (spec, f) = author(data, target).ok_or("no session here has an agent to write with")?;
+    let _active = writer::hold(&spec.dir).map_err(|e| e.to_string())?;
+    written_for(data, &spec, &f, &_active, prompt)
+}
+
+pub(super) fn written_for(
+    data: &Path,
+    spec: &Spec,
+    f: &Fold,
+    active: &fs::File,
+    prompt: impl Fn(&[String]) -> String,
+) -> Result<String, String> {
     let prompt = prompt(&writer::asks(&spec.dir));
     let backend = match f.backend.as_str() {
         "" => spec.backend.clone(),
@@ -69,7 +80,7 @@ pub(super) fn written(
     };
     let a = adapters::get(&backend).ok_or_else(|| format!("no agent {backend}"))?;
     let account = f.accounts.get(&backend).cloned().unwrap_or_default();
-    let mut run = core::as_run(&spec, &f, &backend, None);
+    let mut run = core::as_run(spec, f, &backend, None);
     let listed = models(data, &backend);
     if let Some(model) = a.cheap(run.model.as_deref(), &listed) {
         run.effort =
@@ -83,7 +94,7 @@ pub(super) fn written(
         run.grants = vec![];
     };
     ready(&mut run, a);
-    let failure = match writer::write(a, &run, &account, &prompt) {
+    let failure = match writer::write(a, &run, &account, &prompt, active) {
         Ok(text) => return Ok(text),
         Err(failure) => failure,
     };
@@ -94,10 +105,10 @@ pub(super) fn written(
         let Some(model) = models(data, local.name()).into_iter().find(|m| m.local) else {
             continue;
         };
-        let mut run = core::as_run(&spec, &f, local.name(), None);
+        let mut run = core::as_run(spec, f, local.name(), None);
         (run.account, run.model, run.effort) = (None, Some(model.id), None);
         ready(&mut run, local);
-        return writer::write(local, &run, "", &prompt).map_err(|e| e.why);
+        return writer::write(local, &run, "", &prompt, active).map_err(|e| e.why);
     }
     Err(failure.why)
 }
