@@ -65,7 +65,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
     read();
     addEventListener("focus", read);
     return () => removeEventListener("focus", read);
-  }, [daemon, owner, number, kept?.okAt, kept?.error]);
+  }, [daemon, owner, number, JSON.stringify(kept)]);
 
   const added = new Set(chips.flatMap((chip) => (chip.kind === "agent" && chip.pr === number ? [chip.key] : [])));
   return (

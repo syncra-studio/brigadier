@@ -342,9 +342,9 @@ pub fn chip(dir: &Path, kept: &Value) -> Value {
         (_, Some("conflicts")) => "conflict",
         (_, Some("changes")) => "changes_asked",
         (_, Some("running")) => "running",
-        // Ready to merge: not a draft, and not waiting on a review [D1018].
+        // Ready to merge: not a draft, not waiting on a review, and the host says it merges [D1018].
         (_, Some("ready")) if p["draft"] == true => "draft",
-        (_, Some("ready")) if p["approved"] == false => "open",
+        (_, Some("ready")) if p["approved"] == false || p["mergeable"] != true => "open",
         (_, Some("ready")) => "ready",
         _ => "open",
     };

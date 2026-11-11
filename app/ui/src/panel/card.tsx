@@ -146,11 +146,11 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         </div>
         {note && <Note text={note.text} warn={note.warn} />}
       </CardSection>
-      {first && (
+      {(first || control.kept?.error) && (
         <CardSection
           title={
             <Tooltip>
-              <TooltipTrigger render={<button type="button" onClick={() => onPr?.(first.number)} className="inline-flex cursor-pointer items-center gap-0.5 rounded-control hover:text-foreground focus-visible:focus-ring" />}>
+              <TooltipTrigger render={<button type="button" onClick={() => first && onPr?.(first.number)} className="inline-flex cursor-pointer items-center gap-0.5 rounded-control hover:text-foreground focus-visible:focus-ring" />}>
                 Pull requests
                 <ChevronRight className="size-icon-xs" />
               </TooltipTrigger>
