@@ -51,9 +51,6 @@ export type ReviewTabProps = {
   onDraft?: (draft: { path: string; range: LineRange; text: string } | null) => void;
   /** The file it was opened on: shown open whatever else waits behind the one click. */
   target?: string;
-  /** The one click between the brief and the diff (D1188): a "Show diff" row, or the file list, each file's name
-   * opening its diff. Shown to the owner side by side (proposed); the app uses `files` meanwhile. */
-  below?: "row" | "files";
 };
 
 const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] = [
@@ -65,28 +62,24 @@ const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] =
 ];
 
 export function ReviewTab(props: ReviewTabProps) {
-  const { scope, review, contents, error, loading, connected, target, below = "files" } = props;
+  const { scope, review, contents, error, loading, connected, target } = props;
   // How diffs are drawn, kept while the app runs (the old review options).
   const [wrap, setWrap] = useKept("review-wrap");
   const [split, setSplit] = useKept("review-split");
   // A large file starts folded until opened; any other only once folded.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set(target ? [target] : []));
-  // The diff behind the brief's one click; a commit's tab has no brief, so it shows at once.
-  const [shown, setShown] = useState(scope === "commit" || target !== undefined);
-  const folds = below === "files" && scope !== "commit";
+  // The file list is the one click down to each diff (D1188, D1242); a commit's tab has no brief, so its diffs show open.
+  const folds = scope !== "commit";
   useEffect(() => {
     if (!target) return;
-    setShown(true);
     setOpened((current) => new Set([...current, target]));
   }, [target]);
   const [asking, setAsking] = useState<Asking | null>(null);
   const files = review?.files ?? [];
   // The file a comment is being written on stays open, so its box comes back after a restart.
   const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path) && props.draft?.path !== file.path);
-  // Behind the "Show diff" row, every file counts as folded, and Expand all shows them.
-  const hidden = below === "row" && !shown && !props.draft;
-  const allCollapsed = files.length > 0 && (hidden || files.every(isCollapsed));
+  const allCollapsed = files.length > 0 && files.every(isCollapsed);
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
     setFolded((current) => new Set([...current].filter((path) => !shown.some((file) => file.path === path))));
@@ -145,7 +138,6 @@ export function ReviewTab(props: ReviewTabProps) {
           size="icon-sm"
           disabled={files.length === 0}
           onClick={() => {
-            setShown(true);
             if (allCollapsed) open(files);
             else setFolded(new Set(files.map((file) => file.path)));
           }}
@@ -159,19 +151,7 @@ export function ReviewTab(props: ReviewTabProps) {
       <div data-slot="review-diffs" className="min-h-0 min-w-0 flex-1 overflow-auto">
         <ErrorLine size="sm" error={error} className="px-4 py-3" />
         {review && scope !== "commit" && !review.none && (
-          <BriefStrip
-            review={review}
-            below={
-              below === "row" &&
-              !shown &&
-              !props.draft &&
-              review.files.length > 0 && (
-                <Button size="xs" variant="soft" className="mt-1 self-start" onClick={() => setShown(true)}>
-                  Show diff
-                </Button>
-              )
-            }
-          />
+          <BriefStrip review={review} />
         )}
         {!review ? (
           !error && <ListLoading />
@@ -179,7 +159,7 @@ export function ReviewTab(props: ReviewTabProps) {
           <EmptyState variant="centered" title={noTurnWords(review.none)} />
         ) : review.files.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No changes</p>
-        ) : hidden ? null : (
+        ) : (
           review.files.map((file) => (
             <FileSection
               key={file.path}

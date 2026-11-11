@@ -91,9 +91,9 @@ const TONE: Record<Tone, string> = { quiet: "", good: "text-success", warn: "tex
 
 /**
  * The strip at the top of the Review tab (D1188), as w67's summary drew it: one fact a line. Its loading, error and
- * disconnected states are the tab's (D30). `below`: the one click down to the diff, when the diff waits behind a row.
+ * disconnected states are the tab's (D30).
  */
-export function BriefStrip({ review, below }: { review: Review; below?: ReactNode }) {
+export function BriefStrip({ review }: { review: Review }) {
   const line = (key: string, tone: Tone, children: ReactNode) => (
     <span key={key} className={cx("flex min-w-0 items-center gap-1.5", TONE[tone])}>
       {children}
@@ -110,7 +110,6 @@ export function BriefStrip({ review, below }: { review: Review; below?: ReactNod
         </>,
       )}
       {facts.map((fact, index) => line(String(index), fact.tone, <span className="truncate"><Ticks text={fact.text} /></span>))}
-      {below}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // Last turn and Review's brief (2.30, 2.38, and 2.8's additions): Last turn the default, the strip on top with the
-// diff one click below it, both ways that click can be, and every state of the strip, on fake data.
+// file list below it, each name opening its diff (D1242), and every state of the strip, on fake data.
 import type { Review, ReviewFile } from "../src/review/types";
 import { NOTHING_DONE, read } from "./review-data";
 import { Row, Section } from "./parts";
@@ -38,12 +38,9 @@ const empty = (none: Review["none"]): Review => ({ scope: "last", base: null, fi
 export function LastTurnGallery() {
   return (
     <Section title="Last turn and the brief (D1000, D1188)">
-      <Row name="Last turn, the default: the brief on top, the diff one click below. Pick one">
+      <Row name="Last turn, the default: the brief on top, the file list below it (D1242)">
         <Wide label="The file list: a file's name opens its diff, Expand all opens them all">
-          <Tab scope="last" review={turn()} below="files" />
-        </Wide>
-        <Wide label='A "Show diff" row under the brief'>
-          <Tab scope="last" review={turn()} below="row" />
+          <Tab scope="last" review={turn()} />
         </Wide>
       </Row>
       <Row name="The last run, as facts (D74, D1192)">
