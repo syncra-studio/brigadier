@@ -121,8 +121,9 @@ pub fn flag(file: &Value) -> Option<Value> {
 }
 
 /// Adds the brief to a review: each file's flag, flagged files first in the list, and the last
-/// run with `changed`: whether an edit to one of these files began after the run ended. Nothing
-/// proves the files didn't change, so the other answer is unknown, never "no" [D1192].
+/// run with `changed`: whether an edit to this checkout began after the run ended, the run's own
+/// fact, so every scope, Review's and Source's, says the same [D1243]. Nothing proves the files
+/// didn't change, so the other answer is unknown, never "no" [D1192].
 /// `root`: the checkout; `cwd`: the session's folder, which a step's relative path starts from.
 pub fn brief(review: &mut Value, run: Option<&Run>, root: &Path, cwd: &Path) {
     let mut files: Vec<Value> = review["files"].as_array().cloned().unwrap_or_default();
@@ -130,24 +131,7 @@ pub fn brief(review: &mut Value, run: Option<&Run>, root: &Path, cwd: &Path) {
         file["flag"] = flag(file).into();
     }
     files.sort_by_key(|f| f["flag"].is_null());
-    let changed = run.is_some_and(|run| {
-        let after: Vec<String> = (run.after.iter())
-            .filter_map(|p| {
-                Some(
-                    cwd.join(p)
-                        .strip_prefix(root)
-                        .ok()?
-                        .to_string_lossy()
-                        .into_owned(),
-                )
-            })
-            .collect();
-        (files.iter()).any(|f| {
-            f["path"]
-                .as_str()
-                .is_some_and(|p| after.iter().any(|a| a == p))
-        })
-    });
+    let changed = run.is_some_and(|run| (run.after.iter()).any(|p| cwd.join(p).starts_with(root)));
     review["run"] = run.map_or(
         Value::Null,
         |run| json!({"command": run.command, "exit": run.exit, "at": run.at, "changed": changed}),

@@ -14,7 +14,7 @@ export type ReviewScope = "last" | "uncommitted" | "staged" | "unstaged" | "bran
 export type FileFlag = { kind: "test" | "lock" | "manifest" | "build" | "migration"; removed: number; deleted: boolean };
 
 /** The session's last test or build run (D1188): its exit code only as its CLI reported it, else null (D74); `changed`:
- * an edit to one of the scope's files began after it ended, else unknown, never "no" (D1192). */
+ * an edit to this checkout began after it ended, the run's own fact, the same in every scope (D1243), else unknown, never "no" (D1192). */
 export type LastRun = { command: string; exit: number | null; at: number; changed: boolean };
 
 /** Why Last turn has nothing to compare (D30). */
