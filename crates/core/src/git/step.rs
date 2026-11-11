@@ -178,18 +178,23 @@ fn control(
                 why("catchUp", "commitFirst");
                 why("merge", "commitFirst");
             }
+            // Catching up is this session's own when it lands, not a shared folder's [D1082].
+            let mine = s.landed_at.is_none() && s.shared.is_none();
+            // Sync pushes too, so with main moved it waits for Catch up [D1282].
+            let held = s.moved > 0 && s.landed_at.is_none() && ahead > 0;
+            if held && next == Some("sync") {
+                next = None;
+            }
             match (s.moved, &s.conflicts) {
                 (0, _) => why("catchUp", "upToDate"),
                 (_, Some(files)) => {
                     why("catchUp", "conflicts");
-                    if next.is_none() && s.landed_at.is_none() {
+                    if next.is_none() && mine {
                         resolve = json!({"op": "merge", "ref": s.base, "files": files});
                         next = Some("resolve");
                     }
                 }
-                _ if next.is_none() && files == 0 && s.landed_at.is_none() => {
-                    next = Some("catchUp")
-                }
+                _ if next.is_none() && files == 0 && mine => next = Some("catchUp"),
                 _ => {}
             }
             // Main moved: nothing goes out until it's caught up [D1282].
@@ -197,6 +202,9 @@ fn control(
                 for row in ["push", "createPr", "merge"] {
                     why(row, "moved");
                 }
+            }
+            if held {
+                why("sync", "moved");
             }
             if upstream.is_none() || ahead > 0 {
                 why("createPr", "pushFirst");
