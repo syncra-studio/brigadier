@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, setFoundHandler, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { keep, sourceArgs, useGit } from "../panel/git";
+import { HOME } from "../shell/tab-store";
 import { detailsShown, EMPTY_FORM, SearchPanel, searchQuery, type SearchForm } from "./search";
 import { FileTree, type OnOpen } from "./tree";
 import type { ChangeMarks, FolderEntry, Listing, ReplaceOutcome, SearchFile, SearchQuery, SearchResults } from "./types";
@@ -22,8 +23,10 @@ const kept = new Map<string, { listing: Listing; marks: ChangeMarks }>();
 const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? OFFLINE : String(reply.error));
 
 export function FilesView({ owner, shown = null, onOpen }: { owner: string; shown?: string | null; onOpen: OnOpen }) {
-  const { target, version } = useGit();
+  const { target: watched, version } = useGit();
   const { daemon } = useDaemon();
+  // Mounted on a switch, this view renders once before the watch moves to its owner: another checkout's, never read here [D1258].
+  const target = watched && ("session" in watched ? watched.session === owner : owner === HOME) ? watched : null;
   const key = target && JSON.stringify(target);
   const [listing, setListing] = useState<Listing>(() => (key && kept.get(key)?.listing) || { state: "loading" });
   const [marks, setMarks] = useState<ChangeMarks>(() => (key && kept.get(key)?.marks) || NO_MARKS);
