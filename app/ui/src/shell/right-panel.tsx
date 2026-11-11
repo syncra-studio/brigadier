@@ -8,6 +8,7 @@ import { useHomeDraft, useStart } from "../home/start";
 import { Folders } from "../icons";
 import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
+import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
 import { HOME, openFile, useTabs } from "./tab-store";
 
@@ -65,6 +66,7 @@ function Files({ owner }: { owner: string }) {
 
 /** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]. */
 export function RightPanelSlot({ owner }: { owner: string }) {
+  useArchivedGitNotice(owner);
   const has = useHasPanel(owner);
   const memory = usePanelMemory();
   const open = has && memory.open;

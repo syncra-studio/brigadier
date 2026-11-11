@@ -1,10 +1,10 @@
-import { type Key, type ReactElement, useState } from "react";
+import { type Key, type ReactElement, useEffect, useState } from "react";
 
 import { Button } from "../components/button";
 import type { Notice } from "../components/composer/rail";
 import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
 import { showToast } from "../components/toast";
-import { ask } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { store } from "../onboarding/api";
 import { refreshStep, sourceArgs, type Target } from "./git";
 import { MessageDialog } from "./source/action-confirms";
@@ -35,6 +35,17 @@ function drop(session: string): void {
   const next = new Map(notices.get());
   next.delete(session);
   notices.set(next);
+}
+
+/** Archived sessions have no composer, so their git errors use the folder's toast fallback. */
+export function useArchivedGitNotice(session: string): void {
+  const archived = useDaemon().rows?.find((row) => row.id === session)?.archived;
+  const now = notices.use().get(session);
+  useEffect(() => {
+    if (!archived || !now) return;
+    gitFailed(null, now.text, now.details);
+    drop(session);
+  }, [session, archived, now]);
 }
 
 /**
