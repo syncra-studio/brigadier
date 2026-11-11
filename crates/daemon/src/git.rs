@@ -183,7 +183,8 @@ pub(super) fn subscribe(
         }));
         let shared = seen.clone();
         let root = checkout.root.clone();
-        let watch = Watch::start(checkout, move |read| deliver(&shared, read));
+        let base = git::base_of(data, &target);
+        let watch = Watch::start(checkout, base, move |read| deliver(&shared, read));
         left.extend(all.insert(root, Watched { seen, watch }));
     }
     drop(all);

@@ -2,7 +2,9 @@
 //! its start, then again after the checkout's files, its index, its HEAD, its branch or that
 //! branch's upstream change, on a poke (window focus, a turn's start or end), and every so often in
 //! case macOS dropped an event. A burst of changes is read once. What happens only in an ignored
-//! folder (a build's output) or in git's own objects doesn't count.
+//! folder (a build's output) or in git's own objects doesn't count. A session's base moving (main
+//! committed to in the project's own folder) is read too: its commit is part of the read, so the
+//! card's step is read again at once.
 
 use super::{Checkout, Status, read, status};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
@@ -40,10 +42,12 @@ pub struct Watch {
 }
 
 impl Watch {
-    /// Starts watching. `send` gets the first read, then each one that differs from the last, or
-    /// a read error. Errors retry on a backoff; returning false ends the watch.
+    /// Starts watching, `base` too (the branch a session lands into, see `super::base_of`).
+    /// `send` gets the first read, then each one that differs from the last, or a read error.
+    /// Errors retry on a backoff; returning false ends the watch.
     pub fn start(
         checkout: Checkout,
+        base: Option<String>,
         mut send: impl FnMut(io::Result<Status>) -> bool + Send + 'static,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
@@ -53,7 +57,15 @@ impl Watch {
             let mut backoff = Duration::from_secs(1);
             while !stopped.load(Ordering::SeqCst) {
                 let began = Instant::now();
-                if !run(checkout.clone(), events.clone(), &rx, &stopped, &mut send) {
+                let base = base.clone();
+                if !run(
+                    checkout.clone(),
+                    base,
+                    events.clone(),
+                    &rx,
+                    &stopped,
+                    &mut send,
+                ) {
                     break;
                 }
                 if began.elapsed() > Duration::from_secs(30) {
@@ -96,6 +108,7 @@ impl Drop for Watch {
 
 fn run(
     mut checkout: Checkout,
+    base: Option<String>,
     events: Sender<Msg>,
     rx: &Receiver<Msg>,
     stop: &AtomicBool,
@@ -119,6 +132,7 @@ fn run(
     .ok();
     let mut filter = Filter {
         root: checkout.root.clone(),
+        base,
         ..Filter::default()
     };
     let mut last: Option<Status> = None;
@@ -128,7 +142,18 @@ fn run(
         if pending && read_at.elapsed() >= SETTLE {
             pending = false;
             read_at = Instant::now();
-            let read = status(&checkout, stop).and_then(|s| {
+            let read = status(&checkout, stop).and_then(|mut s| {
+                if let Some(base) = &filter.base {
+                    let at = read(
+                        &checkout.root,
+                        &["rev-parse", "-q", "--verify", &format!("{base}^{{commit}}")],
+                        stop,
+                    );
+                    s.head["baseAt"] = at
+                        .ok()
+                        .map(|at| String::from_utf8_lossy(&at).trim().to_string())
+                        .into();
+                }
                 let moved = filter.update(&checkout, &s, stop, watcher.as_mut())?;
                 // A new watch restarts the stream, which can drop events on their way: read again.
                 pending |= moved;
@@ -193,6 +218,8 @@ fn run(
 #[derive(Default)]
 struct Filter {
     root: PathBuf,
+    /// The base whose ref is watched too.
+    base: Option<String>,
     /// The git files outside the checkout's own files that its status reads: index, HEAD,
     /// packed-refs, its branch's ref and its upstream's, as the old app's `Repo::status_files`.
     refs: Vec<PathBuf>,
@@ -264,6 +291,18 @@ impl Filter {
             let full = read(
                 &checkout.root,
                 &["rev-parse", "--symbolic-full-name", "@{upstream}"],
+                stop,
+            );
+            if let Ok(full) = full.map(|f| String::from_utf8_lossy(&f).trim().to_string())
+                && full.starts_with("refs/")
+            {
+                names.push(full);
+            }
+        }
+        if let Some(base) = &self.base {
+            let full = read(
+                &checkout.root,
+                &["rev-parse", "--symbolic-full-name", base],
                 stop,
             );
             if let Ok(full) = full.map(|f| String::from_utf8_lossy(&f).trim().to_string())

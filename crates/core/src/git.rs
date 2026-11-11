@@ -54,6 +54,17 @@ pub struct Checkout {
     pub worktree: bool,
 }
 
+/// The branch a session's checkout lands into, from its record (a "here" fork's from its folder's
+/// holder's, D1082); none for a project's folder.
+// shortcut: a watch keeps the base it started with; Change what it lands into reads the step again itself.
+pub fn base_of(data: &Path, target: &Target) -> Option<String> {
+    let Target::Session(id) = target else {
+        return None;
+    };
+    let holder = crate::share::holder(data, &load(data, id).ok()?)?;
+    worktrees::base(&holder.dir)
+}
+
 /// The checkout a session or project works in, chosen here and never taken from a client: a
 /// session's own worktree, else its folder (Local checkout), or a project's folder [D160, D1039].
 /// An archived session's worktree is gone until restore, so it's not found [D180].

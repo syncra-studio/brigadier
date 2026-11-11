@@ -32,7 +32,8 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return Ok(json!({"ok": true, "n": 0, "git": status.json()}));
     }
     let (tx, rx) = mpsc::channel();
-    let _watch = Watch::start(checkout, move |read| tx.send(read).is_ok());
+    let base = git::base_of(data, &target);
+    let _watch = Watch::start(checkout, base, move |read| tx.send(read).is_ok());
     let (mut last, mut n) = (None::<Status>, 0u64);
     for read in rx {
         let status = match read {
