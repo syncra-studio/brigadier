@@ -71,7 +71,7 @@ export function AgentMark({ agent, size = "md", idle = false, dim = false }: { a
       className={cx(
         "flex shrink-0 items-center justify-center rounded-nav",
         size === "lg" ? "size-11" : "size-8.5",
-        idle ? "border border-divider text-muted-foreground" : "bg-fill text-foreground",
+        idle ? "border border-divider text-muted-foreground" : "bg-fill text-strip-foreground",
         dim && "opacity-disabled",
       )}
     >

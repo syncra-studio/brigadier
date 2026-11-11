@@ -58,7 +58,7 @@ export function SettingsPage({
                 <h1 ref={heading} tabIndex={-1} className="text-page-title font-medium outline-none">
                   {title}
                 </h1>
-                {description && <div className="text-sm text-muted-foreground">{description}</div>}
+                {description && <div className="text-sm text-quiet-foreground">{description}</div>}
               </div>
             </div>
             {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -111,9 +111,9 @@ export function SettingsSection({
                 <span className="truncate">{title}</span>
               </h2>
             )}
-            {description && <p className="text-label text-muted-foreground">{description}</p>}
+            {description && <p className="text-label text-quiet-foreground">{description}</p>}
           </div>
-          {aside && <div className="flex items-center gap-1 text-label text-muted-foreground">{aside}</div>}
+          {aside && <div className="flex items-center gap-1 text-label text-quiet-foreground">{aside}</div>}
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </div>
       )}

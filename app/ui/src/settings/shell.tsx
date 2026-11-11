@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
-import { Input } from "../components/input";
 import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
+import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { matches } from "../shortcuts";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
 
@@ -65,33 +65,61 @@ const openResult = ({ page, row }: SettingsSearchResult) => openSettings(page.id
 export function SettingsNav({ current }: { current: string }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
   const results = query.trim() ? searchSettings(query) : null;
+  const search = (value: string) => {
+    setQuery(value);
+    setActive(0);
+  };
   return (
     <>
       <NavHeader title="Settings" />
-      <div className="px-2 pb-2">
-        <Input
-          aria-label="Search settings"
-          placeholder="Search"
-          value={query}
-          className="h-nav-search px-3"
-          onValueChange={(value) => {
-            setQuery(value);
-            setActive(0);
-          }}
-          onKeyDown={(event) => {
-            if (!results?.length) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              const step = event.key === "ArrowDown" ? 1 : -1;
-              setActive((index) => (index + step + results.length) % results.length);
-            }
-            const chosen = results[active];
-            if (event.key === "Enter" && chosen) openResult(chosen);
-          }}
-        />
+      {/* Its right edge is the list's, whose scrollbar keeps its room (the old app's overlaid it). */}
+      <div className="ps-2 pe-2.5 pb-2">
+        <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
+          <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
+          <input
+            ref={field}
+            aria-label="Search settings"
+            placeholder="Search"
+            value={query}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="min-w-0 flex-1 cursor-text bg-transparent text-sm outline-none placeholder:text-faint-foreground"
+            onChange={(event) => search(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && query) {
+                event.stopPropagation();
+                search("");
+                return;
+              }
+              if (!results?.length) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setActive((index) => (index + step + results.length) % results.length);
+              }
+              const chosen = results[active];
+              if (event.key === "Enter" && chosen) openResult(chosen);
+            }}
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              className="flex shrink-0 cursor-pointer items-center rounded-capsule text-faint-foreground hover:text-foreground focus-visible:focus-ring"
+              onClick={() => {
+                search("");
+                requestAnimationFrame(() => field.current?.focus());
+              }}
+            >
+              <XCircleFilled className="size-icon-sm" />
+            </button>
+          )}
+        </label>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pt-1 pb-2">
+      <div className="scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2">
         {results ? (
           results.length === 0 ? (
             <EmptyState title="No settings match." />
@@ -102,11 +130,11 @@ export function SettingsNav({ current }: { current: string }) {
                 return (
                   <li key={`${result.page.id}:${result.row?.label ?? ""}`}>
                     <NavRow data-active={index === active || undefined} className="items-start py-2.5" onMouseEnter={() => setActive(index)} onClick={() => openResult(result)}>
-                      <Icon className="mt-0.5 text-muted-foreground" />
+                      <Icon className="mt-0.5 text-quiet-foreground" />
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{result.row?.label ?? result.page.label}</span>
                         {result.row && (
-                          <span className="truncate text-xs text-muted-foreground">
+                          <span className="truncate text-xs text-faint-foreground">
                             {result.page.label}
                             {result.row.section ? ` › ${result.row.section}` : ""}
                           </span>
@@ -127,7 +155,7 @@ export function SettingsNav({ current }: { current: string }) {
                   return (
                     <li key={page.id}>
                       <NavRow aria-current={page.id === settingsPage(current).id ? "page" : undefined} onClick={() => openSettings(page.id)}>
-                        <Icon className="text-muted-foreground" />
+                        <Icon className="text-quiet-foreground" />
                         <span className="truncate">{page.label}</span>
                       </NavRow>
                     </li>

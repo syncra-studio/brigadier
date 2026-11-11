@@ -295,7 +295,7 @@
   --spacing-nav-header: 3.25rem;
   /* Settings: its search, and the band atop a page under the titlebar (the old app's). */
   --spacing-nav-search: 2.25rem;
-  --spacing-settings-band: var(--spacing-page-toolbar);
+  --spacing-settings-band: 2.875rem;
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
   /* The sidebar panel: its default width, how far it resizes, the content's least room beside it. */

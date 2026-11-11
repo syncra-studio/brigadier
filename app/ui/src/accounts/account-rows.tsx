@@ -164,12 +164,16 @@ function AccountRow({
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-4 px-4 py-3">
-        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-capsule bg-fill-hover text-label font-medium text-foreground">
-          {(title.trim().charAt(0) || "?").toUpperCase()}
+        {/* The old row's chevron slot, empty: an account here never opens to its limits. */}
+        <span className="flex shrink-0 items-center gap-2">
+          <span aria-hidden className="size-3.5" />
+          <span aria-hidden className="flex size-8 items-center justify-center rounded-capsule bg-fill-hover text-label font-medium text-foreground">
+            {(title.trim().charAt(0) || "?").toUpperCase()}
+          </span>
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.75">
           <span className={cx(ROW_TITLE, "truncate")}>{title}</span>
-          <span className={cx(ROW_LINE, "truncate")}>{line}</span>
+          <span className="truncate text-xs text-muted-foreground">{line}</span>
           {c.error && <span className="text-xs text-destructive">{c.error}</span>}
           <ErrorLine error={error} />
         </div>

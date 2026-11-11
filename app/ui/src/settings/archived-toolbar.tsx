@@ -87,7 +87,7 @@ export function KindMenu({ filter, onChange }: { filter: ArchivedFilter; onChang
           </SelectTrigger>
         }
       />
-      <DropdownMenuContent align="end" className="min-w-anchor">
+      <DropdownMenuContent align="end" className="w-anchor">
         <DropdownMenuLabel>Type</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={filter.kind} onValueChange={(kind) => onChange({ kind })}>
           {KIND_CHOICES.map((choice) => (

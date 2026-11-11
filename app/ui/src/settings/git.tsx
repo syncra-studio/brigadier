@@ -1,7 +1,7 @@
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { Select } from "../components/select";
-import { SettingsPage } from "./parts";
+import { SettingsPage, SettingsSection } from "./parts";
 
 /** The Git page's rows, for the page and for Settings search. */
 export const GIT_ROWS = {
@@ -12,12 +12,14 @@ export const GIT_ROWS = {
 export function GitPage() {
   return (
     <SettingsPage title="Git">
-      <SettingsCard>
-        <SettingsRow label={GIT_ROWS.writer.label} description={GIT_ROWS.writer.description}>
-          {/* shortcut: drawn only (D388); 3.8 wires it to Rust's catalog once wave 2's writer that takes a model is on main. */}
-          <Select label={GIT_ROWS.writer.label} value="automatic" options={[{ value: "automatic", label: "Automatic" }]} onChange={() => {}} disabled />
-        </SettingsRow>
-      </SettingsCard>
+      <SettingsSection title="Writing">
+        <SettingsCard>
+          <SettingsRow label={GIT_ROWS.writer.label} description={GIT_ROWS.writer.description}>
+            {/* shortcut: drawn only (D388); 3.8 wires it to Rust's catalog once wave 2's writer that takes a model is on main. */}
+            <Select label={GIT_ROWS.writer.label} value="automatic" options={[{ value: "automatic", label: "Automatic" }]} onChange={() => {}} disabled />
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
     </SettingsPage>
   );
 }
