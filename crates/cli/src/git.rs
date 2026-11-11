@@ -5,7 +5,8 @@
 use super::{arg, flag, has};
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{
-    self, Checkout, Status, Target, branch, files, land, push::Rejected, step, sync, watch::Watch,
+    self, Checkout, Status, Target, branch, catch_up, files, land, push::Rejected, step, sync,
+    watch::Watch,
 };
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -229,7 +230,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             sync::publish(&checkout, sync::trusted(data, &target), &stop)?;
             done
         }
-        // The action button's next step, and landing [D1015, D1028, D1049].
+        // The card control's next step, and landing [D1028, D1049, D1286].
         "step" => {
             let mut reply = json!({"ok": true, "step": step::step(data, &target, &stop)?});
             // The last run's end, so the brief is read again when only a run changed [D1199].
@@ -246,6 +247,14 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             };
             let landed = land::land(data, id, (word(1)?, word(2)?), &stop)?;
             json!({"ok": true, "landed": landed})
+        }
+        // Catch up with main, pinned to the commits the control showed (2.50) [D1286].
+        "catch-up" => {
+            let Target::Session(id) = target else {
+                return Err(io::Error::other(super::USAGE));
+            };
+            catch_up::catch_up(data, id, (word(1)?, word(2)?), &stop)?;
+            done
         }
         _ => return Err(io::Error::other(super::USAGE)),
     })

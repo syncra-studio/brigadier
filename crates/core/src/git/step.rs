@@ -1,23 +1,24 @@
-//! The action button's next step [D1015, D1045, D1152], worked out from git all the time: Rust
-//! sends structure and the UI writes the words [D65].
+//! The card's control (2.48) [D1278, D1285, D1286, D1287]: its next step, one thing per click, and
+//! why each of its menu's rows can't run, worked out from git each read: Rust sends structure and
+//! the UI writes the words [D65]. Nothing here runs anything [D1203, D1286].
 
-use super::precheck::{Merge, blocked, count, git, merge, merge_base, next_tree, shared_with};
-use super::{Checkout, Status, Target, checkout, err, push, status};
+use super::precheck::{Merge, blocked, count, git, merge, merge_base, midway, shared_with};
+use super::{Checkout, Status, Target, checkout, push, read, status};
 use crate::worktrees::{self, Lands};
-use crate::{load, session_dir};
-use serde_json::{Value, json};
+use crate::{host, load};
+use serde_json::{Map, Value, json};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-/// The action button's next step for a session or project [D1015, D1045], and the commits it was
-/// worked out on, which a landing pins.
+/// The control's step for a session or project, the commits it was worked out on (which Merge
+/// into main and Catch up are pinned to), and the base's freshness [D1049, D1193].
 pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value> {
     let checkout = checkout(data, target)?;
     let now = status(&checkout, stop)?;
-    let (id, dir) = match target {
-        Target::Session(id) => (Some(*id), session_dir(data, id)),
-        Target::Project(_) => (None, PathBuf::new()),
+    let id = match target {
+        Target::Session(id) => Some(*id),
+        Target::Project(_) => None,
     };
     // A "here" fork in another session's worktree reads that session's record [D1082].
     let holder = id.and_then(|id| crate::share::holder(data, &load(data, id).ok()?));
@@ -25,13 +26,10 @@ pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value
         Some(holder) => worktrees::lands(&holder.dir)?,
         None => None,
     };
-    let (step, at) = match (id, lands) {
-        (Some(id), Some(lands)) => session(data, id, &dir, &checkout, &now, &lands, stop)?,
-        // A folder's HEAD pins its commit-first Sync or Publish [D1049].
-        _ => (
-            folder(&checkout, &now),
-            json!({"head": now.head["head"], "base": null}),
-        ),
+    let (step, at) = match now.head["branch"].as_str() {
+        // Detached: the card's branch row says so, and there's no step [D1187].
+        None => (Value::Null, json!({"head": now.head["head"], "base": null})),
+        Some(branch) => control(data, id, &checkout, &now, branch, lands.as_ref(), stop)?,
     };
     let freshness = holder
         .and_then(|h| worktrees::base(&h.dir))
@@ -40,108 +38,308 @@ pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value
     Ok(json!({"step": step, "at": at, "freshness": freshness}))
 }
 
-/// The user's own folder: VS Code's Commit, Publish Branch and Sync Changes [D1045].
-fn folder(checkout: &Checkout, now: &Status) -> Value {
-    let head = &now.head;
-    let Some(branch) = head["branch"].as_str() else {
-        return Value::Null;
-    };
-    let (ahead, behind) = (head["ahead"].as_u64(), head["behind"].as_u64());
-    let commit = json!({"kind": "folderCommit", "branch": branch,
-        "ahead": ahead.unwrap_or(0), "behind": behind.unwrap_or(0)});
-    // Nowhere to publish, or no first commit yet: only a commit is left to do.
-    let Ok(remote) = push::remote(checkout, branch) else {
-        return commit;
-    };
-    if head["head"].is_null() {
-        return commit;
-    }
-    // Sync or Publish commits what's uncommitted first [D1203, D1207].
-    let first = now.files.len();
-    if head["upstream"].is_null() {
-        return json!({"kind": "publish", "branch": branch, "remote": remote, "commit": first});
-    }
-    match ahead.unwrap_or(0) + behind.unwrap_or(0) + first as u64 {
-        0 => commit,
-        _ => json!({"kind": "sync", "branch": branch, "remote": remote,
-            "ahead": ahead.unwrap_or(0), "behind": behind.unwrap_or(0), "commit": first}),
-    }
-}
-
-/// A session's own worktree: Merge into its base, committing what isn't first, or Catch up, then
-/// landed [D1015, D1093, D1102, D1203, D1207].
-fn session(
+/// Commit, then Push, then Create PR; Sync when the branch's own remote has commits it doesn't;
+/// Catch up when the base moved; Resolve with agent when either would conflict [D1280, D1285,
+/// D1286, D1290]. With nothing to do: none, a grey Commit [D1287]. In your own folder there's no
+/// base to land into, so Create PR, Catch up and Merge into main stay off [D1045].
+fn control(
     data: &Path,
-    id: &str,
-    dir: &Path,
+    id: Option<&str>,
     checkout: &Checkout,
     now: &Status,
-    lands: &Lands,
+    branch: &str,
+    lands: Option<&Lands>,
     stop: &AtomicBool,
 ) -> io::Result<(Value, Value)> {
     let root = &checkout.root;
-    let base = lands.base.as_str();
-    let Some(head) = now.head["head"].as_str() else {
-        return Ok((Value::Null, Value::Null));
+    let head = now.head["head"].as_str();
+    let files = now.files.len();
+    let (ahead, behind) = (u(&now.head["ahead"]), u(&now.head["behind"]));
+    let upstream = now.head["upstream"].as_str();
+    let remote = push::remote(checkout, branch).ok();
+    // The first reason a row gets is the one it shows.
+    let mut off = Map::new();
+    let mut why = |row: &str, reason: &str| {
+        off.entry(row).or_insert(reason.into());
     };
+    let (mut next, mut resolve) = (None, Value::Null);
+    let mut facts =
+        json!({"base": null, "moved": 0, "pr": null, "landedAtMs": null, "sharedWith": null});
+
+    if files == 0 {
+        why("commit", "clean");
+    }
+    // A checkout already mid-merge or mid-rebase reads as Resolve with agent [D1290].
+    if midway(&checkout.git_dir) {
+        let conflicted = (now.files.iter())
+            .filter(|(_, f)| f["changes"] == "conflicted")
+            .map(|(path, _)| path.as_str())
+            .collect::<Vec<_>>();
+        let onto = lands.map(|l| l.base.as_str()).or(upstream);
+        resolve = json!({"op": "merge", "ref": onto, "files": conflicted});
+        next = Some("resolve");
+        for row in ["commit", "push", "createPr", "sync", "catchUp", "merge"] {
+            why(row, "conflicts");
+        }
+    }
+    // The branch's own remote: Sync pulls, then pushes [D1286]; a pull that would conflict is the
+    // agent's, with the upstream as its ref [D1290].
+    match (upstream, behind) {
+        (None, _) => why("sync", "unpublished"),
+        (Some(_), 0) => why("sync", "synced"),
+        (Some(_), _) if files > 0 => why("sync", "commitFirst"),
+        (Some(up), _) => match head.map(|h| conflicts(root, h, "@{upstream}", stop)) {
+            Some(Ok(Some(files))) => {
+                why("sync", "conflicts");
+                if next.is_none() {
+                    resolve = json!({"op": "pull", "ref": up, "files": files});
+                    next = Some("resolve");
+                }
+            }
+            _ if next.is_none() => next = Some("sync"),
+            _ => {}
+        },
+    }
+    if behind > 0 {
+        why("push", "behind");
+    }
+    match (&remote, upstream) {
+        (None, _) => why("push", "noRemote"),
+        (Some(_), Some(_)) if ahead == 0 => why("push", "pushed"),
+        _ => {}
+    }
+    if head.is_none() {
+        why("push", "commitFirst");
+    }
+
+    let landing = match (id, lands, head) {
+        (Some(id), Some(lands), Some(head)) => {
+            Some(session(data, id, checkout, now, lands, head, stop)?)
+        }
+        _ => None,
+    };
+    let at = json!({"head": head, "base": landing.as_ref().map(|s| s.base_at.clone())});
+    match landing {
+        None => {
+            for row in ["createPr", "catchUp", "merge"] {
+                why(row, "noBase");
+            }
+        }
+        Some(s) => {
+            facts["base"] = s.base.as_str().into();
+            facts["moved"] = s.moved.into();
+            facts["pr"] = s.pr.into();
+            facts["landedAtMs"] = s.landed_at.into();
+            if s.own == 0 && upstream.is_none() {
+                why(
+                    "push",
+                    if files > 0 {
+                        "commitFirst"
+                    } else {
+                        "noCommits"
+                    },
+                );
+            }
+            if s.landed_at.is_some() {
+                for row in ["createPr", "merge"] {
+                    why(row, "landed");
+                }
+            }
+            if let Some(with) = &s.shared {
+                facts["sharedWith"] = with.as_str().into();
+                for row in ["createPr", "merge"] {
+                    why(row, "shared");
+                }
+            }
+            if s.pr.is_some() {
+                why("createPr", "prOpen");
+                why("merge", "inPrTab");
+            }
+            if s.own == 0 {
+                for row in ["createPr", "merge"] {
+                    why(
+                        row,
+                        if files > 0 {
+                            "commitFirst"
+                        } else {
+                            "noCommits"
+                        },
+                    );
+                }
+            }
+            if files > 0 {
+                why("catchUp", "commitFirst");
+                why("merge", "commitFirst");
+            }
+            match (s.moved, &s.conflicts) {
+                (0, _) => why("catchUp", "upToDate"),
+                (_, Some(files)) => {
+                    why("catchUp", "conflicts");
+                    if next.is_none() && s.landed_at.is_none() {
+                        resolve = json!({"op": "merge", "ref": s.base, "files": files});
+                        next = Some("resolve");
+                    }
+                }
+                _ if next.is_none() && files == 0 && s.landed_at.is_none() => {
+                    next = Some("catchUp")
+                }
+                _ => {}
+            }
+            // Main moved: nothing goes out until it's caught up [D1282].
+            if s.moved > 0 && s.landed_at.is_none() {
+                for row in ["push", "createPr", "merge"] {
+                    why(row, "moved");
+                }
+            }
+            if upstream.is_none() || ahead > 0 {
+                why("createPr", "pushFirst");
+            }
+            if s.no_host {
+                why("createPr", "noHost");
+            }
+            if let Some(blocked) = s.blocked {
+                why("merge", blocked);
+            }
+        }
+    }
+    if files > 0 && next.is_none() {
+        next = Some("commit");
+    }
+    for row in ["push", "createPr"] {
+        if next.is_none() && !off.contains_key(row) {
+            next = Some(row);
+        }
+    }
+    facts["next"] = next.into();
+    facts["off"] = off.into();
+    facts["branch"] = branch.into();
+    facts["ahead"] = ahead.into();
+    facts["behind"] = behind.into();
+    facts["files"] = files.into();
+    facts["resolve"] = resolve;
+    Ok((facts, at))
+}
+
+/// What a session's worktree adds: its base, how far it moved, its own commits, a landing that
+/// holds, an open PR, and why Merge into main can't run.
+struct Session {
+    base: String,
+    base_at: String,
+    own: u64,
+    moved: u64,
+    /// Catching up would conflict in these files.
+    conflicts: Option<Vec<String>>,
+    /// Merged into the base on this machine, nothing since [D1229].
+    landed_at: Option<u64>,
+    shared: Option<String>,
+    pr: Option<u64>,
+    no_host: bool,
+    blocked: Option<&'static str>,
+}
+
+fn session(
+    data: &Path,
+    id: &str,
+    checkout: &Checkout,
+    now: &Status,
+    lands: &Lands,
+    head: &str,
+    stop: &AtomicBool,
+) -> io::Result<Session> {
+    let root = &checkout.root;
+    let base = lands.base.as_str();
     let base_at = git(
         root,
         &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
         stop,
     )
-    .or_else(|_| err(format!("{base} isn't in this project any more.")))?;
-    let at = json!({"head": head, "base": base_at});
+    .or_else(|_| super::err(format!("{base} isn't in this project any more.")))?;
     let merge_base = merge_base(root, &base_at, head, stop)?;
-    // The landing step commits every change first, so it's worked out on what that commit would
-    // hold [D1203, D1207].
-    let first = now.files.len();
-    if first == 0
-        && let Some(landing) =
-            (lands.landing.as_ref()).filter(|l| worktrees::landed(&lands.repo, &base_at, head, l))
-    {
-        return Ok((
-            json!({"kind": "landed", "base": base, "atMs": landing.at_ms}),
-            at,
-        ));
-    }
-    // The remote has commits this branch doesn't, as after a push turned away: Sync is the fix
-    // [D1206].
-    let behind = now.head["behind"].as_u64().unwrap_or(0);
-    if behind > 0
-        && let Some(branch) = now.head["branch"].as_str()
-        && let Ok(remote) = push::remote(checkout, branch)
-    {
-        let ahead = now.head["ahead"].as_u64().unwrap_or(0);
-        let step = json!({"kind": "sync", "branch": branch, "remote": remote,
-            "behind": behind, "ahead": ahead, "commit": first});
-        return Ok((step, at));
-    }
-    let ahead = count(root, &format!("{merge_base}..{head}"), stop)?;
-    if ahead == 0 && first == 0 {
-        // Nothing of its own yet, or all of it already in the base.
-        let step = match head == lands.base_commit {
-            true => json!({"kind": "commit", "base": base, "waiting": 0, "clean": true}),
-            false => json!({"kind": "landed", "base": base, "atMs": null}),
-        };
-        return Ok((step, at));
-    }
-    let tree = match first {
-        0 => git(root, &["rev-parse", &format!("{head}^{{tree}}")], stop)?,
-        _ => next_tree(checkout, dir, true, stop)?,
-    };
-    let step = match merge(root, &base_at, &merge_base, &tree, stop)? {
-        Merge::Conflicts(conflicts) => {
-            json!({"kind": "catchUp", "base": base, "conflicts": conflicts, "commit": first})
+    let own = count(root, &format!("{merge_base}..{head}"), stop)?;
+    let ancestor =
+        |a: &str, b: &str| read(root, &["merge-base", "--is-ancestor", a, b], stop).is_ok();
+    // The base's own commits since this branch last met it. The session's own landing never
+    // counts, whatever its kind, while it holds [D1229].
+    let landing = (lands.landing.as_ref())
+        .filter(|l| ancestor(&l.commit, &base_at) && ancestor(&l.head, head));
+    let moved = match landing {
+        Some(l) => {
+            let (not_head, not_landing) = (format!("^{head}"), format!("^{}", l.commit));
+            let args = [
+                "rev-list",
+                "--count",
+                &base_at,
+                &not_head,
+                &not_landing,
+                "--",
+            ];
+            git(root, &args, stop)?.parse().map_err(io::Error::other)?
         }
-        Merge::Clean(merged) => {
-            let moved = count(root, &format!("{head}..{base_at}"), stop)?;
-            let blocked = match shared_with(data, id) {
-                Some(with) => json!({"why": "shared", "with": with}),
-                None => blocked(root, base, &base_at, &merged, stop)?,
-            };
-            json!({"kind": "merge", "base": base, "ready": ahead, "moved": moved,
-                "blocked": blocked, "commit": first})
+        None => count(root, &format!("{head}..{base_at}"), stop)?,
+    };
+    let landed_at = landing
+        .filter(|l| now.files.is_empty() && l.head == head)
+        .map(|l| l.at_ms);
+    let conflicts = match moved {
+        0 => None,
+        _ => conflicts(root, head, &base_at, stop)?,
+    };
+    let branch = now.head["branch"].as_str().unwrap_or("");
+    let no_host = (push::remote(checkout, branch).ok())
+        .and_then(|r| push::url(checkout, &r).ok())
+        .is_none_or(|url| host::repo(&url).is_none());
+    // Merge into main's own pre-check: the base a remote branch, or its folder busy [D1161, D1228].
+    let blocked = match (own, &conflicts) {
+        (0, _) | (_, Some(_)) => None,
+        _ => {
+            let tree = git(root, &["rev-parse", &format!("{head}^{{tree}}")], stop)?;
+            match merge(root, &base_at, &merge_base, &tree, stop)? {
+                Merge::Conflicts(_) => Some("moved"),
+                Merge::Clean(merged) => {
+                    match blocked(root, base, &base_at, &merged, stop)?["why"].as_str() {
+                        Some("remote") => Some("remoteBase"),
+                        Some(_) => Some("baseBusy"),
+                        None => None,
+                    }
+                }
+            }
         }
     };
-    Ok((step, at))
+    Ok(Session {
+        base: base.into(),
+        base_at,
+        own,
+        moved,
+        conflicts,
+        landed_at,
+        shared: shared_with(data, id),
+        pr: host::open_pr(id),
+        no_host,
+        blocked,
+    })
+}
+
+/// The files merging `theirs` into `head` would conflict in, as `git merge-tree` says; none when
+/// it merges cleanly. Nothing is written but git's own objects [D1166].
+fn conflicts(
+    root: &Path,
+    head: &str,
+    theirs: &str,
+    stop: &AtomicBool,
+) -> io::Result<Option<Vec<String>>> {
+    let theirs = git(
+        root,
+        &["rev-parse", "--verify", &format!("{theirs}^{{commit}}")],
+        stop,
+    )?;
+    let base = git(root, &["merge-base", head, &theirs], stop)?;
+    let tree = git(root, &["rev-parse", &format!("{head}^{{tree}}")], stop)?;
+    Ok(match merge(root, &theirs, &base, &tree, stop)? {
+        Merge::Conflicts(files) => Some(files),
+        Merge::Clean(_) => None,
+    })
+}
+
+fn u(value: &Value) -> u64 {
+    value.as_u64().unwrap_or(0)
 }

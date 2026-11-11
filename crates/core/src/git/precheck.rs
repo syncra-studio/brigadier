@@ -12,7 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::AtomicBool;
 
 /// Proposed: a landing's git gives up after this.
 const LAND_SECS: u64 = 120;
@@ -28,7 +28,6 @@ pub(super) enum Merge {
 
 /// Pre-check results by checkout, base commit, merge base and tree.
 static MERGES: Mutex<Vec<([String; 4], Merge)>> = Mutex::new(Vec::new());
-static TEMP: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn git(dir: &Path, args: &[&str], stop: &AtomicBool) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&read(dir, args, stop)?)
@@ -111,41 +110,6 @@ pub(super) fn merge(
     }
     kept.push((key, merged.clone()));
     Ok(merged)
-}
-
-/// Removes a scratch file when dropped.
-pub(super) struct Scratch(PathBuf);
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
-/// The tree the next commit would hold: the staged files, or everything when nothing is, as
-/// Commit stages it then. Made in a copy of the index in the session's folder [D35], so the real
-/// index and the files are never touched.
-pub(super) fn next_tree(
-    checkout: &Checkout,
-    dir: &Path,
-    all: bool,
-    stop: &AtomicBool,
-) -> io::Result<String> {
-    let n = TEMP.fetch_add(1, Ordering::SeqCst);
-    let index = Scratch(dir.join(format!("precheck-{}-{n}.index", std::process::id())));
-    match fs::copy(checkout.git_dir.join("index"), &index.0) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
-        _ => {}
-    }
-    let run = |args: &[&str]| {
-        let mut command = worktrees::command(&checkout.root);
-        command.env("GIT_INDEX_FILE", &index.0).args(args);
-        finish(&mut command, stop)
-    };
-    if all {
-        run(&["add", "-A"])?;
-    }
-    run(&["write-tree"])
 }
 
 /// Whether a merge or rebase stopped midway in the checkout whose git folder is `git_dir`.
