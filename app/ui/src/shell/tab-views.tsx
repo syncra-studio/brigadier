@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortc
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
+import { LivePrTab } from "../landing/live";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { RightPanelSlot } from "./right-panel";
@@ -108,9 +109,11 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
         </div>
         {tabs.map((tab) => (
           <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
-            {/* Each kind until it's wired: the PR view comes with 2.27 [D1014, D1017]. */}
+            {/* Each kind until it's wired: the terminal comes later [D361]. */}
             {tab.kind === "file" ? (
               <FileTab key={tab.target} tab={tab} active={tab.id === active} />
+            ) : tab.kind === "pr" ? (
+              <LivePrTab key={tab.target} owner={owner} number={Number(tab.target)} />
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
