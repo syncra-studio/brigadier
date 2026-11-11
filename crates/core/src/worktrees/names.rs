@@ -134,6 +134,7 @@ pub fn reserve(
 
 /// Once a push is attempted the name stays put, even if tracking or the remote is later removed.
 pub fn publishing(checkout: &crate::git::Checkout, branch: &str) -> io::Result<()> {
+    // shortcut: a rejected push also fixes the name; track confirmed publication if retries need automatic renaming.
     if checkout.worktree {
         git(
             &checkout.root,
