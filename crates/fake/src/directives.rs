@@ -49,6 +49,13 @@ impl Agent {
                 }
                 self.say(&format!("ran a shell command on {file}"));
             }
+            // `test:N`: a test run whose CLI reports exit N [D1188].
+            "test" => {
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                emit(json!({"t": "tool", "id": id, "name": "shell", "command": "cargo test"}));
+                emit(json!({"t": "tool_done", "id": id, "ok": n == 0, "exit": n}));
+            }
             "tree" => {
                 let cmd = format!("sleep {left} & sleep {left} & wait");
                 if !self.tool(word, n, done_before, false, &cmd) {

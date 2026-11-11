@@ -154,6 +154,13 @@ impl Adapter for Fake {
                 )],
                 ..Default::default()
             })],
+            "tool" if v["command"].is_string() => vec![Event::ToolStart(Tool {
+                id: s(&v, &["id"]).into(),
+                name: s(&v, &["name"]).into(),
+                step: "run",
+                input: s(&v, &["command"]).into(),
+                ..Default::default()
+            })],
             "tool" => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
@@ -163,6 +170,7 @@ impl Adapter for Fake {
             "tool_done" => vec![Event::ToolEnd(Done {
                 id: s(&v, &["id"]).into(),
                 ok: v["ok"].as_bool().unwrap_or(true),
+                exit: v["exit"].as_i64(),
                 ..Default::default()
             })],
             "mark" => vec![Event::Mark {
