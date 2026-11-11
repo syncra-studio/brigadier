@@ -34,13 +34,18 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
   const [error, setError] = useState<string>();
   const [merging, setMerging] = useState(false);
   const chips = useChips(owner);
-  // One read at a time: a focus while one is out waits for its answer.
+  // One read at a time: one asked while another is out runs once that answers, so an action's is never lost.
   const reading = useRef(false);
+  const again = useRef(false);
   const read = () => {
-    if (reading.current) return;
+    if (reading.current) return void (again.current = true);
     reading.current = true;
     ask({ op: "run", args: ["host", owner, "view", String(number)] }, (reply) => {
       reading.current = false;
+      if (again.current) {
+        again.current = false;
+        return read();
+      }
       if (reply.ok) {
         setPr(reply.pr);
         setError(undefined);

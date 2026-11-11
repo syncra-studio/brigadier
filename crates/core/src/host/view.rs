@@ -36,22 +36,29 @@ impl Pr {
         if !super::prs::belongs(&pr, repo, &self.branch) {
             return err(format!("#{number} isn't this branch's PR."));
         }
-        // None when gh can't say, or the head moved meanwhile: then Merge stays off.
-        let known = super::prs::checks(&gh, repo, &pr);
-        let checks: Vec<Value> = (known.iter().flatten())
-            .enumerate()
-            .map(|(i, c)| check(&gh, repo, i, c))
-            .collect();
+        // None when gh can't say, or the head moved meanwhile: the tab keeps its last read.
+        let Some(known) = super::prs::checks(&gh, repo, &pr) else {
+            return err("Couldn't read the PR's checks just now.");
+        };
+        let checks: Vec<Value> = known.iter().map(|c| check(&gh, repo, c)).collect();
         let api = |path: &str| paged(&gh, &format!("repos/{}/issues/{number}/{path}", repo.path));
         let reviews = paged(&gh, &format!("repos/{}/pulls/{number}/comments", repo.path))?;
         let issue = api("comments")?;
-        // Review comments are numbered apart from the PR's own, so theirs carry an `r`.
-        let tagged = (issue.iter().map(|c| ("", c))).chain(reviews.iter().map(|c| ("r", c)));
+        // A sent review's own words, apart from its line comments; one with none says nothing here.
+        let summaries = paged(&gh, &format!("repos/{}/pulls/{number}/reviews", repo.path))?;
+        let summaries = (summaries.iter()).filter(|r| {
+            r["state"] != "PENDING" && r["body"].as_str().is_some_and(|b| !b.trim().is_empty())
+        });
+        // Each kind is numbered apart, so line comments carry an `r` and reviews a `v`.
+        let tagged = (issue.iter().map(|c| ("", c)))
+            .chain(reviews.iter().map(|c| ("r", c)))
+            .chain(summaries.map(|c| ("v", c)));
         let mut comments: Vec<Value> = tagged
             .map(|(tag, c)| {
                 json!({"id": format!("{tag}{}", c["id"]), "author": c["user"]["login"],
                 "path": c["path"], "line": c["line"].as_u64().or(c["original_line"].as_u64()),
-                "body": c["body"], "atMs": ms(&c["created_at"]), "url": c["html_url"]})
+                "body": c["body"], "atMs": ms(&c["created_at"]).or(ms(&c["submitted_at"])),
+                "url": c["html_url"]})
             })
             .collect();
         comments.sort_by_key(|c| c["atMs"].as_u64());
@@ -100,7 +107,8 @@ impl Pr {
                 "conflicts": conflicts})),
             // Off until checks pass on this head, as a merge is pinned to it [D1077, D1287].
             "merge": {"allowed": state == "open" && pr["mergeable"] == "MERGEABLE"
-                    && known.is_some() && failed == 0 && running == 0 && !styles.is_empty(),
+                    && !blocked && running == 0 && pr["reviewDecision"] != "REVIEW_REQUIRED"
+                    && !styles.is_empty(),
                 "default": styles.first(), "styles": styles},
             "head": pr["headRefOid"], "branch": pr["headRefName"], "base": pr["baseRefName"],
             "openedBy": pr["author"]["login"], "openedAtMs": ms(&pr["createdAt"]),
@@ -180,9 +188,10 @@ fn styles(gh: &str, repo: &Repo) -> io::Result<Vec<&'static str>> {
 }
 
 /// One check as the tab shows it; a failed Actions job's log tail comes with it.
-fn check(gh: &str, repo: &Repo, i: usize, c: &Value) -> Value {
+fn check(gh: &str, repo: &Repo, c: &Value) -> Value {
     let state = match c["bucket"].as_str() {
-        Some("fail") => "failed",
+        // A cancelled check didn't pass, so it can't let Merge on.
+        Some("fail" | "cancel") => "failed",
         Some("pending") => "running",
         _ => "passed",
     };
@@ -193,7 +202,16 @@ fn check(gh: &str, repo: &Repo, i: usize, c: &Value) -> Value {
     let took = ms(&c["completedAt"])
         .zip(ms(&c["startedAt"]))
         .map(|(end, start)| end.saturating_sub(start));
-    json!({"id": format!("{i}"), "name": c["name"], "state": state, "durationMs": took,
+    // Its link names its run; one with none is known by its workflow and name.
+    let id = match link {
+        "" => format!(
+            "{}/{}",
+            c["workflow"].as_str().unwrap_or(""),
+            c["name"].as_str().unwrap_or("")
+        ),
+        link => link.to_string(),
+    };
+    json!({"id": id, "name": c["name"], "state": state, "durationMs": took,
         "logTail": tail, "url": c["link"], "atMs": ms(&c["completedAt"]).or(ms(&c["startedAt"]))})
 }
 
