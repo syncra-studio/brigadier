@@ -13,9 +13,6 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-/// What the user sees when nothing was written [D1029].
-const UNWRITTEN: &str = "Couldn't write a message. Type one.";
-
 /// Each model an agent's last check listed, in any folder, the first folder's list that has any.
 fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
     let path = data.join("agents").join(format!("{name}.json"));
@@ -130,9 +127,13 @@ fn trusted(data: &Path, target: &Target) -> bool {
     project.is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)))
 }
 
+/// Nothing written: why, in the agent's own words where it gave them [D1324], its last line that
+/// isn't a raw event; the whole of what it said, as details.
 fn unwritten(why: String) -> Value {
     eprintln!("message writer: {why}");
-    json!({"ok": false, "error": UNWRITTEN, "writer": true})
+    let said = (why.lines().map(str::trim)).rfind(|l| !l.is_empty() && !l.starts_with(['{', '[']));
+    let details = (Some(why.trim()) != said).then_some(why.trim());
+    json!({"ok": false, "error": said, "details": details, "writer": true})
 }
 
 fn commit_prompt(

@@ -84,7 +84,7 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
     const branch = data.source?.branch ?? step.branch ?? "the branch";
     switch (act) {
       case "commit": {
-        // One click, the writer's message; a writer failure commits nothing and offers Type a message… [D1281, D1293].
+        // One click, the writer's message; a writer failure says why, commits nothing and offers Type a message… [D1281, D1293, D1324].
         const sent = commitFiles(true, "", (reply) => {
           if (reply.ok) {
             gitDone(target);
@@ -95,7 +95,7 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
             });
           }
           setRunning(key, null);
-          if (reply.writer) gitFailed(target, "Couldn't write a commit message.", "", true);
+          if (reply.writer) gitFailed(target, reply.error ? `Couldn't write a commit message: ${reply.error}` : "Couldn't write a commit message.", reply.details ?? "", true);
           else failed(target, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
         });
         if (!sent) done("Couldn't commit.", "")("This checkout isn't on screen.");

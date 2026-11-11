@@ -175,7 +175,7 @@ impl Agent {
             thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
         }
         if text.contains("nowrite") {
-            emit(json!({"t": "error", "code": 500, "message": "the fake writer was told to fail"}));
+            emit(json!({"t": "fail", "message": "The fake writer was told to fail."}));
             return emit(json!({"t": "done", "ok": false}));
         }
         let files: Vec<&str> = (text.lines())
