@@ -10,7 +10,7 @@ import { type Agent, checkOne } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AccountRows } from "./account-rows";
 import { type Account, type SwitchAgent, loadAccounts } from "./api";
-import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, ROW_LINE, ROW_TITLE, standing } from "./parts";
+import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, ROW_LINE, ROW_TITLE, standing, versionText } from "./parts";
 
 /**
  * An agent's page under Providers, the old app's [D2053]: Providers to go back, its mark, name and how it stands,
@@ -100,7 +100,7 @@ export function AgentPage({
 function Installation({ agent, online, setup }: { agent: Agent; online: boolean; setup: ReturnType<typeof useAgentSetup> }) {
   const state = stateOf(agent);
   const busy = !online || setup.starting === agent.name || Boolean(agent.setup?.running);
-  const version = state === "checking" ? "Checking…" : state === "install" ? "Not installed" : agent.version ? `v${agent.version}` : "Version unknown";
+  const version = state === "checking" ? "Checking…" : state === "install" ? "Not installed" : (versionText(agent) ?? "Version unknown");
   const action =
     state === "checking" ? null : state === "install" ? (
       <Button variant="soft" size="sm" disabled={busy || !agent.install} onClick={() => void setup.begin(agent, "install")}>

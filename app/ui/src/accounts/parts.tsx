@@ -38,8 +38,15 @@ export function standing(agent: Agent, accounts: SwitchAgent | undefined): { ton
   if (state === "error") return { tone: "needs", line: agent.error ?? "Couldn't be checked" };
   if (state === "signIn") return { tone: "needs", line: "Not signed in" };
   const signedIn = accounts?.accounts ? accounts.accounts.list.filter((account) => account.check.signed_in === true).length : agent.signed_in ? 1 : 0;
-  const count = `${signedIn} ${signedIn === 1 ? "account" : "accounts"}`;
-  return { tone: "ready", line: [state === "noModel" ? "No model available" : "Ready", count, agent.version && `v${agent.version}`].filter(Boolean).join(" · ") };
+  // An agent ready with no account signed in (free or local models) has none to count.
+  const count = signedIn > 0 && `${signedIn} ${signedIn === 1 ? "account" : "accounts"}`;
+  return { tone: "ready", line: [state === "noModel" ? "No model available" : "Ready", count, versionText(agent)].filter(Boolean).join(" · ") };
+}
+
+/** An agent's version number, whatever words its CLI puts around it ("codex-cli 0.9", "opencode v2.2"). */
+export function versionText(agent: Agent): string | null {
+  const number = agent.version?.match(/\d+(\.\d+)+\S*/)?.[0];
+  return number ? `v${number}` : agent.version || null;
 }
 
 /** What an action failed with, by key, and a way to run one that records it. */

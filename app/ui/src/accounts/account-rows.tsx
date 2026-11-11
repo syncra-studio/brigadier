@@ -66,8 +66,8 @@ export function AccountRows({
       }
     });
 
-  // An agent that keeps one login: that login, as onboarding checked it.
-  const rows: Account[] = list ?? [
+  // An agent that keeps one login: that login, as onboarding checked it. The computer's login shows only while signed in [D2065].
+  const rows: Account[] = (list ?? [
     {
       id: "",
       name: "",
@@ -75,7 +75,7 @@ export function AccountRows({
       limited_at: null,
       sign_in: null,
     },
-  ];
+  ]).filter((account) => account.id !== "" || account.check.signed_in === true);
   const anySignedIn = rows.some((account) => account.check.signed_in === true);
   const addLabel = anySignedIn ? `Add another ${agent.label} account` : `Add a ${agent.label} account`;
 
@@ -83,6 +83,8 @@ export function AccountRows({
     <>
       {accounts === undefined && agent.path === undefined ? (
         <p className="px-4 py-3 text-sm text-quiet-foreground">Reading the accounts…</p>
+      ) : !rows.length && !accounts?.accounts ? (
+        <p className="px-4 py-3 text-sm text-quiet-foreground">No {agent.label} account signed in</p>
       ) : (
         rows.map((account) => (
           <AccountRow
