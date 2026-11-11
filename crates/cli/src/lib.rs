@@ -9,6 +9,7 @@ mod git;
 mod host;
 pub mod index;
 mod models;
+mod message_draft;
 pub mod owner;
 mod panel;
 pub mod queue;

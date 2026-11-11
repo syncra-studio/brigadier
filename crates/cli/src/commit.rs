@@ -42,7 +42,7 @@ fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
 /// The session whose agent writes for `target`, and whose folder keeps its records: the session
 /// itself; for a project folder, the project's newest session that still has its folder
 /// (proposed) [D1039, D1045].
-fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
+pub(super) fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
     let spec = match target {
         Target::Session(id) => core::load(data, id).ok()?,
         Target::Project(project) => (core::ids(data).iter())
@@ -56,7 +56,7 @@ fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
 
 /// One write of `prompt` (built from the session's own asks) on the author's agent at its
 /// cheapest model; offline, on a local model any agent listed [D1029]. The reason why not, else.
-fn written(
+pub(super) fn written(
     data: &Path,
     target: &Target,
     prompt: impl Fn(&[String]) -> String,
@@ -116,7 +116,7 @@ fn unwritten(why: String) -> Value {
     json!({"ok": false, "error": UNWRITTEN, "writer": true})
 }
 
-fn commit_prompt(
+pub(super) fn commit_prompt(
     checkout: &Checkout,
     prepared: &Prepared,
     stop: &AtomicBool,
@@ -139,7 +139,10 @@ pub(super) fn make(
     let prepared = commit::prepare(checkout, all, &stop)?;
     let message = match message.map(str::trim).filter(|m| !m.is_empty()) {
         Some(typed) => typed.to_string(),
-        None => match written(data, target, commit_prompt(checkout, &prepared, &stop)) {
+        None => match super::message_draft::cached(data, target, checkout, &prepared, all)
+            .map(Ok)
+            .unwrap_or_else(|| written(data, target, commit_prompt(checkout, &prepared, &stop)))
+        {
             Ok(text) => text,
             Err(why) => return Ok(unwritten(why)),
         },
