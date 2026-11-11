@@ -14,7 +14,7 @@ export const STILL = { side: "none", align: "none" } as const;
 /** How the agent's actions are approved. The words are the UI's; the level is Rust's. */
 export type PermissionLevel = "ask" | "auto" | "full";
 
-const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
+export const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
   { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
   { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", Icon: ShieldTerminal },
   { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },

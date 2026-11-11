@@ -17,6 +17,7 @@ import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
+import { matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
@@ -141,13 +142,12 @@ export function AppSidebar({
   };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey || event.ctrlKey || event.repeat || event.isComposing) return;
-      const key = `${event.altKey ? "⌥" : ""}${event.shiftKey ? "⇧" : ""}${event.code}`;
-      const action = {
-        "⌥KeyA": nextNeedingYou,
-        "⌥KeyP": activeRow && (() => pin(activeRow, !activeRow.pinned)),
-        "⌥KeyR": activeRow && (() => setRenaming(activeRow)),
-      }[key];
+      if (event.repeat) return;
+      const action = Object.entries({
+        "next-waiting": nextNeedingYou,
+        pin: activeRow && (() => pin(activeRow, !activeRow.pinned)),
+        rename: activeRow && (() => setRenaming(activeRow)),
+      }).find(([id]) => matches(event, id))?.[1];
       if (!action) return;
       event.preventDefault();
       action();

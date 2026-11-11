@@ -1,6 +1,7 @@
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
+import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
@@ -9,6 +10,10 @@ import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { spacingPx, tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
+import { setSetting, useSettings } from "../settings/api";
+import { KEEP_AWAKE } from "../settings/general";
+import { openSettings } from "../settings/shell";
+import { errorText } from "../onboarding/api";
 import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
 import { UpdatesRow } from "./updates";
 
@@ -16,25 +21,17 @@ import { UpdatesRow } from "./updates";
 export const footPlacement = (expanded: boolean) =>
   expanded ? ({ side: "top", align: "start" } as const) : ({ side: "right", align: "end", sideOffset: () => spacingPx() * 3 } as const);
 
-type Mode = "off" | "work" | "always";
-
-const MODES: readonly { value: Mode; label: string; hint: string }[] = [
-  { value: "off", label: "Off", hint: "The computer sleeps as it normally would" },
-  { value: "work", label: "While agents work", hint: "The screen stays on and the computer doesn't sleep while an agent is working" },
-  { value: "always", label: "Always", hint: "The screen stays on and the computer doesn't sleep until you turn this off" },
-];
-
-// shortcut: shows Rust's default and can't change it, because the daemon doesn't route `awake`; add it to ROUTED, then read and set the mode with run(["awake", mode]).
-const MODE: Mode = "work";
-
 /** Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands and when to stay awake. */
 function KeepAwakeMenu() {
   const { open: expanded } = useSidebar();
   const { rows } = useDaemon();
   const lid = useId();
-  const option = MODES.find((each) => each.value === MODE);
-  const on = Boolean(rows?.some((row) => row.works));
-  const text = on ? "Awake now" : "No agent is working";
+  // The same value as Settings › General's row [D2016].
+  const mode = useSettings().value?.awake;
+  const [error, setError] = useState<string | null>(null);
+  const option = KEEP_AWAKE.find((each) => each.value === mode);
+  const on = mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
+  const text = on ? "Awake now" : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
   return (
     <Popover>
       <PopoverTrigger
@@ -54,8 +51,19 @@ function KeepAwakeMenu() {
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Segmented fill label="When to keep the computer awake" value={MODE} options={MODES} disabled onChange={() => {}} />
+          <Segmented
+            fill
+            label="When to keep the computer awake"
+            value={mode ?? "work"}
+            options={KEEP_AWAKE}
+            disabled={!mode}
+            onChange={(value) => {
+              setError(null);
+              setSetting("awake", value).catch((cause: unknown) => setError(errorText(cause)));
+            }}
+          />
           <p className="text-xs text-muted-foreground">{option?.hint}</p>
+          <ErrorLine error={error} />
         </div>
         {/* shortcut: drawn only, this branch has no lid-closed backend; wire it when one lands. */}
         <div className="flex items-start gap-3 border-t border-divider pt-3">
@@ -91,7 +99,7 @@ function UsageMenu() {
             type="button"
             onClick={() => {
               setOpen(false);
-              window.location.hash = "#accounts";
+              openSettings("accounts");
             }}
             className="flex cursor-pointer items-center gap-1 text-xs font-medium text-link hover:underline"
           >
@@ -151,7 +159,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   const foot = useGlide(open);
   // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
   const icons = [
-    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => (window.location.hash = "#accounts")}>
+    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => openSettings("general")}>
       <Settings />
     </TooltipIconButton>,
     <KeepAwakeMenu key="awake" />,

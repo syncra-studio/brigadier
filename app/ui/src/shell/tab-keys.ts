@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { matches } from "../shortcuts";
 import { blocked } from "./titlebar";
 import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
@@ -7,22 +8,16 @@ import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "
 export function useTabKeys(owner: string, archived: boolean): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || blocked()) return;
-      const mac = /Mac/.test(navigator.platform);
-      const command = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-      const { code, altKey: alt, shiftKey: shift } = event;
-      const digit = /^Digit([1-9])$/.exec(code);
+      if (event.defaultPrevented || blocked()) return;
+      const is = (id: string) => matches(event, id);
       let run: (() => void) | undefined;
-      if (event.ctrlKey && !event.metaKey && !alt && !shift && code === "Backquote") run = () => !archived && openTab(owner, "terminal");
-      else if (event.ctrlKey && !event.metaKey && !alt && code === "Tab") run = () => stepTab(owner, shift ? -1 : 1);
-      else if (command && alt && !shift && code === "KeyW") run = () => closeOthers(owner, tabsOf(owner).active);
-      else if (command && alt && !shift && (code === "ArrowLeft" || code === "ArrowRight")) run = () => stepTab(owner, code === "ArrowLeft" ? -1 : 1);
-      else if (command && !alt && shift && code === "KeyT") run = () => reopenTab(owner);
-      else if (command && !alt && shift && (code === "BracketLeft" || code === "BracketRight")) run = () => stepTab(owner, code === "BracketLeft" ? -1 : 1);
-      else if (command && !alt && !shift && code === "KeyT") run = () => openTab(owner, "new");
-      // ⌘J opens a Terminal tab, on Home, in a chat and in a session [D428]; there is no bottom panel [D360].
-      else if (command && !alt && !shift && code === "KeyJ") run = () => !archived && openTab(owner, "terminal");
-      else if (command && !alt && !shift && digit) run = () => selectNumber(owner, Number(digit[1]));
+      // ⌘J and ⌃` open a Terminal tab, on Home, in a chat and in a session [D428]; there is no bottom panel [D360].
+      if (is("terminal")) run = () => !archived && openTab(owner, "terminal");
+      else if (is("previous-tab") || is("next-tab")) run = () => stepTab(owner, is("previous-tab") ? -1 : 1);
+      else if (is("close-others")) run = () => closeOthers(owner, tabsOf(owner).active);
+      else if (is("reopen")) run = () => reopenTab(owner);
+      else if (is("new-tab")) run = () => openTab(owner, "new");
+      else if (is("show-tab")) run = () => selectNumber(owner, Number(event.code.slice(-1)));
       if (!run) return;
       event.preventDefault();
       event.stopPropagation();

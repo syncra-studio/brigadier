@@ -1,12 +1,13 @@
 // Only supervises: opens the window, starts the daemon, wires the page to the utility process. The
-// exceptions are what only a main process can do: the native folder picker, and staging the window
-// for the first launch's intro (intro.ts) (D19, D40, D71).
+// exceptions are what only a main process can do: the native folder picker, staging the window for the
+// first launch's intro (intro.ts), and macOS notices and the Dock badge (notices.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { holdForIntro } from "./intro";
+import { serveNotices } from "./notices";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
 
@@ -28,6 +29,9 @@ const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
+// The menu's keys, from the one list of shortcuts the page shows and matches too (app/ui/src/shortcuts.ts) [D2013].
+const shortcuts: { id: string; keys: string[] }[] = JSON.parse(readFileSync(path.join(uiDir, "src/shortcuts.json"), "utf8"));
+const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!.keys[0];
 
 app.setName(APP_NAME);
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -182,25 +186,42 @@ function setMenu(): void {
     const paths = await pickFolders(window ?? null, { multi: true });
     if (paths.length > 0) tell(window, "open-folders", paths);
   };
+  // macOS's standard app menu, with Settings… after About [D2022].
+  const appMenu: Electron.MenuItemConstructorOptions = {
+    label: APP_NAME,
+    submenu: [
+      { role: "about" },
+      { type: "separator" },
+      { label: "Settings…", accelerator: keysOf("settings"), click: (_item, window) => tell(window as BrowserWindow | undefined, "settings") },
+      { type: "separator" },
+      { role: "services" },
+      { type: "separator" },
+      { role: "hide" },
+      { role: "hideOthers" },
+      { role: "unhide" },
+      { type: "separator" },
+      { role: "quit" },
+    ],
+  };
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      ...(process.platform === "darwin" ? [appMenu] : []),
       {
         label: "File",
         submenu: [
-          { label: "New Session", accelerator: "CmdOrCtrl+N", click: (_item, window) => tell(window as BrowserWindow | undefined, "new-session") },
+          { label: "New Session", accelerator: keysOf("new-session"), click: (_item, window) => tell(window as BrowserWindow | undefined, "new-session") },
           { type: "separator" },
-          { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
+          { label: "Open Folder…", accelerator: keysOf("open-folder"), click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
           { type: "separator" },
           // A window with a tab to close says so; anywhere else (Accounts, onboarding, Home's Chat tab) ⌘W closes the window.
-          { label: "Close", accelerator: "CmdOrCtrl+W", click: (_item, window) => closeTabOrWindow(window as BrowserWindow | undefined) },
+          { label: "Close", accelerator: keysOf("close"), click: (_item, window) => closeTabOrWindow(window as BrowserWindow | undefined) },
           ...(process.platform === "darwin" ? [] : [{ role: "quit" as const }]),
         ],
       },
       {
         role: "editMenu",
         submenu: [
-          { label: "Undo", accelerator: "CmdOrCtrl+Z", click: (_item, window) => tell(window as BrowserWindow | undefined, "undo") },
+          { label: "Undo", accelerator: keysOf("undo-archive"), click: (_item, window) => tell(window as BrowserWindow | undefined, "undo") },
           { role: "redo" },
           { type: "separator" },
           { role: "cut" },
@@ -231,9 +252,9 @@ function setMenu(): void {
           { type: "separator" },
           { role: "togglefullscreen" },
           { type: "separator" },
-          { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+B", click: (_item, window) => tell(window as BrowserWindow | undefined, "toggle-sidebar") },
-          { label: "Back", accelerator: "CmdOrCtrl+[", click: (_item, window) => tell(window as BrowserWindow | undefined, "back") },
-          { label: "Forward", accelerator: "CmdOrCtrl+]", click: (_item, window) => tell(window as BrowserWindow | undefined, "forward") },
+          { label: "Toggle Sidebar", accelerator: keysOf("sidebar"), click: (_item, window) => tell(window as BrowserWindow | undefined, "toggle-sidebar") },
+          { label: "Back", accelerator: keysOf("back"), click: (_item, window) => tell(window as BrowserWindow | undefined, "back") },
+          { label: "Forward", accelerator: keysOf("forward"), click: (_item, window) => tell(window as BrowserWindow | undefined, "forward") },
         ],
       },
       // Off macOS the stock Window menu has its own Close on the same key.
@@ -244,6 +265,7 @@ function setMenu(): void {
 
 void app.whenReady().then(() => {
   setMenu();
+  serveNotices();
   startDaemon();
   serveUi();
   openWindow();

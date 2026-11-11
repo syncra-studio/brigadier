@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld("brigadier", {
   },
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
   openLink: (url: string) => ipcRenderer.send("open-link", url),
+  notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),
+  badge: (count: number) => ipcRenderer.send("badge", count),
+  onNoticeClick: (listener: (session: string) => void) => {
+    const heard = (_event: unknown, session: string) => listener(session);
+    ipcRenderer.on("notice-click", heard);
+    return () => void ipcRenderer.off("notice-click", heard);
+  },
+  openNotificationSettings: () => ipcRenderer.send("open-notification-settings"),
   introBegin: () => ipcRenderer.invoke("intro-begin"),
   introShaped: () => ipcRenderer.invoke("intro-shaped"),
   introFinish: (fadeMs: number) => ipcRenderer.invoke("intro-finish", fadeMs),

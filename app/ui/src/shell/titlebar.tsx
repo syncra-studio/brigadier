@@ -5,6 +5,7 @@ import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
 import { ArrowLeft, ArrowRight, Sidebar, SidebarFloatingLeft } from "../icons";
 import { store } from "../onboarding/api";
+import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 
 // The old app's history (state/history.ts) [kit D170]: Back goes by where you are, never by how you got there, a
@@ -43,10 +44,8 @@ export function TitlebarNav({ active, rows }: { active: string | null; rows: Ses
   };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.shiftKey || event.altKey) return;
-      const command = /Mac/.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-      const delta = event.code === "BracketLeft" ? -1 : event.code === "BracketRight" ? 1 : 0;
-      if (!command || delta === 0) return;
+      const delta = matches(event, "back") ? -1 : matches(event, "forward") ? 1 : 0;
+      if (event.defaultPrevented || delta === 0) return;
       event.preventDefault();
       step(delta);
     };
@@ -73,10 +72,10 @@ export function TitlebarNav({ active, rows }: { active: string | null; rows: Ses
   return (
     <div className="titlebar-nav app-no-drag absolute start-titlebar-start top-0 z-20 flex h-titlebar items-center gap-1.5">
       <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Back" shortcut="⌘[" disabled={active === null} onClick={stepBack}>
+        <TooltipIconButton look="toolbar" tooltip="Back" shortcut={keysOf("back")[0]} disabled={active === null} onClick={stepBack}>
           <ArrowLeft />
         </TooltipIconButton>
-        <TooltipIconButton look="toolbar" tooltip="Forward" shortcut="⌘]" disabled={forward === null} onClick={stepForward}>
+        <TooltipIconButton look="toolbar" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
           <ArrowRight />
         </TooltipIconButton>
         {/* Its name says which way it goes; aria-expanded would draw the toolbar look's open fill. */}

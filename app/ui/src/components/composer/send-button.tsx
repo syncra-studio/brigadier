@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { ArrowUp, ArrowUpRight, PlayTriangle, Stop } from "../../icons";
+import { keysOf, matches } from "../../shortcuts";
 import { Button } from "../button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { FollowUp } from "./draft";
@@ -35,7 +36,7 @@ function useEscToStop(on: boolean, stoppable: boolean, onStop: () => void, butto
   useEffect(() => {
     if (!on) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || document.querySelector(TAKES_ESC)) return;
+      if (!matches(event, "stop") || event.defaultPrevented || document.querySelector(TAKES_ESC)) return;
       const field = button.current?.closest("[data-slot=composer-card]")?.querySelector<HTMLElement>("[contenteditable]");
       const active = document.activeElement;
       if (!stoppable) {
@@ -139,7 +140,7 @@ export function SendButton({
         : "Stop"
       : state === "resume"
         ? "Resume"
-        : (blocked ?? (asNew ? "Start as a new session" : onSendNew ? `${verb} ⏎ · Start as a new session ⌥⌘⏎` : verb));
+        : (blocked ?? (asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
   // A circle, as the old app's: not the icon-button corner (D27-D29 are about ghost icons).
   return (
     <Tooltip>

@@ -6,6 +6,7 @@ import { ComposerField, type ComposerFieldHandle } from "../components/composer/
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { ComposerRail, PausedSendDialog } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
+import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource } from "../daemon";
@@ -176,6 +177,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
 
   const running = row?.running === true;
   const canSteer = row?.steer === true;
+  // Queue or Steer, Rust's setting [D188].
+  const followUp = useSettings().value?.follow_up ?? "queue";
   const touched = row?.touched ?? 0;
   const live = ops.filter((op) => op.at === undefined || touched < op.at);
   useEffect(() => {
@@ -286,7 +289,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     }
     // The chips go after the words, and leave once it's sent or queued; a failed send keeps them in its message.
     const message = withChips(plainText(parts), chips);
-    const mode = sendMode(running, "queue", other, canSteer);
+    const mode = sendMode(running, followUp, other, canSteer);
     if (mode === "now" && paused && items.length > 0) {
       askingChips.current = chips;
       return setAsking(message);
@@ -371,7 +374,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           <ComposerTools />
           <ErrorLine error={stopError} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton empty={empty && chips.length === 0} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
+          <SendButton followUp={followUp} empty={empty && chips.length === 0} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog

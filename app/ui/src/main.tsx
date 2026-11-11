@@ -2,9 +2,8 @@ import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, use
 import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
-import { AccountsPage } from "./accounts/page";
 import { SessionOfThread } from "./accounts/limit";
-import { SidebarProvider } from "./components/sidebar";
+import { SidebarPanel, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
 import { hhmm } from "./thread/words";
@@ -34,6 +33,9 @@ import { TabBar } from "./shell/tab-bar";
 import { HOME } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { TitlebarNav } from "./shell/titlebar";
+import { loadSettings } from "./settings/api";
+import { useNotices } from "./settings/notices";
+import { listenToSettingsKeys, SettingsNav, SettingsView, settingsPageOf } from "./settings/shell";
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
 import { SidebarFoot } from "./sidebar/foot";
@@ -48,8 +50,9 @@ const onHash = (listener: () => void) => {
 };
 const useHash = (): string => useSyncExternalStore(onHash, () => window.location.hash);
 
-// The screen that was open comes back when the app reopens.
+// The screen that was open comes back when the app reopens; Accounts is in Settings now [D2004].
 if (!window.location.hash) window.location.hash = localStorage.getItem("route") ?? "";
+if (window.location.hash === "#accounts") window.location.hash = "#settings/accounts";
 window.addEventListener("hashchange", () => localStorage.setItem("route", window.location.hash));
 
 function App() {
@@ -67,8 +70,13 @@ function App() {
   }, [daemon, profile.value]);
   // Loaded at start, so a limit line opens with its last words, not after a reload [D460].
   useEffect(() => {
-    if (daemon) void loadAccounts();
+    if (daemon) {
+      void loadAccounts();
+      loadSettings();
+    }
   }, [daemon]);
+  // Notices and the Dock badge for the app's lifetime [D200, D2012].
+  useNotices(open);
   // A window held clear for the first launch's intro (main's intro.ts) shows at once when there's none.
   const playsIntro = profile.value && !profile.value.onboarded && !profile.value.intro_seen && hash !== "#states";
   const knownNot = playsIntro === false || hash === "#states" || Boolean(refused || profile.error);
@@ -78,7 +86,14 @@ function App() {
   if (hash === "#states") return <Demo />;
   if (!profile.value) return <FirstLoad error={daemon === null ? (refused ?? "Daemon not reachable · reconnecting…") : profile.error} />;
   if (!profile.value.onboarded) return <Onboarding profile={profile.value} />;
-  if (hash === "#accounts") return <AccountsPage />;
+  const settings = settingsPageOf(hash);
+  if (settings !== null) {
+    return (
+      <Shell hash={hash} active={null} rows={rows} settings={settings}>
+        <SettingsView page={settings} />
+      </Shell>
+    );
+  }
   if (open !== null) {
     return (
       <Shell hash={hash} active={open} rows={rows}>
@@ -94,7 +109,8 @@ function App() {
 }
 
 // The sidebar beside every screen after onboarding [D173, D174]; open and width kept across launches.
-function Shell({ hash, active, rows, children }: { hash: string; active: string | null; rows: Row[] | undefined; children: ReactNode }) {
+// Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
+function Shell({ hash, active, rows, settings, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; children: ReactNode }) {
   const { daemon, projects } = useDaemon();
   const [open, setOpen] = useStored("sidebar.open", true);
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
@@ -109,7 +125,12 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
     >
       {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
       <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
+        {settings !== undefined ? (
+          <SidebarPanel>
+            <SettingsNav current={settings} />
+          </SidebarPanel>
+        ) : (
         <AppSidebar
           rows={rows}
           projects={projects ?? []}
@@ -122,6 +143,7 @@ function Shell({ hash, active, rows, children }: { hash: string; active: string 
           onNewChat={newChat}
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
+        )}
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
         <TitlebarNav active={active} rows={rows} />
       </SidebarProvider>
@@ -244,6 +266,8 @@ function retryWords(reason: unknown): string {
 
 // View › Add project… and File › Open Folder… (⌘O) [D165].
 listenToMenu();
+// ⌘, opens Settings, ⌘/ its Keyboard shortcuts [D2013, D2022].
+listenToSettingsKeys();
 // The Review diff's engine loads at idle, so the first diff opened draws at once (the old app's warmCode).
 void import("./review/diff-view").then((view) => view.warmReview());
 

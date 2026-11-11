@@ -10,6 +10,7 @@ import { spacingPx } from "../components/tooltip";
 import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
 import { newSessionIn } from "../projects/menu";
 import { openAddProject } from "../projects/store";
+import { openSettings } from "../settings/shell";
 import { RowMark } from "./row";
 import { type Project, type SessionRow, useStatusWords } from "./words";
 
@@ -153,8 +154,7 @@ export function ArchivedActions({ count }: { count: number }) {
   return (
     <>
       <span className="me-1 text-xs text-faint-foreground tabular-nums">{count}</span>
-      {/* No click yet: the page it opens, Settings › Archived, doesn't exist. */}
-      <TooltipIconButton tooltip="Open Settings › Archived" className="text-muted-foreground">
+      <TooltipIconButton tooltip="Open Settings › Archived" className="text-muted-foreground" onClick={() => openSettings("archived")}>
         <ArrowUpRight />
       </TooltipIconButton>
     </>

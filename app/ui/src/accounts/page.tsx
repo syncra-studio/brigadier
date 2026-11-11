@@ -10,6 +10,7 @@ import { SettingsRow } from "../components/settings-row";
 import { Skeleton } from "../components/skeleton";
 import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
+import { SettingsPage } from "../settings/parts";
 import { Plus, Spinner } from "../icons";
 import { errorText } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
@@ -26,6 +27,13 @@ import {
   signInRun,
   useAccounts,
 } from "./api";
+
+/** The Accounts page's rows, for Settings search. */
+export const ACCOUNTS_ROWS = {
+  accounts: { label: "Accounts and switching", description: "Each agent's accounts, added with its own sign-in" },
+  auto: { label: "Switch accounts automatically", description: "Keep working past a usage limit on another account" },
+  agents: { label: "Switch to another agent automatically", description: "When every account is at its limit" },
+} as const;
 
 /** How often the accounts are checked again while a sign-in terminal is open. */
 const RECHECK_MS = 2000;
@@ -126,23 +134,13 @@ export function AccountsPage() {
   const targets = (agents ?? []).filter((a) => a.installed && !a.released).map((a) => a.label);
 
   return (
-    <main className="fixed inset-0 flex flex-col">
-      <header className="flex h-titlebar shrink-0 items-center gap-3 text-sm">
-        <div className="app-drag h-full w-traffic-lights shrink-0" />
-        <a href="#" className="text-muted-foreground hover:text-foreground">
-          Sessions
-        </a>
-        <span className="app-drag flex h-full min-w-0 flex-1 items-center truncate">Accounts</span>
-      </header>
-      {!online && <p className="text-center text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-      <div className={`min-h-0 flex-1 overflow-y-auto ${online ? "" : "opacity-disabled"}`}>
-        <div className="mx-auto flex w-full max-w-reading flex-col gap-6 px-6 py-6">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-lg font-semibold">Accounts and switching</h1>
-            <p className="text-sm text-muted-foreground">
-              Each account signs in with its agent's own sign-in, in its own folder. Brigadier never sees or shares a login.
-            </p>
-          </div>
+    <SettingsPage
+      title="Accounts and switching"
+      description="Each account signs in with its agent's own sign-in, in its own folder. Brigadier never sees or shares a login."
+    >
+      {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
+      <div className={online ? undefined : "opacity-disabled"}>
+        <div className="flex flex-col gap-6">
           {agents === undefined && error ? (
             <SettingsCard>
               <SettingsRow label="The accounts couldn't be checked." error={error}>
@@ -237,7 +235,7 @@ export function AccountsPage() {
         confirm={ask?.kind === "remove" ? "Remove" : "Turn on"}
         onConfirm={() => void confirm()}
       />
-    </main>
+    </SettingsPage>
   );
 }
 

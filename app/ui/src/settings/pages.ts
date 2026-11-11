@@ -1,0 +1,61 @@
+import type { ComponentType } from "react";
+
+import { ACCOUNTS_ROWS, AccountsPage } from "../accounts/page";
+import { Archive, Branch, type IconProps, KeyboardShortcut, RobotHead, SettingsCog, SettingsSlider } from "../icons";
+import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
+import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
+import { GENERAL_ROWS, GeneralPage } from "./general";
+import { GIT_ROWS, GitPage } from "./git";
+import { SHORTCUTS_ROWS, ShortcutsPage } from "./shortcuts";
+
+/**
+ * The pages of Settings, the old app's cut down [D2004, D2022], in the order the nav lists them. A page's rows
+ * (label and line) are what Settings search finds; each page exports the words it draws, so the two never drift.
+ */
+
+/** A row search finds; `section` is the part of the page it sits in. */
+export type SettingsRowCopy = { readonly label: string; readonly description?: string; readonly section?: string };
+
+/** A group of the nav; "end" is the last, set apart by its gap alone. */
+type SettingsGroup = "Personal" | "Agents" | "end";
+
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "accounts" | "git" | "archived";
+
+type SettingsPageEntry = {
+  id: SettingsPageId;
+  label: string;
+  /** Names it went by, which search still finds it under. */
+  formerly?: readonly string[];
+  icon: ComponentType<IconProps>;
+  group: SettingsGroup;
+  component: ComponentType;
+  rows: readonly SettingsRowCopy[];
+};
+
+export const SETTINGS_GROUPS: readonly SettingsGroup[] = ["Personal", "Agents", "end"];
+
+export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
+  { id: "general", label: "General", icon: SettingsCog, group: "Personal", component: GeneralPage, rows: Object.values(GENERAL_ROWS) },
+  { id: "configuration", label: "Configuration", icon: SettingsSlider, group: "Personal", component: ConfigurationPage, rows: Object.values(CONFIGURATION_ROWS) },
+  { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardShortcut, group: "Personal", component: ShortcutsPage, rows: SHORTCUTS_ROWS },
+  { id: "accounts", label: "Accounts", formerly: ["Providers", "Usage", "Switching"], icon: RobotHead, group: "Agents", component: AccountsPage, rows: Object.values(ACCOUNTS_ROWS) },
+  { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
+  { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
+];
+
+export function settingsPage(id: string): SettingsPageEntry {
+  return SETTINGS_PAGES.find((page) => page.id === id) ?? SETTINGS_PAGES[0]!;
+}
+
+export type SettingsSearchResult = { page: SettingsPageEntry; row: SettingsRowCopy | null };
+
+/** Pages, then rows, whose words hold every word of the query. */
+export function searchSettings(query: string): SettingsSearchResult[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const matches = (text: string) => words.every((word) => text.toLowerCase().includes(word));
+  return [
+    ...SETTINGS_PAGES.filter((page) => matches([page.label, ...(page.formerly ?? [])].join(" "))).map((page) => ({ page, row: null })),
+    ...SETTINGS_PAGES.flatMap((page) => page.rows.filter((row) => matches(`${row.label} ${row.description ?? ""}`)).map((row) => ({ page, row }))),
+  ];
+}

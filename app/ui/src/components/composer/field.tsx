@@ -31,6 +31,7 @@ import {
 } from "lexical";
 import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
 
+import { matches } from "../../shortcuts";
 import { cx } from "../cx";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
 import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
@@ -57,17 +58,9 @@ const SIZES = {
   line: { box: "h-5 text-code", pad: "min-h-5" },
 };
 
-const MAC = navigator.userAgent.includes("Mac");
-
-/**
- * ⏎ sends, ⌥⏎ (and ⌘⏎) send the other way, ⌥⌘⏎ starts it as a new session [D183], ⇧⏎ is a new line; Ctrl on a Mac
- * (the Windows key elsewhere) isn't ours.
- */
+/** ⏎ sends, ⌘⏎ (and ⌥⏎) send the other way, ⌥⌘⏎ starts it as a new session [D183]; ⇧⏎ is the field's new line. */
 function enterAction(event: KeyboardEvent): "send" | "other" | "new" | null {
-  if ((MAC ? event.ctrlKey : event.metaKey) || event.shiftKey) return null;
-  const mod = MAC ? event.metaKey : event.ctrlKey;
-  if (event.altKey) return mod ? "new" : "other";
-  return mod ? "other" : "send";
+  return matches(event, "send") ? "send" : matches(event, "follow-up-other") ? "other" : matches(event, "start-new") ? "new" : null;
 }
 
 function $read(): Parts {
@@ -352,7 +345,7 @@ function Keys({
     return true;
   });
   const recall = useEffectEvent((event: KeyboardEvent, up: boolean) => {
-    if (event.isComposing) return false;
+    if (!matches(event, "history")) return false;
     const now = $read();
     if (walk.current && JSON.stringify(now) !== walk.current.shown) walk.current = null;
     if (!walk.current) {

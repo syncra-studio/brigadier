@@ -21,6 +21,13 @@ declare global {
       closesTab(on: boolean): void;
       /** Opens an https link in the browser, with no click needed. */
       openLink(url: string): void;
+      /** A macOS notice; what macOS did with it: shown, blocked (notifications are off for Brigadier), or failed. */
+      notify(notice: { title: string; body: string; silent: boolean; session?: string }): Promise<"shown" | "blocked" | "failed">;
+      /** The Dock's badge: the count, none at 0. */
+      badge(count: number): void;
+      /** A click on a notice, with its session. */
+      onNoticeClick(listener: (session: string) => void): () => void;
+      openNotificationSettings(): void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;

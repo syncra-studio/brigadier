@@ -2,6 +2,7 @@
 import { type ComponentProps, Fragment, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ArrowRight, ChevronRight, Pencil, X } from "../../icons";
+import { matches } from "../../shortcuts";
 import { Badge } from "../badge";
 import { cx } from "../cx";
 import { TooltipIconButton } from "../icon-button";
@@ -40,10 +41,9 @@ export const inField = (target: EventTarget | null) => target instanceof Element
  */
 export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape?: () => void }, within?: RefObject<HTMLElement | null>) {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key !== "Enter" && event.key !== "Escape") return;
-    if (event.key === "Escape" && !keys.escape) return;
-    if (event.defaultPrevented || event.isComposing || event.repeat) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const enter = matches(event, "allow");
+    if (!enter && !(matches(event, "decline") && keys.escape)) return;
+    if (event.defaultPrevented || event.repeat) return;
     const target = event.target instanceof Element ? event.target : null;
     if (inField(target)) return;
     // The find bar's own keys: its Esc closes it (thread/find-bar.tsx).
@@ -51,7 +51,7 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     // Focus in another card (a question on the rail while an approval waits): its keys are its own.
     const card = target?.closest("[data-slot=action-card]");
     if (within && card && card !== within.current) return;
-    if (event.key === "Enter") {
+    if (enter) {
       if (!keys.enter) return;
       if (target?.closest("button, a[href], [role=button], [role=radio], [role=checkbox], summary")) return;
       if (within && !(target && within.current?.contains(target))) return;
@@ -59,7 +59,7 @@ export function useCardKeys(enabled: boolean, keys: { enter?: () => void; escape
     if (document.querySelector(OVERLAYS)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.key === "Enter") keys.enter?.();
+    if (enter) keys.enter?.();
     else keys.escape?.();
   });
   useEffect(() => {

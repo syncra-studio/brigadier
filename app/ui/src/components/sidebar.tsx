@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { matches } from "../shortcuts";
 import { cx } from "./cx";
 import { createPeek, PEEK_EXIT_MS, type Peek, type PeekPhase, type PeekZone } from "./sidebar-peek";
 import { TooltipProvider } from "./tooltip";
@@ -222,9 +223,7 @@ export function SidebarProvider({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return;
-      // ⌘B only: ⇧⌘B is left for others.
-      if (event.code !== "KeyB" || event.shiftKey) return;
+      if (!matches(event, "sidebar")) return;
       event.preventDefault();
       if (!event.repeat) toggleSidebar();
     };

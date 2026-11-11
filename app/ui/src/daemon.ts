@@ -5,7 +5,7 @@ import type { Mark } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import type { Source } from "./thread/thread";
 
-export type Daemon = { pid: number; version: string };
+export type Daemon = { pid: number; version: string; build: number };
 /** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
 export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null };
 /** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
@@ -281,7 +281,7 @@ function onFrame(frame: Record<string, any>): void {
   if (frame.term !== undefined) return onTerm?.(frame);
   if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
   if (frame.status === "running") {
-    set({ daemon: { pid: frame.pid, version: frame.version }, refused: undefined });
+    set({ daemon: { pid: frame.pid, version: frame.version, build: frame.build }, refused: undefined });
     subscribe();
     // The open thread's snapshot reaches the rows it still shows, so a place far up stays put [D537].
     watch(reachOf(session));

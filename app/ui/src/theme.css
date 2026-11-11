@@ -196,6 +196,9 @@
   --text-hero: 1.875rem;
   --text-hero--line-height: 2.25rem;
   /* The sidebar panel's title. */
+  /* A Settings page's title (the old app's). */
+  --text-page-title: 1.75rem;
+  --text-page-title--line-height: 2.125rem;
   --text-nav-title: 1.125rem;
   --text-nav-title--line-height: 1.5rem;
   /* A project's initials in its badge. */
@@ -262,6 +265,8 @@
      leave the card's 20.25rem stack its gutter. */
   --spacing-summary-shift: calc((var(--spacing) * 75 + var(--spacing) * 3) / 2);
   --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 81));
+  /* A Settings page's column (the old app's). */
+  --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
      room under it; a folded code block's 10 lines, drawn whole but cut there while it searches (the old app's). */
   --spacing-find-row: 2.75rem;
@@ -288,6 +293,9 @@
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
   --spacing-nav-header: 3.25rem;
+  /* Settings: its search, and the band atop a page under the titlebar (the old app's). */
+  --spacing-nav-search: 2.25rem;
+  --spacing-settings-band: var(--spacing-page-toolbar);
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
   /* The sidebar panel: its default width, how far it resizes, the content's least room beside it. */

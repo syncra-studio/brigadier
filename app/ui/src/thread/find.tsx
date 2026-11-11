@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Older, Paged } from "../daemon";
+import { matches } from "../shortcuts";
 import { FindBar } from "./find-bar";
 import { clippedBy, countOf, covered, findInThread, firstBelow, isRange, itemOf, NOTHING, sameHit, unloadedAt, withOlder, type Away, type Found, type Row } from "./find-hits";
 import { findLabel, lower, MAX_RESULTS, paint, startSearching, unpaint } from "./find-text";
@@ -30,13 +31,6 @@ const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(r
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** Where a key press belongs to something else (a terminal, another tab, a dialog or menu), as the old app's. */
 const ELSEWHERE = '[role="tabpanel"], .xterm, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
-
-/** ⌘ and `code` (Ctrl off macOS). */
-function command(event: KeyboardEvent, code: string): boolean {
-  const mac = navigator.platform.startsWith("Mac");
-  const held = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  return held && !event.altKey && event.code === code && !event.isComposing;
-}
 
 export type FindProps = {
   /** The session it finds in, whose bar and text come back with it. */
@@ -359,11 +353,12 @@ export function Find(props: FindProps) {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      const g = command(event, "KeyG") && state.current.open;
-      if (!(command(event, "KeyF") && !event.shiftKey) && !g) return;
+      const back = matches(event, "find-previous");
+      const g = (back || matches(event, "find-next")) && state.current.open;
+      if (!matches(event, "find") && !g) return;
       if (!finds(event.target)) return;
       event.preventDefault();
-      if (g) stepRef.current(event.shiftKey ? -1 : 1);
+      if (g) stepRef.current(back ? -1 : 1);
       else openRef.current();
     };
     addEventListener("keydown", onKeyDown);

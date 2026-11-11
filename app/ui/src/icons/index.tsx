@@ -420,6 +420,22 @@ export function Chats(props: IconProps) {
   );
 }
 
+export function Filter(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M3 6C3 4.34315 4.34315 3 6 3H18C19.6569 3 21 4.34315 21 6V7.11526C21 7.96049 20.6434 8.76651 20.018 9.33508L15.8273 13.1448C15.6189 13.3343 15.5 13.603 15.5 13.8847V19.882C15.5 21.3687 13.9354 22.3357 12.6056 21.6708L9.60557 20.1708C8.92801 19.832 8.5 19.1395 8.5 18.382V13.8847C8.5 13.603 8.38115 13.3343 8.17267 13.1448L3.98198 9.33508C3.35656 8.76651 3 7.96049 3 7.11526V6ZM6 5C5.44772 5 5 5.44772 5 6V7.11526C5 7.397 5.11885 7.66568 5.32733 7.8552L9.51802 11.6649C10.1434 12.2335 10.5 13.0395 10.5 13.8847V18.382L13.5 19.882V13.8847C13.5 13.0395 13.8566 12.2335 14.482 11.6649L18.6727 7.8552C18.8811 7.66568 19 7.39701 19 7.11526V6C19 5.44772 18.5523 5 18 5H6Z" />
+    </svg>
+  );
+}
+
+export function XCircleFilled(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2Zm-1.793 6.793a1 1 0 0 0-1.414 1.414L10.586 12l-1.793 1.793a1 1 0 1 0 1.414 1.414L12 13.414l1.793 1.793a1 1 0 0 0 1.414-1.414L13.414 12l1.793-1.793a1 1 0 0 0-1.414-1.414L12 10.586l-1.793-1.793Z" />
+    </svg>
+  );
+}
+
 /** Work in the local checkout: the project's own folder. */
 export function Desktop(props: IconProps) {
   return (
@@ -468,3 +484,4 @@ export function SidebarFloatingLeft(props: IconProps) {
 export * from "./source";
 export * from "./file-types";
 export * from "./review";
+export * from "./settings";

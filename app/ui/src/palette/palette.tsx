@@ -12,6 +12,7 @@ import { Folder, MagnifyingGlassSmSearch, Terminal } from "../icons";
 import { newSession } from "../home/start";
 import { store, useProfile } from "../onboarding/api";
 import { showProject } from "../projects/store";
+import { matches } from "../shortcuts";
 import { useShown } from "../sidebar/actions";
 import { RowMark } from "../sidebar/row";
 import { type Project, type SessionRow, statusWords } from "../sidebar/words";
@@ -301,7 +302,7 @@ export function GlobalSearch() {
   useEffect(() => {
     if (!onboarded) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "KeyK" || !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return;
+      if (!matches(event, "search")) return;
       event.preventDefault();
       opened.set(true);
     };

@@ -1,0 +1,48 @@
+[
+  { "id": "settings", "keys": ["CmdOrCtrl+,"], "name": "Settings", "line": "Open Settings" },
+  { "id": "shortcuts", "keys": ["CmdOrCtrl+/"], "name": "Keyboard shortcuts", "line": "Show every shortcut" },
+  { "id": "search", "keys": ["CmdOrCtrl+K"], "name": "Search", "line": "Search projects and sessions" },
+  { "id": "new-session", "keys": ["CmdOrCtrl+N"], "name": "New session", "line": "Start a new session" },
+  { "id": "open-folder", "keys": ["CmdOrCtrl+O"], "name": "Open folder", "line": "Add a folder as a project" },
+  { "id": "sidebar", "keys": ["CmdOrCtrl+B"], "name": "Toggle sidebar", "line": "Show or hide the sidebar" },
+  { "id": "back", "keys": ["CmdOrCtrl+["], "name": "Back", "line": "Go back to the place shown before" },
+  { "id": "forward", "keys": ["CmdOrCtrl+]"], "name": "Forward", "line": "Go forward again" },
+
+  { "id": "archive", "keys": ["CmdOrCtrl+Shift+A"], "name": "Archive", "line": "Archive the open session, or the ones picked in the sidebar" },
+  { "id": "archive-picked", "keys": ["CmdOrCtrl+Backspace"], "name": "Archive picked", "line": "Archive the sessions picked in the sidebar" },
+  { "id": "undo-archive", "keys": ["CmdOrCtrl+Z"], "name": "Undo archive", "line": "Bring back what was just archived" },
+  { "id": "clear-picked", "keys": ["Esc"], "name": "Clear picked", "line": "Let go of the rows picked in the sidebar", "where": "In the sidebar" },
+  { "id": "rename", "keys": ["CmdOrCtrl+Alt+R"], "name": "Rename", "line": "Rename the open session" },
+  { "id": "pin", "keys": ["CmdOrCtrl+Alt+P"], "name": "Pin", "line": "Pin or unpin the open session" },
+  { "id": "next-waiting", "keys": ["CmdOrCtrl+Alt+A"], "name": "Next waiting session", "line": "Open the next session waiting on you" },
+
+  { "id": "new-tab", "keys": ["CmdOrCtrl+T"], "name": "New tab", "line": "Open a new tab in the session" },
+  { "id": "close", "keys": ["CmdOrCtrl+W"], "name": "Close tab", "line": "Close the tab in front; from Chat, leave the session" },
+  { "id": "close-others", "keys": ["CmdOrCtrl+Alt+W"], "name": "Close other tabs", "line": "Close every tab but Chat and the one in front" },
+  { "id": "close-focused", "keys": ["Backspace"], "name": "Close focused tab", "line": "Close the tab that has the keyboard in the tab strip" },
+  { "id": "reopen", "keys": ["CmdOrCtrl+Shift+T"], "name": "Reopen closed tab", "line": "Bring back the last tab closed" },
+  { "id": "previous-tab", "keys": ["CmdOrCtrl+Shift+[", "CmdOrCtrl+Alt+Left", "Ctrl+Shift+Tab"], "name": "Previous tab", "line": "Show the tab to the left" },
+  { "id": "next-tab", "keys": ["CmdOrCtrl+Shift+]", "CmdOrCtrl+Alt+Right", "Ctrl+Tab"], "name": "Next tab", "line": "Show the tab to the right" },
+  { "id": "show-tab", "keys": ["CmdOrCtrl+1–9"], "name": "Show tab", "line": "1 shows the chat, 2 to 8 the tabs after it, 9 the last" },
+  { "id": "terminal", "keys": ["CmdOrCtrl+J", "Ctrl+`"], "name": "Terminal", "line": "Open a terminal tab" },
+  { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the session's files and changes" },
+  { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show the session's files in the right panel" },
+
+  { "id": "send", "keys": ["Enter"], "name": "Send", "line": "Send the message", "where": "In the composer" },
+  { "id": "new-line", "keys": ["Shift+Enter"], "name": "New line", "line": "Start a new line in the message" },
+  { "id": "follow-up-other", "keys": ["CmdOrCtrl+Enter", "Alt+Enter"], "name": "Steer", "line": "While an answer works, send the message into it now", "where": "In the composer" },
+  { "id": "start-new", "keys": ["CmdOrCtrl+Alt+Enter"], "name": "Start as a new session", "line": "Send the message as a new session in the background, and stay here" },
+  { "id": "history", "keys": ["Up", "Down"], "name": "Earlier prompts", "line": "Walk back through your prompts, and forward again; in an empty field ↑ takes back a queued message first" },
+  { "id": "commands", "keys": ["/"], "name": "Commands", "line": "Open the commands menu" },
+  { "id": "stop", "keys": ["Esc Esc"], "name": "Stop", "line": "Stop the reply that is running" },
+
+  { "id": "allow", "keys": ["Enter"], "name": "Allow", "line": "Answer the request card in front with its main choice", "where": "On a request card" },
+  { "id": "decline", "keys": ["Esc"], "name": "Decline", "line": "Turn down the request card in front", "where": "On a request card" },
+  { "id": "answer", "keys": ["1–9"], "name": "Pick an answer", "line": "Choose one of a question's answers by its number" },
+
+  { "id": "find", "keys": ["CmdOrCtrl+F"], "name": "Find", "line": "Find text in the chat, or in the file in front" },
+  { "id": "find-next", "keys": ["CmdOrCtrl+G"], "name": "Find next", "line": "Go to the next match in the chat" },
+  { "id": "find-previous", "keys": ["CmdOrCtrl+Shift+G"], "name": "Find previous", "line": "Go to the previous match in the chat" },
+  { "id": "go-to-line", "keys": ["Ctrl+G"], "name": "Go to line", "line": "Jump to a line of the file in front" },
+  { "id": "comment", "keys": ["CmdOrCtrl+Enter"], "name": "Comment", "line": "Add the comment on the picked lines", "where": "In a comment on a file" }
+]

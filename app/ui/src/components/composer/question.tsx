@@ -1,6 +1,7 @@
 // A question waiting for the user: numbered answers and a field for their own words, a round one at a time.
 import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { matches } from "../../shortcuts";
 import { ErrorLine } from "../error-line";
 import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
@@ -294,7 +295,7 @@ function QuestionPage({
   );
   const onKeyDown = (event: KeyboardEvent) => {
     if (!idle || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
-    const digit = Number(event.key);
+    const digit = matches(event.nativeEvent, "answer") ? Number(event.key) : NaN;
     const lastOption = options.length - 1;
     // With an answer focused, focus follows the light, so Enter (which clicks the focused answer) picks the lit one.
     const move = (index: number) => {

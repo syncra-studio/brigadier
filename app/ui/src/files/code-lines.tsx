@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { Virtualizer, type VirtualizerHandle } from "virtua";
 
 import { cx } from "../components/cx";
+import { matches as isShortcut } from "../shortcuts";
 import { FindLineBox, MAX_MATCHES } from "./find-line-box";
 import { HIGHLIGHT_CHARS, highlight, type Token } from "./highlight";
 
@@ -127,16 +128,13 @@ export function CodeLines({
   useEffect(() => {
     if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.shiftKey) return;
-      const mac = /Mac/.test(navigator.platform);
-      const command = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-      const control = event.ctrlKey && !event.metaKey;
-      if (command && event.code === "KeyF") {
+      if (event.defaultPrevented) return;
+      if (isShortcut(event, "find")) {
         event.preventDefault();
         setGoing(false);
         setFinding(true);
         requestAnimationFrame(() => findInput.current?.select());
-      } else if (control && event.code === "KeyG") {
+      } else if (isShortcut(event, "go-to-line")) {
         event.preventDefault();
         setFinding(false);
         setGoing(true);
