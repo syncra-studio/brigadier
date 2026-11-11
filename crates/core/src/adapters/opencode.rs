@@ -105,9 +105,10 @@ impl Adapter for OpenCode {
         )
     }
 
-    /// Its own picker: an API key for any provider it knows, typed into its prompt [D45, D51].
+    /// Its own picker, every provider and method it offers (a subscription's sign-in, a device
+    /// code or an API key), in its own prompt [D45, D51, D2078].
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
-        Some(("Add an API key", &["auth", "login", "--standalone"]))
+        Some(("Sign in", &["auth", "login", "--standalone"]))
     }
 
     /// The models.dev variables of the providers people most often use with it; a saved account
@@ -159,7 +160,12 @@ impl Adapter for OpenCode {
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|p| p["connections"].as_array().is_some_and(|c| !c.is_empty()))
+            // A key read from the environment is listed too, but saves nothing: not a sign-in.
+            .filter(|p| {
+                p["connections"]
+                    .as_array()
+                    .is_some_and(|c| c.iter().any(|c| c["type"] != "environment"))
+            })
             .map(|p| s(p, &["name"]))
             .collect();
         let models = text(&["models", "--standalone"])?
