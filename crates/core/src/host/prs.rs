@@ -148,8 +148,10 @@ impl Pr {
                 };
                 json!({"okAt": ok_at, "error": error, "branch": self.branch, "head": head, "prs": rows})
             }
-            // Nothing read before: nothing to keep, and no PR to say it about.
-            Err(_) if old.is_null() => return old,
+            // Nothing read before: no PRs yet, but why it couldn't check shows [D30].
+            Err(error) if old.is_null() => {
+                json!({"okAt": null, "error": error, "branch": self.branch, "head": head, "prs": []})
+            }
             Err(error) => {
                 let mut next = old.clone();
                 (next["error"], next["head"]) = (error.into(), head.into());
@@ -358,6 +360,16 @@ pub fn chip(dir: &Path, kept: &Value) -> Value {
         .find(|chip| rows.iter().any(|p| mark(p) == *chip))
         .or_else(|| rows.iter().any(unseen).then_some("merged"));
     chip.map_or(Value::Null, |chip| {
+        // The PR the chip is about goes first: a click opens the first whose mark is the chip's.
+        let first = (rows.iter()).position(|p| match chip {
+            "merged" => unseen(p),
+            _ => mark(p) == chip,
+        });
+        let mut rows = rows.clone();
+        if let Some(i) = first {
+            let p = rows.remove(i);
+            rows.insert(0, p);
+        }
         let prs: Vec<Value> = (rows.iter())
             .map(|p| json!({"number": p["number"], "mark": mark(p)}))
             .collect();

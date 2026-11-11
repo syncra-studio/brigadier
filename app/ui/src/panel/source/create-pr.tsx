@@ -113,7 +113,7 @@ const EMPTY: Text = { title: "", body: "", draft: false };
  * closed, another session opened) still lands its answer and shows it on return [D30]. `info` is undefined until Rust
  * reads it and null for no known host; `text` null until edited, so it follows Rust's; `uncertain`: a create went out
  * and lost its answer, so the host is asked before another. `prs`: the branch's PRs as last read, a made one added at once;
- * `fresh`: the PRs made here and when (ms), shown until a whole read after that keeps the branch's PRs.
+ * `fresh`: the PRs made here and when (ms), shown until a read keeps them by number.
  */
 type Op = { info: HostInfo | null | undefined; readError: string | null; text: Text | null; open: boolean; busy: "creating" | "checking" | null; error: string | null; uncertain: boolean; prs: Pr[]; fresh: (Pr & { at: number })[] };
 

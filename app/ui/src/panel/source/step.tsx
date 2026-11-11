@@ -56,10 +56,10 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
   const key = keyOf(target);
   const now = useSyncExternalStore(subscribe, () => running.get(key) ?? null);
   const pr = useCreatePr(session);
-  // The watch's kept PRs [D1009], with a PR just made shown at once until a whole read after it [D30].
+  // The watch's kept PRs [D1009], with a PR just made shown at once until a read lists it by number [D30].
   const rows = useDaemon().rows;
   const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
-  const made = pr.fresh.filter((each) => each.at > (kept?.okAt ?? 0) && !kept?.prs.some((known) => known.number === each.number));
+  const made = pr.fresh.filter((each) => !kept?.prs.some((known) => known.number === each.number));
   const step = data.step;
   const off = data.offline ? "Brigadier isn't connected" : data.error ? "Git can't be read right now" : data.agentWorking ? "Waits for the turn to finish" : null;
 
