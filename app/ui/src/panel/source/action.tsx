@@ -75,7 +75,9 @@ export function ActionButton({ step, nowMs, running = false, writing = false, di
   const words = stepWords(step, nowMs);
   const busy = running || writing || disabled;
   const runWords = moving ?? runningWords(step);
-  const label = writing ? "Committing…" : running ? runWords.label : words.label;
+  // The label says what the click does: a squash pick squashes [D1028].
+  const own = step.kind === "merge" && mergeStyle === "squash" ? `Squash into ${step.base}` : words.label;
+  const label = writing ? "Committing…" : running ? runWords.label : own;
   const line = running ? runWords.line : error ? errorWords(error.kind, error.reason) : (say?.line ?? later ?? (note ? `${words.line} · ${note}` : words.line));
   const tone = running ? "quiet" : error ? "bad" : say ? say.tone : later ? "quiet" : words.tone;
   const variant = step.kind === "catchUp" ? "secondary" : "default";
