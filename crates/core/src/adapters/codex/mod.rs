@@ -77,6 +77,22 @@ impl Adapter for Codex {
         (code.len() >= 6).then_some(code)
     }
 
+    /// Its last line: a failed sign-in ends on its error, "Error logging in: …" or "ChatGPT
+    /// login is disabled. …" (codex-rs/cli/src/login.rs).
+    fn sign_in_error(&self, out: &str) -> Option<String> {
+        let mut said = String::new();
+        let mut chars = out.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                // A terminal escape, `ESC [ … m`.
+                '\x1b' => while chars.next().is_some_and(|c| !c.is_ascii_alphabetic()) {},
+                c => said.push(c),
+            }
+        }
+        let line = said.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+        Some(line.into())
+    }
+
     /// `codex login status` exits 0 when signed in and says how on stderr. Only the kind of
     /// sign-in is kept: its API-key line shows part of the key.
     fn check(&self, spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {

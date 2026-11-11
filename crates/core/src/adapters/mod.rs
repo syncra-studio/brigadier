@@ -242,6 +242,10 @@ pub trait Adapter: Sync {
     fn device_code(&self, _out: &str) -> Option<String> {
         None
     }
+    /// Why its sign-in failed, in its own words, found in what it printed.
+    fn sign_in_error(&self, _out: &str) -> Option<String> {
+        None
+    }
     /// A code pasted from that page, as its sign-in takes it, or why it isn't one.
     fn sign_in_code(&self, code: &str) -> Result<String, String> {
         Ok(code.trim().into())

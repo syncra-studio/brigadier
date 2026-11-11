@@ -301,7 +301,8 @@ fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
     run_state(data, &format!("{SETUP}{}", a.name()), Some(a))
 }
 
-/// A setup run's state; with the agent, the code page or device code a running sign-in printed.
+/// A setup run's state; with the agent, the code page or device code a running sign-in printed,
+/// or its own error words once it failed.
 pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let Ok(spec) = core::load(data, id) else {
         return Value::Null;
@@ -309,8 +310,8 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
     let running = !ping["child"].is_null();
     let action = spec.opts.get("setup").map(String::as_str);
-    // Its output is read only while an agent's sign-in runs.
-    let page = running && action == Some("sign-in") && agent.is_some();
+    // Its output is read only for an agent's sign-in: its code while it runs, its error after.
+    let page = action == Some("sign-in") && agent.is_some();
     let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
         let wanted = |k| k == log::EXITED || (page && k == log::PTY);
@@ -323,11 +324,15 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
         }
     }
     let text = String::from_utf8_lossy(&out);
-    let device_code = agent.and_then(|a| a.device_code(&text));
-    let shows = agent.is_some_and(|a| a.code_page()) || device_code.is_some();
+    let device_code = agent.filter(|_| running).and_then(|a| a.device_code(&text));
+    let shows = (running && agent.is_some_and(|a| a.code_page())) || device_code.is_some();
+    let failed = !running && page && exited["code"] != 0;
+    let error = agent
+        .filter(|_| failed)
+        .and_then(|a| a.sign_in_error(&text));
     json!({"id": id, "action": action, "running": running, "code": exited["code"],
         "signal": exited["signal"], "code_page": code_page(&text).filter(|_| shows),
-        "device_code": device_code})
+        "device_code": device_code, "error": error})
 }
 
 /// The first `https` link a sign-in printed, up to a space or a control character (a terminal
