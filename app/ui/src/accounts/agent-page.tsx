@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
+import { showToast } from "../components/toast";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { stateOf, type useAgentSetup } from "../onboarding/agents";
@@ -120,6 +121,17 @@ function Installation({
 }) {
   const [choosing, setChoosing] = useState(false);
   const state = stateOf(agent);
+  // An update that went through says so once, in its CLI's last words ("already up to date"), and goes by itself.
+  const updating = useRef(false);
+  useEffect(() => {
+    const run = agent.setup;
+    if (run?.action !== "update") return;
+    if (run.running) updating.current = true;
+    else if (updating.current && run.code !== null) {
+      updating.current = false;
+      if (run.code === 0) showToast(run.reason ?? `${agent.label} updated`);
+    }
+  }, [agent.setup, agent.label]);
   // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
   const missing = state === "install" || (state === "running" && !agent.path);
   const busy = !online || setup.starting === agent.name || Boolean(agent.setup?.running);

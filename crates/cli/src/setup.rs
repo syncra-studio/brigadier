@@ -307,7 +307,8 @@ fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
 }
 
 /// A setup run's state; with the agent, the code page or device code a running sign-in printed,
-/// or its own error words once it failed; and once it failed, why, in the CLI's own words [D2077].
+/// or its own error words once it failed; and once it failed, or an update ended, its last line in
+/// the CLI's own words [D2077].
 pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let Ok(spec) = core::load(data, id) else {
         return Value::Null;
@@ -337,10 +338,11 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
         .and_then(|a| a.sign_in_error(&text));
     let ended_badly =
         exited["code"].as_i64().is_some_and(|c| c != 0) || !exited["signal"].is_null();
+    let said = ended_badly || (action == Some("update") && !exited.is_null());
     json!({"id": id, "action": action, "running": running, "code": exited["code"],
         "signal": exited["signal"], "code_page": setup::code_page(&out).filter(|_| shows),
         "device_code": device_code, "error": error,
-        "reason": ended_badly.then(|| setup::reason(&out)).flatten()})
+        "reason": said.then(|| setup::reason(&out)).flatten()})
 }
 
 /// Types a code pasted from the sign-in's code page into the sign-in, as its adapter takes it.

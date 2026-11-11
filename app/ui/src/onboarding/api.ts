@@ -86,7 +86,8 @@ export type Agent = {
   models_off: string[];
   /**
    * A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page; once it
-   * failed, a sign-in's own `error` words, and `reason`: its last line in the CLI's own words [D2077].
+   * failed, a sign-in's own `error` words; and `reason`: a failed run's or an ended update's last line, in the CLI's
+   * own words [D2077].
    */
   setup: { id: string; action: "install" | "sign-in" | "update"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null } | null;
   path?: string | null;

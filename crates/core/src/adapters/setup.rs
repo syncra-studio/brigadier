@@ -205,7 +205,7 @@ pub fn code_page(out: &[u8]) -> Option<String> {
     Some(page.collect())
 }
 
-/// Why a setup run that failed ended, in the CLI's own words: the last line it printed, with the
+/// How a setup run ended, in the CLI's own words: the last line it printed, with the
 /// terminal's escapes (colours, cursor moves, links, titles) taken out [D2077].
 pub fn reason(out: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(out);
@@ -233,9 +233,16 @@ pub fn reason(out: &[u8]) -> Option<String> {
             _ => {}
         }
     }
-    let last = plain
+    // A line's own words, without the box-drawn gutter some CLIs draw ("│", "▲", "└"); the last
+    // line of more than one word, as one alone is an outro ("Done") after what it says.
+    let lines = plain
         .rsplit(['\r', '\n'])
-        .map(str::trim)
-        .find(|l| !l.is_empty());
+        .map(|l| l.trim_start_matches(|c: char| c.is_whitespace() || ('─'..='➿').contains(&c)))
+        .map(str::trim_end)
+        .filter(|l| !l.is_empty());
+    let last = lines
+        .clone()
+        .find(|l| l.contains(' '))
+        .or(lines.clone().next());
     last.map(String::from)
 }
