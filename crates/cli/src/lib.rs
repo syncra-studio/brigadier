@@ -23,6 +23,7 @@ mod setup;
 mod side;
 mod switching;
 mod tabs;
+pub mod when;
 pub use brigadier_core::title;
 
 use brigadier_core::fold::{self, Owner};

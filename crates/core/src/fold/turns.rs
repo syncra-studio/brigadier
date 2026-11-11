@@ -52,6 +52,7 @@ impl Fold {
             if !turn.edited.is_empty() {
                 self.edited = Some(json!({"at": ts, "files": turn.edited.len()}));
             }
+            self.runs.agent.extend(turn.edited.iter().cloned());
             self.bound(&turn);
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,

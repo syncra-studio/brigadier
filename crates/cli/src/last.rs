@@ -60,6 +60,26 @@ fn brief(
 ) {
     let cwd = fs::canonicalize(&spec.cwd).unwrap_or_else(|_| spec.cwd.clone().into());
     risk::brief(review, f.runs.last.as_ref(), &checkout.root, &cwd);
+    // Your own folder: the listed files the agent's edit steps confirm it changed, the open turn's
+    // too; the rest are "Other changes", never called the user's [D1192, D1213].
+    if !checkout.worktree {
+        let open = f.turns.first().map(|t| &t.edited);
+        let agent: Vec<String> = (f.runs.agent.iter().chain(open.into_iter().flatten()))
+            .filter_map(|p| {
+                Some(
+                    cwd.join(p)
+                        .strip_prefix(&checkout.root)
+                        .ok()?
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            })
+            .filter(|p| {
+                (review["files"].as_array().into_iter().flatten()).any(|f| f["path"] == p.as_str())
+            })
+            .collect();
+        review["agent"] = agent.into();
+    }
 }
 
 /// Every other scope's review gets the brief too: a session's with its last run, a project's

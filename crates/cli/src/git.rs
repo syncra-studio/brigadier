@@ -328,8 +328,17 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         // The action button's next step, and landing [D1015, D1028, D1049].
         "step" => {
             let step = step::step(data, &target, has(args, "--fresh"), &stop)?;
-            json!({"ok": true, "step": step})
+            let mut reply = json!({"ok": true, "step": step});
+            if let Target::Session(id) = target {
+                super::when::attach(data, id, &mut reply["step"]);
+            }
+            reply
         }
+        // "When it's done" [D1201].
+        "when" => match target {
+            Target::Session(id) => super::when::set(data, id, word(1)?)?,
+            Target::Project(_) => return Err(io::Error::other("Never in your own folder.")),
+        },
         "style" => {
             step::set_style(data, &target, word(1)?)?;
             done
