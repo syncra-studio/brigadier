@@ -179,9 +179,11 @@ pub fn rename(
     match (target, checkout.worktree) {
         (Target::Session(id), true) => {
             load(data, id)?;
-            // Not while a Sync or push holds the checkout.
+            // Not while a Sync or push holds the checkout; the session's lock first, as everywhere.
+            let dir = session_dir(data, id);
+            let _one = worktrees::lock(&dir)?;
             let _held = lock(checkout, true, stop)?;
-            worktrees::rename(&session_dir(data, id), new)
+            worktrees::rename_held(&dir, new)
         }
         _ => git(checkout, &["branch", "-m", new], stop),
     }

@@ -78,11 +78,15 @@ impl Pr {
         if pr["baseRefName"] != self.base {
             return;
         }
-        let never = AtomicBool::new(false);
-        let Ok(_held) = git::lock(&self.checkout, true, &never) else {
+        let Some(dir) = self.record.as_deref() else {
             return;
         };
-        let Some(dir) = self.record.as_deref() else {
+        // The session's lock before the checkout's, as a turn start and the one button take them.
+        let Ok(_one) = worktrees::lock(dir) else {
+            return;
+        };
+        let never = AtomicBool::new(false);
+        let Ok(_held) = git::lock(&self.checkout, true, &never) else {
             return;
         };
         // Failure is uncertain, never permission to discard the branch [D181, D1049].

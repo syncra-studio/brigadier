@@ -53,7 +53,8 @@ pub fn set_landing_held(dir: &Path, landing: Option<Landing>) -> io::Result<()> 
 }
 
 /// A host-verified merge is recorded only while the recorded branch, base and clean HEAD agree.
-/// The caller holds the checkout lock; the ordinary landing/delete guards recheck it later.
+/// The caller holds the session's `lock`, then the checkout lock, in that order; the ordinary
+/// landing/delete guards recheck it later.
 pub fn external_landing(
     dir: &Path,
     branch: &str,
@@ -65,7 +66,6 @@ pub fn external_landing(
     if !oid(head) || !oid(commit) {
         return Ok(());
     }
-    let _one = lock(dir)?;
     let Some(mut owned) = read(dir)? else {
         return Ok(());
     };
