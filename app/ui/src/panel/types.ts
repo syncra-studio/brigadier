@@ -76,9 +76,3 @@ export type Step =
 
 /** A step that didn't go: Rust's reason, kept until the next try. */
 export type StepError = { kind: Step["kind"]; reason: string };
-
-/**
- * A force push after a rejected one [D1034, D1049]: the local branch pushed, the remote and its ref (`remoteRef` as shown), the remote commit
- * the user reviewed, and where it is now if it moved.
- */
-export type ForcePush = { branch: string; remote: string; ref: string; remoteRef: string; reviewed: string; movedTo: string | null };

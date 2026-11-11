@@ -1,8 +1,7 @@
 //! The branch item's sync [D1020]: pull then push, keeping the branch's own remote, destination and
-//! tracking; force push with a pinned lease [D1034, D1049]; and auto-fetch of every published
-//! branch [D1026]. Git does the work.
+//! tracking; and auto-fetch of every published branch [D1026]. Git does the work.
 
-use super::push::{self, push_held, push_to};
+use super::push::{self, push_held};
 use super::{Checkout, Target, checkout, lock, read};
 use crate::adapters::setup;
 use crate::{ids, load, projects, session_dir, worktrees};
@@ -218,40 +217,6 @@ pub fn publish(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Resul
     let branch = branch(checkout)?;
     let remote = push::remote(checkout, &branch)?;
     push::push(checkout, &remote, &branch, hooks, stop)
-}
-
-/// Force push with lease [D1034, D1049]: replaces `dest` on `remote` only while it's still at
-/// `oid`, the commit the user reviewed, so a fetch since can't weaken the lease. If it moved, the
-/// `Rejected` that comes back says where it is now, for the confirm to ask again.
-pub fn force_push(
-    checkout: &Checkout,
-    from: &str,
-    remote: &str,
-    dest: &str,
-    oid: &str,
-    hooks: bool,
-    stop: &AtomicBool,
-) -> io::Result<()> {
-    let remotes = read(&checkout.root, &["remote"], stop)?;
-    let known = String::from_utf8_lossy(&remotes)
-        .lines()
-        .any(|r| r == remote);
-    let hex = (oid.len() == 40 || oid.len() == 64) && oid.bytes().all(|b| b.is_ascii_hexdigit());
-    if !known || !dest.starts_with("refs/heads/") || !hex {
-        return err("That force push isn't one Brigadier offered.");
-    }
-    let branch = branch(checkout)?;
-    if branch != from {
-        return err(format!(
-            "This checkout is on {branch} now, not {from}, so nothing was pushed."
-        ));
-    }
-    let lease = format!("--force-with-lease={dest}:{oid}");
-    let mut extra = vec![lease.as_str()];
-    if config(checkout, &format!("branch.{branch}.merge")).is_none() {
-        extra.push("--set-upstream");
-    }
-    push_to(checkout, remote, &branch, dest, &extra, hooks, stop)
 }
 
 /// Auto-fetch [D1026]: each remote a published branch follows, once per repository, every session's

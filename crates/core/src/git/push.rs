@@ -54,16 +54,12 @@ pub fn url(checkout: &Checkout, remote: &str) -> io::Result<String> {
 }
 
 /// A push the remote turned away because its branch has commits this one doesn't [D1034]: the
-/// remote, its ref and the commit it was at when asked, for force push's confirm to pin
-/// [D1049]. `moved`: a force push whose lease no longer held, so `oid` is where it is now.
+/// local branch pushed, the remote and its ref.
 #[derive(Debug)]
 pub struct Rejected {
-    /// The local branch that was pushed: a force push from another one is refused.
     pub branch: String,
     pub remote: String,
     pub dest: String,
-    pub oid: String,
-    pub moved: bool,
     said: String,
 }
 
@@ -82,7 +78,7 @@ impl Rejected {
     }
 
     pub fn json(&self) -> serde_json::Value {
-        serde_json::json!({"branch": self.branch, "remote": self.remote, "ref": self.dest, "oid": self.oid, "moved": self.moved})
+        serde_json::json!({"branch": self.branch, "remote": self.remote, "ref": self.dest})
     }
 }
 
@@ -157,29 +153,16 @@ pub(crate) fn push_held(
         true => format!("git push: {}", out.status),
         false => why.clone(),
     };
-    let stale = has(&["(stale info)"]);
-    if stale || has(&["(fetch first)", "(non-fast-forward)"]) {
-        // Where the remote's branch is now, as the confirm's lease pins it.
-        if let Some(oid) = remote_oid(checkout, remote, dest, stop) {
-            let said = match stale {
-                true => "The remote's branch moved since you looked, so nothing was replaced.",
-                false => {
-                    "The remote's branch has commits this one doesn't, so it refused the push."
-                }
-            };
-            return Err(io::Error::other(Rejected {
-                branch: branch.into(),
-                remote: remote.into(),
-                dest: dest.into(),
-                oid,
-                moved: stale,
-                said: format!("{said}\n\n{details}"),
-            }));
-        }
+    if has(&["(fetch first)", "(non-fast-forward)"]) {
+        let said = "The remote's branch has commits this one doesn't, so it refused the push.";
+        return Err(io::Error::other(Rejected {
+            branch: branch.into(),
+            remote: remote.into(),
+            dest: dest.into(),
+            said: format!("{said}\n\n{details}"),
+        }));
     }
-    let plain = if has(&["(fetch first)", "(non-fast-forward)", "(stale info)"]) {
-        "The remote's branch has commits this one doesn't, so it refused the push."
-    } else if has(&[
+    let plain = if has(&[
         "Authentication failed",
         "Permission denied",
         "could not read Username",
@@ -200,29 +183,4 @@ pub(crate) fn push_held(
         "The push didn't go through."
     };
     Err(io::Error::other(format!("{plain}\n\n{details}")))
-}
-
-/// The commit `dest` is at on `remote` now, asked of where pushes go: its pushurl if it has one.
-fn remote_oid(checkout: &Checkout, remote: &str, dest: &str, stop: &AtomicBool) -> Option<String> {
-    let pushurl = read(
-        &checkout.root,
-        &["config", "--get", &format!("remote.{remote}.pushurl")],
-        stop,
-    )
-    .ok()
-    .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-    .filter(|url| !url.is_empty());
-    let mut command = worktrees::command(&checkout.root);
-    command.env("GCM_INTERACTIVE", "never").args([
-        "ls-remote",
-        "--",
-        pushurl.as_deref().unwrap_or(remote),
-        dest,
-    ]);
-    let out = setup::run_until(&mut command, PUSH_SECS, stop).ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    (text.lines())
-        .find(|line| line.ends_with(&format!("\t{dest}")))
-        .and_then(|line| line.split('\t').next())
-        .map(String::from)
 }

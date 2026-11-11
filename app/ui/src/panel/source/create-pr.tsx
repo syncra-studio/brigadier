@@ -12,7 +12,7 @@ import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
 import type { StepAt } from "../git";
 import type { Pr } from "../types";
-import { failed, keep } from "./branch-ops";
+import { failed } from "./branch-ops";
 import { Confirm, type Held } from "./dialogs";
 
 /**
@@ -25,7 +25,7 @@ export type HostInfo = { host: string | null; cli: boolean; base: string; branch
 export type PrWay = "cli" | "page" | "none" | "loading";
 
 /** What a pick of the card's git step asks for. */
-export type ActionPick = "commit" | "createPr" | "pushBranch" | "openPrPage" | "forcePush";
+export type ActionPick = "commit" | "createPr" | "pushBranch" | "openPrPage";
 
 export const prWay = (info: HostInfo | null | undefined): PrWay => (info === undefined ? "loading" : !info?.host ? "none" : info.cli ? "cli" : "page");
 
@@ -207,7 +207,6 @@ function create(session: string, first: First | null) {
   move(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], first, (reply) => {
     if (reply.ok) return made(session, reply.pr);
     const lost = reply.error === "disconnected";
-    keep({ session }, reply);
     put(session, { busy: null, uncertain: lost || opOf(session).uncertain, error: lost ? "Brigadier lost its connection. It checks whether the PR was made before making another." : reply.error });
   });
 }
@@ -233,7 +232,7 @@ function push(session: string, page: boolean, first: First | null) {
   const pending = showToast(`Pushing ${branch}…`, { stays: true });
   move(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], first, (reply) => {
     toastManager.close(pending);
-    if (!reply.ok) return failed({ session }, reply);
+    if (!reply.ok) return failed(reply);
     // Past the click, so window.open would be blocked: main opens it [D1142].
     if (page) window.brigadier?.openLink(reply.url);
     else showToast(`Pushed ${branch}`, { tone: "success" });

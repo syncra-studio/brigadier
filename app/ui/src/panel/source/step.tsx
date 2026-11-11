@@ -1,9 +1,9 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 
 import { commitFiles, refreshStep, useGit } from "../git";
-import type { ForcePush, SourceState, Step, StepError } from "../types";
-import { ForcePushDialog, MessageDialog } from "./action-confirms";
-import { askForce, cancelForce, first, forcePush, useBranchOp, useForcing } from "./branch-ops";
+import type { SourceState, Step, StepError } from "../types";
+import { MessageDialog } from "./action-confirms";
+import { first } from "./branch-ops";
 import { type ActionPick, useCreatePr } from "./create-pr";
 import type { SourceData, SourceOps } from "./data";
 
@@ -89,18 +89,13 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const [landed, setLanded] = useLanding(draftKey);
   // Type a message…'s field while it's open; Save keeps it as the next commit's [D1203, D1293].
   const [editing, setEditing] = useState<string | null>(null);
-  const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
   const step = data.step;
   const pending = step && "commit" in step ? (step.commit ?? 0) : 0;
   const pinned = data.at ?? null;
   const saved = message.trim() || null;
   const pr = useCreatePr(session, pending > 0 && pinned ? { at: pinned, message: saved, sent: () => saved && setMessage("") } : null);
   const id = useId();
-  // The on-screen checkout's rejected push and its confirm [D1034, D1049]; the gallery's own without one.
   const target = useGit().target;
-  const rejected = useBranchOp(target).rejected ?? (target ? null : (data.rejected ?? null));
-  const asking = useForcing();
-  const forcing = target ? (asking?.force ?? null) : galleryForcing;
   // shortcut: the host module's one read of the branch's PRs until 2.27's watch sends them in `data.prs`.
   const prs = data.prs ?? pr.prs;
   const claim = session ? asked.get(session) : undefined;
@@ -178,7 +173,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const onPick = (pick: ActionPick) => {
     if (session && pick === "createPr") asked.set(session, id);
     pr.onPick(pick);
-    if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
     if (pick === "commit") commit();
   };
 
@@ -195,12 +189,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
           setEditing(null);
           put({ failed: null });
         }}
-      />
-      <ForcePushDialog
-        force={forcing}
-        branch={forcing?.branch ?? "…"}
-        onCancel={() => (asking ? cancelForce(asking.target) : setGalleryForcing(null))}
-        onConfirm={() => (asking ? forcePush(asking.target) : setGalleryForcing(null))}
       />
       {drawsPr && pr.dialog}
     </>

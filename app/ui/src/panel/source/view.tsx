@@ -5,7 +5,7 @@ import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME } from "../../shell/tab-store";
 import { isWorking as working, landBranch, refreshStep, restoreCheckout, retryGit, type Target, useGit } from "../git";
 import { useShare } from "../share";
-import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
+import { name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
 import type { BranchOps, SourceData, SourceOps } from "./data";
 
@@ -49,8 +49,7 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   const branch = git.source?.branch ?? null;
   useEffect(() => {
     if (git.target && op.naming && op.naming === branch) named(git.target);
-    if (git.target && op.rejected && branch && op.rejected.branch !== branch) moved(git.target);
-  }, [git.target, op.naming, op.rejected, branch]);
+  }, [git.target, op.naming, branch]);
   const share = useShare(owner === HOME ? null : owner, git.version);
   const title = (id: string | null) => (id === null ? null : (rows?.find((row) => row.id === id)?.title ?? "Another session"));
   return {
@@ -60,7 +59,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       at: git.step?.at ?? null,
       error: git.error,
       offline: offline && git.source !== null,
-      rejected: op.rejected,
       syncing: op.syncing,
       naming: op.naming,
       // The session's own agent; a project folder's sessions are guarded in Rust [D1082, D1208].

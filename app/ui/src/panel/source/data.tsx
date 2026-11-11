@@ -1,7 +1,7 @@
 import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, ForcePush, Pr, SourceState, Step } from "../types";
+import type { Branch, Pr, SourceState, Step } from "../types";
 import type { BranchRead } from "./branch-ops";
 
 /** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
@@ -17,8 +17,6 @@ export type SourceData = {
   offline?: boolean;
   host?: string | null;
   branches?: Branch[] | null;
-  /** A push was turned away: Force Push is offered, with this lease [D1034, D1049]. */
-  rejected?: ForcePush | null;
   /**
    * Others work in this folder too, by name [D1070, D1082]: `with` lands its work, `busy` works there now, `includes`
    * made changes still uncommitted here; `lands` false, no PR or merge from here. Null until Rust's first read.

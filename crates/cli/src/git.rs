@@ -77,7 +77,7 @@ fn since(
     Ok((base, since))
 }
 
-/// A push the remote turned away answers its lease too, for force push's confirm [D1034, D1049].
+/// A push the remote turned away says which branch, remote and ref [D1034].
 pub(super) fn rejected(e: io::Error) -> io::Result<Value> {
     match Rejected::of(&e) {
         Some(r) => Ok(json!({"ok": false, "error": e.to_string(), "rejected": r.json()})),
@@ -129,9 +129,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
-        "sync" | "publish" | "force-push" => {
-            super::sessions::guard(data, &git::folder(data, &target)?, me)?
-        }
+        "sync" | "publish" => super::sessions::guard(data, &git::folder(data, &target)?, me)?,
         _ => None,
     };
     Ok(match word(0)? {
@@ -229,19 +227,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "publish" => {
             sync::publish(&checkout, sync::trusted(data, &target), &stop)?;
-            done
-        }
-        "force-push" => {
-            let hooks = sync::trusted(data, &target);
-            sync::force_push(
-                &checkout,
-                word(1)?,
-                word(2)?,
-                word(3)?,
-                word(4)?,
-                hooks,
-                &stop,
-            )?;
             done
         }
         // The action button's next step, and landing [D1015, D1028, D1049].
