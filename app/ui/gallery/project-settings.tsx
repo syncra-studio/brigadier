@@ -98,7 +98,7 @@ export function ProjectSettingsGallery() {
         <Frozen label="branches to ask about" frame={REMOVE} tall>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready(BRANCHES) }} />
         </Frozen>
-        <Frozen label="ignored files lost" frame={REMOVE}>
+        <Frozen label="ignored files lost" frame={REMOVE} tall>
           <RemoveFlow project={SET} onClose={() => {}} given={{ look: ready({ ...PREVIEW, lost: [{ ids: ["s-1"], files: [".env", "notes/todo.md"] }] }) }} />
         </Frozen>
         <Frozen label="one working" frame={REMOVE}>
