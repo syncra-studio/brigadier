@@ -42,7 +42,7 @@ fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
 /// The session whose agent writes for `target`, and whose folder keeps its records: the session
 /// itself; for a project folder, the project's newest session that still has its folder
 /// (proposed) [D1039, D1045].
-pub(super) fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
+fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
     let spec = match target {
         Target::Session(id) => core::load(data, id).ok()?,
         Target::Project(project) => (core::ids(data).iter())
@@ -56,7 +56,7 @@ pub(super) fn author(data: &Path, target: &Target) -> Option<(Spec, Fold)> {
 
 /// One write of `prompt` (built from the session's own asks) on the author's agent at its
 /// cheapest model; offline, on a local model any agent listed [D1029]. The reason why not, else.
-pub(super) fn written(
+fn written(
     data: &Path,
     target: &Target,
     prompt: impl Fn(&[String]) -> String,
@@ -67,7 +67,7 @@ pub(super) fn written(
     written_for(data, &spec, &f, &_active, chosen.as_ref(), prompt)
 }
 
-pub(super) fn written_for(
+fn written_for(
     data: &Path,
     spec: &Spec,
     f: &Fold,
@@ -135,7 +135,7 @@ fn unwritten(why: String) -> Value {
     json!({"ok": false, "error": UNWRITTEN, "writer": true})
 }
 
-pub(super) fn commit_prompt(
+fn commit_prompt(
     checkout: &Checkout,
     prepared: &Prepared,
     stop: &AtomicBool,
@@ -158,10 +158,7 @@ pub(super) fn make(
     let prepared = commit::prepare(checkout, all, &stop)?;
     let message = match message.map(str::trim).filter(|m| !m.is_empty()) {
         Some(typed) => typed.to_string(),
-        None => match super::message_draft::cached(data, target, checkout, &prepared, all)
-            .map(Ok)
-            .unwrap_or_else(|| written(data, target, commit_prompt(checkout, &prepared, &stop)))
-        {
+        None => match written(data, target, commit_prompt(checkout, &prepared, &stop)) {
             Ok(text) => text,
             Err(why) => return Ok(unwritten(why)),
         },
@@ -185,22 +182,16 @@ pub(super) fn make(
     Ok(json!({"ok": true, "sha": sha, "message": message}))
 }
 
-/// `write commit [--all] | pr | squash`: a message for the field, a PR's title and body, or a
-/// squash's message, written and returned, nothing committed [D1029].
+/// `write pr | squash`: a PR's title and body, or a squash's message, written and returned,
+/// nothing committed [D1029].
 pub(super) fn write(
     data: &Path,
     target: &Target,
     checkout: &Checkout,
     what: &str,
-    all: bool,
-    tree: Option<&str>,
 ) -> io::Result<Value> {
     let stop = AtomicBool::new(false);
     let text = match what {
-        "commit" => {
-            let prepared = commit::prepare(checkout, all, &stop)?;
-            written(data, target, commit_prompt(checkout, &prepared, &stop))
-        }
         "pr" | "squash" => {
             let Target::Session(id) = target else {
                 return Err(io::Error::other("A project folder has no base."));
@@ -208,10 +199,7 @@ pub(super) fn write(
             let base = core::share::base(data, &core::load(data, id)?)
                 .ok_or_else(|| io::Error::other("This session has no base."))?;
             // The landing commits every change first, so the message covers those too [D1203].
-            let next = match tree {
-                None => commit::prepare(checkout, true, &stop).ok().map(|p| p.tree),
-                Some(tree) => Some(tree.to_string()),
-            };
+            let next = commit::prepare(checkout, true, &stop).ok().map(|p| p.tree);
             let (commits, patch) = commit::branch(checkout, &base, next.as_deref(), &stop)?;
             match what {
                 "pr" => written(data, target, |asks| {
@@ -230,8 +218,8 @@ pub(super) fn write(
     })
 }
 
-/// The background draft for exactly what `prepared` commits, else the writer's, else the reply
-/// saying none was written: the one button's commit-first route [D1029, D1203, D1212].
+/// The writer's message for exactly what `prepared` commits, else the reply saying none was
+/// written: the commit-first route [D1029, D1203].
 pub(super) fn message_for(
     data: &Path,
     target: &Target,
@@ -239,8 +227,5 @@ pub(super) fn message_for(
     prepared: &Prepared,
 ) -> Result<String, Value> {
     let stop = AtomicBool::new(false);
-    super::message_draft::cached(data, target, checkout, prepared, true)
-        .map(Ok)
-        .unwrap_or_else(|| written(data, target, commit_prompt(checkout, prepared, &stop)))
-        .map_err(unwritten)
+    written(data, target, commit_prompt(checkout, prepared, &stop)).map_err(unwritten)
 }

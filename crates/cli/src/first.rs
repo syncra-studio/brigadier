@@ -104,8 +104,8 @@ pub(super) fn run(
     if prepared.head.as_deref() != Some(head) {
         return refuse(MOVED);
     }
-    // A message typed in Edit message… or a squash's own stands; else the draft for exactly this,
-    // else the writer's, or nothing is committed [D1029, D1212].
+    // A typed message or a squash's own stands; else the writer's, or nothing is committed
+    // [D1029, D1293].
     let message = match flag(args, "--message")
         .map(str::trim)
         .filter(|m| !m.is_empty())

@@ -105,9 +105,8 @@ export function ForcePushDialog({ force, branch, held, onCancel, onConfirm }: { 
 }
 
 /**
- * Edit message… [D1191, D1203]: the next commit's message in the kit's multi-line field, filled with what was saved,
- * else the drafted one (2.20). Save keeps it for the button's commit and Commit only; a blank one goes back to the
- * writer's (proposed).
+ * Type a message… [D1203, D1293]: the next commit's message in the kit's multi-line field, after the writer couldn't
+ * write one.
  */
 export function MessageDialog({ open, message, failed = false, held, onMessage, onCancel, onSave }: {
   open: boolean;

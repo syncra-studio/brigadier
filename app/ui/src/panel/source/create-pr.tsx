@@ -25,7 +25,7 @@ export type HostInfo = { host: string | null; cli: boolean; base: string; branch
 export type PrWay = "cli" | "page" | "none" | "loading";
 
 /** What a pick of the card's git step asks for. */
-export type ActionPick = "commit" | "editMessage" | "createPr" | "pushBranch" | "openPrPage" | "mergeLocally" | "forcePush";
+export type ActionPick = "commit" | "createPr" | "pushBranch" | "openPrPage" | "mergeLocally" | "forcePush";
 
 export const prWay = (info: HostInfo | null | undefined): PrWay => (info === undefined ? "loading" : !info?.host ? "none" : info.cli ? "cli" : "page");
 
@@ -183,7 +183,7 @@ function made(session: string, pr: { number: number | null; url: string }) {
 
 /**
  * With files uncommitted, Create PR, Push branch and Open PR page commit them first, pinned to the step's commits, in
- * one Rust move [D1049, D1203, D1207]; `message` is Edit message…'s, else the writer writes it, and `sent` clears it once used.
+ * one Rust move [D1049, D1203, D1207]; `message` is the typed one, else the writer writes it, and `sent` clears it once used.
  */
 export type First = { at: StepAt; message: string | null; sent: () => void };
 

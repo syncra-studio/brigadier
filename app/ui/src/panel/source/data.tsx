@@ -44,8 +44,6 @@ export type SourceData = {
   agentPaths?: string[] | null;
   /** The branch's pull requests (2.13); none without a host [D1030]. */
   prs?: Pr[];
-  /** The message drafted for the work so far (2.20), Edit message…'s first text [D1212]. */
-  draft?: string | null;
   /** A sync or publish is under way; the name a rename or switch is moving to, until the watch reads it [D30]. */
   syncing?: boolean;
   naming?: string | null;

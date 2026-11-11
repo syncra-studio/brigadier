@@ -77,9 +77,6 @@ export const PRS: Pr[] = [
   { number: 11, title: "Show upload progress in the tray", state: "merged", health: "ready", failed: 0 },
 ];
 
-/** The message drafted for the work so far (2.20), the field's grey text. */
-export const DRAFT = "Retry failed uploads and show progress in the tray";
-
 /** The host the fake branch publishes to; the UI names none of its own [D1030]. */
 export const HOST = "GitHub";
 

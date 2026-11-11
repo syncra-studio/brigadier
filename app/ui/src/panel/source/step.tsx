@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, readDraft, refreshStep, type StepAt, useGit, writeMessage } from "../git";
+import { commitFiles, refreshStep, type StepAt, useGit, writeMessage } from "../git";
 import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
 import { ForcePushDialog, MessageDialog, SquashDialog } from "./action-confirms";
 import { askForce, cancelForce, first, forcePush, useBranchOp, useForcing } from "./branch-ops";
@@ -11,7 +11,7 @@ const SQUASH_MESSAGE = `Retry failed uploads
 
 Uploads that fail now retry three times with a growing wait, and the tray shows how far each one got.`;
 
-/** Messages saved in Edit message… and not committed yet, by checkout: they outlive the view [D1203]. */
+/** Messages typed after a writer failure and not committed yet, by checkout: they outlive the view [D1203, D1293]. */
 const unsent = new Map<string, string>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
@@ -97,10 +97,8 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const [squashAt, setSquashAt] = useState<StepAt | null>(null);
   const [squashCommits, setSquashCommits] = useState<Commit[] | null>(null);
   const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
-  // Edit message…'s field while it's open; Save keeps it as the next commit's [D1203].
+  // Type a message…'s field while it's open; Save keeps it as the next commit's [D1203, D1293].
   const [editing, setEditing] = useState<string | null>(null);
-  const editingNow = useRef(editing);
-  editingNow.current = editing;
   const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
   const step = data.step;
   const pending = step && "commit" in step ? (step.commit ?? 0) : 0;
@@ -142,16 +140,10 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     });
     if (!sent) put({ committing: false, error: LOST });
   };
-  // A writer failure commits nothing: the line says so and Edit message… opens to type one [D1029, D1212].
+  // A writer failure commits nothing: the message's field opens to type one [D1029, D1293].
   const writerFailed = () => {
     put({ failed: changes });
-    edit();
-  };
-  // Typed text first, else the draft written for exactly this commit, filled in only while the field is still empty.
-  const edit = () => {
-    editingNow.current = message || data.draft || "";
-    setEditing(editingNow.current);
-    if (live && !message) readDraft((text) => setEditing((now) => (now === "" ? text : now)), () => editingNow.current === "");
+    setEditing(message);
   };
 
   /**
@@ -224,7 +216,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     pr.onPick(pick);
     if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
     if (pick === "commit") commit();
-    if (pick === "editMessage") edit();
     if (pick === "mergeLocally") mergeLocally();
   };
 

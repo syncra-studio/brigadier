@@ -11,7 +11,6 @@ mod git;
 mod host;
 pub mod index;
 mod last;
-mod message_draft;
 mod models;
 pub mod owner;
 mod panel;
@@ -50,7 +49,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
-       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write commit [--all] | write pr | write squash | draft [--all] [--cached] [--refresh]]
+       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write pr | write squash]
        brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish | force-push <branch> <remote> <ref> <oid>; source <id> base <ref>
        brigadier source <id> | source --project P step | style merge|squash | source <id> land merge|squash <head> <base> [--message M] | squash <head> <base>
        brigadier panel [open on|off | width <px>]

@@ -184,17 +184,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 .any(|(i, a)| a == "--all" && (i == 0 || args[i - 1] != "--message"));
             super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
         }
-        "write" => {
-            super::commit::write(data, &target, &checkout, word(1)?, has(args, "--all"), None)?
-        }
-        "draft" => super::message_draft::run(
-            data,
-            &target,
-            &checkout,
-            has(args, "--all"),
-            has(args, "--cached"),
-            has(args, "--refresh"),
-        )?,
+        "write" => super::commit::write(data, &target, &checkout, word(1)?)?,
         // The commit-first move [D1203].
         "first" => super::first::run(data, &target, &checkout, args, at)?,
         // The branch item [D1020, D1021, D1026, D1034].
