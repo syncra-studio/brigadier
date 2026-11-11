@@ -205,7 +205,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let live = fold::live(&f, owner::state(data, id), data, &procs::all());
                 let status = fold::status(&f, &live);
                 if fold::resumable(&f, status["state"].as_str().unwrap_or("")) {
-                    let reply = crate::recover(data, id, true)?;
+                    let reply = recover(data, id, true)?;
                     let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
                     if reply["ok"] != true && !went {
                         return Ok(Some(reply));
@@ -363,4 +363,27 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         }
         Ok(())
     })
+}
+
+/// Rust's one recovery for a session; `queued`: the caller holds its queue's lock.
+pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
+    let spec = core::load(data, id)?;
+    owner::ensure(data, &spec)?;
+    let settle = if queued {
+        crate::rewind::settle_held
+    } else {
+        crate::rewind::settled
+    };
+    settle(data, &spec)?;
+    let _fence = core::session::fence(data, &spec)?;
+    let f = core::fold(&spec.dir, true)?;
+    let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
+    let call = crate::call_fn(data, id);
+    Ok(core::recover(
+        &spec,
+        &f.fold,
+        &live,
+        crate::child(data, id),
+        &call,
+    ))
 }
