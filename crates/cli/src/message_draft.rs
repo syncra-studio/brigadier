@@ -22,11 +22,18 @@ fn read(path: &Path) -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn matches(draft: &Value, checkout: &Checkout, prepared: &Prepared, all: bool) -> bool {
+fn matches(
+    draft: &Value,
+    checkout: &Checkout,
+    prepared: &Prepared,
+    all: bool,
+    chosen: &Option<writer::Choice>,
+) -> bool {
     draft["root"] == checkout.root.to_string_lossy().as_ref()
         && draft["head"] == json!(prepared.head)
         && draft["tree"] == prepared.tree
         && draft["all"] == all
+        && draft["writer"] == json!(chosen)
 }
 
 /// Only the message for this exact HEAD and index/whole-folder tree can be reused at click.
@@ -38,7 +45,8 @@ pub(super) fn cached(
     all: bool,
 ) -> Option<String> {
     let draft = read(&path(data, target)?);
-    (matches(&draft, checkout, prepared, all) && draft["state"] == "ready")
+    let chosen = writer::choice(data).ok()?;
+    (matches(&draft, checkout, prepared, all, &chosen) && draft["state"] == "ready")
         .then(|| {
             draft["text"]
                 .as_str()
@@ -59,6 +67,7 @@ pub(super) fn run(
 ) -> io::Result<Value> {
     let reply = |draft: Value| json!({"ok": true, "draft": draft});
     let stop = AtomicBool::new(false);
+    let chosen = writer::choice(data)?;
     let prepared = match commit::prepare(checkout, all, &stop) {
         Ok(prepared) => prepared,
         Err(e) if e.to_string() == "There's nothing to commit." => {
@@ -84,7 +93,7 @@ pub(super) fn run(
         Err(std::fs::TryLockError::Error(e)) => return Err(e),
     };
     let draft = read(&path);
-    let same = matches(&draft, checkout, &prepared, all);
+    let same = matches(&draft, checkout, &prepared, all, &chosen);
     if same && draft["state"] != "pending" && !refresh {
         return Ok(reply(draft));
     }
@@ -97,13 +106,14 @@ pub(super) fn run(
         ));
     }
     let mut draft = json!({"state": "pending", "text": null, "head": prepared.head, "tree": prepared.tree,
-        "root": checkout.root, "all": all, "atMs": now_ms()});
+        "root": checkout.root, "all": all, "writer": chosen, "atMs": now_ms()});
     write_atomic(&path, &serde_json::to_vec(&draft)?)?;
     match written_for(
         data,
         &spec,
         &f,
         &_active,
+        chosen.as_ref(),
         commit_prompt(checkout, &prepared, &stop),
     ) {
         Ok(text) => {

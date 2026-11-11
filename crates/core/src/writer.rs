@@ -7,6 +7,7 @@
 use crate::Spec;
 use crate::adapters::{Adapter, Event};
 use crate::fold::Fold;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -41,6 +42,31 @@ const OFFLINE: [&str; 9] = [
     "ENETUNREACH",
     "Unable to connect",
 ];
+
+/// Settings' optional Write with choice; None keeps the session's automatic model rule [D1224].
+#[derive(Serialize, Deserialize)]
+pub struct Choice {
+    pub backend: String,
+    pub model: String,
+}
+
+pub fn choice(data: &Path) -> std::io::Result<Option<Choice>> {
+    let profile: Value = match fs::read(data.join("profile.json")) {
+        Ok(bytes) => serde_json::from_slice(&bytes)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if profile["git_writer"].is_null() {
+        return Ok(None);
+    }
+    let choice: Choice = serde_json::from_value(profile["git_writer"].clone())?;
+    if crate::adapters::get(&choice.backend).is_none() || choice.model.trim().is_empty() {
+        return Err(std::io::Error::other(
+            "The chosen message writer needs an available agent and a model.",
+        ));
+    }
+    Ok(Some(choice))
+}
 
 /// Why the writer wrote nothing; `offline` when the failure reads as no network.
 #[derive(Debug)]

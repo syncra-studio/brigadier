@@ -63,7 +63,8 @@ pub(super) fn written(
 ) -> Result<String, String> {
     let (spec, f) = author(data, target).ok_or("no session here has an agent to write with")?;
     let _active = writer::hold(&spec.dir).map_err(|e| e.to_string())?;
-    written_for(data, &spec, &f, &_active, prompt)
+    let chosen = writer::choice(data).map_err(|e| e.to_string())?;
+    written_for(data, &spec, &f, &_active, chosen.as_ref(), prompt)
 }
 
 pub(super) fn written_for(
@@ -71,18 +72,25 @@ pub(super) fn written_for(
     spec: &Spec,
     f: &Fold,
     active: &fs::File,
+    chosen: Option<&writer::Choice>,
     prompt: impl Fn(&[String]) -> String,
 ) -> Result<String, String> {
     let prompt = prompt(&writer::asks(&spec.dir));
-    let backend = match f.backend.as_str() {
-        "" => spec.backend.clone(),
-        b => b.to_string(),
+    let backend = match chosen {
+        Some(choice) => choice.backend.clone(),
+        None => match f.backend.as_str() {
+            "" => spec.backend.clone(),
+            b => b.to_string(),
+        },
     };
     let a = adapters::get(&backend).ok_or_else(|| format!("no agent {backend}"))?;
     let account = f.accounts.get(&backend).cloned().unwrap_or_default();
     let mut run = core::as_run(spec, f, &backend, None);
     let listed = models(data, &backend);
-    if let Some(model) = a.cheap(run.model.as_deref(), &listed) {
+    if let Some(model) = chosen
+        .map(|c| c.model.clone())
+        .or_else(|| a.cheap(run.model.as_deref(), &listed))
+    {
         run.effort =
             (listed.iter().find(|m| m.id == model)).and_then(|m| m.efforts.first().cloned());
         run.model = Some(model);

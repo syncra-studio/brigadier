@@ -465,7 +465,7 @@ fn read_profile(data: &Path) -> Value {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    json!({"name": p["name"].as_str().unwrap_or(""), "intro_seen": p["intro_seen"] == true,
+    json!({"name": p["name"].as_str().unwrap_or(""), "git_writer": p["git_writer"], "intro_seen": p["intro_seen"] == true,
         "onboarded": p["onboarded"] == true})
 }
 
