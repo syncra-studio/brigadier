@@ -1,7 +1,7 @@
 import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, ForcePush, MergeStyle, Pr, SourceState, Step, When } from "../types";
+import type { Branch, ForcePush, MergeStyle, Pr, SourceState, Step } from "../types";
 import type { BranchRead } from "./branch-ops";
 
 /** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
@@ -42,8 +42,6 @@ export type SourceData = {
   flags?: Record<string, FileFlag>;
   /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); null in a worktree or until read [D1192, D1213]. */
   agentPaths?: string[] | null;
-  /** The session's "When it's done" rule and its state, from Rust's step read (2.44) [D1201, D1206]. */
-  when?: When | null;
   /** The branch's pull requests (2.13); none without a host [D1030]. */
   prs?: Pr[];
   /** The message drafted for the work so far (2.20), Edit message…'s first text [D1212]. */

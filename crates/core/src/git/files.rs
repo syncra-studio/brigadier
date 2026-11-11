@@ -23,7 +23,7 @@ fn names(out: &[u8]) -> Vec<String> {
 
 /// Every file git lists, tracked and untracked but not ignored, in order and each once (a
 /// conflicted file is listed once per stage).
-pub fn listed(checkout: &Checkout, stop: &AtomicBool) -> io::Result<Vec<String>> {
+fn listed(checkout: &Checkout, stop: &AtomicBool) -> io::Result<Vec<String>> {
     let args = [
         "ls-files",
         "--cached",

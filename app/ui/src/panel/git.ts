@@ -7,7 +7,7 @@ import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
 import type { FileFlag, LastRun } from "../review/types";
-import type { MergeStyle, SourceFile, SourceState, Step, When } from "./types";
+import type { MergeStyle, SourceFile, SourceState, Step } from "./types";
 
 /*
  * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, and each file's counts read
@@ -35,10 +35,10 @@ export type Freshness = { name: string; upstream: string | null; behind: number 
 
 /**
  * Rust's next step for the checkout [D1015, D1152]: the step, how the project lands [D1028], and the commits it was
- * worked out on, which a landing pins [D1049]. `when`: the session's "When it's done" rule (2.44); `ran`: its last
- * run's end, so the brief is read again when only a run changed [D1199, D1201].
+ * worked out on, which a landing pins [D1049]. `ran`: its last run's end, so the brief is read again when only a run
+ * changed [D1199].
  */
-type StepRead = { step: Step | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; when?: When | null; ran?: number | null };
+type StepRead = { step: Step | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
 
 /**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
@@ -254,7 +254,7 @@ export function useGitWatch(owner: string | null): void {
   // The background draft: a while after each read that changed something, while the session's agent is idle [D1212].
   const row = owner !== null && owner !== HOME ? rows?.find((each) => each.id === owner) : undefined;
   const working = isWorking(row);
-  // A turn's start or end moves the step and "When it's done" even when no file changed [D1201].
+  // A turn's start or end moves the step even when no file changed [D1208].
   useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working]);
   const version = useSyncExternalStore(subscribe, () => git.version);
   useEffect(() => {

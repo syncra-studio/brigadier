@@ -16,9 +16,6 @@ pub struct Run {
     pub at: u64,
     /// Paths edit steps changed that began after it ended, as the steps named them.
     pub after: BTreeSet<String>,
-    /// When it began (ms): "When it's done" proves the folder unchanged since [D1213].
-    #[serde(default)]
-    pub start: u64,
 }
 
 /// Commands that test or build, matched at the start of a command in the line [D1188] (proposed).
@@ -96,9 +93,6 @@ pub struct Runs {
     /// Edit steps that began after the last run ended, by id: their paths so far.
     late: BTreeMap<String, Vec<String>>,
     pub last: Option<Run>,
-    /// Test and build steps still running, by id: when they began.
-    #[serde(default)]
-    started: BTreeMap<String, u64>,
     /// Every path the session's ended turns' edit steps confirm they changed, as the steps named
     /// them: your own folder's "From the agent" [D1192, D1213].
     #[serde(default)]
@@ -113,7 +107,6 @@ impl Fold {
         let at = item["at"].as_u64().unwrap_or(ts);
         match item["step"].as_str() {
             Some("run") if tests_or_builds(input) => {
-                self.runs.started.insert(id.clone(), at);
                 self.runs.open.insert(id, input.into());
             }
             Some("edit") if self.runs.last.as_ref().is_some_and(|r| at > r.at) => {
@@ -146,7 +139,6 @@ impl Fold {
                 exit: item["exit"].as_i64(),
                 at: item["at"].as_u64().unwrap_or(ts),
                 after: BTreeSet::new(),
-                start: self.runs.started.remove(id).unwrap_or_default(),
             });
             self.runs.late.clear();
         }

@@ -224,12 +224,6 @@ pub fn branch(
     Ok((commits, String::from_utf8_lossy(&patch).into_owned()))
 }
 
-/// The tree HEAD holds, none before the first commit.
-pub fn head_tree(checkout: &Checkout, stop: &AtomicBool) -> Option<String> {
-    let rev = ["rev-parse", "--verify", "-q", "HEAD^{tree}"];
-    (read(&checkout.root, &rev, stop).ok().map(text)).filter(|t| !t.is_empty())
-}
-
 /// The checkout's HEAD now, none before its first commit.
 pub fn head_now(checkout: &Checkout, stop: &AtomicBool) -> Option<String> {
     head(checkout, stop)

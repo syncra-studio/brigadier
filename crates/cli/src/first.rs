@@ -100,25 +100,8 @@ pub(super) fn run(
         "sync" | "publish" => None,
         _ => return refuse(super::USAGE),
     };
-    // "When it's done" names the tree its test run was proved on: exactly that lands, and when the
-    // branch already holds it, nothing is committed first [D1213].
-    let proved = flag(args, "--tree");
-    // A turn that ended while the writer wrote may have run again: its run is the one that counts.
-    let turned = || match (target, flag(args, "--turn")) {
-        (Target::Session(id), Some(turn)) => {
-            !super::when::still(data, id, turn.parse().unwrap_or(0))
-        }
-        _ => false,
-    };
-    if proved.is_some_and(|tree| commit::head_tree(checkout, &stop).as_deref() == Some(tree)) {
-        let _held = hold(data, target)?;
-        if commit::head_now(checkout, &stop).as_deref() != Some(head) || turned() {
-            return refuse(MOVED);
-        }
-        return moved(data, target, checkout, args, verb, pr, (head, base));
-    }
     let prepared = commit::prepare(checkout, true, &stop)?;
-    if prepared.head.as_deref() != Some(head) || proved.is_some_and(|t| t != prepared.tree) {
+    if prepared.head.as_deref() != Some(head) {
         return refuse(MOVED);
     }
     // A message typed in Edit message… or a squash's own stands; else the draft for exactly this,
@@ -134,16 +117,8 @@ pub(super) fn run(
         },
     };
     let _held = hold(data, target)?;
-    if turned() {
-        return refuse(MOVED);
-    }
     // `commit` checks the HEAD and the tree again under its lock [D1049].
     let made = commit::commit(checkout, &prepared, true, &message, hooks, &stop)?;
-    // A pre-commit hook may change what's staged: anything but the proved tree is taken back.
-    if proved.is_some_and(|t| commit::head_tree(checkout, &stop).as_deref() != Some(t)) {
-        commit::take_back(checkout, &made, head, &stop);
-        return refuse(MOVED);
-    }
     moved(data, target, checkout, args, verb, pr, (&made, base)).inspect_err(|_| {
         commit::take_back(checkout, &made, head, &stop);
     })
