@@ -92,6 +92,12 @@ pub fn send(
         }
     } else if handoff {
         // A fork with no conversation of its own begins from the hand-off, without asking [D90].
+        let unforked = json!({"op": "note", "data": {"event": "unforked", "backend": b}});
+        if f.resume.contains_key(&b)
+            && let Err(e) = call(unforked)
+        {
+            return json!({"ok": false, "error": e.to_string()});
+        }
         match crate::switch::forked(spec, f, text) {
             Ok(sent) => (None, sent),
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),

@@ -63,6 +63,9 @@ impl Fold {
         if item["event"] == "forked" {
             return self.forked(item);
         }
+        if item["event"] == "unforked" {
+            return self.unforked(item);
+        }
         if let Some(op) = item["op"].as_str() {
             self.rewinds.insert(op.into());
         }
@@ -123,6 +126,15 @@ impl Fold {
             start: None,
             end: item["end"].as_str().map(String::from),
         });
+    }
+
+    /// A fork whose first launch can no longer fork its source begins from the hand-off: its
+    /// native start goes, so its first own turn rewinds to a new conversation [D90, D1089].
+    fn unforked(&mut self, item: &Value) {
+        let backend = item["backend"].as_str().unwrap_or("");
+        self.resume.remove(backend);
+        self.pin.remove(backend);
+        (self.boundaries).retain(|b| b.origin != "fork" || b.backend != backend);
     }
 
     /// A fork's own conversation, made by its first launch: it holds the fork point [D1089].

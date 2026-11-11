@@ -61,7 +61,7 @@ pub fn summary(dir: &Path) -> bool {
 /// answer, its source deleted first [D1089].
 pub fn handoff(spec: &Spec, f: &Fold, backend: &str) -> bool {
     if !f.resume.contains_key(backend) {
-        return summary(&spec.dir);
+        return summary(&spec.dir) || f.branching.contains(backend);
     }
     let at = (f.boundaries.iter()).find(|b| b.origin == "fork" && b.backend == backend);
     let native = at.zip(adapters::get(backend).and_then(|a| a.forking()));
