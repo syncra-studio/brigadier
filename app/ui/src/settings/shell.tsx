@@ -100,7 +100,7 @@ export function SettingsNav({ current }: { current: string }) {
                 const Icon = result.page.icon;
                 return (
                   <li key={`${result.page.id}:${result.row?.label ?? ""}`}>
-                    <NavRow data-active={index === active || undefined} className="h-auto items-start py-2.5" onMouseEnter={() => setActive(index)} onClick={() => openResult(result)}>
+                    <NavRow data-active={index === active || undefined} className="items-start py-2.5" onMouseEnter={() => setActive(index)} onClick={() => openResult(result)}>
                       <Icon className="mt-0.5 text-muted-foreground" />
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{result.row?.label ?? result.page.label}</span>
