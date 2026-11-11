@@ -129,7 +129,7 @@ pub fn without_attribution(message: &str) -> String {
         .filter(|line| {
             let line = line
                 .trim()
-                .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
+                .trim_start_matches(['🤖', '*', '_', '[', '>', '-', ' ', '\t'])
                 .to_ascii_lowercase();
             !line.starts_with("co-authored-by:") && !line.starts_with("generated with ")
         })
