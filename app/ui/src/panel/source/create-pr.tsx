@@ -25,7 +25,7 @@ export type HostInfo = { host: string | null; cli: boolean; base: string; branch
 export type PrWay = "cli" | "page" | "none" | "loading";
 
 /** What a pick of the card's git step asks for. */
-export type ActionPick = "commit" | "createPr" | "pushBranch" | "openPrPage" | "mergeLocally" | "forcePush";
+export type ActionPick = "commit" | "createPr" | "pushBranch" | "openPrPage" | "forcePush";
 
 export const prWay = (info: HostInfo | null | undefined): PrWay => (info === undefined ? "loading" : !info?.host ? "none" : info.cli ? "cli" : "page");
 

@@ -1,15 +1,11 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 
-import { commitFiles, refreshStep, type StepAt, useGit, writeMessage } from "../git";
-import type { Commit, ForcePush, MergeStyle, SourceState, Step, StepError } from "../types";
-import { ForcePushDialog, MessageDialog, SquashDialog } from "./action-confirms";
+import { commitFiles, refreshStep, useGit } from "../git";
+import type { ForcePush, SourceState, Step, StepError } from "../types";
+import { ForcePushDialog, MessageDialog } from "./action-confirms";
 import { askForce, cancelForce, first, forcePush, useBranchOp, useForcing } from "./branch-ops";
 import { type ActionPick, useCreatePr } from "./create-pr";
 import type { SourceData, SourceOps } from "./data";
-
-const SQUASH_MESSAGE = `Retry failed uploads
-
-Uploads that fail now retry three times with a growing wait, and the tray shows how far each one got.`;
 
 /** Messages typed after a writer failure and not committed yet, by checkout: they outlive the view [D1203, D1293]. */
 const unsent = new Map<string, string>();
@@ -90,13 +86,7 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
   const [work, put] = useWork(draftKey);
   const { committing } = work;
   const live = ops !== undefined;
-  const mergeStyle: MergeStyle = data.merge ?? "merge";
   const [landed, setLanded] = useLanding(draftKey);
-  const [squashing, setSquashing] = useState(false);
-  // The commits a squash confirm showed, and what it lands: pinned when it opened [D1049].
-  const [squashAt, setSquashAt] = useState<StepAt | null>(null);
-  const [squashCommits, setSquashCommits] = useState<Commit[] | null>(null);
-  const [squashMessage, setSquashMessage] = useState(SQUASH_MESSAGE);
   // Type a message…'s field while it's open; Save keeps it as the next commit's [D1203, D1293].
   const [editing, setEditing] = useState<string | null>(null);
   const [galleryForcing, setGalleryForcing] = useState<ForcePush | null>(null);
@@ -148,21 +138,21 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
 
   /**
    * The landing move, committing every change first when there are some (`first`): "Merging…" at once, until the
-   * step it led to shows; a refusal stays on the line [D30, D1049, D1203]. `text`: a squash's message.
+   * step it led to shows; a refusal stays on the line [D30, D1049, D1203].
    */
-  const go = (verb: "merge" | "squash" | "push" | "sync" | "publish", text: string | null = null, at: StepAt | null = pinned) => {
+  const go = (verb: "merge" | "push" | "sync" | "publish") => {
+    const at = pinned;
     if (!step) return;
     const on = step.kind;
     setLanded({ running: true, error: null, on });
     put({ failed: null, error: null });
     if (!live) return void setTimeout(() => setLanded(STILL), 1500);
-    if (pending === 0 && (verb === "merge" || verb === "squash")) {
+    if (pending === 0 && verb === "merge") {
       if (!ops?.land) return setLanded(STILL);
-      return ops.land(verb, text, at, (error) => setLanded({ running: false, error: error ? { kind: on, reason: error } : null, on }));
+      return ops.land(at, (error) => setLanded({ running: false, error: error ? { kind: on, reason: error } : null, on }));
     }
     if (!target || !at) return setLanded({ running: false, error: { kind: on, reason: "Look again." }, on });
-    const typed = text ?? saved;
-    first(target, [verb, at.head, at.base ?? "-", ...(typed ? ["--message", typed] : [])], (reply) => {
+    first(target, [verb, at.head, at.base ?? "-", ...(saved ? ["--message", saved] : [])], (reply) => {
       if (reply.ok) {
         if (saved) setMessage("");
         return refreshStep(() => setLanded(STILL));
@@ -175,36 +165,10 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
       refreshStep();
     });
   };
-  const mergeLocally = () => {
-    if (mergeStyle !== "squash") return go("merge");
-    // The confirm writes its own message, so an earlier failure's line doesn't stay behind it.
-    put({ failed: null });
-    setSquashing(true);
-    const at = pinned;
-    if (!ops?.squashOf || !at) return;
-    setSquashAt(at);
-    setSquashCommits(null);
-    setSquashMessage("");
-    // The writer writes the message; if it can't, it's the commits' own. Until then the user may type one [D1028, D1029].
-    let subjects: string | null = null;
-    let wrote: boolean | null = null;
-    ops.squashOf(at, (squash) => {
-      if (!squash) return;
-      setSquashCommits(squash.commits.map((each) => ({ ...each, atMs: 0, added: 0, removed: 0 })));
-      subjects = squash.message;
-      if (wrote === false) setSquashMessage((now) => now || squash.message);
-    });
-    const sent = writeMessage("squash", false, (reply) => {
-      wrote = Boolean(reply.ok);
-      const text = reply.ok ? String(reply.text) : subjects;
-      if (text) setSquashMessage((now) => now || text);
-    });
-    if (!sent) wrote = false;
-  };
   const run = () => {
     if (!step || working || data.syncing) return;
     if (step.kind === "commit" || step.kind === "folderCommit") commit();
-    else if (step.kind === "merge") mergeLocally();
+    else if (step.kind === "merge") go("merge");
     else if ((step.kind === "sync" || step.kind === "publish") && pending === 0 && ops?.branch) ops.branch[step.kind]();
     else if (step.kind === "sync" || step.kind === "publish") go(step.kind);
     // Fix with agent and Resolve with agent leave a chip above the composer, sent when the user sends [D1019, D1044]:
@@ -216,7 +180,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
     pr.onPick(pick);
     if (pick === "forcePush") target ? askForce(target) : setGalleryForcing(rejected);
     if (pick === "commit") commit();
-    if (pick === "mergeLocally") mergeLocally();
   };
 
   const dialogs = (
@@ -233,22 +196,6 @@ export function useSourceStep({ data, state, draftKey, session = null, ops }: {
           put({ failed: null });
         }}
       />
-      {step && "base" in step && state && (
-        <SquashDialog
-          open={squashing}
-          branch={state.branch ?? "…"}
-          base={step.base}
-          commits={squashCommits ?? (ops?.squashOf ? [] : state.commits)}
-          files={pending > 0 ? uncommittedPaths : []}
-          message={squashMessage}
-          onMessage={setSquashMessage}
-          onCancel={() => setSquashing(false)}
-          onConfirm={() => {
-            setSquashing(false);
-            go("squash", squashMessage, squashAt);
-          }}
-        />
-      )}
       <ForcePushDialog
         force={forcing}
         branch={forcing?.branch ?? "…"}

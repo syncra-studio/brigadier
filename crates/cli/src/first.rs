@@ -1,4 +1,4 @@
-//! `source <owner> first <merge|squash|push|link|pr|sync|publish> <head> <base|-> [--message M]
+//! `source <owner> first <merge|push|link|pr|sync|publish> <head> <base|-> [--message M]
 //! [--title T --body B --draft]`: the one button's move, which commits every change first, then
 //! lands, pushes or syncs, in one click [D1203, D1207].
 //!
@@ -68,7 +68,7 @@ pub(super) fn run(
     }
     // Everything the move would refuse for is asked before anything is committed.
     let pr = match verb {
-        "merge" | "squash" => {
+        "merge" => {
             let read = step::step(data, target, &stop)?;
             let (now, pinned) = (&read["step"], &read["at"]);
             if pinned["head"] != head || pinned["base"].as_str() != base {
@@ -79,9 +79,6 @@ pub(super) fn run(
             let behind = now["kind"] == "catchUp";
             if behind || (now["kind"] == "merge" && !now["blocked"].is_null()) {
                 return refuse("It can't merge now. Look again.");
-            }
-            if verb == "squash" && flag(args, "--message").is_none_or(|m| m.trim().is_empty()) {
-                return refuse("A squash needs a message.");
             }
             None
         }
@@ -104,8 +101,7 @@ pub(super) fn run(
     if prepared.head.as_deref() != Some(head) {
         return refuse(MOVED);
     }
-    // A typed message or a squash's own stands; else the writer's, or nothing is committed
-    // [D1029, D1293].
+    // A typed message stands; else the writer's, or nothing is committed [D1029, D1293].
     let message = match flag(args, "--message")
         .map(str::trim)
         .filter(|m| !m.is_empty())
@@ -144,14 +140,9 @@ fn moved(
         flag(args, "--title").unwrap_or(""),
         flag(args, "--body").unwrap_or(""),
     );
-    let (pinned, message) = (
-        (head, base.unwrap_or("")),
-        flag(args, "--message").map(str::trim),
-    );
+    let pinned = (head, base.unwrap_or(""));
     match (verb, &pr) {
-        ("merge", _) => land::land_held(data, session()?, "merge", None, pinned, &stop)
-            .map(|landed| json!({"ok": true, "landed": landed})),
-        ("squash", _) => land::land_held(data, session()?, "squash", message, pinned, &stop)
+        ("merge", _) => land::land_held(data, session()?, pinned, &stop)
             .map(|landed| json!({"ok": true, "landed": landed})),
         ("push", Some(pr)) => pr.push().map(|_| json!({"ok": true})),
         ("link", Some(pr)) => pr

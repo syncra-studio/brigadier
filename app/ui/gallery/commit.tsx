@@ -1,8 +1,8 @@
 // The card's git confirms [D1028, D1029, D1030, D1034, D1203]: the commit message, Create PR and the rest.
 import type { ReactNode } from "react";
 
-import { BRANCH, CHANGES, COMMITS } from "../src/panel/fake";
-import { ForcePushDialog, MessageDialog, SquashDialog } from "../src/panel/source/action-confirms";
+import { BRANCH } from "../src/panel/fake";
+import { ForcePushDialog, MessageDialog } from "../src/panel/source/action-confirms";
 import { CreatePrDialog, type HostInfo } from "../src/panel/source/create-pr";
 import { Held, Row, Section, State } from "./parts";
 
@@ -26,15 +26,6 @@ export function CommitGallery() {
     <Section title="Git confirms">
       <Row name="Confirms">
         <Confirm label="Type a message…">{(held) => <MessageDialog open message={TYPED} failed held={held} onMessage={noop} onCancel={noop} onSave={noop} />}</Confirm>
-        <Confirm label="Squash, its message editable" tall>
-          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
-        </Confirm>
-        <Confirm label="Squash, with files not committed yet" tall>
-          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} files={CHANGES.changes.map((each) => each.path)} message={TYPED} onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
-        </Confirm>
-        <Confirm label="Squash, the message being written" tall>
-          {(held) => <SquashDialog open branch={BRANCH} base="main" commits={COMMITS.slice(0, 3)} message="" writing onMessage={noop} held={held} onCancel={noop} onConfirm={noop} />}
-        </Confirm>
         <Confirm label="Create PR: loading" tall>
           {(held) => <CreatePrDialog open info={undefined} text={{ title: "", body: "", draft: false }} held={held} onText={noop} onCancel={noop} onConfirm={noop} />}
         </Confirm>

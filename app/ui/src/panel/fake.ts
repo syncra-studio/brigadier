@@ -1,22 +1,15 @@
-import type { Branch, Commit, Pr, SourceFile, SourceState, Step } from "./types";
+import type { Branch, Pr, SourceFile, SourceState, Step } from "./types";
 
 /* Fake data for the gallery's summary card and git confirms; the app reads Rust's [D388]. */
 
 const NOW = Date.now();
 const MIN = 60_000;
 
-export const file = (path: string, status: SourceFile["status"], added = 0, removed = 0, oldPath: string | null = null): SourceFile => ({ path, status, oldPath, added, removed });
+const file = (path: string, status: SourceFile["status"], added = 0, removed = 0, oldPath: string | null = null): SourceFile => ({ path, status, oldPath, added, removed });
 
 export const BRANCH = "brigadier/912a9469/session";
 
-export const COMMITS: Commit[] = [
-  { sha: "4f19a0b", subject: "Cap the retry wait and skip 4xx errors", atMs: NOW - 12 * MIN, added: 10, removed: 2 },
-  { sha: "e6c7d22", subject: "Test the retry backoff", atMs: NOW - 60 * MIN, added: 42, removed: 0 },
-  { sha: "b81e04d", subject: "Show upload progress in the tray", atMs: NOW - 120 * MIN, added: 31, removed: 4 },
-  { sha: "3f2a91c", subject: "Retry a failed upload three times", atMs: NOW - 180 * MIN, added: 82, removed: 7 },
-];
-
-export const CLEAN: SourceState = {
+const CLEAN: SourceState = {
   checkout: "worktree",
   branch: BRANCH,
   remote: "origin",
@@ -27,41 +20,19 @@ export const CLEAN: SourceState = {
   changes: [],
   merging: null,
   rebasing: null,
-  commits: [],
   sinceBase: [],
 };
 
-export const CHANGES: SourceState = {
+const CHANGES: SourceState = {
   ...CLEAN,
   ahead: 2,
   changes: [file("src/upload/retry.ts", "modified", 62, 8), file("src/upload/client.ts", "modified", 21, 3), file("src/tray/Progress.tsx", "added", 58)],
-  commits: COMMITS,
 };
 
 export const STAGED: SourceState = {
   ...CHANGES,
   staged: [file("src/upload/retry.ts", "added", 62), file("src/upload/client.ts", "modified", 21, 3)],
   changes: [file("src/tray/Progress.tsx", "modified", 58), file("README.md", "modified", 14)],
-};
-
-/** Everything committed: what the branch changed since main. */
-export const COMMITTED: SourceState = {
-  ...CLEAN,
-  ahead: 4,
-  commits: COMMITS,
-  sinceBase: [...STAGED.staged, ...STAGED.changes, file("src/upload/retry.test.ts", "added", 42)],
-};
-
-/** The user's own folder: a Local checkout session or the project folder. */
-export const FOLDER: SourceState = {
-  ...CLEAN,
-  checkout: "folder",
-  branch: "main",
-  upstream: "origin/main",
-  ahead: 2,
-  behind: 1,
-  staged: [file("src/upload/retry.ts", "modified", 9, 2)],
-  changes: [file("src/tray/Progress.tsx", "added", 58), file("README.md", "modified", 14)],
 };
 
 export const BRANCHES: Branch[] = [
@@ -81,14 +52,5 @@ export const PRS: Pr[] = [
 export const HOST = "GitHub";
 
 export const STEPS = {
-  commit: { kind: "commit", base: "main", waiting: 0, clean: true },
-  commitWaiting: { kind: "commit", base: "main", waiting: COMMITS.length, clean: true },
   merge: { kind: "merge", base: "main", ready: 3, moved: 0, blocked: null },
-  mergeMoved: { kind: "merge", base: "main", ready: 3, moved: 4, blocked: null },
-  catchUp: { kind: "catchUp", base: "main", conflicts: ["src/upload/retry.ts", "src/upload/client.ts"] },
-  busy: { kind: "merge", base: "main", ready: 3, moved: 0, blocked: { why: "busy", folder: "/Users/you/upload-app", files: ["src/upload/client.ts"] } },
-  landed: { kind: "landed", base: "main", atMs: NOW - 2 * MIN },
-  folderCommit: { kind: "folderCommit", branch: "main", behind: 1, ahead: 1 },
-  sync: { kind: "sync", branch: "main", remote: "origin", behind: 1, ahead: 2 },
-  publish: { kind: "publish", branch: "fix/login", remote: "origin" },
 } satisfies Record<string, Step>;

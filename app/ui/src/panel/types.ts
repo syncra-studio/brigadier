@@ -24,13 +24,9 @@ export type SourceState = {
   changes: SourceFile[];
   merging: { incoming: string; message: string } | null;
   rebasing: { branch: string; onto: string; message: string } | null;
-  /** The session's commits since its base, newest first [D1041]; none for a folder. */
-  commits: Commit[];
   /** What the session's branch changed since its base, once committed [D1111]. */
   sinceBase: SourceFile[];
 };
-
-export type Commit = { sha: string; subject: string; atMs: number; added: number; removed: number };
 
 export type Branch = { name: string; remote: boolean; atMs: number; author: string; subject: string };
 
@@ -77,9 +73,6 @@ export type Step =
   | { kind: "folderCommit"; branch: string; behind: number; ahead: number }
   | { kind: "sync"; branch: string; remote: string; behind: number; ahead: number; commit?: number }
   | { kind: "publish"; branch: string; remote: string; commit?: number };
-
-/** How a branch lands: merged locally as a merge commit or squashed [D1028]; a PR's host may also rebase. */
-export type MergeStyle = "merge" | "squash" | "rebase";
 
 /** A step that didn't go: Rust's reason, kept until the next try. */
 export type StepError = { kind: Step["kind"]; reason: string };

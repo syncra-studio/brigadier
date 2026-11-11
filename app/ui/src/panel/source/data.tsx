@@ -1,7 +1,7 @@
 import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, StepAt, Truth } from "../git";
-import type { Branch, ForcePush, MergeStyle, Pr, SourceState, Step } from "../types";
+import type { Branch, ForcePush, Pr, SourceState, Step } from "../types";
 import type { BranchRead } from "./branch-ops";
 
 /** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
@@ -9,8 +9,6 @@ export type SourceData = {
   /** Null while the first read is under way. */
   source: SourceState | null;
   step: Step | null;
-  /** How the project lands, from Rust [D1028]; the gallery's own pick without it. */
-  merge?: MergeStyle | null;
   /** The commits Rust's step was worked out on: a landing is pinned to them [D1049]. */
   at?: StepAt | null;
   /** The read failed: shown over the last read, if any, which stays read-only. */
@@ -67,10 +65,8 @@ export type BranchOps = {
 export type SourceOps = {
   retry: () => void;
   branch?: BranchOps;
-  /** Rust's step moves (2.22): landing, the merge style, a squash's first message. Without them the button is the gallery's. */
-  land?: (style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void) => void;
-  setStyle?: (style: MergeStyle) => void;
-  squashOf?: (at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void) => void;
+  /** Rust's landing (2.22). Without it the step is the gallery's. */
+  land?: (at: StepAt | null, done: (error: string | null) => void) => void;
   /** Re-creates a session's gone folder from its branch [D180, D1187]. */
   restore?: () => void;
 };

@@ -49,9 +49,9 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
        brigadier source <id>|--project P truth | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
-       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write pr | write squash]
+       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write pr]
        brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish | force-push <branch> <remote> <ref> <oid>; source <id> base <ref>
-       brigadier source <id> | source --project P step | style merge|squash | source <id> land merge|squash <head> <base> [--message M] | squash <head> <base>
+       brigadier source <id> | source --project P step | source <id> land <head> <base>
        brigadier panel [open on|off | width <px>]
        brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft]
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useDaemon } from "../../daemon";
 import { newSession, setHomeDraft, useHomeProject } from "../../home/start";
 import { HOME } from "../../shell/tab-store";
-import { isWorking as working, landBranch, refreshStep, restoreCheckout, retryGit, setMergeStyle, squashOf, type Target, useGit } from "../git";
+import { isWorking as working, landBranch, refreshStep, restoreCheckout, retryGit, type Target, useGit } from "../git";
 import { useShare } from "../share";
 import { moved, name, named, readBranches, setBase, sync, useBranchOp } from "./branch-ops";
 import { read as readPr } from "./create-pr";
@@ -57,7 +57,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
     data: {
       source: git.source,
       step: git.step?.step ?? null,
-      merge: git.step?.merge ?? null,
       at: git.step?.at ?? null,
       error: git.error,
       offline: offline && git.source !== null,
@@ -80,8 +79,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       retry: retryGit,
       branch: git.target ? branchOps(git.target, owner, project, branch ?? "the branch") : undefined,
       land: landBranch,
-      setStyle: setMergeStyle,
-      squashOf,
       restore: restoreCheckout,
     },
   };

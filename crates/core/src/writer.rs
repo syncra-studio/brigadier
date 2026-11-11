@@ -1,4 +1,4 @@
-//! The message writer [D1029]: commit messages, PR text and squash messages, written by a session's
+//! The message writer [D1029]: commit messages and PR text, written by a session's
 //! own agent on a new conversation of its own, through the adapter's own launch and parse [D43].
 //! Each conversation it makes is recorded in the session's `writers` file before anything else
 //! happens to it, and forgotten when the reply is in; one that couldn't be is forgotten again by
@@ -114,7 +114,7 @@ fn cut(patch: &str) -> String {
     }
 }
 
-/// A commit message's prompt (a squash's too: its patch is the branch's).
+/// A commit message's prompt.
 pub fn commit_prompt(patch: &str, subjects: &[String], asks: &[String]) -> String {
     format!(
         "Write the commit message for these changes.\n{RULES}{}\n\nThe changes:\n{}",
@@ -153,7 +153,7 @@ pub fn asks(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Writer and squash text without co-author trailers or generated-with lines [D16].
+/// Writer text without co-author trailers or generated-with lines [D16].
 pub fn without_attribution(message: &str) -> String {
     message
         .lines()

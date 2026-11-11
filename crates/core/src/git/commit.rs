@@ -188,7 +188,7 @@ pub fn subjects(checkout: &Checkout, n: usize, stop: &AtomicBool) -> Vec<String>
 }
 
 /// The branch since `base`: its commits' subjects, oldest first, and its changes as one patch,
-/// what a PR or a squash holds. With `tree`, the patch runs up to that tree instead of HEAD: what
+/// what a PR holds. With `tree`, the patch runs up to that tree instead of HEAD: what
 /// lands once every change is committed.
 pub fn branch(
     checkout: &Checkout,

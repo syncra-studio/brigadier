@@ -4,14 +4,14 @@
 use super::precheck::{Merge, blocked, count, git, merge, merge_base, next_tree, shared_with};
 use super::{Checkout, Status, Target, checkout, err, push, status};
 use crate::worktrees::{self, Lands};
-use crate::{load, projects, session_dir};
+use crate::{load, session_dir};
 use serde_json::{Value, json};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
-/// The action button's next step for a session or project [D1015, D1045], how it lands [D1028],
-/// and the commits it was worked out on, which a landing pins.
+/// The action button's next step for a session or project [D1015, D1045], and the commits it was
+/// worked out on, which a landing pins.
 pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value> {
     let checkout = checkout(data, target)?;
     let now = status(&checkout, stop)?;
@@ -25,27 +25,19 @@ pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value
         Some(holder) => worktrees::lands(&holder.dir)?,
         None => None,
     };
-    let (step, at, style) = match (id, lands) {
-        (Some(id), Some(lands)) => {
-            let (step, at) = session(data, id, &dir, &checkout, &now, &lands, stop)?;
-            (
-                step,
-                at,
-                style(data, target, &checkout.root, &lands.base, stop)?,
-            )
-        }
+    let (step, at) = match (id, lands) {
+        (Some(id), Some(lands)) => session(data, id, &dir, &checkout, &now, &lands, stop)?,
         // A folder's HEAD pins its commit-first Sync or Publish [D1049].
         _ => (
             folder(&checkout, &now),
             json!({"head": now.head["head"], "base": null}),
-            Value::Null,
         ),
     };
     let freshness = holder
         .and_then(|h| worktrees::base(&h.dir))
         .map(|base| super::truth::base(&checkout, &base, stop))
         .transpose()?;
-    Ok(json!({"step": step, "at": at, "merge": style, "freshness": freshness}))
+    Ok(json!({"step": step, "at": at, "freshness": freshness}))
 }
 
 /// The user's own folder: VS Code's Commit, Publish Branch and Sync Changes [D1045].
@@ -99,7 +91,7 @@ fn session(
     )
     .or_else(|_| err(format!("{base} isn't in this project any more.")))?;
     let at = json!({"head": head, "base": base_at});
-    let merge_base = merge_base(root, lands, &base_at, head, stop)?;
+    let merge_base = merge_base(root, &base_at, head, stop)?;
     // The landing step commits every change first, so it's worked out on what that commit would
     // hold [D1203, D1207].
     let first = now.files.len();
@@ -142,13 +134,7 @@ fn session(
             json!({"kind": "catchUp", "base": base, "conflicts": conflicts, "commit": first})
         }
         Merge::Clean(merged) => {
-            // After a squash still in the base, the base moved only past that squash: its own
-            // commit isn't counted [D1229].
-            let since = match &lands.landing {
-                Some(l) if l.style == "squash" && l.head == merge_base => l.commit.as_str(),
-                _ => head,
-            };
-            let moved = count(root, &format!("{since}..{base_at}"), stop)?;
+            let moved = count(root, &format!("{head}..{base_at}"), stop)?;
             let blocked = match shared_with(data, id) {
                 Some(with) => json!({"why": "shared", "with": with}),
                 None => blocked(root, base, &base_at, &merged, stop)?,
@@ -158,54 +144,4 @@ fn session(
         }
     };
     Ok((step, at))
-}
-
-/// The project a target lands in, if any.
-fn project_of(data: &Path, target: &Target) -> io::Result<Option<String>> {
-    Ok(match target {
-        Target::Session(id) => load(data, id)?.project,
-        Target::Project(id) => Some(id.to_string()),
-    })
-}
-
-/// How the project's sessions land: the pick remembered for it, else a guess from the base's own
-/// history, a merge commit if it has any, else squash [D1028].
-fn style(
-    data: &Path,
-    target: &Target,
-    dir: &Path,
-    base: &str,
-    stop: &AtomicBool,
-) -> io::Result<Value> {
-    let project = project_of(data, target)?;
-    if let Some(picked) = project.and_then(|p| projects::get(data, &p).ok()?.merge) {
-        return Ok(picked.into());
-    }
-    let parents = git(
-        dir,
-        &[
-            "log",
-            "--first-parent",
-            "--max-count=50",
-            "--format=%P",
-            base,
-            "--",
-        ],
-        stop,
-    )?;
-    Ok(match parents.lines().any(|p| p.contains(' ')) {
-        true => "merge".into(),
-        false => "squash".into(),
-    })
-}
-
-/// Remembers the merge style picked for the target's project [D1028].
-pub fn set_style(data: &Path, target: &Target, style: &str) -> io::Result<()> {
-    if !matches!(style, "merge" | "squash") {
-        return err(format!("not a merge style: {style:?}"));
-    }
-    match project_of(data, target)? {
-        Some(project) => projects::set_merge(data, &project, style),
-        None => err("This chat has no project."),
-    }
 }

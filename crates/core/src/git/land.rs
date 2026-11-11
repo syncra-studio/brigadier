@@ -1,10 +1,9 @@
-//! Land [D1015, D1028, D1049]: a session's branch into its base, as a merge commit or a squash.
+//! Land [D1015, D1028, D1049]: a session's branch into its base, as a merge commit.
 
 use super::precheck::{
     Merge, changed, collisions, count, full_name, git, holder, merge, merge_base, midway,
     shared_with, write,
 };
-use super::step::set_style;
 use super::{Checkout, Target, checkout, err, lock, read};
 use crate::worktrees::{self, Landing};
 use crate::{load, projects, session_dir};
@@ -21,78 +20,24 @@ fn ms_now() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// What a squash of the pair `(head, base)` takes in: the commits it squashes, oldest first, and a
-/// first message from them, as `gh pr create --fill` writes it. Pinned like the landing, so its
-/// confirm lists exactly what it lands.
-// shortcut (proposed): the message until 2.19's writer writes squash messages [D1029].
-pub fn squash(data: &Path, id: &str, (head, base): (&str, &str)) -> io::Result<Value> {
-    let Some(lands) = worktrees::lands(&session_dir(data, id))? else {
-        return err("This session has no base.");
-    };
-    let checkout = checkout(data, &Target::Session(id))?;
-    let never = AtomicBool::new(false);
-    let from = merge_base(&checkout.root, &lands, base, head, &never)?;
-    let range = format!("{from}..{head}");
-    let format = "--format=%h%x00%s%x00%b%x00";
-    let out = read(
-        &checkout.root,
-        &["log", "--reverse", format, &range, "--"],
-        &never,
-    )?;
-    let text = String::from_utf8_lossy(&out);
-    let parts: Vec<&str> = text.split('\0').map(str::trim).collect();
-    let commits: Vec<(&str, &str, &str)> = (parts.chunks(3))
-        .filter(|c| c.len() == 3 && !c[0].is_empty())
-        .map(|c| (c[0], c[1], c[2]))
-        .collect();
-    let message = match &commits[..] {
-        [] => String::new(),
-        [(_, subject, "")] => subject.to_string(),
-        [(_, subject, body)] => format!("{subject}\n\n{body}"),
-        [(_, first, _), ..] => {
-            let list: Vec<String> = commits.iter().map(|(_, s, _)| format!("- {s}")).collect();
-            format!("{first}\n\n{}", list.join("\n"))
-        }
-    };
-    let commits: Vec<Value> = (commits.iter())
-        .map(|(sha, subject, _)| json!({"sha": sha, "subject": subject}))
-        .collect();
-    Ok(json!({"message": crate::writer::without_attribution(&message), "commits": commits}))
-}
-
 /// Lands the session's branch into its base [D1015, D1028, D1047, D1049], pinned to the commits
-/// its step was worked out on (`head`, `base`): a merge commit, or one squashed commit with
-/// `message`. The landing commit is made without touching any checkout, then the base moves to
-/// it: a fast-forward in the checkout that has it, refused if that would run into its files, or a
-/// compare-and-swap of the ref when none has it. Then the landing is recorded, so delete knows a
-/// squashed branch landed [D181].
-pub fn land(
-    data: &Path,
-    id: &str,
-    style: &str,
-    message: Option<&str>,
-    pinned: (&str, &str),
-    stop: &AtomicBool,
-) -> io::Result<Value> {
+/// its step was worked out on (`head`, `base`), as a merge commit. The landing commit is made
+/// without touching any checkout, then the base moves to it: a fast-forward in the checkout that
+/// has it, refused if that would run into its files, or a compare-and-swap of the ref when none
+/// has it. Then the landing is recorded [D181].
+pub fn land(data: &Path, id: &str, pinned: (&str, &str), stop: &AtomicBool) -> io::Result<Value> {
     // The session's lock before the checkout's, as everywhere else [D1235].
     let _one = worktrees::lock(&session_dir(data, id))?;
-    land_held(data, id, style, message, pinned, stop)
+    land_held(data, id, pinned, stop)
 }
 
 /// `land` for a caller that holds the session's `worktrees::lock` across it [D1208].
 pub fn land_held(
     data: &Path,
     id: &str,
-    style: &str,
-    message: Option<&str>,
     (head, base): (&str, &str),
     stop: &AtomicBool,
 ) -> io::Result<Value> {
-    let squash = match style {
-        "merge" => false,
-        "squash" => true,
-        _ => return err(format!("not a merge style: {style:?}")),
-    };
     if let Some(with) = shared_with(data, id) {
         return err(format!("Landing stays with {with}."));
     }
@@ -144,7 +89,7 @@ pub fn land_held(
     if count(root, &format!("{tip}..{now}"), stop)? == 0 {
         return err(format!("Everything here is already in {}.", lands.base));
     }
-    let merge_base = merge_base(root, &lands, &tip, &now, stop)?;
+    let merge_base = merge_base(root, &tip, &now, stop)?;
     let tree = git(root, &["rev-parse", &format!("{now}^{{tree}}")], stop)?;
     let Merge::Clean(merged) = merge(root, &tip, &merge_base, &tree, stop)? else {
         return err(format!(
@@ -152,31 +97,30 @@ pub fn land_held(
             lands.base
         ));
     };
-    let message = match (squash, message.map(str::trim)) {
-        (true, Some(m)) if !crate::writer::without_attribution(m).is_empty() => {
-            crate::writer::without_attribution(m)
-        }
-        (true, _) => return err("A squash needs a message."),
-        (false, _) => format!(
-            "Merge branch '{}'",
-            lands.branch.as_deref().unwrap_or("HEAD")
-        ),
-    };
-    let mut args = vec!["commit-tree", merged.as_str(), "-p", tip.as_str()];
-    if !squash {
-        args.extend(["-p", now.as_str()]);
-    }
-    args.extend(["-m", message.as_str()]);
+    let message = format!(
+        "Merge branch '{}'",
+        lands.branch.as_deref().unwrap_or("HEAD")
+    );
+    let args = [
+        "commit-tree",
+        merged.as_str(),
+        "-p",
+        tip.as_str(),
+        "-p",
+        now.as_str(),
+        "-m",
+        message.as_str(),
+    ];
     let commit = write(root, false, &args, stop)?;
     let trusted = (load(data, id)?.project)
         .is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)));
-    // Recorded before the base moves, so a crash between can't lose a squash; it counts only once
-    // its commit is in the base, so one that never got there reads as not landed [D35, D1049].
+    // Recorded before the base moves, so a crash between can't lose it; it counts only once its
+    // commit is in the base, so one that never got there reads as not landed [D35, D1049].
     let at_ms = ms_now();
     let landing = Landing {
         head: now,
         commit: commit.clone(),
-        style: style.into(),
+        style: "merge".into(),
         at_ms,
     };
     worktrees::landing::set_landing_held(&dir, Some(landing))?;
@@ -193,8 +137,6 @@ pub fn land_held(
         let _ = worktrees::landing::set_landing_held(&dir, lands.landing);
         return Err(e);
     }
-    // The style it landed with is the project's pick from now on [D1028].
-    let _ = set_style(data, &Target::Session(id), style);
     Ok(json!({"commit": commit, "atMs": at_ms}))
 }
 

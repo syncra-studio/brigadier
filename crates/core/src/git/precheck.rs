@@ -5,7 +5,7 @@
 
 use super::{Checkout, err, read};
 use crate::adapters::setup;
-use crate::worktrees::{self, Lands};
+use crate::worktrees;
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
@@ -298,23 +298,14 @@ pub(super) fn blocked(
     })
 }
 
-/// What `head` merges into `base` from: git's merge base, or after a squash still in the base,
-/// the HEAD it squashed, so only the work since then merges, not the squashed commits again.
+/// What `head` merges into `base` from: git's merge base.
 pub(super) fn merge_base(
     dir: &Path,
-    lands: &Lands,
     base: &str,
     head: &str,
     stop: &AtomicBool,
 ) -> io::Result<String> {
-    let ancestor =
-        |a: &str, b: &str| read(dir, &["merge-base", "--is-ancestor", a, b], stop).is_ok();
-    match &lands.landing {
-        Some(l) if l.style == "squash" && ancestor(&l.commit, base) && ancestor(&l.head, head) => {
-            Ok(l.head.clone())
-        }
-        _ => git(dir, &["merge-base", base, head], stop),
-    }
+    git(dir, &["merge-base", base, head], stop)
 }
 
 /// The session that keeps landing while it shares this one's folder [D1082].

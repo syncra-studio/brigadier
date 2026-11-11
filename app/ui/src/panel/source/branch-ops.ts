@@ -189,7 +189,7 @@ export function readBranches(target: Target, done: (read: BranchRead | null) => 
 export function first(target: Target, args: string[], done: (reply: Record<string, any>) => void): void {
   run(target, ["first", ...args], (reply) => {
     if (!reply.ok) keep(target, reply);
-    else if (args[0] !== "merge" && args[0] !== "squash") put(target, { rejected: null });
+    else if (args[0] !== "merge") put(target, { rejected: null });
     done(reply);
   });
 }

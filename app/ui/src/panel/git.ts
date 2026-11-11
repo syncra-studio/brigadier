@@ -7,7 +7,7 @@ import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
 import type { FileFlag, LastRun } from "../review/types";
-import type { MergeStyle, SourceFile, SourceState, Step } from "./types";
+import type { SourceFile, SourceState, Step } from "./types";
 
 /*
  * The on-screen checkout's git, from Rust [D30, D71]: its status as the watch pushes it, and each file's counts read
@@ -34,11 +34,10 @@ export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; age
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
 
 /**
- * Rust's next step for the checkout [D1015, D1152]: the step, how the project lands [D1028], and the commits it was
- * worked out on, which a landing pins [D1049]. `ran`: its last run's end, so the brief is read again when only a run
- * changed [D1199].
+ * Rust's next step for the checkout [D1015, D1152]: the step and the commits it was worked out on, which a landing
+ * pins [D1049]. `ran`: its last run's end, so the brief is read again when only a run changed [D1199].
  */
-type StepRead = { step: Step | null; merge: MergeStyle | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
+type StepRead = { step: Step | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
 
 /**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
@@ -176,30 +175,15 @@ export function refreshStep(then?: () => void): void {
 }
 
 /** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]: `done` gets Rust's refusal, or null. */
-export function landBranch(style: MergeStyle, message: string | null, at: StepAt | null, done: (error: string | null) => void): void {
+export function landBranch(at: StepAt | null, done: (error: string | null) => void): void {
   const target = git.target;
   if (!target || !at) return done("Nothing to merge yet.");
-  ask({ op: "run", args: sourceArgs(target, "land", style, at.head, at.base ?? "-", ...(message === null ? [] : ["--message", message])) }, (reply) => {
+  ask({ op: "run", args: sourceArgs(target, "land", at.head, at.base ?? "-") }, (reply) => {
     // A landing stays pending until the step it led to shows [D30].
     if (reply.ok) return refreshStep(() => done(null));
     done(reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
     refreshStep();
   });
-}
-
-/** Remembers how the project lands, shown at once [D1028, D30]. */
-export function setMergeStyle(style: MergeStyle): void {
-  const target = git.target;
-  if (!target) return;
-  if (git.step) set({ step: { ...git.step, merge: style } });
-  ask({ op: "run", args: sourceArgs(target, "style", style) }, () => refreshStep());
-}
-
-/** What squashing at `at` takes in, from Rust: its commits and a first message. */
-export function squashOf(at: StepAt, done: (squash: { message: string; commits: { sha: string; subject: string }[] } | null) => void): void {
-  const target = git.target;
-  if (!target) return done(null);
-  ask({ op: "run", args: sourceArgs(target, "squash", at.head, at.base ?? "-") }, (reply) => done(reply.ok ? reply.squash : null));
 }
 
 function watch(target: Target): void {
@@ -300,7 +284,6 @@ function sourceOf(now: Git): SourceState | null {
     changes,
     merging: null,
     rebasing: null,
-    commits: [],
     sinceBase: [],
   };
 }
@@ -352,13 +335,5 @@ export function commitFiles(all: boolean, message: string, onReply: (reply: Reco
   const target = git.target;
   if (!target) return false;
   ask({ op: "run", args: sourceArgs(target, "make-commit", ...(all ? ["--all"] : []), ...(message ? ["--message", message] : [])) }, onReply);
-  return true;
-}
-
-/** The message writer [D1029]: a commit message for the index (or every change), or a squash's, nothing committed. */
-export function writeMessage(what: "commit" | "squash", all: boolean, onReply: (reply: Record<string, any>) => void): boolean {
-  const target = git.target;
-  if (!target) return false;
-  ask({ op: "run", args: sourceArgs(target, "write", what, ...(all ? ["--all"] : [])) }, onReply);
   return true;
 }

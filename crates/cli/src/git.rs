@@ -255,23 +255,12 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             reply
         }
-        "style" => {
-            step::set_style(data, &target, word(1)?)?;
-            done
-        }
-        "land" | "squash" => {
+        "land" => {
             let Target::Session(id) = target else {
                 return Err(io::Error::other(super::USAGE));
             };
-            match word(0)? {
-                "land" => {
-                    let at = (word(2)?, word(3)?);
-                    let landed =
-                        land::land(data, id, word(1)?, flag(args, "--message"), at, &stop)?;
-                    json!({"ok": true, "landed": landed})
-                }
-                _ => json!({"ok": true, "squash": land::squash(data, id, (word(1)?, word(2)?))?}),
-            }
+            let landed = land::land(data, id, (word(1)?, word(2)?), &stop)?;
+            json!({"ok": true, "landed": landed})
         }
         _ => return Err(io::Error::other(super::USAGE)),
     })

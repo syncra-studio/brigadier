@@ -182,8 +182,7 @@ pub(super) fn make(
     Ok(json!({"ok": true, "sha": sha, "message": message}))
 }
 
-/// `write pr | squash`: a PR's title and body, or a squash's message, written and returned,
-/// nothing committed [D1029].
+/// `write pr`: a PR's title and body, written and returned, nothing committed [D1029].
 pub(super) fn write(
     data: &Path,
     target: &Target,
@@ -192,7 +191,7 @@ pub(super) fn write(
 ) -> io::Result<Value> {
     let stop = AtomicBool::new(false);
     let text = match what {
-        "pr" | "squash" => {
+        "pr" => {
             let Target::Session(id) = target else {
                 return Err(io::Error::other("A project folder has no base."));
             };
@@ -201,14 +200,9 @@ pub(super) fn write(
             // The landing commits every change first, so the message covers those too [D1203].
             let next = commit::prepare(checkout, true, &stop).ok().map(|p| p.tree);
             let (commits, patch) = commit::branch(checkout, &base, next.as_deref(), &stop)?;
-            match what {
-                "pr" => written(data, target, |asks| {
-                    writer::pr_prompt(&patch, &commits, asks)
-                }),
-                _ => written(data, target, |asks| {
-                    writer::commit_prompt(&patch, &commits, asks)
-                }),
-            }
+            written(data, target, |asks| {
+                writer::pr_prompt(&patch, &commits, asks)
+            })
         }
         _ => return Err(io::Error::other(super::USAGE)),
     };
