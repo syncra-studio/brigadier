@@ -15,7 +15,9 @@ import {
 } from "../components/menu";
 import { Copy, Pencil, Pin, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
+import { showToast } from "../components/toast";
 import { pin } from "./actions";
+import { useBranchPreview } from "./rename-branch";
 import type { SessionRow } from "./words";
 
 /** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
@@ -51,27 +53,43 @@ export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () 
   );
 }
 
-/** The old app's rename form: one field, checked here for empty, the rest by Rust. */
-export function RenameDialog({ row, onClose, onRename }: { row: SessionRow | null; onClose: () => void; onRename: (title: string) => void }) {
+/** The old app's rename form, with Rust's branch preview pinned on submit. */
+export function RenameDialog({ row, onClose, onRename }: { row: SessionRow | null; onClose: () => void; onRename: (title: string, branch?: string) => void }) {
   return (
     <Dialog open={row !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>{row && <RenameForm initial={row.title} onClose={onClose} onRename={onRename} />}</DialogContent>
+      <DialogContent>{row && <RenameForm key={row.id} session={row.id} initial={row.title} onClose={onClose} onRename={onRename} />}</DialogContent>
     </Dialog>
   );
 }
 
-function RenameForm({ initial, onClose, onRename }: { initial: string; onClose: () => void; onRename: (title: string) => void }) {
+function RenameForm({ session, initial, onClose, onRename }: { session: string; initial: string; onClose: () => void; onRename: (title: string, branch?: string) => void }) {
   const [value, setValue] = useState(initial);
+  const branch = useBranchPreview(session, value);
+  const { preview, connected } = branch;
+  const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     const title = value.trim();
     if (!title) return setError("Title can't be empty.");
-    if (title !== initial) onRename(title);
+    if (waiting) return;
+    if (!connected) return setError("Brigadier isn't connected.");
+    if (title !== initial) {
+      setWaiting(true);
+      setError(null);
+      const next = await branch.wait();
+      setWaiting(false);
+      if (!next) return;
+      if (next.state === "disconnected") return setError(next.reason);
+      if (next.state === "error") {
+        showToast(next.reason, { tone: "error" });
+        onRename(title);
+      } else onRename(title, next.branch ?? "-");
+    }
     onClose();
   };
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form onSubmit={(event) => void submit(event)} className="grid gap-4">
       <DialogHeader>
         <DialogTitle>Rename session</DialogTitle>
       </DialogHeader>
@@ -79,14 +97,19 @@ function RenameForm({ initial, onClose, onRename }: { initial: string; onClose: 
         <label htmlFor="rename-session" className="text-xs text-muted-foreground">
           Title
         </label>
-        <Input id="rename-session" value={value} autoFocus maxLength={200} aria-invalid={error !== null} onChange={(event) => setValue(event.target.value)} />
-        <ErrorLine error={error} />
+        <Input id="rename-session" value={value} disabled={waiting} autoFocus maxLength={200} aria-invalid={error !== null} onChange={(event) => setValue(event.target.value)} />
+        <p className="min-h-4 text-xs text-muted-foreground" role="status">
+          {preview === null ? "Checking branch name…" : preview.state === "ready" && (preview.branch
+            ? <>Branch will be renamed to <span className="break-all font-mono">{preview.branch}</span></>
+            : preview.reason)}
+        </p>
+        <ErrorLine error={error ?? (preview && preview.state !== "ready" ? preview.reason : null)} />
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit">Rename</Button>
+        <Button type="submit" disabled={waiting || !connected}>{waiting ? "Renaming…" : "Rename"}</Button>
       </DialogFooter>
     </form>
   );

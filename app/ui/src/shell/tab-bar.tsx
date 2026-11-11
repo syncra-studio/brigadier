@@ -113,7 +113,7 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
         <DropdownMenuSeparator />
         <TabMenuItems owner={owner} id={CHAT} order={order} onClose={() => leave(row)} />
       </ContextMenuContent>
-      <RenameDialog row={renaming ? row : null} onClose={() => setRenaming(false)} onRename={(name) => rename(row, name)} />
+      <RenameDialog row={renaming ? row : null} onClose={() => setRenaming(false)} onRename={(name, branch) => rename(row, name, branch)} />
     </ContextMenu>
   );
 }

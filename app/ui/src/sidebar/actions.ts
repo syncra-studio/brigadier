@@ -64,7 +64,7 @@ const named = (row: SessionRow) => `“${row.title || "New session"}”`;
 export const archive = (row: SessionRow) => run(row.id, ["archive", row.id], { archived: Date.now() }, `Couldn't archive ${named(row)}`);
 export const restore = (row: SessionRow) => run(row.id, ["restore", row.id], { archived: null }, `Couldn't bring back ${named(row)}`);
 
-export const rename = (row: SessionRow, title: string) => run(row.id, ["rename", row.id, title], { title }, "Couldn't rename");
+export const rename = (row: SessionRow, title: string, branch?: string) => run(row.id, ["rename", row.id, title, ...(branch === undefined ? [] : ["--branch", branch])], { title }, "Couldn't rename");
 
 /** Read up to `finished`, behind any action still going; no change to show, as the open row draws no dot. */
 export const seen = (id: string, finished: number) => run(id, ["seen", id, String(finished)], {}, "");
