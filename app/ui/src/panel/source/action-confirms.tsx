@@ -58,7 +58,8 @@ export function SquashDialog({ open, branch, base, commits, files = [], message,
             className="max-h-60 w-full resize-none rounded-control border border-transparent bg-fill px-2.5 py-1.5 text-sm outline-none field-sizing-content focus-visible:border-ring"
           />
         </div>
-        <ul className="flex flex-col gap-0.5">
+        {/* Bounded, so a long list scrolls and the buttons stay in view. */}
+        <ul className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
           {commits.map((commit) => (
             <li key={commit.sha} className="flex h-control-sm items-center gap-2 ps-2 text-sm">
               <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
