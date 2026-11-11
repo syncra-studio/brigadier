@@ -1,12 +1,13 @@
-import { type KeyboardEvent, useRef, useState } from "react";
+import { type HTMLAttributes, type KeyboardEvent, type ReactElement, useRef, useState } from "react";
 
-import { Check, ChevronDown, MagnifyingGlassSmSearch, Terminal } from "../../icons";
+import { Check, ChevronDown, MagnifyingGlassSmSearch, Sparkles, Terminal } from "../../icons";
 import { Button } from "../button";
 import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
 import { Dialog, DialogContent } from "../dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { Segmented } from "../segmented";
+import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
 import { STILL } from "./pickers";
@@ -106,6 +107,9 @@ export function ModelPicker({
   search: typed = "",
   asksSwitch = true,
   asked = 0,
+  automatic,
+  efforts = true,
+  trigger,
 }: {
   groups: ModelGroup[];
   value: ModelChoice;
@@ -121,6 +125,12 @@ export function ModelPicker({
   asksSwitch?: boolean;
   /** A count that opens it each time it goes up: a notice's "Choose another model". */
   asked?: number;
+  /** A setting Brigadier may pick for, as the old app's: a switch over the columns, and picking a model turns it off. */
+  automatic?: { chosen: boolean; label: string; hint: string; onChoose: () => void; onTurnOff: () => void };
+  /** False for a setting that takes no effort level: no Effort footer. */
+  efforts?: boolean;
+  /** Its own trigger in place of the composer's pill (a settings row's select). */
+  trigger?: (props: HTMLAttributes<HTMLElement>) => ReactElement;
 }) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(asked);
@@ -145,6 +155,7 @@ export function ModelPicker({
         .toSorted((a, b) => a.rank! - b.rank!)
     : null;
   const first = matches?.[0];
+  const auto = automatic?.chosen === true;
   // A new model keeps the effort when it has that level, else takes its own default.
   // Another agent's model is a switch (Rust starts a new conversation with a hand-off): asked first.
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
@@ -159,7 +170,7 @@ export function ModelPicker({
     else setSwitching(choice);
   };
   const modelRow = (provider: string, entry: Model, mark?: { mark: string | null; label: string }) => {
-    const checked = provider === value.provider && entry.id === value.model;
+    const checked = !auto && provider === value.provider && entry.id === value.model;
     return (
       <button
         key={`${provider}:${entry.id}`}
@@ -199,7 +210,7 @@ export function ModelPicker({
       >
         <PopoverTrigger
           disabled={disabled}
-          render={<ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
+          render={trigger ?? <ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
         >
           {/* The old pill's tighter gap; the pill's own is set in its base. */}
           <span className="flex min-w-0 items-center gap-1">
@@ -246,10 +257,20 @@ export function ModelPicker({
                 className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </label>
+            {automatic && (
+              <div data-slot="model-picker-band" className="flex shrink-0 items-start gap-2.5 border-b border-divider px-4 py-3">
+                <Sparkles aria-hidden className="mt-0.5 size-icon-md shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm">{automatic.label}</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">{automatic.hint}</div>
+                </div>
+                <Switch data-slot="model-picker-automatic" aria-label="Automatic" checked={auto} onCheckedChange={(on) => (on ? automatic.onChoose() : automatic.onTurnOff())} className="mt-0.5" />
+              </div>
+            )}
             <div className="flex min-h-0 flex-1">
               {!matches && (
                 <>
-                  <div role="listbox" aria-label="Agents" data-picker-part="agents" className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5">
+                  <div role="listbox" aria-label="Agents" data-picker-part="agents" className={cx("flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5", auto && "opacity-disabled")}>
                     {groups.map((entry) => (
                       <button
                         key={entry.provider}
@@ -268,7 +289,7 @@ export function ModelPicker({
                   <div aria-hidden className="w-px shrink-0 bg-divider" />
                 </>
               )}
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5">
+              <div className={cx("flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5", auto && "opacity-disabled")}>
                 <div
                   role="listbox"
                   aria-label={matches ? "Matching models" : `${group?.label ?? ""} models`}
@@ -311,7 +332,7 @@ export function ModelPicker({
               </div>
             </div>
             {/* Hidden when the model has no levels (some agents report none). */}
-            {model && model.efforts.length > 0 && (
+            {efforts && model && model.efforts.length > 0 && (
               <div className="flex h-11 shrink-0 items-center gap-3 border-t border-divider ps-4 pe-2.25">
                 <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   Effort
