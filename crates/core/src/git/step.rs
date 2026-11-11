@@ -167,7 +167,13 @@ fn session(
             json!({"kind": "catchUp", "base": base, "conflicts": conflicts, "commit": first})
         }
         Merge::Clean(merged) => {
-            let moved = count(root, &format!("{head}..{base_at}"), stop)?;
+            // After a squash still in the base, the base moved only past that squash: its own
+            // commit isn't counted [D1229].
+            let since = match &lands.landing {
+                Some(l) if l.style == "squash" && l.head == merge_base => l.commit.as_str(),
+                _ => head,
+            };
+            let moved = count(root, &format!("{since}..{base_at}"), stop)?;
             let blocked = match shared_with(data, id) {
                 Some(with) => json!({"why": "shared", "with": with}),
                 None => blocked(root, base, &base_at, &merged, stop)?,
