@@ -60,7 +60,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]
-       brigadier switching [--agent A [--auto on|off] [--release on|off]] [--agents on|off]
+       brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {

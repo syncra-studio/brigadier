@@ -22,7 +22,7 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 /// time when one is reliable.
 const SKIP_MS: u64 = 5 * 3600 * 1000;
 
-/// `switching [--agent A (--auto on|off | --release on|off)] [--agents on|off]`. The confirmation
+/// `switching [--agent A --auto on|off] [--agents on|off]`. The confirmation
 /// before turning one on is the app's; this only stores what was confirmed.
 pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     let _one = STORE.lock().unwrap();
@@ -37,15 +37,14 @@ pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     if let Some(name) = flag(args, "--agent") {
         let a = agent(name)?;
-        for (key, value) in [("auto", on("--auto")?), ("released", on("--release")?)] {
-            let Some(value) = value else { continue };
-            if key == "auto" && a.accounts().is_none() {
+        if let Some(value) = on("--auto")? {
+            if a.accounts().is_none() {
                 return Err(io::Error::other(format!(
                     "{} keeps one login only",
                     a.label()
                 )));
             }
-            let list = v[key].as_array_mut().unwrap();
+            let list = v["auto"].as_array_mut().unwrap();
             list.retain(|x| x != a.name());
             if value {
                 list.push(a.name().into());
@@ -56,7 +55,7 @@ pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
         v["agents"] = value.into();
     }
     save(data, &v)?;
-    Ok(json!({"ok": true, "auto": v["auto"], "released": v["released"], "agents": v["agents"]}))
+    Ok(json!({"ok": true, "auto": v["auto"], "agents": v["agents"]}))
 }
 
 /// "Work (Claude Code)", "this computer's login (Claude Code)", or just the agent for one that
@@ -120,8 +119,6 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
         return Ok(
             json!({"ok": false, "error": "pick", "message": "Pick an account to switch to."}),
         );
-    } else if listed(&v, "released", b) {
-        return Ok(json!({"ok": false, "error": "released"}));
     } else {
         if listed(&v, "auto", b) {
             target = pick_account(data, &v, a, &cur, &spec.cwd).map(|id| (a, id, None));
@@ -141,11 +138,10 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
     let still = || {
         let v = load(data);
         !auto
-            || (!listed(&v, "released", b)
-                && match kind {
-                    "agents" => v["agents"] == true && !listed(&v, "released", to.name()),
-                    _ => listed(&v, "auto", b),
-                })
+            || match kind {
+                "agents" => v["agents"] == true,
+                _ => listed(&v, "auto", b),
+            }
     };
     let call = |req| owner::call(data, id, req);
     let target = Target {
@@ -179,7 +175,7 @@ fn pick_account(data: &Path, v: &Value, a: &dyn Adapter, cur: &str, cwd: &str) -
         })
 }
 
-/// The next agent in adapter order (proposed), not released, with a model usable in this project
+/// The next agent in adapter order (proposed) with a model usable in this project
 /// on its login (or, when it switches accounts automatically, on one of its accounts with room),
 /// and that model: the first it lists (proposed). Sign-in counts only where the model needs it,
 /// which the agent's own model list already says [D43, D89].
@@ -190,7 +186,7 @@ fn pick_agent(
     cwd: &str,
 ) -> Option<(&'static dyn Adapter, String, String)> {
     agents()
-        .filter(|a| a.name() != from && !listed(v, "released", a.name()) && a.exe().is_some())
+        .filter(|a| a.name() != from && a.exe().is_some())
         .find_map(|a| {
             let ids: Vec<String> = accounts_of(v, a.name())
                 .into_iter()
@@ -218,6 +214,5 @@ pub fn switch_settings(data: &Path) -> Value {
 
 pub fn wants(data: &Path, backend: &str, why: &str) -> bool {
     let v = load(data);
-    !listed(&v, "released", backend)
-        && (listed(&v, "auto", backend) || (why == "limited" && v["agents"] == true))
+    listed(&v, "auto", backend) || (why == "limited" && v["agents"] == true)
 }

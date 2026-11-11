@@ -1,7 +1,7 @@
 //! Accounts and switching [D51]. Each extra account is its own CLI home under `accounts/<id>`,
 //! signed in by the CLI's own sign-in in a terminal, so no credential is ever copied, shared or
 //! seen; the computer's own login is never touched. Automatic switching is off until turned on,
-//! per agent for accounts and once for agents, and a released agent takes no part in it. Off means
+//! per agent for accounts and once for agents. Off means
 //! no work at all: no probes, no switch. Nothing here names a provider: each adapter says how it
 //! keeps accounts apart [D43].
 
@@ -23,14 +23,14 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 /// `accounts.json`: the extra accounts, which agents switch accounts automatically, whether agents
-/// switch, which agents are released, and when each account last hit a limit.
+/// switch, and when each account last hit a limit.
 pub(crate) fn load(data: &Path) -> Value {
     let v: Value = fs::read(data.join("accounts.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-    json!({"accounts": list("accounts"), "auto": list("auto"), "released": list("released"),
+    json!({"accounts": list("accounts"), "auto": list("auto"),
         "agents": v["agents"] == true, "limited": v["limited"].as_object().cloned().unwrap_or_default()})
 }
 
@@ -167,8 +167,7 @@ fn list(data: &Path) -> Value {
                             .collect();
                         json!({"vendor": acc.vendor, "list": rows, "auto": listed(v, "auto", a.name())})
                     });
-                    json!({"name": a.name(), "label": a.label(), "installed": a.exe().is_some(),
-                        "released": listed(v, "released", a.name()), "accounts": rows})
+                    json!({"name": a.name(), "label": a.label(), "installed": a.exe().is_some(), "accounts": rows})
                 })
             })
             .collect();
