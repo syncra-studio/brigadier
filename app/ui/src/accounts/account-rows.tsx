@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { type Ref, useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
+import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { DotsHorizontal, Plus, Spinner } from "../icons";
 import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
-import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, signIn, signInRun } from "./api";
+import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, renameAccount, signIn, signInRun, startOn } from "./api";
 import { ConnectStatus, ROW_TITLE, useFailed } from "./parts";
 
 /** How often the accounts are checked again while a sign-in terminal is open. */
@@ -101,8 +102,11 @@ export function AccountRows({
             label={agent.label}
             online={online}
             busy={open !== null || starting !== null}
+            inUse={account.id === (accounts?.accounts?.use ?? "")}
             error={failed[account.id]}
             onSignIn={() => void start(account.id, () => signIn(account.id).then(() => account.id))}
+            onUse={() => void act(account.id, () => startOn(agent.name, account.id))}
+            onRename={list && ((name) => void act(account.id, () => renameAccount(agent.name, account.id, name)))}
             onRemove={() => onRemove(account)}
           />
         ))
@@ -165,8 +169,8 @@ function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: bool
 }
 
 /**
- * One account: its initial, who it is over how it stands; its usage once Rust reads it; then In use where the others have Use (or
- * Sign in), and its ⋯ menu. New sessions start on the computer's own login, so that one is In use.
+ * One account: its initial, who it is over how it stands; its usage once Rust reads it; then In use on the one new
+ * sessions start on where the others have Use (or Sign in), and its ⋯ menu.
  */
 function AccountRow({
   account,
@@ -174,8 +178,11 @@ function AccountRow({
   label,
   online,
   busy,
+  inUse,
   error,
   onSignIn,
+  onUse,
+  onRename,
   onRemove,
 }: {
   account: Account;
@@ -184,15 +191,21 @@ function AccountRow({
   label: string;
   online: boolean;
   busy: boolean;
+  inUse: boolean;
   error: string | undefined;
   onSignIn: () => void;
+  onUse: () => void;
+  /** Absent for a login Rust keeps no name for. */
+  onRename?: (name: string) => void;
   onRemove: () => void;
 }) {
+  const [renaming, setRenaming] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   const c = account.check;
   const own = account.id === "";
   const signedIn = c.signed_in === true;
-  const title = name ?? (own ? OWN_LOGIN : account.name);
-  const line = !c.installed
+  const title = name ?? (account.name || (own ? OWN_LOGIN : "New account"));
+  const status = !c.installed
     ? `${label} isn't installed`
     : account.sign_in?.running
       ? "Signing in…"
@@ -201,6 +214,9 @@ function AccountRow({
         : c.kept_apart === false
           ? `${c.how} · this sign-in kind isn't kept apart, so it's never used`
           : c.how || "Signed in";
+  // Called "This computer's login" already, the line doesn't say it again.
+  const line = own && title !== OWN_LOGIN && !name ? `${status} · ${OWN_LOGIN}` : status;
+  const menu = Boolean(onRename) || !own;
   const limited = account.limited_at !== null && Date.now() - account.limited_at < LIMIT_SHOWN_MS;
   return (
     <div className="flex flex-col">
@@ -213,7 +229,18 @@ function AccountRow({
           </span>
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.75">
-          <span className={cx(ROW_TITLE, "truncate")}>{title}</span>
+          {renaming && onRename ? (
+            <RenameField
+              ref={field}
+              name={account.name}
+              onDone={(next) => {
+                setRenaming(false);
+                if (next !== null && next !== account.name) onRename(next);
+              }}
+            />
+          ) : (
+            <span className={cx(ROW_TITLE, "truncate")}>{title}</span>
+          )}
           <span className="truncate text-xs text-muted-foreground">{line}</span>
           {c.error && <span className="text-xs text-destructive">{c.error}</span>}
           <ErrorLine error={error} />
@@ -226,39 +253,78 @@ function AccountRow({
             <Button variant="soft" size="sm" disabled={!online || !c.installed || busy} onClick={onSignIn}>
               Sign in
             </Button>
-          ) : own && signedIn ? (
-            <Badge variant="success" title="New sessions start on this account" className="shrink-0">
+          ) : inUse && signedIn ? (
+            <Badge variant="success" title="New chats start on this account" className="shrink-0">
               In use
             </Badge>
           ) : (
-            // Drawn only: starting new sessions on another account waits for Rust [D388].
-            <Button variant="soft" size="sm" disabled title="Start new sessions on this account">
+            <Button variant="soft" size="sm" disabled={!online || !signedIn || c.kept_apart === false} title="Start new chats on this account" onClick={onUse}>
               Use
             </Button>
           )}
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger
-              render={<Button size="icon-xs" variant="ghost" aria-label={`${title}: more`} className="shrink-0 text-muted-foreground data-popup-open:bg-fill data-popup-open:text-foreground" />}
-            >
-              <DotsHorizontal />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {/* Drawn only: naming an account waits for Rust [D388]. */}
-              <DropdownMenuItem disabled>Rename</DropdownMenuItem>
-              {!own && signedIn && (
-                <DropdownMenuItem disabled={!online || busy} onClick={onSignIn}>
-                  Sign in again
-                </DropdownMenuItem>
-              )}
-              {!own && (
-                <DropdownMenuItem variant="destructive" disabled={!online || Boolean(account.sign_in?.running)} onClick={onRemove}>
-                  Remove
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {menu && (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger
+                render={<Button size="icon-xs" variant="ghost" aria-label={`${title}: more`} className="shrink-0 text-muted-foreground data-popup-open:bg-fill data-popup-open:text-foreground" />}
+              >
+                <DotsHorizontal />
+              </DropdownMenuTrigger>
+              {/* Focus goes on to the name being edited, not back to ⋯. */}
+              <DropdownMenuContent align="end" finalFocus={() => field.current ?? true}>
+                {onRename && (
+                  <DropdownMenuItem disabled={!online} onClick={() => setRenaming(true)}>
+                    Rename
+                  </DropdownMenuItem>
+                )}
+                {!own && signedIn && (
+                  <DropdownMenuItem disabled={!online || busy} onClick={onSignIn}>
+                    Sign in again
+                  </DropdownMenuItem>
+                )}
+                {!own && (
+                  <DropdownMenuItem variant="destructive" disabled={!online || Boolean(account.sign_in?.running)} onClick={onRemove}>
+                    Remove
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The account's name, editable, the old app's: Enter or leaving the field keeps it (emptied, the account goes by its
+ * own name again), Escape drops the edit, and so does leaving it untouched.
+ */
+function RenameField({ name, onDone, ref }: { name: string; onDone: (name: string | null) => void; ref: Ref<HTMLInputElement> }) {
+  const [value, setValue] = useState(name);
+  const done = useRef(false);
+  const finish = (next: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(next === null || next === name ? null : next.trim());
+  };
+  return (
+    <Input
+      ref={ref}
+      aria-label="Account name"
+      placeholder="Name this account"
+      autoFocus
+      value={value}
+      className="h-7 max-w-xs"
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => finish(value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") finish(value);
+        if (event.key === "Escape") {
+          // Esc here drops the edit rather than leaving Settings.
+          event.stopPropagation();
+          finish(null);
+        }
+      }}
+    />
   );
 }
