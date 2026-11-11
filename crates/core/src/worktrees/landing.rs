@@ -1,7 +1,7 @@
 //! Land's part of a session's record [D1028, D1049]: its last landing into the base, which goes
 //! wherever the record goes [D1082], and whether the branch still holds work that never landed.
 
-use super::{err, git, has_branch, lock, read, write};
+use super::{err, git, has_branch, read, write};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -37,13 +37,8 @@ pub fn lands(dir: &Path) -> io::Result<Option<Lands>> {
     }))
 }
 
-/// Records a landing in the session's record, or puts back the one before (None: none).
-pub fn set_landing(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
-    let _one = lock(dir)?;
-    set_landing_held(dir, landing)
-}
-
-/// `set_landing` for a caller that holds the session's `lock`.
+/// Records a landing in the session's record, or puts back the one before (None: none). The
+/// caller holds the session's `lock`.
 pub fn set_landing_held(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
     let Some(mut owned) = read(dir)? else {
         return err("This session has no worktree.".into());

@@ -74,7 +74,9 @@ pub fn land(
     pinned: (&str, &str),
     stop: &AtomicBool,
 ) -> io::Result<Value> {
-    landing(data, id, style, message, pinned, false, stop)
+    // The session's lock before the checkout's, as everywhere else [D1235].
+    let _one = worktrees::lock(&session_dir(data, id))?;
+    land_held(data, id, style, message, pinned, stop)
 }
 
 /// `land` for a caller that holds the session's `worktrees::lock` across it [D1208].
@@ -83,25 +85,9 @@ pub fn land_held(
     id: &str,
     style: &str,
     message: Option<&str>,
-    pinned: (&str, &str),
-    stop: &AtomicBool,
-) -> io::Result<Value> {
-    landing(data, id, style, message, pinned, true, stop)
-}
-
-fn landing(
-    data: &Path,
-    id: &str,
-    style: &str,
-    message: Option<&str>,
     (head, base): (&str, &str),
-    held: bool,
     stop: &AtomicBool,
 ) -> io::Result<Value> {
-    let set_landing = match held {
-        true => worktrees::landing::set_landing_held,
-        false => worktrees::set_landing,
-    };
     let squash = match style {
         "merge" => false,
         "squash" => true,
@@ -193,7 +179,7 @@ fn landing(
         style: style.into(),
         at_ms,
     };
-    set_landing(&dir, Some(landing))?;
+    worktrees::landing::set_landing_held(&dir, Some(landing))?;
     let moved = move_base(
         root,
         &lands.base,
@@ -204,7 +190,7 @@ fn landing(
         stop,
     );
     if let Err(e) = moved {
-        let _ = set_landing(&dir, lands.landing);
+        let _ = worktrees::landing::set_landing_held(&dir, lands.landing);
         return Err(e);
     }
     // The style it landed with is the project's pick from now on [D1028].
