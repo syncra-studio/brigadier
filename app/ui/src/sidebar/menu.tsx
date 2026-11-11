@@ -100,7 +100,7 @@ function RenameForm({ session, initial, onClose, onRename }: { session: string; 
         <Input id="rename-session" value={value} disabled={waiting} autoFocus maxLength={200} aria-invalid={error !== null} onChange={(event) => setValue(event.target.value)} />
         <p className="min-h-4 text-xs text-muted-foreground" role="status">
           {preview === null ? "Checking branch name…" : preview.state === "ready" && (preview.branch
-            ? <>Branch will be renamed to <span className="break-all font-mono">{preview.branch}</span></>
+            ? <>Branch will be renamed to <span className="font-mono break-words">{preview.branch}</span></>
             : preview.reason)}
         </p>
         <ErrorLine error={error ?? (preview && preview.state !== "ready" ? preview.reason : null)} />
