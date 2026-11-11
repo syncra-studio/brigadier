@@ -8,6 +8,7 @@ import { DropdownMenuItem } from "../components/menu";
 import { EmptyState } from "../components/empty-state";
 import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
+import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
@@ -18,7 +19,7 @@ import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
 import { useStored } from "../sidebar/sidebar";
 import type { SessionRow } from "../sidebar/words";
-import { type ArchiveCheck, hideDeleting, named } from "./archive";
+import { type ArchiveCheck, hideDeleting } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is

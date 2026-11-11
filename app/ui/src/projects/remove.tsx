@@ -7,11 +7,12 @@ import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Radio, RadioGroup } from "../components/radio";
+import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Branch, Chats, ChevronRightAlt, Folder, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
-import { type ArchiveCheck, named } from "../sessions/archive";
+import type { ArchiveCheck } from "../sessions/archive";
 import { shortPath } from "./add-project";
 import { type Project, useProjects } from "./projects";
 

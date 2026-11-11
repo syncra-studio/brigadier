@@ -20,20 +20,12 @@ export const RewindContext = createContext<{
 export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean }; why?: string };
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
-const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
-const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
+export const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
+export const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
 
 function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs break-words text-muted-foreground">{children}</p>;
 }
-
-/** Why only the chat can go back, in one line (proposed words) [D384, D1192]. */
-const KEEP_ONLY: Record<string, string> = {
-  no_project: "Files stay: this session has no project folder.",
-  not_git: "Files stay: this folder isn't a git repository, so no snapshots are taken.",
-  missing: "Files stay: there's no snapshot of the files from this turn.",
-  unreadable: "Files stay: this turn's snapshot couldn't be read.",
-};
 
 /** What stays as it is: edited since, too big to keep, nested repositories. */
 function Stays({ hand, big, nested }: { hand: string[]; big: string[]; nested: string[] }) {
@@ -99,17 +91,16 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
           </Choice>
         </RadioGroup>
       )}
-      {!can && !preview.sharer && preview.error === undefined && (
+      {/* Where nothing can go back, no file line [D481]; only why some can't, or that the snapshot can't be read. */}
+      {!can && !preview.sharer && preview.error === undefined && (preview.why === "unreadable" || (preview.why === undefined && kept)) && (
         <div className="flex flex-col gap-0.5">
-          {preview.why !== undefined ? (
-            <Note>{KEEP_ONLY[preview.why] ?? `Files stay: they can't be put back (${preview.why}).`}</Note>
-          ) : kept ? (
+          {preview.why === "unreadable" ? (
+            <Note>Files stay: this turn's snapshot couldn't be read.</Note>
+          ) : (
             <>
               <Note>Files stay: nothing the agent changed can go back.</Note>
               <Stays hand={hand} big={big} nested={nested} />
             </>
-          ) : (
-            <Note>Files stay: they're already as they were before this message.</Note>
           )}
         </div>
       )}

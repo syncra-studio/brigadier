@@ -9,11 +9,8 @@ const NONE = { paths: [], hand: [], leftOut: [], nested: [], commits: false };
 const CASES: [string, RewindPreview][] = [
   ["files can go back", { ...NONE, paths: ["src/totals.ts", "src/invoice.ts"] }],
   ["hand edits, big files, a nested repo, commits", { paths: ["src/totals.ts"], hand: ["README.md"], leftOut: ["data/dump.sql", "vendor/sdk"], nested: ["vendor/sdk"], commits: true }],
-  ["nothing to put back: already as before", NONE],
+  ["nothing can go back: no file line (already as before, no git, no snapshot, no project)", NONE],
   ["nothing can go back: all edited since or too big", { ...NONE, hand: ["README.md"], leftOut: ["data/dump.sql"] }],
-  ["keep only: not a git folder", { ...NONE, why: "not_git" }],
-  ["keep only: no snapshot of this turn", { ...NONE, why: "missing" }],
-  ["keep only: no project folder", { ...NONE, why: "no_project" }],
   ["keep only: snapshot unreadable", { ...NONE, why: "unreadable" }],
   ["refused", { ...NONE, error: "This message can't be rewound to any more." }],
   ["shared folder: the fork worked during this turn", { ...NONE, sharer: { id: "s-2", now: false } }],

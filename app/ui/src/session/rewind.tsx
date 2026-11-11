@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { Dialog, DialogContent } from "../components/dialog";
-import { RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
+import { files, named, RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
 import { showToast, toastManager } from "../components/toast";
 import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
@@ -37,8 +37,6 @@ function said(reply: Record<string, any>, restore: boolean): string {
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
 }
 
-const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
-
 /** Undo restore, from the restore's toast, one deep [D1196]: shown at once, then what came back and what stayed. */
 function undoRestore(run: Runner, id: string, cid: string, op: string) {
   const pending = showToast("Undoing restore…", { stays: true });
@@ -48,7 +46,7 @@ function undoRestore(run: Runner, id: string, cid: string, op: string) {
     const kept: string[] = reply.kept ?? [];
     const back = `Restore undone · ${files(reply.undone)} back`;
     // Proposed words: what changed since the restore keeps its edit [D1192].
-    showToast(kept.length > 0 ? `${back}, ${kept.length} kept as edited since` : back, { tone: kept.length > 0 ? "neutral" : "success" });
+    showToast(kept.length > 0 ? `${back}, kept as edited since: ${named(kept)}` : back, { tone: kept.length > 0 ? "neutral" : "success" });
   });
 }
 
