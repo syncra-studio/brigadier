@@ -100,7 +100,8 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
       {/* Focus is on the card, so its own Escape closes it; a click elsewhere leaves it shown. */}
       <Popover.Root open={open} onOpenChange={(next, details) => !next && details.reason === "escape-key" && onClose()}>
         <Popover.Portal>
-          <Popover.Positioner className="z-popup" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
+          {/* Over the thread, under the toasts and its own menus (z-popup), which come before it in the page. */}
+          <Popover.Positioner className="z-20" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
             <Popover.Popup
               ref={popup}
               // The card itself takes the focus, not its first button, whose tip would open with it; a dialog the card
