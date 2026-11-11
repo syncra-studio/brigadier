@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { showToast } from "../../components/toast";
 import { ask } from "../../daemon";
 import { sourceArgs, type Target } from "../git";
+import { gitFailed } from "../notice";
 import type { Branch } from "../types";
 
 /*
@@ -45,11 +46,11 @@ function run(target: Target, args: string[], onReply: (reply: Record<string, any
   });
 }
 
-/** A failed move's toast: one plain sentence, git's own words behind Details [D1142]. */
-export function failed(reply: Record<string, any>): void {
-  if (reply.error === "disconnected") return void showToast("Brigadier isn't connected.", { tone: "error" });
+/** A failed move's notice, on the checkout that asked for it [D1264]. */
+export function failed(target: Target, reply: Record<string, any>): void {
+  if (reply.error === "disconnected") return gitFailed(target, "Brigadier isn't connected.");
   const [said, details] = split(String(reply.error));
-  showToast(said, { tone: "error", actions: details ? [{ label: "Details", run: () => showToast(details, { tone: "error", stays: true }) }] : [] });
+  gitFailed(target, said, details);
 }
 
 /** Sync (pull then push) or Publish: the sync item spins until Rust answers. */
@@ -58,7 +59,7 @@ export function sync(target: Target, verb: "sync" | "publish", branch: string): 
   put(target, { syncing: true });
   run(target, [verb], (reply) => {
     put(target, { syncing: false });
-    if (!reply.ok) return failed(reply);
+    if (!reply.ok) return failed(target, reply);
     showToast(verb === "publish" ? `Published ${branch}` : `Synced ${branch}`, { tone: "success" });
   });
 }
@@ -71,7 +72,7 @@ export function name(target: Target, args: string[], name: string, done?: () => 
     // A read that never shows it (git took another name) doesn't hold it.
     if (reply.ok) return void setTimeout(() => opOf(target).naming === name && put(target, { naming: null }), 3000);
     put(target, { naming: null });
-    failed(reply);
+    failed(target, reply);
   });
 }
 
@@ -81,7 +82,7 @@ export const named = (target: Target) => put(target, { naming: null });
 /** Changes what the session lands into; `done` reads again what follows the base [D1143]. */
 export function setBase(target: Target, base: string, done: () => void): void {
   run(target, ["base", base], (reply) => {
-    if (!reply.ok) return failed(reply);
+    if (!reply.ok) return failed(target, reply);
     done();
     showToast(`Lands into ${base} now`, { tone: "success" });
   });
@@ -90,7 +91,7 @@ export function setBase(target: Target, base: string, done: () => void): void {
 /** The quick pick's list, read as it opens; null when Rust couldn't read it, after saying why. */
 export function readBranches(target: Target, done: (read: BranchRead | null) => void): void {
   run(target, ["branches"], (reply) => {
-    if (!reply.ok) failed(reply);
+    if (!reply.ok) failed(target, reply);
     done(reply.ok ? reply.branches : null);
   });
 }

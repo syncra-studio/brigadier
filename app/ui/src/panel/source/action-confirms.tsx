@@ -18,7 +18,7 @@ export function MessageDialog({ open, message, failed = false, held, onMessage, 
 }) {
   return (
     <Confirm open={open} onOpenChange={(next) => !next && onCancel()} held={held}>
-      <ConfirmForm title="Commit message" description="The next commit uses it, from the button or Commit only." confirm="Save" onConfirm={onSave} onCancel={onCancel}>
+      <ConfirmForm title="Commit message" description="Commits every change with this message." confirm="Commit" disabled={!message.trim()} onConfirm={onSave} onCancel={onCancel}>
         <Textarea aria-label="Commit message" placeholder={failed ? "Type the commit message" : "The writer writes one"} value={message} autoFocus onChange={(event) => onMessage(event.target.value)} />
       </ConfirmForm>
     </Confirm>

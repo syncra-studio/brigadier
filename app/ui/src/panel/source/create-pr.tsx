@@ -12,6 +12,7 @@ import { ConfirmForm } from "../../components/confirm-dialog";
 import { ask, useDaemon } from "../../daemon";
 import type { StepAt } from "../git";
 import type { Pr } from "../types";
+import { gitFailed } from "../notice";
 import { failed } from "./branch-ops";
 import { Confirm, type Held } from "./dialogs";
 
@@ -131,7 +132,6 @@ const put = (session: string, next: Partial<Op>) => {
   for (const listener of listeners) listener();
 };
 const textOf = (op: Op): Text => op.text ?? (op.info ? { title: op.info.title, body: op.info.body, draft: false } : EMPTY);
-const LOST = "Brigadier isn't connected. This waits until it is.";
 
 // A push or create moves refs the watch may not follow (a new upstream), so the card's sync count reads git again after each.
 const run = (session: string, args: string[], onReply: (reply: Record<string, any>) => void) =>
@@ -207,7 +207,9 @@ function create(session: string, first: First | null) {
   move(session, ["create", "--title", text.title, "--body", text.body, ...(text.draft ? ["--draft"] : [])], first, (reply) => {
     if (reply.ok) return made(session, reply.pr);
     const lost = reply.error === "disconnected";
-    put(session, { busy: null, uncertain: lost || opOf(session).uncertain, error: lost ? "Brigadier lost its connection. It checks whether the PR was made before making another." : reply.error });
+    put(session, { busy: null, open: false, uncertain: lost || opOf(session).uncertain, error: null });
+    if (lost) gitFailed({ session }, "Couldn't confirm whether the pull request was created.", "Brigadier lost its connection. It checks whether the PR was made before making another.");
+    else failed({ session }, reply);
   });
 }
 
@@ -220,7 +222,8 @@ function confirm(session: string, first: First | null) {
       put(session, { uncertain: false });
       return create(session, first);
     }
-    put(session, { busy: null, error: reply.error === "disconnected" ? LOST : reply.error });
+    put(session, { busy: null, open: false, error: null });
+    failed({ session }, reply);
   });
 }
 
@@ -232,7 +235,7 @@ function push(session: string, page: boolean, first: First | null) {
   const pending = showToast(`Pushing ${branch}…`, { stays: true });
   move(session, page ? ["link", "--title", text.title, "--body", text.body] : ["push"], first, (reply) => {
     toastManager.close(pending);
-    if (!reply.ok) return failed(reply);
+    if (!reply.ok) return failed({ session }, reply);
     // Past the click, so window.open would be blocked: main opens it [D1142].
     if (page) window.brigadier?.openLink(reply.url);
     else showToast(`Pushed ${branch}`, { tone: "success" });

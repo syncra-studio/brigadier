@@ -2,9 +2,11 @@ import { type Key, type ReactElement, useState } from "react";
 
 import { Button } from "../components/button";
 import type { Notice } from "../components/composer/rail";
+import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
 import { showToast } from "../components/toast";
+import { ask } from "../daemon";
 import { store } from "../onboarding/api";
-import { commitFiles, refreshStep, type Target } from "./git";
+import { refreshStep, sourceArgs, type Target } from "./git";
 import { MessageDialog } from "./source/action-confirms";
 
 /**
@@ -20,6 +22,7 @@ let last = 0;
 const TEMP = /(?:\/private)?\/(?:var\/folders|tmp)\/\S+/g;
 
 export function gitFailed(target: Target | null, said: string, details = "", writer = false): void {
+  said = said.replace(TEMP, "…").trim();
   details = details.replace(TEMP, "…").trim();
   if (!target || !("session" in target)) return void showToast(details ? `${said}\n\n${details}` : said, { tone: "error" });
   notices.set(new Map(notices.get()).set(target.session, { id: ++last, text: said, details, writer }));
@@ -32,7 +35,7 @@ function drop(session: string): void {
 }
 
 /**
- * The session's git notice for its composer's rail, Details opening git's own words under the sentence, with "Type a
+ * The session's git notice for its composer's rail, Details opening git's own words, with "Type a
  * message…" after a writer failure; its small dialog commits with the typed message [D1293]. `dismiss` takes ✕ for
  * it and says whether the key was its own.
  */
@@ -45,10 +48,10 @@ export function useGitNotice(session: string): { notice: Notice | null; dialog: 
     ? {
         id: key!,
         level: "error",
-        text: open === now.id && now.details ? `${now.text}\n\n${now.details}` : now.text,
+        text: now.text,
         action: (
           <>
-            {now.details && open !== now.id && (
+            {now.details && (
               <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => setOpen(now.id)}>
                 Details
               </Button>
@@ -63,24 +66,32 @@ export function useGitNotice(session: string): { notice: Notice | null; dialog: 
       }
     : null;
   const dialog = (
-    <MessageDialog
-      open={typing !== null}
-      message={typing ?? ""}
-      failed
-      onMessage={setTyping}
-      onCancel={() => setTyping(null)}
-      onSave={() => {
-        const message = (typing ?? "").trim();
-        if (!message) return;
-        setTyping(null);
-        drop(session);
-        const sent = commitFiles(true, message, (reply) => {
-          if (!reply.ok) gitFailed({ session }, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
-          refreshStep();
-        });
-        if (!sent) gitFailed({ session }, "Couldn't commit.", "This checkout isn't on screen.");
-      }}
-    />
+    <>
+      <Dialog open={!!now && open === now.id} onOpenChange={(next) => !next && setOpen(null)}>
+        <DialogContent>
+          <DialogTitle>Git details</DialogTitle>
+          <pre className="max-h-80 overflow-auto font-mono text-xs whitespace-pre-wrap break-words text-muted-foreground">{now?.details}</pre>
+        </DialogContent>
+      </Dialog>
+      <MessageDialog
+        open={typing !== null}
+        message={typing ?? ""}
+        failed
+        onMessage={setTyping}
+        onCancel={() => setTyping(null)}
+        onSave={() => {
+          const message = (typing ?? "").trim();
+          if (!message) return;
+          setTyping(null);
+          drop(session);
+          ask({ op: "run", args: sourceArgs({ session }, "make-commit", "--all", "--message", message) }, (reply) => {
+            if (!reply.ok) gitFailed({ session }, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
+            ask({ op: "git_refresh" });
+            refreshStep();
+          });
+        }}
+      />
+    </>
   );
   return { notice, dialog, dismiss: (k) => (k === key ? (drop(session), true) : false) };
 }
