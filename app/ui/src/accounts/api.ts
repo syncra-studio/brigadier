@@ -94,13 +94,13 @@ export const signInRun = (agent: string, id: string) => `setup-${agent}-${id}`;
 
 /** Adds an account and opens its CLI's own sign-in; returns the new account's id. */
 export async function addAccount(agent: string): Promise<string> {
-  const reply = await run(["accounts", "add", agent, "--cols", "100", "--rows", "16"]);
+  const reply = await run(["accounts", "add", agent, "--cols", "100", "--rows", "10"]);
   void loadAccounts();
   return reply.account as string;
 }
 
 export async function signIn(id: string): Promise<void> {
-  await run(["accounts", "sign-in", id, "--cols", "100", "--rows", "16"]);
+  await run(["accounts", "sign-in", id, "--cols", "100", "--rows", "10"]);
   void loadAccounts();
 }
 

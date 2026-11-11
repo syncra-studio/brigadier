@@ -79,8 +79,9 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
     setFailed(({ [agent.name]: _, ...rest }) => rest);
     setStarting(agent.name);
     try {
-      // Wide, so a link it prints stays on one line.
-      await run(["setup", agent.name, action, "--cols", "500", "--rows", "40"]);
+      // Wide, so a link it prints stays on one line; fewer rows than its pane, as a picker drawn taller and then
+      // shrunk to the pane shows its top lines twice, while one grown redraws clean.
+      await run(["setup", agent.name, action, "--cols", "500", "--rows", "10"]);
       await checkOne(agent.name);
     } catch (cause) {
       setFailed((all) => ({ ...all, [agent.name]: errorText(cause) }));
