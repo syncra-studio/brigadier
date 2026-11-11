@@ -24,6 +24,10 @@ pub fn catch_up(
     (head, base_at): (&str, &str),
     stop: &AtomicBool,
 ) -> io::Result<()> {
+    // Catching up moves the branch: the session that lands does it [D1082].
+    if let Some(with) = super::precheck::shared_with(data, id) {
+        return err(format!("Catching up stays with {with}."));
+    }
     // The session's lock before the checkout's, as a turn start does [D1235].
     let dir = session_dir(data, id);
     let _one = worktrees::lock(&dir)?;
@@ -64,14 +68,25 @@ pub fn catch_up(
         lands.base,
         super::sync::branch(&session)?
     );
-    let merged = git(
-        root,
-        &["merge", "--no-ff", "--no-edit", "-m", &message, base_at],
-        stop,
-    );
-    if merged.is_err() && session.git_dir.join("MERGE_HEAD").exists() {
-        let _ = git(root, &["merge", "--abort"], stop);
-        return err(CONFLICTS);
+    // Never over an ignored file of the user's, never with a stash of its own [D35].
+    let args = [
+        "-c",
+        "merge.autoStash=false",
+        "merge",
+        "--no-ff",
+        "--no-autostash",
+        "--no-overwrite-ignore",
+        "--no-edit",
+        "-m",
+        &message,
+        base_at,
+    ];
+    match git(root, &args, stop) {
+        Ok(_) => Ok(()),
+        Err(_) if session.git_dir.join("MERGE_HEAD").exists() => {
+            let _ = git(root, &["merge", "--abort"], stop);
+            err(CONFLICTS)
+        }
+        Err(e) => err(format!("The merge didn't go through.\n\n{e}")),
     }
-    merged.map(drop)
 }

@@ -130,7 +130,9 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     // Our own changes to a folder others share wait for no other session's turn [D1082].
     let _shared = match word(0)? {
-        "sync" | "publish" => super::sessions::guard(data, &git::folder(data, &target)?, me)?,
+        "sync" | "publish" | "push" | "catch-up" => {
+            super::sessions::guard(data, &git::folder(data, &target)?, me)?
+        }
         _ => None,
     };
     Ok(match word(0)? {
@@ -228,6 +230,11 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "publish" => {
             sync::publish(&checkout, sync::trusted(data, &target), &stop)?;
+            done
+        }
+        // The control's Push: to its upstream only, nothing pulled [D1285].
+        "push" => {
+            sync::push(&checkout, sync::trusted(data, &target), &stop)?;
             done
         }
         // The card control's next step, and landing [D1028, D1049, D1286].

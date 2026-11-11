@@ -2,7 +2,9 @@
 //! why each of its menu's rows can't run, worked out from git each read: Rust sends structure and
 //! the UI writes the words [D65]. Nothing here runs anything [D1203, D1286].
 
-use super::precheck::{Merge, blocked, count, git, merge, merge_base, midway, shared_with};
+use super::precheck::{
+    Merge, blocked, count, git, merge, merge_base, midway, rebasing, shared_with,
+};
 use super::{Checkout, Status, Target, checkout, push, read, status};
 use crate::worktrees::{self, Lands};
 use crate::{host, load};
@@ -26,7 +28,11 @@ pub fn step(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Value
         Some(holder) => worktrees::lands(&holder.dir)?,
         None => None,
     };
-    let (step, at) = match now.head["branch"].as_str() {
+    // A rebase stopped midway detaches HEAD: its branch is the one it rebases.
+    let rebasing = rebasing(&checkout.root, stop);
+    let branch =
+        (now.head["branch"].as_str()).or_else(|| rebasing.as_deref()?.strip_prefix("refs/heads/"));
+    let (step, at) = match branch {
         // Detached: the card's branch row says so, and there's no step [D1187].
         None => (Value::Null, json!({"head": now.head["head"], "base": null})),
         Some(branch) => control(data, id, &checkout, &now, branch, lands.as_ref(), stop)?,
@@ -75,8 +81,8 @@ fn control(
             .filter(|(_, f)| f["changes"] == "conflicted")
             .map(|(path, _)| path.as_str())
             .collect::<Vec<_>>();
-        let onto = lands.map(|l| l.base.as_str()).or(upstream);
-        resolve = json!({"op": "merge", "ref": onto, "files": conflicted});
+        let (op, onto) = under_way(checkout, branch, lands.map(|l| l.base.as_str()), stop);
+        resolve = json!({"op": op, "ref": onto, "files": conflicted});
         next = Some("resolve");
         for row in ["commit", "push", "createPr", "sync", "catchUp", "merge"] {
             why(row, "conflicts");
@@ -147,7 +153,7 @@ fn control(
             }
             if let Some(with) = &s.shared {
                 facts["sharedWith"] = with.as_str().into();
-                for row in ["createPr", "merge"] {
+                for row in ["createPr", "catchUp", "merge"] {
                     why(row, "shared");
                 }
             }
@@ -317,6 +323,45 @@ fn session(
         no_host,
         blocked,
     })
+}
+
+/// What a merge or rebase stopped midway brings in: the branch's own upstream (a pull) or the base
+/// (a merge) when it's one of them, else its commit [D1290].
+fn under_way(
+    checkout: &Checkout,
+    branch: &str,
+    base: Option<&str>,
+    stop: &AtomicBool,
+) -> (&'static str, String) {
+    let dir = &checkout.git_dir;
+    let incoming = ["MERGE_HEAD", "rebase-merge/onto", "rebase-apply/onto"]
+        .iter()
+        .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())
+        .and_then(|text| text.lines().next().map(str::to_string))
+        .unwrap_or_default();
+    let root = &checkout.root;
+    let upstream = git(
+        root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            &format!("{branch}@{{upstream}}"),
+        ],
+        stop,
+    );
+    let at = |name: &str| {
+        git(
+            root,
+            &["rev-parse", "--verify", &format!("{name}^{{commit}}")],
+            stop,
+        )
+    };
+    for (op, name) in [("pull", upstream.ok()), ("merge", base.map(String::from))] {
+        if let Some(name) = name.filter(|n| at(n).is_ok_and(|c| c == incoming)) {
+            return (op, name);
+        }
+    }
+    ("merge", incoming.chars().take(7).collect())
 }
 
 /// The files merging `theirs` into `head` would conflict in, as `git merge-tree` says; none when

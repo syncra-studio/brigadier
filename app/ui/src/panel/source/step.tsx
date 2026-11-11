@@ -56,7 +56,8 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
 
   const run = (act: GitAct | "resolve") => {
     if (!step || off || now) return;
-    if (act === "createPr") return pr.onPick("createPr");
+    // A host its CLI can't make PRs on gets its own page, pushed first [D1030].
+    if (act === "createPr") return pr.onPick(pr.way === "page" ? "openPrPage" : "createPr");
     if (!session) return;
     if (act === "resolve") return resolveChip(session, step);
     const at = data.at ?? null;
@@ -78,8 +79,8 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
         return;
       }
       case "push":
-        // A branch with no upstream is published [D1045].
-        return gitMove([data.source?.upstream ? "sync" : "publish"], done("Couldn't push."));
+        // A branch with no upstream is published [D1045]; one with an upstream only pushed, nothing pulled.
+        return gitMove([data.source?.upstream ? "push" : "publish"], done("Couldn't push."));
       case "sync":
         return gitMove(["sync"], done("Couldn't sync."));
       case "catchUp":

@@ -155,6 +155,22 @@ pub fn sync(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<(
     Ok(())
 }
 
+/// Push only, to the branch's own upstream (its remote and branch), its tracking kept: the control's
+/// Push [D1285]. A remote with commits this branch doesn't have turns it away; Sync is the fix.
+pub fn push(checkout: &Checkout, hooks: bool, stop: &AtomicBool) -> io::Result<()> {
+    let branch = branch(checkout)?;
+    let (Some(remote), Some(dest)) = (
+        config(checkout, &format!("branch.{branch}.remote")),
+        config(checkout, &format!("branch.{branch}.merge")),
+    ) else {
+        return err("This branch isn't published yet.");
+    };
+    if remote == "." {
+        return err("This branch follows a local branch, so there's nowhere to push.");
+    }
+    push::push_to(checkout, &remote, &branch, &dest, &[], hooks, stop)
+}
+
 const CONFLICTS: &str = "Pulling would conflict with this branch's commits.";
 
 fn pull(
