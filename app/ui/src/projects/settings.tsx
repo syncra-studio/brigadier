@@ -89,6 +89,7 @@ export function ProjectSettings({
   const [setup, setSetup] = useState(project.setup);
   const [prefix, setPrefix] = useState(project.branch_prefix ?? "brigadier/");
   const [error, setError] = useState<string | null>(null);
+  const [prefixError, setPrefixError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const change = async () => {
@@ -125,11 +126,15 @@ export function ProjectSettings({
     if (!args.length) return onClose();
     setBusy(true);
     setError(null);
+    setPrefixError(null);
     try {
       await source.save(project, changed, args);
       onClose();
     } catch (cause) {
-      setError(errorText(cause));
+      const text = errorText(cause);
+      // Rust's prefix refusal is the only one naming the prefix: it shows under its field.
+      if (changed.branch_prefix !== undefined && /prefix/i.test(text)) setPrefixError(text);
+      else setError(text);
       setBusy(false);
     }
   };
@@ -155,6 +160,7 @@ export function ProjectSettings({
         {folder === project.folder && <TrustRow project={project} source={source} />}
         <Field label="Branch prefix" aside="Starts new session branch names; leave empty for no prefix" htmlFor={`${id}-prefix`}>
           <Input id={`${id}-prefix`} value={prefix} onChange={(event) => setPrefix(event.target.value)} />
+          <ErrorLine error={prefixError} />
         </Field>
         <PathRows files={files} onFiles={setFiles} />
         <Field label="Setup script" aside="Runs in each new worktree before its first turn, only while the folder is trusted" htmlFor={`${id}-setup`}>
