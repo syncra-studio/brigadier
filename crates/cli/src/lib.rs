@@ -56,7 +56,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier panel [open on|off | width <px>]
        brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft] | host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
-       brigadier awake [off|work|always] | settings [KEY VALUE]
+       brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
        brigadier profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | sign-in <id> | close <id> | remove <id>]

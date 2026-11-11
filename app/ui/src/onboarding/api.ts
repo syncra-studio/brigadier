@@ -76,8 +76,13 @@ export type Agent = {
   sign_in: string | null;
   /** Its mark, one SVG from its adapter [D118, D123]; none: a generic terminal. */
   mark: string | null;
-  /** A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page. */
-  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null } | null;
+  /** Off: left out of new sessions, onboarding and switching; its sessions keep working [D2079]. */
+  enabled: boolean;
+  /**
+   * A running sign-in's code page, or the one-time code it printed (`device_code`) to enter on that page; once it
+   * failed, a sign-in's own `error` words, and `reason`: its last line in the CLI's own words [D2077].
+   */
+  setup: { id: string; action: "install" | "sign-in"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null } | null;
   path?: string | null;
   version?: string | null;
   signed_in?: boolean;
@@ -130,6 +135,29 @@ export const checkAll = (cached = false) =>
   cached ? Promise.all([check(["agents", "--cached"]), check(["agents"])]).then(() => {}) : check(["agents"]);
 /** Checks one agent again: after its setup run moves, or Retry. */
 export const checkOne = (name: string) => check(["agents", name], name);
+
+/**
+ * Turns an agent on or off [D2079]: shown at once, then Rust's saved word; on failure it goes back and the error
+ * is thrown. A check asked before it never lands over it.
+ */
+export async function setEnabled(name: string, on: boolean): Promise<void> {
+  const mine = ++seq;
+  const before = agents.get().list?.find((agent) => agent.name === name)?.enabled ?? true;
+  const show = (enabled: boolean) => {
+    if (shown.get(name) !== mine) return;
+    const now = agents.get();
+    agents.set({ ...now, list: now.list?.map((agent) => (agent.name === name ? { ...agent, enabled } : agent)) });
+  };
+  shown.set(name, mine);
+  show(on);
+  try {
+    const reply = await run(["settings", "agent", name, on ? "on" : "off"]);
+    show(!(reply.agents_off as string[]).includes(name));
+  } catch (cause) {
+    show(before);
+    throw cause;
+  }
+}
 
 /** What onboarding keeps [D45]: undefined until loaded. */
 export type Profile = { name: string; intro_seen: boolean; onboarded: boolean };

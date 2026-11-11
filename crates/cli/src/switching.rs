@@ -175,7 +175,7 @@ fn pick_account(data: &Path, v: &Value, a: &dyn Adapter, cur: &str, cwd: &str) -
         })
 }
 
-/// The next agent in adapter order (proposed) with a model usable in this project
+/// The next agent that is on, in adapter order (proposed), with a model usable in this project
 /// on its login (or, when it switches accounts automatically, on one of its accounts with room),
 /// and that model: the first it lists (proposed). Sign-in counts only where the model needs it,
 /// which the agent's own model list already says [D43, D89].
@@ -187,6 +187,7 @@ fn pick_agent(
 ) -> Option<(&'static dyn Adapter, String, String)> {
     agents()
         .filter(|a| a.name() != from && a.exe().is_some())
+        .filter(|a| crate::settings::enabled(data, a.name()))
         .find_map(|a| {
             let ids: Vec<String> = accounts_of(v, a.name())
                 .into_iter()

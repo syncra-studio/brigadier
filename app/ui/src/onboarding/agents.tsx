@@ -120,7 +120,8 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
     return () => window.removeEventListener("focus", onFocus);
   }, [missing]);
 
-  const agents = list ?? [];
+  // An agent turned off in Settings › Providers isn't offered here [D2079].
+  const agents = (list ?? []).filter((agent) => agent.enabled);
   const allChecked = list !== undefined && agents.every((agent) => stateOf(agent) !== "checking");
   if (allChecked && order === null) setOrder(agents.toSorted((a, b) => RANK[stateOf(a)] - RANK[stateOf(b)]).map((agent) => agent.name));
   const sorted = order ? agents.toSorted((a, b) => order.indexOf(a.name) - order.indexOf(b.name)) : agents;

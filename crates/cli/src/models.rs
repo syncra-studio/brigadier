@@ -99,7 +99,8 @@ fn group(check: &Value, held: bool, chosen: &str) -> Value {
 
 /// `models [--session ID | --project P | --cwd D] [--fresh]`: the groups from each agent's last
 /// check in that folder, at once; `--fresh` checks again first, for the page to ask after the first
-/// answer. Each carries its levels and the one a new session there starts on.
+/// answer. Each carries its levels and the one a new session there starts on. Agents turned off
+/// are left out.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "set" {
         return set(data, args);
@@ -115,10 +116,20 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let reply = setup::run(data, &ask)?;
     let chosen = crate::settings::get(data, "default_level");
+    // An agent turned off is left out, but a session keeps the agents it is on [D2079].
+    let own = match flag(args, "--session") {
+        Some(id) => {
+            let spec = core::load(data, id)?;
+            let f = core::fold(&spec.dir, true)?.fold;
+            vec![next_agent(&spec, &f).to_string(), f.backend, spec.backend]
+        }
+        None => vec![],
+    };
     let groups: Vec<Value> = reply["agents"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|check| check["enabled"] == true || own.iter().any(|b| check["name"] == *b))
         .map(|check| group(check, held, &chosen))
         .collect();
     Ok(json!({"ok": true, "groups": groups}))

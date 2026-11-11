@@ -175,7 +175,7 @@ fn available() -> Vec<&'static dyn Adapter> {
 fn card(data: &Path, a: &dyn Adapter) -> Value {
     json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
-        "mark": a.mark()})
+        "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name())})
 }
 
 fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
@@ -302,7 +302,7 @@ fn setup_state(data: &Path, a: &dyn Adapter) -> Value {
 }
 
 /// A setup run's state; with the agent, the code page or device code a running sign-in printed,
-/// or its own error words once it failed.
+/// or its own error words once it failed; and once it failed, why, in the CLI's own words [D2077].
 pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let Ok(spec) = core::load(data, id) else {
         return Value::Null;
@@ -314,7 +314,7 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let page = action == Some("sign-in") && agent.is_some();
     let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
-        let wanted = |k| k == log::EXITED || (page && k == log::PTY);
+        let wanted = |k| k == log::EXITED || ((page || !running) && k == log::PTY);
         while let Ok(Some(f)) = r.next_with(wanted) {
             if f.kind == log::EXITED {
                 exited = serde_json::from_slice(&f.data).unwrap_or_default();
@@ -330,19 +330,12 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let error = agent
         .filter(|_| failed)
         .and_then(|a| a.sign_in_error(&text));
+    let ended_badly =
+        exited["code"].as_i64().is_some_and(|c| c != 0) || !exited["signal"].is_null();
     json!({"id": id, "action": action, "running": running, "code": exited["code"],
-        "signal": exited["signal"], "code_page": code_page(&text).filter(|_| shows),
-        "device_code": device_code, "error": error})
-}
-
-/// The first `https` link a sign-in printed, up to a space or a control character (a terminal
-/// link's own escape ends it).
-fn code_page(text: &str) -> Option<String> {
-    let start = text.find("https://")?;
-    let page = text[start..]
-        .chars()
-        .take_while(|c| !c.is_whitespace() && !c.is_control());
-    Some(page.collect())
+        "signal": exited["signal"], "code_page": setup::code_page(&out).filter(|_| shows),
+        "device_code": device_code, "error": error,
+        "reason": ended_badly.then(|| setup::reason(&out)).flatten()})
 }
 
 /// Types a code pasted from the sign-in's code page into the sign-in, as its adapter takes it.

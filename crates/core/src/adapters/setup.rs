@@ -177,3 +177,49 @@ pub fn newest(dir: &Path, suffix: &str, depth: u32, limit: usize) -> Vec<PathBuf
     all.sort_by_key(|e| std::cmp::Reverse(e.0));
     all.into_iter().take(limit).map(|(_, p)| p).collect()
 }
+
+/// The first `https` link a sign-in printed, up to a space or a control character (a terminal
+/// link's own escape ends it).
+pub fn code_page(out: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(out);
+    let start = text.find("https://")?;
+    let page = text[start..]
+        .chars()
+        .take_while(|c| !c.is_whitespace() && !c.is_control());
+    Some(page.collect())
+}
+
+/// Why a setup run that failed ended, in the CLI's own words: the last line it printed, with the
+/// terminal's escapes (colours, cursor moves, links, titles) taken out [D2077].
+pub fn reason(out: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(out);
+    let (mut plain, mut chars) = (String::new(), text.chars().peekable());
+    while let Some(c) = chars.next() {
+        if c != '\x1b' {
+            if !c.is_control() || c == '\n' || c == '\r' {
+                plain.push(c);
+            }
+            continue;
+        }
+        match chars.next() {
+            // CSI: parameters up to a final byte.
+            Some('[') => _ = chars.find(|c| ('@'..='~').contains(c)),
+            // OSC (links, titles) and the other strings: up to BEL or ESC \.
+            Some(']' | 'P' | 'X' | '^' | '_') => {
+                while let Some(c) = chars.next() {
+                    if c == '\x07' || (c == '\x1b' && chars.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            // The rest: one byte after any intermediates.
+            Some(' '..='/') => _ = chars.find(|c| !(' '..='/').contains(c)),
+            _ => {}
+        }
+    }
+    let last = plain
+        .rsplit(['\r', '\n'])
+        .map(str::trim)
+        .find(|l| !l.is_empty());
+    last.map(String::from)
+}
