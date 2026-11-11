@@ -28,7 +28,7 @@ function Tab({ label, wide, children }: { label: string; wide?: boolean; childre
 }
 
 const tree = (scope: string, change: Partial<Parameters<typeof FileTree>[0]> = {}) => (
-  <FileTree scope={scope} listing={{ state: "listed", list: FILES }} marks={MARKS} results={null} onQuery={noop} onOpen={noop} {...change} />
+  <FileTree scope={scope} listing={{ state: "listed", list: FILES }} marks={MARKS} results={null} onQuery={noop} onOpen={noop} onReveal={noop} {...change} />
 );
 
 /** The live tree beside the viewer: a click opens the file there, as the file tab will. */
