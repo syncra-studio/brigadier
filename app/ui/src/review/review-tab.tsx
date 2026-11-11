@@ -5,8 +5,11 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
+import { Button } from "../components/button";
+import { EmptyState } from "../components/empty-state";
 import { Skeleton } from "../components/skeleton";
 import { useKept } from "../thread/kept";
+import { BriefStrip, noTurnWords } from "./brief";
 import { FileSection, type OpenIn } from "./file-section";
 import { type Asking, actionable, Counts, RevertConfirm } from "./hunks";
 import type { DiffComment, FileContents, HunkAction, RequestState, Review, ReviewFile, ReviewHunk, ReviewRequest, ReviewScope } from "./types";
@@ -42,9 +45,15 @@ export type ReviewTabProps = {
   /** None where a comment couldn't reach the agent: no line picking then. */
   onComment?: (comment: DiffComment) => void;
   onRemoveComment: (id: string) => void;
+  /** The file it was opened on: shown open whatever else waits behind the one click. */
+  target?: string;
+  /** The one click between the brief and the diff (D1188): a "Show diff" row, or the file list, each file's name
+   * opening its diff. Shown to the owner side by side (proposed); the app uses `files` meanwhile. */
+  below?: "row" | "files";
 };
 
 const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] = [
+  { value: "last", label: () => "Last turn" },
   { value: "uncommitted", label: () => "Uncommitted changes" },
   { value: "staged", label: () => "Staged Changes" },
   { value: "unstaged", label: () => "Changes" },
@@ -52,16 +61,24 @@ const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] =
 ];
 
 export function ReviewTab(props: ReviewTabProps) {
-  const { scope, review, contents, error, loading, connected } = props;
+  const { scope, review, contents, error, loading, connected, target, below = "files" } = props;
   // How diffs are drawn, kept while the app runs (the old review options).
   const [wrap, setWrap] = useKept("review-wrap");
   const [split, setSplit] = useKept("review-split");
   // A large file starts folded until opened; any other only once folded.
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set(target ? [target] : []));
+  // The diff behind the brief's one click; a commit's tab has no brief, so it shows at once.
+  const [shown, setShown] = useState(scope === "commit" || target !== undefined);
+  const folds = below === "files" && scope !== "commit";
+  useEffect(() => {
+    if (!target) return;
+    setShown(true);
+    setOpened((current) => new Set([...current, target]));
+  }, [target]);
   const [asking, setAsking] = useState<Asking | null>(null);
   const files = review?.files ?? [];
-  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || (file.large && !opened.has(file.path));
+  const isCollapsed = (file: ReviewFile) => folded.has(file.path) || ((file.large || folds) && !opened.has(file.path));
   const allCollapsed = files.length > 0 && files.every(isCollapsed);
   const open = (shown: readonly ReviewFile[]) => {
     setOpened((current) => new Set([...current, ...shown.map((file) => file.path)]));
@@ -106,7 +123,8 @@ export function ReviewTab(props: ReviewTabProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {review && review.files.length > 0 && <Counts insertions={review.insertions} deletions={review.deletions} />}
+        {/* Elsewhere the brief says the size. */}
+        {scope === "commit" && review && review.files.length > 0 && <Counts insertions={review.insertions} deletions={review.deletions} />}
         {!connected && <span className="px-1.5 text-xs text-muted-foreground">Reconnecting…</span>}
         <div className="flex-1" />
         <TooltipIconButton tooltip="Refresh" size="icon-sm" disabled={!connected} onClick={props.onRefresh}>
@@ -129,11 +147,27 @@ export function ReviewTab(props: ReviewTabProps) {
       </div>
       <div data-slot="review-diffs" className="min-h-0 min-w-0 flex-1 overflow-auto">
         <ErrorLine size="sm" error={error} className="px-4 py-3" />
+        {review && scope !== "commit" && !review.none && (
+          <BriefStrip
+            review={review}
+            below={
+              below === "row" &&
+              !shown &&
+              review.files.length > 0 && (
+                <Button size="xs" variant="soft" className="mt-1 self-start" onClick={() => setShown(true)}>
+                  Show diff
+                </Button>
+              )
+            }
+          />
+        )}
         {!review ? (
           !error && <ListLoading />
+        ) : review.none ? (
+          <EmptyState variant="centered" title={noTurnWords(review.none)} />
         ) : review.files.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">No changes</p>
-        ) : (
+        ) : below === "row" && !shown ? null : (
           review.files.map((file) => (
             <FileSection
               key={file.path}

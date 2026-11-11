@@ -16,13 +16,21 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
     if word(1) != Some("last") || !matches!(word(0), Some("review" | "review-file")) {
         return Ok(None);
     }
-    let Target::Session(id) = target else {
+    let none = |why: &str| {
         let none = json!({"scope": "last", "base": null, "files": [], "insertions": 0,
-                          "deletions": 0, "none": "noProject"});
-        return Ok(Some(json!({"ok": true, "review": none})));
+                          "deletions": 0, "none": why});
+        Ok(Some(json!({"ok": true, "review": none})))
     };
-    let checkout = git::checkout(data, &target)?;
+    let Target::Session(id) = target else {
+        return none("noProject");
+    };
     let spec = brigadier_core::load(data, id)?;
+    if spec.project.is_none() {
+        return none("noProject");
+    }
+    let Ok(checkout) = git::checkout(data, &target) else {
+        return none("notGit");
+    };
     if word(0) == Some("review-file") {
         let trees = (arg(args, at + 2)?, arg(args, at + 3)?);
         let from = word(5).filter(|w| *w != "-");
@@ -32,8 +40,7 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
     let f = brigadier_core::fold(&spec.dir, true)?.fold;
     let mut review = match last::of(&spec, &f, &checkout) {
         Ok(turn) => turn.list()?,
-        Err(why) => json!({"scope": "last", "base": null, "files": [], "insertions": 0,
-                           "deletions": 0, "none": why}),
+        Err(why) => return none(why),
     };
     // Another session in this folder: its work may be in the turn's diff [D1078].
     review["shared"] = (branch::sharing(data, &checkout).iter())

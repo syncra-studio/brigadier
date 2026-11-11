@@ -9,6 +9,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { CommentBox, CommentNote } from "./comments";
 import { type DiffLook, type DiffNote, DiffView, type LineRange } from "./diff-view";
+import { fileFact } from "./brief";
 import { Actions, Counts, HunkBar } from "./hunks";
 import type { DiffComment, FileContents, HunkAction, RequestState, ReviewFile, ReviewHunk } from "./types";
 
@@ -71,10 +72,12 @@ export function FileSection(props: FileProps) {
     <section data-slot="review-file" data-path={file.path}>
       <header className="group/file sticky top-0 z-10 flex h-control-lg items-center gap-2 border-b border-border bg-background px-3 text-sm">
         <FileIcon name={file.path} />
-        <span className="min-w-0 truncate text-foreground" title={file.path}>
+        {/* The file list opens a file's diff: its name is the click (D1188). */}
+        <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="min-w-0 cursor-pointer truncate rounded-control text-left text-foreground focus-visible:focus-ring" title={file.path}>
           {file.from ? `${file.from} → ${file.path}` : file.path}
-        </span>
+        </button>
         {file.binary ? <span className="text-xs text-muted-foreground">binary</span> : <Counts insertions={file.insertions} deletions={file.deletions} />}
+        {file.flag && <span className="shrink-0 text-xs text-warning">{fileFact(file.flag)}</span>}
         <span className="flex items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
           <CopyButton text={file.path} tooltip="Copy path" size="icon-xs" />
           <OpenInMenu file={file} onOpenIn={props.onOpenIn} />

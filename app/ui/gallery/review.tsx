@@ -11,13 +11,14 @@ import { revertWords } from "../src/review/hunks";
 import { ReviewTab, type ReviewTabProps } from "../src/review/review-tab";
 import type { DiffComment, RequestState, ReviewScope } from "../src/review/types";
 import { type Done, FIRST_STAGED, NOTHING_DONE, read } from "./review-data";
+import { LastTurnGallery } from "./review-brief";
 import { ChipComposer, Frame, LiveReview } from "./review-live";
 import { Held, Row, Section, State } from "./parts";
 
 const ignore = () => {};
 
 /** A ReviewTab frozen on a scope's fake data, everything arrived. */
-function Tab({ scope, done = FIRST_STAGED, ...change }: { scope: ReviewScope; done?: Done } & Partial<ReviewTabProps>) {
+export function Tab({ scope, done = FIRST_STAGED, ...change }: { scope: ReviewScope; done?: Done } & Partial<ReviewTabProps>) {
   const { review, contents } = read(scope, done);
   return (
     <Frame>
@@ -95,7 +96,7 @@ function Confirm({ words }: { words: { title: string; description: string; confi
 
 const stateOf = (entries: [string, RequestState][]) => new Map(entries);
 
-function Wide({ label, children }: { label: string; children: ReactNode }) {
+export function Wide({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex w-full flex-col gap-2">
       <span className="text-2xs text-muted-foreground">{label}</span>
@@ -165,6 +166,7 @@ export function ReviewGallery() {
           </Wide>
         </Row>
       </Section>
+      <LastTurnGallery />
       <Section title="Comments to the agent (D1040)">
         <Row name="The box under picked lines">
           <State label="Comment on lines 30–32">

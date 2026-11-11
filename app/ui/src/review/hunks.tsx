@@ -14,7 +14,7 @@ import type { HunkAction, RequestState, ReviewFile, ReviewHunk, ReviewRequest, R
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** Whether a scope's diff can be staged or reverted (D1035, D1043). */
-export const actionable = (scope: ReviewScope) => scope !== "branch" && scope !== "commit";
+export const actionable = (scope: ReviewScope) => scope !== "branch" && scope !== "commit" && scope !== "last";
 
 /** "+3 −1" as the old Counts drew it: mono, tabular, green and red, a zero dim. */
 export function Counts({ insertions, deletions }: { insertions: number; deletions: number }) {

@@ -17,7 +17,8 @@ import type { FileContents, RequestState, Review, ReviewFile, ReviewRequest, Rev
 export function ReviewView({ owner, target }: { owner: string; target?: string }) {
   const git = useGit();
   const { daemon } = useDaemon();
-  const [scope, setScope] = useState<ReviewScope>("uncommitted");
+  // Last turn first: what the agent just did (D1188). Home's Review is a project's, with no turns.
+  const [scope, setScope] = useState<ReviewScope>(owner === HOME ? "uncommitted" : "last");
   const [review, setReview] = useState<Review | null>(null);
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -40,9 +41,12 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       return next;
     });
 
-  const load = (file: ReviewFile, at: number) => {
+  const load = (file: ReviewFile, at: number, turn = review?.turn) => {
     if (!checkout) return;
-    ask({ op: "run", args: sourceArgs(checkout, "review-file", scope, file.path, ...(file.from ? [file.from] : [])) }, (reply) => {
+    // Last turn's files are read between the two captures its list was read from, not a fresh one each (D1192).
+    const where = scope === "last" ? (turn ? [turn.before, turn.after] : []) : [];
+    if (scope === "last" && !turn) return;
+    ask({ op: "run", args: sourceArgs(checkout, "review-file", scope, ...where, file.path, ...(file.from ? [file.from] : [])) }, (reply) => {
       if (read.current !== at) return;
       const got = reply.ok ? (reply.contents.error ? { error: String(reply.contents.error) } : reply.contents) : { error: String(reply.error) };
       setContents((now) => new Map(now).set(file.path, got));
@@ -64,7 +68,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       setReview(next);
       // What was drawn stays until its new read lands, so a watch read doesn't blank the diff.
       setContents((now) => new Map([...now].filter(([path]) => next.files.some((file) => file.path === path && !file.large))));
-      for (const file of next.files) if (!file.large) load(file, at);
+      for (const file of next.files) if (!file.large) load(file, at, next.turn);
     });
   }, [key, daemon, scope, git.version, tick]);
 
@@ -125,6 +129,7 @@ export function ReviewView({ owner, target }: { owner: string; target?: string }
       // Home's composer starts a session and carries no chips, so its diff takes no comments.
       onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
+      target={target}
       />
     </div>
   );

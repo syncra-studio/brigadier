@@ -5,8 +5,20 @@
 
 import type { FileStatus } from "../panel/status";
 
-/** What a review compares (D1035); a commit's own diff opens from History (D1041). */
-export type ReviewScope = "uncommitted" | "staged" | "unstaged" | "branch" | "commit";
+/** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000); a commit's own
+ * diff opens from History (D1041). */
+export type ReviewScope = "last" | "uncommitted" | "staged" | "unstaged" | "branch" | "commit";
+
+/** Why a file is worth a look first, as Rust classed it (D1188, D1213): a test file deleted or with lines removed, a
+ * lock file, a dependency manifest, CI or build config, a migration. */
+export type FileFlag = { kind: "test" | "lock" | "manifest" | "build" | "migration"; removed: number; deleted: boolean };
+
+/** The session's last test or build run (D1188): its exit code only as its CLI reported it, else null (D74); `changed`:
+ * an edit to one of the scope's files began after it ended, else unknown, never "no" (D1192). */
+export type LastRun = { command: string; exit: number | null; at: number; changed: boolean };
+
+/** Why Last turn has nothing to compare (D30). */
+export type NoTurn = "noProject" | "notGit" | "noTurn" | "midTurn" | "noSnapshot";
 
 export type ReviewFile = {
   path: string;
@@ -20,6 +32,8 @@ export type ReviewFile = {
   staged: boolean;
   /** Over Rust's size threshold: it arrives folded, and its contents are asked for when it's opened (D1036). */
   large: boolean;
+  /** Rust's flag, when the review carries its brief. */
+  flag?: FileFlag | null;
 };
 
 /** One change as git cuts it, which Stage hunk and Revert hunk take (D1043). */
@@ -55,6 +69,14 @@ export type Review = {
   files: readonly ReviewFile[];
   insertions: number;
   deletions: number;
+  /** Last turn's two captures, which its files' contents are read between, and what they leave out (D1192). */
+  turn?: { before: string; after: string; live: boolean; missed: boolean; excluded: readonly string[] };
+  /** Last turn with nothing to compare, and why. */
+  none?: NoTurn;
+  /** Another session works in this folder: its changes may be in the diff (D1078). */
+  shared?: boolean;
+  /** The brief's last run; null with none this session. Absent where Rust sent no brief. */
+  run?: LastRun | null;
 };
 
 /** What the diff asks of git, by a hunk or a whole file. */
