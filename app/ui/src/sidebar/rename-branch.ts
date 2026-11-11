@@ -20,11 +20,13 @@ export function useBranchPreview(session: string, title: string) {
         : Promise.resolve(OFFLINE),
     };
   }, [session, title, connected]);
+  // The first read goes at once; while typing, the last answer stays until the new one replaces it [D1261].
+  const first = preview === null;
   useEffect(() => {
     request.active = true;
     const timer = connected && title.trim() ? setTimeout(() => {
       request.load().then((next) => { if (request.active) setPreview(next); });
-    }, 180) : undefined;
+    }, first ? 0 : 180) : undefined;
     return () => { request.active = false; clearTimeout(timer); };
   }, [request, connected, title]);
   return {
