@@ -1,20 +1,22 @@
 //! PR discovery and check aggregation through the unmodified host CLI [D1030, D1187], kept in
 //! the session's `prs.json` by every read: the watch's, `info`'s and a merge's [D1009, D1017].
-//! `prs.json` (proposed) is `{okAt, error, head, prs}`: when the last whole read answered, why the
-//! last one didn't (null when it did), the branch's local head then, and each PR's row.
+//! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
+//! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
 
 use super::{GH_SECS, Pr, Repo, failed, gh, setup, tool};
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
-/// The watch and a CLI read both run in the daemon: one keeps `prs.json` at a time.
-static KEEP: Mutex<()> = Mutex::new(());
+/// One read and keep at a time per session (the watch and the app's reads both run in the
+/// daemon), so an older read never overwrites a newer one.
+static BUSY: Mutex<BTreeMap<PathBuf, Arc<Mutex<()>>>> = Mutex::new(BTreeMap::new());
 
 /// What a read gave: the PRs and, when one PR's checks couldn't be read, why; or why none could be.
 type Read = Result<(Vec<Value>, Option<String>), String>;
@@ -22,6 +24,8 @@ type Read = Result<(Vec<Value>, Option<String>), String>;
 impl Pr {
     /// The branch's PRs, read now and kept; None when the host couldn't list them.
     pub(super) fn prs(&self, gh: &str) -> Option<Value> {
+        let one = self.one();
+        let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let read = self.read(gh);
         let listed = read.is_ok();
         let kept = self.keep(read);
@@ -31,6 +35,9 @@ impl Pr {
     /// The watch's read of a published branch [D1009, D1192]: what `prs.json` now holds, or None
     /// when the branch isn't published or its host isn't one Brigadier reads.
     pub fn watch(&self) -> Option<Value> {
+        let one = self.one();
+        let _held = one.lock().unwrap_or_else(|e| e.into_inner());
+        self.current();
         let repo = self.repo.as_ref()?;
         let key = format!("branch.{}.remote", self.branch);
         git::read(
@@ -45,6 +52,21 @@ impl Pr {
         })
     }
 
+    fn one(&self) -> Arc<Mutex<()>> {
+        let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+        busy.entry(self.dir.clone()).or_default().clone()
+    }
+
+    /// The kept PRs, if they're this branch's: another's (a rename or switch) are dropped.
+    fn current(&self) -> Value {
+        let kept = kept(&self.dir);
+        if kept.is_null() || kept["branch"] == self.branch.as_str() {
+            return kept;
+        }
+        let _ = fs::remove_file(self.dir.join("prs.json"));
+        Value::Null
+    }
+
     fn read(&self, gh: &str) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
@@ -52,7 +74,7 @@ impl Pr {
         let mut command = tool(gh);
         command.args(["pr", "list", &format!("--repo={}/{}", repo.host, repo.path),
             &format!("--head={}", self.branch), "--state=all", "--limit=100",
-            "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,statusCheckRollup"]);
+            "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,isDraft,statusCheckRollup"]);
         let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
         if !out.status.success() {
             return Err(failed(&out));
@@ -93,9 +115,8 @@ impl Pr {
     /// at the same head, a failed read keeps every PR with why, and `okAt` moves only on a whole
     /// read. Written only when something in it changed.
     fn keep(&self, read: Read) -> Value {
-        let _one = KEEP.lock().unwrap_or_else(|e| e.into_inner());
         let path = self.dir.join("prs.json");
-        let old = kept(&self.dir);
+        let old = self.current();
         // The branch's local head, read even when the host can't be: new commits clear Merged.
         let head = git::read(
             &self.checkout.root,
@@ -125,7 +146,7 @@ impl Pr {
                 } else {
                     old["okAt"].clone()
                 };
-                json!({"okAt": ok_at, "error": error, "head": head, "prs": rows})
+                json!({"okAt": ok_at, "error": error, "branch": self.branch, "head": head, "prs": rows})
             }
             // Nothing read before: nothing to keep, and no PR to say it about.
             Err(_) if old.is_null() => return old,
@@ -269,7 +290,7 @@ fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
     json!({"number": pr["number"], "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "health": health,
         "head": pr["headRefOid"], "mergeCommit": pr["mergeCommit"]["oid"], "base": pr["baseRefName"],
-        "failed": failed, "running": running, "mergedAt": pr["mergedAt"],
+        "failed": failed, "running": running, "mergedAt": pr["mergedAt"], "draft": pr["isDraft"],
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),
         "approved": match pr["reviewDecision"].as_str() {
@@ -321,6 +342,9 @@ pub fn chip(dir: &Path, kept: &Value) -> Value {
         (_, Some("conflicts")) => "conflict",
         (_, Some("changes")) => "changes_asked",
         (_, Some("running")) => "running",
+        // Ready to merge: not a draft, and not waiting on a review [D1018].
+        (_, Some("ready")) if p["draft"] == true => "draft",
+        (_, Some("ready")) if p["approved"] == false => "open",
         (_, Some("ready")) => "ready",
         _ => "open",
     };
