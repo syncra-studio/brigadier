@@ -90,7 +90,8 @@ pub fn data_dir() -> PathBuf {
 /// no separators, no `..`, nothing absolute.
 pub fn check_id(id: &str) -> io::Result<()> {
     let plain = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-    if id.is_empty() || id.len() > 128 || !id.chars().all(plain) {
+    // A leading "-" is a flag mistaken for an id, as `start --help`.
+    if id.is_empty() || id.len() > 128 || id.starts_with('-') || !id.chars().all(plain) {
         return Err(io::Error::other(format!("invalid session id {id:?}")));
     }
     Ok(())
