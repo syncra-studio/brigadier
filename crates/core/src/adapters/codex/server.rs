@@ -59,6 +59,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "features.default_mode_request_user_input=true",
             "-c",
             "suppress_unstable_features_warning=true",
+            "-c",
+            "commit_attribution=\"\"",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

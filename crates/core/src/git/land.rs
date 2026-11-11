@@ -57,7 +57,7 @@ pub fn squash(data: &Path, id: &str, (head, base): (&str, &str)) -> io::Result<V
     let commits: Vec<Value> = (commits.iter())
         .map(|(sha, subject, _)| json!({"sha": sha, "subject": subject}))
         .collect();
-    Ok(json!({"message": message, "commits": commits}))
+    Ok(json!({"message": crate::writer::without_attribution(&message), "commits": commits}))
 }
 
 /// Lands the session's branch into its base [D1015, D1028, D1047, D1049], pinned to the commits
@@ -139,7 +139,9 @@ pub fn land(
         ));
     };
     let message = match (squash, message.map(str::trim)) {
-        (true, Some(m)) if !m.is_empty() => m.to_string(),
+        (true, Some(m)) if !crate::writer::without_attribution(m).is_empty() => {
+            crate::writer::without_attribution(m)
+        }
         (true, _) => return err("A squash needs a message."),
         (false, _) => format!(
             "Merge branch '{}'",

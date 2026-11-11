@@ -18,7 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 /// How the agents write their own commits, so theirs match the writer's [D1029].
-pub const STYLE: &str = "When you write a git commit message, write it the way this repository's recent commits are written. Otherwise: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No trailers.";
+pub const STYLE: &str = "When you write a git commit message, write it the way this repository's recent commits are written. Otherwise: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No trailers or attribution in commits or pull requests.";
 
 /// The writer's rules, after its first line, which says what it writes.
 const RULES: &str = "Reply with the message only: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No quotes, no code fences, no trailers. Don't use any tool: everything you need is below.";
@@ -95,7 +95,7 @@ pub fn commit_prompt(patch: &str, subjects: &[String], asks: &[String]) -> Strin
 /// A pull request's prompt: its title on the first line, then its body.
 pub fn pr_prompt(patch: &str, commits: &[String], asks: &[String]) -> String {
     format!(
-        "Write the pull request's title and body for these changes.\nReply with the title on the first line, of at most 72 characters, then a blank line and the body: a short summary of what changed and why. No quotes, no code fences. Don't use any tool: everything you need is below.{}\n\nThe changes:\n{}",
+        "Write the pull request's title and body for these changes.\nReply with the title on the first line, of at most 72 characters, then a blank line and the body: a short summary of what changed and why. No quotes, no code fences, no trailers or attribution. Don't use any tool: everything you need is below.{}\n\nThe changes:\n{}",
         context(commits, asks),
         cut(patch)
     )
@@ -123,14 +123,29 @@ pub fn asks(dir: &Path) -> Vec<String> {
 }
 
 /// The reply as a message: no fences, no wrapping quotes; empty when it said nothing.
+pub fn without_attribution(message: &str) -> String {
+    message
+        .lines()
+        .filter(|line| {
+            let line = line.trim().to_ascii_lowercase();
+            !line.starts_with("co-authored-by:") && !line.contains("generated with")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 fn clean(reply: &str) -> String {
     let lines: Vec<&str> = (reply.trim().lines())
         .filter(|line| !line.trim_start().starts_with("```"))
         .collect();
-    (lines.join("\n").trim())
-        .trim_matches(|c| c == '"' || c == '`')
-        .trim()
-        .to_string()
+    without_attribution(
+        (lines.join("\n").trim())
+            .trim_matches(|c| c == '"' || c == '`')
+            .trim()
+            .trim(),
+    )
 }
 
 /// The writer's own folder in the session's: its runs use it as theirs, so an adapter reading a

@@ -158,6 +158,10 @@ impl Adapter for Claude {
         }
         // The commit style the message writer follows, so the agent's own commits match [D1029].
         argv.extend(["--append-system-prompt".into(), crate::writer::STYLE.into()]);
+        argv.extend([
+            "--settings".into(),
+            r#"{"attribution":{"commit":"","pr":""}}"#.into(),
+        ]);
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
             // shortcut: this flag isn't in the CLI reference, only Anthropic's open-source SDK; replace it if the CLI documents another.
