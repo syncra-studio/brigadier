@@ -55,6 +55,9 @@ impl Agent {
                 let id = format!("tl{}-{}", self.tools, now());
                 emit(json!({"t": "tool", "id": id, "name": "shell", "command": "cargo test"}));
                 emit(json!({"t": "tool_done", "id": id, "ok": n == 0, "exit": n}));
+                // A step after it begins a later millisecond, as a real one would: "changed since"
+                // needs an edit that began after the run ended [D1192].
+                std::thread::sleep(std::time::Duration::from_millis(2));
             }
             "tree" => {
                 let cmd = format!("sleep {left} & sleep {left} & wait");
