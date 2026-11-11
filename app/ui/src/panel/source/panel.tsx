@@ -269,7 +269,8 @@ export function SourcePanel({
             {uncommitted.length > 0 && <span>· {uncommitted.length} uncommitted</span>}
           </span>
         ) : (
-          !resolving && <span className="text-xs text-muted-foreground">What the agent changes shows here.</span>
+          // Only under the empty state: other heroes have commits or a PR behind them.
+          hero.sentence === "No changes yet" && <span className="text-xs text-muted-foreground">What the agent changes shows here.</span>
         )}
       </HeroLine>
       {button && <ActionButton nowMs={nowMs} {...button} />}
