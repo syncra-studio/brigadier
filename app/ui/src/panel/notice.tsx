@@ -37,6 +37,11 @@ function drop(session: string): void {
   notices.set(next);
 }
 
+/** A git move that went through: the session's last failure no longer holds, so its notice goes. */
+export function gitDone(target: Target | null): void {
+  if (target && "session" in target && notices.get().has(target.session)) drop(target.session);
+}
+
 /** Archived sessions have no composer, so their git errors use the folder's toast fallback. */
 export function useArchivedGitNotice(session: string): void {
   const archived = useDaemon().rows?.find((row) => row.id === session)?.archived;

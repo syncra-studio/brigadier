@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { showToast } from "../../components/toast";
 import { ask } from "../../daemon";
 import { sourceArgs, type Target } from "../git";
-import { gitFailed } from "../notice";
+import { gitDone, gitFailed } from "../notice";
 import type { Branch } from "../types";
 
 /*
@@ -60,6 +60,7 @@ export function sync(target: Target, verb: "sync" | "publish", branch: string): 
   run(target, [verb], (reply) => {
     put(target, { syncing: false });
     if (!reply.ok) return failed(target, reply);
+    gitDone(target);
     showToast(verb === "publish" ? `Published ${branch}` : `Synced ${branch}`, { tone: "success" });
   });
 }

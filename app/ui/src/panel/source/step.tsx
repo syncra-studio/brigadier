@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { addChip } from "../chips";
 import type { GitAct, GitStep } from "../control";
 import { commitFiles, gitMove, landBranch, refreshStep, type Target, useGit } from "../git";
-import { gitFailed } from "../notice";
+import { gitDone, gitFailed } from "../notice";
 import { useCreatePr } from "./create-pr";
 import type { SourceData } from "./data";
 
@@ -65,12 +65,16 @@ export function useSourceStep({ data, session = null }: { data: SourceData; sess
     const done = (said: string) => (error: string | null) => {
       setRunning(key, null);
       if (error) failed(target, said, error);
+      else gitDone(target);
     };
     switch (act) {
       case "commit": {
         // One click, the writer's message; a writer failure commits nothing and offers Type a message… [D1281, D1293].
         const sent = commitFiles(true, "", (reply) => {
-          if (reply.ok) return refreshStep(() => setRunning(key, null));
+          if (reply.ok) {
+            gitDone(target);
+            return refreshStep(() => setRunning(key, null));
+          }
           setRunning(key, null);
           if (reply.writer) gitFailed(target, "Couldn't write a commit message.", "", true);
           else failed(target, "Couldn't commit.", reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
