@@ -89,7 +89,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
           setMerging(false);
           if (!reply.ok) gitFailed({ session: owner }, `Couldn't merge #${number}.`, reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
           read();
-          refreshStep(true);
+          refreshStep();
         });
       }}
     />
