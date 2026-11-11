@@ -94,7 +94,7 @@ pub fn send(
         // A fork with no conversation of its own begins from the hand-off, without asking [D90].
         let unforked = json!({"op": "note", "data": {"event": "unforked", "backend": b}});
         if f.resume.contains_key(&b)
-            && let Err(e) = call(unforked)
+            && let Err(e) = crate::fork::fell_back(&spec.dir).and_then(|()| call(unforked))
         {
             return json!({"ok": false, "error": e.to_string()});
         }

@@ -56,6 +56,16 @@ pub fn summary(dir: &Path) -> bool {
     record(dir).is_some_and(|r| r["summary"] == true)
 }
 
+/// A native fork that fell to the hand-off: its record says so from now on, so a rewind of its
+/// first turn starts from the hand-off again [D90].
+pub fn fell_back(dir: &Path) -> io::Result<()> {
+    let Some(mut r) = record(dir) else {
+        return Ok(());
+    };
+    r["summary"] = true.into();
+    write_atomic(&dir.join(RECORD), &serde_json::to_vec(&r)?)
+}
+
 /// Whether the fork's next turn on `backend` begins from the hand-off, without asking [D90]: it
 /// holds no conversation of its own, or its first launch was to fork one that no longer has the
 /// answer, its source deleted first [D1089].
