@@ -235,9 +235,8 @@ impl Agent {
                 self.say(&format!("Running with {}", self.setup));
             }
         }
+        // Directives are lowercase words, so a prompt's own "Retry …" is prose, not a scripted retry.
         for word in words {
-            let word = word.to_lowercase();
-            let word = word.as_str();
             let (name, n) = word
                 .split_once(':')
                 .map_or((word, 0u64), |(a, b)| (a, b.parse().unwrap_or(0)));
