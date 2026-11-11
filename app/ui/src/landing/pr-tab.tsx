@@ -30,7 +30,6 @@ export function PrTab({
   error,
   view,
   merging = false,
-  mergeError,
   sends,
   onMerge,
 }: {
@@ -39,11 +38,11 @@ export function PrTab({
   error?: string;
   /** The sub-tab it opens on. */
   view?: PrView;
-  /** A merge on its way to the host. */
+  /** A merge on its way to the host; its refusal is said above the composer [D1264]. */
   merging?: boolean;
-  mergeError?: string;
   sends: Sends;
-  onMerge: (style: MergeStyle) => void;
+  /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
+  onMerge: (style: MergeStyle, head: string) => void;
 }) {
   if (!pr) {
     return (
@@ -86,7 +85,6 @@ export function PrTab({
             {sends.offline ? " · Reconnecting…" : !pr.problem && pr.checkedAtMs !== null && ` · checked ${ago(pr.checkedAtMs, sends.now)}`}
           </p>
           <ErrorLine error={pr.problem} />
-          <ErrorLine error={mergeError && `Couldn't merge #${pr.number}: ${mergeError}`} />
         </header>
         <Tabs.Root defaultValue={view ?? "overview"} className="flex flex-col gap-5">
           <Tabs.List className="flex gap-1 border-b border-border pb-2">
@@ -137,11 +135,14 @@ const STYLE_ITEMS: Record<MergeStyle, string> = { merge: "Create a merge commit"
  * Merge in the repo's default style, with the other styles it allows behind the arrow [D1028]; on only while Rust
  * allows it. Each asks first, saying where the checks stand [D1019]; the ask closes if merging stops being allowed.
  */
-function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabled: boolean; merging: boolean; onMerge: (style: MergeStyle) => void }) {
+function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabled: boolean; merging: boolean; onMerge: (style: MergeStyle, head: string) => void }) {
   const [asking, setAsking] = useState<MergeStyle | null>(null);
   const [style, setStyle] = useState<MergeStyle>(pr.merge.default);
+  // The head the confirm shows: a push landing while it's open isn't merged unseen [D1077].
+  const [head, setHead] = useState(pr.head);
   const ask = (next: MergeStyle) => {
     setStyle(next);
+    setHead(pr.head);
     setAsking(next);
   };
   const passed = pr.checks.filter((check) => check.state === "passed").length;
@@ -176,7 +177,7 @@ function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabl
         onConfirm={() => {
           if (!enabled) return;
           setAsking(null);
-          onMerge(style);
+          onMerge(style, head);
         }}
       />
     </div>

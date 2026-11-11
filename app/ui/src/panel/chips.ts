@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { ask, useDaemon } from "../daemon";
 import type { LineRange } from "../review/diff-view";
+import type { AgentChip } from "../landing/agent-chip";
 import type { DiffComment } from "../review/types";
 import { HOME } from "../shell/tab-store";
 
@@ -13,7 +14,13 @@ import { HOME } from "../shell/tab-store";
  */
 
 /** `on`: the diff it was made on (the Review tab, or a commit's), which alone draws it. */
-export type Chip = { kind: "comment"; id: string; on: string; comment: DiffComment };
+/**
+ * `agent`: a PR tab's Send or Resolve with agent [D1017, D1093, D1290]: the chip's face, what the agent reads, and
+ * `key`, what made it, so its button reads Added (`pr`: the PR it came from, or none).
+ */
+export type Chip =
+  | { kind: "comment"; id: string; on: string; comment: DiffComment }
+  | { kind: "agent"; id: string; key: string; pr: number | null; chip: AgentChip; text: string };
 
 /** The comment box being written: the diff it's on, its lines and its words so far. */
 export type CommentDraft = { on: string; path: string; side: "additions" | "deletions"; start: number; end: number; text: string };
@@ -155,7 +162,9 @@ export function setCommentDraft(session: string, draft: CommentDraft | null): vo
  * isn't read as part of the quote.
  */
 export function withChips(message: string, sent: readonly Chip[]): string {
-  const blocks = sent.map(({ on, comment }) => {
+  const blocks = sent.map((chip) => {
+    if (chip.kind === "agent") return chip.text;
+    const { on, comment } = chip;
     const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
     const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
     return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n\n${comment.text}`;

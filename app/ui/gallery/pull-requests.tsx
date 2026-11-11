@@ -3,12 +3,11 @@ import { useState } from "react";
 
 import { NavList } from "../src/components/nav";
 import { Segmented } from "../src/components/segmented";
-import type { AgentChip } from "../src/landing/agent-chip";
+import { type AgentChip, chipFor } from "../src/landing/agent-chip";
 import type { PrChipState } from "../src/landing/pr-chip";
 import type { Sends } from "../src/landing/pr-parts";
 import { type PrView, PrTab } from "../src/landing/pr-tab";
-import { blockerWords, eventWords } from "../src/landing/pr-words";
-import { type PrSend, type PullRequest, sendKey } from "../src/landing/pull-requests";
+import { type PullRequest, sendKey } from "../src/landing/pull-requests";
 import { ChecksFailedRow, MergedRow, type Revert } from "../src/landing/thread-rows";
 import { SessionRowItem } from "../src/sidebar/row";
 import type { SessionRow } from "../src/sidebar/words";
@@ -24,6 +23,8 @@ const FAILING: PullRequest = {
   id: "pr12",
   number: 12,
   title: "Retry failed uploads",
+  url: "https://github.com/acme/upload-app/pull/12",
+  head: "9c41e2a",
   host: "GitHub",
   state: "open",
   status: "checks_failed",
@@ -36,14 +37,14 @@ const FAILING: PullRequest = {
   checkedAtMs: NOW - 20_000,
   problem: null,
   checks: [
-    { id: "k1", name: "test (ubuntu-latest)", state: "failed", durationMs: 133_000, logTail: LOG },
-    { id: "k2", name: "deploy-preview", state: "running", durationMs: 62_000, logTail: null },
-    { id: "k3", name: "lint", state: "passed", durationMs: 31_000, logTail: null },
-    { id: "k4", name: "build", state: "passed", durationMs: 108_000, logTail: null },
+    { id: "k1", name: "test (ubuntu-latest)", state: "failed", durationMs: 133_000, logTail: LOG, url: null },
+    { id: "k2", name: "deploy-preview", state: "running", durationMs: 62_000, logTail: null, url: null },
+    { id: "k3", name: "lint", state: "passed", durationMs: 31_000, logTail: null, url: null },
+    { id: "k4", name: "build", state: "passed", durationMs: 108_000, logTail: null, url: null },
   ],
   comments: [
-    { id: "m1", author: "sam-k", path: "client.ts", line: 88, body: "Don't retry on a 4xx: those won't get better.", atMs: min(6) },
-    { id: "m2", author: "sam-k", path: "retry.ts", line: 12, body: "Cap the wait, or a long outage waits minutes.", atMs: min(5) },
+    { id: "m1", author: "sam-k", path: "client.ts", line: 88, body: "Don't retry on a 4xx: those won't get better.", atMs: min(6), url: null },
+    { id: "m2", author: "sam-k", path: "retry.ts", line: 12, body: "Cap the wait, or a long outage waits minutes.", atMs: min(5), url: null },
   ],
   events: [
     { id: "e5", atMs: min(4), kind: "changes_requested", actor: "sam-k", detail: "2 comments" },
@@ -70,22 +71,9 @@ const STALE: PullRequest = {
   comments: [],
   checkedAtMs: min(5),
   problem: "GitHub CLI is signed out. Run gh auth login, then Check now.",
-  checks: FAILING.checks.map((check) => ({ ...check, state: "running" as const, logTail: null })),
+  checks: FAILING.checks.map((check) => ({ ...check, state: "running" as const, logTail: null, url: null })),
 };
 const FRESH: PullRequest = { ...FAILING, status: "review_needed", blockers: null, checks: [], comments: [], events: [] };
-
-/** What a Send leaves: the chip's words come from the PR's data. Gallery only until the composer carries chips. */
-function chipFor(pr: PullRequest, send: PrSend): AgentChip {
-  const id = sendKey(send);
-  if (send.kind === "fix") return { id, kind: "fix", pr: pr.number, reasons: (blockerWords(pr) ?? "").replace("Can't merge yet: ", "").replace(/\.$/, "") };
-  if (send.kind === "check") return { id, kind: "check", pr: pr.number, name: pr.checks.find((check) => check.id === send.id)?.name ?? "" };
-  if (send.kind === "comment") {
-    const comment = pr.comments.find((each) => each.id === send.id)!;
-    return { id, kind: "comment", pr: pr.number, author: comment.author, where: comment.path && `${comment.path}:${comment.line}`, body: comment.body };
-  }
-  const event = pr.events.find((each) => each.id === send.id)!;
-  return { id, kind: "event", pr: pr.number, what: eventWords(event), detail: [event.actor, event.detail].filter(Boolean).join(" · ") };
-}
 
 const sends = (added: string[] = [], offline = false): Sends => ({ now: NOW, offline, added: new Set(added), onSend: () => {}, onOpen: () => {} });
 const noop = () => {};
@@ -131,10 +119,10 @@ function Live() {
   );
 }
 
-function Tab({ pr, view, ...rest }: { pr: PullRequest | undefined; view?: PrView; error?: string; offline?: boolean; added?: string[]; merging?: boolean; mergeError?: string }) {
+function Tab({ pr, view, ...rest }: { pr: PullRequest | undefined; view?: PrView; error?: string; offline?: boolean; added?: string[]; merging?: boolean }) {
   return (
     <TabFrame tall>
-      <PrTab pr={pr} view={view} error={rest.error} merging={rest.merging} mergeError={rest.mergeError} sends={sends(rest.added, rest.offline)} onMerge={noop} />
+      <PrTab pr={pr} view={view} error={rest.error} merging={rest.merging} sends={sends(rest.added, rest.offline)} onMerge={noop} />
     </TabFrame>
   );
 }
@@ -169,15 +157,12 @@ export function PullRequestsGallery() {
           </State>
         ))}
       </Row>
-      <Row name="ready · merging · merge failed · merged · sends already added">
+      <Row name="ready · merging · merged · sends already added">
         <State label="ready">
           <Tab pr={READY} />
         </State>
         <State label="merging">
           <Tab pr={READY} merging />
-        </State>
-        <State label="merge failed">
-          <Tab pr={READY} mergeError="the base branch moved; Check now, then try again" />
         </State>
         <State label="merged · timeline">
           <Tab pr={MERGED} view="timeline" />

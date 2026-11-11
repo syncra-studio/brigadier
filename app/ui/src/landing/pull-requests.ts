@@ -1,5 +1,5 @@
-// A session's pull requests as Rust's watch will send them (2.27): structure only, the UI writes the words
-// [D65, D71, D1017]. PROPOSED contract, unwired; the gallery feeds it fake data [D388].
+// A session's pull request as Rust's host module reads it (`host <id> view <n>`, 2.48): structure only, the UI writes
+// the words [D65, D71, D1017]. The gallery feeds it fake data [D388].
 
 export type PrState = "open" | "draft" | "merged" | "closed";
 export type PrStatus = "merged" | "closed" | "checks_failed" | "draft" | "checks_running" | "changes_requested" | "conflicts" | "ready" | "review_needed";
@@ -9,6 +9,9 @@ export type PullRequest = {
   id: string;
   number: number;
   title: string;
+  url: string;
+  /** The head commit it was read at: a merge is pinned to the one its confirm showed [D1077]. */
+  head: string;
   /** The host's name as Rust's host module gives it, for "Open on …"; nothing here names a host [D1030]. */
   host: string;
   state: PrState;
@@ -32,9 +35,9 @@ export type PullRequest = {
   events: PrEvent[];
 };
 
-export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null };
+export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null; url: string | null };
 
-export type PrComment = { id: string; author: string; path: string | null; line: number | null; body: string; atMs: number };
+export type PrComment = { id: string; author: string; path: string | null; line: number | null; body: string; atMs: number; url: string | null };
 
 export type PrEvent = {
   id: string;

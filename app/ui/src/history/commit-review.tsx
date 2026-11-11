@@ -73,7 +73,7 @@ export function CommitReview({ owner, sha }: { owner: string; sha: string }) {
       onRequest={() => {}}
       // shortcut: only "in a tab" opens for now; in the app and in Finder come with Review's own wiring (2.18).
       onOpenIn={(path, where) => where === "tab" && openFile(owner, path, { preview: false })}
-      comments={chips.filter((chip) => chip.on === sha).map((chip) => chip.comment)}
+      comments={chips.flatMap((chip) => (chip.kind === "comment" && chip.on === sha ? [chip.comment] : []))}
       onComment={(comment) => addChip(owner, { kind: "comment", id: comment.id, on: sha, comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
       {...kept}

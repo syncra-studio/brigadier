@@ -142,7 +142,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       states={states}
       onRequest={request}
       onOpenIn={(path) => openFile(owner, path, { preview: false })}
-      comments={chips.filter((chip) => chip.on === "review").map((chip) => chip.comment)}
+      comments={chips.flatMap((chip) => (chip.kind === "comment" && chip.on === "review" ? [chip.comment] : []))}
       // Home's composer starts a session and carries no chips, so its diff takes no comments.
       onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}
       onRemoveComment={(id) => dropChips(owner, [id])}
