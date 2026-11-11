@@ -53,7 +53,10 @@ function load(session: string): void {
     const now = chips.get(session) ?? NONE;
     const theirs = reply.chips as Chip[];
     const kept = theirs.filter((chip) => !gone.has(chip.id) && !now.some((each) => each.id === chip.id));
-    if (!drafts.has(session)) drafts.set(session, reply.draft ?? null);
+    // The comment being written as it is here reaches Rust again, a save made while it was away included.
+    const mine = drafts.get(session);
+    if (drafts.has(session)) void tell(session, ["draft", mine ? JSON.stringify(mine) : "-"]);
+    else drafts.set(session, reply.draft ?? null);
     set(session, [...kept, ...now]);
     // What changed here while Rust was away reaches it now, by id.
     for (const chip of now) if (!theirs.some((each) => each.id === chip.id)) void tell(session, ["add", JSON.stringify(chip)]);
