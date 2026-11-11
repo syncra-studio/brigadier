@@ -152,7 +152,8 @@ export function SendButton({
             aria-label={tip}
             size={null}
             data-state={state}
-            disabled={state === "send" && (empty || blocked !== undefined)}
+            // Resume waits while one is on its way (no `onResume`) or offline, as Send does.
+            disabled={state === "send" ? empty || blocked !== undefined : state === "resume" && (blocked !== undefined || !onResume)}
             onClick={(event) => (state === "stop" ? onStop() : state === "resume" ? onResume?.() : onSendNew && (asNew || (MAC ? event.metaKey : event.ctrlKey)) ? onSendNew() : onSend())}
             className="inline-flex size-control-sm rounded-capsule transition-all motion-safe:active:scale-press"
           >

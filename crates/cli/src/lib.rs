@@ -305,17 +305,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "tabs" => tabs::run(data, args),
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
-        "recover" => {
-            let id = arg(args, 1)?;
-            let spec = core::load(data, id)?;
-            owner::ensure(data, &spec)?;
-            rewind::settled(data, &spec)?;
-            let _fence = core::session::fence(data, &spec)?;
-            let f = core::fold(&spec.dir, true)?;
-            let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
-            let call = call_fn(data, id);
-            Ok(core::recover(&spec, &f.fold, &live, child(data, id), &call))
-        }
+        "recover" => recover(data, arg(args, 1)?, false),
         "archive" | "restore" | "delete" => sessions::run(data, args),
         // The short title a first message gives its session, for the app's row before Rust's [D186].
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
@@ -388,6 +378,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => Err(io::Error::other(USAGE)),
     }
+}
+
+/// Rust's one recovery for a session; `queued`: the caller holds its queue's lock.
+pub(crate) fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
+    let spec = core::load(data, id)?;
+    owner::ensure(data, &spec)?;
+    match queued {
+        true => rewind::settle_held(data, &spec)?,
+        false => rewind::settled(data, &spec)?,
+    }
+    let _fence = core::session::fence(data, &spec)?;
+    let f = core::fold(&spec.dir, true)?;
+    let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
+    let call = call_fn(data, id);
+    Ok(core::recover(&spec, &f.fold, &live, child(data, id), &call))
 }
 
 fn send(

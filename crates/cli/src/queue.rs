@@ -197,13 +197,30 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 return Ok(reply);
             }
         }
-        "resume" => change(&dir, |q| {
-            (q.paused, q.stopping) = (false, false);
-            if let Some(first) = q.items.first_mut() {
-                first.error = None;
+        // A stopped turn carries on first, under the queue's lock and before it unpauses, so nothing
+        // queued can go ahead of it; refused, the queue stays paused and says why [D237, D373].
+        "resume" => {
+            let refused = change(&dir, |q| {
+                let f = core::fold(&dir, true)?.fold;
+                let live = fold::live(&f, owner::state(data, id), data, &procs::all());
+                let status = fold::status(&f, &live);
+                if fold::resumable(&f, status["state"].as_str().unwrap_or("")) {
+                    let reply = crate::recover(data, id, true)?;
+                    let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
+                    if reply["ok"] != true && !went {
+                        return Ok(Some(reply));
+                    }
+                }
+                (q.paused, q.stopping) = (false, false);
+                if let Some(first) = q.items.first_mut() {
+                    first.error = None;
+                }
+                Ok(None)
+            })?;
+            if let Some(reply) = refused {
+                return Ok(reply);
             }
-            Ok(())
-        })?,
+        }
         _ => return Err(io::Error::other(crate::USAGE)),
     }
     Ok(json!({"ok": true, "at": index::touched(&dir)}))

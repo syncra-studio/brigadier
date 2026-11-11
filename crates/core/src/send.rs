@@ -371,6 +371,9 @@ pub(crate) fn cant_hold(a: &dyn adapters::Adapter) -> String {
     )
 }
 
+/// What Resume says after the user's Stop, the old app's line [D2022].
+const RESUME: &str = "[The user stopped you, then asked you to resume. Continue their request from where you left off.]";
+
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
 /// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
 /// turn continues through the backend's resume id.
@@ -465,6 +468,27 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             );
             reply["recovered"] = "continued".into();
             reply["swept"] = swept.into();
+            reply
+        }
+        // The user's Stop, then Resume: their message again only on the log's proof that no child
+        // read it, by its command id; else the old app's neutral line carries the request on [D300, D373, D2022].
+        _ if fold::resumable(f, state) => {
+            let last = f.last.clone().unwrap_or_default();
+            let backend = last["backend"].as_str().filter(|b| !b.is_empty());
+            let old = last["cid"].as_str().unwrap_or("");
+            let (cid, origin, text, retry_of, said) =
+                match last["never_ran"] == true && last["origin"] == "user" {
+                    true => (
+                        format!("{old}.r{now}"),
+                        "user",
+                        last["text"].as_str().unwrap_or(""),
+                        Some(old),
+                        "resent",
+                    ),
+                    false => (format!("rs{now}"), "system", RESUME, None, "continued"),
+                };
+            let mut reply = send(spec, f, child, call, &cid, origin, text, backend, retry_of);
+            reply["recovered"] = said.into();
             reply
         }
         _ => json!({"ok": false, "error": format!("nothing to recover: {state}")}),

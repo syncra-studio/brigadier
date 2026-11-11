@@ -14,7 +14,7 @@ pub use live::{Live, live, live_groups};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, mark, notice, status, switchable, works};
+pub use status::{Owner, mark, notice, resumable, status, switchable, works};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default, Serialize, Deserialize, Clone)]

@@ -53,7 +53,9 @@ impl Fold {
             self.bound(&turn);
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "outcome": outcome, "reason": reason, "ts": ts,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch}),
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch,
+                       // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
+                       "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );
         }
     }

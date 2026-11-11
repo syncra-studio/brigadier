@@ -36,6 +36,15 @@ pub fn status(fold: &Fold, live: &Live) -> Value {
            "account": fold.accounts.get(&fold.backend), "switchable": switchable(fold)})
 }
 
+/// The last turn ended on the user's Stop and nothing ran since, background jobs or not: Resume
+/// carries it on [D373, D2004].
+pub fn resumable(fold: &Fold, state: &str) -> bool {
+    matches!(state, "stopped" | "idle_jobs")
+        && fold.turns.is_empty()
+        && (fold.last.as_ref())
+            .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
+}
+
 /// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on. Only
 /// while no turn is open.
 pub fn switchable(fold: &Fold) -> Option<&'static str> {

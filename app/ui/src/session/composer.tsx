@@ -30,6 +30,8 @@ export type ComposerRow = Row & {
   queue?: { paused: boolean; items: { id: string; text: string; error?: string }[]; editing?: { id: string; text: string; slot: number } | null } | null;
   steer?: boolean;
   running?: boolean;
+  /** The last turn was the user's Stop: Resume carries it on, from Send or the queue [D373]. */
+  resumable?: boolean;
 };
 
 /** Runs a brigadier command and answers its whole reply, a refusal included. */
@@ -315,6 +317,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     void run(["stop", id]).then((reply) => !reply.ok && setStopError(failure(reply)));
   };
   const resume = () => act({ kind: "resume", qid: "" }, ["resume"]);
+  const resuming = live.some((op) => op.kind === "resume");
   const move = (qid: string, to: number) =>
     new Promise<void>((resolve, reject) => act({ kind: "move", qid, done: resolve }, ["move", qid, String(to)], reject));
 
@@ -325,7 +328,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         <QueueCard
           items={items}
           paused={paused}
-          resuming={live.some((op) => op.kind === "resume")}
+          resuming={resuming || offline}
           steer={canSteer && running}
           canEdit={empty}
           error={error ?? (firstError ? `Not sent: ${firstError}. Edit or delete it to go on.` : null)}
@@ -372,9 +375,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         <ComposerFooter>
           <SessionLevel id={id} row={row} />
           <ComposerTools />
-          <ErrorLine error={stopError} className="min-w-0 truncate" />
+          {/* With nothing queued the queue card isn't there to say why a Resume was refused. */}
+          <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton followUp={followUp} empty={empty && chips.length === 0} running={running} canStop={running && !offline} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} />
+          <SendButton followUp={followUp} empty={empty && chips.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog
