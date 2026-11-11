@@ -60,7 +60,7 @@ export function BranchGallery() {
       </Row>
       <Row name="Quick picks">
         <State label="A session: no switching">
-          <Over>{(place) => <QuickPick place={place} placeholder="This session works on its own branch" items={sessionItems("main", HOST)} onClose={noop} />}</Over>
+          <Over>{(place) => <QuickPick place={place} placeholder="This session works on its own branch" items={sessionItems("main", HOST)} search={false} onClose={noop} />}</Over>
         </State>
         <State label="Your own folder">
           <Over>{(place) => <QuickPick place={place} placeholder="Select a branch to switch to" items={folderItems(BRANCHES, "main", NOW)} onClose={noop} />}</Over>

@@ -349,6 +349,7 @@ export function SourcePanel({
         <QuickPick
           place={{ anchor: branchItem }}
           placeholder={folder ? "Select a branch to switch to" : "This session works on its own branch"}
+          search={folder}
           items={folder ? folderItems(read === undefined && branchOps ? null : (read?.branches ?? data.branches ?? null), state.branch, nowMs) : sessionItems(read?.base ?? base ?? "main", read ? (read.page && read.host) : (data.host ?? null))}
           off={folder && (data.agentWorking || read?.working) ? "Branches can't switch while the agent is working." : null}
           onPick={(item) => {

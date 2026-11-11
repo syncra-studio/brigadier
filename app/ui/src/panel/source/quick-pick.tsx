@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 
 import { cx } from "../../components/cx";
 import { Input } from "../../components/input";
@@ -35,12 +35,14 @@ function Surface({ place, onClose, children }: { place: Place; onClose: () => vo
 /**
  * A quick pick over the Source panel (the old BranchPicker): typing narrows it, ↑ ↓ and Enter pick, Escape or a click
  * outside closes it. `items` null while they load. `off`: why nothing can be picked now (the agent is working).
+ * `search`: the field that narrows it, only where it lists branches; without it the list keeps the keyboard [D1265].
  */
-export function QuickPick({ place, placeholder, items, off = null, onPick, onClose }: {
+export function QuickPick({ place, placeholder, items, off = null, search = true, onPick, onClose }: {
   place: Place;
   placeholder: string;
   items: PickItem[] | null;
   off?: string | null;
+  search?: boolean;
   onPick?: (item: PickItem) => void;
   onClose: () => void;
 }) {
@@ -57,32 +59,44 @@ export function QuickPick({ place, placeholder, items, off = null, onPick, onClo
     list.current?.querySelector(`#quick-pick-${picked}`)?.scrollIntoView({ block: "nearest" });
   }, [picked]);
   const choose = (item: PickItem | undefined) => item && !off && onPick?.(item);
+  const keys = (event: KeyboardEvent) => {
+    if (event.key === "Escape") onClose();
+    else if (event.key === "ArrowDown") setAt(Math.min(picked + 1, shown.length - 1));
+    else if (event.key === "ArrowUp") setAt(Math.max(picked - 1, 0));
+    else if (event.key === "Enter") choose(shown[picked]);
+    else return;
+    event.preventDefault();
+  };
+  const active = shown[picked] ? `quick-pick-${picked}` : undefined;
   return (
     <Surface place={place} onClose={onClose}>
-      <Input
-        autoComplete="off"
-        spellCheck={false}
-        value={query}
-        aria-label={placeholder}
-        aria-controls="quick-pick-list"
-        aria-activedescendant={shown[picked] ? `quick-pick-${picked}` : undefined}
-        placeholder={placeholder}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setAt(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-          else if (event.key === "ArrowDown") setAt(Math.min(picked + 1, shown.length - 1));
-          else if (event.key === "ArrowUp") setAt(Math.max(picked - 1, 0));
-          else if (event.key === "Enter") choose(shown[picked]);
-          else return;
-          event.preventDefault();
-        }}
-        className="shrink-0"
-      />
+      {search && (
+        <Input
+          autoComplete="off"
+          spellCheck={false}
+          value={query}
+          aria-label={placeholder}
+          aria-controls="quick-pick-list"
+          aria-activedescendant={active}
+          placeholder={placeholder}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setAt(0);
+          }}
+          onKeyDown={keys}
+          className="shrink-0"
+        />
+      )}
       {off && <p className="px-2 pt-1.5 text-xs text-muted-foreground">{off}</p>}
-      <div ref={list} id="quick-pick-list" role="listbox" aria-label={placeholder} aria-disabled={off !== null || undefined} className="min-h-0 overflow-x-hidden overflow-y-auto">
+      <div
+        ref={list}
+        id="quick-pick-list"
+        role="listbox"
+        aria-label={placeholder}
+        aria-disabled={off !== null || undefined}
+        {...(!search && { tabIndex: 0, "aria-activedescendant": active, onKeyDown: keys })}
+        className="min-h-0 overflow-x-hidden overflow-y-auto outline-none"
+      >
         {items === null && <p className="px-2 py-1 text-sm text-muted-foreground">Loading…</p>}
         {items !== null && shown.length === 0 && <p className="px-2 py-1 text-sm text-muted-foreground">No matching branches</p>}
         {shown.map((item, index) => (
