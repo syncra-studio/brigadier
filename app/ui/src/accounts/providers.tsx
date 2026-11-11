@@ -48,7 +48,7 @@ export const agentHref = (name: string) => `#settings/providers/${encodeURICompo
 export function ProvidersPage({ detail }: { detail?: string }) {
   const { daemon } = useDaemon();
   const online = Boolean(daemon);
-  const { list, checking } = useAgents();
+  const { list, checking, error: checkError } = useAgents();
   const accounts = useAccounts();
   const setup = useAgentSetup(list, online);
   const { failed, act } = useFailed();
@@ -101,7 +101,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
           />
         ) : (
           <SettingsPage title={list ? "No such agent" : "Checking…"} back={{ label: "Providers", href: "#settings/providers" }}>
-            {null}
+            <ErrorLine error={checkError} />
           </SettingsPage>
         )
       ) : (
@@ -111,7 +111,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
           actions={<CheckAgainButton busy={checking.has("*") || accounts.loading} label="Check the agents and accounts again" onClick={checkAgain} />}
         >
           {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
-          <ErrorLine error={failed.check} />
+          <ErrorLine error={failed.check ?? checkError ?? accounts.error} />
           <Overview list={list} online={online} switchAgents={Boolean(accounts.switchAgents)} failed={failed} act={act} onSwitchAgents={switchAgentsTo} setup={setup} />
         </SettingsPage>
       )}
