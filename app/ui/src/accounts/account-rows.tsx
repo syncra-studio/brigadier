@@ -10,7 +10,7 @@ import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
 import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, signIn, signInRun } from "./api";
-import { ConnectStatus, ROW_LINE, ROW_TITLE, useFailed } from "./parts";
+import { ConnectStatus, ROW_TITLE, useFailed } from "./parts";
 
 /** How often the accounts are checked again while a sign-in terminal is open. */
 const RECHECK_MS = 2000;
@@ -165,7 +165,7 @@ function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: bool
 }
 
 /**
- * One account: its initial, who it is over how it stands; its usage; then In use where the others have Use (or
+ * One account: its initial, who it is over how it stands; its usage once Rust reads it; then In use where the others have Use (or
  * Sign in), and its ⋯ menu. New sessions start on the computer's own login, so that one is In use.
  */
 function AccountRow({
@@ -219,7 +219,7 @@ function AccountRow({
           <ErrorLine error={error} />
         </div>
         <span className="flex w-37.5 shrink-0 items-center justify-end">
-          {limited ? <Badge variant="warning">Hit its limit</Badge> : signedIn && <span className={ROW_LINE}>Usage not read yet</span>}
+          {limited && <Badge variant="warning">Hit its limit</Badge>}
         </span>
         <div className="flex w-24 shrink-0 items-center justify-end gap-2.5">
           {!own && !signedIn && !account.sign_in?.running ? (
