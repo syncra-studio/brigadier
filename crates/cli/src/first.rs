@@ -114,8 +114,18 @@ pub(super) fn run(
         "sync" | "publish" => None,
         _ => return refuse(super::USAGE),
     };
+    // "When it's done" names the tree its test run was proved on: exactly that lands, and when the
+    // branch already holds it, nothing is committed first [D1213].
+    let proved = flag(args, "--tree");
+    if proved.is_some_and(|tree| commit::head_tree(checkout, &stop).as_deref() == Some(tree)) {
+        let _held = hold(data, target)?;
+        if commit::head_now(checkout, &stop).as_deref() != Some(head) {
+            return refuse(MOVED);
+        }
+        return moved(data, target, checkout, args, verb, pr, (head, base));
+    }
     let prepared = commit::prepare(checkout, true, &stop)?;
-    if prepared.head.as_deref() != Some(head) {
+    if prepared.head.as_deref() != Some(head) || proved.is_some_and(|t| t != prepared.tree) {
         return refuse(MOVED);
     }
     // A message typed in Edit message… or a squash's own stands; else the draft for exactly this,
@@ -131,17 +141,41 @@ pub(super) fn run(
         },
     };
     let _held = hold(data, target)?;
-    // `commit` checks the HEAD again under its lock [D1049].
+    // `commit` checks the HEAD and the tree again under its lock [D1049].
     let made = commit::commit(checkout, &prepared, true, &message, hooks, &stop)?;
+    moved(data, target, checkout, args, verb, pr, (&made, base)).inspect_err(|_| {
+        commit::take_back(checkout, &made, head, &stop);
+    })
+}
+
+/// The move after the commit, or on what's already committed, pinned to `head`.
+fn moved(
+    data: &Path,
+    target: &Target,
+    checkout: &Checkout,
+    args: &[String],
+    verb: &str,
+    pr: Option<host::Pr>,
+    (head, base): (&str, Option<&str>),
+) -> io::Result<Value> {
+    let stop = AtomicBool::new(false);
+    let hooks = sync::trusted(data, target);
+    let session = || match target {
+        Target::Session(id) => Ok(*id),
+        Target::Project(_) => refuse(super::USAGE),
+    };
     let (title, body) = (
         flag(args, "--title").unwrap_or(""),
         flag(args, "--body").unwrap_or(""),
     );
-    let pinned = (made.as_str(), base.unwrap_or(""));
-    let moved = match (verb, &pr) {
+    let (pinned, message) = (
+        (head, base.unwrap_or("")),
+        flag(args, "--message").map(str::trim),
+    );
+    match (verb, &pr) {
         ("merge", _) => land::land_held(data, session()?, "merge", None, pinned, &stop)
             .map(|landed| json!({"ok": true, "landed": landed})),
-        ("squash", _) => land::land_held(data, session()?, "squash", Some(&message), pinned, &stop)
+        ("squash", _) => land::land_held(data, session()?, "squash", message, pinned, &stop)
             .map(|landed| json!({"ok": true, "landed": landed})),
         ("push", Some(pr)) => pr.push().map(|_| json!({"ok": true})),
         ("link", Some(pr)) => pr
@@ -151,8 +185,5 @@ pub(super) fn run(
             .map(|made| json!({"ok": true, "pr": made})),
         ("publish", _) => sync::publish(checkout, hooks, &stop).map(|_| json!({"ok": true})),
         _ => sync::sync(checkout, hooks, &stop).map(|_| json!({"ok": true})),
-    };
-    moved.inspect_err(|_| {
-        commit::take_back(checkout, &made, head, &stop);
-    })
+    }
 }

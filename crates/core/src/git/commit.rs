@@ -53,7 +53,7 @@ fn run(command: &mut Command, what: &str, stop: &AtomicBool) -> io::Result<Strin
 
 /// The tree the index holds; with `all`, the tree once every change is staged, read from a copy
 /// of the index so the real one is untouched until the commit.
-fn tree(checkout: &Checkout, all: bool, stop: &AtomicBool) -> io::Result<String> {
+pub fn tree(checkout: &Checkout, all: bool, stop: &AtomicBool) -> io::Result<String> {
     let mut write_tree = worktrees::command(&checkout.root);
     write_tree.arg("write-tree");
     if !all {
@@ -220,6 +220,12 @@ pub fn branch(
         stop,
     )?;
     Ok((commits, String::from_utf8_lossy(&patch).into_owned()))
+}
+
+/// The tree HEAD holds, none before the first commit.
+pub fn head_tree(checkout: &Checkout, stop: &AtomicBool) -> Option<String> {
+    let rev = ["rev-parse", "--verify", "-q", "HEAD^{tree}"];
+    (read(&checkout.root, &rev, stop).ok().map(text)).filter(|t| !t.is_empty())
 }
 
 /// The checkout's HEAD now, none before its first commit.
