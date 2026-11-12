@@ -105,7 +105,7 @@ export function AppSidebar({
   const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
   const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(byLastSend));
   const forked = new Set(rest?.filter((each) => each.forkOf && rest.some((source) => source.id === each.forkOf)).map((each) => each.id));
-  const homeless = rest?.filter((each) => each.project === null || !projectOf.has(each.project)) ?? [];
+  const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   // Each section's rows top to bottom, keyed by what folds them: the order ⌥⌘A goes in and the pill counts.
   const sections: [string[], SessionRow[]][] =
@@ -286,7 +286,7 @@ export function AppSidebar({
                 </NavSection>
                 {/* Sessions with no project (made before projects were records) [D224]. */}
                 {grouping === "project" && homeless.length > 0 && (
-                  <NavSection title="No project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                  <NavSection title="Chats without a project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
                     <NavList>{homeless.map((each) => row(each, {}))}</NavList>
                   </NavSection>
                 )}

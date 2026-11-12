@@ -22,6 +22,8 @@ export type ShowFilter = {
   hideChats: boolean;
   /** Nothing is left out. */
   all: boolean;
+  /** In no project here: none, or one since removed. */
+  homeless: (row: SessionRow) => boolean;
   keeps: (row: SessionRow) => boolean;
   setHiddenProjects: (ids: string[]) => void;
   setHideChats: (hide: boolean) => void;
@@ -31,11 +33,13 @@ export function useShowFilter(storeKey: string, projects: Project[]): ShowFilter
   const [hidden, setHiddenProjects] = useStored<string[]>(`${storeKey}.hiddenProjects`, []);
   const [hideChats, setHideChats] = useStored(`${storeKey}.hideChats`, false);
   const hiddenProjects = new Set(hidden.filter((id) => projects.some((project) => project.id === id)));
+  const homeless = (row: SessionRow) => row.project === null || !projects.some((project) => project.id === row.project);
   return {
     hiddenProjects,
     hideChats,
     all: hiddenProjects.size === 0 && !hideChats,
-    keeps: (row) => (row.project === null ? !hideChats : !hiddenProjects.has(row.project)),
+    homeless,
+    keeps: (row) => (homeless(row) ? !hideChats : !hiddenProjects.has(row.project!)),
     setHiddenProjects,
     setHideChats,
   };
@@ -100,7 +104,7 @@ export function ViewMenu({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const count = (project: string | null) => rows.filter((row) => row.project === project).length;
+  const count = (project: string | null) => rows.filter((row) => (project === null ? show.homeless(row) : row.project === project)).length;
   const tickProject = (id: string, on: boolean) => {
     const others = [...show.hiddenProjects].filter((each) => each !== id);
     show.setHiddenProjects(on ? others : [...others, id]);
