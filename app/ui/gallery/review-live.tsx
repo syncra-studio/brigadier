@@ -10,6 +10,7 @@ import { CommentChip } from "../src/review/comments";
 import { ReviewTab } from "../src/review/review-tab";
 import type { DiffComment, FileContents, ReviewScope } from "../src/review/types";
 import { FIRST_STAGED, read } from "./review-data";
+import { LevelPill } from "./composer";
 
 /** How long the fake daemon takes to answer. */
 const LATENCY = 700;
@@ -36,6 +37,7 @@ export function ChipComposer({ comments, onRemove, onSend }: { comments: readonl
       <ComposerFooter>
         <ComposerTools>
           <PlusButton />
+          <LevelPill />
         </ComposerTools>
         <SendButton empty={empty && comments.length === 0} running={false} canStop={false} onSend={send} onStop={() => {}} />
       </ComposerFooter>

@@ -1,5 +1,5 @@
 import { Button as BaseButton } from "@base-ui/react/button";
-import { type ComponentProps, type MouseEvent, useRef, useState } from "react";
+import { type ComponentProps, type MouseEvent, type ReactNode, useRef, useState } from "react";
 
 import { Plus } from "../../icons";
 import { Button } from "../button";
@@ -8,6 +8,7 @@ import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { type Draft, isEmpty } from "./draft";
 import { ComposerField, type ComposerFieldHandle } from "./field";
+import { ComposerRail } from "./rail";
 
 /**
  * The composer's column under the thread (below its scroller, not over it): the reading width, 16px from
@@ -74,6 +75,50 @@ export function ComposerPill({ className, ...props }: Omit<BaseButton.Props, "cl
 /** The hairline between the footer's pills. */
 export function PillDivider() {
   return <span aria-hidden className="mx-1 h-icon-md w-px shrink-0 bg-input" />;
+}
+
+/**
+ * The one composer the gallery, Home and a session mount [D2108]: the rail over the card, the card's tiles over
+ * its field (`children`), and the footer in the old app's order: + and the permission pill side by side, then
+ * `status`, the context ring, the model and Send [D2106, D2111]. `above` (an approval) takes the card's place
+ * while `hidden`; `after` holds its dialogs.
+ */
+export function SharedComposer({
+  rail,
+  above,
+  hidden,
+  tiles,
+  plus,
+  level,
+  status,
+  ring,
+  model,
+  send,
+  after,
+  children,
+  ...card
+}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean }) {
+  return (
+    <Composer>
+      <ComposerRail>{rail}</ComposerRail>
+      {above}
+      <ComposerCard className={hidden ? "hidden" : undefined} {...card}>
+        {tiles}
+        {children}
+        <ComposerFooter>
+          <ComposerTools>
+            {plus}
+            {level}
+          </ComposerTools>
+          {status}
+          {ring}
+          {model}
+          {send}
+        </ComposerFooter>
+      </ComposerCard>
+      {after}
+    </Composer>
+  );
 }
 
 /** "45k": tokens in thousands. */

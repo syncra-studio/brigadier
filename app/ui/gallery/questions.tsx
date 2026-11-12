@@ -8,7 +8,7 @@ import { type PendingQuestion, QuestionCard } from "../src/components/composer/q
 import { ComposerRail, RailItem, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
 import { QuestionRow } from "../src/components/thread/cards";
-import { ModelPill } from "./composer";
+import { LevelPill, ModelPill } from "./composer";
 import { Row, Section, State } from "./parts";
 
 const MANAGER = { text: "Which package manager should the scripts use?", options: [{ label: "pnpm" }, { label: "npm" }, { label: "yarn" }], recommended: null, multiSelect: false };
@@ -37,6 +37,7 @@ function Composer() {
       <ComposerFooter>
         <ComposerTools>
           <PlusButton />
+          <LevelPill />
         </ComposerTools>
         <ModelPill />
         <SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />

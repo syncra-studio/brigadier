@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../components/composer/composer";
+import { SharedComposer } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText, sendMode } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
-import { ComposerRail, PausedSendDialog } from "../components/composer/rail";
+import { PausedSendDialog } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
@@ -344,92 +344,100 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     new Promise<void>((resolve, reject) => act({ kind: "move", qid, done: resolve }, ["move", qid, String(to)], reject));
 
   return (
-    <Composer>
-      <ComposerRail>
-        <SessionNotices id={id} offline={offline} source={source} run={run} />
-        <QueueCard
-          items={items}
-          paused={paused}
-          resuming={resuming || offline}
-          steer={canSteer && running}
-          canEdit={empty}
-          error={error ?? (firstError ? `Not sent: ${firstError}. Edit or delete it to go on.` : null)}
-          onResume={resume}
-          onSteer={steerQueued}
-          onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}
-          onEdit={edit}
-          onMove={move}
-        />
-        <SessionQuestions id={id} run={run} source={source} />
-      </ComposerRail>
-      <SessionApprovals id={id} run={run} source={source} />
-      {/* Kept while an approval has its place, so the draft and its caret stay. */}
-      <ComposerCard className={approval ? "hidden" : undefined} onDragOver={files.onDragOver} onDrop={files.onDrop}>
-        {files.tilesRow}
-        {chips.length > 0 && (
-          <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
-            {chips.map((chip) =>
-              chip.kind === "agent" ? (
-                <AgentChipTile key={chip.id} chip={chip.chip} onRemove={() => dropChips(id, [chip.id])} />
-              ) : (
-                <CommentChip key={chip.id} comment={chip.comment} onRemove={() => dropChips(id, [chip.id])} />
-              ),
-            )}
-          </div>
-        )}
-        <ComposerField
-          ref={field}
-          initial={initial}
-          placeholder="Do anything"
-          attachments={files.attachments}
-          onAttach={files.attach}
-          mentions={files.mentions}
-          onChange={(parts) => {
-            keepDraft(run, id, { parts, attachmentIds: files.tileIds });
-            changed(isEmpty({ parts, attachmentIds: [] }));
+    <SharedComposer
+      rail={
+        <>
+          <SessionNotices id={id} offline={offline} source={source} run={run} />
+          <QueueCard
+            items={items}
+            paused={paused}
+            resuming={resuming || offline}
+            steer={canSteer && running}
+            canEdit={empty}
+            error={error ?? (firstError ? `Not sent: ${firstError}. Edit or delete it to go on.` : null)}
+            onResume={resume}
+            onSteer={steerQueued}
+            onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}
+            onEdit={edit}
+            onMove={move}
+          />
+          <SessionQuestions id={id} run={run} source={source} />
+        </>
+      }
+      above={<SessionApprovals id={id} run={run} source={source} />}
+      // Kept while an approval has its place, so the draft and its caret stay.
+      hidden={Boolean(approval)}
+      onDragOver={files.onDragOver}
+      onDrop={files.onDrop}
+      tiles={
+        <>
+          {files.tilesRow}
+          {chips.length > 0 && (
+            <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
+              {chips.map((chip) =>
+                chip.kind === "agent" ? (
+                  <AgentChipTile key={chip.id} chip={chip.chip} onRemove={() => dropChips(id, [chip.id])} />
+                ) : (
+                  <CommentChip key={chip.id} comment={chip.comment} onRemove={() => dropChips(id, [chip.id])} />
+                ),
+              )}
+            </div>
+          )}
+        </>
+      }
+      plus={extras.plus}
+      level={<SessionLevel id={id} row={row} />}
+      // With nothing queued the queue card isn't there to say why a Resume was refused.
+      status={<ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
+      model={<SessionModel id={id} row={row} offline={offline} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held ?? files.hold(field.current?.parts() ?? [])} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
+      after={
+        <PausedSendDialog
+          waiting={asking === null ? null : items.length}
+          onSendNow={() => {
+            if (asking !== null) {
+              const [text, msg, draft] = [asking, newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
+              going(askingChips.current, msg, (pulled) => sendNow(text, pulled, false, msg, draft));
+            }
+            setAsking(null);
           }}
-          onSubmit={submit}
-          onSubmitNew={inProject ? submitNew : undefined}
-          commands={extras.commands}
-          onOpen={extras.onOpen}
-          onPullQueued={() => {
-            const last = items.findLast((each) => each.state === "queued");
-            if (!last) return false;
-            edit(last.id);
-            return true;
+          onKeepPaused={() => {
+            if (asking !== null) {
+              const [text, msg, draft] = [asking, editing.current?.qid ?? newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
+              going(askingChips.current, msg, (pulled, back) => queue(text, msg, pulled?.slot, back, draft));
+            }
+            setAsking(null);
+          }}
+          onClose={() => {
+            if (asking === null) return;
+            setAsking(null);
+            field.current?.focus();
           }}
         />
-        <ComposerFooter>
-          <SessionLevel id={id} row={row} />
-          <ComposerTools>{extras.plus}</ComposerTools>
-          {/* With nothing queued the queue card isn't there to say why a Resume was refused. */}
-          <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />
-          <SessionModel id={id} row={row} offline={offline} />
-          <SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held ?? files.hold(field.current?.parts() ?? [])} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />
-        </ComposerFooter>
-      </ComposerCard>
-      <PausedSendDialog
-        waiting={asking === null ? null : items.length}
-        onSendNow={() => {
-          if (asking !== null) {
-            const [text, msg, draft] = [asking, newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-            going(askingChips.current, msg, (pulled) => sendNow(text, pulled, false, msg, draft));
-          }
-          setAsking(null);
+      }
+    >
+      <ComposerField
+        ref={field}
+        initial={initial}
+        placeholder="Do anything"
+        attachments={files.attachments}
+        onAttach={files.attach}
+        mentions={files.mentions}
+        onChange={(parts) => {
+          keepDraft(run, id, { parts, attachmentIds: files.tileIds });
+          changed(isEmpty({ parts, attachmentIds: [] }));
         }}
-        onKeepPaused={() => {
-          if (asking !== null) {
-            const [text, msg, draft] = [asking, editing.current?.qid ?? newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-            going(askingChips.current, msg, (pulled, back) => queue(text, msg, pulled?.slot, back, draft));
-          }
-          setAsking(null);
-        }}
-        onClose={() => {
-          if (asking === null) return;
-          setAsking(null);
-          field.current?.focus();
+        onSubmit={submit}
+        onSubmitNew={inProject ? submitNew : undefined}
+        commands={extras.commands}
+        onOpen={extras.onOpen}
+        onPullQueued={() => {
+          const last = items.findLast((each) => each.state === "queued");
+          if (!last) return false;
+          edit(last.id);
+          return true;
         }}
       />
-    </Composer>
+    </SharedComposer>
   );
 }

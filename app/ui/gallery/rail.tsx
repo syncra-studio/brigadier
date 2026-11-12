@@ -8,7 +8,7 @@ import { ComposerField, type ComposerFieldHandle } from "../src/components/compo
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
 import { ComposerRail, Notices, PausedSendDialog } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
-import { ModelPill } from "./composer";
+import { LevelPill, ModelPill } from "./composer";
 import { Section } from "./parts";
 
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
@@ -162,6 +162,7 @@ function Live() {
           <ComposerFooter>
             <ComposerTools>
               <PlusButton />
+              <LevelPill />
             </ComposerTools>
             <ModelPill />
             <SendButton

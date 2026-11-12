@@ -1,9 +1,10 @@
 // The composer (slice 1): one live copy to play with, and the edit-and-resend composer.
 import { useRef, useState } from "react";
 
-import { ComposerCard, ComposerFooter, ComposerPill, ComposerTools, ContextRing, EditComposer, PillDivider, PlusButton } from "../src/components/composer/composer";
+import { ComposerPill, ContextRing, EditComposer, PlusButton, SharedComposer } from "../src/components/composer/composer";
 import { type Draft, isEmpty, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
+import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { SendButton } from "../src/components/composer/send-button";
 import { Button } from "../src/components/button";
 import { showToast } from "../src/components/toast";
@@ -21,6 +22,12 @@ export function ModelPill() {
       <ChevronDown className="size-icon-xs" />
     </ComposerPill>
   );
+}
+
+/** The permission pill as the composer shows it after the +, its pick kept here. */
+export function LevelPill() {
+  const [level, setLevel] = useState<PermissionLevel>("auto");
+  return <PermissionPicker value={level} onChange={setLevel} />;
 }
 
 /** Rust's stand-in for opening what a chip names. */
@@ -67,22 +74,12 @@ function Live() {
           </li>
         ))}
       </ol>
-      <ComposerCard>
-        <ComposerField
-          ref={field}
-          placeholder={placeholder}
-          prompts={sent.map((each) => draft(...each.parts))}
-          onChange={(parts) => setEmpty(isEmpty(draft(...parts)))}
-          onSubmit={send}
-        />
-        <ComposerFooter>
-          <ComposerTools>
-            <PlusButton />
-            <PillDivider />
-            <ComposerPill>Pill</ComposerPill>
-          </ComposerTools>
-          <ContextRing usedTokens={45_000} windowTokens={258_000} />
-          <ModelPill />
+      <SharedComposer
+        plus={<PlusButton />}
+        level={<LevelPill />}
+        ring={<ContextRing usedTokens={45_000} windowTokens={258_000} />}
+        model={<ModelPill />}
+        send={
           <SendButton
             empty={empty}
             running={running}
@@ -99,8 +96,16 @@ function Live() {
               setStartedAt(Date.now());
             }}
           />
-        </ComposerFooter>
-      </ComposerCard>
+        }
+      >
+        <ComposerField
+          ref={field}
+          placeholder={placeholder}
+          prompts={sent.map((each) => draft(...each.parts))}
+          onChange={(parts) => setEmpty(isEmpty(draft(...parts)))}
+          onSubmit={send}
+        />
+      </SharedComposer>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { ComposerField, type ComposerFieldHandle } from "../src/components/compo
 import { fuzzyMatch, type Mention, type MentionGroup, type Mentions, PlusMenu, type SlashCommand } from "../src/components/composer/menus";
 import { SendButton } from "../src/components/composer/send-button";
 import { Toaster } from "../src/components/toast";
-import { ModelPill, openChip } from "./composer";
+import { LevelPill, ModelPill, openChip } from "./composer";
 import { Section } from "./parts";
 import picture from "./sample.svg?no-inline";
 
@@ -129,6 +129,7 @@ function Live() {
         <ComposerFooter>
           <ComposerTools>
             <PlusMenu field={field} commands={commands} chats={CHATS} onFiles={(files) => files.forEach((file) => attach(crypto.randomUUID(), file, false))} />
+          <LevelPill />
           </ComposerTools>
           <ModelPill />
           <SendButton empty={empty && tiles.length === 0} running={false} canStop={false} onSend={send} onStop={noop} />

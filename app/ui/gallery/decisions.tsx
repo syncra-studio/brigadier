@@ -5,7 +5,7 @@ import { type ApprovalDecision, ApprovalSlot, type PendingApproval } from "../sr
 import { ComposerCard, ComposerFooter, ComposerTools, PlusButton } from "../src/components/composer/composer";
 import { ComposerField } from "../src/components/composer/field";
 import { SendButton } from "../src/components/composer/send-button";
-import { ModelPill } from "./composer";
+import { LevelPill, ModelPill } from "./composer";
 import { QuestionGallery } from "./questions";
 import { Section } from "./parts";
 
@@ -59,6 +59,7 @@ function Live() {
           <ComposerFooter>
             <ComposerTools>
               <PlusButton />
+              <LevelPill />
             </ComposerTools>
             <ModelPill />
             <SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />

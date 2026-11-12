@@ -1,11 +1,11 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
-import { Composer, ComposerCard, ComposerFooter, ComposerTools } from "../components/composer/composer";
+import { SharedComposer } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
-import { ComposerRail, NoticeRow, RailItem } from "../components/composer/rail";
+import { NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
 import { showToast } from "../components/toast";
 import { BrigadierMark } from "../onboarding/mark";
@@ -137,73 +137,74 @@ export function HomeView(props: HomeProps) {
         </h1>
       </div>
       <div className="flex grow basis-0 flex-col justify-end">
-        <Composer>
-          <ComposerRail>
-            {props.modelError && (
-              <RailItem label="Notices">
-                <ul aria-live="polite">
-                  <NoticeRow level="error">{props.modelError}</NoticeRow>
-                </ul>
+        <SharedComposer
+          rail={
+            <>
+              {props.modelError && (
+                <RailItem label="Notices">
+                  <ul aria-live="polite">
+                    <NoticeRow level="error">{props.modelError}</NoticeRow>
+                  </ul>
+                </RailItem>
+              )}
+              {!props.modelError && noModel && (
+                <RailItem label="Notices">
+                  <ul aria-live="polite">
+                    <NoticeRow
+                      level="info"
+                      action={
+                        setUp &&
+                        props.onSetUp && (
+                          <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
+                            Set up {setUp.label}
+                          </Button>
+                        )
+                      }
+                    >
+                      No model is available.
+                    </NoticeRow>
+                  </ul>
+                </RailItem>
+              )}
+              <RailItem variant="controls" label="Composer utility bar">
+                {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
+                <UtilityBar className={projects ? undefined : "invisible"}>
+                  <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "project" ? held.box : undefined} />
+                  {project && (
+                    <>
+                      <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} held={held?.picker === "workIn" ? held.box : undefined} />
+                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} held={held?.picker === "branch" ? held.box : undefined} />
+                    </>
+                  )}
+                </UtilityBar>
               </RailItem>
-            )}
-            {!props.modelError && noModel && (
-              <RailItem label="Notices">
-                <ul aria-live="polite">
-                  <NoticeRow
-                    level="info"
-                    action={
-                      setUp &&
-                      props.onSetUp && (
-                        <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
-                          Set up {setUp.label}
-                        </Button>
-                      )
-                    }
-                  >
-                    No model is available.
-                  </NoticeRow>
-                </ul>
-              </RailItem>
-            )}
-            <RailItem variant="controls" label="Composer utility bar">
-              {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
-              <UtilityBar className={projects ? undefined : "invisible"}>
-                <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "project" ? held.box : undefined} />
-                {project && (
-                  <>
-                    <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} held={held?.picker === "workIn" ? held.box : undefined} />
-                    <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} held={held?.picker === "branch" ? held.box : undefined} />
-                  </>
-                )}
-              </UtilityBar>
-            </RailItem>
-          </ComposerRail>
-          <ComposerCard onDragOver={files.onDragOver} onDrop={files.onDrop}>
-            {files.tilesRow}
-            <ComposerField
-              ref={field}
-              initial={props.initial}
-              placeholder="Do anything"
-              autoFocus
-              attachments={files.attachments}
-              onAttach={files.attach}
-              mentions={files.mentions}
-              commands={extras.commands}
-              onOpen={extras.onOpen}
-              onChange={(parts) => {
-                setEmpty(isEmpty({ parts, attachmentIds: [] }));
-                props.onDraft?.({ parts, attachmentIds: files.tileIds });
-              }}
-              onSubmit={() => send(field.current?.parts() ?? [])}
-            />
-            <ComposerFooter>
-              {props.level}
-              <ComposerTools>{extras.plus}</ComposerTools>
-              {props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
-              <SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(field.current?.parts() ?? [])} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
-            </ComposerFooter>
-          </ComposerCard>
-        </Composer>
+            </>
+          }
+          onDragOver={files.onDragOver}
+          onDrop={files.onDrop}
+          tiles={files.tilesRow}
+          plus={extras.plus}
+          level={props.level}
+          model={props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
+          send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(field.current?.parts() ?? [])} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
+        >
+          <ComposerField
+            ref={field}
+            initial={props.initial}
+            placeholder="Do anything"
+            autoFocus
+            attachments={files.attachments}
+            onAttach={files.attach}
+            mentions={files.mentions}
+            commands={extras.commands}
+            onOpen={extras.onOpen}
+            onChange={(parts) => {
+              setEmpty(isEmpty({ parts, attachmentIds: [] }));
+              props.onDraft?.({ parts, attachmentIds: files.tileIds });
+            }}
+            onSubmit={() => send(field.current?.parts() ?? [])}
+          />
+        </SharedComposer>
       </div>
     </div>
   );
