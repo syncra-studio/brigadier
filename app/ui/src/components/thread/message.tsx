@@ -127,6 +127,8 @@ export function UserBubble({
       {dated && time !== undefined && <TimeSeparator at={time} />}
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
         {files}
+        {/* A message of only files (a paste, an image) has no bubble under them. */}
+        {(text.trim() !== "" || !files) && (
         <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             <Markdown text={text} keep={keep} breaks />
@@ -144,6 +146,7 @@ export function UserBubble({
             </button>
           )}
         </div>
+        )}
         {/* Hover-only, its space kept so nothing shifts; a failed or unconfirmed message's stay in view. */}
         <div
           className={cx(

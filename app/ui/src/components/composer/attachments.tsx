@@ -264,7 +264,7 @@ export function SentAttachments({
   files,
   onOpen,
 }: {
-  files: readonly { id: string; name: string; mime: string; bytes: number; url: string }[];
+  files: readonly { id: string; name: string; mime: string; bytes: number; pasted?: boolean; url: string }[];
   onOpen: (id: string) => void;
 }) {
   if (files.length === 0) return null;
@@ -287,12 +287,12 @@ export function SentAttachments({
               </button>
             </ImagePreview>
           ) : (
-            <button type="button" aria-label={`Open ${file.name}`} onClick={() => onOpen(file.id)} className="cursor-pointer rounded-surface text-start focus-visible:focus-ring">
+            <button type="button" aria-label={`Open ${file.pasted ? "Pasted text" : file.name}`} onClick={() => onOpen(file.id)} className="cursor-pointer rounded-surface text-start focus-visible:focus-ring">
               <Tile
                 slot="attachment-file"
                 hint={file.name}
                 icon={<FileTypeIcon name={file.name} className="size-icon-md" />}
-                title={file.name}
+                title={file.pasted ? "Pasted text" : file.name}
                 detail={`${kindOf(file.name, file.mime)} · ${formatBytes(file.bytes)}`}
                 remove={null}
               />

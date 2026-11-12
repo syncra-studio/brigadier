@@ -112,8 +112,8 @@ type Base = {
   inherited?: boolean;
 };
 
-/** A file a user message carried, by its attachment id. */
-export type SentFile = { id: string; name: string; mime: string; bytes: number };
+/** A file a user message carried, by its attachment id; `pasted`: a long paste, sent in the text whole. */
+export type SentFile = { id: string; name: string; mime: string; bytes: number; pasted?: boolean };
 
 export type Item = Base &
   (
@@ -134,7 +134,7 @@ export type Item = Base &
         cid?: string;
         /** Steered into the running turn: it sits inside that turn's work and starts no turn of its own. */
         steer?: boolean;
-        /** A user message's files (its images and attached files, not its pastes), stored in its session's folder. */
+        /** A user message's files (its images, pastes and attached files), stored in its session's folder. */
         files?: SentFile[] | null;
       }
     /**
