@@ -429,13 +429,24 @@ fn models(data: &Path, me: &str) -> Value {
             let models: Vec<Value> = (g["models"].as_array().into_iter().flatten())
                 .map(|m| json!({"id": m["id"], "efforts": m["efforts"], "default_effort": m["default_effort"]}))
                 .collect();
-            json!({"agent": g["provider"], "label": g["label"], "models": models})
+            json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"]})
         })
-        .filter(|a| a["models"].as_array().is_some_and(|m| !m.is_empty()))
         .collect();
     let mut text = String::new();
     for a in &agents {
         text += &format!("{} ({})\n", str_of(a, "label"), str_of(a, "agent"));
+        let levels: Vec<&str> = a["levels"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if !levels.is_empty() {
+            text += &format!("  Levels: {}\n", levels.join(", "));
+        }
+        if a["models"].as_array().is_none_or(Vec::is_empty) {
+            text += "  No models listed.\n";
+        }
         for m in a["models"].as_array().into_iter().flatten() {
             let efforts: Vec<String> = (m["efforts"].as_array().into_iter().flatten())
                 .filter_map(Value::as_str)
@@ -454,6 +465,9 @@ fn models(data: &Path, me: &str) -> Value {
             };
             text += &format!("  {}{efforts}\n", str_of(m, "id"));
         }
+    }
+    if agents.is_empty() {
+        text += "No agents are available.\n";
     }
     json!({"ok": true, "agents": agents, "text": text})
 }
