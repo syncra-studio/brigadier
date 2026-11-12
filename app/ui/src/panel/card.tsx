@@ -18,7 +18,7 @@ import { plural } from "./words";
 import { useBranchPicker } from "./branch-picker";
 
 /** One of the card's parts, a hairline under it as the old card's [D1075, D1198]; `end` ends its title row. */
-function CardSection({ title, end, children }: { title?: ReactNode; end?: ReactNode; children: ReactNode }) {
+export function CardSection({ title, end, children }: { title?: ReactNode; end?: ReactNode; children: ReactNode }) {
   return (
     <section className="relative flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:origin-bottom after:scale-y-50 after:bg-divider last:pb-0 last:after:hidden">
       {(title || end) && (
@@ -57,7 +57,7 @@ function noteOf(data: SourceData): { text: string; warn: boolean } | null {
  * the PR rows and the control change together from one read [D1263]. Disconnected, "Offline · 14:32" takes the
  * counts' place and the rest dims [D30, D1206]. Without `ops` (the gallery) it moves nothing.
  */
-export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onReview }: {
+export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onReview, workers }: {
   data: SourceData;
   nowMs: number;
   project?: string | null;
@@ -65,6 +65,8 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   ops?: SourceOps;
   onPr?: (number: number) => void;
   onReview?: () => void;
+  /** The session's Workers section, between the branch and the PRs as the old card ordered them [D3045]. */
+  workers?: ReactNode;
 }) {
   const { source, step } = data;
   const offline = data.offline ?? false;
@@ -148,6 +150,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         </div>
         {note && <Note text={note.text} warn={note.warn} />}
       </CardSection>
+      {workers}
       {(first || control.kept?.error) && (
         <CardSection
           title={

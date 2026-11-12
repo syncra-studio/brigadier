@@ -251,6 +251,7 @@ export type Item = Base &
     | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[] }
     | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }
     | { kind: "team_step"; type: "paused" | "resumed"; workers: string[] }
+    | { kind: "team_step"; type: "messaged"; byUser: boolean; workers: string[]; text?: string }
     | { kind: "team_still"; workers: string[] }
     /** A message this session's agent sent another, from Rust's notes [D2034, D3014]; `waited` once a `--wait` ended. */
     | {

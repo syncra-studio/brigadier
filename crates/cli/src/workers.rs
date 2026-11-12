@@ -236,7 +236,13 @@ fn halt(data: &Path, top: &str, wid: &str) -> io::Result<()> {
 /// End: `halt`, and a paused one is no longer paused but stopped; what it held stays held.
 fn end(data: &Path, top: &str, wid: &str) -> io::Result<()> {
     halt(data, top, wid)?;
-    if let Some(mut l) = link(data, wid).filter(|l| l.paused) {
+    // Paused, or resumed with its report turn still queued: no turn will end to write how it ended, so End does.
+    let queued = crate::queue::row(&core::session_dir(data, wid))["items"].clone();
+    let unrun = |l: &Link| {
+        (queued.as_array().into_iter().flatten())
+            .any(|i| l.report.iter().any(|c| i["id"] == c.as_str()))
+    };
+    if let Some(mut l) = link(data, wid).filter(|l| l.paused || (l.last.is_null() && unrun(l))) {
         l.paused = false;
         l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms()});
         write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;

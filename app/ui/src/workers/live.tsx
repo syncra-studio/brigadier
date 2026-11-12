@@ -1,20 +1,23 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
 import { X } from "../icons";
+import { WorkerGlyph } from "../icons/worker-glyphs";
+import { CardSection } from "../panel/card";
+import { Counts, Line } from "../panel/source/rows";
 import { cx } from "../components/cx";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
 import { setPanelOpen, usePanelMemory } from "../panel/memory";
 import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
 import type { Item, Turn } from "../thread/item";
-import { finished, type Worker, type WorkerStateKind, WorkersPanel } from "./chip";
+import { finished, lowerFirst, onHand, type Worker, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
-import { WorkersStrip } from "./strip";
+import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { WorkerHeader, WorkerThread } from "./view";
 
 /*
@@ -44,7 +47,8 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   kind: row.worker.kind,
   word: row.worker.word,
   startedAt: row.worker.started,
-  lastAt: row.worker.ended ?? undefined,
+  // When it last said anything: its last turn's end, else its row's last change (a paused one).
+  lastAt: row.worker.ended ?? row.updated,
   model: row.worker.model,
   brief: row.worker.brief,
   receipt: row.worker.receipt,
@@ -107,7 +111,16 @@ export function TeamRow({ item }: { item: TeamItem }) {
     item.kind === "team" ? (
       <TeamSentence keep={item.id} word={item.word} workers={workers} />
     ) : item.kind === "team_step" ? (
-      <TeamStepRow keep={item.id} step={item.type === "stopped" ? { type: "stopped", byUser: item.byUser, workers } : { type: item.type, workers }} />
+      <TeamStepRow
+        keep={item.id}
+        step={
+          item.type === "stopped"
+            ? { type: "stopped", byUser: item.byUser, workers }
+            : item.type === "messaged"
+              ? { type: "messaged", byUser: item.byUser, worker: workers[0]!, text: item.text }
+              : { type: item.type, workers }
+        }
+      />
     ) : (
       <StillRows owner={owner} workers={workers} />
     );
@@ -145,12 +158,12 @@ export function SessionWorkersStrip({ id }: { id: string }) {
   );
 }
 
-/** "1 done · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
+/** "1 done · 1 paused · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
 function finishedWords(workers: readonly Worker[]): string {
-  const counts = { done: 0, stopped: 0, failed: 0 };
+  const counts = { done: 0, paused: 0, stopped: 0, failed: 0 };
   for (const { kind } of workers) {
     if (kind === "done" || kind === "merged" || kind === "doneNotMerged") counts.done += 1;
-    else if (kind === "stopped" || kind === "failed") counts[kind] += 1;
+    else if (kind === "paused" || kind === "stopped" || kind === "failed") counts[kind] += 1;
   }
   return Object.entries(counts).filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`).join(" · ");
 }
@@ -252,7 +265,7 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
   return (
-    <>
+    <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
         worker={worker}
         onBack={onBack}
@@ -271,6 +284,95 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
             <Body key={item.id} item={item} turn={turns.find((turn) => turn.id === item.turnId)} step={item.kind === "tool"} />
           ))}
       </WorkerThread>
-    </>
+    </section>
+  );
+}
+
+/** How many workers at work still get a line each; more read as one row. */
+const WORKER_LINES = 3;
+
+const DONE: ReadonlySet<WorkerStateKind> = new Set(["done", "merged", "doneNotMerged"]);
+
+/** "1 done · 2 ended": the finished ones, as the old card's finishedWords. */
+function doneWords(workers: readonly Worker[]): string {
+  const gone = workers.filter((worker) => !onHand(worker));
+  const done = gone.filter((worker) => DONE.has(worker.kind)).length;
+  return [done > 0 && `${done} done`, gone.length > done && `${gone.length - done} ended`].filter(Boolean).join(" · ");
+}
+
+/**
+ * A worker at work, as the old card's WorkerLineRow: its glyph, its name, its state in a soft word ("working",
+ * shimmering; "paused") and its +N −N, under its pause/resume and End on hover [D3045]. The row opens its panel.
+ */
+function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
+  const { open } = useContext(WorkersPanel);
+  const here = onHand(worker);
+  // A finished one reads only done or ended here; a paused one, paused.
+  const word = here ? lowerFirst(worker.word) : DONE.has(worker.kind) ? "done" : "ended";
+  const changed = (worker.added ?? 0) + (worker.removed ?? 0) > 0;
+  return (
+    <div data-slot="workers-summary-worker" data-worker-state={worker.kind} className="group/row relative min-w-0">
+      <Line
+        onClick={() => open(worker.id)}
+        icon={<WorkerGlyph id={worker.id} className="size-4" />}
+        end={changed && <span className={cx("text-2xs", here && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
+      >
+        {worker.name}
+        <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
+      </Line>
+      {here && (
+        <span className="absolute inset-y-0 end-0 hidden items-center group-hover/row:flex group-has-focus-visible/row:flex">
+          <WorkerControls worker={worker} act={act} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The session's workers in the summary card, as the old card's WorkersSummary [D3045]: while a few work, a line each
+ * (then what finished, muted); else one row of glyphs with "N working" or "1 done · 2 ended". A row opens the
+ * Workers panel, or the worker's own.
+ */
+export function WorkersCard({ owner }: { owner: string }) {
+  const workers = useWorkers(owner).toReversed();
+  if (workers.length === 0) return null;
+  const active = workers.filter(onHand);
+  const ended = doneWords(workers);
+  // A few at work get a line each; so does a lone worker that finished.
+  const lined = active.length > 0 && active.length <= WORKER_LINES ? active : workers.length === 1 ? workers : [];
+  return (
+    <Opens owner={owner}>
+      <CardSection title={WORKERS_LABEL}>
+        <WorkersRows owner={owner} workers={workers} active={active} lined={lined} ended={ended} />
+      </CardSection>
+    </Opens>
+  );
+}
+
+function WorkersRows({ owner, workers, active, lined, ended }: { owner: string; workers: Worker[]; active: Worker[]; lined: Worker[]; ended: string }) {
+  const { open } = useContext(WorkersPanel);
+  if (lined.length > 0) {
+    const first = workers.find((worker) => !onHand(worker));
+    return (
+      <>
+        {lined.map((worker) => <WorkerLine key={worker.id} worker={worker} act={act(owner)} />)}
+        {ended && lined === active && first && (
+          <Line onClick={() => open(null)} icon={<WorkerGlyph id={first.id} className="size-4" />}>
+            <span className="text-muted-foreground">{ended}</span>
+          </Line>
+        )}
+      </>
+    );
+  }
+  const glyphs = (active.length > 0 ? active : workers).slice(0, 4);
+  return (
+    <Line
+      onClick={() => open(null)}
+      icon={<span className="flex items-center gap-1.5">{glyphs.map((worker) => <WorkerGlyph key={worker.id} id={worker.id} className="size-4" />)}</span>}
+      end={active.length > 0 && ended ? ended : undefined}
+    >
+      {active.length > 0 ? `${active.length} working` : ended}
+    </Line>
   );
 }

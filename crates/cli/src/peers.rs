@@ -183,10 +183,12 @@ pub fn send(
     }
     drop(one);
     let phase = if why.is_some() { "stopped" } else { "sent" };
+    // To its own worker: the old lead's "Messaged ‹worker›" row, not a peer's [D3010, D3044].
+    let worker = workers::link(data, to).is_some_and(|l| l.parent == me);
     note(
         data,
         me,
-        json!({"phase": phase, "mid": out.mid, "to": to, "text": text, "wait": out.wait, "why": why}),
+        json!({"phase": phase, "mid": out.mid, "to": to, "text": text, "wait": out.wait, "why": why, "worker": worker}),
     );
     crash_at("sent");
     open(data, me);

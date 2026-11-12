@@ -6,7 +6,7 @@ use super::Thread;
 use serde_json::{Value, json};
 
 impl Thread {
-    fn team_row(&mut self, row: Value) {
+    pub(super) fn team_row(&mut self, row: Value) {
         self.break_group();
         let at = self.add(row);
         if let Some(o) = self.open.as_mut() {

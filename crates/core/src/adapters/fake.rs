@@ -2,7 +2,7 @@
 
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
-    Retune, Rewound, Timing, Tool, base_env, change, s,
+    Retune, Rewound, Timing, Tool, base_env, change, s, shell_step,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -160,7 +160,12 @@ impl Adapter for Fake {
             "tool" if v["command"].is_string() => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
-                step: "run",
+                // A `brigadier start` and the like are no row, as a real CLI's [D3044].
+                step: if shell_step(s(&v, &["command"])).0.is_empty() {
+                    ""
+                } else {
+                    "run"
+                },
                 input: s(&v, &["command"]).into(),
                 ..Default::default()
             })],

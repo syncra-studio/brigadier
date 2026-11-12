@@ -11,6 +11,7 @@ import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
+import { WorkersCard } from "../workers/live";
 import { useHasPanel } from "./right-panel";
 import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 
@@ -266,7 +267,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   }, [owner, has, updated]);
   const card = has ? (
     <>
-      <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} />
+      <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<WorkersCard owner={owner} />} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

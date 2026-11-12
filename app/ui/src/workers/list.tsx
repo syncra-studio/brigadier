@@ -35,11 +35,11 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
             role="tab"
             aria-selected={active === tab}
             pressed={active === tab}
-            className="w-auto px-2 text-label"
+            className="w-auto px-2"
             tooltip={tab === WORKERS_LABEL && finishedWords ? `${tab} · ${finishedWords}` : tab}
             onClick={() => onSelect(tab)}
           >
-            {tab}
+            <span className="text-label">{tab}</span>
           </TooltipIconButton>
         ))}
       </TitlebarTips>
@@ -105,7 +105,7 @@ function AgentSection({ title, workers, page, trailing, empty, className, act }:
   const hidden = workers.length - shown.length;
   return (
     <section className={cx("flex flex-col", className)}>
-      <h3 className="mb-2 flex items-center gap-2 px-2 text-label text-muted-foreground">
+      <h3 className="mb-2 flex items-center gap-2 px-2 text-label font-semibold text-muted-foreground">
         <span className="flex-1">{`${title} · ${workers.length}`}</span>
         {trailing && <span className="text-xs tabular-nums">{trailing}</span>}
       </h3>

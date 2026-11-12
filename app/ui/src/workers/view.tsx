@@ -21,7 +21,7 @@ import { WORKERS_LABEL } from "./list";
 export function WorkerHeader({ worker, onBack, actions }: { worker: Worker; onBack: () => void; actions?: ReactNode }) {
   return (
     <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2">
-      <TooltipIconButton tooltip={`Back to ${WORKERS_LABEL.toLowerCase()}`} onClick={onBack}>
+      <TooltipIconButton tooltip={`Back to ${WORKERS_LABEL.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
         <ArrowLeft />
       </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />

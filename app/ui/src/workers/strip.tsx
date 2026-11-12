@@ -35,7 +35,8 @@ function useAction() {
   return { busy, error, run };
 }
 
-const BUTTON = "shrink-0 text-row-foreground hover:text-foreground";
+// The old 24px controls kept the toolbar buttons' 10px corner.
+const BUTTON = "shrink-0 rounded-icon-button text-row-foreground hover:text-foreground";
 
 /** "4m ago": how long since a finished worker's CLI last said anything. */
 function ago(at: number, now: number): string {

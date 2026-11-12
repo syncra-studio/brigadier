@@ -5,6 +5,16 @@
 /// and searchers search. Shell wrappers and leading `cd … &&` are taken off first.
 pub fn shell_step(command: &str) -> (&'static str, String) {
     let command = unwrap_shell(command);
+    // The thread's own `brigadier start|wait|queue|send|stop` is no row: its start, message or end has its own, as
+    // in the old thread [D47, D3044].
+    let mut call = command.split_whitespace();
+    if call.next().is_some_and(|w| basename(w) == "brigadier")
+        && call
+            .next()
+            .is_some_and(|sub| matches!(sub, "start" | "wait" | "queue" | "send" | "stop"))
+    {
+        return ("", String::new());
+    }
     let probe = command.split(" || ").next().unwrap_or("");
     if probe.contains([';', '&', '|', '<', '>', '`', '$', '(']) {
         return ("run", command);
