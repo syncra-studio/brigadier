@@ -15,7 +15,7 @@ const later = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 /** Rust's stand-in: a row with its queue, a thread of turns, and the commands the composer runs. */
 function useStandIn() {
-  const base = { id: "g1", title: "", state: "idle", reason: null, mark: null, resets: null, sent: 0, finished: 0, project: null, backend: "fake", updated: 0, items: 0, error: null } as SessionRow;
+  const base = { id: "g1", title: "", state: "idle", reason: null, mark: null, resets: null, sent: 0, finished: 0, project: null, backend: "fake", updated: 0, items: 0, error: null, levels: ["ask", "auto", "full"], level: "auto" } as SessionRow;
   const [row, setRow] = useState<ComposerRow>({ ...base, touched: 0, running: false, steer: true, queue: { paused: false, items: [] } });
   const [lines, setLines] = useState<string[]>([]);
   const [refuse, setRefuse] = useState(false);

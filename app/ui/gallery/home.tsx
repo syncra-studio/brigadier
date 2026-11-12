@@ -5,6 +5,7 @@ import type { ModelChoice, ModelGroup } from "../src/components/composer/model-p
 import type { RepoState } from "../src/home/branch";
 import type { DraftProject, WorkIn } from "../src/home/pills";
 import { type HomeProps, HomeView } from "../src/home/view";
+import { LevelPill } from "./composer";
 import { Held, Row, Section, State } from "./parts";
 
 const noop = () => {};
@@ -30,6 +31,7 @@ const REPO: RepoState = {
 
 const BASE: HomeProps = {
   name: "Sam",
+  level: <LevelPill />,
   projects: PROJECTS,
   project: PROJECTS[0]!,
   onProject: noop,
