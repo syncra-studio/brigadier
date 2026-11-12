@@ -67,7 +67,10 @@ function useNamed(ids: readonly string[]): Worker[] {
 
 /** The user's Stop them and End: Rust stops each and logs "You ended …" in the parent [D3011]. */
 const stop = (parent: string, ids: readonly string[]) =>
-  void run(["workers", parent, "stop", ...ids]).catch((cause) => showToast(`Couldn't stop ${ids.length === 1 ? "the worker" : "the workers"}: ${errorText(cause)}`, { tone: "error" }));
+  run(["workers", parent, "stop", ...ids]).then(() => true).catch((cause) => {
+    showToast(`Couldn't stop ${ids.length === 1 ? "the worker" : "the workers"}: ${errorText(cause)}`, { tone: "error" });
+    return false;
+  });
 
 /** Which worker each session's panel shows (null: the list) and its tab. */
 let shown: Record<string, { tab: string; open: string | null }> = {};
@@ -107,17 +110,21 @@ export function TeamRow({ item }: { item: TeamItem }) {
 
 /** "2 workers still running · Stop them", while any of them still runs. */
 function StillRows({ owner, workers }: { owner: string; workers: Worker[] }) {
+  const [pending, setPending] = useState<readonly string[]>([]);
   const live = workers.filter((worker) => !finished(worker));
+  const stopping = live.some((worker) => pending.includes(worker.id));
+  if (pending.length > 0 && !stopping) setPending([]);
   if (live.length === 0) return null;
   return (
     <StillRunningRow
       workers={live}
-      onStop={() =>
-        stop(
-          owner,
-          live.map((worker) => worker.id),
-        )
-      }
+      stopping={stopping}
+      onStop={() => {
+        if (stopping) return;
+        const ids = live.map((worker) => worker.id);
+        setPending(ids);
+        void stop(owner, ids).then((ok) => { if (!ok) setPending([]); });
+      }}
     />
   );
 }

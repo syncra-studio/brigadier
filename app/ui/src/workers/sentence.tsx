@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { Chevron, DETAIL, ROW, TOGGLE } from "../components/thread/activity-row";
 import { cx } from "../components/cx";
 import { useKept } from "../thread/kept";
-import { Chat, StopCircle } from "../icons";
+import { Chat, Spinner, StopCircle } from "../icons";
 import { duration } from "../thread/words";
 import { Glyphs, lowerFirst, type Worker, WorkerName, WorkersPanel } from "./chip";
 
@@ -166,14 +166,14 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
 };
 
 /** Stop ended the parent's turn only: its workers run on, one click away from ending too [D3009, D3011]. */
-export const StillRunningRow: FC<{ workers: readonly Worker[]; onStop: () => void }> = ({ workers, onStop }) => (
-  <div data-slot="workers-still-running" className={ROW}>
-    <Glyphs workers={workers} />
+export const StillRunningRow: FC<{ workers: readonly Worker[]; stopping?: boolean; onStop: () => void }> = ({ workers, stopping = false, onStop }) => (
+  <div data-slot="workers-still-running" aria-busy={stopping || undefined} className={ROW}>
+    {stopping ? <Spinner className="size-4 shrink-0 motion-safe:animate-spin" /> : <Glyphs workers={workers} />}
     <span className="min-w-0 truncate">
       {workers.length} {workers.length === 1 ? "worker" : "workers"} still running
       <span aria-hidden className="text-row-object"> · </span>
-      <button type="button" onClick={onStop} className="cursor-pointer rounded-control text-strip-foreground hover:text-foreground focus-visible:focus-ring">
-        Stop them
+      <button type="button" onClick={onStop} disabled={stopping} className="cursor-pointer rounded-control text-strip-foreground hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled">
+        {stopping ? "Stopping…" : "Stop them"}
       </button>
     </span>
   </div>

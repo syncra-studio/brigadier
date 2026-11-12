@@ -297,9 +297,20 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         if let Some(other) = ids.iter().find(|w| !mine.contains(*w)) {
             return Err(io::Error::other(format!("{other} isn't a worker of {id}")));
         }
-        for w in &ids {
-            halt(data, id, w)?;
-        }
+        std::thread::scope(|scope| {
+            let stops: Vec<_> = ids
+                .iter()
+                .map(|w| scope.spawn(move || halt(data, id, w)))
+                .collect();
+            let results: Vec<_> = stops
+                .into_iter()
+                .map(|stop| {
+                    stop.join()
+                        .unwrap_or_else(|_| Err(io::Error::other("Couldn't stop a worker")))
+                })
+                .collect();
+            results.into_iter().collect::<io::Result<()>>()
+        })?;
         if !ids.is_empty() {
             ended(data, id, &ids, "user");
         }

@@ -230,6 +230,11 @@ export function WorkersGallery() {
               <TeamStepRow keep="g-step-5" step={{ type: "stopped", byUser: true, workers: [RETRY, PROGRESS] }} />
             </Column>
           </State>
+          <State label="Stopping">
+            <Column>
+              <StillRunningRow workers={[RETRY, PROGRESS]} stopping onStop={noop} />
+            </Column>
+          </State>
           <State label="Live: Stop them">
             <Column>
               {stopped ? <TeamStepRow keep="g-step-6" step={{ type: "stopped", byUser: true, workers: [RETRY, PROGRESS] }} /> : <StillRunningRow workers={[RETRY, PROGRESS]} onStop={() => setStopped(true)} />}
