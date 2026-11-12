@@ -85,7 +85,11 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     }
     if (failed.length) setError(`Some projects could not be added.\n${failed.join("\n")}`);
     // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.
-    else await setProfile(["--done"], {}).catch((cause) => setError(errorText(cause)));
+    else {
+      // It ends on Home, never on a screen kept from an earlier run or opened under it (⌘,); set first, so that never draws.
+      window.location.hash = "";
+      await setProfile(["--done"], {}).catch((cause) => setError(errorText(cause)));
+    }
     setBusy(null);
   };
 
