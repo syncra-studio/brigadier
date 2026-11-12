@@ -22,10 +22,14 @@ function words(step: SetupStep): string {
   }
 }
 
-/** One line while it runs and once done, so nothing under it moves; its steps open on a click, or by themselves when it fails [D70]. */
+/** Its steps open while it runs and when it fails, one line once done; it sits under its message, so nothing above moves [D77]. */
 export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
+  return <Card key={setup.state} keep={keep} setup={setup} />;
+}
+
+function Card({ keep, setup }: { keep: string; setup: Setup }) {
   const starting = setup.state === "running";
-  const [open, setOpen] = useKept(`${keep}:${setup.state === "failed"}`, setup.state === "failed");
+  const [open, setOpen] = useKept(`${keep}:${setup.state}`, setup.state !== "done");
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex min-w-0 flex-col" data-slot="setup-line" data-state={setup.state}>
       <CollapsibleTrigger className={cx(ROW, TOGGLE)}>

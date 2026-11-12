@@ -157,15 +157,15 @@ export class Follow {
     return this.el?.hasAttribute("data-end-snap") === true;
   }
 
-  /** This window sent a message: space under the end, then a glide to it. */
-  place() {
+  /** This window sent a message: space under the end, then a glide to it; a new session's first, already at the top, stays [D77]. */
+  place(glide = true) {
     if (!this.el) return;
     this.stopJump();
     this.hold();
     this.decay = 0;
     this.reserve = -1;
     this.space.set(this.ceiling());
-    this.glide();
+    if (glide) this.glide();
   }
   private glide() {
     const el = this.el;

@@ -53,7 +53,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       {/* A row that throws while it's drawn leaves the rest of the thread standing (D490). */}
       <DrawBoundary summary={props.type === "item" && props.item.kind === "message" ? "This message couldn’t be shown" : "This part couldn’t be shown"}>
       {props.type === "setup" ? (
-        <SetupRow key={`${props.id}:${props.setup.state === "running"}`} keep={props.id} setup={props.setup} />
+        <SetupRow keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
         <AnswerMarks text={props.item.text} time={props.item.sentAt} fork={fork} />
       ) : props.type === "work" ? (

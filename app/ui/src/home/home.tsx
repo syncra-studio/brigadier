@@ -142,7 +142,7 @@ export function HomeDraft() {
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base, worktree }, model, text, pick ?? agent?.level ?? undefined, parts)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts)}
       />
       <SetUpAgentDialog
         name={setUp}
@@ -222,12 +222,33 @@ export function StartingBubble({ id }: { id: string }) {
   );
 }
 
-/** While its start is out and nothing's gone wrong, a shimmering line under the message (D487). */
+/** A worktree being made, under the pending message until its row is in the thread, which then draws it [D77]. */
+export function StartingSetup({ id }: { id: string }) {
+  const entry = useStarting().get(id);
+  const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
+  if (!entry || entry.fork) return null;
+  // Rust sends the setup's place with the message's row, so the thread takes it over in the same frame.
+  const mine = session?.id === id;
+  if (mine && session.turns.some((turn) => turn.id === entry.cid)) return null;
+  // Until Rust's first word on it, the worktree being made is the one asked for, as the card shows with the message.
+  const setup = (mine && session.setup) || (entry.worktree && !entry.error && !entry.outcome ? { state: "running" as const, after: null, steps: [{ kind: "worktree" as const, state: "running" as const, branch: null, base: entry.worktree.base, error: null }] } : null);
+  if (!setup) return null;
+  return (
+    <div className="pt-6">
+      <SetupRow keep={`${id}:setup`} setup={setup} />
+    </div>
+  );
+}
+
+/** While its start is out and nothing's gone wrong, a shimmering line under the message (D487), and under its worktree once made [D77]. */
 export function StartingLine({ id }: { id: string }) {
   const entry = useStarting().get(id);
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
-  // A worktree being made says so itself, in this line's place (Thread draws it) [D70].
-  if (!entry || entry.fork || entry.error || entry.unknown || entry.outcome || (session?.id === id && session.setup)) return null;
+  // Kept until the thread has its turn, which draws Thinking in the same frame, so nothing blank comes between.
+  if (!entry || entry.fork || entry.error || entry.unknown || entry.outcome === "logged") return null;
+  if (session?.id === id && session.turns.some((turn) => turn.id === entry.cid)) return null;
+  const setup = session?.id === id ? session.setup : null;
+  if (setup ? setup.state !== "done" : entry.worktree) return null;
   return (
     <div className="pt-4">
       <WorkingLine state="live">Starting the conversation</WorkingLine>

@@ -78,6 +78,8 @@ export type Starting = {
   error?: string;
   /** A fork of session `source` [D1063]: no message; `cid` is the answer's, whose turn its thread starts with. */
   fork?: { source: string; where: string };
+  /** Starting in a new worktree from `base`, so its setup shows before Rust's first word on it [D77]. */
+  worktree?: { base: string };
 };
 const starting = store<ReadonlyMap<string, Starting>>(new Map());
 export const useStarting = starting.use;
@@ -139,7 +141,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (level) args.push("--level", level);
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true };
+  const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });

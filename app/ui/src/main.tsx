@@ -10,7 +10,7 @@ import { hhmm } from "./thread/words";
 import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
-import { HomeDraft, StartingBubble, StartingLine } from "./home/home";
+import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
 import { newChat, newSession, useStart, useStartingRows } from "./home/start";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
@@ -238,6 +238,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                       (line || sending || starting || sides || failing(row).length > 0) && (
                         <>
                           <StartingBubble id={id} />
+                          <StartingSetup id={id} />
                           <StartingLine id={id} />
                           {line}
                           <SentBubbles id={id} />
