@@ -71,11 +71,12 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
   const [results, setResults] = useState<Mentions["results"]>(null);
   const asked = useRef<string | null>(null);
   // After a restart, the draft's files come back from Rust's folder, by their ids.
-  useEffect(() => {
-    if (owners.has(owner)) return;
+  const load = () =>
     void run(["attach", owner, "list"]).then((reply) => {
       for (const each of reply.files ?? []) if (!filesOf(owner).all.has(each.id)) set(owner, each.id, { id: each.id, name: each.name, mime: each.mime, state: "ready", url: urlOf(owner, each.id) });
     });
+  useEffect(() => {
+    if (!owners.has(owner)) load();
   }, [owner]);
 
   const attach = (id: string, file: File, inText: boolean) => {
@@ -96,7 +97,11 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
   };
   /** After a send: the tiles leave with the message; its files are the session's now. */
   const sent = () => change(owner, (now) => ({ ...now, tiles: [] }));
-  const restore = (tiles: readonly string[]) => change(owner, (now) => ({ ...now, tiles: [...tiles] }));
+  /** Tiles back with what's there now, anything added meanwhile kept; files this view hasn't listed yet are read again. */
+  const restore = (tiles: readonly string[]) => {
+    change(owner, (now) => ({ ...now, tiles: [...new Set([...tiles, ...now.tiles])] }));
+    if (tiles.some((id) => !filesOf(owner).all.has(id))) load();
+  };
   const ready = (ids: readonly string[]) => ids.filter((id) => files.all.get(id)?.state !== "failed");
   /** The message's files that went, the failed ones left out. */
   const tiles = () => ready(files.tiles);

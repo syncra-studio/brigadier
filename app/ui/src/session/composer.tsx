@@ -295,7 +295,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const typed = above ? (field.current?.parts() ?? []) : [];
     const back = draft?.parts ?? [message];
     field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? back : [...back, "\n\n", ...typed]);
-    if (draft?.attachmentIds.length) files.restore([...files.tileIds, ...draft.attachmentIds]);
+    if (draft) files.restore(draft.attachmentIds);
     setEmpty(isEmpty({ parts: back, attachmentIds: draft?.attachmentIds ?? [] }));
     field.current?.focus();
   });

@@ -377,16 +377,18 @@ fn build(
         vec![]
     };
     let order = order(&src.dir, f);
-    let lines: String = (copy_of(&src.dir, &order, ask.at)?.iter())
-        .map(|item| format!("{item}\n"))
-        .collect();
+    let copied = copy_of(&src.dir, &order, ask.at)?;
+    let lines: String = copied.iter().map(|item| format!("{item}\n")).collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;
     // The copied messages' files are the fork's own, so they show and open after the source's delete.
-    let sent = crate::message::sent(&src.dir);
-    for each in fs::read_dir(&sent).into_iter().flatten().flatten() {
-        let to = crate::message::sent(&new.dir).join(each.file_name());
+    let ids = (copied.iter()).flat_map(|item| item["parts"]["files"].as_array().into_iter().flatten());
+    for id in (ids.filter_map(|file| file["id"].as_str())).filter(|id| crate::check_id(id).is_ok()) {
+        let Ok(found) = fs::read_dir(crate::message::sent(&src.dir).join(id)) else {
+            continue;
+        };
+        let to = crate::message::sent(&new.dir).join(id);
         fs::create_dir_all(&to)?;
-        for file in fs::read_dir(each.path())?.flatten() {
+        for file in found.flatten() {
             fs::copy(file.path(), to.join(file.file_name()))?;
         }
     }
