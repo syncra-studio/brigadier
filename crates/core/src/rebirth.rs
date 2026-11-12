@@ -8,6 +8,12 @@ use crate::fold::Fold;
 use crate::{Spec, as_run};
 use serde_json::{Value, json};
 
+/// Whether agents get their CLI's to-do tool, whose list the hand-off carries [D104, D116];
+/// `BRIGADIER_NO_TODO` turns it off for the drill's comparison.
+pub fn todo() -> bool {
+    std::env::var_os("BRIGADIER_NO_TODO").is_none()
+}
+
 /// The context a conversation is reborn at: 200k tokens, or 75% of a smaller window [D113].
 /// `BRIGADIER_REBIRTH_AT` sets it for the drill.
 pub fn threshold(window: Option<u64>) -> u64 {

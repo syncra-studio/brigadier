@@ -37,6 +37,8 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     };
     // Its compaction can't be turned off: as late as it lets, so Brigadier's rebirth comes first [D88, D98].
     open["config"]["model_auto_compact_token_limit"] = 1_000_000_000u64.into();
+    // Its plan tool, off unless asked for (codex-rs config `tools.update_plan`) [D104, D116].
+    open["config"]["tools.update_plan.enabled"] = crate::rebirth::todo().into();
     open
 }
 

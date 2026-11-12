@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, String)>) -> Value {
     let mut config =
         json!({"instructions": [style.display().to_string()], "compaction": {"auto": false}});
+    // Its to-do tool, an experimental flag (packages/schema/src/config/flag.ts) [D104, D116].
+    config["experimental"] = json!({"todo": crate::rebirth::todo()});
     if spec.naked {
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));

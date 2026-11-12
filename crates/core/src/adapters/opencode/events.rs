@@ -246,6 +246,12 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
             .unwrap_or("")
             .to_string()
     };
+    // Its to-do list is a record, not a step [D104].
+    if name == "todowrite" {
+        let todos = input["todos"].as_array().into_iter().flatten();
+        let steps = todos.map(|t| json!({"text": t["content"], "status": t["status"]}));
+        return vec![Event::Plan(steps.collect())];
+    }
     if name == "question" {
         let questions = input["questions"].as_array().cloned().unwrap_or_default();
         let mut events = vec![];

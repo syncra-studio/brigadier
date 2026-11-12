@@ -99,6 +99,20 @@ pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     env.push(("CLAUDE_CODE_DISABLE_AUTO_MEMORY".into(), "1".into()));
 }
 
+/// Every launch's own env: no compaction, as Brigadier's rebirth stands in for it and `/compact`
+/// still works [D88]; its to-do tool on every model, as TodoWrite's whole list
+/// (code.claude.com/docs/en/tools-reference) [D104, D116].
+pub fn own(env: &mut Vec<(String, String)>) {
+    env.push(("DISABLE_AUTO_COMPACT".into(), "1".into()));
+    if crate::rebirth::todo() {
+        let todo = [
+            ("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1"),
+            ("CLAUDE_CODE_ENABLE_TASKS", "0"),
+        ];
+        env.extend(todo.map(|(k, v)| (k.into(), v.into())));
+    }
+}
+
 pub fn standing() -> [String; 6] {
     [
         "--append-system-prompt".into(),
