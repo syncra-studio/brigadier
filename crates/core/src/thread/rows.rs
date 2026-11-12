@@ -350,7 +350,7 @@ impl Thread {
                     self.changed_items.insert(at);
                 }
             }
-            "note" if item["event"] == "worker" => self.team(item),
+            "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {

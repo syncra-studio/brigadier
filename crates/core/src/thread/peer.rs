@@ -17,7 +17,7 @@ impl Thread {
             // A message to its own worker reads as the old lead's row: "Messaged ‹worker›", its words folded under it.
             if phase == "sent" && item["worker"] == true {
                 let row = json!({"kind": "team_step", "type": "messaged", "byUser": false, "workers": [item["to"]], "text": item["text"]});
-                return self.kept_row(row);
+                return self.team_row(row);
             }
             if matches!(phase, "sent" | "stopped" | "refused") {
                 let state = if phase == "sent" { "sending" } else { phase };

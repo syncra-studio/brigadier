@@ -9,8 +9,12 @@ impl Thread {
     /// A turn's end: its work folds now, or, while subagents it started run on, it stays one open
     /// block, its answer an update in it, counting on and saying how many run [D67, D114, D118].
     pub(super) fn end_work(&mut self, o: Open, work: Value, ts: u64) {
+        // Only a turn that ended well waits on its workers; a stopped or failed one says which still run [D3011].
+        if self.turns[o.at]["status"] != "done" {
+            self.workers.retain(|_, t| *t != o.id);
+        }
         let helpers = self.helpers(&o.id);
-        if helpers > 0 {
+        if helpers > 0 || self.working(&o.id) {
             self.turns[o.at]["helpers"] = helpers.into();
             self.turns[o.at]["held"] = true.into();
             self.final_answer(&o, false);
@@ -26,19 +30,38 @@ impl Thread {
             .count()
     }
 
+    /// A worker the turn started still runs: it holds the turn as a subagent does, its result the
+    /// wake that carries the block on [D106, D151].
+    fn working(&self, turn: &str) -> bool {
+        self.workers.values().any(|t| t == turn)
+    }
+
+    /// Workers ended, by their result or an End: the turn they held counts them out.
+    pub(super) fn workers_ended(&mut self, ids: &[Value], ts: u64) {
+        for id in ids {
+            if let Some(turn) = id.as_str().and_then(|id| self.workers.remove(id)) {
+                self.held_left(&turn, ts);
+            }
+        }
+    }
+
     /// A subagent at row `row` ended: the turn that waits on it counts one fewer. With none left it
     /// stays open for the turn its agent wakes for next, which carries it on; one that can't come
     /// now, as another turn runs, folds it at once.
     pub(super) fn helper_ended(&mut self, row: usize, ts: u64) {
         let turn = self.items[row]["turnId"].as_str().unwrap_or("").to_string();
-        let Some(at) = self.held.get(&turn).map(|(o, _)| o.at) else {
+        self.held_left(&turn, ts);
+    }
+
+    fn held_left(&mut self, turn: &str, ts: u64) {
+        let Some(at) = self.held.get(turn).map(|(o, _)| o.at) else {
             return;
         };
-        let left = self.helpers(&turn);
+        let left = self.helpers(turn);
         self.turns[at]["helpers"] = left.into();
         self.turns[at]["endedAt"] = ts.into();
         self.changed_turns.insert(at);
-        if left == 0 && self.open.is_some() {
+        if left == 0 && !self.working(turn) && self.open.is_some() {
             self.settle_held();
         }
     }
@@ -47,7 +70,7 @@ impl Thread {
     /// up to its last subagent's end, its last answer final.
     pub(super) fn settle_held(&mut self) {
         let done: Vec<String> = (self.held.iter())
-            .filter(|(_, (o, _))| self.turns[o.at]["helpers"] == 0)
+            .filter(|(id, (o, _))| self.turns[o.at]["helpers"] == 0 && !self.working(id))
             .map(|(id, _)| id.clone())
             .collect();
         for id in done {

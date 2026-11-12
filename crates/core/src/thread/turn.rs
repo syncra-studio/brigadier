@@ -210,15 +210,18 @@ impl Thread {
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
         self.shown.insert(t.id.clone());
-        // A turn no one sent while a turn is held for its subagents, or right after they ended: the
-        // agent woke for them, and carries that block on [D106, D118]. Any other ends what waits.
+        // A turn no one sent, or a worker's result, while a turn is held for its helpers, or right
+        // after they ended: the agent woke for them, and carries that block on [D106, D118, D151].
+        // Any other ends what waits, as does one the user's turn came after: no block spans it.
         // So does the input that carries on a turn Brigadier cut [D108, D124].
         let last = (self.held.values().map(|(o, _)| o.at).max())
+            .filter(|&at| at + 1 == self.turns.len())
             .and_then(|at| self.turns[at]["id"].as_str().map(String::from));
         let cut = (last.as_ref())
             .and_then(|id| self.held.get(id))
             .is_some_and(|(o, _)| o.cut());
-        let wakes = matches!(t.origin.as_str(), "agent" | "system")
+        let wakes = (matches!(t.origin.as_str(), "agent" | "system")
+            || t.origin.starts_with("result:"))
             && (t.switch.is_null() || (cut && t.origin == "system"));
         match last.filter(|_| wakes).and_then(|id| self.held.remove(&id)) {
             Some((o, _)) => self.rejoin(o),
@@ -302,7 +305,7 @@ impl Thread {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }
         if let Some(rest) = t.origin.strip_prefix("result:") {
-            return self.team_result(rest);
+            return self.team_result(rest, ts);
         }
         if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };

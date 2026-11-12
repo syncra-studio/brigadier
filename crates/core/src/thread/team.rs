@@ -1,11 +1,19 @@
 //! A parent's workers in its thread, as the old app's TeamSentence and lead rows [D3010]: their
 //! start, how each ended as its result came, the lead's or the user's End, and "still running"
-//! after the user's Stop [D3009, D3011]. Sentences, never cards; each stays out of the work fold.
+//! after the user's Stop [D3009, D3011]. Sentences, never cards; each folds with the work, as a
+//! subagent's row does [D118].
 
 use super::Thread;
 use serde_json::{Value, json};
 
 impl Thread {
+    /// A worker's row, its own and never a step under a group's header, folds with its turn's
+    /// work as a subagent's does [D115, D118].
+    pub(super) fn team_row(&mut self, row: Value) {
+        self.break_group();
+        self.add(row);
+    }
+
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
     pub(super) fn kept_row(&mut self, row: Value) {
         self.break_group();
@@ -17,15 +25,20 @@ impl Thread {
 
     /// A `worker` note: `started` joins the start row just before it, so one turn's starts read
     /// as one sentence; `ended` and `still` name every worker they're about.
-    pub(super) fn team(&mut self, item: &Value) {
+    pub(super) fn team(&mut self, item: &Value, ts: u64) {
         let ids = match item["phase"].as_str() {
             Some("started") => json!([item["id"]]),
             _ => item["ids"].clone(),
         };
         match item["phase"].as_str() {
             Some("started") => {
+                if let (Some(id), Some(turn)) = (item["id"].as_str(), self.open.as_ref()) {
+                    self.workers.insert(id.into(), turn.id.clone());
+                }
                 let at = self.items.len().checked_sub(1);
-                let joins = at.and_then(|at| self.items.get(at)).is_some_and(|r| r["kind"] == "team" && r["word"] == "started");
+                let joins = at
+                    .and_then(|at| self.items.get(at))
+                    .is_some_and(|r| r["kind"] == "team" && r["word"] == "started");
                 if let Some(at) = at.filter(|_| joins) {
                     if let Some(w) = self.items[at]["workers"].as_array_mut() {
                         w.push(item["id"].clone());
@@ -33,17 +46,25 @@ impl Thread {
                     self.changed_items.insert(at);
                     return;
                 }
-                self.kept_row(json!({"kind": "team", "word": "started", "workers": ids}));
+                self.team_row(json!({"kind": "team", "word": "started", "workers": ids}));
             }
-            Some("ended") => self.kept_row(
-                json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}),
-            ),
-            Some("still") => self.kept_row(json!({"kind": "team_still", "workers": ids})),
+            Some("ended") => {
+                self.workers_ended(ids.as_array().map_or(&[], Vec::as_slice), ts);
+                self.team_row(json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}));
+            }
+            // The user's Stop ended the block: the workers that run on hold it no longer.
+            Some("still") => {
+                (ids.as_array().into_iter().flatten())
+                    .filter_map(Value::as_str)
+                    .for_each(|id| _ = self.workers.remove(id));
+                self.settle_held();
+                self.team_row(json!({"kind": "team_still", "workers": ids}));
+            }
             // A result its parent's own `wait` took, never sent: its sentence all the same [D97].
-            Some("result") => self.team_result(item["result"].as_str().unwrap_or("")),
+            Some("result") => self.team_result(item["result"].as_str().unwrap_or(""), ts),
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
-                self.kept_row(json!({"kind": "team_step", "type": p, "workers": ids}))
+                self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}));
             }
             _ => {}
         }
@@ -51,13 +72,14 @@ impl Thread {
 
     /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>]`): the sentence
     /// of how it ended and whether it merged back [D97], in its place.
-    pub(super) fn team_result(&mut self, rest: &str) {
+    pub(super) fn team_result(&mut self, rest: &str, ts: u64) {
         let (how, wid) = rest.split_once(':').unwrap_or(("finished", rest));
         // A worker's ask to its parent is no row in the parent's thread [D121].
         if how == "asks" {
             return;
         }
         let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
+        self.workers_ended(&[wid.into()], ts);
         let merge =
             (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));
         let word = match how {
@@ -65,6 +87,6 @@ impl Thread {
             "stopped" => "stopped",
             _ => "failed",
         };
-        self.kept_row(json!({"kind": "team", "word": word, "workers": [wid], "merge": merge}));
+        self.team_row(json!({"kind": "team", "word": word, "workers": [wid], "merge": merge}));
     }
 }
