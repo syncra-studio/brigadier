@@ -21,8 +21,13 @@ pub fn spec(cmd: &str) -> Option<Spec> {
             &[],
         ),
         "search" => (
-            "brigadier search \"<words>\" [--json]\n\nPast sessions, archived ones too, holding every word: each one's id, title and best matching line. `brigadier read <id>` reads one.",
-            &[],
+            "brigadier search \"<words>\" [--in <id>] [--from F] [--file <path>] [--json]
+
+Every session's past, yours and archived ones too: the messages, tool calls and errors holding every
+word, newest first, each under a reference like s-abc#123 that `brigadier read s-abc#123` opens.
+--in keeps one session, --from one sender (user, agent, worker, peer, tool, error), --file the steps
+that touched a file (words may then be left out). A newer message may revise an older one: read on.",
+            &["--in", "--from", "--file"],
             &[],
         ),
         "mcp" => (
@@ -61,10 +66,17 @@ pub fn mcp(data: &Path, me: &str, args: &[String]) -> Value {
 }
 
 /// Runs a relay command, or None for another.
-pub fn run(data: &Path, me: &str, cmd: &str, arg: Option<&str>, rows: &[Value]) -> Option<Value> {
+pub fn run(
+    data: &Path,
+    me: &str,
+    cmd: &str,
+    arg: Option<&str>,
+    value: &dyn Fn(&str) -> Option<String>,
+    rows: &[Value],
+) -> Option<Value> {
     match cmd {
         "skill" => Some(skill(data, me, arg)),
-        "search" => Some(search(data, arg.unwrap_or(""), rows)),
+        "search" => Some(search(data, arg.unwrap_or(""), value, rows)),
         _ => None,
     }
 }
@@ -152,12 +164,28 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         "text": format!("{text}\n\n[Its folder: {folder}]")})
 }
 
-/// `search`: the sessions holding every word, with their titles from the daemon's rows.
-fn search(data: &Path, words: &str, rows: &[Value]) -> Value {
-    if words.trim().is_empty() {
-        return json!({"ok": false, "error": "`brigadier search` needs words, in quotes."});
+/// `search`: the archive entries holding every word, each with its session's title [D103].
+fn search(
+    data: &Path,
+    words: &str,
+    value: &dyn Fn(&str) -> Option<String>,
+    rows: &[Value],
+) -> Value {
+    let (within, from, file) = (value("--in"), value("--from"), value("--file"));
+    if words.trim().is_empty() && file.is_none() {
+        return json!({"ok": false, "error": "`brigadier search` needs words, in quotes, or --file."});
     }
-    let hits = match crate::index::search(data, words) {
+    let senders = ["user", "agent", "worker", "peer", "tool", "error"];
+    if from.as_deref().is_some_and(|f| !senders.contains(&f)) {
+        return json!({"ok": false, "error": format!("--from takes one of {}.", senders.join(", "))});
+    }
+    let hits = match crate::index::find(
+        data,
+        words,
+        within.as_deref(),
+        from.as_deref(),
+        file.as_deref(),
+    ) {
         Ok(h) => h,
         Err(e) => return json!({"ok": false, "error": e.to_string()}),
     };
@@ -169,20 +197,98 @@ fn search(data: &Path, words: &str, rows: &[Value]) -> Value {
             .to_string()
     };
     let list: Vec<Value> = (hits.iter())
-        .map(|h| json!({"id": h["id"], "title": title(&h["id"]), "line": h["snippet"]}))
+        .map(|h| {
+            let at = format!("{}#{}", h["id"].as_str().unwrap_or(""), h["at"].as_str().unwrap_or(""));
+            json!({"ref": at, "session": h["id"], "title": title(&h["id"]), "from": h["from"], "ts": h["ts"],
+                "line": h["snippet"], "files": h["files"]})
+        })
         .collect();
     let text: String = match list.is_empty() {
-        true => "No session holds every word.\n".into(),
+        true => "Nothing holds every word in one message. Try fewer words.\n".into(),
         false => (list.iter())
             .map(|h| {
+                let s = |k: &str| h[k].as_str().unwrap_or("").to_string();
+                let line = match (s("line"), s("files")) {
+                    (l, f) if l.is_empty() => f,
+                    (l, _) => l,
+                };
+                let age = crate::agent::ago(h["ts"].as_u64().unwrap_or(0));
                 format!(
-                    "{}  {}\n  {}\n",
-                    h["id"].as_str().unwrap_or(""),
-                    h["title"].as_str().unwrap_or(""),
-                    h["line"].as_str().unwrap_or("")
+                    "{} · {} · {age} · {}\n  {line}\n",
+                    s("ref"),
+                    s("from"),
+                    s("title")
                 )
             })
             .collect(),
     };
-    json!({"ok": true, "sessions": list, "text": text})
+    json!({"ok": true, "found": list, "text": text})
+}
+
+/// An archive entry's sender as `read` names it.
+fn sender(e: &core::archive::Entry) -> String {
+    match e.from {
+        "worker" => format!("result from {}", e.who),
+        "peer" => format!("message from {}", e.who),
+        "tool" if e.who.is_empty() => "files changed".into(),
+        "tool" => format!("tool {}", e.who),
+        f => f.into(),
+    }
+}
+
+/// The session's archive, oldest first: a fork's inherited copy, then its own active branch [D103].
+/// Without `steps`, only the messages: the user's, other senders' and its agent's texts.
+pub(crate) fn archive(data: &Path, id: &str, steps: bool) -> Vec<core::archive::Entry> {
+    let mut all = core::archive::read(&core::session_dir(data, id)).unwrap_or_default();
+    all.retain(|e| steps || matches!(e.from, "user" | "agent" | "worker" | "peer"));
+    all
+}
+
+pub(crate) fn read(data: &Path, id: &str, at: Option<&str>, last: u64, user: bool) -> Value {
+    let mut all = archive(data, id, at.is_some());
+    if user {
+        all.retain(|e| e.from == "user");
+    }
+    // Around a reference: `last` entries on each side of it.
+    let (from, to) = match at {
+        Some(at) => {
+            let Some(i) = all.iter().position(|e| e.at == at) else {
+                return crate::agent::refuse(&format!(
+                    "{id} has no #{at}. `brigadier search` gives references."
+                ));
+            };
+            let j = all.iter().rposition(|e| e.at == at).unwrap_or(i);
+            (
+                i.saturating_sub(last as usize),
+                (j + 1 + last as usize).min(all.len()),
+            )
+        }
+        None => (all.len().saturating_sub(last as usize), all.len()),
+    };
+    let shown = &all[from..to];
+    let mut text: String = (shown.iter())
+        .map(|e| {
+            let files = match e.files.is_empty() {
+                true => String::new(),
+                false => format!("\n(files: {})", e.files.join(", ")),
+            };
+            format!(
+                "[{id}#{} {}]\n{}{files}\n\n",
+                e.at,
+                sender(e),
+                e.text.trim_end()
+            )
+        })
+        .collect();
+    if from > 0 && at.is_none() {
+        let flag = if user { " --user" } else { "" };
+        text = format!(
+            "[{from} earlier; brigadier read {id} --last {}{flag}]\n\n{text}",
+            last + from as u64
+        );
+    }
+    let list: Vec<Value> = (shown.iter())
+        .map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}))
+        .collect();
+    json!({"ok": true, "messages": list, "earlier": from, "text": text})
 }

@@ -19,14 +19,14 @@ const WAIT_MAX: u64 = 600;
 const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
 
   brigadier sessions          the sessions, newest first
-  brigadier read <id>         a session's last messages; --user for only the user's own words
+  brigadier read <id>[#n]     a session's last messages, or around one reference; --user for only the user's own words
   brigadier send <id> \"…\"    message another session; --wait for its answer
   brigadier wait <id>         wait until a session stops working, up to a timeout
   brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
   brigadier models            the agents, models and efforts you may use
   brigadier skill [name]      the user's skills, or one whole
-  brigadier search \"…\"        past sessions holding these words
+  brigadier search \"…\"        every session's past: messages, tool calls, errors holding these words
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier help [command]    this, or one command's help
 
@@ -48,8 +48,15 @@ fn spec(
             &[],
         ),
         "read" => (
-            "brigadier read <id> [--last N] [--user] [--json]\n\nA session's last N messages (10 by default), the user's and its agent's, oldest first. --user keeps only the user's own words. Long output is cut from the oldest; --last reads fewer.",
-            &["--last"],
+            "brigadier read <id> [--last N] [--user] [--json]
+brigadier read <id>#<n> [--around N] [--json]
+
+A session's last N messages (10 by default), the user's and its agent's, oldest first, each under its
+reference. --user keeps only the user's own words. A reference (from `search` or an earlier read)
+opens that message, step or error with N entries on each side (3 by default), tool calls and errors
+included. A fork's messages from before it was forked are its own. Long output is cut from the
+oldest; --last or --around reads fewer.",
+            &["--last", "--around"],
             &["--user"],
         ),
         "send" => (
@@ -102,7 +109,7 @@ For a helper on your own agent, use your own subagents instead: they share your 
     })
 }
 
-fn refuse(message: &str) -> Value {
+pub(crate) fn refuse(message: &str) -> Value {
     json!({"ok": false, "error": message})
 }
 
@@ -208,7 +215,8 @@ pub fn run(
         let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
         return finish(&call, reply);
     }
-    if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &rows()) {
+    let value = |name: &str| call.value(name).map(String::from);
+    if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &value, &rows()) {
         return finish(&call, reply);
     }
     let takes_id = matches!(call.cmd, "read" | "send" | "wait" | "stop");
@@ -219,6 +227,11 @@ pub fn run(
         }
         (_, id) => id.unwrap_or(""),
     };
+    // `read` opens a reference: `<id>#<at>`.
+    let (id, at) = match id.split_once('#') {
+        Some((id, at)) if call.cmd == "read" => (id, Some(at)),
+        _ => (id, None),
+    };
     if takes_id && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
         return refuse(&format!(
             "No session {id:?}. `brigadier sessions` lists them."
@@ -228,9 +241,14 @@ pub fn run(
         "sessions" => call
             .number("--limit", 20, 100)
             .map(|n| sessions(data, me, n, &rows())),
-        "read" => call
-            .number("--last", 10, 1000)
-            .map(|n| read(data, id, n, call.has("--user"))),
+        "read" => {
+            let (n, default) = match at {
+                Some(_) => ("--around", 3),
+                None => ("--last", 10),
+            };
+            call.number(n, default, 1000)
+                .map(|n| crate::relay::read(data, id, at, n, call.has("--user")))
+        }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
         "wait" => call
             .number("--timeout", WAIT, WAIT_MAX)
@@ -288,7 +306,7 @@ pub(crate) fn cap(text: &str) -> String {
     )
 }
 
-fn ago(ms: u64) -> String {
+pub(crate) fn ago(ms: u64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
@@ -358,51 +376,6 @@ fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
     json!({"ok": true, "sessions": list, "more": more, "text": text})
 }
 
-/// The session's messages on its active branch, oldest first: the user's and other senders'
-/// inputs, and its agent's texts.
-pub(crate) fn messages(data: &Path, id: &str) -> Vec<(String, String)> {
-    let mut all: Vec<(String, String)> = vec![];
-    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| match str_of(i, "kind") {
-        "input" => all.push((
-            match i["origin"].as_str().unwrap_or("user") {
-                o if o.starts_with("result:") => {
-                    format!("result from {}", o.split(':').nth(2).unwrap_or(""))
-                }
-                o if o.starts_with("peer:") => format!("message from {}", &o[5..]),
-                o => o.to_string(),
-            },
-            str_of(i, "text").into(),
-        )),
-        "text" => all.push(("agent".into(), str_of(i, "text").into())),
-        _ => {}
-    });
-    all.retain(|(_, t)| !t.trim().is_empty());
-    all
-}
-
-fn read(data: &Path, id: &str, last: u64, user: bool) -> Value {
-    let mut all = messages(data, id);
-    if user {
-        all.retain(|(from, _)| from == "user");
-    }
-    let earlier = all.len().saturating_sub(last as usize);
-    let shown = &all[earlier..];
-    let mut text: String = (shown.iter())
-        .map(|(from, t)| format!("[{from}]\n{}\n\n", t.trim_end()))
-        .collect();
-    if earlier > 0 {
-        let flag = if user { " --user" } else { "" };
-        text = format!(
-            "[{earlier} earlier; brigadier read {id} --last {}{flag}]\n\n{text}",
-            last + earlier as u64
-        );
-    }
-    let list: Vec<Value> = (shown.iter())
-        .map(|(from, t)| json!({"from": from, "text": t}))
-        .collect();
-    json!({"ok": true, "messages": list, "earlier": earlier, "text": text})
-}
-
 fn wait(
     data: &Path,
     me: &str,
@@ -420,11 +393,11 @@ fn wait(
         let state = str_of(&row, "state").to_string();
         let idle = row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
         if idle || state == "waiting_answer" {
-            let last = messages(data, id)
+            let last = crate::relay::archive(data, id, false)
                 .into_iter()
                 .rev()
-                .find(|(from, _)| from == "agent");
-            let last = last.map(|(_, t)| t).unwrap_or_default();
+                .find(|e| e.from == "agent");
+            let last = last.map(|e| e.text).unwrap_or_default();
             // Its parent's own wait takes the worker's result, which then isn't sent again.
             if let Some(result) = workers::take(data, me, id, None) {
                 return json!({"ok": true, "done": true, "state": state, "last": last, "result": result, "text": result});

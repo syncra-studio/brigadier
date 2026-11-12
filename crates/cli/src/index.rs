@@ -3,9 +3,12 @@
 //! assistant text, whole words and word starts [D72].
 
 use crate::owner;
+
+mod find;
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Folded, adapters, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
+pub use find::find;
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -18,7 +21,8 @@ use std::time::UNIX_EPOCH;
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
 /// 3: titles follow the short local rule [D186], so older indexes rebuild them.
 /// 4: `sessions.archived`, so search puts archived sessions last [D197].
-const SCHEMA: i64 = 4;
+/// 5: every archive entry with its reference, sender, time and files, for agents' search [D103].
+const SCHEMA: i64 = 5;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
 
@@ -26,7 +30,7 @@ fn version() -> i64 {
     SCHEMA * 1000 + norm::VERSION as i64
 }
 
-fn db_err(e: rusqlite::Error) -> io::Error {
+pub(crate) fn db_err(e: rusqlite::Error) -> io::Error {
     io::Error::other(format!("index: {e}"))
 }
 
@@ -84,9 +88,15 @@ impl Marks {
     }
 }
 
-/// Whether search holds this item's words: the user's messages and the agent's text.
-fn searched(item: &Value) -> bool {
-    (item["kind"] == "input" && item["origin"] == "user") || item["kind"] == "text"
+type Row = (String, &'static str, u64, String, String);
+
+/// An archive entry as the index keeps it: reference, sender, time, words, files.
+fn row(e: core::archive::Entry) -> Row {
+    let text = match e.who.is_empty() {
+        true => e.text,
+        false => format!("{} {}", e.who, e.text),
+    };
+    (e.at, e.from, e.ts, text, e.files.join(" "))
 }
 
 /// When a folder last changed (ms), or 0.
@@ -129,7 +139,8 @@ impl Index {
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
              CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, title TEXT, state TEXT,
                backend TEXT, updated INTEGER, items INTEGER, folded BLOB, archived INTEGER NOT NULL DEFAULT 0);
-             CREATE VIRTUAL TABLE IF NOT EXISTS text USING fts5(id UNINDEXED, body, tokenize='unicode61');
+             CREATE VIRTUAL TABLE IF NOT EXISTS text USING fts5(id UNINDEXED, at UNINDEXED, src UNINDEXED,
+               ts UNINDEXED, body, files, tokenize='unicode61');
              PRAGMA user_version={};",
             version()
         ))
@@ -172,18 +183,23 @@ impl Index {
                 resets.push(id.clone());
             }
             if len != e.seen_len {
-                let mut texts = vec![];
+                // A fork's inherited copy goes in with its first pass.
+                let mut texts: Vec<Row> = match e.done.pos {
+                    0 => core::archive::inherited(&dir)
+                        .into_iter()
+                        .map(row)
+                        .collect(),
+                    _ => vec![],
+                };
                 let mut title = e.title.clone();
                 let mut rewound = false;
                 let folded = core::fold_from(&dir, e.done.clone(), |item| {
                     rewound |= item["kind"] == "note" && item["event"] == "rewound";
-                    if searched(item) {
-                        let user = item["kind"] == "input";
-                        let text = item["text"].as_str().unwrap_or("");
-                        if user && title.is_empty() {
-                            title = crate::title::from(text);
+                    if let Some(entry) = core::archive::entry(item, core::archive::at(item)) {
+                        if entry.from == "user" && title.is_empty() {
+                            title = crate::title::from(&entry.text);
                         }
-                        texts.push(text.to_string());
+                        texts.push(row(entry));
                     }
                 });
                 e.seen_len = len;
@@ -191,12 +207,11 @@ impl Index {
                     Ok(f) if f.norm.clean() => {
                         // A rewind takes its dropped words out of search, however late it's read.
                         if rewound {
-                            texts.clear();
-                            let _ = core::rewind::read_active(&dir, |item| {
-                                if searched(item) {
-                                    texts.push(item["text"].as_str().unwrap_or("").to_string());
-                                }
-                            });
+                            texts = core::archive::read(&dir)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .map(row)
+                                .collect();
                             resets.push(id.clone());
                         }
                         e.title = title;
@@ -311,7 +326,7 @@ impl Index {
     fn write(
         &mut self,
         changed: &[Value],
-        commits: &[(String, Vec<String>)],
+        commits: &[(String, Vec<Row>)],
         resets: &[String],
         gone: &[String],
     ) -> rusqlite::Result<()> {
@@ -338,10 +353,10 @@ impl Index {
                 "UPDATE sessions SET folded=?2 WHERE id=?1",
                 params![id, blob],
             )?;
-            for text in texts {
+            for (at, src, ts, body, files) in texts {
                 tx.execute(
-                    "INSERT INTO text(id, body) VALUES(?1, ?2)",
-                    params![id, text],
+                    "INSERT INTO text(id, at, src, ts, body, files) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![id, at, src, *ts as i64, body, files],
                 )?;
             }
         }
@@ -384,18 +399,15 @@ fn load(db: &Connection) -> rusqlite::Result<BTreeMap<String, Entry>> {
 /// At most this many sessions come back from a search.
 const HITS: usize = 50;
 /// Where a match starts and ends in a snippet, marked by `snippet()` and taken out again.
-const OPEN: char = '\u{2}';
-const CLOSE: char = '\u{3}';
+pub(crate) const OPEN: char = '\u{2}';
+pub(crate) const CLOSE: char = '\u{3}';
 
 /// Sessions whose text holds every word, each as a whole word or a word start [D72]: archived ones last, then the
 /// best match first [D197]. Each comes with its best message's snippet on one line, and where the words are in it
 /// as UTF-16 offsets, the way the UI counts [D196]. Its own read-only connection and a single statement, so no
 /// read transaction stays open.
 pub fn search(data: &Path, q: &str) -> io::Result<Vec<Value>> {
-    let terms: Vec<String> = q
-        .split_whitespace()
-        .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
-        .collect();
+    let terms = words(q);
     if terms.is_empty() {
         return Ok(vec![]);
     }
@@ -403,13 +415,14 @@ pub fn search(data: &Path, q: &str) -> io::Result<Vec<Value>> {
         .map_err(db_err)?;
     // Each word may sit in a different message of the same session; the snippet comes from the message
     // holding the most of them.
-    let one = "SELECT id FROM text WHERE text MATCH ?";
+    let one = "SELECT id FROM text WHERE text MATCH ? AND src IN ('user', 'agent')";
     let every = vec![one; terms.len()].join(" INTERSECT ");
     let sql = format!(
-        "SELECT text.id, snippet(text, 1, char(2), char(3), '…', 12) FROM text JOIN sessions ON sessions.id = text.id
-         WHERE text MATCH ? AND text.id IN ({every}) ORDER BY sessions.archived, text.rank"
+        "SELECT text.id, snippet(text, 4, char(2), char(3), '…', 12) FROM text JOIN sessions ON sessions.id = text.id
+         WHERE text MATCH ? AND text.src IN ('user', 'agent') AND text.id IN ({every}) ORDER BY sessions.archived, text.rank"
     );
-    let any = terms.join(" OR ");
+    let any = format!("body : ({})", terms.join(" OR "));
+    let terms: Vec<String> = terms.iter().map(|t| format!("body : {t}")).collect();
     let params = std::iter::once(&any).chain(&terms);
     let mut stmt = db.prepare(&sql).map_err(db_err)?;
     let mut rows = stmt
@@ -427,6 +440,13 @@ pub fn search(data: &Path, q: &str) -> io::Result<Vec<Value>> {
         }
     }
     Ok(hits)
+}
+
+/// Each word as a whole word or a word start, quoted for FTS5.
+pub(crate) fn words(q: &str) -> Vec<String> {
+    q.split_whitespace()
+        .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
+        .collect()
 }
 
 /// A snippet on one line with its marks taken out, and where they were.
