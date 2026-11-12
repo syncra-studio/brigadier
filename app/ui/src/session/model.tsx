@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ErrorLine } from "../components/error-line";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
-import type { Row } from "../daemon";
+import { ChangeLine } from "../components/thread/line";
+import { type Row, threadSource } from "../daemon";
 import { useStart } from "../home/start";
-import { errorText, run } from "../onboarding/api";
+import { errorText, run, store } from "../onboarding/api";
 import { SetUpAgentDialog } from "./set-up";
 import { newId } from "./store";
 
@@ -36,6 +37,29 @@ let lastGroups: ModelGroup[] | null = null;
 /** Whether a session's model takes images, by the last list read; unknown counts as yes [D2022 #14]. */
 export const takesImages = (provider?: string, model?: string | null) =>
   lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model)?.images !== false;
+
+/** A pick of another model for the session's own agent, by session, until Rust's line for it is in [D76]. */
+const picks = store<ReadonlyMap<string, { op: string; from: string | null; to: string }>>(new Map());
+const pick = (id: string, line: { op: string; from: string | null; to: string } | null) => {
+  const next = new Map(picks.get());
+  if (line) next.set(id, line);
+  else next.delete(id);
+  picks.set(next);
+};
+
+export const useModelPick = (id: string) => picks.use().has(id);
+
+/** The divider a model pick leaves, drawn at once under the thread until Rust's row with its op takes its place [D76]. */
+export function PendingModelLine({ id }: { id: string }) {
+  const line = picks.use().get(id);
+  const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
+  if (!line || session?.id !== id || session.items.some((item) => item.kind === "line" && item.reason === "model" && item.op === line.op)) return null;
+  return (
+    <div className="pt-2">
+      <ChangeLine item={{ id: line.op, turnId: "", kind: "line", reason: "model", why: "changed", from: line.from, to: line.to }} />
+    </div>
+  );
+}
 
 /** Opens a session's model picker: a notice's "Choose another model" (D487). */
 export const askModel = new EventTarget();
@@ -129,12 +153,14 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     const op = newId();
     setPending({ op, choice });
     setError(null);
+    if (choice.provider === row?.backend && choice.model !== shown?.model) pick(id, { op, from: shown?.model ?? null, to: choice.model });
     const args = ["set", id, "--agent", choice.provider, "--model", choice.model, "--op", op];
     if (choice.effort) args.push("--effort", choice.effort);
     if (choice.fast) args.push("--fast");
     run(args).catch((cause) => {
       // Only this pick's refusal undoes it; a newer pick stands.
       setPending((now) => (now?.op === op ? null : now));
+      if (picks.get().get(id)?.op === op) pick(id, null);
       setError(errorText(cause));
     });
   };

@@ -2,9 +2,29 @@
 
 use super::{Open, Thread, reason};
 use crate::fold::Turn;
-use serde_json::json;
+use serde_json::{Value, json};
 
 impl Thread {
+    /// A model picked for the conversation's agent: its line at once, kept out of a running turn's
+    /// fold as the user's own words are, and the next turn on it says nothing more [D76].
+    pub(super) fn model_picked(&mut self, backend: String, was: Option<String>, op: &Value) {
+        let Some(model) = self.fold.models.get(&backend).cloned() else {
+            return;
+        };
+        let Some(from) = was.filter(|m| !m.is_empty() && *m != model) else {
+            return;
+        };
+        self.break_group();
+        let at = self.add(json!({"kind": "line", "reason": "model", "why": "changed",
+            "from": from, "to": model, "op": op}));
+        match self.open.as_mut() {
+            Some(o) => o.kept.push(at as u64 + 1),
+            // Between turns it's in none, so the last one's answer keeps its actions above it.
+            None => self.items[at]["turnId"] = "".into(),
+        }
+        self.ran = Some((backend, model));
+    }
+
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
         self.shown.insert(t.id.clone());
         let at = self.turns.len();

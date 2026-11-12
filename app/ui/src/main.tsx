@@ -31,6 +31,7 @@ import { ImageViewerHost } from "./components/image-viewer";
 import { ThreadDrop } from "./session/files";
 import { RewindProvider } from "./session/rewind";
 import { answeringSource } from "./session/decisions";
+import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
 import { HOME } from "./shell/tab-store";
@@ -201,6 +202,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   const state = useThread();
   const sending = useSending(id);
   const sides = useSidePending(id);
+  const picking = useModelPick(id);
   const line =
     row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
     row?.state === "stalled" ? <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine> :
@@ -235,7 +237,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || sides || failing(row).length > 0) && (
+                      (line || sending || starting || sides || picking || failing(row).length > 0) && (
                         <>
                           <StartingBubble id={id} />
                           <StartingSetup id={id} />
@@ -243,6 +245,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                           {line}
                           <SentBubbles id={id} />
                           <PendingSideLines source={id} />
+                          <PendingModelLine id={id} />
                           <ChecksFailedRows owner={id} row={row} />
                         </>
                       )

@@ -159,7 +159,17 @@ impl Thread {
                 .turns
                 .first()
                 .is_some_and(|t| t.question.is_some());
+        // The conversation's agent on another model: its line the moment it's picked [D76].
+        let picked = (kind == "note" && item["event"] == "setup" && item["pick"] != true)
+            .then(|| item["backend"].as_str().unwrap_or("").to_string());
+        let was = picked.as_ref().and_then(|b| {
+            (self.fold.models.get(b).cloned())
+                .or_else(|| self.ran.clone().filter(|(r, _)| r == b).map(|(_, m)| m))
+        });
         self.fold.push(item);
+        if let Some(b) = picked {
+            self.model_picked(b, was, &item["op"]);
+        }
         // Trust taken back holds the next turn to Ask, said once by a notice (proposed); a
         // session held from its start says nothing, its picker shows Ask [D166].
         let setup = &item["setup"];

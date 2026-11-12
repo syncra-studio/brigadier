@@ -233,7 +233,8 @@ export type Item = Base &
      * continued from another session (forks, D463).
      */
     | { kind: "line"; reason: "limit-reset"; at: number }
-    | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string }
+    /** `op`: the app's pick it came from, to take its pending line's place [D76]. */
+    | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string; op?: string }
     | { kind: "line"; reason: "stopped"; ms: number | null }
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }
