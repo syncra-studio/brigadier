@@ -153,12 +153,21 @@ export function sendFeedback(): void {
   const failed = sending.phase === "done" || sending.phase === "failed" || sending.phase === "signIn" ? sending.results : null;
   const mine = ++current;
   const show = (next: Sending) => mine === current && set({ sending: next });
+  const filing = (): Sending => ({ phase: "working", step: { step: "filing", count: failed!.filter((result) => result.outcome === "failed").length } });
+  // At once, so the note and Send are held while Rust says who it posts as; a sign-in shows over it.
+  if (sending.phase !== "signIn") show(failed ? filing() : { phase: "working", step: { step: "writing" } });
   const go = async (): Promise<Result[] | null> => {
-    if ((await signInFirst(sending)) && !(await signIn((step) => show({ phase: "signIn", signIn: step, results: failed })))) return null;
+    const needed = await signInFirst(sending);
+    // Closed while it asked who it posts as: a sign-in needs the dialog, so this send ends there.
+    if (needed && !feedback.get().open) {
+      show({ phase: "write" });
+      return null;
+    }
+    if (needed && !(await signIn((step) => show({ phase: "signIn", signIn: step, results: failed })))) return null;
     // Closed (or sent again) while it asked or signed in: this send stops there.
     if (mine !== current) return null;
     if (failed) {
-      show({ phase: "working", step: { step: "filing", count: failed.filter((result) => result.outcome === "failed").length } });
+      show(filing());
       return retry(failed);
     }
     show({ phase: "working", step: { step: "writing" } });

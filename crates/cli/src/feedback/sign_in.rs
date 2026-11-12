@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::io::{self, BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -37,6 +38,8 @@ impl Running {
 }
 
 static AT_WORK: Mutex<Option<Arc<Running>>> = Mutex::new(None);
+/// Counts starts and cancels: a start that a later one passed while it began stops itself.
+static STARTS: AtomicU64 = AtomicU64::new(0);
 
 /// `sign-in`: starts one, answering signed in already, no GitHub CLI, or its code and page;
 /// `sign-in wait`: until it ends, signed in or why not; `sign-in cancel`: stops it.
@@ -56,7 +59,9 @@ pub fn run(step: &str) -> io::Result<Value> {
     }
 }
 
-fn cancel() {
+/// Stops the sign-in at work, and one still starting; the count a start begun after it carries.
+fn cancel() -> u64 {
+    let now = STARTS.fetch_add(1, Ordering::SeqCst) + 1;
     if let Some(running) = AT_WORK.lock().unwrap().take() {
         // One that ended keeps its outcome; its group may be gone or reused.
         if running.ended.lock().unwrap().is_none() {
@@ -64,10 +69,11 @@ fn cancel() {
         }
         running.end(Err(STOPPED.into()));
     }
+    now
 }
 
 fn start() -> io::Result<Value> {
-    cancel();
+    let mine = cancel();
     let Some(gh) = gh() else {
         return Ok(json!({"ok": true, "state": "no-gh"}));
     };
@@ -114,6 +120,21 @@ fn start() -> io::Result<Value> {
         }
     });
     let pgid = child.id() as i32;
+    let running = Arc::new(Running {
+        pgid,
+        ended: Mutex::new(None),
+        changed: Condvar::new(),
+    });
+    {
+        // Held while it checks, so a cancel either sees it here or has already passed it.
+        let mut at_work = AT_WORK.lock().unwrap();
+        if STARTS.load(Ordering::SeqCst) != mine {
+            unsafe { libc::killpg(pgid, libc::SIGKILL) };
+            let _ = child.wait();
+            return Err(io::Error::other(STOPPED));
+        }
+        *at_work = Some(running.clone());
+    }
     let (mut page, mut last, mut code) = (None, String::new(), None);
     let deadline = Instant::now() + CODE_TIMEOUT;
     while code.is_none() {
@@ -128,21 +149,22 @@ fn start() -> io::Result<Value> {
             Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => break,
         }
     }
-    let Some(code) = code else {
+    let cancelled = running.ended.lock().unwrap().is_some();
+    if cancelled || code.is_none() {
         unsafe { libc::killpg(pgid, libc::SIGKILL) };
         let _ = child.wait();
+    }
+    if cancelled {
+        return Err(io::Error::other(STOPPED));
+    }
+    let Some(code) = code else {
+        running.end(Err("GitHub’s sign-in didn’t start. Try again.".into()));
         eprintln!("feedback: gh auth login showed no code: {last}");
         return Err(io::Error::other(match last.is_empty() {
             true => "GitHub’s sign-in didn’t start. Try again.".to_string(),
             false => format!("GitHub’s sign-in didn’t start: {last}"),
         }));
     };
-    let running = Arc::new(Running {
-        pgid,
-        ended: Mutex::new(None),
-        changed: Condvar::new(),
-    });
-    *AT_WORK.lock().unwrap() = Some(running.clone());
     thread::spawn(move || {
         let deadline = Instant::now() + SIGN_IN_TIMEOUT;
         let outcome = loop {

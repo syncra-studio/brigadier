@@ -63,10 +63,11 @@ fn gh_run(gh: &Path, args: &[&str], secs: u64) -> Result<Output, String> {
     setup::run(&mut command, secs)
 }
 
-/// The user's `gh` when it is signed in to github.com.
+/// The user's `gh` when its active account is signed in to github.com (a stale other one fails a
+/// plain status).
 fn signed_in() -> Option<PathBuf> {
     let gh = gh()?;
-    let args = ["auth", "status", "--hostname", "github.com"];
+    let args = ["auth", "status", "--active", "--hostname", "github.com"];
     gh_run(&gh, &args, READ_SECS)
         .ok()?
         .status
@@ -428,15 +429,10 @@ fn page(data: &Path, note: &str) -> String {
 fn title(note: &str) -> String {
     let line = note.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cut: String = line.chars().take(MAX_TITLE - 1).collect();
     match line.chars().count() <= MAX_TITLE {
         true => line,
-        false => format!(
-            "{}…",
-            line.chars()
-                .take(MAX_TITLE - 1)
-                .collect::<String>()
-                .trim_end()
-        ),
+        false => format!("{}…", cut.trim_end()),
     }
 }
 
@@ -454,11 +450,11 @@ fn link(note: &str, details: &str) -> String {
 /// This app's version, and what goes with feedback: "Brigadier 0.1.0 (build 2100)", "macOS 27.0
 /// (arm64)", then each agent CLI found, by its last check.
 fn details(data: &Path) -> (String, Vec<String>) {
-    let version = env!("CARGO_PKG_VERSION").to_string();
-    let mut out = vec![match brigadier_frames::wire::build() {
-        0 => format!("Brigadier {version}"),
-        b => format!("Brigadier {version} (build {b})"),
-    }];
+    let version = match brigadier_frames::wire::build() {
+        0 => env!("CARGO_PKG_VERSION").to_string(),
+        b => format!("{} (build {b})", env!("CARGO_PKG_VERSION")),
+    };
+    let mut out = vec![format!("Brigadier {version}")];
     let macos = Command::new("sw_vers").arg("-productVersion").output();
     if let Ok(v) = macos.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
         let chip = match std::env::consts::ARCH {
