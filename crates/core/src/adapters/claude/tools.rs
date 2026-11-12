@@ -123,6 +123,10 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event>
         return vec![];
     }
     let output = match child {
+        // Its report handed back as a call of its own is beside it, not in its text.
+        Some(_) if result["handbackReport"]["text"].is_string() => {
+            s(result, &["handbackReport", "text"]).into()
+        }
         Some(_) => {
             let answer = text(&result["content"]);
             let tag = "</tools-used-before-summary>";

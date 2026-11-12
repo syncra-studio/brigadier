@@ -11,6 +11,21 @@ impl Thread {
         found.or_else(|| self.children.get(id)).copied()
     }
 
+    fn stopping(&self) -> bool {
+        self.fold.turns.first().is_some_and(|t| t.stopping)
+    }
+
+    /// The user's Stop ends the limit: its line stays, without its switch [D51]. Said in the
+    /// thread too, out of the work fold, like the user's words [D99, D487].
+    fn user_stopped(&mut self, ts: u64) {
+        self.end_limit();
+        let ms = self.open.as_ref().map(|o| ts.saturating_sub(o.started));
+        let at = self.add(json!({"kind": "line", "reason": "stopped", "ms": ms}));
+        if let Some(o) = self.open.as_mut() {
+            o.kept.push(at as u64 + 1);
+        }
+    }
+
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
         let Some(turn) = self.turn_id() else {
             return;
@@ -104,7 +119,11 @@ impl Thread {
                     return;
                 };
                 self.children.remove(&str_of("id"));
-                let progress = if item["ok"] == true { "done" } else { "failed" };
+                let progress = match item["ok"] == true {
+                    true => "done",
+                    false if self.stopping() => "cancelled",
+                    false => "failed",
+                };
                 let ended = item["at"].as_u64().unwrap_or(ts);
                 let row = &mut self.items[at];
                 match row["kind"].as_str().unwrap_or("") {
@@ -119,12 +138,12 @@ impl Thread {
                     "childAgent" => {
                         row["endedAt"] = ended.into();
                         row["current"] = Value::Null;
+                        // Its end may come twice (its result and its notification): an empty one keeps the
+                        // answer. A stopped one's says only that it was stopped.
                         let answer = str_of("output");
-                        row["answer"] = if answer.is_empty() {
-                            Value::Null
-                        } else {
-                            answer.into()
-                        };
+                        if !answer.is_empty() && progress != "cancelled" {
+                            row["answer"] = answer.into();
+                        }
                         if let Some(child) = item["child"].as_str() {
                             row["sessionId"] = child.into();
                         }
@@ -180,15 +199,8 @@ impl Thread {
             "exited" => self.end_children("failed"),
             "stopped" => {
                 self.end_children("cancelled");
-                // The user's Stop ends the limit: its line stays, without its switch [D51].
                 if item["by"] == "user" {
-                    self.end_limit();
-                    // Said in the thread too, out of the work fold, like the user's words [D99, D487].
-                    let ms = self.open.as_ref().map(|o| ts.saturating_sub(o.started));
-                    let at = self.add(json!({"kind": "line", "reason": "stopped", "ms": ms}));
-                    if let Some(o) = self.open.as_mut() {
-                        o.kept.push(at as u64 + 1);
-                    }
+                    self.user_stopped(ts);
                 }
             }
             // A limit (or a refused resume) is no error of the turn: one row that a switch turns into
@@ -226,6 +238,10 @@ impl Thread {
                     return;
                 }
                 self.failed = Some(turn.clone());
+                // An agent stopped by its interrupt ends its turn as failed: it is the user's Stop.
+                if self.stopping() {
+                    return self.user_stopped(ts);
+                }
                 self.break_group();
                 let why = item["why"].as_str().unwrap_or("");
                 let cause = if why == "capacity" {

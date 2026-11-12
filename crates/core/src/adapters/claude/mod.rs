@@ -267,9 +267,14 @@ impl Adapter for Claude {
             ("system", "compact_boundary") => vec![Event::Compaction("done")],
             // A subagent's end, also one that ran in the background past its call's result [D78].
             ("system", "task_notification") if !s(&v, &["tool_use_id"]).is_empty() => {
+                // Its report, where it handed one back; a stopped one's summary is only its title.
+                let report = match s(&v, &["handback_report", "text"]) {
+                    "" if v["status"] == "completed" => s(&v, &["summary"]),
+                    report => report,
+                };
                 vec![Event::ToolEnd(Done {
                     id: s(&v, &["tool_use_id"]).into(),
-                    output: s(&v, &["summary"]).into(),
+                    output: report.into(),
                     ok: s(&v, &["status"]) == "completed",
                     child: v["task_id"].as_str().map(String::from),
                     ..Default::default()
@@ -290,7 +295,8 @@ impl Adapter for Claude {
                 vec![Event::Failed("blocked", s(&v, &["content"]).into())]
             }
             ("system", "permission_denied") => vec![Event::Denied],
-            ("system", _) | ("stream_event", _) => vec![],
+            // A running subagent's heartbeat says nothing to show.
+            ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
             ("assistant", _)
                 if parent.is_none()
                     && matches!(s(&v, &["error"]), "model_not_found" | "overloaded") =>
