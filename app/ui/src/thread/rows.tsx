@@ -7,6 +7,7 @@ import { GroupRow, WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
 import { ForkAction, ForkedLine } from "../session/fork";
+import { FailedActions } from "../session/notices";
 import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
 import { PeerRow } from "../peers/live";
@@ -70,7 +71,15 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.item.kind === "forked" ? (
         <ForkedLine item={props.item} />
       ) : (
-        <Body item={props.item} turn={props.turn} step={props.step} dated={props.dated} actions={props.item.kind !== "message" || !props.item.final || props.actions === true} fork={fork} />
+        <Body
+          item={props.item}
+          turn={props.turn}
+          step={props.step}
+          dated={props.dated}
+          actions={props.item.kind !== "message" || !props.item.final || props.actions === true}
+          fork={fork}
+          again={props.item.kind === "notice" && "why" in props.item && <FailedActions turn={props.item.turnId} why={props.item.why} />}
+        />
       )}
       </DrawBoundary>
     </div>

@@ -27,8 +27,8 @@ export function groupWords(steps: readonly { kind: StepKind; n: number }[]): str
 const ENDED: Record<Turn["status"], string> = {
   running: "Working for",
   done: "Worked for",
-  failed: "Stopped after",
-  // Your Stop is said once, by its own line under the turn [D2099].
+  // A failure is said once, by its row at the turn's end [D54]; your Stop by its own line under the turn [D2099].
+  failed: "Worked for",
   cancelled: "Worked for",
 };
 

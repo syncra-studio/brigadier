@@ -1,53 +1,45 @@
-import { type Key, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { type Key, useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import type { Draft } from "../components/composer/draft";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
-import type { RailNotice, SetupStep } from "../thread/item";
+import type { Item, SetupStep } from "../thread/item";
+import { SessionOfThread } from "../accounts/limit";
+import { ErrorAction } from "../components/thread/error-state";
+import { answeringSource } from "./decisions";
 import { retry, useStart } from "../home/start";
 import { store } from "../onboarding/api";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
-import { retryMessage, type Runner } from "./composer";
+import { daemonRun, retryMessage, type Runner } from "./composer";
 import { newId } from "./store";
 import { putBack } from "./side";
 import { useGitNotice } from "../panel/notice";
 
-/** Rust's notice in words: what happened, then the CLI's own words; and what to do about it. `again` resends its turn. */
-export function sessionNotice(notice: RailNotice, again: ReactNode): Notice {
-  const tail = notice.text ? ` ${notice.text}` : "";
-  switch (notice.reason) {
-    case "turn-failed":
-      return notice.cause === "capacity"
-        ? { id: notice.id, level: "warning", text: `The model’s servers are busy, so this turn didn’t finish.${tail}`, action: again }
-        : { id: notice.id, level: "error", text: `This turn didn’t finish.${tail}`, action: again };
-    case "model-unavailable":
-      return {
-        id: notice.id,
-        level: "warning",
-        text: `This model isn’t available.${tail}`,
-        action: (
-          <>
-            <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => askModel.dispatchEvent(new Event("ask"))}>
-              Choose another model
-            </Button>
-            {again}
-          </>
-        ),
-      };
-    case "ended-for-safety":
-      return {
-        id: notice.id,
-        level: "warning",
-        text: `A safety check ended this conversation, so it can’t go on.${tail}`,
-        action: (
-          <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => (window.location.hash = "#")}>
-            Start a new one
-          </Button>
-        ),
-      };
-  }
+/**
+ * A failed turn's actions on its row [D54]: what its reason offers, and Retry while it is the last turn and Rust
+ * offers a rewind to it: back to its message, files kept, and it again in that attempt's place (D492). Shown at once
+ * as under way; a refusal is said on the rail [D30].
+ */
+export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, { reason: "failed" }>["why"] }) {
+  const at = useContext(SessionOfThread);
+  const session = useSyncExternalStore(answeringSource.subscribe, answeringSource.get);
+  const retrying = retries.use().get(at?.id ?? "");
+  if (why === "ended-for-safety") return <ErrorAction onClick={() => (window.location.hash = "#")}>Start a new one</ErrorAction>;
+  const choose = why === "model-unavailable" && <ErrorAction onClick={() => askModel.dispatchEvent(new Event("ask"))}>Choose another model</ErrorAction>;
+  const message = session?.items.findLast((item) => item.kind === "message" && item.role === "user");
+  if (!at || at.offline || session?.id !== at.id || message?.kind !== "message" || message.turnId !== turn || !session.rewind?.includes(turn) || (retrying && retrying.turn !== turn)) return choose;
+  if (retrying && !retrying.error) return <>{choose}<span className="shimmer">Retrying…</span></>;
+  const entry = retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false };
+  return (
+    <>
+      {choose}
+      <ErrorAction disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(daemonRun, at.id, entry)}>
+        Retry
+      </ErrorAction>
+    </>
+  );
 }
 
 /** "A retires on 12 Dec." with what it suggests, never a move it hasn't said it makes [D74]. */
@@ -101,25 +93,12 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
   const [gone, setGone] = useState<ReadonlySet<Key>>(new Set());
   const retiring = useRetiring(id);
   const notices: Notice[] = retiring ? [retiringNotice(retiring)] : [];
-  // Retry: back to the failed turn's message, files kept, and it again in that attempt's place (D492). Only where
-  // Rust offers a rewind to it; shown at once as under way, its refusal said in the notice's place [D30].
+  // A retry under way (FailedActions) and its refusal; one left unconfirmed by a dropped link goes on once it's back.
   const retrying = retries.use().get(id);
   useEffect(() => {
     const entry = retries.get().get(id);
     if (!offline && entry?.unknown && !entry.asking) rewindRetry(run, id, entry);
   }, [id, offline, run]);
-  const again = (turn: string) => {
-    const message = session?.items.find((item) => item.kind === "message" && item.role === "user" && item.turnId === turn);
-    if (offline || !message || message.kind !== "message" || !session?.rewind?.includes(turn)) return null;
-    if (retrying && retrying.turn !== turn) return null;
-    if (retrying && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
-    return (
-      <Button variant="link-blue" size="xs" className="-my-0.5" disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(run, id, retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false })}>
-        Retry
-      </Button>
-    );
-  };
-  if (session?.id === id) notices.push(...(session.notices ?? []).map((notice) => sessionNotice(notice, again(notice.turnId))));
   if (retrying) notices.push({
     id: retrying.op,
     level: retrying.unknown ? "info" : retrying.error ? "error" : "info",

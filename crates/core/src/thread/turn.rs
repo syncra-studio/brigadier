@@ -30,11 +30,6 @@ impl Thread {
             kept: vec![],
             denied: 0,
         });
-        // The rail's notices are about the last turn's failure: the next turn ends them (proposed).
-        if !self.notices.is_empty() {
-            self.notices.clear();
-            self.notices_changed = true;
-        }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
         let model = t
             .model

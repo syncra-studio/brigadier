@@ -28,20 +28,6 @@ export type Session = {
   questions?: PendingQuestion[];
   /** The user messages a rewind can go back to, by command id; Rust decides [D384]. */
   rewind?: string[];
-  /** What the composer's rail says about the last turn's failure; the next turn ends them (proposed) [D487]. */
-  notices?: RailNotice[];
-};
-
-/**
- * A failed turn on the rail, Rust's reason and the CLI's own words: it didn't finish (`cause: "capacity"` when the
- * model's servers were busy), its model isn't available, or a safety check ended the conversation.
- */
-export type RailNotice = {
-  id: string;
-  turnId: string;
-  reason: "turn-failed" | "model-unavailable" | "ended-for-safety";
-  cause: "capacity" | null;
-  text: string;
 };
 
 /** Rust owns the reached steps, their order, state and placement; the UI writes their words. */
@@ -191,6 +177,11 @@ export type Item = Base &
     | { kind: "notice"; reason: "untrusted" }
     /** A reply the agent's safety checks withheld, with its CLI's words [D487]. */
     | { kind: "notice"; reason: "blocked"; text: string }
+    /**
+     * A failed turn, one row at its end with the CLI's own words [D54]: it didn't finish (`cause: "capacity"` when the
+     * model's servers were busy), its model isn't available, or a safety check ended the conversation.
+     */
+    | { kind: "notice"; reason: "failed"; why: "turn-failed" | "model-unavailable" | "ended-for-safety"; cause: "capacity" | null; text: string | null }
     /** The agent's own sign-in error, its line linking to where sign-in lives [D381]. */
     | { kind: "notice"; reason: "sign-in"; text: string }
     /**

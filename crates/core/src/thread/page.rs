@@ -23,7 +23,6 @@ impl Thread {
         page["title"] = title.into();
         page["setup"] = self.setup.clone();
         page["rewind"] = self.fold.points().into();
-        page["notices"] = self.notices.clone().into();
         for (k, v) in self.requests().as_object().unwrap() {
             page[k] = v.clone();
         }

@@ -85,10 +85,6 @@ pub struct Thread {
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
     ran: Option<(String, String)>,
-    /// What the composer's rail says about the last turn's failure, and whether that changed [D487].
-    notices: Vec<Value>,
-    #[serde(skip)]
-    notices_changed: bool,
     /// The turn whose terminal failure was already shown (some CLIs repeat it in their result).
     failed: Option<String>,
     /// Rows of the requests still waiting on the user, oldest first, and whether that changed.
@@ -426,16 +422,12 @@ impl Thread {
             out["setup"] = self.setup.clone();
         }
         let points_changed = self.send_points(&mut out);
-        let notices_changed = std::mem::take(&mut self.notices_changed);
-        if notices_changed {
-            out["notices"] = self.notices.clone().into();
-        }
         // What waits on the user goes whole whenever it changed, to replace what the view holds.
         if std::mem::take(&mut self.pending_changed) {
             for (k, v) in self.requests().as_object().unwrap() {
                 out[k] = v.clone();
             }
-        } else if quiet && !setup_changed && !points_changed && !notices_changed {
+        } else if quiet && !setup_changed && !points_changed {
             return None;
         }
         Some(out)
@@ -446,7 +438,6 @@ impl Thread {
         self.changed_items.clear();
         self.changed_turns.clear();
         self.sent_work = self.work.len();
-        self.notices_changed = false;
         self.pending_changed = false;
     }
 }

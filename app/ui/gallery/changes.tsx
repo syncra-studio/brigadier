@@ -4,14 +4,15 @@ import { type ReactNode, useState } from "react";
 import { Button } from "../src/components/button";
 import { ComposerCard } from "../src/components/composer/composer";
 import { ComposerRail, type Notice, Notices } from "../src/components/composer/rail";
-import { DrawBoundary, ErrorState } from "../src/components/thread/error-state";
+import { Body } from "../src/components/thread/body";
+import { DrawBoundary, ErrorAction, ErrorState } from "../src/components/thread/error-state";
 import { ChangeLine, InlineStatus } from "../src/components/thread/line";
 import { UserBubble } from "../src/components/thread/message";
 import { Thread, type Source } from "../src/thread/thread";
 import { WorkHeader, WorkingLine } from "../src/components/thread/work";
 import { ShieldExclamation } from "../src/icons";
-import { retiringNotice, sessionNotice } from "../src/session/notices";
-import type { Item, RailNotice, Session } from "../src/thread/item";
+import { retiringNotice } from "../src/session/notices";
+import type { Item, Session } from "../src/thread/item";
 import { Row, Section, State } from "./parts";
 import { Toggled } from "./thread";
 
@@ -61,13 +62,18 @@ function LiveBoundary() {
 }
 
 const action = (words: string) => <Button variant="link-blue" size="xs" className="-my-0.5">{words}</Button>;
-const notice = (reason: RailNotice["reason"], text = "", cause: RailNotice["cause"] = null) =>
-  sessionNotice({ id: reason, turnId: "turn", reason, text, cause }, action("Retry"));
+type Failed = Extract<Item, { reason: "failed" }>;
+const failed = (why: Failed["why"], text: string | null = null, cause: Failed["cause"] = null): Failed => ({ kind: "notice", id: why, turnId: "turn", reason: "failed", why, cause, text });
+const retry = <ErrorAction onClick={noop}>Retry</ErrorAction>;
+const FAILED: [string, Failed, ReactNode][] = [
+  ["didn’t finish, CLI’s words", failed("turn-failed", "The agent exited before its answer finished."), retry],
+  ["servers busy", failed("turn-failed", "The model is overloaded (529).", "capacity"), retry],
+  ["model unavailable", failed("model-unavailable"), <><ErrorAction onClick={noop}>Choose another model</ErrorAction>{retry}</>],
+  ["conversation ended", failed("ended-for-safety"), <ErrorAction onClick={noop}>Start a new one</ErrorAction>],
+  ["retrying", failed("turn-failed"), <span className="shimmer">Retrying…</span>],
+  ["no longer the last turn", failed("turn-failed", "The agent exited before its answer finished."), null],
+];
 const RAIL: [string, Notice][] = [
-  ["turn failed", notice("turn-failed", "The agent exited before its answer finished.")],
-  ["busy", notice("turn-failed", "", "capacity")],
-  ["model unavailable", notice("model-unavailable")],
-  ["conversation ended", notice("ended-for-safety")],
   ["retirement, date and replacement", retiringNotice({ name: "Large", at: NOW + 86_400_000, to: "Small" })],
   ["retirement, date unknown", retiringNotice({ name: "Large", at: null, to: "Small" })],
   ["retired, replacement unknown", retiringNotice({ name: "Large", at: NOW - 86_400_000, to: null })],
@@ -109,6 +115,9 @@ export function ChangesGallery() {
         <State label="with details and Retry"><Column><ErrorState summary="This reply couldn’t be shown" details={ERROR} onRetry={noop} /></Column></State>
         <State label="no details"><Column><ErrorState summary="This reply couldn’t be shown" onRetry={noop} /></Column></State>
         <State label="no retry"><Column><ErrorState summary="This conversation couldn’t be shown" details={ERROR} /></Column></State>
+      </Row>
+      <Row name="A failed turn: one row at its end, with what can be done">
+        {FAILED.map(([label, item, again]) => <State key={label} label={label}><Column><Body item={item} turn={undefined} step={false} again={again} /></Column></State>)}
       </Row>
       <Row name="Live: one broken reply leaves the rest visible"><LiveBoundary /></Row>
       <Row name="Empty after rewind: pending and refused sends stay visible">

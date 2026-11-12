@@ -15,6 +15,7 @@ import { FileChangeRow } from "./file-change";
 import { ShieldExclamation } from "../../icons";
 import { ChangeLine, InlineStatus } from "./line";
 import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./message";
+import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
 
@@ -39,11 +40,18 @@ function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid
   );
 }
 
+const FAILED = {
+  "turn-failed": "This turn didn’t finish",
+  "model-unavailable": "This model isn’t available",
+  "ended-for-safety": "A safety check ended this conversation, so it can’t go on",
+};
+
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
- * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above.
+ * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above. `again`:
+ * a failed turn's actions, the app's (Retry and what its reason offers).
  */
-export function Body({ item, turn, step, dated = false, actions = true, fork }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; fork?: ReactNode }) {
+export function Body({ item, turn, step, dated = false, actions = true, fork, again }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; fork?: ReactNode; again?: ReactNode }) {
   switch (item.kind) {
     case "group":
       return null;
@@ -117,6 +125,10 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
             The agent’s safety checks held this reply back
           </InlineStatus>
         );
+      }
+      if (item.reason === "failed") {
+        const words = item.cause === "capacity" ? "The model’s servers are busy, so this turn didn’t finish" : FAILED[item.why];
+        return <ErrorState summary={words} details={item.text} action={again} />;
       }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
       // Sign-in lives on Settings › Providers [D347, D381, D2054].

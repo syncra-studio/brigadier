@@ -220,7 +220,7 @@ impl Thread {
                     o.denied += 1;
                 }
             }
-            // A failed turn: its line in the thread, and what it means on the composer's rail [D487].
+            // A failed turn: one row at its end, Rust's reason and the CLI's own words; the UI writes the rest and offers Retry [D487, D54].
             "failed" => {
                 if self.failed.as_deref() == Some(&turn) {
                     return;
@@ -228,29 +228,21 @@ impl Thread {
                 self.failed = Some(turn.clone());
                 self.break_group();
                 let why = item["why"].as_str().unwrap_or("");
-                match why {
-                    "review" => self.add(json!({"kind": "line", "reason": "review-ended"})),
-                    "blocked" => self.add(
-                        json!({"kind": "notice", "reason": "blocked", "text": item["message"]}),
-                    ),
-                    _ => self
-                        .add(json!({"kind": "notice", "level": "error", "text": item["message"]})),
-                };
-                let reason = match why {
-                    "model" => "model-unavailable",
-                    "ended" => "ended-for-safety",
-                    "blocked" | "review" => return,
-                    _ => "turn-failed",
-                };
                 let cause = if why == "capacity" {
                     json!("capacity")
                 } else {
                     Value::Null
                 };
-                self.notices
-                    .push(json!({"id": format!("{turn}:{reason}"), "reason": reason,
-                    "cause": cause, "text": item["message"], "turnId": turn}));
-                self.notices_changed = true;
+                let failed = |reason: &str| json!({"kind": "notice", "reason": "failed", "why": reason, "cause": cause, "text": item["message"]});
+                self.add(match why {
+                    "review" => json!({"kind": "line", "reason": "review-ended"}),
+                    "blocked" => {
+                        json!({"kind": "notice", "reason": "blocked", "text": item["message"]})
+                    }
+                    "model" => failed("model-unavailable"),
+                    "ended" => failed("ended-for-safety"),
+                    _ => failed("turn-failed"),
+                });
             }
             "sign_in" => {
                 self.break_group();

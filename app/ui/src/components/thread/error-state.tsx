@@ -9,18 +9,15 @@ import { ErrorLine } from "../error-line";
  * Something that failed, said calmly as the old app did: one red line, Try again where it can be tried again, and
  * Details › opening the error's own words with Copy (D87, D490). It wraps rather than cutting the words.
  */
-export function ErrorState({ summary, details, onRetry }: { summary: string; details?: string | null; onRetry?: () => void }) {
+export function ErrorState({ summary, details, onRetry, action }: { summary: string; details?: string | null; onRetry?: () => void; action?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const text = details?.trim() ?? "";
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-2.5 text-sm leading-5.25">
         <ErrorLine size="sm" error={summary} />
-        {onRetry && (
-          <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-            Try again
-          </button>
-        )}
+        {onRetry && <ErrorAction onClick={onRetry}>Try again</ErrorAction>}
+        {action}
         {text && (
           <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex cursor-pointer items-center gap-1 rounded-control text-muted-foreground hover:text-foreground focus-visible:focus-ring">
             Details
@@ -35,6 +32,15 @@ export function ErrorState({ summary, details, onRetry }: { summary: string; det
         </div>
       )}
     </div>
+  );
+}
+
+/** A link-blue action on an error's line. */
+export function ErrorAction({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled">
+      {children}
+    </button>
   );
 }
 
