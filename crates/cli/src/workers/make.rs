@@ -145,18 +145,27 @@ pub fn start(
         json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort")});
     let reserved = (|| -> Result<Record, Value> {
         let _family = family_lock(data, &root).map_err(|e| refuse(&e.to_string()))?;
-        if closing(data, me) {
+        if closing(data, me) || !parent.dir.join("session.json").exists() {
             return Err(refuse(
                 "This session is being deleted, so it starts no workers.",
             ));
         }
         let limit = setting(data, "workers", 6);
         let busy = (below(data, &root).iter())
-            .filter(|r| r.state == "starting" || (r.state == "started" && running(&r.wid)))
+            // Its own log, not only the row, which lags just after a launch.
+            .filter(|r| {
+                r.state == "starting"
+                    || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
+            })
             .count() as u64;
         if busy >= limit {
             return Err(refuse(&format!(
-                "{busy} workers are running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one."
+                "{} running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one.",
+                if busy == 1 {
+                    "1 worker is".into()
+                } else {
+                    format!("{busy} workers are")
+                }
             )));
         }
         let wid = loop {
@@ -229,16 +238,24 @@ pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
     let (data, pid, wid) = (data.to_path_buf(), pid.to_string(), wid.to_string());
     thread::spawn(move || {
         if let Some(mut r) = record(&data, &pid, &wid).filter(|r| r.state == "starting") {
-            match make(&data, &pid, &r) {
-                Ok(()) => r.state = "started".into(),
-                Err(e) => {
-                    r.state = "failed".into();
-                    r.error = Some(e.to_string());
+            let made = make(&data, &pid, &r);
+            let _family = family_lock(&data, &r.root);
+            // A stop while it was being made keeps its word: no result, never started.
+            if record(&data, &pid, &wid).is_none_or(|now| now.state != "stopped") {
+                match made {
+                    Ok(()) => r.state = "started".into(),
+                    Err(e) => {
+                        r.state = "failed".into();
+                        r.error = Some(e.to_string());
+                    }
                 }
-            }
-            let _ = save(&data, &pid, &r);
-            if r.state == "failed" {
-                result::failed(&data, &pid, &r);
+                let _ = save(&data, &pid, &r);
+                if r.state == "failed" {
+                    result::failed(&data, &pid, &r);
+                }
+            } else if let Some(mut l) = super::link(&data, &wid).filter(|l| l.last.is_null()) {
+                l.last = json!({"how": "stopped", "at": log::now_ms()});
+                let _ = write_json(&core::session_dir(&data, &wid).join("worker.json"), &l);
             }
         }
         MAKING.lock().unwrap().as_mut().map(|m| m.remove(&wid));
@@ -316,6 +333,9 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         r.brief.trim_end(),
         fixed_line(&core::share::title(&parent), pid)
     );
+    if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
+        return Err(io::Error::other("It was stopped before it started."));
+    }
     let reply = say(data, &r.wid, &text, &r.cid)?;
     match reply["result"].as_str() {
         Some("delivered" | "logged") => Ok(()),

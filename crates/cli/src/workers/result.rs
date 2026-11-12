@@ -68,9 +68,15 @@ fn all(data: &Path, pid: &str) -> Vec<(PathBuf, Res)> {
     all
 }
 
-fn open(pid: &str) {
+/// Parents with results on disk, read once at the daemon's first use.
+fn known(data: &Path) -> BTreeSet<String> {
+    let ids = core::ids(data).into_iter();
+    ids.filter(|id| dir_of(data, id).exists()).collect()
+}
+
+fn open(data: &Path, pid: &str) {
     let mut open = OPEN.lock().unwrap();
-    open.get_or_insert_with(BTreeSet::new).insert(pid.into());
+    open.get_or_insert_with(|| known(data)).insert(pid.into());
 }
 
 /// After a pass's rows: a worker whose reported turn ended gets its result written. Only a worker
@@ -79,7 +85,7 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
     if row["running"] == true {
         return;
     }
-    let at = row["finished"].clone();
+    let at = json!([row["finished"], row["state"]]);
     {
         let mut seen = SEEN.lock().unwrap();
         if seen
@@ -90,24 +96,28 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
             return;
         }
     }
-    let _ = write_ended(data, wid);
+    let _ = write_ended(data, wid, row["state"] == "interrupted");
 }
 
-/// Writes the result of each reported turn of `wid` that ended and has none yet.
-fn write_ended(data: &Path, wid: &str) -> io::Result<()> {
+/// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
+/// died, so a turn it left open ended too, failed.
+fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
     let Some(l) = link(data, wid) else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
     for turn in &l.report {
-        let ended = f.cids.contains_key(turn) && !f.turns.iter().any(|t| &t.id == turn);
+        let open = f.turns.iter().any(|t| &t.id == turn);
+        let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
             continue;
         }
         let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
         // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
         // it reads as finished. Upgrade when the fold keeps each turn's end.
-        let how = match last.map_or("done", |l| l["outcome"].as_str().unwrap_or("done")) {
+        let how = match last.map_or(if open { "cut" } else { "done" }, |l| {
+            l["outcome"].as_str().unwrap_or("done")
+        }) {
             "done" => "finished",
             "stopped" => "stopped",
             "limited" => "limit",
@@ -230,7 +240,7 @@ fn write(
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
-    open(&l.parent);
+    open(data, &l.parent);
     let link_path = dir.join("worker.json");
     if let Some(mut l) = read_json::<Link>(&link_path) {
         l.last = json!({"how": how, "at": res.at, "landed": landed,
@@ -268,7 +278,7 @@ pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
 /// under the parent's queue lock, which a delivery holds while it sends [D3006, D3034].
 pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<String> {
     let l = link(data, wid).filter(|l| l.parent == me)?;
-    let _ = write_ended(data, wid);
+    let _ = write_ended(data, wid, false);
     let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
     let (path, mut res) = all(data, &l.parent)
         .into_iter()
@@ -284,10 +294,7 @@ pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<Stri
 pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
     let parents: Vec<String> = {
         let mut open = OPEN.lock().unwrap();
-        let open = open.get_or_insert_with(|| {
-            let ids = core::ids(data).into_iter();
-            ids.filter(|id| dir_of(data, id).exists()).collect()
-        });
+        let open = open.get_or_insert_with(|| known(data));
         open.retain(|p| rows.contains_key(p));
         open.iter().cloned().collect()
     };

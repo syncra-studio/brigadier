@@ -30,12 +30,13 @@ pub fn unlanded(data: &Path, ids: &[String]) -> Vec<Value> {
 pub fn delete(data: &Path, id: &str, drop: bool) -> io::Result<Value> {
     let record = core::session_dir(data, id).join(CLOSING);
     let drop = read_json::<Value>(&record).map_or(drop, |r| r["drop"] == true);
-    if below(data, id).is_empty() && !record.exists() {
-        return sessions::delete(data, id, drop, "delete");
-    }
     {
         let (root, _) = place(data, id);
         let _family = family_lock(data, &root)?;
+        // Under the lock, so a first start can't slip in between the look and the delete.
+        if below(data, id).is_empty() && !record.exists() {
+            return sessions::delete(data, id, drop, "delete");
+        }
         if !record.exists() {
             write_json(&record, &json!({"drop": drop}))?;
         }

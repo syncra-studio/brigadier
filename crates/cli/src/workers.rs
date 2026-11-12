@@ -18,11 +18,13 @@ use brigadier_core::{self as core};
 use brigadier_frames::procs;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// A worker's reservation, in its parent's `workers/` folder: all its making needs, so a restart
 /// makes the same worker under the same id and never a second one [D54].
@@ -36,7 +38,7 @@ pub(crate) struct Record {
     pub at: u64,
     pub depth: u64,
     pub root: String,
-    /// starting | started | failed
+    /// starting | started | failed | stopped (before its brief went)
     pub state: String,
     #[serde(default)]
     pub error: Option<String>,
@@ -168,7 +170,14 @@ pub fn busy(data: &Path, id: &str) -> bool {
     let Some(l) = link(data, id) else {
         return false;
     };
-    let made = record(data, &l.parent, id).is_some_and(|r| r.state != "starting");
+    let r = record(data, &l.parent, id);
+    // A start that failed or was stopped before its brief went has nothing left to wait for.
+    if r.as_ref()
+        .is_some_and(|r| matches!(r.state.as_str(), "failed" | "stopped"))
+    {
+        return false;
+    }
+    let made = r.is_some_and(|r| r.state != "starting");
     let Ok(f) = core::fold(&core::session_dir(data, id), true).map(|r| r.fold) else {
         return !made;
     };
@@ -181,7 +190,7 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     let Some(r) = below(data, me).into_iter().find(|r| r.wid == id) else {
         return refuse("You can stop only workers you started.");
     };
-    if let Err(e) = queue::stop(data, id) {
+    if let Err(e) = halt(data, me, id) {
         return refuse(&e.to_string());
     }
     ended(data, me, &[id.to_string()], "agent");
@@ -192,6 +201,36 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
         format!(" Its branch {b} keeps its commits.")
     });
     json!({"ok": true, "text": format!("Stopped {} ({id}).{kept}", r.title)})
+}
+
+/// Stops worker `wid` below `top`. One still being made is marked so its brief never goes, and
+/// stopped once its making ends, if it got that far.
+fn halt(data: &Path, top: &str, wid: &str) -> io::Result<()> {
+    if let Some(pid) = parent_of(data, top, wid) {
+        let (root, _) = place(data, &pid);
+        let _family = family_lock(data, &root)?;
+        if let Some(mut r) = record(data, &pid, wid).filter(|r| r.state == "starting") {
+            r.state = "stopped".into();
+            save(data, &pid, &r)?;
+        }
+    }
+    let started = Instant::now();
+    while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    match core::session_dir(data, wid).join("session.json").exists() {
+        true => queue::stop(data, wid).map(drop),
+        false => Ok(()),
+    }
+}
+
+/// Which session below `top` (or `top` itself) started `wid`.
+fn parent_of(data: &Path, top: &str, wid: &str) -> Option<String> {
+    let mine = records(data, top);
+    if mine.iter().any(|r| r.wid == wid) {
+        return Some(top.into());
+    }
+    mine.iter().find_map(|r| parent_of(data, &r.wid, wid))
 }
 
 fn note(data: &Path, id: &str, note: Value) {
@@ -259,7 +298,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             return Err(io::Error::other(format!("{other} isn't a worker of {id}")));
         }
         for w in &ids {
-            queue::stop(data, w)?;
+            halt(data, id, w)?;
         }
         if !ids.is_empty() {
             ended(data, id, &ids, "user");
@@ -286,8 +325,33 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         if !row["worker"].is_null() {
             result::written(data, id, row);
         }
+        if row["worker"]["kind"] == "doneNotMerged" {
+            merged(data, id);
+        }
     }
     deliver(data, rows);
+}
+
+/// A worker done but not merged is looked at again now and then, so once its parent merges it
+/// with git, its row says Done [D3003].
+fn merged(data: &Path, wid: &str) {
+    static CHECKED: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+    {
+        let mut checked = CHECKED.lock().unwrap();
+        let at = checked.get_or_insert_with(HashMap::new).entry(wid.into());
+        let at = at.or_insert_with(|| Instant::now() - Duration::from_secs(10));
+        if at.elapsed() < Duration::from_secs(10) {
+            return;
+        }
+        *at = Instant::now();
+    }
+    let dir = core::session_dir(data, wid);
+    if core::worktrees::unlanded(&dir).is_ok_and(|b| b.is_none())
+        && let Some(mut l) = link(data, wid)
+    {
+        l.last["landed"] = true.into();
+        let _ = write_json(&dir.join("worker.json"), &l);
+    }
 }
 
 /// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
