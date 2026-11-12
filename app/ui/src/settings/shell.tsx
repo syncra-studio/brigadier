@@ -31,13 +31,21 @@ export function closeSettings(): void {
   window.location.hash = back;
 }
 
+/** Where Back goes from Settings, the old app's levelUp: an agent's page to its page, a page to General, General to `back`. */
+export function settingsUp(page: string): string {
+  if (page.includes("/")) return `${PREFIX}${page.split("/")[0]}`;
+  return page === "general" ? back : `${PREFIX}general`;
+}
+
 /** ⌘, opens Settings (from the keys, or the app menu's Settings…) and ⌘/ its Keyboard shortcuts [D2013, D2022]. Call once. */
 export function listenToSettingsKeys(): void {
   addEventListener("keydown", (event) => {
     const page = event.defaultPrevented ? null : matches(event, "settings") ? "general" : matches(event, "shortcuts") ? "shortcuts" : null;
     if (!page) return;
     event.preventDefault();
-    openSettings(page);
+    // ⌘, leaves Settings when it's open, as the old app's toggleSettings did.
+    if (page === "general" && settingsPageOf(window.location.hash) !== null) closeSettings();
+    else openSettings(page);
   });
   window.brigadier?.onMenu((command) => command === "settings" && openSettings("general"));
 }

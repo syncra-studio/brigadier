@@ -149,7 +149,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
         />
         )}
         <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
-        <TitlebarNav active={active} rows={rows} />
+        <TitlebarNav hash={hash} rows={rows} />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />

@@ -5,11 +5,12 @@ import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
 import { ArrowLeft, ArrowRight, Sidebar, SidebarFloatingLeft } from "../icons";
 import { store } from "../onboarding/api";
+import { settingsPageOf, settingsUp } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 
 // The old app's history (state/history.ts) [kit D170]: Back goes by where you are, never by how you got there, a
-// session to Home, and Home has nowhere to go. Forward redoes what Back left; any other navigation clears it.
+// session to Home, Settings up a level and out (settingsUp), and Home has nowhere to go. Forward redoes what Back left; any other navigation clears it.
 const ahead = store<string | null>(null);
 let stepping: string | null = null;
 window.addEventListener("hashchange", () => {
@@ -22,22 +23,26 @@ const MOUSE_FORWARD = 4;
 export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]') !== null;
 
 /** Back, Forward and the sidebar toggle at a fixed spot on the traffic lights' line; they stay put while the sidebar moves. */
-export function TitlebarNav({ active, rows }: { active: string | null; rows: SessionRow[] | undefined }) {
+export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, toggleSidebar } = useSidebar();
   const forward = ahead.use();
+  const page = settingsPageOf(hash);
+  const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") ? "" : null;
+  // A session deleted since shows Home instead.
+  const go = (place: string) => {
+    const gone = place.startsWith("#thread/") && rows && !rows.some((row) => row.id === decodeURIComponent(place.slice("#thread/".length)));
+    stepping = gone ? "" : place;
+    window.location.hash = stepping;
+  };
   const stepBack = () => {
-    if (active === null) return;
-    ahead.set(window.location.hash);
-    stepping = "";
-    window.location.hash = "";
+    if (up === null) return;
+    ahead.set(hash);
+    go(up);
   };
   const stepForward = () => {
     if (forward === null) return;
-    // A session deleted since shows Home instead.
-    const gone = rows && !rows.some((row) => row.id === decodeURIComponent(forward.slice("#thread/".length)));
     ahead.set(null);
-    stepping = gone ? "" : forward;
-    window.location.hash = stepping;
+    go(forward);
   };
   const step = (delta: -1 | 1) => {
     if (!blocked()) (delta === -1 ? stepBack : stepForward)();
@@ -72,7 +77,7 @@ export function TitlebarNav({ active, rows }: { active: string | null; rows: Ses
   return (
     <div className="titlebar-nav app-no-drag absolute start-titlebar-start top-0 z-20 flex h-titlebar items-center gap-1.5">
       <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Back" shortcut={keysOf("back")[0]} disabled={active === null} onClick={stepBack}>
+        <TooltipIconButton look="toolbar" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />
         </TooltipIconButton>
         <TooltipIconButton look="toolbar" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
