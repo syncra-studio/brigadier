@@ -60,6 +60,8 @@ impl Fold {
     pub(super) fn control(&mut self, item: &Value, cid: &str) -> bool {
         let c = &item["control"];
         match c["kind"].as_str() {
+            // An instant command (/compact): the agent's own turn events say what it does.
+            Some("command") => true,
             Some("answer") => {
                 let id = c["request"].as_str().unwrap_or("");
                 let Some(t) = self.turns.first_mut() else {

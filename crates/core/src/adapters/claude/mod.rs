@@ -247,6 +247,7 @@ impl Adapter for Claude {
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
                 Some(Event::TurnStart),
                 control::level(&v),
+                control::commands(&v),
             ]
             .into_iter()
             .flatten()

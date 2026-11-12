@@ -43,6 +43,9 @@ pub struct Fold {
     pub groups: Vec<(i32, u64)>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
+    /// Each agent's own commands, as it last listed them [D2009].
+    #[serde(default)]
+    pub commands: BTreeMap<String, Value>,
     pub backend: String,
     pub limit: Option<String>,
     /// When the limit resets (ms), if its CLI said [D74].
@@ -390,6 +393,9 @@ impl Fold {
                     t.question = None;
                 }
                 self.end_ask(&str_of("id"), "answered");
+            }
+            "commands" => {
+                self.commands.insert(str_of("backend"), item["list"].clone());
             }
             "resume_id" => {
                 let (backend, id) = (str_of("backend"), str_of("id"));

@@ -11,6 +11,7 @@ import { showToast } from "../components/toast";
 import { BrigadierMark } from "../onboarding/mark";
 import { daemonRun } from "../session/composer";
 import { HOME_DRAFT } from "../session/draft";
+import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
 import { BranchPicker, type RepoState } from "./branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
@@ -92,6 +93,7 @@ export function HomeView(props: HomeProps) {
   const field = useRef<ComposerFieldHandle>(null);
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
   const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
+  const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   const send = (parts: Draft["parts"]) => {
     const tiles = files.tiles();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
@@ -186,6 +188,8 @@ export function HomeView(props: HomeProps) {
               attachments={files.attachments}
               onAttach={files.attach}
               mentions={files.mentions}
+              commands={extras.commands}
+              onOpen={extras.onOpen}
               onChange={(parts) => {
                 setEmpty(isEmpty({ parts, attachmentIds: [] }));
                 props.onDraft?.({ parts, attachmentIds: files.tileIds });
@@ -194,7 +198,7 @@ export function HomeView(props: HomeProps) {
             />
             <ComposerFooter>
               {props.level}
-              <ComposerTools />
+              <ComposerTools>{extras.plus}</ComposerTools>
               {props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
               <SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(field.current?.parts() ?? [])} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
             </ComposerFooter>

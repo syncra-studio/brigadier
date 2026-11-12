@@ -30,6 +30,8 @@ pub(super) struct State {
     busy: bool,
     /// The session's permission rules as its server last took them.
     pub(super) rules: Value,
+    /// Its folder, where its commands and skills are listed.
+    dir: String,
 }
 
 pub(super) type Shared = Arc<Mutex<State>>;
@@ -88,52 +90,6 @@ pub(super) fn start(
     Ok((server, state, lease))
 }
 
-/// A server for one bounded job, in the session's environment and folder, ended when it returns.
-pub(super) fn oneshot<T>(
-    exe: &std::path::Path,
-    env: Vec<(String, String)>,
-    cwd: &str,
-    job: impl FnOnce(&Server) -> T,
-) -> Result<T, String> {
-    use std::os::unix::process::CommandExt;
-    let password = super::super::uuid();
-    let mut child = Command::new(exe)
-        .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
-        .env_clear()
-        .envs(env)
-        .env("OPENCODE_PASSWORD", &password)
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|e| format!("OpenCode didn't start: {e}"))?;
-    let stdout = child.stdout.take().ok_or("no stdout")?;
-    let (tx, rx) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let mut first = String::new();
-        let _ = BufReader::new(stdout).read_line(&mut first);
-        let _ = tx.send(first);
-    });
-    let first = rx.recv_timeout(Duration::from_secs(60));
-    let answered = first.map_err(|_| "OpenCode's server didn't start".to_string());
-    let out = answered.and_then(|first| {
-        let url: Value =
-            serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
-        let server = Server {
-            addr: super::super::s(&url, &["url"])
-                .trim_start_matches("http://")
-                .into(),
-            auth: base64(format!("opencode:{password}").as_bytes()),
-        };
-        Ok(job(&server))
-    });
-    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
-    let _ = child.wait();
-    out
-}
-
 /// One line from the adapter. A failed `must` line (the setup before a first message) ends the
 /// helper, so no message runs on a setup it didn't take [D222].
 pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
@@ -146,7 +102,7 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         ("POST", at("/model"), json!({"model": c["model"]}))
     } else if c["permissions"].is_array() {
         ("PATCH", at(""), json!({"permissions": c["permissions"]}))
-    } else if c["prompt"].is_object() {
+    } else if c["prompt"].is_object() || c["command"].is_object() {
         // Under Ask, no turn runs that the user's saved rules would let skip an ask [D166, D266].
         if let Some(why) = skipping(server, state) {
             if let Some(id) = c["id"].as_str() {
@@ -154,7 +110,13 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
             }
             return Ok(());
         }
-        ("POST", at("/prompt"), c["prompt"].clone())
+        match c["command"].is_object() {
+            // Its own command, the rest of the message its text [D164].
+            true => ("POST", at("/command"), c["command"].clone()),
+            false => ("POST", at("/prompt"), c["prompt"].clone()),
+        }
+    } else if c["compact"] == true {
+        ("POST", at("/compact"), json!({}))
     } else if c["interrupt"] == true {
         ("POST", at("/interrupt"), Value::Null)
     } else if p.is_object() {
@@ -235,6 +197,10 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         st.session = session.into();
         st.newest = super::super::s(&tail["data"][0], &["id"]).into();
         st.grants = c["grants"].as_array().cloned().unwrap_or_default();
+        st.dir = super::super::s(&c["open"], &["location", "directory"]).into();
+        let dir = st.dir.clone();
+        drop(st);
+        super::commands::list(server, &dir);
     }
     if c["grant"].is_object() {
         grant(server, state, c["grant"].clone());
@@ -303,6 +269,11 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         }
         "form.replied" | "form.cancelled" if st.forms.remove(d["id"].as_str().unwrap_or("")) => {}
         "shell.created" => {}
+        "command.updated" | "skill.updated" => {
+            let dir = st.dir.clone();
+            drop(st);
+            return super::commands::list(server, &dir);
+        }
         k if k.starts_with("session.")
             && !st.session.is_empty()
             && d["sessionID"] == st.session.as_str() =>

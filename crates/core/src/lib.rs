@@ -84,6 +84,10 @@ pub struct Spec {
     /// the agent's own form [D2008].
     #[serde(skip)]
     pub images: Vec<PathBuf>,
+    /// The agent's own commands its chips name, as the agent listed them, sent in its own form
+    /// where it has one [D164, D2009].
+    #[serde(skip)]
+    pub commands: Vec<Value>,
     /// The entry in its CLI's record to resume at, after a rewind that cut there [D384].
     #[serde(skip)]
     pub resume_at: Option<String>,

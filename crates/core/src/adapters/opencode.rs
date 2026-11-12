@@ -2,6 +2,7 @@
 //! never the owner's own service [D86, D159]. It uses OpenCode's own store, so a key the user saved there
 //! works in every session, and delete removes the session through OpenCode itself [D35, D89].
 
+mod commands;
 mod control;
 mod events;
 mod grants;
@@ -15,7 +16,7 @@ use super::{
     Timing, base_env, home_path, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, denied, model, model_ref, rules};
+use control::{answers, denied, message, model, model_ref, prompt, rules};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
@@ -231,7 +232,7 @@ impl Adapter for OpenCode {
             json!({"model": model_ref(spec), "must": true}),
         ];
         lines.push(json!({"permissions": rules(spec), "must": true}));
-        lines.extend(text.map(|t| json!({"prompt": prompt(spec, t), "id": spec.cid})));
+        lines.extend(text.map(|t| message(spec, t)));
         Launch {
             argv,
             env,
@@ -241,10 +242,7 @@ impl Adapter for OpenCode {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!(
-            "{}\n",
-            json!({"prompt": prompt(spec, text), "id": spec.cid})
-        )
+        format!("{}\n", message(spec, text))
     }
 
     /// No auto mode, so Auto isn't offered [D175, D187].
@@ -318,6 +316,17 @@ impl Adapter for OpenCode {
         };
         line["id"] = spec.cid.clone().into();
         Ok(Delivery::Stdin(format!("{line}\n")))
+    }
+
+    /// Its compact, as `POST /api/session/{id}/compact` [D2011].
+    fn command(&self, spec: &Spec, name: &str) -> Result<Delivery, String> {
+        match name {
+            "compact" => Ok(Delivery::Stdin(format!(
+                "{}\n",
+                json!({"compact": true, "id": spec.cid})
+            ))),
+            _ => Err("This agent has no command by that name".into()),
+        }
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
@@ -448,16 +457,4 @@ impl Adapter for OpenCode {
         }
         Some((texts, tools))
     }
-}
-
-/// A message as OpenCode's prompt: its text, each image as a v2 attachment by its `file:` uri [D2008].
-fn prompt(spec: &Spec, text: &str) -> Value {
-    let files: Vec<Value> = (spec.images.iter())
-        .map(|p| json!({"uri": format!("file://{}", p.display()), "name": p.file_name().map(|n| n.to_string_lossy())}))
-        .collect();
-    let mut prompt = json!({"text": text});
-    if !files.is_empty() {
-        prompt["files"] = files.into();
-    }
-    prompt
 }

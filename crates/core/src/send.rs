@@ -85,6 +85,7 @@ pub fn send(
     let spec = &Spec {
         level: level.map(String::from),
         images: msg.images.clone(),
+        commands: msg.commands.clone(),
         ..spec.clone()
     };
     let mut run = as_run(spec, f, &b, None);

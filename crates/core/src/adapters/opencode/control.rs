@@ -1,4 +1,5 @@
-//! What OpenCode's server is told: the model, the level as its permission rules, and answers.
+//! What OpenCode's server is told: the model, the level as its permission rules, messages and
+//! answers.
 
 use super::super::s;
 use crate::Spec;
@@ -69,4 +70,36 @@ pub fn answers(r: &Value, msg: &Value) -> Value {
         out.insert(s(f, &["key"]).into(), value);
     }
     out.into()
+}
+
+/// A message as the helper's line: one whose chip names its own command goes as that command, the
+/// rest of the message its text; any other as a prompt [D164].
+pub fn message(spec: &Spec, text: &str) -> Value {
+    let picked = (spec.commands.iter()).find(|c| c["kind"] == "command" && c["instant"] != true);
+    let Some(name) = picked.and_then(|c| c["name"].as_str()) else {
+        return json!({"prompt": prompt(spec, text), "id": spec.cid});
+    };
+    let mut command = prompt(spec, text.replacen(&format!("/{name}"), "", 1).trim());
+    command["name"] = name.into();
+    json!({"command": command, "id": spec.cid})
+}
+
+/// A message as OpenCode's prompt: its text, each image as a v2 attachment by its `file:` uri
+/// [D2008], each skill its chips name by its id [D2009].
+pub fn prompt(spec: &Spec, text: &str) -> Value {
+    let files: Vec<Value> = (spec.images.iter())
+        .map(|p| json!({"uri": format!("file://{}", p.display()), "name": p.file_name().map(|n| n.to_string_lossy())}))
+        .collect();
+    let skills: Vec<Value> = (spec.commands.iter())
+        .filter(|c| c["kind"] == "skill")
+        .map(|c| json!({"id": c["name"]}))
+        .collect();
+    let mut prompt = json!({"text": text});
+    if !files.is_empty() {
+        prompt["files"] = files.into();
+    }
+    if !skills.is_empty() {
+        prompt["skills"] = skills.into();
+    }
+    prompt
 }

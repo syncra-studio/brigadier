@@ -92,6 +92,10 @@ pub enum Event {
     /// An action the CLI's own rule or reviewer turned down, with nobody asked [D487].
     Denied,
     Usage(Value),
+    /// The agent's own commands, as its protocol lists them, replacing any listed before: each
+    /// `{name, description, kind: "command"|"skill"|"mcp", path, instant}`, `path` the file it's
+    /// defined in where the agent says or keeps one, `instant` when it runs at once [D164, D2009].
+    Commands(Vec<Value>),
     /// Where this turn sits in the CLI's own record, for a later cut: its first entry and its
     /// latest, as far as this line says.
     Mark {
@@ -316,6 +320,11 @@ pub trait Adapter: Sync {
     /// question), `{kind: "steer", text}` or `{kind: "interrupt"}`.
     fn control(&self, _spec: &Spec, _msg: &Value) -> Result<Delivery, String> {
         Err("This agent takes no control messages yet.".into())
+    }
+    /// One of its own commands that runs at once, by the name its list gave it (`instant`), through
+    /// the running agent's own channel [D2009, D2011].
+    fn command(&self, _spec: &Spec, _name: &str) -> Result<Delivery, String> {
+        Err("This agent has no command by that name".into())
     }
     fn timing(&self) -> Timing;
     /// Files and folders this backend wrote outside the session folder for this session only, by

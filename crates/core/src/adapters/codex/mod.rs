@@ -16,6 +16,7 @@ use std::time::Duration;
 
 mod control;
 mod events;
+mod grants;
 mod models;
 mod record;
 mod server;
@@ -180,15 +181,11 @@ impl Adapter for Codex {
     }
 
     fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
-        let line = match msg["kind"].as_str() {
-            Some("answer") => control::answer(spec, msg)?,
-            Some("steer") => {
-                json!({"id": spec.cid, "steer": control::input(s(msg, &["text"]), &spec.images)})
-            }
-            Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
-            _ => return Err("Codex takes no such control message.".into()),
-        };
-        Ok(Delivery::Stdin(format!("{line}\n")))
+        control::control(spec, msg)
+    }
+
+    fn command(&self, spec: &Spec, name: &str) -> Result<Delivery, String> {
+        control::command(spec, name)
     }
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {

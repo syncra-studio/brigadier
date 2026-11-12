@@ -186,18 +186,17 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
         agent += &note;
     }
     // The sent bubble's files, by name and kind, so the thread shows them without reading the folder.
-    // A paste is in the text whole, so it isn't one of them.
+    // A paste went into the text whole; it shows as the old app's "Pasted text" card.
     let pasted = |id: &str| {
         (parts["parts"].as_array().into_iter().flatten())
             .any(|p| p["kind"] == "paste" && p["attachmentId"] == id)
     };
     let files: Vec<Value> = (ids(&parts).iter())
-        .filter(|id| !pasted(id))
         .filter_map(|id| file(id).map(|path| (id, path)))
         .map(|(id, path)| {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             let bytes = fs::metadata(&path).map_or(0, |m| m.len());
-            serde_json::json!({"id": id, "name": name, "mime": mime(&path), "bytes": bytes})
+            serde_json::json!({"id": id, "name": name, "mime": mime(&path), "bytes": bytes, "pasted": pasted(id)})
         })
         .collect();
     let commands = commands(spec, &parts)?;
@@ -222,14 +221,23 @@ fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
         return Ok(vec![]);
     }
     let f = crate::fold(&spec.dir, true)?.fold;
-    let backend = if f.backend.is_empty() { &spec.backend } else { &f.backend };
+    let backend = if f.backend.is_empty() {
+        &spec.backend
+    } else {
+        &f.backend
+    };
     let listed = f.commands.get(backend).and_then(Value::as_array);
     Ok((chips.iter())
         .map(|c| {
             let id = c["id"].as_str().unwrap_or("");
             let (kind, name) = id.split_once(':').unwrap_or(("command", id));
-            let found = listed.into_iter().flatten().find(|l| l["name"] == name && l["kind"] == kind);
-            found.cloned().unwrap_or_else(|| serde_json::json!({"name": name, "kind": kind, "path": null}))
+            let found = listed
+                .into_iter()
+                .flatten()
+                .find(|l| l["name"] == name && l["kind"] == kind);
+            found
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({"name": name, "kind": kind, "path": null}))
         })
         .collect())
 }

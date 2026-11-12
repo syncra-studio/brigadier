@@ -21,6 +21,7 @@ import { SessionLevel } from "./level";
 import { SessionModel, takesImages } from "./model";
 import { SessionNotices } from "./notices";
 import { draftOf, keepDraft, loadDraft } from "./draft";
+import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
@@ -264,6 +265,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
 
   // Send as new, from a project session only: ⌥⌘⏎, ⌘-click on Send, or the /new chip in the text [D183, D204].
   const inProject = Boolean(row?.project);
+  const extras = useComposerCommands({ owner: id, run, field, extra: inProject ? [NEW_SESSION] : [], fresh: running, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   /** Empties the field for a message that's going, and answers the queued message it was edited from. */
   const take = () => {
     const pulled = editing.current;
@@ -382,7 +384,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           }}
           onSubmit={submit}
           onSubmitNew={inProject ? submitNew : undefined}
-          commands={inProject ? { commands: [NEW_SESSION], onRun: () => {} } : undefined}
+          commands={extras.commands}
+          onOpen={extras.onOpen}
           onPullQueued={() => {
             const last = items.findLast((each) => each.state === "queued");
             if (!last) return false;
@@ -392,7 +395,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         />
         <ComposerFooter>
           <SessionLevel id={id} row={row} />
-          <ComposerTools />
+          <ComposerTools>{extras.plus}</ComposerTools>
           {/* With nothing queued the queue card isn't there to say why a Resume was refused. */}
           <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />

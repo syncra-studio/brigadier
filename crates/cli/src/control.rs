@@ -14,14 +14,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{io, process, thread};
 
-fn refused(error: &str, why: Value) -> Value {
+pub(crate) fn refused(error: &str, why: Value) -> Value {
     json!({"ok": false, "result": "refused", "error": error, "why": why})
 }
 
 /// Judges the session on its log, asks the adapter how `msg` reaches its agent, and sends that as
 /// an input. With `exact`, the host takes it only if nothing reached the log since it was judged,
 /// in the same lock as it logs it: an answer can't pass a cancel or another answer [D30, D159].
-fn deliver(
+pub(crate) fn deliver(
     data: &Path,
     id: &str,
     mut req: Value,
@@ -55,9 +55,14 @@ fn deliver(
             images: (msg["images"].as_array().into_iter().flatten())
                 .filter_map(|p| p.as_str().map(Into::into))
                 .collect(),
+            commands: msg["commands"].as_array().cloned().unwrap_or_default(),
             ..as_run(&spec, &f.fold, &backend, None)
         };
-        let Delivery::Stdin(bytes) = match a.control(&run, &msg) {
+        let sent = match msg["kind"] == "command" {
+            true => a.command(&run, msg["name"].as_str().unwrap_or("")),
+            false => a.control(&run, &msg),
+        };
+        let Delivery::Stdin(bytes) = match sent {
             Ok(d) => d,
             Err(e) => return Ok(refused("unsupported", e.into())),
         };
@@ -183,7 +188,7 @@ pub fn steer(
         match (running, can) {
             (false, _) => Err(refused("not_running", Value::Null)),
             (_, false) => Err(refused("unsupported", Value::Null)),
-            _ => Ok(json!({"kind": "steer", "text": msg.agent, "images": images})),
+            _ => Ok(json!({"kind": "steer", "text": msg.agent, "images": images, "commands": msg.commands})),
         }
     })
 }

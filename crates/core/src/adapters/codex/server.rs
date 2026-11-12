@@ -4,6 +4,7 @@
 //! gets once started, so the adapter stays stateless.
 
 use super::events::limited;
+use super::grants::{can_grant, covered};
 use crate::adapters::{unwrap_shell, uuid};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -159,6 +160,7 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
             let thread = r["thread"]["id"].clone();
             state.lock().unwrap().thread = thread.as_str().unwrap_or("").into();
             say(json!({"method": "thread/started", "params": {"thread": {"id": thread}}}));
+            skills(state);
             Ok(())
         }
         Err(e) => {
@@ -166,6 +168,18 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
             Err(format!("Codex refused {method}: {e}"))
         }
     }
+}
+
+/// Its skills for the session's folder, listed again whenever it says they changed [D2009].
+fn skills(state: &Shared) {
+    let state = state.clone();
+    thread::spawn(move || {
+        let cwd = state.lock().unwrap().cwd.clone();
+        match call(&state, "skills/list", json!({"cwds": [cwd]})) {
+            Ok(r) => say(json!({"type": "brigadier.skills", "data": r})),
+            Err(e) => eprintln!("Codex listed no skills: {e}"),
+        }
+    });
 }
 
 /// A steer's input as the adapter built it, or a plain text's.
@@ -199,6 +213,13 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
                 json!({"threadId": thread, "expectedTurnId": turn, "input": input(&c["steer"])});
             ask(st, "turn/steer", params, Pending::Reply(cid));
         }
+    } else if c["compact"] == true {
+        ask(
+            st,
+            "thread/compact/start",
+            json!({"threadId": thread}),
+            Pending::Reply(cid),
+        );
     } else if c["answer"].is_object() {
         let (rid, result) = (c["answer"]["rid"].clone(), c["answer"]["result"].clone());
         if c["grant"].is_object() {
@@ -314,6 +335,9 @@ fn notification(state: &Shared, v: &mut Value) {
     if method == "account/rateLimits/updated" {
         return merge(st, &p["rateLimits"].clone());
     }
+    if method == "skills/changed" {
+        return skills(state);
+    }
     if method == "serverRequest/resolved" {
         let id = id_of(&st.nonce, &p["requestId"]);
         v["params"]["requestId"] = id.into();
@@ -426,50 +450,4 @@ fn request(state: &Shared, mut v: Value) {
     v["id"] = id_of(&st.nonce, &rid).into();
     v["rid"] = rid;
     say(v);
-}
-
-/// Whether this command can be allowed for the session. Codex now lists a saved rule instead of a
-/// session answer for most commands, but still honours the session answer, and only that one stays
-/// out of its files [D193]. A request for extra permissions gets neither, so it's asked every time.
-fn can_grant(p: &Value) -> bool {
-    p["availableDecisions"].as_array().is_none_or(|d| {
-        d.iter()
-            .any(|o| o == "acceptForSession" || o.get("acceptWithExecpolicyAmendment").is_some())
-    })
-}
-
-/// Codex's answer for a request a session grant covers, as its own session answer so it caches it
-/// as well [D193, D247]. A command by its exact words and folder, as Codex keys its own cache.
-fn covered(grants: &[Value], method: &str, p: &Value) -> Option<&'static str> {
-    if method == "item/commandExecution/requestApproval" && p["canGrant"] != true {
-        return None;
-    }
-    let host = p["networkApprovalContext"]["host"].as_str();
-    let hit = |g: &Value| {
-        let (scope, pattern) = (&g["grant"]["scope"], g["grant"]["pattern"].as_str());
-        match method {
-            "item/commandExecution/requestApproval" if host.is_some() => {
-                scope == "network" && pattern == host
-            }
-            "item/commandExecution/requestApproval" => {
-                scope == "command"
-                    && pattern == p["command"].as_str()
-                    && g["cli"]["cwd"] == p["cwd"]
-            }
-            "item/fileChange/requestApproval" => {
-                let files = p["files"].as_array().filter(|f| !f.is_empty());
-                let inside = |root: &str| {
-                    files.is_some_and(|f| {
-                        f.iter().filter_map(Value::as_str).all(|f| {
-                            f.strip_prefix(root)
-                                .is_some_and(|rest| rest.starts_with('/'))
-                        })
-                    })
-                };
-                scope == "edits" && pattern.is_some_and(inside)
-            }
-            _ => false,
-        }
-    };
-    grants.iter().any(hit).then_some("acceptForSession")
 }

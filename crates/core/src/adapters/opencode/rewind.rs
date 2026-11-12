@@ -2,10 +2,15 @@
 //! snapshots do those), then committed, which deletes the messages in place.
 
 use super::super::{Cut, Failed, Landing, Rewound};
-use super::server::oneshot;
+use super::http::Server;
 use crate::Spec;
+use brigadier_frames::base64;
 use serde_json::{Value, json};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
 type Env = Vec<(String, String)>;
 
@@ -82,4 +87,50 @@ pub(super) fn landed(
         }
     });
     found.unwrap_or_else(Landing::Unknown)
+}
+
+/// A server for one bounded job, in the session's environment and folder, ended when it returns.
+fn oneshot<T>(
+    exe: &std::path::Path,
+    env: Vec<(String, String)>,
+    cwd: &str,
+    job: impl FnOnce(&Server) -> T,
+) -> Result<T, String> {
+    use std::os::unix::process::CommandExt;
+    let password = super::super::uuid();
+    let mut child = Command::new(exe)
+        .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
+        .env_clear()
+        .envs(env)
+        .env("OPENCODE_PASSWORD", &password)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| format!("OpenCode didn't start: {e}"))?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let mut first = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut first);
+        let _ = tx.send(first);
+    });
+    let first = rx.recv_timeout(Duration::from_secs(60));
+    let answered = first.map_err(|_| "OpenCode's server didn't start".to_string());
+    let out = answered.and_then(|first| {
+        let url: Value =
+            serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
+        let server = Server {
+            addr: super::super::s(&url, &["url"])
+                .trim_start_matches("http://")
+                .into(),
+            auth: base64(format!("opencode:{password}").as_bytes()),
+        };
+        Ok(job(&server))
+    });
+    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    let _ = child.wait();
+    out
 }

@@ -266,3 +266,34 @@ fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
         other => return Err(format!("no such decision here: {other:?}")),
     })
 }
+
+/// Its own commands, from its init line: skills and MCP prompts by name, the rest as commands, less
+/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. A skill or
+/// command opens as the file it's defined in, the project's before the user's.
+// shortcut: the user's own folder is ~/.claude, not an account's home; upgrade when accounts keep skills apart.
+pub fn commands(v: &Value) -> Option<Event> {
+    let names = |key: &str| -> Vec<&str> {
+        (v[key].as_array().into_iter().flatten()).filter_map(Value::as_str).collect()
+    };
+    let (skills, terminal) = (names("skills"), names("terminal_slash_commands"));
+    let cwd = Path::new(s(v, &["cwd"]));
+    let file = |rest: String| {
+        [cwd.join(".claude").join(&rest), super::super::home_path(&format!(".claude/{rest}"))]
+            .into_iter()
+            .find(|path| path.is_file())
+    };
+    let listed = names("slash_commands");
+    let unlisted = skills.iter().filter(|name| !listed.contains(name)).copied().collect::<Vec<_>>();
+    let list = (listed.iter().chain(&unlisted)).copied().filter(|name| !terminal.contains(name));
+    let list = list.map(|name| {
+        let (kind, path) = if skills.contains(&name) {
+            ("skill", file(format!("skills/{name}/SKILL.md")))
+        } else if name.starts_with("mcp__") {
+            ("mcp", None)
+        } else {
+            ("command", file(format!("commands/{name}.md")))
+        };
+        json!({"name": name, "description": "", "kind": kind, "path": path, "instant": false})
+    });
+    v["slash_commands"].is_array().then(|| Event::Commands(list.collect()))
+}

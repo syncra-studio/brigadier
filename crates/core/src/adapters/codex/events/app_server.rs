@@ -14,6 +14,7 @@ pub fn events(v: &Value) -> Vec<Event> {
             error: d["error"].as_str().map(String::from),
             level: None,
         }],
+        "" if s(v, &["type"]) == "brigadier.skills" => vec![Event::Commands(commands(d))],
         "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
         "turn/started" => vec![Event::TurnStart],
         "turn/completed" => completed(p),
@@ -41,6 +42,21 @@ pub fn events(v: &Value) -> Vec<Event> {
         "item/tool/requestUserInput" => vec![question(v)],
         _ => vec![],
     }
+}
+
+/// Its compact, which runs at once, then each enabled skill `skills/list` gave, by its file
+/// [D2009, D2011]. Its own description of compact, from its TUI's (codex-rs/tui/src/slash_command.rs).
+fn commands(list: &Value) -> Vec<Value> {
+    let compact = json!({"name": "compact", "description": "Summarize conversation to prevent hitting the context limit",
+        "kind": "command", "path": null, "instant": true});
+    let entries = list["data"].as_array().into_iter().flatten();
+    let skills = (entries.flat_map(|e| e["skills"].as_array().into_iter().flatten()))
+        .filter(|k| k["enabled"] != false)
+        .map(|k| {
+            json!({"name": k["name"], "description": k["description"], "kind": "skill",
+            "path": k["path"], "instant": false})
+        });
+    std::iter::once(compact).chain(skills).collect()
 }
 
 /// Whether a failed turn hit a usage limit.

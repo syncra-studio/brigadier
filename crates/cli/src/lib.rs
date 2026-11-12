@@ -5,6 +5,8 @@ mod accounts;
 pub mod archived;
 mod attach;
 mod chips;
+mod command;
+mod commands;
 mod commit;
 mod control;
 mod feedback;
@@ -284,6 +286,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "draft" => attach::kept(data, args),
         "attach" => attach::run(data, args),
+        "command" => command::run(data, args),
+        "commands" => commands::run(data, args),
         "status" => {
             let all = procs::all();
             let ids: Vec<String> = if has(args, "--all") {

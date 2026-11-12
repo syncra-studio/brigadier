@@ -51,6 +51,11 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             end: None,
         }],
         "brigadier.gone" | "form.cancelled" => vec![Event::Resolved(id("id"))],
+        "brigadier.commands" => vec![Event::Commands(d.as_array().cloned().unwrap_or_default())],
+        "session.compaction.started" => vec![Event::Compaction("running")],
+        "session.compaction.ended" | "session.compaction.failed" => {
+            vec![Event::Compaction("done")]
+        }
         // A command's output file: the server is this session's alone, so its shells are too.
         "shell.created" => vec![Event::External(s(d, &["info", "file"]).into())],
         "permission.asked" => vec![approval(d)],

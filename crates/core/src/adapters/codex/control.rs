@@ -1,5 +1,6 @@
 //! What Codex's app-server is told: the session's level as its own policy, turns and answers.
 
+use super::super::{Delivery, s};
 use crate::Spec;
 use serde_json::{Value, json};
 
@@ -33,21 +34,46 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     open
 }
 
-/// A message as Codex's input: its text, then each image by its path [D2008].
-pub fn input(text: &str, images: &[std::path::PathBuf]) -> Value {
-    let images = images
-        .iter()
-        .map(|p| json!({"type": "localImage", "path": p}));
+/// A message as Codex's input: its text, then each image by its path [D2008], then each skill its
+/// chips name by its name and file [D2009].
+pub fn input(spec: &Spec, text: &str) -> Value {
+    let images = (spec.images.iter()).map(|p| json!({"type": "localImage", "path": p}));
+    let skills = (spec.commands.iter())
+        .filter(|c| c["kind"] == "skill" && c["path"].is_string())
+        .map(|c| json!({"type": "skill", "name": c["name"], "path": c["path"]}));
     std::iter::once(json!({"type": "text", "text": text}))
         .chain(images)
+        .chain(skills)
         .collect()
+}
+
+/// A control message as the line for the helper [D159].
+pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+    let line = match msg["kind"].as_str() {
+        Some("answer") => answer(spec, msg)?,
+        Some("steer") => json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"]))}),
+        Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
+        _ => return Err("Codex takes no such control message.".into()),
+    };
+    Ok(Delivery::Stdin(format!("{line}\n")))
+}
+
+/// A command that runs at once: its compact, as `thread/compact/start` on the live thread [D2011].
+pub fn command(spec: &Spec, name: &str) -> Result<Delivery, String> {
+    match name {
+        "compact" => Ok(Delivery::Stdin(format!(
+            "{}\n",
+            json!({"id": spec.cid, "compact": true})
+        ))),
+        _ => Err("This agent has no command by that name".into()),
+    }
 }
 
 /// One line for the helper to send as `turn/start`. Level, model and effort ride on every turn, so
 /// Codex checks them with the prompt and refuses it whole if it can't apply them [D222].
 pub fn turn(spec: &Spec, text: &str) -> Value {
     let (policy, reviewer, _, sandbox) = level(spec);
-    let mut turn = json!({"input": input(text, &spec.images), "approvalPolicy": policy,
+    let mut turn = json!({"input": input(spec, text), "approvalPolicy": policy,
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     if let Some(model) = &spec.model {
         turn["model"] = model.as_str().into();
