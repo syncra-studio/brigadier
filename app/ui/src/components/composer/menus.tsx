@@ -160,6 +160,18 @@ export function ComposerMenu({ label, children }: { label?: string; children: Re
   );
 }
 
+/** Waiting longer than a moment: a reply that comes within it shows with nothing drawn before it, as the file viewer's [D1310, D2109]. */
+function useSlow(waiting: boolean): boolean {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!waiting) return;
+    const timer = setTimeout(() => setSlow(true), 150);
+    return () => clearTimeout(timer);
+  }, [waiting]);
+  return slow;
+}
+
 /** The composer card the field is in, once it's in the page: Lexical's menu anchor goes there. */
 function useCard(): HTMLElement | null {
   const [editor] = useLexicalComposerContext();
@@ -225,6 +237,9 @@ export function ComposerMenuOption({ selected, disabled, className, ...props }: 
   );
 }
 
+/** Where the pointer last moved over a menu row. */
+const pointer = { x: -1, y: -1 };
+
 /** One option row: highlighted by the keys or the pointer, picked by a click without the field losing focus. */
 function OptionRow<T>({
   option,
@@ -246,7 +261,13 @@ function OptionRow<T>({
       id={`typeahead-item-${index}`}
       selected={props.selectedIndex === index}
       disabled={disabled}
-      onMouseEnter={() => props.setHighlightedIndex(index)}
+      // A move, as the old app's rows, and a real one: a list scrolled by the arrows under a still pointer keeps the
+      // arrows' row, though the browser says the pointer moved onto another [D2105].
+      onMouseMove={(event) => {
+        if (event.clientX === pointer.x && event.clientY === pointer.y) return;
+        Object.assign(pointer, { x: event.clientX, y: event.clientY });
+        if (props.selectedIndex !== index) props.setHighlightedIndex(index);
+      }}
       onClick={() => props.selectOptionAndCleanUp(option)}
     >
       {children}
@@ -263,6 +284,9 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
   if (answered) kept.current = results.groups;
   const groups = kept.current;
   const options = useMemo(() => groups.flatMap((group) => group.items.map((item) => new Row(item, `${group.title}:${item.id}`))), [groups]);
+  const empty = options.length === 0 && !groups.some((group) => group.note);
+  const [open, setOpen] = useState(false);
+  const slow = useSlow(open && empty && !answered);
   const card = useCard();
   if (!card) return null;
   return (
@@ -276,8 +300,10 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
         setQuery(next ?? "");
         onQuery(next);
       }}
+      onOpen={() => setOpen(true)}
       onClose={() => {
         kept.current = [];
+        setOpen(false);
         onQuery(null);
       }}
       onSelectOption={(option, replacing, close) => {
@@ -287,7 +313,7 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
       }}
       menuRenderFn={(anchor, props) => {
         let at = 0;
-        const empty = options.length === 0 && !groups.some((group) => group.note);
+        if (empty && !answered && !slow) return null;
         return (
           <Panel anchor={anchor}>
             {groups.map((group, index) => {
@@ -324,6 +350,8 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
 export function SlashPlugin({ commands, onRun }: Commands) {
   const [query, setQuery] = useState("");
   const options = useMemo(() => commandMatches(commands ?? [], query).map((command) => new Row(command, command.id)), [commands, query]);
+  const [open, setOpen] = useState(false);
+  const slow = useSlow(open && commands === null);
   const card = useCard();
   if (!card) return null;
   return (
@@ -334,6 +362,8 @@ export function SlashPlugin({ commands, onRun }: Commands) {
       commandPriority={COMMAND_PRIORITY_HIGH}
       options={options}
       onQueryChange={(next) => setQuery(next ?? "")}
+      onOpen={() => setOpen(true)}
+      onClose={() => setOpen(false)}
       onSelectOption={(option, replacing, close) => {
         const command = option.value;
         if (command.disabled) return;
@@ -345,24 +375,26 @@ export function SlashPlugin({ commands, onRun }: Commands) {
         }
         close();
       }}
-      menuRenderFn={(anchor, props) => (
-        <Panel anchor={anchor}>
-          {props.options.map((option, index) => {
-            const command = option.value;
-            const group = KIND_HEADINGS[command.kind];
-            const previous = index > 0 ? KIND_HEADINGS[props.options[index - 1]!.value.kind] : null;
-            return (
-              <div key={option.key} className="contents">
-                {group && group !== previous && <MenuHeading>{group}</MenuHeading>}
-                <OptionRow option={option} index={index} props={props} disabled={command.disabled}>
-                  <CommandRow command={command} query={query} />
-                </OptionRow>
-              </div>
-            );
-          })}
-          {props.options.length === 0 && <MenuNote>{commands ? "No commands" : "Loading…"}</MenuNote>}
-        </Panel>
-      )}
+      menuRenderFn={(anchor, props) =>
+        commands === null && !slow ? null : (
+          <Panel anchor={anchor}>
+            {props.options.map((option, index) => {
+              const command = option.value;
+              const group = KIND_HEADINGS[command.kind];
+              const previous = index > 0 ? KIND_HEADINGS[props.options[index - 1]!.value.kind] : null;
+              return (
+                <div key={option.key} className="contents">
+                  {group && group !== previous && <MenuHeading>{group}</MenuHeading>}
+                  <OptionRow option={option} index={index} props={props} disabled={command.disabled}>
+                    <CommandRow command={command} query={query} />
+                  </OptionRow>
+                </div>
+              );
+            })}
+            {props.options.length === 0 && <MenuNote>{commands ? "No commands" : "Loading…"}</MenuNote>}
+          </Panel>
+        )
+      }
     />
   );
 }
