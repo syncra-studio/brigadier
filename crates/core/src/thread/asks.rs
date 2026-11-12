@@ -41,16 +41,29 @@ impl Thread {
     }
 
     /// A subagent waits on the user while any request for it, or one it asks (`parent` names its
-    /// call), waits; then it works on.
+    /// call), waits; then it works on. Its step that asks waits with it, as the thread's do [D141].
     fn agent_waits(&mut self, at: usize, waits: bool) {
         let Some(a) = self.agent_of(at) else {
             return;
         };
-        let (from, to) = match waits {
-            true => ("running", "pending"),
-            false if (self.pending.iter()).any(|&p| self.agent_of(p) == Some(a)) => return,
-            false => ("pending", "running"),
+        let (from, to) = if waits {
+            ("running", "pending")
+        } else {
+            ("pending", "running")
         };
+        let step = format!(
+            "{}:{}",
+            self.items[a]["id"].as_str().unwrap_or(""),
+            self.items[at]["request"]["tool"].as_str().unwrap_or("")
+        );
+        let mut log = self.items[a]["log"].as_array_mut().into_iter().flatten();
+        if let Some(s) = log.find(|s| s["id"] == step.as_str() && s["progress"] == from) {
+            s["progress"] = to.into();
+            self.changed_items.insert(a);
+        }
+        if !waits && (self.pending.iter()).any(|&p| self.agent_of(p) == Some(a)) {
+            return;
+        }
         if self.items[a]["progress"] == from {
             self.items[a]["progress"] = to.into();
             self.changed_items.insert(a);

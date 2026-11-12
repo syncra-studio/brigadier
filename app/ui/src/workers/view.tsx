@@ -160,10 +160,10 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
 
 type Shown = Extract<Line, { type: "item" | "group" }>;
 
-/** What it does right now as the thread's last line, when no row of its says it: a running step or a reply begun does. */
+/** What it does right now as the thread's last line, when no row of its says it: a running or waiting step, or a reply begun, does. */
 function thinking(items: readonly Item[]): boolean {
   const last = items.findLast((item) => !item.hidden);
-  if ((last?.kind === "tool" || last?.kind === "fileChange" || last?.kind === "childAgent") && last.progress === "running") return false;
+  if ((last?.kind === "tool" || last?.kind === "fileChange" || last?.kind === "childAgent") && (last.progress === "running" || last.progress === "pending")) return false;
   return !((last?.kind === "message" || last?.kind === "reasoning") && last.streaming && last.text.trim());
 }
 
