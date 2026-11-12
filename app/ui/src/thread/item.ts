@@ -207,6 +207,8 @@ export type Item = Base &
         account?: string;
         /** When the limit resets (ms), if its CLI said; null otherwise [D74]. */
         resets?: number | null;
+        /** `op`: the app's pick it came from, to take its pending line's place [D76]. */
+        op?: string;
       }
     /** Where a fork starts, after its inherited rows [D48, D1063]; `where` null for a chat's. */
     | { kind: "forked"; source: string; where: "worktree" | "folder" | null; summary: boolean; leftOut: string[] }

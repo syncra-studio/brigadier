@@ -157,8 +157,8 @@ pub fn picked(
         &from_label,
     )?;
     let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
-        "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "effort": p.effort, "fast": p.fast},
-        "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {model}"),
+        "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "name": p.name, "effort": p.effort, "fast": p.fast},
+        "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {}", p.name),
         "from_label": from_label, "to_label": to_label});
     Ok((switch, format!("{seed}\n\n{text}")))
 }

@@ -34,6 +34,9 @@ pub struct Picked {
     pub effort: Option<String>,
     #[serde(default)]
     pub fast: bool,
+    /// Its name as the picker shows it; the id where none was given.
+    #[serde(default)]
+    pub name: String,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -146,6 +149,7 @@ impl Fold {
         self.setup_op = item["op"].as_str().map(String::from);
         if item["pick"] == true {
             self.picked = Some(Picked {
+                name: item["name"].as_str().unwrap_or(&model).into(),
                 backend: b,
                 model,
                 effort,

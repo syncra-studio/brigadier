@@ -118,8 +118,14 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 true => (format!("{old}.r{now}"), "user", "resent"),
                 false => (format!("rs{now}"), "system", "continued"),
             };
+            // Another agent picked since takes it on, from the hand-off [D90].
+            let picked = f.picked.is_some();
             // With no agent alive and no conversation to resume, the line would start a new one without the request.
-            if !resend && child.is_none() && !f.resume.contains_key(backend.unwrap_or(&f.backend)) {
+            if !resend
+                && !picked
+                && child.is_none()
+                && !f.resume.contains_key(backend.unwrap_or(&f.backend))
+            {
                 return json!({"ok": false, "error": "The agent stopped before its conversation began, so there's nothing to carry on. Send your message again."});
             }
             let msg = if resend {
@@ -135,7 +141,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 &cid,
                 origin,
                 &msg,
-                backend,
+                backend.filter(|_| !picked),
                 resend.then_some(old),
             );
             reply["recovered"] = said.into();

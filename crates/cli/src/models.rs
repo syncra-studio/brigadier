@@ -212,12 +212,24 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     } else {
         &f.backend
     };
-    if b != current && !f.turns.is_empty() {
-        return refuse("busy", "Switch once this turn ends.");
-    }
-    owner::ensure(data, &spec)?;
+    // The thread's line names both sides as the picker does [D76].
+    let name = |id: &str| {
+        let models = g["models"].as_array().into_iter().flatten();
+        models
+            .into_iter()
+            .find(|x| x["id"] == id)
+            .map(|x| x["name"].clone())
+    };
+    let label = |b: &str| adapters::get(b).map_or_else(|| b.to_string(), |a| a.label().into());
+    let now = f
+        .models
+        .get(b)
+        .cloned()
+        .or_else(|| spec.model.clone().filter(|_| *b == spec.backend));
     let note = json!({"event": "setup", "op": op, "backend": b, "model": m, "effort": effort,
-        "fast": fast, "pick": b != current});
+        "fast": fast, "pick": b != current, "name": model["name"], "was": now.and_then(|n| name(&n)),
+        "from_label": label(current), "to_label": label(b)});
+    owner::ensure(data, &spec)?;
     owner::call(data, id, json!({"op": "note", "data": note}))?;
     Ok(json!({"ok": true, "op": op}))
 }

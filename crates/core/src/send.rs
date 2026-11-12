@@ -35,7 +35,12 @@ pub fn send(
 ) -> Value {
     // The agent reads the message as composed; the record keeps what the user wrote [D109, D127].
     let text = msg.agent.as_str();
-    let picking = origin == "user" && backend.is_none() && f.picked.is_some();
+    // The user's next turn, or their Resume, goes to the agent they picked; a message into a
+    // running turn stays with it, the pick waiting for the next [D90, D76].
+    let picking = matches!(origin, "user" | "system")
+        && backend.is_none()
+        && f.picked.is_some()
+        && f.turns.is_empty();
     let mut replace = None;
     let picked_fold;
     let f = if picking {

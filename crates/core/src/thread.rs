@@ -81,6 +81,8 @@ pub struct Thread {
     sent_work: usize,
     /// The switch row of a limit no switch has taken yet, by index.
     limit_row: Option<usize>,
+    /// The switch row of another agent picked, until the message that goes to it [D76].
+    pick_row: Option<usize>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
@@ -159,16 +161,11 @@ impl Thread {
                 .turns
                 .first()
                 .is_some_and(|t| t.question.is_some());
-        // The conversation's agent on another model: its line the moment it's picked [D76].
-        let picked = (kind == "note" && item["event"] == "setup" && item["pick"] != true)
-            .then(|| item["backend"].as_str().unwrap_or("").to_string());
-        let was = picked.as_ref().and_then(|b| {
-            (self.fold.models.get(b).cloned())
-                .or_else(|| self.ran.clone().filter(|(r, _)| r == b).map(|(_, m)| m))
-        });
+        // Another model or agent picked: its line the moment it's picked [D76].
+        let pick = (kind == "note" && item["event"] == "setup").then(|| self.before_pick(item));
         self.fold.push(item);
-        if let Some(b) = picked {
-            self.model_picked(b, was, &item["op"]);
+        if let Some(before) = pick {
+            self.picked(item, before);
         }
         // Trust taken back holds the next turn to Ask, said once by a notice (proposed); a
         // session held from its start says nothing, its picker shows Ask [D166].
