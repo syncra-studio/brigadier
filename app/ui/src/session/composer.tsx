@@ -111,6 +111,8 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
             text={each.text}
             time={each.at}
             dated={dated}
+            owner={id}
+            parts={each.parts ? (JSON.parse(each.parts) as Draft).parts : undefined}
             failed={each.error}
             onRetry={() => {
               const again = { ...each, error: undefined };

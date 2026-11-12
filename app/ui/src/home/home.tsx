@@ -13,6 +13,7 @@ import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
 import { daemonRun } from "../session/composer";
+import type { Draft } from "../components/composer/draft";
 import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { asGroups } from "../session/model";
@@ -209,6 +210,9 @@ export function StartingBubble({ id }: { id: string }) {
       time={entry.sent}
       // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
       dated
+      // Its files are still in Home's draft folder until the start moves them.
+      owner={HOME_DRAFT}
+      parts={entry.args.includes("--parts") ? (JSON.parse(entry.args[entry.args.indexOf("--parts") + 1]!) as Draft).parts : undefined}
       unconfirmed={entry.unknown}
       failed={entry.error}
       onRetry={entry.asking ? undefined : () => retry(id)}

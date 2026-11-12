@@ -3,10 +3,11 @@ import { useRef, useState } from "react";
 
 import { type Attachment, AttachmentsContext, AttachmentTiles } from "../src/components/composer/attachments";
 import { ComposerCard, ComposerFooter, ComposerTools } from "../src/components/composer/composer";
-import { type Draft, isEmpty } from "../src/components/composer/draft";
+import { type Draft, isEmpty, plainText } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { fuzzyMatch, type Mention, type MentionGroup, type Mentions, PlusMenu, type SlashCommand } from "../src/components/composer/menus";
 import { SendButton } from "../src/components/composer/send-button";
+import { UserBubble } from "../src/components/thread/message";
 import { Toaster } from "../src/components/toast";
 import { LevelPill, ModelPill, openChip } from "./composer";
 import { Section } from "./parts";
@@ -84,6 +85,7 @@ function Live() {
   const [attachments, setAttachments] = useState<ReadonlyMap<string, Attachment>>(new Map());
   const [tiles, setTiles] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
+  const [sent, setSent] = useState<Draft["parts"][]>([]);
   const put = (attachment: Attachment) => setAttachments((all) => new Map(all).set(attachment.id, attachment));
   // Rust's stand-in: stored a moment later; images then show the sample picture.
   const attach = (id: string, file: File, inText: boolean) => {
@@ -96,7 +98,7 @@ function Live() {
   const send = () => {
     const parts = field.current!.parts();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
-    setLog((list) => [...list, parts.map((part) => (typeof part === "string" ? part : part.kind === "mention" ? `@${part.label}` : part.kind === "command" ? part.label : `[${part.kind}]`)).join("")]);
+    setSent((list) => [...list, parts]);
     field.current!.set([]);
     setTiles([]);
   };
@@ -109,6 +111,12 @@ function Live() {
           </li>
         ))}
       </ol>
+      {/* Sent, it shows as the composer showed it [D2107]. */}
+      <AttachmentsContext value={attachments}>
+        {sent.map((parts, at) => (
+          <UserBubble key={at} keep={`aids-sent-${at}`} text={plainText(parts)} owner="gallery" parts={parts} />
+        ))}
+      </AttachmentsContext>
       <ComposerCard>
         <AttachmentsContext value={attachments}>
           <AttachmentTiles ids={tiles} onRemove={(id) => setTiles((list) => list.filter((each) => each !== id))} />

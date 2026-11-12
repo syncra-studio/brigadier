@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Item } from "../../thread/item";
 
@@ -6,10 +6,16 @@ import { ArrowDown, ChevronRightAlt, Trash, Undo } from "../../icons";
 import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
+import { type Attachment, AttachmentsContext, ChipNumbers } from "../composer/attachments";
+import { ChipContext, ComposerChip, type OpenKind } from "../composer/chip";
+import type { Chip, Draft } from "../composer/draft";
+import { numbersOf } from "../composer/field";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
+import { openChip } from "../../session/commands";
+import { urlOf } from "../../session/files";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -75,6 +81,8 @@ export function UserBubble({
   dimmed = false,
   dated = false,
   files,
+  owner,
+  parts,
 }: {
   /** Keeps its fold while it scrolls out of view. */
   keep: string;
@@ -94,7 +102,22 @@ export function UserBubble({
   dated?: boolean;
   /** Its files, above the bubble. */
   files?: ReactNode;
+  /** The session (or Home's draft) its files are kept in. */
+  owner?: string;
+  /** The draft it was sent from: its mentions, images and pastes drawn as the composer's chips, in place [D2107]. */
+  parts?: Draft["parts"];
 }) {
+  // An attachment its surroundings already hold (the gallery's sample picture) keeps that look.
+  const known = useContext(AttachmentsContext);
+  const chips = useMemo(() => {
+    if (!owner || !parts?.some((part) => typeof part !== "string")) return null;
+    const list: Chip[] = [];
+    const markdown = parts.map((part) => (typeof part === "string" ? part : `[@](chip:${list.push(part) - 1})`)).join("");
+    const files = list.flatMap((chip): [string, Attachment][] => ("attachmentId" in chip ? [[chip.attachmentId, known.get(chip.attachmentId) ?? { id: chip.attachmentId, name: "", mime: "", state: "ready", url: urlOf(owner, chip.attachmentId) }]] : []));
+    // shortcut: a sent /command chip opens nothing (its `/` list isn't kept with the message), until the message keeps its command's file.
+    const open = { onOpen: (kind: OpenKind, id: string) => openChip(owner, kind, id), commands: new Map() };
+    return { markdown, numbers: numbersOf(parts), files: new Map(files), open, chip: (n: number) => list[n] && <ComposerChip chip={list[n]} /> };
+  }, [owner, parts, known]);
   const [more, setMore] = useKept(`${keep}:more`);
   const box = useRef<HTMLDivElement>(null);
   const [clipped, setClipped] = useState(false);
@@ -128,10 +151,20 @@ export function UserBubble({
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
         {files}
         {/* A message of only files (a paste, an image) has no bubble under them. */}
-        {(text.trim() !== "" || !files) && (
+        {(text.trim() !== "" || chips || !files) && (
         <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
-            <Markdown text={text} keep={keep} breaks />
+            {chips ? (
+              <AttachmentsContext value={chips.files}>
+                <ChipNumbers value={chips.numbers}>
+                  <ChipContext value={chips.open}>
+                    <Markdown text={chips.markdown} keep={keep} breaks chip={chips.chip} />
+                  </ChipContext>
+                </ChipNumbers>
+              </AttachmentsContext>
+            ) : (
+              <Markdown text={text} keep={keep} breaks />
+            )}
           </div>
           {(clipped || more) && (
             <button

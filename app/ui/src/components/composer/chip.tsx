@@ -19,24 +19,19 @@ export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string)
 /**
  * A chip as the text shows it, with its menu row's icon: a command's name in its kind's colour, a file's in its
  * glyph's where that has one, otherwise blue;
- * an image's thumbnail or a pasted text, with ✕. A click opens what it names.
+ * an image's thumbnail or a pasted text, with ✕ in the field. A click opens what it names. A sent message draws
+ * the same chip [D2107].
  */
-export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }) {
-  const [editor] = useLexicalComposerContext();
+export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
   const { onOpen, commands } = useContext(ChipContext);
   if (chip.kind === "image" || chip.kind === "paste") {
-    // As Backspace would: out of the text, its attachment kept for undo.
-    const remove = () => {
-      editor.update(() => $getNodeByKey(nodeKey)?.remove());
-      editor.focus();
-    };
     return (
       <InlineAttachment
         id={chip.attachmentId}
         paste={chip.kind === "paste"}
         preview={chip.kind === "paste" ? chip.preview : undefined}
         onOpen={onOpen && (() => onOpen(chip.kind, chip.attachmentId))}
-        onRemove={editor.isEditable() ? remove : undefined}
+        onRemove={onRemove}
       />
     );
   }
@@ -64,6 +59,16 @@ export function ComposerChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }
       {content}
     </span>
   );
+}
+
+/** A chip in the field: ✕ takes it out of the text as Backspace would, its attachment kept for undo. */
+function FieldChip({ chip, nodeKey }: { chip: Chip; nodeKey: NodeKey }) {
+  const [editor] = useLexicalComposerContext();
+  const remove = () => {
+    editor.update(() => $getNodeByKey(nodeKey)?.remove());
+    editor.focus();
+  };
+  return <ComposerChip chip={chip} onRemove={editor.isEditable() ? remove : undefined} />;
 }
 
 type SerializedChipNode = Spread<{ chip: Chip }, SerializedLexicalNode>;
@@ -106,7 +111,7 @@ export class ChipNode extends DecoratorNode<ReactNode> {
     return chip.kind === "mention" ? `@${chip.label}` : chip.kind === "command" ? chip.label : "";
   }
   decorate(): ReactNode {
-    return <ComposerChip chip={this.__chip} nodeKey={this.__key} />;
+    return <FieldChip chip={this.__chip} nodeKey={this.__key} />;
   }
 }
 

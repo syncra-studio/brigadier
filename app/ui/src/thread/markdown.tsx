@@ -1,5 +1,5 @@
-import { memo, useMemo } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import { memo, type ReactNode, useMemo } from "react";
+import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
@@ -13,9 +13,10 @@ const withBreaks = [remarkGfm, remarkBreaks];
 /**
  * A reply's markdown, one top-level block at a time, so while a reply streams only its last block parses
  * and draws again. marked only finds where blocks end (whole-reply parsing is what made rendering slow);
- * react-markdown draws each block. `breaks`: each line break is a break (the user's messages).
+ * react-markdown draws each block. `breaks`: each line break is a break (the user's messages). `chip` draws a
+ * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107].
  */
-export function Markdown({ text, keep, breaks = false }: { text: string; keep: string; breaks?: boolean }) {
+export function Markdown({ text, keep, breaks = false, chip }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode }) {
   const tokens = marked.lexer(text);
   // A block alone can't see link definitions in the others (nested ones too), so a block gets the ones it names,
   // and a definition still streaming redraws only the blocks that use it.
@@ -32,16 +33,19 @@ export function Markdown({ text, keep, breaks = false }: { text: string; keep: s
     <div className="markdown">
       {tokens.map((token, at) =>
         token.type === "space" || token.type === "def" ? null : (
-          <Block key={at} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${at}`} breaks={breaks} />
+          <Block key={at} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${at}`} breaks={breaks} chip={chip} />
         ),
       )}
     </div>
   );
 }
 
-const Block = memo(function Block({ text, keep, breaks }: { text: string; keep: string; breaks: boolean }) {
+const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
+
+const Block = memo(function Block({ text, keep, breaks, chip }: { text: string; keep: string; breaks: boolean; chip?: (n: number) => ReactNode }) {
+  const components = useMemo(() => fences(keep, chip), [keep, chip]);
   return (
-    <ReactMarkdown remarkPlugins={breaks ? withBreaks : plugins} components={useMemo(() => fences(keep), [keep])}>
+    <ReactMarkdown remarkPlugins={breaks ? withBreaks : plugins} components={components} urlTransform={chip ? keepChips : defaultUrlTransform}>
       {text}
     </ReactMarkdown>
   );
@@ -56,8 +60,9 @@ type Node = {
   children?: Node[];
 };
 
-/** Fenced code becomes a code block; inline code stays react-markdown's. */
-const fences = (keep: string): Components => ({
+/** Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. */
+const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
+  ...(chip && { a: ({ node: _, href, ...link }) => (href?.startsWith("chip:") ? chip(Number(href.slice(5))) : <a href={href} {...link} />) }),
   pre: ({ node, children }) => {
     const code = (node as Node | undefined)?.children?.[0];
     if (code?.tagName !== "code") return <pre>{children}</pre>;

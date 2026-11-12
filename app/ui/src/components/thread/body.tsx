@@ -6,6 +6,7 @@ import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
+import type { Draft } from "../composer/draft";
 import { PASTE_LABEL } from "../../shell/attachment-tab";
 import { openAttachment } from "../../shell/tab-store";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
@@ -16,14 +17,17 @@ import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./messag
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
 
-function UserRow({ id, cid, text, time, dated, files }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[] }) {
+function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
   const session = useContext(SessionOfThread)?.id;
   const at = (file: string) => `/attachment/${session}/${file}`;
-  const sent = session && files.length > 0 && (
-    <SentAttachments files={files.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openAttachment(session, file.id, file.pasted ? PASTE_LABEL : file.name)} />
+  // An image or paste in the text shows there as its chip, not above as well, as the old app's [D2107].
+  const inline = new Set(draft?.parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : [])));
+  const above = files.filter((file) => !inline.has(file.id));
+  const sent = session && above.length > 0 && (
+    <SentAttachments files={above.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openAttachment(session, file.id, file.pasted ? PASTE_LABEL : file.name)} />
   );
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={sent} />;
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={sent} owner={session} parts={draft?.parts} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
@@ -44,7 +48,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
       return null;
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
-      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} />;
+      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} />;
       return (
         <AssistantMessage
           text={item.text}

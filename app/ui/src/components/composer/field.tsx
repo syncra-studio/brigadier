@@ -165,7 +165,7 @@ function pasteAttachments(event: ClipboardEvent | InputEvent | KeyboardEvent, on
 }
 
 /** Each image's and pasted text's number in the text ("Image #2"), in order. */
-function numbersOf(parts: Parts): Map<string, number> {
+export function numbersOf(parts: Parts): Map<string, number> {
   const numbers = new Map<string, number>();
   const count = { image: 0, paste: 0 };
   // A copied chip keeps its id: it keeps the first copy's number.

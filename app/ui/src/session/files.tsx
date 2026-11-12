@@ -32,7 +32,8 @@ const subscribe = (listener: () => void) => {
 };
 
 /** Its thumbnail, from main's `app:` handler, which serves only that owner's own folders [D127]. */
-const urlOf = (owner: string, id: string) => `/attachment/${owner === HOME_DRAFT ? "home" : owner}/${id}`;
+/** Where an attachment of `owner` (a session, or Home's draft) is served. */
+export const urlOf = (owner: string, id: string) => `/attachment/${owner === HOME_DRAFT ? "home" : owner}/${id}`;
 const set = (owner: string, id: string, attachment: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(id, attachment) }));
 
 const base64 = (buffer: ArrayBuffer) => {

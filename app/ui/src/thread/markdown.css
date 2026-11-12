@@ -84,7 +84,8 @@
   & tr {
     @apply border-b border-table-rule last:border-b-0;
   }
-  & img {
+  /* Not an image chip's thumbnail in a user's message: that keeps the composer's look [D2107]. */
+  & img:not([data-slot="inline-image"] *) {
     @apply my-3 max-h-80 max-w-full rounded-icon-button;
   }
 }

@@ -10,6 +10,7 @@ import { PASTE_LABEL } from "../shell/attachment-tab";
 import { openAttachment, openFile } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
+import { urlOf } from "./files";
 
 type Listed = { name: string; description?: string; kind: SlashCommand["kind"]; path?: string | null; instant: boolean };
 
@@ -51,30 +52,35 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     },
   };
 
-  /** One plain click on a chip: in a new tab, the chat as its session, an image in the viewer, a paste in its tab [D146, D151, D2022 #19]. */
-  const onOpen = (kind: OpenKind, id: string) => {
-    if (kind === "chat") return void (location.hash = `#thread/${id}`);
-    if (kind === "image") return viewImage([{ name: "Image", url: `/attachment/${home ? "home" : owner}/${id}` }], 0);
-    // Editable in its own tab, as the old app's composer paste [D2098].
-    if (kind === "paste") return openAttachment(owner, id, PASTE_LABEL);
-    if (home) return;
-    if (kind === "file") return openFile(owner, id, { preview: false });
-    if (kind === "folder") {
-      return ask({ op: "run", args: ["source", owner, "reveal", id] }, (reply) => {
-        if (!reply.ok) showToast(`Couldn't reveal ${id}: ${String(reply.error)}`, { tone: "error" });
-      });
-    }
-    const command = listed?.find((each) => each.id === id);
-    const path = command?.source;
-    // Outside the checkout it shows in Finder, as the old app's file links [D2098].
-    if (path?.startsWith("/")) {
-      return void run(["commands", owner, "reveal", command!.label.slice(1)]).then((reply) => {
-        if (!reply.ok) showToast(String(reply.error ?? `Couldn't reveal ${path}`), { tone: "error" });
-      });
-    }
-    if (path) openFile(owner, path, { preview: false });
-  };
+  const onOpen = (kind: OpenKind, id: string) => openChip(owner, kind, id, listed?.find((each) => each.id === id), run);
 
   const plus = <PlusMenu onFiles={onFiles} field={field} commands={commands} chats={chats} />;
   return { commands, onOpen, plus };
+}
+
+/**
+ * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, an image in
+ * the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list.
+ */
+export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner) {
+  const home = owner === HOME_DRAFT;
+  if (kind === "chat") return void (location.hash = `#thread/${id}`);
+  if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
+  // Editable in its own tab, as the old app's composer paste [D2098].
+  if (kind === "paste") return openAttachment(owner, id, PASTE_LABEL);
+  if (home) return;
+  if (kind === "file") return openFile(owner, id, { preview: false });
+  if (kind === "folder") {
+    return ask({ op: "run", args: ["source", owner, "reveal", id] }, (reply) => {
+      if (!reply.ok) showToast(`Couldn't reveal ${id}: ${String(reply.error)}`, { tone: "error" });
+    });
+  }
+  const path = command?.source;
+  // Outside the checkout it shows in Finder, as the old app's file links [D2098].
+  if (path?.startsWith("/") && run) {
+    return void run(["commands", owner, "reveal", command!.label.slice(1)]).then((reply) => {
+      if (!reply.ok) showToast(String(reply.error ?? `Couldn't reveal ${path}`), { tone: "error" });
+    });
+  }
+  if (path) openFile(owner, path, { preview: false });
 }
