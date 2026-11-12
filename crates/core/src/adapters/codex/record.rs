@@ -99,3 +99,20 @@ pub(super) fn diff(c: &Value) -> String {
         _ => s(c, &["unified_diff"]).to_string(),
     }
 }
+
+/// The turns thread `id` holds, kept from the one it was forked from: Norm counts on from them, so
+/// diffs() reads the right one.
+pub(super) fn held(spec: &crate::Spec, id: &str) -> u64 {
+    rollouts(
+        &super::cli_home(spec, ".codex", ""),
+        &[format!("-{id}.jsonl")],
+    )
+    .pop()
+    .and_then(|path| std::fs::read_to_string(path).ok())
+    .map_or(0, |text| {
+        (text.lines())
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| s(&v["payload"], &["type"]) == "task_started")
+            .count() as u64
+    })
+}

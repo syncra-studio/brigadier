@@ -20,6 +20,9 @@ use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
 
 mod trust;
+mod updates;
+
+use cleanup::project_dir;
 
 pub struct Claude;
 
@@ -47,6 +50,10 @@ impl Adapter for Claude {
     /// `claude update` (code.claude.com/docs/en/setup#update-manually).
     fn update(&self, _: Option<&Path>) -> Option<&'static [&'static str]> {
         Some(&["update"])
+    }
+
+    fn latest(&self) -> Option<String> {
+        updates::latest()
     }
 
     /// Claude's spark, from Simple Icons (CC0), in its brand colour (a theme token: the CSP refuses a style attribute), as the old app drew it [D123].
@@ -480,19 +487,4 @@ fn holds(conv: &str, entry: &str) -> bool {
         std::fs::read_to_string(d.path().join(format!("{conv}.jsonl")))
             .is_ok_and(|text| text.contains(entry))
     })
-}
-
-/// Where the CLI keeps transcripts for a working folder: its real path with every
-/// non-alphanumeric character turned into '-'.
-fn project_dir(spec: &Spec) -> PathBuf {
-    home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
-}
-
-fn project_slug(cwd: &Path) -> String {
-    let real = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
-    real.display()
-        .to_string()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect()
 }

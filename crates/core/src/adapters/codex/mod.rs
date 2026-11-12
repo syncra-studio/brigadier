@@ -21,7 +21,7 @@ mod models;
 mod record;
 mod server;
 mod trust;
-use record::{diff, helpers, rollouts, thread_files};
+use record::{diff, held, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
@@ -45,6 +45,11 @@ impl Adapter for Codex {
         // installer asks "Start Codex now?" on the terminal, and a yes starts Codex inside the
         // install, which fails there and fails the install.
         Some("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh")
+    }
+
+    /// What its installer installs, the version npm names latest, as the old app read it.
+    fn latest(&self) -> Option<String> {
+        super::setup::npm_latest("@openai/codex", "latest")
     }
 
     /// The OpenAI logo, from apps-sdk-ui (MIT), in the current colour, as the old app drew it [D123].
@@ -421,20 +426,6 @@ impl Fork for Codex {
         }
         Ok(())
     }
-}
-
-/// The turns thread `id` holds, kept from the one it was forked from: Norm counts on from them, so
-/// diffs() reads the right one.
-fn held(spec: &Spec, id: &str) -> u64 {
-    rollouts(&cli_home(spec, ".codex", ""), &[format!("-{id}.jsonl")])
-        .pop()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .map_or(0, |text| {
-            (text.lines())
-                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-                .filter(|v| s(&v["payload"], &["type"]) == "task_started")
-                .count() as u64
-        })
 }
 
 /// The thread and the agents it spawned, by the ids its log holds.

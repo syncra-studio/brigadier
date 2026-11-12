@@ -9,7 +9,7 @@ import { SettingsRow } from "../components/settings-row";
 import { showToast } from "../components/toast";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
-import { ChevronRight } from "../icons";
+import { ChevronRight, Spinner } from "../icons";
 import { stateOf, type useAgentSetup } from "../onboarding/agents";
 import { type Agent, changeAgentPath, checkOne, setEnabled, setModelOn } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
@@ -110,9 +110,10 @@ export function AgentPage({
 type Act = (key: string, work: () => Promise<unknown>) => Promise<void>;
 
 /**
- * The Installation card: the CLI's version and its one action (Install; Sign in while it isn't signed in; else Update:
- * its own updater as a setup run, checked again once it ends) with its line under it [D27], then where it runs from,
- * with Change to run another CLI file [D2082]. An agent that keeps its logins in one home shows its sign-in's line in
+ * The Installation card: the CLI's version and its one action (Install; Sign in while it isn't signed in; else Update,
+ * offered only while Rust found a newer version: its own updater as a setup run, its progress in the button with Cancel
+ * beside it, checked again once it ends) with a run's line under it [D27, D38], then where it runs from, with Change to
+ * run another CLI file [D2082]. An agent that keeps its logins in one home shows its sign-in's line in
  * Accounts, where adding another login runs it too.
  */
 function Installation({
@@ -146,7 +147,10 @@ function Installation({
   // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
   const missing = state === "install" || (state === "running" && !agent.path);
   const busy = !online || setup.starting === agent.name || Boolean(agent.setup?.running);
-  const version = state === "checking" ? "Checking…" : missing ? "Not installed" : (versionText(agent) ?? "Version unknown");
+  const updatingNow = agent.setup?.action === "update" && agent.setup.running;
+  // The old app's line: its version, then whether a newer one is out, coming, or it is up to date.
+  const news = updatingNow ? agent.latest && `updating to v${agent.latest}…` : agent.outdated ? `v${agent.latest} is out` : "up to date";
+  const version = state === "checking" ? "Checking…" : missing ? "Not installed" : [versionText(agent) ?? "Version unknown", agent.version && news].filter(Boolean).join(" · ");
   const action =
     state === "checking" ? null : missing ? (
       <Button variant="soft" size="sm" disabled={busy || !agent.install} onClick={() => void setup.begin(agent, "install")}>
@@ -156,9 +160,25 @@ function Installation({
       <Button variant="soft" size="sm" disabled={busy} onClick={() => void setup.begin(agent, "sign-in")}>
         {agent.sign_in}
       </Button>
+    ) : updatingNow ? (
+      <span className="flex items-center gap-2">
+        <Button variant="soft" size="sm" disabled>
+          <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />
+          Updating…
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => void setup.close(agent.name)}>
+          Cancel
+        </Button>
+      </span>
     ) : (
-      <Button variant="soft" size="sm" disabled={busy || !agent.update} title={agent.update ?? undefined} onClick={() => void setup.begin(agent, "update")}>
-        {agent.setup?.running && agent.setup.action === "update" ? "Updating…" : "Update"}
+      <Button
+        variant="soft"
+        size="sm"
+        disabled={busy || !agent.update || !agent.outdated}
+        title={agent.outdated ? (agent.update ?? undefined) : `${agent.label} is up to date`}
+        onClick={() => void setup.begin(agent, "update")}
+      >
+        Update
       </Button>
     );
   const pathKey = `${agent.name}:path`;
@@ -177,7 +197,7 @@ function Installation({
           </div>
           {action}
         </div>
-        {!(oneHome && agent.setup?.action === "sign-in") && (
+        {!(oneHome && agent.setup?.action === "sign-in") && !updatingNow && (
           <SetupLine
             agent={agent}
             failed={setup.failed[agent.name]}

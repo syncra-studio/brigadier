@@ -1,10 +1,9 @@
 //! Per-conversation files, recorded before removal so delete can retry after a failure.
 
-use super::{project_dir, project_slug};
 use crate::Spec;
-use crate::adapters::{cli_home, drop_lines, s};
+use crate::adapters::{cli_home, drop_lines, home_path, s};
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 fn manifest(spec: &Spec, resume: &str) -> PathBuf {
@@ -94,4 +93,19 @@ pub fn forget(spec: &Spec, resume: &str) -> io::Result<()> {
         resume,
     )?;
     Ok(())
+}
+
+/// Where the CLI keeps transcripts for a working folder: its real path with every
+/// non-alphanumeric character turned into '-'.
+pub(super) fn project_dir(spec: &Spec) -> PathBuf {
+    home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
+}
+
+fn project_slug(cwd: &Path) -> String {
+    let real = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    real.display()
+        .to_string()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
 }

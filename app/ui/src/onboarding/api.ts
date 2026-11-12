@@ -100,6 +100,9 @@ export type Agent = {
   setup: { id: string; action: "install" | "sign-in" | "update"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null; prompts?: boolean } | null;
   path?: string | null;
   version?: string | null;
+  /** The newest version its own updater would install, where it could be looked up; `outdated`: newer than `version`. */
+  latest?: string | null;
+  outdated?: boolean;
   signed_in?: boolean;
   how?: string | null;
   /** Its plan where its CLI names one ("max"). */

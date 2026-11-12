@@ -280,3 +280,28 @@ pub fn reason(out: &[u8]) -> Option<String> {
         .or(lines.clone().next());
     last.map(String::from)
 }
+
+/// The version npm's `tag` of `package` names, as its updater installs it; None offline or on any
+/// failure, so nothing is offered then.
+pub fn npm_latest(package: &str, tag: &str) -> Option<String> {
+    let url = format!("https://registry.npmjs.org/-/package/{package}/dist-tags");
+    let mut command = Command::new(find("curl", &[])?);
+    command.args(["-sSfL", "--max-time", "5", &url]);
+    let out = run(&mut command, 8).ok().filter(|o| o.status.success())?;
+    let tags: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    tags[tag].as_str().map(String::from)
+}
+
+/// Whether `latest` is a newer version than `current`, each as its CLI words it ("2.1.322 (Claude
+/// Code)", "codex-cli 0.9"): their first dotted numbers, part by part. One that doesn't read is
+/// never newer.
+pub fn newer(latest: &str, current: &str) -> bool {
+    let parts = |v: &str| -> Option<Vec<u64>> {
+        let v = &v[v.find(|c: char| c.is_ascii_digit())?..];
+        let end = v
+            .find(|c: char| !c.is_ascii_digit() && c != '.')
+            .unwrap_or(v.len());
+        v[..end].split('.').map(|p| p.parse().ok()).collect()
+    };
+    matches!((parts(latest), parts(current)), (Some(l), Some(c)) if l > c)
+}

@@ -15,7 +15,9 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
 
+mod kept;
 mod state;
+use kept::{keep_check, last_check};
 pub use state::run_state;
 
 static PROFILE: Mutex<()> = Mutex::new(());
@@ -278,13 +280,29 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     let exe = a.exe().filter(|exe| setup::runs(exe, cwd));
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
-        match a.check(&accounts::check_as(data, a, cwd), &exe, cwd) {
+        // Its updater's newest version, looked up meanwhile: only a newer one offers Update. While a
+        // setup run is open, checked every few seconds, the last one found stands.
+        let kept = || last_check(data, a, cwd).and_then(|v| v["latest"].as_str().map(String::from));
+        let (checked, latest) = thread::scope(|s| {
+            let latest = s.spawn(|| match out["setup"].is_null() {
+                true => a.latest(),
+                false => kept(),
+            });
+            let checked = a.check(&accounts::check_as(data, a, cwd), &exe, cwd);
+            (checked, latest.join().ok().flatten())
+        });
+        match checked {
             Ok(c) => {
                 let older: Vec<&str> = (c.models.iter().filter(|m| m.legacy))
                     .map(|m| m.id.as_str())
                     .collect();
                 crate::settings::older_off(data, a.name(), &older)?;
                 out["models_off"] = crate::settings::models_off(data, a.name()).into();
+                let newer = latest
+                    .as_deref()
+                    .is_some_and(|l| setup::newer(l, &c.version));
+                out["outdated"] = newer.into();
+                out["latest"] = latest.into();
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();
                 out["how"] = c.how.into();
@@ -301,32 +319,6 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     }
     keep_check(data, a, cwd, &out)?;
     Ok(out)
-}
-
-/// Each agent's last check per folder: `agents/<name>.json`, `{cwd: check}`.
-fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
-    data.join("agents").join(format!("{}.json", a.name()))
-}
-
-fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
-    let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
-    all.get(cwd.to_str()?).filter(|v| v.is_object()).cloned()
-}
-
-/// Keeps the check before releasing the lock, so a waiting caller gets the same result.
-fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) -> io::Result<()> {
-    let path = checks_path(data, a);
-    let mut all: Value = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .filter(|v| v.is_object())
-        .unwrap_or_else(|| json!({}));
-    if let (Some(map), Some(cwd)) = (all.as_object_mut(), cwd.to_str()) {
-        map.insert(cwd.into(), out.clone());
-        fs::create_dir_all(path.parent().unwrap())?;
-        core::write_atomic(&path, all.to_string().as_bytes())?;
-    }
-    Ok(())
 }
 
 /// The agent's setup run: which, whether it still runs, and how it ended.

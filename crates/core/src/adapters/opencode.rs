@@ -123,6 +123,10 @@ impl Adapter for OpenCode {
         })
     }
 
+    fn latest(&self) -> Option<String> {
+        super::setup::npm_latest("@opencode/cli", "latest")
+    }
+
     /// The frame of its mark (opencode.ai/favicon.svg), in the current colour, as the old app drew it [D123].
     fn mark(&self) -> Option<&'static str> {
         Some(

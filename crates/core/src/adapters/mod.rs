@@ -233,6 +233,11 @@ pub trait Adapter: Sync {
     fn update(&self, _exe: Option<&Path>) -> Option<&'static [&'static str]> {
         None
     }
+    /// The newest version its own updater would install, looked up now; None where that can't be
+    /// known (offline, its updates turned off), so no update is offered.
+    fn latest(&self) -> Option<String> {
+        None
+    }
     /// Its own sign-in, as arguments to its binary run in a terminal, and the button's words.
     fn sign_in(&self) -> Option<(&'static str, &'static [&'static str])> {
         None
