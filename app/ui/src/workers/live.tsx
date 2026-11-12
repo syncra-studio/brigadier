@@ -171,6 +171,22 @@ function finishedWords(workers: readonly Worker[]): string {
 /** A right column's chosen width, not its rendered one; one never resized counts at its default. */
 const chosen = (dragged: number | null) => dragged ?? px("--spacing-sidebar");
 
+/** Whether the Workers column folds, as the old app's rightSidebarFolds: below the narrow window plus the open left column. */
+const folds = () => {
+  const left = document.querySelector('[data-slot="sidebar-panel"]');
+  return innerWidth < px("--spacing-narrow-window") + (left?.getAttribute("data-state") === "expanded" ? left.getBoundingClientRect().width : 0);
+};
+function subscribeFold(onChange: () => void) {
+  const left = document.querySelector('[data-slot="sidebar-panel"]');
+  const observer = new ResizeObserver(onChange);
+  if (left) observer.observe(left);
+  addEventListener("resize", onChange);
+  return () => {
+    observer.disconnect();
+    removeEventListener("resize", onChange);
+  };
+}
+
 /**
  * The Workers panel, as the old app's RightSidebar [D3012, D3013]: its own column between the chat and Files, opened
  * from a worker named anywhere, its tab and close in a row at its top, or a worker's header in their place. It slides
@@ -178,14 +194,32 @@ const chosen = (dragged: number | null) => dragged ?? px("--spacing-sidebar");
  */
 export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (width: number) => void }) {
   const workers = useWorkers(owner);
-  const { open, worker } = useShown(owner);
+  const shown = useShown(owner);
+  // Folded, it shows only once opened there, and each fold change closes it; the wide choice stays, as the old useSidebarChoice's.
+  const fold = useSyncExternalStore(subscribeFold, folds);
+  const [hidden, setHidden] = useState(fold);
+  const [wide, setWide] = useState(fold ? shown.open : null);
+  const [seen, setSeen] = useState({ fold, shown });
+  if (seen.fold !== fold || seen.shown !== shown) {
+    setSeen({ fold, shown });
+    setHidden(seen.fold !== fold && fold);
+    if (seen.fold !== fold && fold) setWide(shown.open);
+  }
+  // Unfolded, the choice made while wide comes back.
+  useLayoutEffect(() => {
+    if (fold || wide === null) return;
+    setWide(null);
+    if (shown.open !== wide) show(owner, { open: wide, worker: shown.worker });
+  }, [fold, wide, shown, owner]);
+  const open = shown.open && !hidden;
+  const { worker } = shown;
   const files = usePanelMemory();
   const filesOpen = useHasPanel(owner) && files.open;
   const [resizing, setResizing] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(open);
   if (open && !mounted) setMounted(true);
-  const close = () => show(owner, { open: false, worker });
+  const close = () => (fold ? setHidden(true) : show(owner, { open: false, worker }));
 
   // Files leaves room for this column's full width while it's open, as this one leaves Files its least width.
   useLayoutEffect(() => {
@@ -207,9 +241,9 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
     was.current = { files: filesOpen, workers: open };
     const left = document.querySelector('[data-slot="sidebar-panel"]')?.getBoundingClientRect().width ?? 0;
     if (!filesOpen || !open || innerWidth >= left + px("--spacing-sidebar-thread-min") + chosen(width) + chosen(files.width)) return;
-    if (opened.files) show(owner, { open: false, worker });
+    if (opened.files) close();
     else if (opened.workers) setPanelOpen(false);
-  }, [filesOpen, open, files.width, owner, worker]);
+  }, [filesOpen, open, files.width, owner, worker, fold]);
 
   const opened = workers.find((each) => each.id === worker);
   return (
@@ -314,6 +348,8 @@ function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
     <div data-slot="workers-summary-worker" data-worker-state={worker.kind} className="group/row relative min-w-0">
       <Line
         onClick={() => open(worker.id)}
+        // The pointer on its controls is still on the row: the wash stays.
+        className={cx(here && "group-hover/row:before:bg-muted group-has-focus-visible/row:before:bg-muted")}
         icon={<WorkerGlyph id={worker.id} className="size-4" />}
         end={changed && <span className={cx("text-2xs", here && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
       >
@@ -321,7 +357,10 @@ function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
         <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
       </Line>
       {here && (
-        <span className="absolute inset-y-0 end-0 hidden items-center group-hover/row:flex group-has-focus-visible/row:flex">
+        <span
+          data-slot="summary-row-action"
+          className="row-backing row-backing-washed pointer-events-none absolute inset-y-0 end-0 flex items-center ps-4 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100"
+        >
           <WorkerControls worker={worker} act={act} />
         </span>
       )}

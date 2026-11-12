@@ -224,7 +224,7 @@ const Strip: FC<{ workers: readonly Worker[]; act: Act; initiallyOpen?: boolean 
             <span aria-hidden className="flex size-icon-button-sm shrink-0 items-center justify-center">
               <ChevronRight
                 data-slot="workers-strip-chevron"
-                className="size-icon-sm text-row-object chevron-motion group-hover/toggle:text-foreground group-focus-visible/toggle:text-foreground group-aria-expanded/toggle:rotate-90"
+                className="size-icon-sm text-row-chevron chevron-motion group-hover/toggle:text-foreground group-focus-visible/toggle:text-foreground group-aria-expanded/toggle:rotate-90"
               />
             </span>
           </span>

@@ -62,7 +62,10 @@ impl Agent {
                     Err(e) => (false, e.to_string().into_bytes()),
                 };
                 emit(json!({"t": "tool_done", "id": id, "ok": ok}));
-                self.say(String::from_utf8_lossy(&text).trim_end());
+                // A start isn't quoted, so one message's starts stay one "started working" row.
+                if !(ok && word[10..].starts_with("start+")) {
+                    self.say(String::from_utf8_lossy(&text).trim_end());
+                }
             }
             // `test:N`: a test run whose CLI reports exit N [D1188].
             "test" => {

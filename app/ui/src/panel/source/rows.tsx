@@ -11,7 +11,7 @@ import { prWords, type Tone } from "../words";
  * One row of the card, the old card's 28px row [D1198, D1206]: an icon, the title and what ends it. `onClick`
  * makes it a button with the row's hover.
  */
-export function Line({ icon, end, onClick, children }: { icon?: ReactNode; end?: ReactNode; onClick?: () => void; children: ReactNode }) {
+export function Line({ icon, end, onClick, className, children }: { icon?: ReactNode; end?: ReactNode; onClick?: () => void; className?: string; children: ReactNode }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag
@@ -19,6 +19,7 @@ export function Line({ icon, end, onClick, children }: { icon?: ReactNode; end?:
       className={cx(
         "relative isolate flex min-h-7 w-full min-w-0 items-center gap-2 py-0.5 text-start text-label font-prose",
         onClick && "cursor-pointer before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-muted focus-visible:focus-ring",
+        className,
       )}
     >
       {icon && <span aria-hidden className="flex min-w-icon-md shrink-0 items-center justify-center text-muted-foreground svg:size-icon-md">{icon}</span>}

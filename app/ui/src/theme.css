@@ -135,6 +135,8 @@
   /* A thread row's words, its object ("Read" then "blocks.ts"), and a shell box's title and output. */
   --color-row-foreground: color-mix(in oklab, var(--color-foreground) 60%, transparent);
   --color-row-object: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+  /* An activity row's chevron, quieter than its words (the old theme's --row-chevron). */
+  --color-row-chevron: color-mix(in oklab, var(--color-foreground) 25%, transparent);
   --color-shell-foreground: color-mix(in oklab, var(--color-foreground) 70%, transparent);
   /* Live words waiting on an approval: quieter than the shimmer's base. */
   --color-live-text-quiet: color-mix(in oklab, var(--color-foreground) 30%, transparent);
@@ -1642,4 +1644,13 @@
 /* A highlighted token in the theme's own colour (data-colour, from shiki's pierre-dark) [D1059]. */
 @utility token-colour {
   color: attr(data-colour type(<color>), currentcolor);
+}
+
+/* A summary row's hover actions, over its words from transparent to the row's colour (the old app's
+   row-backing and row-backing-washed); washed, it is the card row's hover wash. */
+@utility row-backing {
+  background-image: linear-gradient(to right, transparent, var(--row-backing, var(--color-popover)) calc(var(--spacing) * 4));
+}
+@utility row-backing-washed {
+  --row-backing: var(--color-muted);
 }
