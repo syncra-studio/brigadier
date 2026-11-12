@@ -77,6 +77,22 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
     Retune::Confirm(Delivery::Stdin(lines.concat()), ids)
 }
 
+/// The commit style the message writer follows, so the agent's own commits match [D1029], and
+/// the `brigadier` line [D2025]. Its own messages between sessions off, so every one goes through
+/// Brigadier and shows in the thread [D2035]: none come in, and it can't list the others.
+/// Proposed: `SendMessage` stays, as its subagents need it (D3016), so it could still reach a
+/// session outside Brigadier by name [O3001].
+pub fn standing() -> [String; 6] {
+    [
+        "--append-system-prompt".into(),
+        crate::agent::standing(),
+        "--settings".into(),
+        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
+        "--disallowedTools".into(),
+        "ListAgents".into(),
+    ]
+}
+
 /// What a session grant allowed, as launch-time rules for a child started anew [D193].
 pub fn rules(grants: &[Value]) -> Vec<String> {
     (grants.iter())

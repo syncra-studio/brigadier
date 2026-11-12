@@ -410,7 +410,7 @@ pub fn base_env(spec: &Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)>
         .map(|p| p.display().to_string())
         .unwrap_or_default();
     let login = setup::login();
-    let agent = session_env(spec);
+    let agent = crate::agent::env(spec);
     let bin = agent
         .as_ref()
         .map_or(String::new(), |(bin, _)| format!("{bin}:"));
@@ -433,21 +433,6 @@ pub fn base_env(spec: &Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)>
         env.push(("TERM".into(), "xterm-256color".into()));
     }
     env
-}
-
-/// A session's agent gets `brigadier`'s folder first on its PATH, its grant and its data folder
-/// [D2026]; probes and sign-ins don't.
-fn session_env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
-    spec.dir.parent()?.ends_with("sessions").then_some(())?;
-    let token = crate::agent::grant(spec)?;
-    let me = std::env::current_exe().ok()?;
-    let data = crate::data_of(spec).display().to_string();
-    let vars = vec![
-        (crate::agent::SESSION.into(), spec.dir.display().to_string()),
-        (crate::agent::GRANT.into(), token),
-        ("BRIGADIER_DATA".into(), data),
-    ];
-    Some((me.parent()?.display().to_string(), vars))
 }
 
 /// One bounded status probe of a CLI, in the environment its sessions get.
