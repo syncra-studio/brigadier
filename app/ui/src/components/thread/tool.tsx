@@ -24,6 +24,9 @@ export const VERBS: Record<StepKind, [string, string, string]> = {
 /** What a step acted on: a command, a path, a query; another tool's own name. */
 export const toolObject = (kind: StepKind, name: string, input: string) => (kind === "other" ? name : input || name);
 
+/** A running step's words: "Reading blocks.ts", "Running pnpm build". */
+export const doingWords = (kind: StepKind, name: string, input: string) => `${VERBS[kind][0]} ${toolObject(kind, name, input)}`;
+
 /** Lines of output drawn until the user asks for all of them: a huge log stays cheap. */
 const TAIL_LINES = 400;
 

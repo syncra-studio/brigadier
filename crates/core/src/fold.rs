@@ -59,6 +59,10 @@ pub struct Fold {
     /// sent to the background, so its Background row reads `python3 …`, not the process's name.
     #[serde(default)]
     pub typed: BTreeMap<String, String>,
+    /// The agent's own calls at work, oldest first, as `{id, step, name, input}`: a worker's
+    /// newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
+    #[serde(default)]
+    pub calls: Vec<Value>,
     /// The live child's subagents still running, by step id: a turn that answered stays held open
     /// till they end [D118].
     #[serde(default)]
@@ -248,6 +252,7 @@ impl Fold {
                 self.windows.clear();
                 self.tasks.clear();
                 self.typed.clear();
+                self.calls.clear();
                 self.agents.clear();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
@@ -295,6 +300,7 @@ impl Fold {
                     _ if ok => "done",
                     _ => "failed",
                 };
+                self.calls.clear();
                 self.close(outcome, Value::Null, ts);
             }
             "mark" => self.mark(item),
@@ -306,6 +312,10 @@ impl Fold {
                 if item["step"] == "agent" && item["parent"].is_null() {
                     self.agents.insert(str_of("id"));
                 }
+                if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
+                {
+                    self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"]}));
+                }
                 self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.tool_started(item, ts);
@@ -313,6 +323,7 @@ impl Fold {
             }
             "tool_done" => {
                 let typed = self.typed.remove(&str_of("id"));
+                self.calls.retain(|c| c["id"] != item["id"]);
                 if let (true, Some(task)) = (item["cut"] == true, item["child"].as_str()) {
                     self.tasks.push((ts, task.into()));
                     if let Some(typed) = typed {

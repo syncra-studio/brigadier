@@ -422,7 +422,7 @@ fn merged(data: &Path, wid: &str) {
 
 /// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
 /// a word as the old `workerState`, and its receipt. Null for a session that isn't a worker.
-pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
+pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) -> Value {
     let Some(l) = read_json::<Link>(&dir.join("worker.json")) else {
         return Value::Null;
     };
@@ -460,7 +460,8 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
     let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
-        "receipt": format!("Ran on {}", model.join(" · ")), "added": last["added"], "removed": last["removed"]})
+        "receipt": format!("Ran on {}", model.join(" · ")), "added": last["added"], "removed": last["removed"],
+        "now": if kind == "working" { now } else { None }})
 }
 
 fn clock(ms: u64) -> String {

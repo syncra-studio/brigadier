@@ -304,7 +304,7 @@ impl Index {
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
-                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets)});
+                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets, f.fold.calls.last())});
             row["background"] = json!(live.left);
             // How full its context is, and a rebirth due now [D88, D108].
             row["context"] = json!(f.fold.context);

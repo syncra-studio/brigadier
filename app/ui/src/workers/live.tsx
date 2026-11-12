@@ -2,6 +2,7 @@ import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
+import { doingWords } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
@@ -14,7 +15,7 @@ import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
 import { setPanelOpen, usePanelMemory } from "../panel/memory";
 import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
-import type { Item, Setup, Turn } from "../thread/item";
+import type { Item, Setup, StepKind, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
@@ -41,7 +42,13 @@ export type WorkerRow = {
   receipt: string;
   added?: number | null;
   removed?: number | null;
+  /** Its newest call at work, while it works [D143]. */
+  now?: { step: StepKind; name: string; input: string } | null;
 };
+
+/** The old strip's words for a call: a command with shell bits reads "Running a command" (its D195). */
+const nowOf = ({ step, name, input }: { step: StepKind; name: string; input: string }) =>
+  step === "run" && /[;&|<>`$(]/.test(input) ? "Running a command" : doingWords(step, name, input);
 
 const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   id: row.id,
@@ -56,6 +63,7 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   receipt: row.worker.receipt,
   added: row.worker.added ?? undefined,
   removed: row.worker.removed ?? undefined,
+  now: row.worker.now ? nowOf(row.worker.now) : undefined,
 });
 
 /** A session's own workers, oldest first; a worker of theirs is in its own parent's [G]. */
@@ -364,7 +372,7 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
   const here = onHand(worker);
   const controls = here && act;
   // A finished one reads only done or ended here; a paused one, paused.
-  const word = here ? lowerFirst(worker.word) : DONE.has(worker.kind) ? "done" : "ended";
+  const word = here ? lowerFirst(worker.kind === "working" ? (worker.now ?? worker.word) : worker.word) : DONE.has(worker.kind) ? "done" : "ended";
   const changed = (worker.added ?? 0) + (worker.removed ?? 0) > 0;
   return (
     <div data-slot="workers-summary-worker" data-worker-state={worker.kind} className="group/row relative min-w-0">

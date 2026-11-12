@@ -9,7 +9,7 @@ import { cx } from "../cx";
 import { showToast } from "../toast";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { FILE_VERBS, fileName } from "./file-change";
-import { toolObject, VERBS } from "./tool";
+import { doingWords } from "./tool";
 import { finished } from "../../workers/chip";
 import { useWorkers } from "../../workers/live";
 
@@ -85,8 +85,7 @@ function StillWaiting() {
 /** A running step's words ("Reading blocks.ts"); nothing once it isn't running. */
 function doing(item: Item | undefined): string | undefined {
   if (item?.kind === "tool" && item.progress === "running") {
-    const kind = item.step ?? "other";
-    return `${VERBS[kind][0]} ${toolObject(kind, item.name, item.input)}`;
+    return doingWords(item.step ?? "other", item.name, item.input);
   }
   if (item?.kind === "fileChange" && item.progress === "running" && item.changes[0]) {
     return `${FILE_VERBS[item.changes[0].change][0]} ${fileName(item.changes[0].path)}`;
