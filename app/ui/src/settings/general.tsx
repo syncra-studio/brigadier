@@ -92,7 +92,7 @@ function ComposerSection({ settings }: { settings: Settings }) {
   return (
     <SettingsSection title="Composer">
       <SettingsCard>
-        <SettingsRow label={GENERAL_ROWS.followUp.label} description={`${GENERAL_ROWS.followUp.description}; ⌥Enter does the other for one message`} error={save.error}>
+        <SettingsRow label={GENERAL_ROWS.followUp.label} description={`${GENERAL_ROWS.followUp.description}; ⌘Enter does the other for one message`} error={save.error}>
           <Segmented label={GENERAL_ROWS.followUp.label} value={settings.follow_up} options={FOLLOW_UPS} onChange={(value) => save.run(() => setSetting("follow_up", value))} />
         </SettingsRow>
       </SettingsCard>
