@@ -1,6 +1,7 @@
 import { type ReactNode, useContext } from "react";
 
 import { SessionOfThread } from "../../accounts/limit";
+import { PeerBubble } from "../../peers/live";
 import type { Item, SentFile, Turn } from "../../thread/item";
 import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
@@ -48,6 +49,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
       return null;
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
+      if (item.origin === "peer" && item.from) return <PeerBubble from={item.from} text={item.text} at={item.sentAt ?? 0} />;
       if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} />;
       return (
         <AssistantMessage
@@ -138,6 +140,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
     case "team":
     case "team_step":
     case "team_still":
+    case "peer":
       return null;
   }
 }

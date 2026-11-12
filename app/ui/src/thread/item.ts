@@ -127,8 +127,9 @@ export type Item = Base &
         final?: boolean;
         /** True on the last assistant message before a user input joined its running turn. */
         joined?: boolean;
-        /** Who sent an input item: the user, or the app on their behalf. */
-        origin?: "user" | "system";
+        /** Who sent an input item: the user, the app on their behalf, or another session (`from`), never the user [D2034]. */
+        origin?: "user" | "system" | "peer";
+        from?: string;
         /** When it was sent, ms since the epoch. */
         sentAt?: number;
         /** The input's command id, which the app's own copy settles by and a rewind names. */
@@ -250,6 +251,17 @@ export type Item = Base &
     | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[] }
     | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }
     | { kind: "team_still"; workers: string[] }
+    /** A message this session's agent sent another, from Rust's notes [D2034, D3014]; `waited` once a `--wait` ended. */
+    | {
+        kind: "peer";
+        mid: string;
+        to: string;
+        text: string;
+        wait: boolean;
+        state: "sending" | "sent" | "uncertain" | "dropped" | "stopped" | "refused";
+        why: string | null;
+        waited?: "replied" | "timeout";
+      }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );

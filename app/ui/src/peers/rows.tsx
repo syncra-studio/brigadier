@@ -146,11 +146,11 @@ export const SessionSentRow: FC<{ to: PeerRef | null; state: SessionSendState; t
 );
 
 /** A message the 9th hop of a chain between sessions would have sent: held, and only the user lets it through [D2034]. */
-export const HopStopRow: FC<{ onSend: () => void }> = ({ onSend }) => (
+export const HopStopRow: FC<{ onSend: () => void; words?: string }> = ({ onSend, words = "Stopped after 8 hops" }) => (
   <div data-slot="orchestrator-step" data-kind="message" data-state="hops" className={ROW}>
     <Chat aria-hidden className="size-4 shrink-0" />
     <span className="min-w-0 truncate">
-      Stopped after 8 hops
+      {words}
       <span aria-hidden className="text-row-object"> · </span>
       <button type="button" onClick={onSend} className="cursor-pointer rounded-control text-strip-foreground hover:text-foreground focus-visible:focus-ring">
         Send anyway

@@ -80,7 +80,7 @@ function lower(clause: WordPart[]): WordPart[] {
 }
 
 /** How a message the thread's own `brigadier send` gave another session stands. */
-export type SessionSendState = "sending" | "sent" | "declined" | "refused";
+export type SessionSendState = "sending" | "sent" | "declined" | "refused" | "uncertain";
 
 /** The words before the session a `brigadier send` row names. */
 export function sessionSendWords(state: SessionSendState): string {
@@ -93,6 +93,9 @@ export function sessionSendWords(state: SessionSendState): string {
       return "Didn’t send message to ";
     case "refused":
       return "Couldn’t send message to ";
+    // Proposed: logged in its session, never proven taken, and never sent again by itself [D54, D82].
+    case "uncertain":
+      return "Couldn’t confirm message to ";
   }
 }
 
