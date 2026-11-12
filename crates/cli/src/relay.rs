@@ -25,8 +25,39 @@ pub fn spec(cmd: &str) -> Option<Spec> {
             &[],
             &[],
         ),
+        "mcp" => (
+            "brigadier mcp list | tools <server> | call <server> <tool> ['<json>'] [--json]
+
+The user's own MCP servers, from every agent's own config, the same on every agent: `list` names
+them, `tools <server>` lists its tools with their input schemas, `call` runs one tool with the JSON
+object of its arguments (none: {}) and prints what it answered. One connection per server is kept
+for you while you use it, so what a call opens stays good for your next call. A server that needs a
+sign-in says so: Brigadier can't sign in to one yet.",
+            &[],
+            &[],
+        ),
         _ => return None,
     })
+}
+
+/// `mcp`, its own words past the command: its help, or its reply as asked, JSON or capped text.
+pub fn mcp(data: &Path, me: &str, args: &[String]) -> Value {
+    let json = args.iter().any(|a| a == "--json");
+    if args.iter().any(|a| a == "--help") {
+        return json!({"ok": true, "text": spec("mcp").map_or("", |s| s.0)});
+    }
+    let words: Vec<&str> = (args.iter().skip(1))
+        .map(String::as_str)
+        .filter(|a| *a != "--json")
+        .collect();
+    let mut reply = crate::mcp::run(data, me, &words);
+    if json {
+        reply.as_object_mut().map(|o| o.remove("text"));
+    } else if reply["ok"] == true {
+        reply =
+            json!({"ok": true, "text": crate::agent::cap(reply["text"].as_str().unwrap_or(""))});
+    }
+    reply
 }
 
 /// Runs a relay command, or None for another.

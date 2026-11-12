@@ -4,6 +4,7 @@
 
 mod cleanup;
 mod control;
+mod mcp;
 mod models;
 mod tools;
 
@@ -230,6 +231,9 @@ impl Adapter for Claude {
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
         control::fixed(cwd, run)
     }
+    fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
+        mcp::mcp_servers(folder)
+    }
     fn locate(&self, run: &Spec, list: &mut [Value]) {
         control::locate(run, list)
     }
@@ -455,7 +459,7 @@ impl Fork for Claude {
         _cwd: &Path,
     ) -> Result<Forked, Failed> {
         match &at.end {
-            Some(entry) if holds(&at.conv, entry) => Ok(Forked {
+            Some(entry) if cleanup::holds(&at.conv, entry) => Ok(Forked {
                 conv: at.conv.clone(),
                 turns: 0,
             }),
@@ -478,13 +482,4 @@ impl Fork for Claude {
     ) -> Result<(), String> {
         Ok(())
     }
-}
-
-/// Whether the record of `conv` still holds `entry`, in any folder: `--resume` finds it from any.
-fn holds(conv: &str, entry: &str) -> bool {
-    let dirs = std::fs::read_dir(home_path(".claude/projects"));
-    (dirs.into_iter().flatten().flatten()).any(|d| {
-        std::fs::read_to_string(d.path().join(format!("{conv}.jsonl")))
-            .is_ok_and(|text| text.contains(entry))
-    })
 }

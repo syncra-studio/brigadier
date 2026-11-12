@@ -42,22 +42,53 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
 fn naked(spec: &Spec) -> Value {
     let mut config = json!({"features.memories": false, "features.plugins": false,
         "features.apps": false, "skills.include_instructions": false, "skills.bundled.enabled": false});
-    // Its servers can only be turned off by name: the user's and the project's, read only.
-    let files = [
-        super::super::cli_home(spec, ".codex", "config.toml"),
-        std::path::Path::new(&spec.cwd).join(".codex/config.toml"),
-    ];
-    for file in files {
+    // Its servers can only be turned off by name: the user's and the project's.
+    let home = super::super::cli_home(spec, ".codex", "");
+    for server in servers(&home, std::path::Path::new(&spec.cwd)) {
+        let name = server["name"].as_str().unwrap_or("");
+        config[format!("mcp_servers.{name}.enabled")] = false.into();
+    }
+    config
+}
+
+/// Its MCP servers in the folder's `.codex/config.toml` and its home's, read only, each as the
+/// relay takes it [D100].
+// shortcut: `env_vars` and `bearer_token_env_var` aren't passed; upgrade with the library (4.12).
+pub fn servers(home: &std::path::Path, folder: &std::path::Path) -> Vec<Value> {
+    let mut all = vec![];
+    for file in [folder.join(".codex/config.toml"), home.join("config.toml")] {
         let text = std::fs::read_to_string(file).unwrap_or_default();
         let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
             continue;
         };
         let servers = doc.get("mcp_servers").and_then(|t| t.as_table_like());
-        for (name, _) in servers.into_iter().flat_map(|t| t.iter()) {
-            config[format!("mcp_servers.{name}.enabled")] = false.into();
+        for (name, item) in servers.into_iter().flat_map(|t| t.iter()) {
+            let mut d = json_of(item);
+            d["name"] = name.into();
+            d["headers"] = d["http_headers"].take();
+            all.push(d);
         }
     }
-    config
+    all
+}
+
+/// A TOML item as JSON: tables, arrays, strings, numbers and booleans.
+fn json_of(item: &toml_edit::Item) -> Value {
+    if let Some(t) = item.as_table_like() {
+        let map: serde_json::Map<String, Value> =
+            t.iter().map(|(k, v)| (k.to_string(), json_of(v))).collect();
+        return map.into();
+    }
+    match item.as_value() {
+        Some(toml_edit::Value::String(s)) => s.value().clone().into(),
+        Some(toml_edit::Value::Boolean(b)) => (*b.value()).into(),
+        Some(toml_edit::Value::Integer(i)) => (*i.value()).into(),
+        Some(toml_edit::Value::Array(a)) => (a.iter())
+            .map(|v| json_of(&toml_edit::Item::Value(v.clone())))
+            .collect::<Vec<_>>()
+            .into(),
+        _ => Value::Null,
+    }
 }
 
 /// A message as Codex's input: its text, then each image by its path [D2008], then each skill its

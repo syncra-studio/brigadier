@@ -13,8 +13,8 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 10] = [
-    "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search",
+pub const COMMANDS: [&str; 11] = [
+    "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search", "mcp",
 ];
 
 /// How a message from another session opens, for its receiving agent; its bubble shows the rest [D2034].
@@ -87,8 +87,13 @@ pub fn call(command: &str) -> bool {
         words = inner;
     }
     let program = words.first().map_or("", String::as_str);
+    // `mcp call` runs a server's tool, so it follows the session's level, never this grant [D3023].
+    let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
+    let mcp_call = words.get(1).is_some_and(|w| w == "mcp")
+        && !action.is_some_and(|a| a == "list" || a == "tools");
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
+        && !mcp_call
 }
 
 /// The command after any `cd <folder> &&`, each folder plain words only; None when one isn't.

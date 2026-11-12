@@ -12,7 +12,7 @@ pub mod setup;
 mod shell;
 
 pub use classify::classify;
-pub use files::{change, counts, drop_lines, sha1, uuid};
+pub use files::{change, counts, drop_lines, question, sha1, uuid};
 pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
@@ -341,6 +341,11 @@ pub trait Adapter: Sync {
     fn fixed_commands(&self, _cwd: Option<&Path>, _run: Option<&Spec>) -> Vec<Value> {
         vec![]
     }
+    /// The user's own MCP servers its config holds for `folder`, read only, for the relay: each
+    /// `{name, command, args, env, cwd}` or `{name, url, headers}` [D100].
+    fn mcp_servers(&self, _folder: &Path) -> Vec<Value> {
+        vec![]
+    }
     /// Fills in the file of each listed skill or command its list didn't name [D146, D2098].
     fn locate(&self, _run: &Spec, _list: &mut [Value]) {}
     fn timing(&self) -> Timing;
@@ -470,13 +475,6 @@ pub fn probe_as(
         .envs(base_env(spec, exe, keys))
         .current_dir(cwd);
     setup::run(&mut command, secs)
-}
-
-/// A one-question PendingQuestion (D177) from a CLI that asks one at a time.
-pub fn question(id: &str, text: &str, options: &[String]) -> Event {
-    let options: Vec<Value> = options.iter().map(|o| json!({"label": o})).collect();
-    Event::Question(json!({"id": id, "title": null, "items": [
-        {"text": text, "options": options, "recommended": null, "multiSelect": false}]}))
 }
 
 pub fn home_path(rest: &str) -> PathBuf {

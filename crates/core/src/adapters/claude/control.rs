@@ -129,7 +129,12 @@ fn widen(rule: &Value) -> Vec<Value> {
     if rule["toolName"] != "Bash" || !crate::agent::call(content) {
         return vec![rule.clone()];
     }
-    (crate::agent::COMMANDS.iter())
+    // `mcp call` follows the session's level, so its grant covers only `list` and `tools` [D3023].
+    let prefixes = (crate::agent::COMMANDS.iter()).flat_map(|c| match *c {
+        "mcp" => vec!["mcp list".to_string(), "mcp tools".into()],
+        c => vec![c.to_string()],
+    });
+    prefixes
         .map(|c| json!({"toolName": "Bash", "ruleContent": format!("brigadier {c}:*")}))
         .collect()
 }

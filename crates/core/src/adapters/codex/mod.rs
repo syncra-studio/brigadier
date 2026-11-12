@@ -194,6 +194,10 @@ impl Adapter for Codex {
         control::command(spec, name)
     }
 
+    fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
+        control::servers(&home_path(".codex"), folder)
+    }
+
     /// Its compact, then the skills its folders hold: the repo's `.agents`, its home's, the user's
     /// `.agents` (ext/skills host_roots.rs).
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {

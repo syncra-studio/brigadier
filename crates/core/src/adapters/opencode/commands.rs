@@ -1,6 +1,7 @@
 //! OpenCode's own commands and skills for the session's folder, as its V2 API lists them, printed
 //! as one line for the adapter; its compact, which runs at once, first [D164, D2009, D2011].
 
+use super::super::{Delivery, home_path};
 use super::http::Server;
 use super::server::say;
 use serde_json::{Value, json};
@@ -12,7 +13,7 @@ pub(super) fn compact() -> Value {
 
 /// Its compact, then the skills its folders hold, the project's first (opencode.ai/docs/skills).
 pub(super) fn fixed(cwd: Option<&std::path::Path>) -> Vec<Value> {
-    let home = super::super::home_path("");
+    let home = home_path("");
     let local = [".opencode", ".claude", ".agents"].into_iter();
     let roots = (cwd.into_iter()).flat_map(|c| local.clone().map(|d| c.join(d).join("skills")));
     let global = [
@@ -60,4 +61,71 @@ fn encode(text: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+/// Its compact, as `POST /api/session/{id}/compact` [D2011].
+pub(super) fn command(spec: &crate::Spec, name: &str) -> Result<Delivery, String> {
+    match name {
+        "compact" => Ok(Delivery::Stdin(format!(
+            "{}\n",
+            json!({"compact": true, "id": spec.cid})
+        ))),
+        _ => Err("This agent has no command by that name".into()),
+    }
+}
+
+/// Its MCP servers in the folder's `opencode.json(c)` and the user's, read only, each as the relay
+/// takes it, the folder's first (opencode.ai/docs/mcp-servers) [D100].
+pub(super) fn mcp_servers(folder: &std::path::Path) -> Vec<Value> {
+    let names = ["opencode.jsonc", "opencode.json"];
+    let dirs = [folder.to_path_buf(), home_path(".config/opencode")];
+    let files = dirs.iter().flat_map(|d| names.map(|n| d.join(n)));
+    let mut all = vec![];
+    for file in files {
+        let text = std::fs::read_to_string(file).unwrap_or_default();
+        let v: Value = serde_json::from_str(&jsonc(&text)).unwrap_or_default();
+        for (name, d) in v["mcp"].as_object().into_iter().flatten() {
+            let command = d["command"].as_array().cloned().unwrap_or_default();
+            all.push(json!({"name": name, "command": command.first(), "args": command.get(1..),
+                "env": d["environment"], "url": d["url"], "headers": d["headers"], "enabled": d["enabled"]}));
+        }
+    }
+    all
+}
+
+/// JSON with comments and trailing commas, as plain JSON.
+fn jsonc(text: &str) -> String {
+    let (mut out, mut chars) = (String::new(), text.chars().peekable());
+    let mut string = false;
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if !out.ends_with('\\') || out.ends_with("\\\\") => {
+                string = !string;
+                out.push(c);
+            }
+            '/' if !string && chars.peek() == Some(&'/') => {
+                chars.by_ref().take_while(|c| *c != '\n').for_each(drop);
+                out.push('\n');
+            }
+            '/' if !string && chars.peek() == Some(&'*') => {
+                chars.next();
+                let mut last = ' ';
+                for c in chars.by_ref() {
+                    if last == '*' && c == '/' {
+                        break;
+                    }
+                    last = c;
+                }
+            }
+            '}' | ']' if !string => {
+                let trimmed = out.trim_end().len();
+                if out[..trimmed].ends_with(',') {
+                    out.truncate(trimmed - 1);
+                }
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }

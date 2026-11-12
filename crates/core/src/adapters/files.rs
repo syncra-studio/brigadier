@@ -3,6 +3,13 @@
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
+/// A one-question PendingQuestion (D177) from a CLI that asks one at a time.
+pub fn question(id: &str, text: &str, options: &[String]) -> super::Event {
+    let options: Vec<Value> = options.iter().map(|o| json!({"label": o})).collect();
+    super::Event::Question(json!({"id": id, "title": null, "items": [
+        {"text": text, "options": options, "recommended": null, "multiSelect": false}]}))
+}
+
 /// The skills a CLI keeps as `<folder>/<name>/SKILL.md`, each named with its folder's prefix (a
 /// plugin's `plugin:`), by name once, the first folder's first [D100].
 pub fn skills_in(folders: impl IntoIterator<Item = (PathBuf, String)>) -> Vec<Value> {

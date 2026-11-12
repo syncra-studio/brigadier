@@ -27,6 +27,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier models            the agents, models and efforts you may use
   brigadier skill [name]      the user's skills, or one whole
   brigadier search \"…\"        past sessions holding these words
+  brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.
@@ -183,6 +184,9 @@ pub fn run(
     rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Value {
+    if args.first().is_some_and(|a| a == "mcp") {
+        return crate::relay::mcp(data, me, args);
+    }
     let call = match parse(args) {
         Ok(c) => c,
         Err(e) => return e,
@@ -270,7 +274,7 @@ fn finish(call: &Call, mut reply: Value) -> Value {
 }
 
 /// Cuts text to the cap from its start, so the newest lines stay.
-fn cap(text: &str) -> String {
+pub(crate) fn cap(text: &str) -> String {
     if text.len() <= CAP {
         return text.to_string();
     }

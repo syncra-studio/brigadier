@@ -16,6 +16,7 @@ mod git;
 mod host;
 pub mod index;
 mod last;
+mod mcp;
 pub mod mention;
 mod models;
 pub mod owner;

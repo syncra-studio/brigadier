@@ -358,15 +358,12 @@ impl Adapter for OpenCode {
         commands::fixed(cwd)
     }
 
-    /// Its compact, as `POST /api/session/{id}/compact` [D2011].
     fn command(&self, spec: &Spec, name: &str) -> Result<Delivery, String> {
-        match name {
-            "compact" => Ok(Delivery::Stdin(format!(
-                "{}\n",
-                json!({"compact": true, "id": spec.cid})
-            ))),
-            _ => Err("This agent has no command by that name".into()),
-        }
+        commands::command(spec, name)
+    }
+
+    fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
+        commands::mcp_servers(folder)
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {

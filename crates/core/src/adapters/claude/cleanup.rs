@@ -109,3 +109,12 @@ fn project_slug(cwd: &Path) -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect()
 }
+
+/// Whether the record of `conv` still holds `entry`, in any folder: `--resume` finds it from any.
+pub(super) fn holds(conv: &str, entry: &str) -> bool {
+    let dirs = std::fs::read_dir(home_path(".claude/projects"));
+    (dirs.into_iter().flatten().flatten()).any(|d| {
+        std::fs::read_to_string(d.path().join(format!("{conv}.jsonl")))
+            .is_ok_and(|text| text.contains(entry))
+    })
+}
