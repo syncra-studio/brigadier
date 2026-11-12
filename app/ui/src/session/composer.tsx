@@ -28,6 +28,7 @@ import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 import { queuedOf, type RustQueued, toArgs } from "./queued";
+import { useTurn } from "./turn";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
@@ -197,9 +198,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setEmpty(false);
     });
   }, []);
-  // The thread's newest turn, as its Thinking line reads it, so the button changes in the same frame; else Rust's row.
-  const thread = useSyncExternalStore(source.subscribe, source.get);
-  const running = thread?.id === id && thread.after === null ? thread.turns.at(-1)?.status === "running" : row?.running === true;
+  const { running, busy, resumable } = useTurn(id, row, source, useSending(id));
   const canSteer = row?.steer === true;
   // Queue or Steer, Rust's setting [D188].
   const followUp = useSettings().value?.follow_up ?? "queue";
@@ -444,7 +443,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={<ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={<SessionModel id={id} row={row} offline={offline} />}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}
