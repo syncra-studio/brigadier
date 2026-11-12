@@ -7,14 +7,9 @@
 use crate::fold::{self, Fold};
 use crate::{Call, Spec, adapters, as_run, cli_version};
 use serde_json::{Value, json};
-use std::fs;
-use std::path::PathBuf;
 
 /// The old app's words for a turn its account's limit cut short (D48).
 const CARRY_ON: &str = "[Your last turn stopped early: its account hit a usage limit. You now run on another account, in the same session. Carry on from where you stopped. Don't redo anything you already did.]";
-/// How much of the last exchange and of the user's messages the hand-off quotes, in characters.
-const LAST_EXCHANGE: usize = 40_000;
-const MESSAGES: usize = 40_000;
 
 /// Where the session goes: a backend, its account ("" is the computer's login), and its model
 /// when it changes; `label` and `from` name both sides (the model apart) for the thread's row.
@@ -78,7 +73,7 @@ pub fn switch(
         && last["began"] == false
         && last["origin"] == "user";
     let (origin, text) = if fresh {
-        match handoff(spec, why, &last, to.from) {
+        match crate::handoff::build(spec, f, why, &last, to.from) {
             Ok(t) => ("system", t),
             Err(e) => {
                 return json!({"ok": false, "error": format!("couldn't start the new conversation: {e}")});
@@ -155,8 +150,9 @@ pub fn picked(
     };
     let label = |b: &str| adapters::get(b).map_or_else(|| b.to_string(), |a| a.label().into());
     let (from_label, to_label) = (label(from), label(to));
-    let seed = handoff(
+    let seed = crate::handoff::build(
         spec,
+        f,
         "picked",
         &f.last.clone().unwrap_or_default(),
         &from_label,
@@ -177,108 +173,6 @@ pub fn forked(spec: &Spec, f: &Fold, text: &str) -> std::io::Result<String> {
         .and_then(adapters::get)
         .map_or("the agent", |a| a.label());
     let last = (f.last.clone()).unwrap_or_else(|| json!({"ts": brigadier_frames::log::now_ms()}));
-    let seed = handoff(spec, "forked", &last, from)?;
+    let seed = crate::handoff::build(spec, f, "forked", &last, from)?;
     Ok(format!("{seed}\n\n{text}"))
-}
-
-/// The hand-off a new conversation starts from (D90 Q1, as in the old app): every user message,
-/// the last exchange verbatim, and the whole thread written to a file in the session folder for
-/// anything older [D35].
-fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<String> {
-    let (mut thread, mut asked, mut since) = (String::new(), vec![], 0);
-    let mut said = false;
-    let mut each = |item: &Value| {
-        let text = item["text"].as_str().unwrap_or("");
-        match item["kind"].as_str().unwrap_or("") {
-            // A control (a Stop, a model change) is no message.
-            "input" if item["control"].is_object() => {}
-            // A message a switch sent again is the same message: counted once. A picked agent's
-            // first message is the user's own, sent once.
-            "input"
-                if item["origin"] == "user"
-                    && (item["switch"].is_null() || item["switch"]["why"] == "picked") =>
-            {
-                since = thread.len();
-                asked.push(text.to_string());
-                thread += &format!("\n## User\n\n{text}\n");
-                said = false;
-            }
-            // A worker's result or another session's message: named by its source, never the user's.
-            "input" => {
-                let origin = item["origin"].as_str().unwrap_or("");
-                let from = match origin.split(':').collect::<Vec<_>>()[..] {
-                    ["result", how, worker] => format!("Worker {worker}'s result ({how})"),
-                    ["peer", from] => format!("Message from session {from}"),
-                    _ => return,
-                };
-                thread += &format!("\n## {from}\n\n{text}\n");
-                said = false;
-            }
-            "text" => {
-                if !said {
-                    thread += "\n## Agent\n\n";
-                    said = true;
-                }
-                thread += text;
-                thread += "\n";
-            }
-            "tool" => {
-                let input: String = item["input"]
-                    .as_str()
-                    .unwrap_or("")
-                    .chars()
-                    .take(300)
-                    .collect();
-                thread += &format!("- {}: {input}\n", item["name"].as_str().unwrap_or(""));
-                said = false;
-            }
-            _ => {}
-        }
-    };
-    // A fork's inherited copy first, so a fork of a fork loses nothing [D90].
-    crate::fork::inherited(&spec.dir).iter().for_each(&mut each);
-    crate::rewind::read_active(&spec.dir, each)?;
-    let file: PathBuf = spec.dir.join(format!("handoff-{}.md", last["ts"]));
-    fs::write(&file, &thread)?;
-    let exchange = tail(&thread[since..], LAST_EXCHANGE);
-    let mut messages = String::new();
-    for (n, m) in asked.iter().enumerate().rev() {
-        let line = format!("{}. {m}\n", n + 1);
-        if messages.len() + line.len() > MESSAGES {
-            messages.insert_str(0, "(older messages are in the file)\n");
-            break;
-        }
-        messages.insert_str(0, &line);
-    }
-    let reason = match why {
-        "unresumable" => "the agent couldn't resume it on this account",
-        "picked" => "the user picked you to carry on",
-        "forked" => "the user forked it at one of your answers to try another way from there",
-        _ => "its usage limit was reached",
-    };
-    let then = if why == "picked" || why == "forked" {
-        "The user's new message follows."
-    } else if last["began"] == true {
-        "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done."
-    } else {
-        "The last message wasn't worked on yet. Do it now."
-    };
-    let place = if why == "forked" {
-        "here"
-    } else {
-        "in the same folder"
-    };
-    Ok(format!(
-        "[This conversation moved here from {from} because {reason}. You carry on the same work {place}. The whole earlier conversation is in {}; read it when you need more than what follows.]\n\nEvery message the user sent, oldest first:\n{messages}\nThe last exchange, verbatim:\n{exchange}\n\n[{then}]",
-        file.display()
-    ))
-}
-
-/// The last `max` characters of `s`, on a character boundary.
-fn tail(s: &str, max: usize) -> &str {
-    let mut at = s.len().saturating_sub(max);
-    while !s.is_char_boundary(at) {
-        at += 1;
-    }
-    &s[at..]
 }

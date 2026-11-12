@@ -9,6 +9,7 @@ pub mod feedback;
 pub mod fold;
 pub mod fork;
 pub mod git;
+pub mod handoff;
 pub mod host;
 pub mod message;
 pub mod norm;
