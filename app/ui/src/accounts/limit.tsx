@@ -6,6 +6,7 @@ import { SwitchDivider } from "../components/thread/cards";
 import { errorText } from "../onboarding/api";
 import type { Item } from "../thread/item";
 import { loadAccounts, switchSession, useAccounts } from "./api";
+import { maskEmails } from "./parts";
 import { agentHref } from "./providers";
 
 /** The session a thread shows, for its switch row's one click; none outside a session (the gallery). */
@@ -33,7 +34,11 @@ export function SwitchRow({ item }: { item: Switch }) {
   const agent = agents?.find((a) => a.name === item.backend);
   const label = agent?.label ?? item.backend ?? "";
   const list = agent?.accounts?.list ?? [];
-  const name = (id: string) => (id === "" ? "this computer's login" : (list.find((a) => a.id === id)?.name ?? "this account"));
+  const name = (id: string) => {
+    const account = list.find((a) => a.id === id);
+    if (id === "") return "this computer's login";
+    return account?.name || (account?.check.email ? maskEmails(account.check.email) : "another account");
+  };
   // Named as Rust names a side once switched: the account and its agent, or the agent alone with one login.
   const named = (id: string) => (agent?.accounts ? `${name(id)} (${label})` : label);
   const others = list.filter((a) => a.id !== (item.account ?? "") && a.check.signed_in === true && a.check.kept_apart !== false);

@@ -1,4 +1,4 @@
-import { type Ref, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -6,12 +6,12 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
-import { DotsHorizontal, Plus, Spinner } from "../icons";
+import { DotsHorizontal, Eye, EyeOff, Plus, Spinner } from "../icons";
 import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
 import { TerminalPane } from "../terminal/terminal";
 import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, renameAccount, signIn, signInRun, startOn } from "./api";
-import { ConnectStatus, ROW_TITLE, useFailed } from "./parts";
+import { ConnectStatus, ROW_TITLE, hasEmail, maskEmails, planName, useFailed } from "./parts";
 
 /** How often the accounts are checked again while a sign-in terminal is open. */
 const RECHECK_MS = 2000;
@@ -42,6 +42,8 @@ export function AccountRows({
   // The sign-in terminal shown, and whether an account is being added or signed in to again.
   const [open, setOpen] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
+  // The rows showing their email: the page's own, so leaving it hides them again.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
 
   // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
   const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
@@ -107,6 +109,14 @@ export function AccountRows({
             busy={open !== null || starting !== null}
             inUse={account.id === (accounts?.accounts?.use ?? "")}
             error={failed[account.id]}
+            revealed={revealed.has(account.id)}
+            onReveal={() =>
+              setRevealed((all) => {
+                const next = new Set(all);
+                if (!next.delete(account.id)) next.add(account.id);
+                return next;
+              })
+            }
             onSignIn={() => void start(account.id, () => signIn(account.id).then(() => account.id))}
             onUse={() => void act(account.id, () => startOn(agent.name, account.id))}
             onRename={list && ((name) => void act(account.id, () => renameAccount(agent.name, account.id, name)))}
@@ -183,6 +193,8 @@ function AccountRow({
   busy,
   inUse,
   error,
+  revealed,
+  onReveal,
   onSignIn,
   onUse,
   onRename,
@@ -196,6 +208,8 @@ function AccountRow({
   busy: boolean;
   inUse: boolean;
   error: string | undefined;
+  revealed: boolean;
+  onReveal: () => void;
   onSignIn: () => void;
   onUse: () => void;
   /** Absent for a login Rust keeps no name for. */
@@ -207,18 +221,42 @@ function AccountRow({
   const c = account.check;
   const own = account.id === "";
   const signedIn = c.signed_in === true;
-  const title = name ?? (account.name || (own ? OWN_LOGIN : "New account"));
-  const status = !c.installed
-    ? `${label} isn't installed`
-    : account.sign_in?.running
-      ? "Signing in…"
-      : !signedIn
-        ? "Not signed in"
-        : c.kept_apart === false
-          ? `${c.how} · this sign-in kind isn't kept apart, so it's never used`
-          : c.how || "Signed in";
+  // Who it is, as the old row named it: its name, else its email, masked until its eye is pressed [D26].
+  const show = (text: string) => (revealed ? text : maskEmails(text));
+  const email = c.email ?? null;
+  const given = name ?? account.name;
+  const renamed = given !== "" && given !== email;
+  const title = renamed ? show(given) : email ? show(email) : own ? OWN_LOGIN : "New account";
+  const eye = (hasEmail(given) || Boolean(email)) && (
+    <Button
+      size="icon-xs"
+      variant="ghost"
+      aria-label={revealed ? "Hide email" : "Show email"}
+      aria-pressed={revealed}
+      className="size-5 shrink-0 text-muted-foreground"
+      onClick={onReveal}
+    >
+      {revealed ? <EyeOff /> : <Eye />}
+    </Button>
+  );
+  const line: ReactNode[] = [];
+  if (!c.installed) line.push(`${label} isn't installed`);
+  else {
+    // Under a name of its own, the email shows on the line below.
+    if (renamed && email)
+      line.push(
+        <span key="email" className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{show(email)}</span>
+          {eye}
+        </span>,
+      );
+    if (account.sign_in?.running) line.push("Signing in…");
+    else if (!signedIn) line.push("Not signed in");
+    else if (c.kept_apart === false) line.push(`${c.how} · this sign-in kind isn't kept apart, so it's never used`);
+    else if (c.plan) line.push(`${planName(c.plan)} plan`);
+  }
   // Called "This computer's login" already, the line doesn't say it again.
-  const line = own && title !== OWN_LOGIN && !name ? `${status} · ${OWN_LOGIN}` : status;
+  if ((own || account.own_login) && title !== OWN_LOGIN) line.push(OWN_LOGIN);
   const menu = Boolean(onRename) || !own;
   const limited = account.limited_at !== null && Date.now() - account.limited_at < LIMIT_SHOWN_MS;
   return (
@@ -242,9 +280,19 @@ function AccountRow({
               }}
             />
           ) : (
-            <span className={cx(ROW_TITLE, "truncate")}>{title}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className={cx(ROW_TITLE, "truncate")}>{title}</span>
+              {!(renamed && email) && eye}
+            </span>
           )}
-          <span className="truncate text-xs text-muted-foreground">{line}</span>
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {line.map((part, index) => (
+              <Fragment key={index}>
+                {index > 0 && <span aria-hidden>·</span>}
+                {typeof part === "string" ? <span className="shrink-0">{part}</span> : part}
+              </Fragment>
+            ))}
+          </span>
           {c.error && <span className="text-xs text-destructive">{c.error}</span>}
           <ErrorLine error={error} />
         </div>

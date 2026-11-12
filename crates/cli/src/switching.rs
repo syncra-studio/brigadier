@@ -68,10 +68,11 @@ fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
         .into_iter()
         .find(|(x, _)| x == id)
         .map_or_else(|| id.to_string(), |(_, n)| n);
-    let name = if name.is_empty() {
-        "this computer's login"
-    } else {
-        &name
+    // shortcut: an unnamed added account isn't named by its email here, which takes a check; read it if it's missed.
+    let name = match (name.is_empty(), id.is_empty()) {
+        (false, _) => &name,
+        (true, true) => "this computer's login",
+        (true, false) => "another account",
     };
     format!("{name} ({})", a.label())
 }

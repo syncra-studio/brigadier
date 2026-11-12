@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{Failed, ModelInfo, base_env, mark_superseded, versioned};
+use super::super::{Failed, ModelInfo, Who, base_env, mark_superseded, versioned};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -79,8 +79,9 @@ fn short_lived<T>(
     done
 }
 
-/// Its models, the default first; None when the probe failed. Bounded to `secs` in all.
-pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Vec<ModelInfo>> {
+/// Its models, the default first, and who is signed in (`account/read`, which hands out no token);
+/// None when the probe failed. Bounded to `secs` in all.
+pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<(Vec<ModelInfo>, Who)> {
     let found = short_lived(spec, exe, cwd, secs, |call| {
         let (mut models, mut cursor) = (vec![], Value::Null);
         loop {
@@ -88,15 +89,19 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Vec<ModelI
             models.extend(page["data"].as_array().cloned().unwrap_or_default());
             cursor = page["nextCursor"].clone();
             if cursor.is_null() {
-                return Some(models);
+                break;
             }
         }
+        let account = call("account/read", json!({})).unwrap_or_default();
+        Some((models, account["account"].clone()))
     });
-    let mut models = found??;
+    let (mut models, account) = found??;
     models.sort_by_key(|m| m["isDefault"] != true);
     let mut models: Vec<ModelInfo> = models.iter().map(info).collect();
     mark_legacy(&mut models);
-    Some(models)
+    let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
+    who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
+    Some((models, who))
 }
 
 /// Marks legacy, beside what its list names an upgrade for, older namesakes and the models of an
@@ -217,4 +222,23 @@ fn info(m: &Value) -> ModelInfo {
             json!({"at": at, "to": u.get("model")})
         }),
     }
+}
+
+/// Its plan as the old app named it; None for one it can't name (`unknown`).
+fn plan_name(plan: &str) -> Option<&'static str> {
+    Some(match plan {
+        "free" => "Free",
+        "go" => "Go",
+        "plus" => "Plus",
+        "pro" => "Pro",
+        "prolite" => "Pro Lite",
+        "promax" => "Pro Max",
+        "team" => "Team",
+        p if p.contains("business") => "Business",
+        p if p.contains("ent") => "Enterprise",
+        "edu" => "Edu",
+        "edu_plus" => "Edu Plus",
+        "edu_pro" => "Edu Pro",
+        _ => return None,
+    })
 }

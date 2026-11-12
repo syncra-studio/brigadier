@@ -222,7 +222,9 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
             ? `Found on ${HERE} · Not signed in`
             : state === "noModel"
               ? `${agent?.how || "Signed in"} · No model available`
-              : agent?.how || (agent?.signed_in === false ? "No sign-in needed" : "Signed in");
+              : agent?.plan
+                ? `${agent.plan.charAt(0).toUpperCase()}${agent.plan.slice(1)} plan`
+                : agent?.how || (agent?.signed_in === false ? "No sign-in needed" : "Signed in");
 
   const action = agent && state !== "checking" && (state === "install" ? (agent.install ? "install" : null) : agent.sign_in ? "sign-in" : null);
   return (

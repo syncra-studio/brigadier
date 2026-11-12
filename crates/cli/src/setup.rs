@@ -181,7 +181,9 @@ fn available() -> Vec<&'static dyn Adapter> {
 
 /// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers.
 fn card(data: &Path, a: &dyn Adapter) -> Value {
-    let update = a.update(None).map(|w| format!("{} {}", a.bin().0, w.join(" ")));
+    let update = a
+        .update(None)
+        .map(|w| format!("{} {}", a.bin().0, w.join(" ")));
     json!({"name": a.name(), "label": a.label(), "short": a.short_label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
         "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
@@ -273,6 +275,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();
                 out["how"] = c.how.into();
+                out["plan"] = c.who.plan.into();
                 out["logins"] = c.logins.into();
                 out["models"] = c
                     .models

@@ -68,9 +68,14 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
     let own = v["names"][agent].as_str().unwrap_or("").to_string();
     std::iter::once((String::new(), own))
         .chain(extra.filter(|e| e["agent"] == agent).map(|e| {
+            let name = e["name"].as_str().unwrap_or("");
+            // An added account went by "Account N" until it was named; that name was never given.
+            let given = !name
+                .strip_prefix("Account ")
+                .is_some_and(|n| n.parse::<u32>().is_ok());
             (
                 e["id"].as_str().unwrap_or("").to_string(),
-                e["name"].as_str().unwrap_or("").to_string(),
+                if given { name } else { "" }.to_string(),
             )
         }))
         .collect()
@@ -131,6 +136,7 @@ pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value 
         Ok(c) => {
             let kinds = a.accounts().map_or(&[][..], |x| x.kinds);
             json!({"installed": true, "signed_in": c.signed_in, "how": c.how,
+                "email": c.who.email, "plan": c.who.plan, "org": c.who.org,
                 "kept_apart": id.is_empty() || kinds.contains(&c.how.as_str()),
                 "models": c.models.iter().map(|m| m.id.clone()).collect::<Vec<_>>()})
         }
@@ -196,7 +202,7 @@ fn list(data: &Path) -> Value {
                                 (id.clone(), name, check(a, data, &id, home))
                             })
                             .collect();
-                        let rows: Vec<Value> = checks
+                        let mut rows: Vec<Value> = checks
                             .into_iter()
                             .map(|(id, name, c)| {
                                 json!({"id": id, "name": name, "check": c,
@@ -205,10 +211,28 @@ fn list(data: &Path) -> Value {
                             })
                             .collect();
                         // The account picked with Use, while it is usable; else the computer's login.
-                        let picked = v["use"][a.name()].as_str().unwrap_or("");
-                        let in_use = rows.iter().find(|r| r["id"] == picked && usable(&r["check"]));
+                        let mut picked = v["use"][a.name()].as_str().unwrap_or("").to_string();
+                        // The computer's login signed in to an account also added here: one row, the
+                        // added one's, saying it is this computer's login, in use when either is.
+                        let who = |c: &Value| {
+                            (c["signed_in"] == true && c["email"].is_string()).then(|| {
+                                (c["email"].as_str().unwrap_or("").to_lowercase(), c["org"].clone())
+                            })
+                        };
+                        let own = who(&rows[0]["check"]);
+                        if let Some(at) = own.and_then(|own| {
+                            (1..rows.len()).find(|&i| who(&rows[i]["check"]).as_ref() == Some(&own))
+                        }) {
+                            rows[at]["own_login"] = true.into();
+                            let in_use = picked.is_empty() || rows.iter().all(|r| r["id"] != picked);
+                            rows.remove(0);
+                            if in_use {
+                                picked = rows[at - 1]["id"].as_str().unwrap_or("").to_string();
+                            }
+                        }
+                        let in_use = rows.iter().any(|r| r["id"] == picked.as_str() && usable(&r["check"]));
                         json!({"vendor": acc.vendor, "list": rows, "auto": listed(v, "auto", a.name()),
-                            "use": in_use.map_or("", |_| picked)})
+                            "use": if in_use { picked.as_str() } else { "" }})
                     });
                     json!({"name": a.name(), "label": a.label(), "installed": a.exe().is_some(), "accounts": rows})
                 })
@@ -220,14 +244,14 @@ fn list(data: &Path) -> Value {
 }
 
 /// `accounts use <agent> <id>`: new sessions of the agent start on the account ("" the computer's
-/// login). `accounts rename <agent> <id> <name>`: names it; emptied, an added one is "Account N"
-/// again and the computer's login its fixed title [D2082].
+/// login). `accounts rename <agent> <id> <name>`: names it; emptied, it goes by who signed in
+/// again [D2082].
 fn name_or_use(data: &Path, op: &str, a: &dyn Adapter, id: &str, name: &str) -> io::Result<Value> {
     let _one = STORE.lock().unwrap();
     let mut v = load(data);
-    let Some(n) = accounts_of(&v, a.name()).iter().position(|(x, _)| x == id) else {
+    if !accounts_of(&v, a.name()).iter().any(|(x, _)| x == id) {
         return Err(io::Error::other(format!("no account {id}")));
-    };
+    }
     let name: String = name.trim().chars().take(60).collect();
     match (op, id) {
         ("use", "") => {
@@ -242,12 +266,7 @@ fn name_or_use(data: &Path, op: &str, a: &dyn Adapter, id: &str, name: &str) -> 
             let e = (v["accounts"].as_array_mut().unwrap().iter_mut())
                 .find(|e| e["id"] == id)
                 .unwrap();
-            e["name"] = if name.is_empty() {
-                format!("Account {}", n + 1)
-            } else {
-                name
-            }
-            .into();
+            e["name"] = name.into();
         }
     }
     save(data, &v)?;
@@ -297,11 +316,7 @@ fn add(
     {
         let _one = STORE.lock().unwrap();
         let mut v = load(data);
-        let n = accounts_of(&v, a.name()).len() + 1;
-        let name = name
-            .map(|n| n.trim().chars().take(60).collect::<String>())
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| format!("Account {n}"));
+        let name: String = name.unwrap_or("").trim().chars().take(60).collect();
         v["accounts"]
             .as_array_mut()
             .unwrap()

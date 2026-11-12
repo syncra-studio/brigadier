@@ -2,7 +2,7 @@
 
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
-    Retune, Rewound, Timing, Tool, base_env, change, s, shell_step,
+    Retune, Rewound, Timing, Tool, Who, base_env, change, s, shell_step,
 };
 use crate::Spec;
 use serde_json::{Value, json};
@@ -47,6 +47,18 @@ impl Adapter for Fake {
             version: "fake 1".into(),
             signed_in: Some(signed_in),
             how: if signed_in { "fake" } else { "" }.into(),
+            // Who each signed-in account is, named by its home, for the accounts' demo.
+            who: Who {
+                email: signed_in.then(|| match &spec.account {
+                    Some((_, home)) => format!(
+                        "{}@example.com",
+                        home.file_name().unwrap_or_default().display()
+                    ),
+                    None => "you@example.com".into(),
+                }),
+                plan: signed_in.then(|| "pro".into()),
+                org: None,
+            },
             models: if signed_in && exe.exists() {
                 // Efforts of its own, so the picker's effort row shows running.
                 let level = |all: &[&str], default: &str| ModelInfo {

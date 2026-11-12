@@ -3,8 +3,8 @@
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
-    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, drop_lines, home_path, probe_as, s,
-    version,
+    ModelInfo, Retune, Rewound, Timing, Who, base_env, cli_home, drop_lines, home_path, probe_as,
+    s, version,
 };
 use crate::Spec;
 use crate::fold::Boundary;
@@ -111,16 +111,17 @@ impl Adapter for Codex {
         } else {
             "signed in"
         };
+        let (models, who) = match signed_in {
+            true => models::list(spec, exe, cwd, 15)
+                .unwrap_or_else(|| (vec![ModelInfo::plain(MODEL, false)], Who::default())),
+            false => (vec![], Who::default()),
+        };
         Ok(Check {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
             how: how.into(),
-            models: if signed_in {
-                models::list(spec, exe, cwd, 15)
-                    .unwrap_or_else(|| vec![ModelInfo::plain(MODEL, false)])
-            } else {
-                vec![]
-            },
+            who,
+            models,
             ..Default::default()
         })
     }

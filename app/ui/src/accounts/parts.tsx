@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { ExclamationMarkCircle, Spinner, Terminal } from "../icons";
@@ -94,6 +95,18 @@ export function AgentMark({ agent, size = "md", idle = false, dim = false }: { a
   );
 }
 
+/** A plan as the old app wrote it: "max" is "Max". */
+export const planName = (plan: string) => `${plan.charAt(0).toUpperCase()}${plan.slice(1)}`;
+
+/** An agent's plan ("Max"), beside its name; `large` beside an agent page's title. */
+export function PlanChip({ plan, large = false }: { plan: string; large?: boolean }) {
+  return (
+    <Badge variant="secondary" className={cx("shrink-0", !large && "text-2xs font-normal")}>
+      {planName(plan)}
+    </Badge>
+  );
+}
+
 /** Check again, at the top of the page and of an agent's page. */
 export function CheckAgainButton({ busy, label, onClick }: { busy: boolean; label: string; onClick: () => void }) {
   return (
@@ -162,4 +175,22 @@ export function ConnectStatus({
       {setup?.running && setup.code_page && <ConnectCode agent={agent} page={setup.code_page} />}
     </div>
   );
+}
+
+/*
+ * Account emails stay out of sight, the old app's: the first three letters of who, the rest dots, the domain's ending
+ * kept (`ste•••••@•••••.com`). A row on an agent's page reveals its own on request.
+ */
+const DOTS = "•••••";
+const EMAIL = /[^\s@;,()<>"']+\x40[^\s@;,()<>"']+\.[A-Za-z]{2,}/g;
+
+export const hasEmail = (text: string) => text.match(EMAIL) !== null;
+
+/** `text` with every email in it masked. */
+export function maskEmails(text: string): string {
+  return text.replace(EMAIL, (email) => {
+    const at = email.lastIndexOf("@");
+    const domain = email.slice(at + 1);
+    return `${email.slice(0, Math.min(3, at))}${DOTS}@${DOTS}${domain.slice(domain.lastIndexOf("."))}`;
+  });
 }

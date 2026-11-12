@@ -212,6 +212,7 @@ impl Adapter for OpenCode {
             how: saved.join(", "),
             logins: saved.iter().map(|n| n.to_string()).collect(),
             models,
+            ..Default::default()
         })
     }
 

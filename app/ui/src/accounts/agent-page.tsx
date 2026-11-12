@@ -15,7 +15,7 @@ import { type Agent, changeAgentPath, checkOne, setEnabled, setModelOn } from ".
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AccountRows } from "./account-rows";
 import { type Account, type SwitchAgent, loadAccounts } from "./api";
-import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, ROW_LINE, ROW_TITLE, standing, versionText } from "./parts";
+import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, PlanChip, ROW_LINE, ROW_TITLE, standing, versionText } from "./parts";
 
 /**
  * An agent's page under Providers, the old app's [D2053]: Providers to go back, its mark, name and how it stands,
@@ -52,7 +52,12 @@ export function AgentPage({
     <SettingsPage
       back={{ label: "Providers", href: "#settings/providers" }}
       mark={<AgentMark agent={agent} size="lg" idle={state === "install"} dim={!on} />}
-      title={agent.label}
+      title={
+        <span className="flex items-center gap-2.5">
+          {agent.label}
+          {agent.plan && <PlanChip plan={agent.plan} large />}
+        </span>
+      }
       description={
         <span className="flex flex-col gap-1">
           <span className="flex min-w-0 items-center gap-1.75">

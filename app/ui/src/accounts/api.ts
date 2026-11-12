@@ -6,7 +6,20 @@ import { errorText, run } from "../onboarding/api";
 export type Account = {
   id: string;
   name: string;
-  check: { installed: boolean; signed_in?: boolean | null; how?: string; kept_apart?: boolean; models?: string[]; error?: string };
+  check: {
+    installed: boolean;
+    signed_in?: boolean | null;
+    how?: string;
+    /** Who signed in, where its CLI says: email, plan ("max") and organization. */
+    email?: string | null;
+    plan?: string | null;
+    org?: string | null;
+    kept_apart?: boolean;
+    models?: string[];
+    error?: string;
+  };
+  /** An added account the computer's own login is signed in to as well: one row, saying so. */
+  own_login?: boolean;
   limited_at: number | null;
   sign_in: { id: string; running: boolean; code: number | null; signal: number | null } | null;
 };

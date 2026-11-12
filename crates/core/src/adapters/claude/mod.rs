@@ -10,7 +10,7 @@ mod tools;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Forked, Launch,
-    ModelInfo, Retune, Rewound, Timing, base_env, classify, home_path, probe_as, s, version,
+    ModelInfo, Retune, Rewound, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use crate::fold::Boundary;
@@ -93,6 +93,7 @@ impl Adapter for Claude {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
             how: how.into(),
+            who: Who::read(&status, ["email", "subscriptionType", "orgName"]),
             models: match signed_in {
                 true => models::list(spec, exe, cwd),
                 false => vec![],

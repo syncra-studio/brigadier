@@ -17,7 +17,7 @@ import { type Agent, checkAll, setEnabled, useAgents } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
 import { type Account, type SwitchAgent, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
-import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, ROW_TITLE, standing, useFailed } from "./parts";
+import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, PlanChip, ROW_TITLE, standing, useFailed } from "./parts";
 
 /** The page's rows, for Settings search. */
 export const PROVIDERS_ROWS = {
@@ -280,7 +280,10 @@ function AgentRow({
       <a href={agentHref(agent.name)} aria-label={`${agent.label}: open its accounts and models`} className="pointer-events-none absolute inset-0 focus-visible:focus-ring" />
       <AgentMark agent={agent} dim={!on} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className={cx(ROW_TITLE, !on && "text-quiet-foreground")}>{agent.label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={cx(ROW_TITLE, !on && "text-quiet-foreground")}>{agent.label}</span>
+          {agent.plan && <PlanChip plan={agent.plan} />}
+        </span>
         <span className="flex min-w-0 items-center gap-1.75">
           <StateDot tone={tone} />
           <span className={cx("truncate text-xs", tone === "needs" ? "text-warning" : "text-quiet-foreground")}>{line}</span>

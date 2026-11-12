@@ -13,7 +13,7 @@ mod shell;
 
 pub use classify::classify;
 pub use files::{change, counts, drop_lines, sha1, uuid};
-pub use model::{ModelInfo, mark_superseded, versioned};
+pub use model::{Check, ModelInfo, Who, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};
@@ -144,16 +144,6 @@ pub struct Timing {
     pub stall_ms: u64,
     /// A delivered message with no sign of a turn after this reads as not started.
     pub no_start_ms: u64,
-}
-
-/// What a status check found [D45]: its version, whether it's signed in and how, each login of a CLI that keeps several in one home, and the models a session can pick. Never a credential.
-#[derive(Default)]
-pub struct Check {
-    pub version: String,
-    pub signed_in: Option<bool>,
-    pub how: String,
-    pub logins: Vec<String>,
-    pub models: Vec<ModelInfo>,
 }
 
 /// How a CLI keeps more than one account apart [D51]: one home folder per extra account, named by

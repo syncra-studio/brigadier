@@ -1,5 +1,37 @@
 use serde_json::Value;
 
+/// What a status check found [D45]: its version, whether it's signed in and how and who, each login
+/// of a CLI that keeps several in one home, and the models a session can pick. Never a credential.
+#[derive(Default)]
+pub struct Check {
+    pub version: String,
+    pub signed_in: Option<bool>,
+    pub how: String,
+    pub who: Who,
+    pub logins: Vec<String>,
+    pub models: Vec<ModelInfo>,
+}
+
+/// Who signed in, where its CLI says: email, plan ("max") and organization [D24].
+#[derive(Default)]
+pub struct Who {
+    pub email: Option<String>,
+    pub plan: Option<String>,
+    pub org: Option<String>,
+}
+
+impl Who {
+    /// From a CLI's answer, by the names of its email, plan and organization fields.
+    pub fn read(v: &Value, [email, plan, org]: [&str; 3]) -> Who {
+        let field = |k: &str| v[k].as_str().filter(|s| !s.is_empty()).map(String::from);
+        Who {
+            email: field(email),
+            plan: field(plan),
+            org: field(org),
+        }
+    }
+}
+
 /// A model a session can pick: its id, the name people know it by, whether it runs on this
 /// computer, and the effort levels its CLI reports for it, lowest first, with its default; empty
 /// and None where the CLI reports none, never guessed [D74, D129].

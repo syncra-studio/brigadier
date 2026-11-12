@@ -102,6 +102,8 @@ export type Agent = {
   version?: string | null;
   signed_in?: boolean;
   how?: string | null;
+  /** Its plan where its CLI names one ("max"). */
+  plan?: string | null;
   /** Each login of an agent that keeps several in one home. */
   logins?: string[];
   models?: { id: string; name?: string; local: boolean; legacy?: boolean }[];
