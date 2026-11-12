@@ -51,6 +51,23 @@ const pick = (id: string, line: Pick | null) => {
 
 export const useModelPick = (id: string) => picks.use().has(id);
 
+/**
+ * A pick Rust took: its pending line goes for good once Rust's row with its op is in the thread, so a row paged out later
+ * never brings it back at the bottom [D92].
+ */
+function settle(id: string, op: string) {
+  const has = () => threadSource.get()?.items.some((item) => "op" in item && item.op === op) === true;
+  const done = () => {
+    stop();
+    clearTimeout(timer);
+    if (picks.get().get(id)?.op === op) pick(id, null);
+  };
+  const stop = threadSource.subscribe(() => has() && done());
+  // shortcut: a pick Rust draws no row for (no model known before it) goes after 3s; drop once `set` says whether it drew one.
+  const timer = setTimeout(done, 3000);
+  if (has()) done();
+}
+
 /** The divider a model pick leaves, drawn at once under the thread until Rust's row with its op takes its place [D76]. */
 export function PendingModelLine({ id }: { id: string }) {
   const line = picks.use().get(id);
@@ -168,7 +185,7 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     const args = ["set", id, "--agent", choice.provider, "--model", choice.model, "--op", op];
     if (choice.effort) args.push("--effort", choice.effort);
     if (choice.fast) args.push("--fast");
-    run(args).catch((cause) => {
+    run(args).then(() => settle(id, op), (cause) => {
       // Only this pick's refusal undoes it; a newer pick stands.
       setPending((now) => (now?.op === op ? null : now));
       if (picks.get().get(id)?.op === op) pick(id, null);
