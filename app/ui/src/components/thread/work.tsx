@@ -10,24 +10,30 @@ import { showToast } from "../toast";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { FILE_VERBS, fileName } from "./file-change";
 import { toolObject, VERBS } from "./tool";
+import { finished } from "../../workers/chip";
+import { useWorkers } from "../../workers/live";
 
 const RULE = "flex w-full items-center border-b border-divider pb-2";
 const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
 
 /**
- * Over a turn's work, on a hairline: "Working for 12s" ticking while it runs (`open` null: it doesn't fold),
- * "Waiting for 1m 3s" while it waits on the user's answer, then "Worked for 3m 4s ›" (with "· waited for
- * 1m 2s" when it waited), which opens and shuts the turn's folded work.
+ * Over a turn's work, on a hairline: "Working for 12s" ticking from the turn's start, never reset [D128], with
+ * "· 1 worker running" while its workers run [D67] and "· waiting for you" while it waits on the user's answer; then
+ * "Worked for 3m 4s ›" (with "· waited for 1m 2s" when it waited), which opens and shuts the turn's folded work.
  */
 export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
-  const now = useSecond(turn.status === "running" || Boolean(turn.held));
+  const live = turn.status === "running" || Boolean(turn.held);
+  const now = useSecond(live);
+  const workers = useWorkers(useThread()?.id ?? "").filter((worker) => !finished(worker)).length;
   const { waitingSince, waitedMs } = turn;
   const label =
-    turn.status === "running" && waitingSince != null
-      ? `Waiting for ${duration(now - waitingSince)}`
+    workWords(turn, work, now) +
+    (live && workers ? ` · ${workers} ${workers === 1 ? "worker" : "workers"} running` : "") +
+    (turn.status === "running" && waitingSince != null
+      ? " · waiting for you"
       : turn.status === "done" && !turn.held && waitedMs !== undefined && waitedMs >= 1000
-        ? `${workWords(turn, work, now)} · waited for ${duration(waitedMs)}`
-        : workWords(turn, work, now);
+        ? ` · waited for ${duration(waitedMs)}`
+        : "");
   if (open === null) {
     return (
       <p className={RULE}>

@@ -34,8 +34,9 @@ const ENDED: Record<Turn["status"], string> = {
 
 /** "Working for 12s" while the turn runs (from `now`), "Worked for 3m 4s" once it's done. */
 export function workWords(turn: Turn, work: Work | undefined, now: number): string {
-  // Like Rust's `Work.ms`, the turn's finished waits on the user don't count.
-  const ms = work?.ms ?? (turn.held ? now : (turn.endedAt ?? now)) - turn.startedAt - (turn.waitedMs ?? 0);
+  // Live, one clock from the turn's start that never resets [D128]; ended, like Rust's `Work.ms`, its waits on the user don't count.
+  const live = turn.status === "running" || turn.held;
+  const ms = work?.ms ?? (live ? now - turn.startedAt : (turn.endedAt ?? now) - turn.startedAt - (turn.waitedMs ?? 0));
   // Answered, it still waits on its subagents, counting on [D114].
   if (turn.helpers) return `Working for ${duration(ms)} · ${turn.helpers} ${turn.helpers === 1 ? "subagent" : "subagents"} running`;
   if (turn.held) return `Working for ${duration(ms)}`;
