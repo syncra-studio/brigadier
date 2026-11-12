@@ -216,10 +216,12 @@ export function useStartingRows(open: string | null): Row[] | undefined {
     if (known && open && thread?.id === open && thread.status === "missing") openThread(open);
   }, [known, open, thread?.status]);
   if (!rows) return rows;
+  // Rust's row is untitled until its first message is logged, after the worktree is made: the start's title meanwhile.
+  const named = rows.some((row) => !row.title && pending.get(row.id)?.title) ? rows.map((row) => (row.title ? row : { ...row, title: pending.get(row.id)?.title ?? row.title })) : rows;
   const mine = [...pending.values()].filter((entry) => !rows.some((row) => row.id === entry.id));
-  if (mine.length === 0) return rows;
+  if (mine.length === 0) return named;
   return [
-    ...rows,
+    ...named,
     ...mine.map(({ id, project, title, sent, error, outcome, fork }) => ({
       id,
       title,
