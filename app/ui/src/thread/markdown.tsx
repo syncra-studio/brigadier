@@ -14,11 +14,11 @@ const withBreaks = [remarkGfm, remarkBreaks];
  * A reply's markdown, one top-level block at a time, so while a reply streams only its last block parses
  * and draws again. marked only finds where blocks end (whole-reply parsing is what made rendering slow);
  * react-markdown draws each block. `breaks`: each line break is a break (the user's messages). `chip` draws a
- * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107]. `at`: when the text arrived, so a
- * reply drawn as it arrives fades in, as do the chunks a streaming one grows by [D53].
+ * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107]. The chunks a streaming
+ * reply grows by fade in [D53].
  */
-export function Markdown({ text, keep, breaks = false, chip, at }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode; at?: number }) {
-  const chunks = useChunks(text, at);
+export function Markdown({ text, keep, breaks = false, chip }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode }) {
+  const chunks = useChunks(text);
   const tokens = marked.lexer(text);
   let start = 0;
   // A block alone can't see link definitions in the others (nested ones too), so a block gets the ones it names,
@@ -53,12 +53,12 @@ const NONE: Chunk[] = [];
 // Past --animate-chunk-in's 0.7 s, so a chunk is never unwrapped mid-fade.
 const FADE_MS = 1000;
 
-/** The chunks still fading: the whole text if it arrived just now, then each piece it grows by. */
-function useChunks(text: string, at: number | undefined): Chunk[] {
+/** The chunks still fading: each piece a text grows by. A reply that arrives whole draws solid, never grey first. */
+function useChunks(text: string): Chunk[] {
   const seen = useRef<{ length: number; chunks: Chunk[] } | null>(null);
   const now = Date.now();
   if (!seen.current || text.length < seen.current.length) {
-    seen.current = { length: text.length, chunks: at !== undefined && now - at < FADE_MS ? [{ from: 0, to: text.length, at }] : [] };
+    seen.current = { length: text.length, chunks: [] };
   } else if (text.length > seen.current.length) {
     seen.current.chunks.push({ from: seen.current.length, to: text.length, at: now });
     seen.current.length = text.length;
