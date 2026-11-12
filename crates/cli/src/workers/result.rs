@@ -6,7 +6,7 @@
 //! a busy one gets it after its turn. Turns the user starts in a worker report nothing.
 
 use super::{Link, Record, closing, git, link, read_json, write_json};
-use crate::{agent, owner, queue};
+use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core};
 use brigadier_frames::{log, procs};
@@ -198,11 +198,13 @@ fn write(
         .filter_map(|v| v.as_str())
         .collect();
     text += &format!("Ran on {}.\n", ran.join(" · "));
-    let last = agent::messages(data, wid)
-        .into_iter()
-        .rev()
-        .find(|(from, _)| from == "agent")
-        .map(|(_, t)| t);
+    // That turn's own last message, not a later turn's the user started in the worker [D3006].
+    let mut thread = core::thread::Thread::default();
+    let _ = core::rewind::read_active(&dir, |i| thread.push(i));
+    let items = thread.session(wid, "", None, None)["items"].take();
+    let last = (items.as_array().into_iter().flatten().rev())
+        .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
+        .and_then(|i| i["text"].as_str().map(String::from));
     if let Some(mut last) = last {
         if last.len() > LAST {
             let mut at = LAST;

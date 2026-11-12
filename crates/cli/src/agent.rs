@@ -353,7 +353,8 @@ fn wait(
             return refuse(&format!("Session {id} is gone."));
         };
         let state = str_of(&row, "state").to_string();
-        if row["running"] != true || state == "waiting_answer" {
+        let idle = row["running"] != true && !workers::busy(data, id);
+        if idle || state == "waiting_answer" {
             let last = messages(data, id)
                 .into_iter()
                 .rev()

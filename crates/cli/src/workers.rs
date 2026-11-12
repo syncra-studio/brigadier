@@ -161,6 +161,20 @@ pub(crate) fn setting(data: &Path, key: &str, default: u64) -> u64 {
     settings::get(data, key).parse().unwrap_or(default)
 }
 
+/// Whether worker `id` is still being made or a task it reports back on hasn't ended, so a
+/// `wait` keeps waiting though its row may not show the turn yet.
+pub fn busy(data: &Path, id: &str) -> bool {
+    let Some(l) = link(data, id) else {
+        return false;
+    };
+    let made = record(data, &l.parent, id).is_some_and(|r| r.state != "starting");
+    let Ok(f) = core::fold(&core::session_dir(data, id), true).map(|r| r.fold) else {
+        return !made;
+    };
+    !made
+        || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
+}
+
 /// `brigadier stop <id>` for session `me`'s agent: only its own workers and theirs [D3032].
 pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     let Some(r) = below(data, me).into_iter().find(|r| r.wid == id) else {
