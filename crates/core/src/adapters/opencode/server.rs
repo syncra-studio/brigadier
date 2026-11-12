@@ -274,6 +274,26 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         }
         "form.replied" | "form.cancelled" if st.forms.remove(d["id"].as_str().unwrap_or("")) => {}
         "shell.created" => {}
+        // A background subagent's report waking its parent: that is when its call ends.
+        "session.inbox.enqueued"
+            if d["sessionID"] == st.session.as_str()
+                && d["item"]["payload"]["metadata"]["source"] == "subagent" =>
+        {
+            let p = &d["item"]["payload"];
+            let child = p["metadata"]["childID"].as_str().unwrap_or("");
+            let Some(key) = st.children.get(child).cloned() else {
+                return;
+            };
+            let ok = p["metadata"]["state"] == "completed";
+            let t = st.tools.get(&key).cloned().unwrap_or_default();
+            let line = json!({"type": if ok { "session.tool.success" } else { "session.tool.failed" },
+                "created": v["created"], "data": {"sessionID": st.session, "id": key,
+                "name": t["name"], "input": t["input"], "metadata": {"sessionID": child},
+                "content": [{"type": "text", "text": p["text"]}],
+                "error": {"message": p["text"]}}});
+            drop(st);
+            return say(line);
+        }
         "command.updated" | "skill.updated" => {
             let dir = st.dir.clone();
             drop(st);
@@ -296,6 +316,13 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                     let t = st.tools.entry(key.clone()).or_default();
                     t["input"] = d["input"].clone();
                     format!("{key}:called")
+                }
+                // A subagent run in the background: its call ends when its report comes, above.
+                "session.tool.success" if d["metadata"]["status"] == "running" => {
+                    if let Some(child) = d["metadata"]["sessionID"].as_str() {
+                        st.children.insert(child.into(), key);
+                    }
+                    return;
                 }
                 "session.tool.success" | "session.tool.failed" => format!("{key}:ended"),
                 "session.tool.progress" => {
