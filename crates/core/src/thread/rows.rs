@@ -406,7 +406,9 @@ impl Thread {
 
     /// Adds a step's row under the open group, starting one when none is open.
     pub(super) fn step(&mut self, row: Value) -> usize {
-        let Some(o) = self.open.as_mut() else {
+        // A subagent is its own row, never a step under a group's header [D115].
+        let Some(o) = self.open.as_mut().filter(|_| row["kind"] != "childAgent") else {
+            self.break_group();
             return self.add(row);
         };
         let g = match o.group {
