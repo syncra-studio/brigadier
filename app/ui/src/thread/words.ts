@@ -28,7 +28,8 @@ const ENDED: Record<Turn["status"], string> = {
   running: "Working for",
   done: "Worked for",
   failed: "Stopped after",
-  cancelled: "You stopped after",
+  // Your Stop is said once, by its own line under the turn [D2099].
+  cancelled: "Worked for",
 };
 
 /** "Working for 12s" while the turn runs (from `now`), "Worked for 3m 4s" once it's done. */
