@@ -5,7 +5,7 @@ import { Row, Section, State } from "./parts";
 const WORKTREE: SetupStep = { kind: "worktree", state: "done", branch: "brigadier/session", base: "main", error: null };
 const SCRIPT: SetupStep = { kind: "setupScript", state: "done", error: null };
 const CLI: SetupStep = { kind: "cli", state: "done", cli: "Example CLI", error: null };
-const DONE: Setup = { state: "done", before: null, steps: [WORKTREE, SCRIPT, CLI] };
+const DONE: Setup = { state: "done", after: null, steps: [WORKTREE, SCRIPT, CLI] };
 const STARTS: Setup[] = [
   { ...DONE, state: "running", steps: [{ ...WORKTREE, state: "running" }] },
   { ...DONE, state: "running", steps: [WORKTREE, { ...SCRIPT, state: "running" }] },
@@ -33,7 +33,7 @@ export function SetupGallery({ tick }: { tick: number }) {
             <SetupRow keep={`setup-failed-${index}`} setup={setup} />
           </State>
         ))}
-        <State label="live · opens then folds">
+        <State label="live · one line, opens on failure">
           <SetupRow key={`${Math.floor(tick / 12)}:${live.state}`} keep={`setup-live-${Math.floor(tick / 12)}`} setup={live} />
         </State>
       </Row>

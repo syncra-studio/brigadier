@@ -22,15 +22,16 @@ function words(step: SetupStep): string {
   }
 }
 
-/** Open while starting; remounted by the thread on completion to fold to one action line. */
+/** One line while it runs and once done, so nothing under it moves; its steps open on a click, or by themselves when it fails [D70]. */
 export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
   const starting = setup.state === "running";
-  const [open, setOpen] = useKept(`${keep}:${starting ? "starting" : "done"}`, starting);
+  const [open, setOpen] = useKept(`${keep}:${setup.state === "failed"}`, setup.state === "failed");
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex min-w-0 flex-col" data-slot="setup-line" data-state={setup.state}>
       <CollapsibleTrigger className={cx(ROW, TOGGLE)}>
         <Branch className="size-4 shrink-0" />
-        <Words verb={TITLES[setup.state]} live={starting} />
+        {/* Its worktree step's own state, so a later step starting never turns "Created" back into "Creating". */}
+        <Words verb={TITLES[setup.state === "failed" ? "failed" : (setup.steps.find((step) => step.kind === "worktree")?.state ?? setup.state)]} live={starting} />
         <Chevron />
       </CollapsibleTrigger>
       <CollapsibleContent>

@@ -390,11 +390,11 @@ impl Thread {
         self.startup.running(setup)
     }
 
-    /// Setup sits before its launch's input.
+    /// Setup sits under its launch's input, first in its turn [D70].
     pub fn sync_setup(&mut self, setup: Value, alive: bool) {
         let (mut setup, cid) = self.startup.sync(setup, alive);
         if setup.is_object() {
-            setup["before"] = (cid.and_then(|cid| self.first_rows.get(cid).copied()))
+            setup["after"] = (cid.and_then(|cid| self.first_rows.get(cid).copied()))
                 .or(self.setup_at)
                 .and_then(|at| self.items.get(at))
                 .map_or(Value::Null, |row| row["id"].clone());

@@ -180,7 +180,7 @@ export function StartingBubble({ id }: { id: string }) {
   if (entry.fork) {
     if (entry.error) return <ErrorLine size="sm" error={`Couldn't fork · ${entry.error}`} actions={again} />;
     if (entry.fork.where !== "worktree") return <WorkingLine state="live">Starting the conversation</WorkingLine>;
-    return <SetupRow keep={id} setup={{ state: "running", before: null, steps: [] }} />;
+    return <SetupRow keep={id} setup={{ state: "running", after: null, steps: [] }} />;
   }
   if (inThread) {
     return (
@@ -225,7 +225,9 @@ export function StartingBubble({ id }: { id: string }) {
 /** While its start is out and nothing's gone wrong, a shimmering line under the message (D487). */
 export function StartingLine({ id }: { id: string }) {
   const entry = useStarting().get(id);
-  if (!entry || entry.fork || entry.error || entry.unknown || entry.outcome) return null;
+  const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
+  // A worktree being made says so itself, in this line's place (Thread draws it) [D70].
+  if (!entry || entry.fork || entry.error || entry.unknown || entry.outcome || (session?.id === id && session.setup)) return null;
   return (
     <div className="pt-4">
       <WorkingLine state="live">Starting the conversation</WorkingLine>

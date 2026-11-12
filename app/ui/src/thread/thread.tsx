@@ -10,6 +10,7 @@ import { store } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
 import { JumpSign, ThinkingLine, datedMessages } from "../components/thread/message";
+import { SetupRow } from "../components/thread/setup";
 
 /**
  * Where the session comes from: null while it loads. After find went to an island far up (`after` set), `newer` asks
@@ -101,11 +102,11 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const setup = session?.setup;
   const all = useMemo(() => {
     const rows = threadRows;
-    if (!setup) return rows;
-    const at = setup.before === null ? rows.length : rows.findIndex((row) => row.id === setup.before);
-    if (at < 0) return rows;
-    const line: Line = { type: "setup", id: `${session.id}:setup:${setup.before ?? "tail"}`, gap: at === 0 ? "first" : "turn", setup };
-    return [...rows.slice(0, at), line, ...rows.slice(at)];
+    // Under its input, first in that turn [D70]; until the input's row is in, the footer draws it.
+    const at = setup?.after ? rows.findIndex((row) => row.id === setup.after) : -1;
+    if (!setup || at < 0) return rows;
+    const line: Line = { type: "setup", id: `${session.id}:setup:${setup.after}`, gap: "turn", setup };
+    return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
   }, [threadRows, setup, session?.id]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
@@ -161,6 +162,10 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const running = turnList?.at(-1)?.status === "running";
   // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
   const tail = all.at(-1);
+  // A finished setup under the newest message leaves it the turn's top, so Thinking shows under it.
+  const top = tail?.type === "setup" && tail.setup.state === "done" ? all.at(-2) : tail;
+  // A setup whose input's row isn't in yet goes under the footer's pending message, in its starting line's place [D70].
+  const footSetup = setup && !all.some((line) => line.type === "setup") ? setup : null;
   const phase: Phase = !running ? "idle" : tail?.type === "marks" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant") ? "answer" : "work";
   // The newest user message: the latest turn's top.
   const newest = useMemo(() => {
@@ -334,9 +339,10 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
             {after !== null && <Newer after={after} newer={source.newer} />}
             {/* Thinking at once under a message on its way (SentBubbles) and under a running turn's message with nothing
                 under it yet, where its work header will be [D45]. */}
-            {after === null && running && tail?.type === "item" && tail.item === newest && <div className="pt-6"><ThinkingLine /></div>}
+            {after === null && running && top?.type === "item" && top.item === newest && <div className="pt-6"><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
             {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
+            {footSetup && after === null && <div className="pt-6"><SetupRow keep={`${id}:setup`} setup={footSetup} /></div>}
             <Spacer space={space} />
           </div>
           <div data-end aria-hidden className="end-snap-target" />

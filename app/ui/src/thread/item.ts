@@ -21,7 +21,7 @@ export type Session = {
   items: Item[];
   /** One per finished turn that did work. */
   work?: Work[];
-  /** Rust places the latest setup before this row; null means after the rows so far. */
+  /** Rust places the latest setup under this row, its launch's input; null while that row isn't in yet. */
   setup?: Setup | null;
   /** Requests still waiting on the user, replayed on reconnect and reconciled by CLI id. */
   approvals?: PendingApproval[];
@@ -33,7 +33,7 @@ export type Session = {
 /** Rust owns the reached steps, their order, state and placement; the UI writes their words. */
 export type Setup = {
   state: "running" | "done" | "failed";
-  before: string | null;
+  after: string | null;
   steps: SetupStep[];
 };
 export type SetupStep = {

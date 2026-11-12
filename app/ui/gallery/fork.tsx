@@ -37,8 +37,8 @@ function Menu({ chat, value, error }: { chat: boolean; value?: ForkOffer; error?
   return <AnswerMarks text="Done." fork={<ForkMenu chat={chat} {...(value && { offer: value })} {...(error && { error })} agents={agents} current="cloud" value={{ provider: "cloud", model: "large", effort: null }} onPick={noop} />} />;
 }
 
-const PENDING: Setup = { state: "running", before: null, steps: [{ kind: "worktree", state: "running", branch: "brigadier/fork-of-login", base: "main", error: null }] };
-const FAILED: Setup = { state: "failed", before: null, steps: [{ kind: "worktree", state: "failed", branch: "brigadier/fork-of-login", base: "main", error: "The snapshot couldn't be written in." }] };
+const PENDING: Setup = { state: "running", after: null, steps: [{ kind: "worktree", state: "running", branch: "brigadier/fork-of-login", base: "main", error: null }] };
+const FAILED: Setup = { state: "failed", after: null, steps: [{ kind: "worktree", state: "failed", branch: "brigadier/fork-of-login", base: "main", error: "The snapshot couldn't be written in." }] };
 const ORIGINS: [string, ForkOrigin][] = [
   ["new worktree", { source: { id: "s1", title: "Login" }, where: "worktree", summary: false, leftOut: [] }],
   ["same folder", { source: { id: "s1", title: "Login" }, where: "folder", summary: false, leftOut: [] }],
