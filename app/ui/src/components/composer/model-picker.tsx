@@ -1,6 +1,7 @@
 import { type HTMLAttributes, type ReactElement, useEffect, useRef, useState } from "react";
 
-import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Terminal } from "../../icons";
+import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Star, StarFilled, Terminal } from "../../icons";
+import { setStar, useSettings } from "../../settings/api";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
@@ -74,6 +75,7 @@ const SEGMENT = cx(
   "hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground",
 );
 const FOOTER_ROW = "flex items-center gap-3 ps-4 pe-2.25";
+const FAVORITES = "favorites";
 /**
  * The model pill and its picker, opening upward, as the old app's: a search across every agent on top, then the agents
  * beside the browsed one's models (older ones folded under Older models), a check on the one in use, and a footer with
@@ -82,7 +84,9 @@ const FOOTER_ROW = "flex items-center gap-3 ps-4 pe-2.25";
  * a level or speed of a model not picked yet picks it so. While searching, the matches of every agent set up show in one
  * list with their marks, and Enter picks the first; Esc clears the search before it closes the picker. An agent not
  * installed or not signed in is dimmed, and shows what it needs and "Set up" in place of its models. Another agent's
- * model asks "Switch to X?" first, closing the picker.
+ * model asks "Switch to X?" first, closing the picker. A star on a model's row (shown on hover, kept once set) puts it
+ * in Favorites, above the agents, and first in its agent's list; the picker opens on Favorites when the model in use
+ * is starred.
  */
 export function ModelPicker({
   groups,
@@ -115,10 +119,6 @@ export function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(asked);
-  if (asked !== seen) {
-    setSeen(asked);
-    if (!disabled) setOpen(true);
-  }
   const [browsing, setBrowsing] = useState(value.provider);
   const [query, setQuery] = useState("");
   const [inSearch, setInSearch] = useState(false);
@@ -128,11 +128,28 @@ export function ModelPicker({
   const levelsNext = useRef(false);
   const search = useRef<HTMLInputElement>(null);
   const footer = useRef<HTMLDivElement>(null);
-  const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
+  const starred = useSettings().value?.models_starred ?? [];
+  const isStarred = (provider: string, entry: Model) => starred.includes(`${provider}/${entry.id}`);
+  const favorites = groups.filter((entry) => !entry.unavailable).flatMap((entry) => entry.models.filter((each) => isStarred(entry.provider, each)).map((each) => ({ group: entry, model: each })));
+  const group = browsing === FAVORITES ? undefined : (groups.find((entry) => entry.provider === browsing) ?? groups[0]);
   const current = groups.find((entry) => entry.provider === value.provider);
   const model = current?.models.find((entry) => entry.id === value.model);
   const auto = automatic?.chosen === true;
   const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
+  // Where it opens: Favorites when the model in use is starred, or with none in use any are; else the agent in use.
+  const opensOn = () => ((auto ? favorites.length > 0 : model && isStarred(value.provider, model)) ? FAVORITES : value.provider);
+  const opening = () => {
+    setBrowsing(opensOn());
+    setQuery("");
+    setUnderKeys(null);
+  };
+  if (asked !== seen) {
+    setSeen(asked);
+    if (!disabled) {
+      opening();
+      setOpen(true);
+    }
+  }
   const needle = query.trim();
   // Every set-up agent's models that match, best match first, in agent order within each.
   const matches = needle
@@ -143,9 +160,13 @@ export function ModelPicker({
         .toSorted((a, b) => a.rank! - b.rank!)
     : null;
   const first = matches?.[0];
-  // An older model shows under Older models unless it is the one in use.
-  const shownOf = (entry: ModelGroup) => entry.models.filter((each) => !each.legacy || isChecked(entry.provider, each) || older.has(entry.provider));
-  const olderCount = group && !group.unavailable ? group.models.filter((each) => each.legacy && !isChecked(group.provider, each)).length : 0;
+  // An older model shows under Older models unless it is the one in use or starred; starred ones first.
+  const pinned = (provider: string, entry: Model) => !entry.legacy || isChecked(provider, entry) || isStarred(provider, entry);
+  const shownOf = (entry: ModelGroup) => {
+    const shown = entry.models.filter((each) => pinned(entry.provider, each) || older.has(entry.provider));
+    return [...shown.filter((each) => isStarred(entry.provider, each)), ...shown.filter((each) => !isStarred(entry.provider, each))];
+  };
+  const olderCount = group && !group.unavailable ? group.models.filter((each) => !pinned(group.provider, each)).length : 0;
   // A pick takes the keyboard to its levels once it shows as the one in use.
   useEffect(() => {
     if (!levelsNext.current || !open) return;
@@ -175,27 +196,51 @@ export function ModelPicker({
   const keepsInHand = (to: EventTarget | null) => to instanceof Node && Boolean(footer.current?.contains(to));
   const modelRow = (provider: string, entry: Model, mark?: { mark: string | null; label: string }) => {
     const checked = isChecked(provider, entry);
+    const star = isStarred(provider, entry);
     return (
-      <button
-        key={`${provider}:${entry.id}`}
-        type="button"
-        role="option"
-        aria-selected={checked}
-        onClick={() => pick(provider, entry)}
-        onFocus={() => setUnderKeys({ provider, model: entry })}
-        onBlur={(event) => !keepsInHand(event.relatedTarget) && setUnderKeys(null)}
-        // While the search has the keyboard, the first match is the one Enter picks.
-        className={cx(MODEL_ROW, inSearch && entry === first?.model && "bg-fill")}
-      >
-        {mark && <ProviderMark mark={mark.mark} className="size-icon-md" />}
-        <span className="min-w-0 truncate">
-          {mark ? <MatchedText text={entry.name} query={needle} /> : entry.name}
-          {mark && <span className="sr-only">, {mark.label}</span>}
-        </span>
-        {checked && <Check aria-hidden className="size-icon-sm shrink-0" />}
-      </button>
+      <div key={`${provider}:${entry.id}`} className="group/row relative shrink-0">
+        <button
+          type="button"
+          role="option"
+          aria-selected={checked}
+          onClick={() => pick(provider, entry)}
+          onFocus={() => setUnderKeys({ provider, model: entry })}
+          onBlur={(event) => !keepsInHand(event.relatedTarget) && setUnderKeys(null)}
+          // While the search has the keyboard, the first match is the one Enter picks.
+          className={cx(MODEL_ROW, inSearch && entry === first?.model && "bg-fill")}
+        >
+          {mark && <ProviderMark mark={mark.mark} className="size-icon-md" />}
+          <span className="min-w-0 truncate">
+            {mark ? <MatchedText text={entry.name} query={needle} /> : entry.name}
+            {mark && <span className="sr-only">, {mark.label}</span>}
+          </span>
+          {checked && <Check aria-hidden className="size-icon-sm shrink-0" />}
+        </button>
+        <button
+          type="button"
+          data-slot="model-picker-star"
+          aria-label={star ? `Remove ${entry.name} from favorites` : `Add ${entry.name} to favorites`}
+          aria-pressed={star}
+          onClick={() => void setStar(provider, entry.id, !star).catch(() => undefined)}
+          className={cx(
+            "absolute end-1.5 top-1.5 grid size-5 cursor-pointer place-items-center rounded-icon-button outline-none hover:bg-fill-hover focus-visible:bg-fill-hover",
+            star ? "text-warning" : "text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          {star ? <StarFilled aria-hidden className="size-icon-xs" /> : <Star aria-hidden className="size-icon-xs" />}
+        </button>
+      </div>
     );
   };
+
+  // Favorites or an agent in the sidebar, by its full name, with its count of models shown.
+  const sidebarRow = (to: string, label: string, icon: ReactElement, count: number | null, short?: string | null, dim?: boolean) => (
+    <button key={to} type="button" role="option" aria-label={label} aria-selected={to === (group?.provider ?? FAVORITES)} onClick={() => setBrowsing(to)} onFocus={() => setBrowsing(to)} className={cx(SIDEBAR_ROW, dim && "opacity-disabled")}>
+      {icon}
+      <span className="min-w-0 truncate">{short ?? label}</span>
+      {count !== null && <span className="ms-auto shrink-0 text-xs text-muted-foreground">{count}</span>}
+    </button>
+  );
 
   // The footer's model: the one under the keyboard (the first match while searching), else the one in use.
   const inHand = (inSearch && first ? { provider: first.group.provider, model: first.model } : underKeys) ?? (model && !auto ? { provider: value.provider, model } : null);
@@ -227,11 +272,7 @@ export function ModelPicker({
             search.current?.focus();
             return;
           }
-          if (next) {
-            setBrowsing(value.provider);
-            setQuery("");
-            setUnderKeys(null);
-          }
+          if (next) opening();
           setOpen(next);
         }}
       >
@@ -310,22 +351,11 @@ export function ModelPicker({
               {!matches && (
                 <>
                   <div role="listbox" aria-label="Agents" data-picker-part="agents" className={cx("flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto p-1.5", auto && "opacity-disabled")}>
-                    {groups.map((entry) => (
-                      <button
-                        key={entry.provider}
-                        type="button"
-                        role="option"
-                        aria-label={entry.label}
-                        aria-selected={entry.provider === group?.provider}
-                        onClick={() => setBrowsing(entry.provider)}
-                        onFocus={() => setBrowsing(entry.provider)}
-                        className={cx(SIDEBAR_ROW, entry.unavailable && "opacity-disabled")}
-                      >
-                        <ProviderMark mark={entry.mark} className="size-icon-md" />
-                        <span className="min-w-0 truncate">{entry.short ?? entry.label}</span>
-                        {!entry.unavailable && <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.filter((each) => !each.legacy || isChecked(entry.provider, each)).length}</span>}
-                      </button>
-                    ))}
+                    {sidebarRow(FAVORITES, "Favorites", <StarFilled aria-hidden className="size-icon-md shrink-0 text-muted-foreground" />, favorites.length)}
+                    <div role="presentation" className="h-1.5 shrink-0" />
+                    {groups.map((entry) =>
+                      sidebarRow(entry.provider, entry.label, <ProviderMark mark={entry.mark} className="size-icon-md" />, entry.unavailable ? null : entry.models.filter((each) => pinned(entry.provider, each)).length, entry.short, Boolean(entry.unavailable)),
+                    )}
                   </div>
                   <div aria-hidden className="w-px shrink-0 bg-divider" />
                 </>
@@ -333,13 +363,15 @@ export function ModelPicker({
               <div className={cx("flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5", auto && "opacity-disabled")}>
                 <div
                   role="listbox"
-                  aria-label={matches ? "Matching models" : `${group?.label ?? ""} models`}
+                  aria-label={matches ? "Matching models" : group ? `${group.label} models` : "Favorites"}
                   data-picker-part="models"
                   className="flex flex-col gap-0.5"
                 >
                   {matches
                     ? matches.map((row) => modelRow(row.group.provider, row.model, row.group))
-                    : group && !group.unavailable && shownOf(group).map((entry) => modelRow(group.provider, entry))}
+                    : group
+                      ? !group.unavailable && shownOf(group).map((entry) => modelRow(group.provider, entry))
+                      : favorites.map((row) => modelRow(row.group.provider, row.model, row.group))}
                   {!matches && olderCount > 0 && (
                     <button
                       type="button"
@@ -360,6 +392,7 @@ export function ModelPicker({
                   )}
                 </div>
                 {matches?.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models match “{needle}”</p>}
+                {!matches && !group && favorites.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No favorites yet</p>}
                 {!matches && group?.unavailable && (
                   <div data-slot="model-picker-not-set-up" className="flex flex-col items-center gap-2.5 px-5 py-7 text-center">
                     <span className="grid size-8.5 shrink-0 place-items-center rounded-nav border border-divider text-muted-foreground">

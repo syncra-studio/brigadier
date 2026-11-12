@@ -2,7 +2,8 @@
 //! live in `settings.json`; Keep awake stays in its own `awake` file, which the daemon reads each
 //! pass [D88, D2016]. `settings agent NAME on|off` turns an agent on or off, kept as the list
 //! of those off [D2079]; `settings agent-path NAME PATH` runs it from another CLI once that one
-//! proves to be it, and `settings model NAME ID on|off` hides a model from pickers [D2082].
+//! proves to be it, `settings model NAME ID on|off` hides a model from pickers [D2082], and
+//! `settings star NAME ID on|off` stars one in the model picker, kept as `models_starred`.
 
 use brigadier_core::{self as core, adapters};
 use serde_json::{Map, Value, json};
@@ -59,7 +60,7 @@ pub fn read(data: &Path) -> Value {
         })
         .collect();
     all.insert("awake".into(), core::awake_mode(data).into());
-    for key in ["agents_off", "models_off", "older_seen"] {
+    for key in ["agents_off", "models_off", "models_starred", "older_seen"] {
         let off = saved[key].as_array().cloned().unwrap_or_default();
         all.insert(key.into(), off.into());
     }
@@ -199,24 +200,30 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             saved["agent_paths"][name.as_str()] = path.as_str().into();
             save(data, saved)?;
         }
-        [_, key, name, id, on] if key == "model" && adapters::get(name).is_some() => {
+        [_, key, name, id, on]
+            if (key == "model" || key == "star") && adapters::get(name).is_some() =>
+        {
             let model = format!("{name}/{id}");
-            let off = saved["models_off"].as_array_mut().unwrap();
-            off.retain(|m| *m != model);
-            match on.as_str() {
-                "on" => {}
-                "off" => off.push(model.into()),
-                _ => {
-                    return Err(io::Error::other(format!(
-                        "{model} is on or off, not {on:?}"
-                    )));
-                }
+            // A hidden model is listed while off, a starred one while on.
+            let (key, listed) = match key.as_str() {
+                "model" => ("models_off", "off"),
+                _ => ("models_starred", "on"),
+            };
+            if on != "on" && on != "off" {
+                return Err(io::Error::other(format!(
+                    "{model} is on or off, not {on:?}"
+                )));
+            }
+            let list = saved[key].as_array_mut().unwrap();
+            list.retain(|m| *m != model);
+            if on == listed {
+                list.push(model.into());
             }
             save(data, saved)?;
         }
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier settings [KEY VALUE | agent NAME on|off | agent-path NAME PATH | model NAME ID on|off]",
+                "usage: brigadier settings [KEY VALUE | agent NAME on|off | agent-path NAME PATH | model NAME ID on|off | star NAME ID on|off]",
             ));
         }
     }

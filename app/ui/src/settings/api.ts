@@ -12,6 +12,8 @@ export type Settings = {
   awake: "off" | "work" | "always";
   /** How many workers a family runs at once: a number, as Rust keeps it [D3001, D3007]. */
   workers: string;
+  /** The models starred in the model picker, as `<agent>/<id>`. */
+  models_starred: string[];
 };
 
 const settings = store<{ value?: Settings; error?: string }>({});
@@ -39,11 +41,20 @@ export function loadSettings(): void {
  * Shown at once, saved one at a time so Rust's replies come in order; each reply keeps the changes still pending on
  * top, and a failure drops only its own change, and the caller says why [D30].
  */
-export async function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
+export const setSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => saveShown(key, value, ["settings", key, String(value)]);
+
+/** Stars a model in the model picker, or takes its star off: shown at once, saved as `setSetting`. */
+export function setStar(provider: string, id: string, on: boolean): Promise<void> {
+  const model = `${provider}/${id}`;
+  const others = (getSettings()?.models_starred ?? []).filter((each) => each !== model);
+  return saveShown("models_starred", on ? [...others, model] : others, ["settings", "star", provider, id, on ? "on" : "off"]);
+}
+
+async function saveShown<K extends keyof Settings>(key: K, value: Settings[K], args: string[]): Promise<void> {
   const change = { key, value };
   pending.push(change);
   show();
-  const save = saving.then(() => run(["settings", key, String(value)]));
+  const save = saving.then(() => run(args));
   saving = save.catch(() => undefined);
   try {
     confirmed = (await save) as Settings;
