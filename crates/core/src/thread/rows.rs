@@ -401,7 +401,7 @@ impl Thread {
     }
 
     /// Adds a step's row under the open group, starting one when none is open.
-    fn step(&mut self, row: Value) -> usize {
+    pub(super) fn step(&mut self, row: Value) -> usize {
         let Some(o) = self.open.as_mut() else {
             return self.add(row);
         };

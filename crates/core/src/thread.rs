@@ -244,6 +244,7 @@ impl Thread {
                     if let Some(o) = self.open.as_mut() {
                         o.kept.push(at as u64 + 1);
                     }
+                    self.below_steer(at);
                 }
             }
         } else {

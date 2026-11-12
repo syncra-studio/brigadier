@@ -85,6 +85,36 @@ impl Thread {
         }
     }
 
+    /// A steer's bubble goes where the turn is now: its steps still running move below it, the
+    /// same tool's row under a new id [D78].
+    pub(super) fn below_steer(&mut self, steer: usize) {
+        let from = self.open.as_ref().map_or(steer, |o| o.from);
+        let running: Vec<usize> = (from..steer)
+            .filter(|&at| {
+                let row = &self.items[at];
+                row["progress"] == "running"
+                    && row["hidden"] != true
+                    && matches!(row["kind"].as_str(), Some("tool" | "fileChange"))
+            })
+            .collect();
+        for at in running {
+            let mut row = self.items[at].clone();
+            self.items[at]["hidden"] = true.into();
+            self.changed_items.insert(at);
+            for key in ["id", "n", "turnId"] {
+                row.as_object_mut().map(|o| o.remove(key));
+            }
+            let moved = self.step(row);
+            self.keys
+                .values_mut()
+                .filter(|v| **v == at)
+                .for_each(|v| *v = moved);
+            if let Some(g) = self.member.remove(&at) {
+                self.recount(g);
+            }
+        }
+    }
+
     pub(super) fn interrupted_line(&mut self) {
         if self.open.is_some() {
             self.kept_row(json!({"kind": "line", "reason": "interrupted"}));
