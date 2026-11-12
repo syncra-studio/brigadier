@@ -212,7 +212,7 @@ export function StartingBubble({ id }: { id: string }) {
       dated
       // Its files are still in Home's draft folder until the start moves them.
       owner={HOME_DRAFT}
-      parts={entry.args.includes("--parts") ? (JSON.parse(entry.args[entry.args.indexOf("--parts") + 1]!) as Draft).parts : undefined}
+      parts={entry.parts ? (JSON.parse(entry.parts) as Draft).parts : undefined}
       unconfirmed={entry.unknown}
       failed={entry.error}
       onRetry={entry.asking ? undefined : () => retry(id)}

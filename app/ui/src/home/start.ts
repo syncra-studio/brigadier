@@ -66,6 +66,8 @@ export type Starting = {
   cid: string;
   project: string | null;
   text: string;
+  /** The draft as Rust takes it, when it holds more than words. */
+  parts?: string;
   title: string;
   args: string[];
   sent: number;
@@ -136,7 +138,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (level) args.push("--level", level);
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
+  const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
