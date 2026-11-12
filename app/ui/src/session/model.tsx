@@ -72,11 +72,15 @@ function settle(id: string, op: string) {
   if (has()) done();
 }
 
-/** The divider a model pick leaves, drawn at once under the thread until Rust's row with its op takes its place [D76]. */
+/**
+ * The divider a model pick leaves, drawn at once under the thread until Rust's row with its op takes its place [D76]; one
+ * made mid-turn waits for that turn's end, where Rust draws it, never under its running steps.
+ */
 export function PendingModelLine({ id }: { id: string }) {
   const line = picks.use().get(id);
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
-  if (!line || session?.id !== id || session.items.some((item) => "op" in item && item.op === line.op)) return null;
+  if (!line || session?.id !== id || session.turns.some((turn) => turn.status === "running")) return null;
+  if (session.items.some((item) => "op" in item && item.op === line.op)) return null;
   return (
     <div className="pt-2">
       {line.agent ? (
