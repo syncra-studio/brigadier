@@ -438,6 +438,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),
             Some("stopped") => ("stopped", "Stopped".into()),
+            Some(_) if last["merged"] == true => ("merged", "Merged".into()),
             Some(_) if last["landed"] == false => ("doneNotMerged", "Done · not merged".into()),
             Some(_) => ("done", "Done".into()),
             None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),

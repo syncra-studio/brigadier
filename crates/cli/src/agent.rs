@@ -366,7 +366,7 @@ pub(crate) fn messages(data: &Path, id: &str) -> Vec<(String, String)> {
         "input" => all.push((
             match i["origin"].as_str().unwrap_or("user") {
                 o if o.starts_with("result:") => {
-                    format!("result from {}", o.rsplit(':').next().unwrap_or(""))
+                    format!("result from {}", o.split(':').nth(2).unwrap_or(""))
                 }
                 o if o.starts_with("peer:") => format!("message from {}", &o[5..]),
                 o => o.to_string(),

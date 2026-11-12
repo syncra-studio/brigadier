@@ -5,6 +5,7 @@ import { Chevron, DETAIL, ROW, TOGGLE } from "../components/thread/activity-row"
 import { cx } from "../components/cx";
 import { useKept } from "../thread/kept";
 import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
+import type { Merge } from "../thread/item";
 import { duration } from "../thread/words";
 import { Glyphs, lowerFirst, type Worker, WorkerName, WorkersPanel } from "./chip";
 
@@ -102,14 +103,23 @@ function verb(word: Lifecycle, workers: readonly Worker[], why: string | undefin
   }
 }
 
-/** What happened to workers, as one sentence; "started" opens to their Briefs. `why`: what a lone waiting one waits for. */
-export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly Worker[]; why?: string }> = ({ keep, word, workers, why }) => {
+/**
+ * What happened to workers, as one sentence; "started" opens to their Briefs. `why`: what a lone waiting one waits for;
+ * `merge`: whether a finished one merged its branch into its parent's [D97].
+ */
+export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly Worker[]; why?: string; merge?: Merge | null }> = ({ keep, word, workers, why, merge }) => {
   const line = (
     <>
       <Glyphs workers={workers} />
       {/* One line: a sentence too long for it truncates; its detail names every worker. */}
       <span className="min-w-0 truncate">
         <Names workers={workers} /> {verb(word, workers, why)}
+        {merge && (
+          <>
+            <span aria-hidden className="text-row-object"> · </span>
+            {merge.ok ? "Merged" : "Not merged"} into {merge.into}
+          </>
+        )}
       </span>
     </>
   );

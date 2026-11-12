@@ -243,7 +243,7 @@ export type Item = Base &
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }
     /** Workers in the parent's thread, from Rust's notes and results [D3009, D3010]: started (in one turn, merged), ended, Stop left running. */
-    | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[] }
+    | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[]; merge?: Merge | null }
     | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }
     | { kind: "team_step"; type: "paused" | "resumed"; workers: string[] }
     | { kind: "team_step"; type: "messaged"; byUser: boolean; workers: string[]; text?: string }
@@ -264,3 +264,6 @@ export type Item = Base &
   );
 
 export type Kind = Item["kind"];
+
+/** Whether a finished worker merged its branch back into its parent's, by Rust's result [D97]. */
+export type Merge = { into: string; ok: boolean };

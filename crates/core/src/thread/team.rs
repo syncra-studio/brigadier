@@ -47,14 +47,18 @@ impl Thread {
         }
     }
 
-    /// A result's input (`result:<how>:<worker>`): the sentence of how it ended, in its place.
+    /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>]`): the sentence
+    /// of how it ended and whether it merged back [D97], in its place.
     pub(super) fn team_result(&mut self, rest: &str) {
         let (how, wid) = rest.split_once(':').unwrap_or(("finished", rest));
+        let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
+        let merge =
+            (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));
         let word = match how {
             "finished" => "finished",
             "stopped" => "stopped",
             _ => "failed",
         };
-        self.kept_row(json!({"kind": "team", "word": word, "workers": [wid]}));
+        self.kept_row(json!({"kind": "team", "word": word, "workers": [wid], "merge": merge}));
     }
 }

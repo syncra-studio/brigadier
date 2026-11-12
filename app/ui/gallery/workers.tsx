@@ -184,6 +184,8 @@ export function WorkersGallery() {
             <TeamSentence keep="g-ts-w3" word="waiting" workers={[HELD, LIMIT]} />
             <TeamSentence keep="g-ts-s" word="stopped" workers={[STATES[7]!]} />
             <TeamSentence keep="g-ts-f" word="failed" workers={[STATES[6]!]} />
+            <TeamSentence keep="g-ts-m" word="finished" workers={[RETRY]} merge={{ into: "main", ok: true }} />
+            <TeamSentence keep="g-ts-nm" word="finished" workers={[PROGRESS]} merge={{ into: "main", ok: false }} />
             <TeamSentence keep="g-ts-d" word="finished" workers={[STATES[9]!, STATES[10]!]} />
           </Column>
         </Row>

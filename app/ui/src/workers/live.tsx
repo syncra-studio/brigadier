@@ -118,7 +118,7 @@ export function TeamRow({ item }: { item: TeamItem }) {
   const workers = useNamed(item.workers);
   const row =
     item.kind === "team" ? (
-      <TeamSentence keep={item.id} word={item.word} workers={workers} />
+      <TeamSentence keep={item.id} word={item.word} workers={workers} merge={item.merge} />
     ) : item.kind === "team_step" ? (
       <TeamStepRow
         keep={item.id}

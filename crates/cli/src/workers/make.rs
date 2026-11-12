@@ -21,9 +21,17 @@ use std::thread;
 static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
-fn fixed_line(parent: &str, pid: &str) -> String {
+/// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
+/// worktree, which merges itself back [D89, D97].
+fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>) -> String {
+    let land = match merge {
+        Some((to, branch, base)) => format!(
+            "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
+        ),
+        None => "Commit your work on your branch and don't merge it.".into(),
+    };
     format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. Commit your work on your branch and don't merge it. `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
+        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. {land} `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
 }
 
@@ -315,6 +323,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
     }
+    let mut branch = None;
     match &r.project {
         Some(p) => {
             let (_lock, all) = projects::locked(data)?;
@@ -323,6 +332,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 .filter(|x| !x.removing)
                 .ok_or_else(|| io::Error::other("Its project is gone or being removed."))?;
             core::worktrees::ensure(&spec, &project, false, r.base.as_deref(), &r.title)?;
+            branch = core::worktrees::branch(&dir)?;
         }
         None => fs::create_dir_all(&cwd)?,
     }
@@ -333,10 +343,12 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     let outcome = json!({"event": "outcome", "phase": "start", "asked": r.asked, "ran": ran,
         "parent": pid, "depth": r.depth});
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
+    let merge =
+        (branch.as_deref().zip(r.base.as_deref())).map(|(b, base)| (parent.cwd.as_str(), b, base));
     let text = format!(
         "{}\n\n{}",
         r.brief.trim_end(),
-        fixed_line(&core::share::title(&parent), pid)
+        fixed_line(&core::share::title(&parent), pid, merge)
     );
     if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
         return Err(io::Error::other("It was stopped before it started."));

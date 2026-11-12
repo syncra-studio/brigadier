@@ -42,6 +42,9 @@ struct Res {
     /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
     #[serde(default)]
     hop: u64,
+    /// `merged=<base>` or `unmerged=<base>` for a worker with commits of its own; else empty.
+    #[serde(default)]
+    merge: String,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -185,20 +188,36 @@ fn write(
     // Proposed: the extras past how it ended, its last message, branch and commits: the diff
     // stat, uncommitted files, the receipt and the `read` pointer [D3029].
     let (mut added, mut removed, mut commits) = (0u64, 0u64, 0usize);
+    let landed = core::worktrees::unlanded(&dir).ok().flatten().is_none();
+    // Its own commits since it began; merged once they're all in the parent's branch [D97].
+    let start = (core::worktrees::lands(&dir).ok().flatten()).map(|l| l.base_commit);
+    let made = start.as_ref().map_or(0, |c| {
+        let range = format!("{c}..HEAD");
+        git(&cwd, &["rev-list", "--count", &range]).map_or(0, |n| n.parse().unwrap_or(0))
+    });
+    let merged = landed && made > 0;
+    let mut merge = String::new();
     if let (Some(branch), Some(base)) = (&branch, &base) {
-        let range = format!("{base}..HEAD");
+        // Merged, its own commits are what it did; `base..HEAD` would be none.
+        let from = start.as_deref().filter(|_| merged).unwrap_or(base);
+        let range = format!("{from}..HEAD");
         let log = git_lines(&cwd, &["log", "--oneline", &range], 20);
-        commits = git(&cwd, &["rev-list", "--count", &range]).map_or(0, |n| n.parse().unwrap_or(0));
-        text += &format!("Its branch {branch}, from {base}: {commits} commits not in {base}\n");
+        let ahead = git(&cwd, &["rev-list", "--count", &format!("{base}..HEAD")]);
+        let ahead: usize = ahead.map_or(0, |n| n.parse().unwrap_or(0));
+        commits = if merged { made } else { ahead };
+        text += &match merged {
+            true => format!("Its branch {branch}, from {base}: {made} commits\n"),
+            false => format!("Its branch {branch}, from {base}: {ahead} commits not in {base}\n"),
+        };
         for line in &log {
             text += &format!("  {line}\n");
         }
         let stat =
-            git(&cwd, &["diff", "--shortstat", &format!("{base}...HEAD")]).unwrap_or_default();
+            git(&cwd, &["diff", "--shortstat", &format!("{from}...HEAD")]).unwrap_or_default();
         if !stat.trim().is_empty() {
             text += &format!("{}\n", stat.trim());
         }
-        let num = git(&cwd, &["diff", "--numstat", &format!("{base}...HEAD")]).unwrap_or_default();
+        let num = git(&cwd, &["diff", "--numstat", &format!("{from}...HEAD")]).unwrap_or_default();
         for line in num.lines() {
             let mut n = line
                 .split_whitespace()
@@ -212,6 +231,23 @@ fn write(
             for line in &dirty {
                 text += &format!("  {line}\n");
             }
+        }
+        if merged {
+            text += &format!("It merged into {base}.\n");
+            merge = format!("merged={base}");
+        } else if made > 0 {
+            let to = core::load(data, &l.parent)
+                .map(|p| p.cwd)
+                .unwrap_or_default();
+            let why = if git(&to, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_some() {
+                format!("{to} is mid-merge")
+            } else if !dirty.is_empty() {
+                "it left changes uncommitted".into()
+            } else {
+                format!("{ahead} commits {base} doesn't have")
+            };
+            text += &format!("Not merged into {base}: {why}.\n");
+            merge = format!("unmerged={base}");
         }
     }
     let ran = &l.ran;
@@ -232,9 +268,7 @@ fn write(
         }
         text += &format!("Its last message:\n{}\n", last.trim_end());
     }
-    text +=
-        &format!("\n`brigadier read {wid}` for more. Merge its branch with git once it's right.");
-    let landed = core::worktrees::unlanded(&dir).ok().flatten().is_none();
+    text += &format!("\n`brigadier read {wid}` for more.");
     let res = Res {
         id: format!("r{}", core::adapters::uuid()[..13].replace('-', "")),
         wid: wid.into(),
@@ -246,13 +280,14 @@ fn write(
         // it on purpose, and it would wake a parent the user just stopped [O3000].
         state: if how == "stopped" { "held" } else { "written" }.into(),
         hop: crate::peers::hop_of(data, wid, turn),
+        merge,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
     open(data, &l.parent);
     let link_path = dir.join("worker.json");
     if let Some(mut l) = read_json::<Link>(&link_path) {
-        l.last = json!({"how": how, "at": res.at, "landed": landed,
+        l.last = json!({"how": how, "at": res.at, "landed": landed, "merged": merged,
             "commits": commits, "added": added, "removed": removed});
         write_json(&link_path, &l)?;
         if spec.is_some() {
@@ -421,7 +456,10 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
         }
         owner::call(data, pid, req)
     };
-    let origin = format!("result:{}:{}", r.how, r.wid);
+    let mut origin = format!("result:{}:{}", r.how, r.wid);
+    if !r.merge.is_empty() {
+        origin += &format!(":{}", r.merge);
+    }
     super::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &r.text);
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.id) {
         r.state = "sent".into();
