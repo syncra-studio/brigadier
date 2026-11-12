@@ -87,6 +87,13 @@ function splitPath(path: string): { parent: string; name: string } {
   return { parent: trimmed.slice(0, cut), name: trimmed.slice(cut) };
 }
 
+/** A checked folder as a row of the list, if it can be one. */
+function rowOf(check: FolderCheck): Repo | null {
+  if (check.kind === "repo") return { path: check.repo, name: check.name, project_id: check.project_id };
+  if (check.kind === "plain") return { path: check.path, name: check.name, project_id: null, plain: true };
+  return null;
+}
+
 /** The title and its line; with `onBack`, a back arrow before them. The kit's ✕ sits in the corner. */
 export function Header({ title, line, onBack }: { title: string; line: string; onBack?: () => void }) {
   return (
@@ -144,6 +151,8 @@ function PickView({
   // A folder chosen (or opened with ⌘O), first in the list.
   const [chosen, setChosen] = useState<Repo | null>(null);
   const [query, setQuery] = useState("");
+  // A typed path checked as it stands, so a repository the scan skips (in ~/Documents) is found [D142].
+  const [typed, setTyped] = useState<{ path: string; row: Repo | null } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A folder git starts in.
@@ -181,11 +190,11 @@ function PickView({
           showProject(check.project_id);
           return;
         }
-        setChosen({ path: check.repo, name: check.name, project_id: null });
+        setChosen(rowOf(check));
         setSelected(check.repo);
         return;
       case "plain":
-        setChosen({ path: check.path, name: check.name, project_id: null, plain: true });
+        setChosen(rowOf(check));
         setSelected(check.path);
         return;
       case "missing": {
@@ -205,12 +214,23 @@ function PickView({
     if (initialPath) void takeInitial(initialPath);
   }, [initialPath]);
 
+  useEffect(() => {
+    const path = query.trim();
+    if (!/^[~/]/.test(path) || offline) return;
+    const timer = setTimeout(() => {
+      source.check(path).then((check) => setTyped({ path, row: rowOf(check) }), () => undefined);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [query, source, offline]);
+  const typedRow = typed?.path === query.trim() ? typed.row : null;
+
   const rows = useMemo(() => {
     const all = [...(chosen ? [chosen] : []), ...(repos ?? []).filter((repo) => repo.path !== chosen?.path)];
     const words = query.trim().toLowerCase();
     if (!words) return all;
-    return all.filter((row) => row.name.toLowerCase().includes(words) || shortPath(row.path).toLowerCase().includes(words));
-  }, [chosen, repos, query]);
+    const matched = all.filter((row) => row.path !== typedRow?.path && (row.name.toLowerCase().includes(words) || shortPath(row.path).toLowerCase().includes(words)));
+    return typedRow ? [typedRow, ...matched] : matched;
+  }, [chosen, repos, query, typedRow]);
   const pickable = rows.filter((row) => !row.project_id);
   // The row picked, else the first that can be.
   const current = pickable.find((row) => row.path === selected) ?? pickable[0] ?? null;
@@ -244,7 +264,12 @@ function PickView({
 
   const choose = () => {
     setError(null);
-    source.pick().then((picked) => (picked ? take(picked) : undefined), (cause: unknown) => setError(errorText(cause)));
+    // A repository chosen is added at once; a folder in none waits here, as adding it starts git there.
+    const addOrApply = (check: FolderCheck) => (check.kind === "repo" && !check.project_id ? add(rowOf(check)) : apply(check));
+    source
+      .pick()
+      .then((picked) => (picked ? source.check(picked).then(addOrApply) : undefined))
+      .catch((cause: unknown) => setError(errorText(cause)));
   };
 
   return (
