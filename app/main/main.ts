@@ -37,7 +37,8 @@ const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!
 app.setName(APP_NAME);
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 app.setPath("userData", path.join(dataDir, "chromium"));
-protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true } }]);
+// fetch: the reader reads a sent text file by its app: address [D2098].
+protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
 // older one, which may answer but refuse this app.
@@ -237,7 +238,8 @@ ipcMain.handle("save-attachment", async (event, at: string, name: string) => {
   const file = attachmentFile(at);
   if (!file) throw new Error("This file is no longer here");
   const window = BrowserWindow.fromWebContents(event.sender);
-  const named = path.extname(name) ? name : `${name}${path.extname(file)}`;
+  // A shown name ("Image #1", "photo.png (2)") keeps the file's own extension.
+  const named = name.toLowerCase().endsWith(path.extname(file).toLowerCase()) ? name : `${name}${path.extname(file)}`;
   const options = { title: "Download image", defaultPath: path.join(app.getPath("downloads"), path.basename(named)) };
   const picked = await (window ? dialog.showSaveDialog(window, options) : dialog.showSaveDialog(options));
   if (picked.canceled || !picked.filePath) return false;

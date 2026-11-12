@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Markdown } from "../thread/markdown";
 import { Dialog, DialogContent, DialogTitle } from "./dialog";
+import { ErrorLine } from "./error-line";
 import { showToast } from "./toast";
 
 /*
@@ -57,18 +58,22 @@ export function Reader({ reading, open, onOpenChange }: { reading: Reading | nul
 
 function ReaderBody({ reading: { url, markdown } }: { reading: Reading }) {
   const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
     void fetch(url)
-      .then((response) => (response.ok ? response.text() : ""))
-      .catch(() => "")
-      .then((body) => live && setText(body));
+      .then((response) => (response.ok ? response.text() : Promise.reject()))
+      .then(
+        (body) => live && setText(body),
+        () => live && setFailed(true),
+      );
     return () => {
       live = false;
     };
   }, [url]);
   return (
     <div data-slot="reader-body" className="min-h-0 overflow-y-auto select-text">
+      {failed && <ErrorLine size="sm" error="This file is no longer here." />}
       {text !== null && (markdown ? <Markdown text={text} keep={url} /> : <p className="whitespace-pre-wrap wrap-anywhere">{text}</p>)}
     </div>
   );

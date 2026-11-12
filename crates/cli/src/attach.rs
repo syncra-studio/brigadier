@@ -73,12 +73,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let dir = core::session_dir(data, owner);
                 // A sent image or paste is named as its message's text had it, "Image #2", "Pasted text #1",
                 // its numbers restarting per message, as the old card [D2098].
-                for turn in core::fold(&dir, true)
-                    .map(|f| f.fold.turns)
-                    .unwrap_or_default()
-                {
+                core::rewind::read_active(&dir, |item| {
+                    if item["kind"] != "input" {
+                        return;
+                    }
                     let mut count = (0, 0);
-                    for chip in turn.parts["parts"].as_array().into_iter().flatten() {
+                    for chip in item["parts"]["parts"].as_array().into_iter().flatten() {
                         let Some(id) = chip["attachmentId"].as_str() else {
                             continue;
                         };
@@ -95,7 +95,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         };
                         labels.entry(id.to_string()).or_insert(label);
                     }
-                }
+                })?;
                 folders.push((sent(&dir), true));
             }
             let mut files: Vec<(std::time::SystemTime, Value)> = vec![];
@@ -161,34 +161,31 @@ pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
         core::load(data, id)?;
         core::session_dir(data, id).join("draft")
     };
-    let saved = match args.get(2).map(String::as_str) {
+    match args.get(2).map(String::as_str) {
         None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),
-        Some("") => {
-            remove(&path)?;
-            Value::Null
-        }
-        Some(parts) => {
-            core::write_atomic(&path, parts.as_bytes())?;
-            serde_json::from_str(parts).unwrap_or_default()
-        }
-    };
-    // Home's files its draft no longer names go once a day old, as the old app's cleanup of files nothing
-    // refers to, at the next draft written: never at a send's emptying, whose take may still be on its way [D2098].
-    if id == HOME_DRAFT && !saved.is_null() {
-        let named = message::ids(&saved);
-        let day = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 60 * 60);
-        for entry in fs::read_dir(draft_of(data, id)?)
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let old = (entry.metadata().and_then(|m| m.modified())).is_ok_and(|at| at < day);
-            if old && !named.iter().any(|n| entry.file_name() == n.as_str()) {
-                let _ = fs::remove_dir_all(entry.path());
-            }
-        }
+        Some("") => remove(&path)?,
+        Some(parts) => core::write_atomic(&path, parts.as_bytes())?,
     }
     Ok(json!({"ok": true}))
+}
+
+/// Home's files its saved draft doesn't name, once a day old, as the old app's cleanup of files nothing refers to,
+/// run as it did when a session is deleted; the day leaves undo and a send still on its way alone [D2098].
+pub fn sweep_home(data: &Path) {
+    let saved: Value = (fs::read_to_string(data.join("home-draft")).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    let named = message::ids(&saved);
+    let day = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 60 * 60);
+    let Ok(home) = draft_of(data, HOME_DRAFT) else {
+        return;
+    };
+    for entry in fs::read_dir(home).into_iter().flatten().flatten() {
+        let old = (entry.metadata().and_then(|m| m.modified())).is_ok_and(|at| at < day);
+        if old && !named.iter().any(|n| entry.file_name() == n.as_str()) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 /// 8000 as "8,000".

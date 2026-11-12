@@ -118,8 +118,8 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
         }
     }
     // Home's draft became this session: what it held and didn't send goes with it [D2022 #18].
-    // A draft emptied without a send keeps its files until the next draft written finds them a day old (cli
-    // attach.rs `kept`); a tile's ✕ removes its own at once.
+    // A draft emptied without a send keeps its files until a session's delete finds them a day old (cli
+    // attach.rs `sweep_home`); a tile's ✕ removes its own at once.
     if from_home {
         let _ = fs::remove_file(data.join("home-draft"));
         let _ = fs::remove_dir_all(home(data));

@@ -34,22 +34,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             b => b.to_string(),
         };
         let mut listed = f.fold.commands.get(&backend).cloned();
-        // `reveal <name>`: a listed file outside the checkout shows in Finder, as the old app's file links [D2098].
-        if args.get(2).map(String::as_str) == Some("reveal") {
-            let name = arg(args, 3)?;
-            let path = (listed.iter().flat_map(|l| l.as_array()).flatten())
-                .find(|each| each["name"] == name)
-                .and_then(|each| each["path"].as_str())
-                .ok_or_else(|| io::Error::other(format!("/{name} has no file to show")))?;
-            let shown = std::process::Command::new("open")
-                .arg("-R")
-                .arg(path)
-                .status()?;
-            return match shown.success() {
-                true => Ok(json!({"ok": true})),
-                false => Err(io::Error::other(format!("Couldn't reveal {path}"))),
-            };
-        }
         // A file in the checkout opens in Files' viewer by its path there; one outside it keeps its whole path [D146].
         for each in (listed.iter_mut()).flat_map(|l| l.as_array_mut()).flatten() {
             let path = Path::new(each["path"].as_str().unwrap_or(""));
@@ -74,5 +58,22 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_else(|| json!([])),
     };
+    // `reveal <name>`: a listed file outside the checkout shows in Finder, as the old app's file links [D2098].
+    if args.get(2).map(String::as_str) == Some("reveal") {
+        let name = arg(args, 3)?;
+        let path = (commands.as_array().into_iter().flatten())
+            .find(|each| each["name"] == name)
+            .and_then(|each| each["path"].as_str())
+            .filter(|path| path.starts_with('/'))
+            .ok_or_else(|| io::Error::other(format!("/{name} has no file to show")))?;
+        let shown = std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .status()?;
+        return match shown.success() {
+            true => Ok(json!({"ok": true})),
+            false => Err(io::Error::other(format!("Couldn't reveal {path}"))),
+        };
+    }
     Ok(json!({"ok": true, "commands": commands}))
 }

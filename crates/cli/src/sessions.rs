@@ -57,6 +57,7 @@ fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     core::git::recover::settled(data, id)?;
     stop(data, id, by)?;
     let f = core::fold(&spec.dir, false)?;
+    crate::attach::sweep_home(data);
     Ok(session::delete(&spec, &f.fold, drop))
 }
 
