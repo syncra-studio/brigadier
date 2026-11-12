@@ -77,7 +77,7 @@ fn written(
     written_for(data, &spec, &f, &_active, chosen.as_ref(), prompt)
 }
 
-fn written_for(
+pub(crate) fn written_for(
     data: &Path,
     spec: &Spec,
     f: &Fold,

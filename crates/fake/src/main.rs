@@ -5,6 +5,7 @@
 
 mod control;
 mod directives;
+mod feedback;
 
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -178,6 +179,10 @@ impl Agent {
             emit(json!({"t": "fail", "message": "The fake writer was told to fail."}));
             return emit(json!({"t": "done", "ok": false}));
         }
+        if feedback::asked(text) {
+            self.say(&feedback::reply(text));
+            return emit(json!({"t": "done"}));
+        }
         let files: Vec<&str> = (text.lines())
             .filter_map(|l| l.strip_prefix("diff --git a/")?.split(" b/").next())
             .take(3)
@@ -194,6 +199,9 @@ impl Agent {
     }
 
     fn handle(&mut self, text: &str) {
+        if feedback::asked(text) {
+            return self.write(text);
+        }
         if text.starts_with("Write the ")
             && text
                 .lines()

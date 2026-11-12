@@ -189,7 +189,7 @@ pub fn home(session: &Path) -> PathBuf {
 }
 
 /// The lock a writer run holds shared and a delete takes whole.
-fn writing(session: &Path) -> std::io::Result<fs::File> {
+pub fn writing(session: &Path) -> std::io::Result<fs::File> {
     OpenOptions::new()
         .create(true)
         .truncate(false)

@@ -11,6 +11,7 @@ import { RailGallery } from "./rail";
 import { TabsGallery } from "./tabs";
 import { AidsGallery } from "./aids";
 import { DecisionsGallery } from "./decisions";
+import { FeedbackGallery } from "./feedback";
 import { FilesGallery } from "./files";
 import { RewindGallery } from "./rewind";
 import { ForkGallery } from "./fork";
@@ -104,6 +105,7 @@ function GalleryPage() {
               <ProjectsGallery />
               <ProjectSettingsGallery />
               <ArchiveGallery />
+              <FeedbackGallery />
               <SidebarGallery />
               <PaletteGallery />
               <SessionGallery />
