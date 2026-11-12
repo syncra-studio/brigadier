@@ -19,6 +19,8 @@ pub(super) struct State {
     pub(super) session: String,
     /// Tool calls by session/message/call id: their name and input, which later events lack.
     tools: HashMap<String, Value>,
+    /// Its subagents' sessions → the tool call that runs each, so their asks name it.
+    children: HashMap<String, String>,
     /// Requests waiting on the user that were printed: permission id → its ask; question form ids.
     pub(super) asked: HashMap<String, Value>,
     forms: HashSet<String>,
@@ -255,10 +257,13 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
             drop(st);
             return allow(server, &d);
         }
-        "permission.asked" => drop(
-            st.asked
-                .insert(d["id"].as_str().unwrap_or("").into(), d.clone()),
-        ),
+        "permission.asked" => {
+            let id = d["id"].as_str().unwrap_or("").to_string();
+            if let Some(call) = (d["sessionID"].as_str()).and_then(|c| st.children.get(c)) {
+                v["data"]["parent"] = call.as_str().into();
+            }
+            st.asked.insert(id, v["data"].clone());
+        }
         "permission.replied" => {
             let id = d["requestID"].as_str().unwrap_or("");
             st.asked.remove(id);
@@ -293,6 +298,12 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                     format!("{key}:called")
                 }
                 "session.tool.success" | "session.tool.failed" => format!("{key}:ended"),
+                "session.tool.progress" => {
+                    if let Some(child) = d["metadata"]["sessionID"].as_str() {
+                        st.children.insert(child.into(), key.clone());
+                    }
+                    String::new()
+                }
                 "session.text.ended" | "session.reasoning.ended" => {
                     format!("{k}:{msg}:{}", d["ordinal"])
                 }

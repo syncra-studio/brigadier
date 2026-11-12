@@ -155,6 +155,9 @@ fn approval(d: &Value) -> Event {
         .collect();
     let mut a = json!({"id": d["id"], "action": "other", "reason": d["message"],
                        "cli": {"session": d["sessionID"], "action": action, "save": save}});
+    if let Some(call) = d["parent"].as_str() {
+        a["parent"] = call.into();
+    }
     let source = &d["source"];
     if source["type"] == "tool" {
         a["tool"] = format!(

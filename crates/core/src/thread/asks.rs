@@ -9,6 +9,7 @@ impl Thread {
     /// [D99], and its turn's wait starts [D77].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64) {
         self.approval_tool(at, true);
+        self.agent_waits(at, true);
         self.pending.push(at);
         self.pending_changed = true;
         if let Some(o) = self.open.as_mut() {
@@ -25,7 +26,35 @@ impl Thread {
     pub(super) fn unwait(&mut self, id: &str) -> Option<usize> {
         let k = (self.pending.iter()).position(|&at| self.items[at]["request"]["id"] == id)?;
         self.pending_changed = true;
-        Some(self.pending.remove(k))
+        let at = self.pending.remove(k);
+        self.agent_waits(at, false);
+        Some(at)
+    }
+
+    /// A subagent waits on the user while a request for it, or one it asks (`parent` names its
+    /// call), waits; then it works on.
+    fn agent_waits(&mut self, at: usize, waits: bool) {
+        let row = &self.items[at];
+        let r = &row["request"];
+        let Some(id) = r["parent"].as_str().or(r["tool"].as_str()) else {
+            return;
+        };
+        let turn = row["turnId"].as_str().unwrap_or("");
+        let Some(a) = self
+            .row_of(turn, id)
+            .filter(|&a| self.items[a]["kind"] == "childAgent")
+        else {
+            return;
+        };
+        let (from, to) = if waits {
+            ("running", "pending")
+        } else {
+            ("pending", "running")
+        };
+        if self.items[a]["progress"] == from {
+            self.items[a]["progress"] = to.into();
+            self.changed_items.insert(a);
+        }
     }
 
     pub(super) fn unwait_row(&mut self, at: usize) {

@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 impl Thread {
     /// A tool's row by id: in this turn, or a subagent still running from an earlier one.
-    fn row_of(&self, turn: &str, id: &str) -> Option<usize> {
+    pub(super) fn row_of(&self, turn: &str, id: &str) -> Option<usize> {
         let found = self.keys.get(&(turn.to_string(), id.to_string()));
         found.or_else(|| self.children.get(id)).copied()
     }
