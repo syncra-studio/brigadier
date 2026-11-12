@@ -168,7 +168,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const data = rows;
   const drawnData = useRef(data);
 
-  const running = turnList?.at(-1)?.status === "running";
+  const running = turnList?.at(-1)?.status === "running" && !turnList.at(-1)?.quiet;
   const agent = useAgentLabel(turnList?.at(-1)?.backend);
   // Said once a turn ran here, not for one that ended before the view opened.
   const ran = useRef(false);

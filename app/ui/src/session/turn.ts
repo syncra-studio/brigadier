@@ -35,7 +35,7 @@ export function useMark(row: SessionRow, active: boolean): Mark {
   const turn = useSyncExternalStore(threadSource.subscribe, () => {
     if (!active) return undefined;
     const turn = newest(row.id, threadSource);
-    return turn && (turn.status === "running" || turn.held ? "running" : "ended");
+    return turn && !turn.quiet ? (turn.status === "running" || turn.held ? "running" : "ended") : undefined;
   });
   const sending = useSending(row.id);
   if (!active) return row.mark;

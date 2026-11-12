@@ -229,6 +229,9 @@ impl Index {
             let status = fold::status(&f.fold, &live);
             let (state, reason) = match &e.error {
                 Some(_) => ("error".into(), Value::Null),
+                None if fold::quiet(&f.fold, status["state"].as_str().unwrap_or("")) => {
+                    ("idle".into(), Value::Null)
+                }
                 None => (status["state"].clone(), status["reason"].clone()),
             };
             let at = touched(&dir);

@@ -74,6 +74,10 @@ pub struct Turn {
     /// It did something new: an edit, a command or reply text, the rebirth guard's progress [D144].
     #[serde(default)]
     pub moved: bool,
+    /// Its parent's turn woken by a worker's ask, till the user's own words join it: the user never
+    /// sees it, so it leaves no mark, unread or notice [D119].
+    #[serde(default)]
+    pub quiet: bool,
 }
 
 /// The paths a FileChange list names.
@@ -134,7 +138,9 @@ impl Fold {
                 outcome
             });
             self.turns.remove(0);
-            self.finished = ts;
+            if !turn.quiet {
+                self.finished = ts;
+            }
             // Only an agent whose process lives on keeps its subagents past its turn.
             if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
             {
@@ -146,7 +152,7 @@ impl Fold {
                 self.windows.push((turn.first_tool, ts));
             }
             self.last = Some(
-                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts,
+                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),

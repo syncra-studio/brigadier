@@ -173,7 +173,7 @@ impl Thread {
         let at = self.turns.len();
         self.turns.push(
             json!({"id": t.id, "status": "running", "startedAt": ts, "endedAt": null,
-            "backend": t.backend, "waitingSince": null, "waitedMs": 0}),
+            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": t.quiet}),
         );
         self.changed_turns.insert(at);
         self.open = Some(Open {
@@ -193,7 +193,7 @@ impl Thread {
             kept: vec![],
             denied: 0,
             stop: (None, false),
-            quiet: t.origin.starts_with("result:asks:"),
+            quiet: t.quiet,
         });
     }
 
@@ -202,7 +202,11 @@ impl Thread {
         if let Some(o) = self.open.as_mut().filter(|o| o.quiet) {
             match row["kind"].as_str() {
                 Some("approval" | "question") => {}
-                Some("message") if row["origin"] == "user" => o.quiet = false,
+                Some("message") if row["origin"] == "user" => {
+                    o.quiet = false;
+                    self.turns[o.at]["quiet"] = false.into();
+                    self.changed_turns.insert(o.at);
+                }
                 _ => row["hidden"] = true.into(),
             }
         }

@@ -104,7 +104,14 @@ impl Fold {
             Some("retune") => true,
             Some("stop_task") => true,
             // A steer joins the turn that runs; with none running it is a message like any other.
-            _ => item["steer"] == true && self.turns.first().is_some_and(|t| t.began),
+            _ => {
+                let t = self.turns.first_mut().filter(|t| t.began);
+                let joins = item["steer"] == true && t.is_some();
+                if let Some(t) = t.filter(|_| joins && item["origin"] == "user") {
+                    t.quiet = false;
+                }
+                joins
+            }
         }
     }
 

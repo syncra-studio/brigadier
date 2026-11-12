@@ -111,6 +111,7 @@ impl Fold {
             switch: item["switch"].clone(),
             ts,
             spawning: item["starts_child"] == true,
+            quiet: str_of("origin").starts_with("result:asks:"),
             ..Default::default()
         });
     }

@@ -63,6 +63,8 @@ export type Turn = {
   held?: boolean;
   /** When those subagents last did anything (ms); past 30 minutes of quiet, the block offers Stop. */
   heardAt?: number;
+  /** Its parent's turn handling a worker's ask: hidden whole, it shows nothing running [D119]. */
+  quiet?: boolean;
 };
 
 /** What a step of work did, provider-neutral. */

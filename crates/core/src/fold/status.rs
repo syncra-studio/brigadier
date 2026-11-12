@@ -91,6 +91,7 @@ const SWITCH_GRACE_MS: u64 = 10_000;
 /// session's limit or refused resume on [D51], so it spins while that switch is on its way.
 pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static str> {
     let (state, _) = state(fold, live);
+    let state = if quiet(fold, state) { "idle" } else { state };
     let ended = fold
         .last
         .as_ref()
@@ -118,6 +119,15 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         _ if fold.finished > seen => Some("unread"),
         _ => None,
     }
+}
+
+/// Whether a quiet turn runs, its parent handling a worker's ask: it shows as idle [D119].
+pub fn quiet(fold: &Fold, state: &str) -> bool {
+    fold.turns.first().is_some_and(|t| t.quiet)
+        && matches!(
+            state,
+            "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking"
+        )
 }
 
 /// What a row has to tell the user once, as a notice [D200, D2004]: it needs them (a question, an
@@ -150,6 +160,10 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         // record written later names the same turn, so it doesn't tell twice.
         "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
         _ if turn.is_some() || fold.finished == 0 => return None,
+        // A quiet turn's end is no news [D119].
+        "idle" | "idle_jobs" if fold.last.as_ref().is_some_and(|l| l["quiet"] == true) => {
+            return None;
+        }
         "idle" | "idle_jobs" => ("done", ended(fold), None),
         "failed" | "interrupted" | "limited" | "out_of_credits" | "unresumable" => (
             "failed",
