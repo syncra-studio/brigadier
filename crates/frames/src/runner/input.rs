@@ -13,9 +13,13 @@ impl Runner {
     pub(super) fn intent(&self, req: &Value) -> Option<Value> {
         let cid = req["cid"].as_str()?;
         let origin = req["origin"].as_str().unwrap_or("");
-        // A worker's result names it and how it ended: `result:<how>:<worker>` [D3006].
-        if origin != "user" && origin != "system" && !origin.starts_with("result:") {
-            return Some(fail("origin must be user, system or a worker's result"));
+        // A worker's result names it and how it ended: `result:<how>:<worker>` [D3006]; another
+        // session's message names its sender: `peer:<id>` [D2034].
+        let named = origin.starts_with("result:") || origin.starts_with("peer:");
+        if origin != "user" && origin != "system" && !named {
+            return Some(fail(
+                "origin must be user, system, a worker's result or another session",
+            ));
         }
         let mut cids = self.cids.lock().unwrap();
         if let Some(&delivered) = cids.get(cid) {

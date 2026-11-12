@@ -346,7 +346,8 @@ pub(super) fn say_result(
     origin: &str,
     text: &str,
 ) -> Value {
-    core::send(spec, f, child, call, id, origin, text, None, None)
+    let msg = core::message::Message::plain(text);
+    core::send(spec, f, child, call, id, origin, &msg, None, None)
 }
 
 /// Whether any of `ids` is being made in this daemon now.

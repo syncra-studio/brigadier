@@ -70,7 +70,9 @@ pub(crate) fn deliver(
             req["ack"] = true.into();
         }
         req["op"] = "input".into();
-        req["origin"] = "user".into();
+        if req["origin"].is_null() {
+            req["origin"] = "user".into();
+        }
         req["backend"] = backend.into();
         req["bytes"] = bytes.into();
         req["spawn"] = ping["spawn"].clone();
@@ -173,11 +175,23 @@ pub fn steer(
     parts: &Value,
     cid: Option<&str>,
 ) -> io::Result<Value> {
+    steer_as(data, id, text, parts, cid, "user")
+}
+
+/// The same from `origin`: the user, or another session's `peer:<id>` [D2034].
+pub fn steer_as(
+    data: &Path,
+    id: &str,
+    text: &str,
+    parts: &Value,
+    cid: Option<&str>,
+    origin: &str,
+) -> io::Result<Value> {
     let cid = cid.map_or_else(new_cid, String::from);
     let spec = core::load(data, id)?;
     core::message::take(data, &spec.dir, parts, None)?;
     let msg = core::message::compose(&spec, text, parts.clone())?;
-    let mut req = json!({"cid": cid, "text": text, "steer": true});
+    let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
     if !parts.is_null() {
         req["parts"] = msg.parts;
     }

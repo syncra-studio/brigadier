@@ -13,6 +13,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 mod asks;
 mod find;
 mod page;
+mod peer;
 mod rows;
 mod saved;
 mod team;
@@ -185,7 +186,10 @@ impl Thread {
         } else if kind == "input" {
             // A joined input (a steer) keeps the running turn and adds no queued turn: its bubble
             // shows in that turn, after the answer it joined.
-            if item["origin"] == "user"
+            let peer = item["origin"]
+                .as_str()
+                .and_then(|o| o.strip_prefix("peer:"));
+            if (item["origin"] == "user" || peer.is_some())
                 && before.len() == self.fold.turns.len()
                 && before
                     .first()
@@ -199,11 +203,15 @@ impl Thread {
                 }
                 if item["steer"] == true {
                     self.break_group();
-                    let at = self.add(
-                        json!({"kind": "message", "role": "user", "text": item["text"],
+                    let mut row = json!({"kind": "message", "role": "user", "text": item["text"],
                         "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
-                        "steer": true, "files": item["parts"]["files"], "draft": item["parts"]}),
-                    );
+                        "files": item["parts"]["files"], "draft": item["parts"]});
+                    if let Some(from) = peer {
+                        let text = item["text"].as_str().unwrap_or("");
+                        row = Self::peer_item(from, text, ts, &item["cid"]);
+                    }
+                    row["steer"] = true.into();
+                    let at = self.add(row);
                     // The user's own words stay out of the work fold, like a question [D99].
                     if let Some(o) = self.open.as_mut() {
                         o.kept.push(at as u64 + 1);

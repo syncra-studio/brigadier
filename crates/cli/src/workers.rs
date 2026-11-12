@@ -11,6 +11,7 @@ mod result;
 pub use family::{delete, unlanded};
 pub use make::start;
 pub use result::{deliver, take};
+pub(crate) use result::{hop as result_hop, last_of_turn, settled};
 
 use crate::{arg, owner, queue, settings};
 use brigadier_core::{self as core};

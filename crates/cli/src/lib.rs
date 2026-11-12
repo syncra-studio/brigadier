@@ -20,6 +20,7 @@ pub mod mention;
 mod models;
 pub mod owner;
 mod panel;
+pub mod peers;
 pub mod queue;
 mod rename;
 pub mod rewind;
@@ -307,6 +308,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "stop" => queue::stop(data, arg(args, 1)?).inspect(|_| workers::still(data, &args[1])),
         "workers" => workers::run(data, args),
+        "peers" => peers::run(data, args),
         "rewind" => rewind::run(data, args),
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),

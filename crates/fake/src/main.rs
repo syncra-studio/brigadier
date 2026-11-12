@@ -210,10 +210,15 @@ impl Agent {
         {
             return self.write(text);
         }
-        let first = text.split_whitespace().next().unwrap_or("");
+        // Another session's message: the line Brigadier puts first is prose, not directives.
+        let body = (text
+            .strip_prefix("[From session ")
+            .and_then(|r| r.split_once("]\n\n")))
+        .map_or(text, |(_, body)| body);
+        let first = body.split_whitespace().next().unwrap_or("");
         ledger(&format!("recv {} {first}", self.sid));
         self.note(&format!("recv {text}"));
-        let words: Vec<&str> = text.split_whitespace().collect();
+        let words: Vec<&str> = body.split_whitespace().collect();
         // An answer goes on with the waiting turn, acting out its own directives.
         if self.waiting {
             self.waiting = false;

@@ -166,9 +166,15 @@ impl Adapter for Claude {
         }
         // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
         argv.extend(["--append-system-prompt".into(), crate::agent::standing()]);
+        // Its own messages between sessions off, so every one goes through Brigadier and shows in
+        // the thread [D2035]: none come in, and it can't list the others. Proposed: `SendMessage`
+        // stays, as its subagents need it (D3016), so it could still reach a session outside
+        // Brigadier by name [O3001].
         argv.extend([
             "--settings".into(),
-            r#"{"attribution":{"commit":"","pr":""}}"#.into(),
+            r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
+            "--disallowedTools".into(),
+            "ListAgents".into(),
         ]);
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);

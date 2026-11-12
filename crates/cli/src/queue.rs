@@ -38,6 +38,9 @@ struct Item {
     /// Why the drain couldn't send it: it stays first, and the queue waits on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Another session's message, `peer:<id>` [D2034]: never the user's. None is the user's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -47,6 +50,8 @@ struct Editing {
     #[serde(default, skip_serializing_if = "Value::is_null")]
     parts: Value,
     slot: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
 }
 
 fn read(dir: &Path) -> io::Result<Queue> {
@@ -122,6 +127,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let at = flag(args, "--at").and_then(|n| n.parse().ok());
             let parts = crate::parts(args)?;
             core::message::take(data, &dir, &parts, None)?;
+            // Only another session's message names its sender; anything else is the user's [D2034].
+            let origin = flag(args, "--origin").map(String::from);
+            if origin.as_ref().is_some_and(|o| !o.starts_with("peer:")) {
+                return Err(io::Error::other("--origin takes only peer:<id>"));
+            }
             change(&dir, |q| {
                 // Sending an edited message puts it back: the edit is over.
                 if q.editing.as_ref().is_some_and(|e| e.id == qid) {
@@ -133,6 +143,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     parts,
                     at: brigadier_frames::log::now_ms(),
                     error: None,
+                    origin,
                 };
                 // The same id again (a retry) replaces it in place.
                 match q.items.iter_mut().find(|i| i.id == qid) {
@@ -178,6 +189,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     text: item.text,
                     parts: item.parts,
                     slot,
+                    origin: item.origin,
                 });
                 Ok(())
             })?;
@@ -195,12 +207,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     .iter()
                     .find(|i| i.id == qid)
                     .ok_or_else(|| missing(&qid))?;
-                let reply = control::steer(
+                let origin = item.origin.as_deref().unwrap_or("user");
+                let reply = control::steer_as(
                     data,
                     id,
                     &item.text.clone(),
                     &item.parts.clone(),
                     Some(&qid),
+                    origin,
                 )?;
                 let went = went(&dir, &reply, &qid);
                 if went {
@@ -241,6 +255,46 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "at": index::touched(&dir)}))
 }
 
+/// Another session's message [D2034]: under the queue's lock, a repeat of its id (queued, being
+/// edited or in the log) is dropped; else `first` records it and may take it itself (a steer),
+/// told whether anything waits; else it goes last, as its sender's. Says which happened.
+pub fn add_peer(
+    dir: &Path,
+    mid: &str,
+    origin: &str,
+    text: &str,
+    first: impl FnOnce(bool) -> io::Result<bool>,
+) -> io::Result<&'static str> {
+    change(dir, |q| {
+        let known = q.items.iter().any(|i| i.id == mid)
+            || q.editing.as_ref().is_some_and(|e| e.id == mid)
+            || core::fold(dir, true)?.fold.cids.contains_key(mid);
+        if known {
+            return Ok("repeat");
+        }
+        if first(!q.items.is_empty() || q.editing.is_some())? {
+            return Ok("steered");
+        }
+        q.items.push(Item {
+            id: mid.into(),
+            text: text.into(),
+            parts: Value::Null,
+            at: brigadier_frames::log::now_ms(),
+            error: None,
+            origin: Some(origin.into()),
+        });
+        q.paused |= q.stopping;
+        Ok("queued")
+    })
+}
+
+/// Whether `mid` waits in the queue, or is being edited there.
+pub fn pending(dir: &Path, mid: &str) -> bool {
+    read(dir).is_ok_and(|q| {
+        q.items.iter().any(|i| i.id == mid) || q.editing.as_ref().is_some_and(|e| e.id == mid)
+    })
+}
+
 /// The message being edited goes back to its place, unchanged.
 fn restore(q: &mut Queue) {
     if let Some(e) = q.editing.take() {
@@ -252,6 +306,7 @@ fn restore(q: &mut Queue) {
             parts: e.parts,
             at,
             error: None,
+            origin: e.origin,
         };
         q.items.insert(slot, item);
     }
@@ -371,7 +426,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             child,
             &call,
             &item.id,
-            "user",
+            item.origin.as_deref().unwrap_or("user"),
             &core::message::compose(&spec, &item.text, item.parts.clone())?,
             None,
             None,

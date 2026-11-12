@@ -39,6 +39,9 @@ struct Res {
     /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, not sent,
     /// proposed) | taken (by the parent's own `wait`) | dropped (its family is being deleted)
     state: String,
+    /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
+    #[serde(default)]
+    hop: u64,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -199,13 +202,7 @@ fn write(
         .collect();
     text += &format!("Ran on {}.\n", ran.join(" · "));
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
-    let mut thread = core::thread::Thread::default();
-    let _ = core::rewind::read_active(&dir, |i| thread.push(i));
-    let items = thread.session(wid, "", None, None)["items"].take();
-    let last = (items.as_array().into_iter().flatten().rev())
-        .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
-        .and_then(|i| i["text"].as_str().map(String::from));
-    if let Some(mut last) = last {
+    if let Some(mut last) = last_of_turn(data, wid, turn) {
         if last.len() > LAST {
             let mut at = LAST;
             while !last.is_char_boundary(at) {
@@ -229,6 +226,7 @@ fn write(
         // Proposed: a stopped task's result is kept, never sent: its parent or the user stopped
         // it on purpose, and it would wake a parent the user just stopped [O3000].
         state: if how == "stopped" { "held" } else { "written" }.into(),
+        hop: crate::peers::hop_of(data, wid, turn),
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
@@ -246,15 +244,36 @@ fn write(
     Ok(())
 }
 
+/// A turn's own last message, by the turn's stable id.
+pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
+    let mut thread = core::thread::Thread::default();
+    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| thread.push(i));
+    let items = thread.session(id, "", None, None)["items"].take();
+    (items.as_array().into_iter().flatten().rev())
+        .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
+        .and_then(|i| i["text"].as_str().map(String::from))
+}
+
+/// The hop a result carries, by its command id in the parent.
+pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
+    all(data, pid)
+        .into_iter()
+        .find(|(_, r)| r.id == id)
+        .map(|(_, r)| r.hop)
+}
+
 /// The parent's own `wait` on its worker takes the result it returns, so it isn't sent again; any
 /// other session's wait never does [D3034]. Its text, when there's one to take.
-pub fn take(data: &Path, me: &str, wid: &str) -> Option<String> {
+/// `turn` names the exact report turn waited on (a `send --wait`); none takes its latest. Taken
+/// under the parent's queue lock, which a delivery holds while it sends [D3006, D3034].
+pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<String> {
     let l = link(data, wid).filter(|l| l.parent == me)?;
     let _ = write_ended(data, wid);
+    let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
     let (path, mut res) = all(data, &l.parent)
         .into_iter()
         .rev()
-        .find(|(_, r)| r.wid == wid && r.state == "written")?;
+        .find(|(_, r)| r.wid == wid && r.state == "written" && turn.is_none_or(|t| r.turn == t))?;
     res.state = "taken".into();
     write_json(&path, &res).ok()?;
     Some(res.text)
@@ -302,6 +321,23 @@ fn has_sent(data: &Path, pid: &str) -> bool {
     all(data, pid).iter().any(|(_, r)| r.state == "sent")
 }
 
+/// How an input logged under `id` came out, by the session's fold and state; none while open.
+pub(crate) fn settled(f: &fold::Fold, id: &str, state: &str) -> Option<&'static str> {
+    let turn = f.turns.iter().find(|t| t.id == id);
+    let last = f.last.as_ref().filter(|l| l["id"] == id);
+    Some(match (turn, last) {
+        (Some(t), _) if t.delivered.is_some() => "delivered",
+        // The agent may have taken it or not: shown, never sent again by itself [D54, D82].
+        (Some(_), _) if matches!(state, "uncertain" | "undelivered" | "interrupted") => "uncertain",
+        (Some(_), _) => return None,
+        (None, Some(l)) if l["delivered"] == true => "delivered",
+        (None, Some(_)) => "uncertain",
+        // shortcut: its turn ended and a later one followed, so the fold no longer holds it;
+        // it counts as delivered. Upgrade when the fold keeps each turn's delivery.
+        (None, None) => "delivered",
+    })
+}
+
 /// Moves a parent's results on: a sent one settles by the parent's log, then the oldest written
 /// one is sent. A parent with none left open leaves the set.
 fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
@@ -316,22 +352,10 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
     }
     let f = core::fold(&dir, true)?.fold;
     for (path, mut r) in results.iter().filter(|(_, r)| r.state == "sent").cloned() {
-        let turn = f.turns.iter().find(|t| t.id == r.id);
-        let last = f.last.as_ref().filter(|l| l["id"] == r.id.as_str());
-        r.state = match (turn, last) {
-            (Some(t), _) if t.delivered.is_some() => "delivered",
-            // The agent may have taken it or not: shown, never sent again by itself [D54, D82].
-            (Some(_), _) if matches!(state, "uncertain" | "undelivered" | "interrupted") => {
-                "uncertain"
-            }
-            (Some(_), _) => continue,
-            (None, Some(l)) if l["delivered"] == true => "delivered",
-            (None, Some(_)) => "uncertain",
-            // shortcut: its turn ended and a later one followed, so the fold no longer holds it;
-            // it counts as delivered. Upgrade when the fold keeps each turn's delivery.
-            (None, None) => "delivered",
-        }
-        .into();
+        let Some(state) = settled(&f, &r.id, state) else {
+            continue;
+        };
+        r.state = state.into();
         write_json(&path, &r)?;
     }
     let next = all(data, pid)
@@ -348,7 +372,8 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
     }
     // Under the parent's queue lock: the user's queued messages go first.
     let (_lock, waiting) = queue::hold(&dir)?;
-    if waiting {
+    // A wait may have taken it since it was read.
+    if waiting || read_json::<Res>(&path).is_none_or(|now| now.state != "written") {
         return Ok(());
     }
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.id) {

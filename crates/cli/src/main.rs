@@ -71,9 +71,14 @@ fn agent_call(data: &Path, args: &[String]) -> Option<Value> {
     // A wait's own timeout ends it first; this only bounds a daemon that stopped answering.
     let _ = conn.set_timeout(Some(Duration::from_secs(660)));
     let reply = conn.call(&json!({"id": 2, "op": "agent", "args": args}));
-    Some(reply.unwrap_or_else(
-        |e| json!({"ok": false, "error": format!("Brigadier stopped answering: {e}")}),
-    ))
+    Some(reply.unwrap_or_else(|e| match args.first().map(String::as_str) {
+        // Its record may be written: the daemon delivers it once when it's back [D2034].
+        Some("send") => {
+            let to = args.get(1).map_or("it", String::as_str);
+            json!({"ok": false, "error": format!("Brigadier stopped while sending. Your message may already be on its way. Check with `brigadier read {to}` before sending it again.")})
+        }
+        _ => json!({"ok": false, "error": format!("Brigadier stopped answering: {e}")}),
+    }))
 }
 
 /// With no daemon to ask, only a caller the kernel shows outside every session of this data

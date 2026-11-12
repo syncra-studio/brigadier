@@ -3,7 +3,7 @@
 //! approving `brigadier` is always safe: no command here runs a program, changes a session or
 //! prints a secret. Every wait has a timeout, and every reply is capped with a hint to read less.
 
-use crate::{models, workers};
+use crate::{models, peers, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -20,6 +20,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
 
   brigadier sessions          the sessions, newest first
   brigadier read <id>         a session's last messages; --user for only the user's own words
+  brigadier send <id> \"…\"    message another session; --wait for its answer
   brigadier wait <id>         wait until a session stops working, up to a timeout
   brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
@@ -47,6 +48,18 @@ fn spec(
             "brigadier read <id> [--last N] [--user] [--json]\n\nA session's last N messages (10 by default), the user's and its agent's, oldest first. --user keeps only the user's own words. Long output is cut from the oldest; --last reads fewer.",
             &["--last"],
             &["--user"],
+        ),
+        "send" => (
+            "brigadier send <id> \"<message>\" [--wait] [--timeout S] [--json]
+
+Sends another session a message. It shows in both threads as from you, never as its user, and can't
+approve anything there. A busy session gets it after its turn, or in it where its user lets messages
+steer. --wait waits for the end of the turn that takes it and prints that turn's last message, giving
+up after S seconds (60 by default, at most 600). Without --wait, its answer comes only if it sends one.
+A back-and-forth between sessions stops after 8 hops, and a session after 20 messages a minute; only
+the user can let a stopped message through. Batch what you have to say into one message.",
+            &["--timeout"],
+            &["--wait"],
         ),
         "wait" => (
             "brigadier wait <id> [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
@@ -94,6 +107,8 @@ fn refuse(message: &str) -> Value {
 struct Call<'a> {
     cmd: &'a str,
     id: Option<&'a str>,
+    /// `send`'s message, after its id.
+    text: Option<&'a str>,
     values: Vec<(&'a str, &'a str)>,
     flags: Vec<&'a str>,
 }
@@ -130,6 +145,7 @@ fn parse(args: &[String]) -> Result<Call<'_>, Value> {
     let mut call = Call {
         cmd,
         id: None,
+        text: None,
         values: vec![],
         flags: vec![],
     };
@@ -142,6 +158,9 @@ fn parse(args: &[String]) -> Result<Call<'_>, Value> {
             call.values.push((a, v));
         } else if plain.contains(&a) || matches!(a, "--json" | "--help") {
             call.flags.push(a);
+        } else if cmd == "send" && call.id.is_some() && call.text.is_none() {
+            // A message may start with a dash.
+            call.text = Some(a);
         } else if a.starts_with('-') || call.id.is_some() {
             return Err(refuse(&format!(
                 "`{a}` isn't an option of `brigadier {cmd}`. `brigadier {cmd} --help` shows its options."
@@ -183,7 +202,7 @@ pub fn run(
         let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
         return finish(&call, reply);
     }
-    let takes_id = matches!(call.cmd, "read" | "wait" | "stop");
+    let takes_id = matches!(call.cmd, "read" | "send" | "wait" | "stop");
     let id = match (takes_id, call.id) {
         (true, None) => return refuse(&format!("`brigadier {}` needs a session id.", call.cmd)),
         (false, Some(extra)) => {
@@ -208,6 +227,26 @@ pub fn run(
             .number("--timeout", WAIT, WAIT_MAX)
             .map(|s| wait(data, me, id, s, rows, here)),
         "stop" => Ok(workers::stop(data, me, id)),
+        "send" => {
+            let row = rows()
+                .into_iter()
+                .find(|r| r["id"] == id)
+                .unwrap_or_default();
+            let wait = call
+                .has("--wait")
+                .then(|| call.number("--timeout", WAIT, WAIT_MAX));
+            match wait.transpose() {
+                Ok(wait) => Ok(peers::send(
+                    data,
+                    me,
+                    &row,
+                    call.text.unwrap_or(""),
+                    wait,
+                    here,
+                )),
+                Err(e) => Err(e),
+            }
+        }
         _ => Ok(self::models(data, me)),
     };
     finish(&call, reply.unwrap_or_else(|e| e))
@@ -304,6 +343,7 @@ pub(crate) fn messages(data: &Path, id: &str) -> Vec<(String, String)> {
                 o if o.starts_with("result:") => {
                     format!("result from {}", o.rsplit(':').next().unwrap_or(""))
                 }
+                o if o.starts_with("peer:") => format!("message from {}", &o[5..]),
                 o => o.to_string(),
             },
             str_of(i, "text").into(),
@@ -361,7 +401,7 @@ fn wait(
                 .find(|(from, _)| from == "agent");
             let last = last.map(|(_, t)| t).unwrap_or_default();
             // Its parent's own wait takes the worker's result, which then isn't sent again.
-            if let Some(result) = workers::take(data, me, id) {
+            if let Some(result) = workers::take(data, me, id, None) {
                 return json!({"ok": true, "done": true, "state": state, "last": last, "result": result, "text": result});
             }
             let text = format!("{id} is {state}. Its last message:\n{}", last.trim_end());

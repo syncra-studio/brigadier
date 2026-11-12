@@ -86,10 +86,14 @@ impl Thread {
         }
         if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
-            self.add(
-                json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
-                "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts}),
-            );
+            let row = match t.origin.strip_prefix("peer:") {
+                Some(from) => Self::peer_item(from, &t.text, t.ts, &t.id.clone().into()),
+                None => {
+                    json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
+                    "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts})
+                }
+            };
+            self.add(row);
             if let Some(o) = self.open.as_mut() {
                 o.input = true;
             }
