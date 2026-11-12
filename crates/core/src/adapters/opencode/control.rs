@@ -52,9 +52,19 @@ pub fn model_ref(spec: &Spec) -> Value {
     r
 }
 
+/// Commands Auto still asks before: destructive ones and network installs [D130].
+const RISKY: &str = concat!(
+    "rm *|rmdir *|sudo *|dd *|mkfs*|chmod -R *|chown *|kill *|pkill *|killall *|git push*|",
+    "git reset --hard*|git clean *|git checkout -- *|curl *|wget *|npx *|npm install*|",
+    "npm i *|npm add *|pnpm add *|pnpm install *|yarn add *|bun add *|pip install *|",
+    "pip3 install *|uv add *|cargo install *|brew install *|gem install *",
+);
+
 /// A level as its permission rules, the last match winning [D175]. Ask (proposed): it reads,
 /// searches, asks questions and keeps its to-do list freely [D116], and asks before anything else
-/// and before reading secrets.
+/// and before reading secrets. Auto, on OpenCode's own per-tool rules: it also edits, runs commands,
+/// fetches pages and starts its subagents in the project unasked; outside the project, destructive
+/// commands and network installs still ask [D130].
 pub fn rules(spec: &Spec) -> Value {
     let rule = |action: &str, resource: &str, effect: &str| json!({"action": action, "resource": resource, "effect": effect});
     if spec.level.as_deref() == Some("full") {
@@ -67,7 +77,12 @@ pub fn rules(spec: &Spec) -> Value {
         rule("read", "*.env.example", "allow"),
     ];
     let mut all = vec![rule("*", "*", "ask")];
-    all.extend(free.into_iter().chain(secrets));
+    all.extend(free);
+    if spec.level.as_deref() == Some("auto") {
+        all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
+        all.extend(RISKY.split('|').map(|c| rule("shell", c, "ask")));
+    }
+    all.extend(secrets);
     all.into()
 }
 

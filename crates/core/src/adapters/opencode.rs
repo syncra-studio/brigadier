@@ -281,13 +281,13 @@ impl Adapter for OpenCode {
         format!("{}\n", message(spec, text))
     }
 
-    /// No auto mode, so Auto isn't offered [D175, D187].
+    /// Auto as its own per-tool rules [D130].
     fn can(&self) -> Can {
         Can {
             steer: true,
             stop: true,
             resume: true,
-            levels: &["ask", "full"],
+            levels: &["ask", "auto", "full"],
         }
     }
 
