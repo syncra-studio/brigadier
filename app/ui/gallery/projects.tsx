@@ -1,9 +1,13 @@
-// Add project on Fake data [D165, D168, D202]: each view and state frozen, plus a live copy.
+// Add project on Fake data [D165, D168, D202]: one live copy, its states picked by toggles.
+import { useMemo, useState } from "react";
+
 import { Button } from "../src/components/button";
+import { CheckboxRow } from "../src/components/checkbox-row";
 import { Dialog, DialogContent } from "../src/components/dialog";
-import { ADD_PROJECT_FRAME, AddProject, AddProjectDialog, type View } from "../src/projects/add-project";
-import { DEFAULT_PARENT, type GitHub, openAddProject, openFolders, type Repo, type Source } from "../src/projects/store";
-import { Held, Row, Section, State } from "./parts";
+import { Segmented } from "../src/components/segmented";
+import { ADD_PROJECT_FRAME, AddProject } from "../src/projects/add-project";
+import type { FolderCheck, GitHub, Repo, Source } from "../src/projects/store";
+import { Held, Section } from "./parts";
 
 const REPOS: Repo[] = [
   { path: "/Users/you/code/invoice-service", name: "invoice-service", project_id: null },
@@ -23,87 +27,109 @@ const GITHUB: GitHub = {
 
 const never = <T,>() => new Promise<T>(() => {});
 const after = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+const fail = (ms: number, reason: string) => new Promise<never>((_, reject) => setTimeout(() => reject(new Error(reason)), ms));
 
-/** A Fake source: answers like Rust would, a moment later; `with` swaps any part for a state. */
-function fake(with_: Partial<Source> = {}): Source {
+const LONG_NAME = "long-repo-".repeat(10);
+const LONG_REPOS: Repo[] = [{ path: `/Users/you/code/${LONG_NAME}`, name: LONG_NAME, project_id: null }];
+const LONG_GITHUB: GitHub = { repos: [{ name: `you/${LONG_NAME}`, description: "A repository with a long name", private: true }] };
+const PICKED = "/Users/you/code/new-app";
+
+type Mac = "found" | "none" | "loading" | "error";
+type Gh = "signed-in" | "missing" | "signed-out";
+type Picks = "repo" | "plain" | "missing" | "invalid";
+type Toggles = { mac: Mac; gh: Gh; picks: Picks; long: boolean; gitFails: boolean; offline: boolean };
+
+/** A Fake source answering like Rust would, a moment later, in the states the toggles pick. */
+function fake(t: Toggles): Source {
+  const mine = t.long ? LONG_REPOS : REPOS;
+  const checks: Record<Picks, FolderCheck> = {
+    repo: { kind: "repo", repo: PICKED, name: "new-app", project_id: null },
+    plain: { kind: "plain", path: PICKED, name: "new-app" },
+    missing: { kind: "missing", path: PICKED },
+    invalid: { kind: "invalid", reason: "That's a file, not a folder." },
+  };
   return {
-    find: () => after(400, REPOS),
-    check: (path) => after(100, { kind: "repo", repo: path, name: path.split("/").at(-1)!, project_id: null }),
-    add: () => after(600, `p-${Date.now().toString(36)}`),
-    clone: () => after(1500, `p-${Date.now().toString(36)}`),
-    github: () => after(300, GITHUB),
-    pick: () => after(0, "/Users/you/code/new-app"),
-    ...with_,
+    find: () => (t.mac === "loading" ? never() : t.mac === "error" ? fail(400, "Couldn't read ~/code: permission denied") : after(400, t.mac === "none" ? [] : mine)),
+    check: () => after(100, checks[t.picks]),
+    add: () => (t.gitFails ? fail(600, "Author identity unknown: please tell git who you are (git config --global user.email).") : after(600, "")),
+    clone: () => (t.gitFails ? fail(1500, "Repository not found.") : after(1500, "")),
+    github: () => after(300, t.gh === "signed-in" ? (t.long ? LONG_GITHUB : GITHUB) : { gh: t.gh }),
+    pick: () => after(0, PICKED),
   };
 }
 
-const FOUND = fake({ find: async () => REPOS, github: async () => GITHUB });
-const LOADING = fake({ find: never, github: never });
-const LONG_NAME = "long-repo-".repeat(10);
-const LONG = fake({
-  find: async () => [{ path: `/Users/you/code/${LONG_NAME}`, name: LONG_NAME, project_id: null }],
-  github: async () => ({ repos: [{ name: `you/${LONG_NAME}`, description: "A repository with a long name", private: true }] }),
-});
+const START: Toggles = { mac: "found", gh: "signed-in", picks: "repo", long: false, gitFails: false, offline: false };
 
-function Frozen({ label, source, start, offline = false }: { label: string; source: Source; start?: View; offline?: boolean }) {
+/** Live: the dialog on a Fake source; each toggle starts it over in that state. */
+function LiveAddProject() {
+  const [t, setT] = useState(START);
+  const [opening, setOpening] = useState(0);
+  const set = (next: Partial<Toggles>) => {
+    setT({ ...t, ...next });
+    setOpening(opening + 1);
+  };
+  const source = useMemo(() => fake(t), [t]);
   return (
-    <State label={label}>
+    <div className="flex flex-col gap-4">
       <Held className="h-152 w-196 overflow-hidden rounded-surface">
         {(box) => (
           <Dialog open modal={false}>
             <DialogContent container={box} initialFocus={false} frame={ADD_PROJECT_FRAME}>
-              <AddProject source={source} offline={offline} start={start} />
+              <AddProject key={opening} source={source} offline={t.offline} />
             </DialogContent>
           </Dialog>
         )}
       </Held>
-    </State>
+      <div className="flex flex-col items-start gap-3">
+        <Segmented<Mac>
+          label="On this Mac"
+          value={t.mac}
+          onChange={(mac) => set({ mac })}
+          options={[
+            { value: "found", label: "Repositories found" },
+            { value: "none", label: "None found" },
+            { value: "loading", label: "Loading" },
+            { value: "error", label: "Can't read" },
+          ]}
+        />
+        <Segmented<Gh>
+          label="GitHub"
+          value={t.gh}
+          onChange={(gh) => set({ gh })}
+          options={[
+            { value: "signed-in", label: "gh signed in" },
+            { value: "missing", label: "gh not installed" },
+            { value: "signed-out", label: "gh signed out" },
+          ]}
+        />
+        <Segmented<Picks>
+          label="Choose folder picks"
+          value={t.picks}
+          onChange={(picks) => set({ picks })}
+          options={[
+            { value: "repo", label: "Picks a repository" },
+            { value: "plain", label: "A folder without git" },
+            { value: "missing", label: "A folder that's gone" },
+            { value: "invalid", label: "Not a folder" },
+          ]}
+        />
+        <div className="flex flex-wrap gap-4">
+          <CheckboxRow label="Long names" checked={t.long} onCheckedChange={(long) => set({ long })} />
+          <CheckboxRow label="git fails (clone, new repository)" checked={t.gitFails} onCheckedChange={(gitFails) => set({ gitFails })} />
+          <CheckboxRow label="Offline" checked={t.offline} onCheckedChange={(offline) => set({ offline })} />
+          <Button size="sm" variant="outline" onClick={() => setOpening(opening + 1)}>
+            Start over
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
-
-const LIVE = fake();
 
 export function ProjectsGallery() {
   return (
     <Section title="Add project">
-      <Row name="live: + / empty page / View menu · ⌘O (picks /Users/you/code/new-app)">
-        <State label="live">
-          <Button size="sm" variant="outline" onClick={() => openAddProject()}>
-            Add project…
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void openFolders(LIVE, ["/Users/you/code/new-app"])}>
-            ⌘O
-          </Button>
-          <AddProjectDialog source={LIVE} offline={false} />
-        </State>
-      </Row>
-      <Row name="pick: found · loading · nothing found · error · disconnected">
-        <Frozen label="found" source={FOUND} />
-        <Frozen label="loading" source={LOADING} />
-        <Frozen label="nothing found (no CLI history)" source={fake({ find: async () => [] })} />
-        <Frozen label="error" source={fake({ find: async () => Promise.reject(new Error("Couldn't read ~/code: permission denied")) })} />
-        <Frozen label="disconnected" source={LOADING} offline />
-      </Row>
-      <Row name="clone from URL: your GitHub repositories under the field">
-        <Frozen label="GitHub list" source={FOUND} start={{ kind: "clone" }} />
-        <Frozen label="owner/name typed" source={FOUND} start={{ kind: "clone", url: "you/inv" }} />
-        <Frozen label="Cloning…" source={FOUND} start={{ kind: "clone", url: "you/invoice-service", cloning: true }} />
-        <Frozen label="Cloning… while disconnected" source={FOUND} start={{ kind: "clone", url: "you/invoice-service", cloning: true }} offline />
-        <Frozen label="git's error" source={FOUND} start={{ kind: "clone", url: "https://github.com/you/gone.git", error: "Repository not found." }} />
-        <Frozen label="gh not installed" source={fake({ github: async () => ({ gh: "missing" }) })} start={{ kind: "clone" }} />
-        <Frozen label="gh signed out" source={fake({ github: async () => ({ gh: "signed-out" }) })} start={{ kind: "clone" }} />
-      </Row>
-      <Row name="new repository: empty · git's reason under the field">
-        <Frozen label="empty" source={FOUND} start={{ kind: "new", parent: DEFAULT_PARENT, name: "" }} />
-        <Frozen
-          label="git can't commit"
-          source={FOUND}
-          start={{ kind: "new", parent: DEFAULT_PARENT, name: "my-project", error: "Author identity unknown: please tell git who you are (git config --global user.email)." }}
-        />
-      </Row>
-      <Row name="long repository names: 100 characters · no sideways scroll">
-        <Frozen label="Clone from URL · long name" source={LONG} start={{ kind: "clone" }} />
-      </Row>
+      <LiveAddProject />
     </Section>
   );
 }
