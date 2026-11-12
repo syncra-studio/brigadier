@@ -10,7 +10,6 @@ const HOLD_DEADLINE_MS = 15_000;
 const STAGED_DEADLINE_MS = 20_000;
 const QUICK_FADE_MS = 300;
 const DIM = 0.85;
-const DIM_AFTER_MS = 950;
 const DIM_IN_MS = 700;
 
 let held: BrowserWindow | null = null;
@@ -165,10 +164,8 @@ ipcMain.handle("intro-begin", () => {
   shown.show();
   // Showing brings the title-bar buttons back.
   shown.setWindowButtonVisibility(false);
-  const going = dim;
-  setTimeout(() => {
-    if (dim === going && !going.isDestroyed()) fade(going, DIM, DIM_IN_MS);
-  }, DIM_AFTER_MS);
+  // The dim comes up as the window is staged, ahead of the page's orb, never after it.
+  fade(dim, DIM, DIM_IN_MS);
   const armed = ends;
   setTimeout(() => {
     if (ends !== armed || staged !== shown) return;
