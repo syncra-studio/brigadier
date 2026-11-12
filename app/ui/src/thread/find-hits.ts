@@ -5,8 +5,8 @@ import { findIn, MAX_RESULTS, positions, words } from "./find-text";
 import type { Item } from "./item";
 import type { Line } from "./lines";
 
-/** A row the list draws: a line, or the footer. */
-export type Row = Line | { type: "footer"; id: string };
+/** A row the list draws. */
+export type Row = Line;
 
 /**
  * A match in a row not drawn: in `item` (the row's own, an opened group's step, or one a closed fold holds, `folded`),
@@ -70,7 +70,6 @@ export function findInThread(root: Element, rows: readonly Row[], items: readonl
   let more = false;
   for (let index = rows.length - 1; index >= 0 && !more; index--) {
     const line = rows[index]!;
-    if (line.type === "footer") continue;
     const hits: Hit[] = [];
     const row = drawn.get(line.id);
     // Only as many as can still count (one past the cap says there are more).

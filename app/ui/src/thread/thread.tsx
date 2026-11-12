@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
-import { VList, type CacheSnapshot, type VListHandle } from "virtua";
+import { Virtualizer, type CacheSnapshot, type VirtualizerHandle } from "virtua";
 
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { Find } from "./find";
-import { Follow, OLDER, spaceStore, takePlace, type Phase, type Space } from "./follow";
+import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
+import { store } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
 import { JumpSign, datedMessages } from "../components/thread/message";
@@ -17,9 +18,6 @@ import { JumpSign, datedMessages } from "../components/thread/message";
 export type Source = { subscribe(listener: () => void): () => void; get(): Session | null; older?(): void; newer?(): void; latest?(): void };
 /** `sent(id)`: this window sent the message under this row or command id, so it gets the space below and the glide. */
 export type ThreadHandle = { toBottom(): void; toIndex(index: number): void; scrollBy(offset: number): void; sent(id: string): void };
-
-/** After the last row: the working line and the bubbles on their way, then the space, then room at the end. */
-const FOOTER = { type: "footer", id: "footer" } as const;
 
 /** Rows on their way, in the old app's shapes [D48]: a message, then a reply's lines. */
 function Placeholder() {
@@ -61,7 +59,7 @@ function Newer({ after, newer }: { after: number; newer?: () => void }) {
 /**
  * Each session's row heights as last drawn, by row id, while the app runs: opened again, the list knows them before it
  * draws, so the distance from the end it was left at lands on the same row [D457, D516]. By id, since the rows held
- * then can start elsewhere; the footer's without its space, which opens at none.
+ * then can start elsewhere.
  */
 const heights = new Map<string, { by: Map<string, number>; estimate?: number }>();
 function cacheOf(id: string | undefined, data: readonly { id: string }[]): CacheSnapshot | undefined {
@@ -71,7 +69,7 @@ function cacheOf(id: string | undefined, data: readonly { id: string }[]): Cache
 
 /** The space itself: an empty svg as tall as it, since our code sets no inline styles (D68). */
 function Spacer({ space }: { space: Space }) {
-  const height = useSyncExternalStore(space.subscribe, space.get);
+  const height = space.use();
   return <svg data-spacer aria-hidden className="block" width="1" height={height} />;
 }
 
@@ -84,7 +82,7 @@ function Spacer({ space }: { space: Space }) {
 export function Thread({ id, source, footer, ref }: { id?: string; source: Source; footer?: ReactNode; ref?: Ref<ThreadHandle> }) {
   const got = useSyncExternalStore(source.subscribe, source.get);
   const session = id === undefined || got?.id === id ? got : null;
-  const list = useRef<VListHandle>(null);
+  const list = useRef<VirtualizerHandle>(null);
   const box = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
   const [, redraw] = useReducer((count: number) => count + 1, 0);
@@ -157,7 +155,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     wait.current = setTimeout(() => scrolled.current || letGo(), 200);
   });
   const hasFooter = footer !== undefined && footer !== null && footer !== false;
-  const data = useMemo(() => [...rows, FOOTER], [rows]);
+  const data = rows;
   const drawnData = useRef(data);
 
   const running = turnList?.at(-1)?.status === "running";
@@ -176,7 +174,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   newestRef.current = newest;
   const sourceRef = useRef(source);
   sourceRef.current = source;
-  const space = useMemo(spaceStore, []);
+  const space = useMemo(() => store(0), []);
   const follow = useMemo(() => {
     const made: Follow = new Follow(space, {
       older: () => sourceRef.current.older?.(),
@@ -237,9 +235,10 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
   // A footer shows before the session does: a start from Home has only its message there at first.
   const listed = rows.length > 0 || hasFooter;
-  // The footer stays drawn, so a send's bubble and space count from their first frame even where Virtua draws only the
-  // rows in view (a session opened again at its place); not under an island, where it would ask for every newer page.
-  const footerDrawn = useMemo(() => (after === null ? [data.length - 1] : undefined), [after, data.length]);
+  // The newest user message stays drawn: the latest turn is measured from it, also once it has scrolled up out of
+  // Virtua's range, so the turn's folds and stops keep the screen still; not under an island, which never follows [D45].
+  const anchorAt = newest ? data.findIndex((line) => line.id === newest.id) : -1;
+  const anchorDrawn = useMemo(() => (after === null && anchorAt >= 0 ? [anchorAt] : undefined), [after, anchorAt]);
   // Read by Virtua once, as the list mounts: made as it appears, from the rows it mounts with (so not on `data`).
   const cache = useMemo(() => (listed ? cacheOf(id, data) : undefined), [listed, id]);
   useLayoutEffect(() => {
@@ -272,13 +271,15 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       fill();
     });
     observer.observe(el);
-    // Virtua's sized content: any row growing or shrinking.
+    // Virtua's sized content (any row growing or shrinking), and the footer under it.
     if (el.firstElementChild) observer.observe(el.firstElementChild);
+    const footed = el.querySelector("[data-footer]");
+    if (footed) observer.observe(footed);
     return () => {
       const [sizes, estimate] = list.current?.cache ?? [[]];
       const by = new Map<string, number>();
       drawnData.current.forEach((line, at) => {
-        const size = (sizes[at] ?? -1) - (line === FOOTER ? follow.space.get() : 0);
+        const size = sizes[at] ?? -1;
         if (size >= 0) by.set(line.id, size);
       });
       if (id !== undefined && by.size) heights.set(id, { by, estimate });
@@ -317,37 +318,40 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   return (
     // The old app's thread type: 14px, smoothed.
     <div ref={box} className="relative h-full text-sm antialiased">
-      <VList
-        ref={list}
-        data={data}
-        cache={cache}
-        keepMounted={footerDrawn}
-        shift={shift}
-        bufferSize={3200}
-        // Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
-        className="scroll-gutter-both thread-edge-mask end-snap h-full overscroll-y-contain"
-        onScrollEnd={letGo}
+      {/* Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
+          The footer and the space are in its own flow under Virtua's rows, so a change to the space counts at once and
+          nothing the browser clamps reaches the screen [D45]. */}
+      <div
+        className="scroll-gutter-both thread-edge-mask end-snap block size-full overflow-y-auto overscroll-y-contain contain-strict"
         onScroll={() => {
           scrolled.current++;
           follow.scroll();
         }}
       >
-        {(line: Line | typeof FOOTER) =>
-          line.type === "footer" ? (
-            <div key={FOOTER.id} data-footer>
-              <div className="mx-auto w-full max-w-reading px-6 pb-8">
-                {after !== null && <Newer after={after} newer={source.newer} />}
-                {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
-                {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
-                <Spacer space={space} />
-              </div>
-              <div data-end aria-hidden className="end-snap-target" />
-            </div>
-          ) : (
-            <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />
-          )
-        }
-      </VList>
+        <Virtualizer
+          ref={list}
+          data={data}
+          cache={cache}
+          keepMounted={anchorDrawn}
+          shift={shift}
+          bufferSize={3200}
+          // A row not yet measured is guessed at the shortest a row is drawn (a one-line row with its gap), never at
+          // Virtua's average: a guess too tall shrinks once measured and pulls the screen with it [D45].
+          itemSize={54}
+          onScrollEnd={letGo}
+        >
+          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />}
+        </Virtualizer>
+        <div data-footer>
+          <div className="mx-auto w-full max-w-reading px-6 pb-8">
+            {after !== null && <Newer after={after} newer={source.newer} />}
+            {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
+            {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
+            <Spacer space={space} />
+          </div>
+          <div data-end aria-hidden className="end-snap-target" />
+        </div>
+      </div>
       <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button

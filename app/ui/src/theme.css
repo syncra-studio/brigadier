@@ -1480,8 +1480,10 @@
 @utility thread-edge-mask {
   mask-image: linear-gradient(to bottom, transparent 0, black 1rem, black calc(100% - var(--spacing) * 4), transparent calc(100% + var(--spacing) * 1.5));
 }
-/* While following at the very end with no space below, the browser keeps the view there as rows grow. */
+/* While following at the very end with no space below, the browser keeps the view there as rows grow.
+   The thread places its view itself, so the browser's own scroll anchoring is off. */
 @utility end-snap {
+  overflow-anchor: none;
   &[data-end-snap] {
     scroll-snap-type: block proximity;
   }

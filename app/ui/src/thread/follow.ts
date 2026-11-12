@@ -20,6 +20,8 @@ const PLACE_MS = 100;
 const PLACE_RATE = 92.5;
 /** A touch moves this far before it says which way. */
 const TOUCH_SLOP = 8;
+/** Rust's rows come in bursts that regroup a moment later: work is followed only if it still outgrows the view then. */
+const SETTLE_MS = 150;
 
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const canSnap = () => CSS.supports("container-type", "scroll-state") && CSS.supports("scroll-snap-type", "block proximity");
@@ -30,24 +32,8 @@ type Mode = "still" | "watch" | "workFollow" | "follow";
 export type Phase = "idle" | "work" | "answer";
 export type Way = "away" | "toward";
 
-/** The blank space (px) under the end, in its own store so only the spacer redraws. */
-export function spaceStore() {
-  let value = 0;
-  const listeners = new Set<() => void>();
-  return {
-    get: () => value,
-    set(next: number) {
-      if (next === value) return;
-      value = next;
-      for (const listener of listeners) listener();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
-}
-export type Space = ReturnType<typeof spaceStore>;
+/** The blank space (px) under the end, in its own store (onboarding/api's `store`) so only the spacer redraws. */
+export type Space = { get(): number; set(next: number): void; use(): number };
 
 /** Sessions just started from Home, by session id, with their first message's id: placed once the thread opens. */
 const toPlace = new Map<string, string>();
@@ -81,9 +67,12 @@ export class Follow {
   private top = 0;
   /** The latest turn's drawn height, from its user message to the space. */
   private tail: number | null = null;
+  /** What a send reserved, the turn plus its space, which shrinking gives back up to (0: given up; -1: not measured). */
+  private reserve = 0;
   /** The element the tail was last measured from. */
   private anchored: Element | null = null;
   private placing: (() => void) | null = null;
+  private settling: ReturnType<typeof setTimeout> | undefined;
   private jumping: (() => void) | null = null;
   private drag: { height: number; top: number } | null = null;
   private touch: { id: number; x: number; y: number } | null = null;
@@ -109,6 +98,8 @@ export class Follow {
   /** Left: remember where, without the space. */
   leave(key: string | undefined) {
     live.delete(this);
+    clearTimeout(this.settling);
+    this.settling = undefined;
     this.stopPlacing();
     this.stopJump();
     if (!this.el || key === undefined) return;
@@ -175,6 +166,7 @@ export class Follow {
     this.hold();
     this.decay = 0;
     this.tail = null;
+    this.reserve = -1;
     this.space.set(this.ceiling());
     this.glide();
   }
@@ -182,18 +174,14 @@ export class Follow {
     const el = this.el;
     if (!el) return;
     this.stopPlacing();
-    const height = el.scrollHeight;
     let frame = 0;
     let start = 0;
     let from = 0;
     let moved = 0;
     let remainder = 0;
-    let waited = 0;
     // Apply only this frame's movement, preserving compensation for rows measured or grown on the way.
     const step = (now: number) => {
-      // The space is in the scroll height once the list has measured it.
       if (!start) {
-        if (el.scrollHeight === height && waited++ < 4) return (frame = requestAnimationFrame(step));
         if (reduced()) {
           this.placing = null;
           return this.setDistance(1);
@@ -274,8 +262,9 @@ export class Follow {
     this.clear();
   }
 
-  /** The space's own: gone at once, or trimmed (it only shrinks). */
+  /** The space's own: gone at once, or trimmed. */
   private clear() {
+    this.reserve = 0;
     this.decay = 0;
     this.space.set(0);
   }
@@ -283,6 +272,7 @@ export class Follow {
     const next = Math.max(0, Math.min(this.space.get(), Math.round(to)));
     if (next === this.space.get()) return false;
     this.space.set(next);
+    this.reserve = (this.tail ?? 0) + next;
     return true;
   }
   /** Space wholly under the view goes. */
@@ -465,23 +455,34 @@ export class Follow {
     if (swapped) return;
     const grown = this.tail === null ? 0 : tail - this.tail;
     this.tail = tail;
+    if (this.reserve < 0) this.reserve = tail + this.space.get();
+    // Judged before the growth is taken from it: the growth that uses the space up is the one that overflows.
+    const spaced = this.space.get() > AT_END;
+    // Growth comes out of the space and shrinking gives it back up to what the send reserved (a fold, a stop, a row
+    // measured smaller than Virtua guessed), so the view a send placed never moves [D45].
+    this.space.set(Math.max(0, Math.min(this.space.get() - grown, this.reserve - tail)));
+    // Written now, not on the spacer's render, so a view the browser clamped as the turn shrank goes back unpainted.
+    if (grown < 0) spacer.setAttribute("height", String(this.space.get()));
+    if (grown < 0 && !this.intent && el.scrollTop < this.top) el.scrollTop = this.top;
     if (this.mode === "follow" || (this.mode === "workFollow" && this.phase === "work")) {
       if (this.distance() > (this.snapping() ? 1 : 0)) this.toEnd();
       return;
     }
-    // Judged before the growth is taken from it: the growth that uses the space up is the one that overflows.
-    const spaced = this.space.get() > AT_END;
-    if (grown > 0) this.space.set(Math.max(0, this.space.get() - grown));
     if (this.mode !== "watch" || this.phase !== "work") return;
     // The turn's end and the room under it, against the view's bottom (the spacer's DOM height is still the old one).
     const end = el.querySelector("[data-end]");
     const room = end ? end.getBoundingClientRect().bottom - spacer.getBoundingClientRect().bottom : 0;
     const over = spaced ? spacer.getBoundingClientRect().top + room - el.getBoundingClientRect().bottom : el.scrollHeight - el.clientHeight;
     if (!spaced && over > grown) return;
-    if (over <= 0) return;
-    this.mode = "workFollow";
-    this.clear();
-    this.toEnd();
+    if (over <= 0 || this.settling) return;
+    // Still outgrowing the view once the burst has settled, with the space used up: the work is followed from here [D45].
+    this.settling = setTimeout(() => {
+      this.settling = undefined;
+      if (this.mode !== "watch" || this.phase !== "work" || this.space.get() > 0 || this.distance() <= 1) return;
+      this.mode = "workFollow";
+      this.clear();
+      this.toEnd();
+    }, SETTLE_MS);
   }
 }
 
