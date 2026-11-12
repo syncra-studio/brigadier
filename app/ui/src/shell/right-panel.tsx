@@ -11,6 +11,7 @@ import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from ".
 import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
 import { keysOf, matches } from "../shortcuts";
+import { PanelBody } from "../workers/live";
 import { HOME, openFile, useTabs } from "./tab-store";
 
 /*
@@ -106,7 +107,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
       >
         <div className="right-panel-width flex h-full min-h-0 flex-col">
           <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
-            {shown && <Files key={owner} owner={owner} />}
+            {shown && <PanelBody owner={owner} files={<Files key={owner} owner={owner} />} />}
           </div>
         </div>
       </div>

@@ -10,6 +10,9 @@ export type Settings = {
   /** What the last notice did: none sent yet, went through, or macOS refused it [D2024]. */
   notices: "unasked" | "sent" | "blocked";
   awake: "off" | "work" | "always";
+  /** How many workers a family runs at once, and how deep they may start their own: numbers, as Rust keeps them [D3001, D3007, D2026]. */
+  workers: string;
+  worker_depth: string;
 };
 
 const settings = store<{ value?: Settings; error?: string }>({});

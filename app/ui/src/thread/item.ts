@@ -246,6 +246,10 @@ export type Item = Base &
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }
     | { kind: "line"; reason: "continued"; session: string; title: string | null }
+    /** Workers in the parent's thread, from Rust's notes and results [D3009, D3010]: started (in one turn, merged), ended, Stop left running. */
+    | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[] }
+    | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }
+    | { kind: "team_still"; workers: string[] }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -94,7 +94,9 @@ export function AppSidebar({
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  const { live: shown, archived } = useArchiveSplit(useShown(rows));
+  // A worker is its parent's, in its Workers tab, not a row of its own [D3012].
+  const sessions = useMemo(() => rows?.filter((row) => !(row as { worker?: unknown }).worker), [rows]);
+  const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
   const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));

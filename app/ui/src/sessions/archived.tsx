@@ -106,7 +106,8 @@ export function ArchivedSection({
 }
 
 /** `stays`: another session still works in its folder, which stays [D1080]. `running`, `lost`: as archive's [D1197]. */
-type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
+/** `workers`: its workers' branches with work that never landed, deleted with it under the one choice [D3017]. */
+type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null; workers?: { id: string; title: string; branch: string }[] } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
 
 /**
  * Delete's confirm [D35, D181]: a branch with work that never landed is named, kept unless asked. Delete
@@ -122,7 +123,7 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
     let live = true;
     setCheck({ state: "checking" });
     run(["delete", row.id, "--check"]).then(
-      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [] }),
+      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [], workers: reply.workers ?? [] }),
       (cause) => live && setCheck({ state: "failed", error: errorText(cause) }),
     );
     return () => {
@@ -132,7 +133,7 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
   const confirm = () => {
     onClose();
     hideDeleting(row.id, true);
-    const branch = check.state === "done" && check.branch && drop === "delete" ? "delete" : "keep";
+    const branch = check.state === "done" && (check.branch || check.workers?.length) && drop === "delete" ? "delete" : "keep";
     ask({ op: "run", args: ["delete", row.id, "--branch", branch] }, (reply) => {
       if (reply.ok) return;
       hideDeleting(row.id, false);
@@ -173,7 +174,10 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
       {check.state === "done" && check.stays && (
         <p className="text-xs text-muted-foreground">Its folder stays: {rows?.find((each) => each.id === check.stays)?.title ?? "another session"} still works there.</p>
       )}
-      {check.state === "done" && check.branch && (
+      {check.state === "done" && (check.workers?.length ?? 0) > 0 && (
+        <FamilyBranches branches={[...(check.branch ? [{ branch: check.branch, title: titleOf(row) }] : []), ...check.workers!]} drop={drop} setDrop={setDrop} />
+      )}
+      {check.state === "done" && check.branch && !check.workers?.length && (
         <div className="flex flex-col gap-2.5">
           <p className="text-xs text-muted-foreground">
             Its branch <code className="font-mono text-foreground">{check.branch}</code> has work that never landed.
@@ -191,6 +195,32 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
         </div>
       )}
     </ConfirmForm>
+  );
+}
+
+/** A session and its workers' branches with work that never landed, in DeleteManyForm's words: one choice for all. */
+function FamilyBranches({ branches, drop, setDrop }: { branches: { branch: string; title: string }[]; drop: string; setDrop: (drop: string) => void }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <p className="text-xs text-muted-foreground">{branches.length === 1 ? "This branch has" : "These branches have"} work that never landed:</p>
+      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {branches.map(({ branch, title }) => (
+          <li key={branch} className="truncate">
+            <code className="font-mono text-foreground">{branch}</code> · {title || "New session"}
+          </li>
+        ))}
+      </ul>
+      <RadioGroup value={drop} onValueChange={(value) => setDrop(String(value))} className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <Radio value="keep" />
+          {branches.length === 1 ? "Keep branch" : "Keep branches"}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Radio value="delete" />
+          {branches.length === 1 ? "Delete it too" : "Delete them too"}
+        </label>
+      </RadioGroup>
+    </div>
   );
 }
 

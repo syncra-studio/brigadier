@@ -135,6 +135,9 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
       return <UnknownRow keep={item.id} raw={item.raw} />;
     // The app draws it (its switch needs the session); see thread/rows.tsx.
     case "switch":
+    case "team":
+    case "team_step":
+    case "team_still":
       return null;
   }
 }

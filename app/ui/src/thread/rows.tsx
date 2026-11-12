@@ -9,6 +9,7 @@ import { SideLine } from "../session/side";
 import { ForkAction, ForkedLine } from "../session/fork";
 import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
+import { TeamRow } from "../workers/live";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
@@ -52,6 +53,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         </>
       ) : props.item.kind === "switch" ? (
         <SwitchRow item={props.item} />
+      ) : props.item.kind === "team" || props.item.kind === "team_step" || props.item.kind === "team_still" ? (
+        <TeamRow item={props.item} />
       ) : props.item.kind === "started" ? (
         <SideLine item={props.item} />
       ) : props.item.kind === "forked" ? (
