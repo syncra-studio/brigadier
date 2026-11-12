@@ -37,8 +37,17 @@ export type Preview = {
 type Look = { state: "looking" } | { state: "failed"; error: string } | { state: "ready"; preview: Preview };
 /** form; removing (its reply due); watching (no reply coming: the connection dropped, or another run holds it); removed with kept branches. */
 type Phase = { at: "form" } | { at: "removing" } | { at: "watching" } | { at: "removed"; repo: string; kept: string[] };
-/** The gallery's frozen states. */
-export type Given = { look: Look; phase?: Phase; error?: string };
+
+/** Where the dialog's answers come from: the daemon, or the gallery's Fake. */
+export type RemoveSource = {
+  check(id: string): Promise<Preview>;
+  /** `projects remove <id>`, deleting the `drop` sessions' branches; `reply` gets Rust's reply frame. */
+  remove(id: string, drop: string[], reply: (reply: Record<string, any>) => void): void;
+};
+const daemonRemove: RemoveSource = {
+  check: (id) => run(["projects", "remove", id, "--check"]) as Promise<Preview>,
+  remove: (id, drop, reply) => void ask({ op: "run", args: ["projects", "remove", id, ...(drop.length ? ["--drop", drop.join(",")] : [])] }, reply),
+};
 
 const opened = store<string | null>(null);
 /** Opens Remove project… from the project's menu [D171, D212]. */
@@ -66,10 +75,10 @@ const MB = 1024 * 1024;
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < MB ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * MB ? `${(bytes / MB).toFixed(1)} MB` : `${(bytes / (1024 * MB)).toFixed(1)} GB`;
 
-export function RemoveFlow({ project, onClose, given }: { project: Project; onClose: () => void; given?: Given }) {
-  const [look, setLook] = useState<Look>(given?.look ?? { state: "looking" });
-  const [phase, setPhase] = useState<Phase>(given?.phase ?? { at: "form" });
-  const [error, setError] = useState<string | null>(given?.error ?? null);
+export function RemoveFlow({ project, onClose, source = daemonRemove }: { project: Project; onClose: () => void; source?: RemoveSource }) {
+  const [look, setLook] = useState<Look>({ state: "looking" });
+  const [phase, setPhase] = useState<Phase>({ at: "form" });
+  const [error, setError] = useState<string | null>(null);
   const [drops, setDrops] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
   const { daemon, rows, projects } = useDaemon();
@@ -81,13 +90,13 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   };
 
   useEffect(() => {
-    if (given || phase.at !== "form") return;
+    if (phase.at !== "form") return;
     let current = true;
     setLook((last) => last.state === "ready" ? last : { state: "looking" });
-    run(["projects", "remove", project.id, "--check"]).then(
+    source.check(project.id).then(
       (reply) => {
         if (!current) return;
-        setLook({ state: "ready", preview: reply as Preview });
+        setLook({ state: "ready", preview: reply });
         if (reply.removing) setPhase({ at: "watching" });
       },
       (cause) => current && setLook({ state: "failed", error: errorText(cause) }),
@@ -95,11 +104,11 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
     return () => {
       current = false;
     };
-  }, [project.id, attempt, given, phase.at, sessionStates]);
+  }, [project.id, attempt, source, phase.at, sessionStates]);
 
   // No reply is coming: Rust's list, by id, says how it ended once the daemon is back [D30, D40].
   useEffect(() => {
-    if (given || phase.at !== "watching" || !daemon || !projects) return;
+    if (phase.at !== "watching" || !daemon || !projects) return;
     const record = projects.find((each) => each.id === project.id);
     if (!record) return done();
     if (record.removing) return;
@@ -110,8 +119,7 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   const confirm = () => {
     setPhase({ at: "removing" });
     setError(null);
-    const drop = [...drops];
-    ask({ op: "run", args: ["projects", "remove", project.id, ...(drop.length ? ["--drop", drop.join(",")] : [])] }, (reply) => {
+    source.remove(project.id, [...drops], (reply) => {
       if (reply.ok) {
         const kept: string[] = reply.kept_branches ?? [];
         return kept.length ? setPhase({ at: "removed", repo: reply.repo, kept }) : done();
