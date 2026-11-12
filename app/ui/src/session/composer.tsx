@@ -5,6 +5,7 @@ import { type Draft, isEmpty, plainText, sendMode } from "../components/composer
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { PausedSendDialog } from "../components/composer/rail";
+import { SessionWorkersStrip } from "../workers/live";
 import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
@@ -349,6 +350,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     <SharedComposer
       rail={
         <>
+          <SessionWorkersStrip id={id} />
           <SessionNotices id={id} offline={offline} source={source} run={run} />
           <QueueCard
             items={items}
