@@ -116,6 +116,13 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
             continue;
         }
         let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
+        // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
+        // conversation, whose own end reports instead [D88, D108].
+        if f.cut.as_deref() == Some(turn)
+            || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again(&l["switch"]))
+        {
+            continue;
+        }
         // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
         // it reads as finished. Upgrade when the fold keeps each turn's end.
         let how = match last.map_or(if open { "cut" } else { "done" }, |l| {

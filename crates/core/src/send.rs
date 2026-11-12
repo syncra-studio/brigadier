@@ -41,11 +41,22 @@ pub fn send(
         && backend.is_none()
         && f.picked.is_some()
         && f.turns.is_empty();
+    // Past its threshold, or cut for it, the next input goes to a fresh conversation of the same
+    // agent from the hand-off; a message into a running turn stays with it [D88, D108].
+    // A rebirth's own input sent again after a crash is a rebirth again, its hand-off rebuilt [D54].
+    let redo = retry_of
+        .and_then(|r| f.turns.iter().find(|t| t.cid.as_deref() == Some(r)))
+        .and_then(|t| t.switch["why"].as_str())
+        .filter(|why| matches!(*why, "rebirth" | "cut"));
+    let cut = redo.map_or(origin == "system" && text.is_empty(), |why| why == "cut");
+    let reborn = !picking
+        && (redo.is_some()
+            || (backend.is_none() && f.turns.is_empty() && (cut || crate::rebirth::full(spec, f))));
     let mut replace = None;
     let picked_fold;
-    let f = if picking {
+    let f = if picking || reborn {
         match idle(spec, call, false) {
-            Ok((len, again)) if again.picked.is_some() => {
+            Ok((len, again)) if again.picked.is_some() || reborn => {
                 replace = Some(len);
                 picked_fold = again;
                 &picked_fold
@@ -103,6 +114,17 @@ pub fn send(
             Ok((change, sent)) => (Some(change), sent),
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
+    } else if reborn {
+        let why = if cut { "cut" } else { "rebirth" };
+        let last = f.last.clone().unwrap_or_default();
+        match crate::handoff::build(spec, f, why, &last, a.label()) {
+            Ok(seed) if cut => (Some(crate::rebirth::record(spec, f, why)), seed),
+            Ok(seed) => (
+                Some(crate::rebirth::record(spec, f, why)),
+                format!("{seed}\n\n{text}"),
+            ),
+            Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
+        }
     } else if handoff {
         // A fork with no conversation of its own begins from the hand-off, without asking [D90].
         let unforked = json!({"op": "note", "data": {"event": "unforked", "backend": b}});
@@ -130,7 +152,7 @@ pub fn send(
         base["switch"] = change;
     }
     crate::rewind::before(spec, f, cid);
-    let running = child.is_some() && !picking;
+    let running = child.is_some() && !picking && !reborn;
     if a.acks() {
         base["ack"] = true.into();
     }
@@ -207,7 +229,7 @@ pub fn send(
             return json!({"ok": false, "error": e.to_string()});
         }
     }
-    let resume = if picking || handoff {
+    let resume = if picking || handoff || reborn {
         None
     } else {
         f.resume.get(&b).map(String::as_str)

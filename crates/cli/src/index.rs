@@ -288,7 +288,7 @@ impl Index {
                 .map(|s| core::as_run(s, &f.fold, backend, None));
             let mut row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "notice": e.error.is_none().then(|| fold::notice(&f.fold, state.as_str().unwrap_or(""))).flatten(),
-                             "resets": f.fold.resets, "sent": f.fold.sent, "context": f.fold.context, "finished": f.fold.finished, "backend": backend,
+                             "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project, "model": run.as_ref().and_then(|s| s.model.as_ref()),
@@ -306,6 +306,24 @@ impl Index {
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets)});
             row["background"] = json!(live.left);
+            // How full its context is, and a rebirth due now [D88, D108].
+            row["context"] = json!(f.fold.context);
+            let lost = state == "undelivered"
+                && f.fold
+                    .turns
+                    .first()
+                    .is_some_and(|t| t.switch["why"] == "cut");
+            let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
+            row["rebirth"] = json!(due.or(lost.then_some("cut")));
+            // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].
+            row["optimizing"] = json!(
+                f.fold
+                    .turns
+                    .first()
+                    .is_some_and(|t| f.fold.cut.as_deref() == Some(&t.id)
+                        || (!t.began
+                            && matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"))))
+            );
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

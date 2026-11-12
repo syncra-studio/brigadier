@@ -31,9 +31,12 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     if let Some(id) = resume {
         open["threadId"] = id.into();
     }
-    if spec.naked {
-        open["config"] = naked(spec);
-    }
+    open["config"] = match spec.naked {
+        true => naked(spec),
+        false => json!({}),
+    };
+    // Its compaction can't be turned off: as late as it lets, so Brigadier's rebirth comes first [D88, D98].
+    open["config"]["model_auto_compact_token_limit"] = 1_000_000_000u64.into();
     open
 }
 

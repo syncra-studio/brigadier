@@ -1,0 +1,69 @@
+//! Rebirth on its own [D88, D108]: the daemon asks here for a session whose running turn passed
+//! its threshold with no tool running, or whose window refused its last turn. A running turn is
+//! stopped first; then the fresh conversation starts from the hand-off alone, in the same session.
+//! A rebirth at a turn's end waits for the next input, which `core::send` carries.
+
+use crate::{owner, workers};
+use brigadier_core::{self as core, message::Message};
+use serde_json::{Value, json};
+use std::io;
+use std::path::Path;
+
+pub fn run(data: &Path, id: &str) -> io::Result<Value> {
+    let not_due = json!({"ok": false, "error": "not_due"});
+    let spec = core::load(data, id)?;
+    owner::ensure(data, &spec)?;
+    // Its input lost to a crash before any CLI read it: sent again, as a rebirth [D54].
+    let f = core::fold(&spec.dir, true)?.fold;
+    if f.turns
+        .first()
+        .is_some_and(|t| t.switch["why"] == "cut" && t.delivered.is_none())
+    {
+        return crate::queue::recover(data, id, false);
+    }
+    crate::rewind::settled(data, &spec)?;
+    let _fence = core::session::fence(data, &spec)?;
+    let f = core::fold(&spec.dir, true)?.fold;
+    if core::rebirth::due(&spec, &f).is_none() {
+        return Ok(not_due);
+    }
+    if let Some(t) = f.turns.first() {
+        // Logged before the stop, so its end is known as this one's, never the user's Stop.
+        let cut = json!({"op": "note", "data": {"event": "rebirth_cut", "turn": t.id}});
+        owner::call(data, id, cut)?;
+        if crate::control::interrupt(data, id, "rebirth")?.is_none() {
+            // Its CLI can't end a turn and stay: its processes stop instead.
+            owner::call(data, id, json!({"op": "stop", "by": "rebirth"}))?;
+        }
+    }
+    let ping = owner::call(data, id, json!({"op": "ping"}))?;
+    let Some(len) = ping["len"].as_u64() else {
+        return Ok(not_due);
+    };
+    let f = core::fold(&spec.dir, true)?.fold;
+    let Some(last) = f.last.as_ref().filter(|_| f.turns.is_empty()) else {
+        return Ok(not_due);
+    };
+    if core::rebirth::due(&spec, &f).is_none() {
+        return Ok(not_due);
+    }
+    // One per turn it carries on: a repeat or a racing pass finds its id logged [D54].
+    let cid = format!("rb-{}", last["id"].as_str().unwrap_or(""));
+    // A worker's cut turn would have reported to its parent: the fresh one does instead.
+    let turn = last["id"].as_str().unwrap_or("");
+    if let Some(mut l) = workers::link(data, id).filter(|l| l.report.iter().any(|r| r == turn)) {
+        l.report.push(cid.clone());
+        workers::write_json(&spec.dir.join("worker.json"), &l)?;
+    }
+    let child = (ping["child"].as_i64()).map(|_| ping["spawn"].as_u64().unwrap_or(0));
+    let call = |mut req: Value| {
+        if req["if_len"].is_null() && matches!(req["op"].as_str(), Some("input" | "spawn")) {
+            req["if_len"] = len.into();
+        }
+        owner::call(data, id, req)
+    };
+    let msg = Message::plain("");
+    Ok(core::send(
+        &spec, &f, child, &call, &cid, "system", &msg, None, None,
+    ))
+}

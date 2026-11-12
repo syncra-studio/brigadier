@@ -166,6 +166,7 @@ fn main() -> io::Result<()> {
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         switch::auto_switch(&data, &index.rows, &mut seen);
+        switch::rebirth(&data, &index.rows);
         brigadier::rewind::ends(&data, &index.rows, &mut finished);
         brigadier::queue::drain(&data, &index.rows);
         brigadier::workers::pass(&data, &index.rows);

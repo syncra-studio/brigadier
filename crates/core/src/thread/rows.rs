@@ -25,6 +25,10 @@ impl Thread {
             return;
         };
         o.stop.1 = true;
+        // Brigadier's stop for a rebirth draws no line: its divider follows [D108].
+        if o.stop.0.as_deref() == Some("rebirth") {
+            return;
+        }
         let ms = ts.saturating_sub(o.started);
         let reason = match o.stop.0.as_deref() {
             Some("pause") => "paused",
@@ -251,6 +255,10 @@ impl Thread {
                 // An agent stopped by its interrupt ends its turn as failed: it is the user's Stop.
                 if self.stopping() {
                     return self.user_stopped(ts);
+                }
+                // A full window carries on in a fresh one: its divider says so [D88].
+                if item["why"] == "context" && crate::rebirth::goes_on(&self.fold) {
+                    return;
                 }
                 self.break_group();
                 let why = item["why"].as_str().unwrap_or("");

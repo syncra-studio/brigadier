@@ -168,6 +168,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             name_or_use(data, op, agent(arg(2))?, arg(3), arg(4))
         }
         ("switching", _) => switching::set(data, args),
+        ("rebirth", Some(id)) => switching::rebirth::run(data, id),
         ("switch", Some(id)) => switching::switch_session(
             data,
             id,

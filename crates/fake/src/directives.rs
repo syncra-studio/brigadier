@@ -178,6 +178,8 @@ impl Agent {
                 return false;
             }
             "compact" => emit(json!({"t": "compact"})),
+            // `ctx:N`: its context now holds N thousand tokens [D88].
+            "ctx" => emit(json!({"t": "context", "used": n * 1000})),
             // The notices' signals [D487]: its own retries, a reroute, a turn failing for a cause,
             // a reply held for checks, an action its rule turned down.
             "retry" => {

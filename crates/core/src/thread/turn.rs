@@ -164,9 +164,27 @@ impl Thread {
                 self.add(json!({"kind": "line", "reason": "model", "why": "changed", "from": from, "to": model}));
             }
         }
-        // A switch turns its limit's row into the switched line, in place [D51, D132]; a
-        // continuation it wrote (not the user's words) shows only that.
-        if let Some(note) = t.switch["note"].as_str() {
+        // A rebirth shows as one divider, the message that carries it under it [D88, D112].
+        if matches!(t.switch["why"].as_str(), Some("rebirth" | "cut")) {
+            self.end_limit();
+            // Sent again after a crash: its divider runs again, never a second one [D54].
+            let again = t
+                .retry_of
+                .as_ref()
+                .and(self.items.iter().rposition(|i| i["kind"] == "compaction"));
+            if let Some(at) = again {
+                self.items[at]["progress"] = "running".into();
+                self.changed_items.insert(at);
+            } else {
+                self.kept_row(
+                    json!({"kind": "compaction", "summary": null, "progress": "running"}),
+                );
+            }
+            self.reborn = Some(again.unwrap_or(self.items.len() - 1));
+            if t.origin == "system" {
+                return;
+            }
+        } else if let Some(note) = t.switch["note"].as_str() {
             // The kit's switch shape (D133); `text` is the whole note, for logs from before it.
             let sw = &t.switch;
             let named = sw["to"].get("name").unwrap_or(&sw["to"]["model"]);

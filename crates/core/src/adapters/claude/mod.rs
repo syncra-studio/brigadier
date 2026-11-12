@@ -191,6 +191,8 @@ impl Adapter for Claude {
         }
         let input = text.map(|t| self.encode(spec, t));
         let mut env = base_env(spec, &exe, self.keys());
+        // Brigadier's rebirth stands in for its compaction; `/compact` still works [D88].
+        env.push(("DISABLE_AUTO_COMPACT".into(), "1".into()));
         if spec.naked {
             control::naked(&mut argv, &mut env);
         }

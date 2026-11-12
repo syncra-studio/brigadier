@@ -5,14 +5,15 @@ use super::super::{ModelInfo, s};
 use crate::Spec;
 use serde_json::{Value, json};
 
-/// Its inline config: the instructions file; for a worker also no MCP servers, skills or plugins,
-/// its `.claude` folders unread, and no compaction of its own [D89, D98].
+/// Its inline config: the instructions file and no compaction of its own, as Brigadier's rebirth
+/// stands in for it [D88]; for a worker also no MCP servers, skills or plugins, its `.claude`
+/// folders unread [D89].
 pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, String)>) -> Value {
-    let mut config = json!({"instructions": [style.display().to_string()]});
+    let mut config =
+        json!({"instructions": [style.display().to_string()], "compaction": {"auto": false}});
     if spec.naked {
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));
-        config["compaction"] = json!({"auto": false});
         env.push(("OPENCODE_DISABLE_CLAUDE_CODE".into(), "1".into()));
     }
     config

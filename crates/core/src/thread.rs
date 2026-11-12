@@ -91,6 +91,9 @@ pub struct Thread {
     limit_row: Option<usize>,
     /// The switch row of another agent picked, until the message that goes to it [D76].
     pick_row: Option<usize>,
+    /// A rebirth's divider until its fresh conversation names itself [D88].
+    #[serde(default)]
+    reborn: Option<usize>,
     /// Picks made while a turn ran: their lines land after it, which runs on as it began [D76].
     later: Vec<(Value, (Option<String>, bool))>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
@@ -163,6 +166,25 @@ impl Thread {
                 .is_some_and(|t| t.question.is_some());
         // Another model or agent picked: its line the moment it's picked [D76].
         let pick = (kind == "note" && item["event"] == "setup").then(|| self.before_pick(item));
+        // A rebirth's divider: done once the fresh conversation names itself, failed if its turn
+        // ends first [D88, D112].
+        if let Some(at) = self.reborn {
+            let done = match kind {
+                "resume_id" => Some("done"),
+                "turn_end" | "exited" | "stopped" | "failed" => Some("failed"),
+                "note"
+                    if matches!(item["event"].as_str(), Some("interrupted" | "spawn_failed")) =>
+                {
+                    Some("failed")
+                }
+                _ => None,
+            };
+            if let Some(progress) = done {
+                self.reborn = None;
+                self.items[at]["progress"] = progress.into();
+                self.changed_items.insert(at);
+            }
+        }
         self.fold.push(item);
         if let Some(before) = pick {
             self.picked(item, before);

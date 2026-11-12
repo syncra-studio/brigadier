@@ -39,6 +39,7 @@ export type ComposerRow = Row & {
   model?: string | null;
   /** The last turn was the user's Stop: Resume carries it on, from Send or the queue [D373]. */
   resumable?: boolean;
+  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */ optimizing?: boolean;
 };
 
 /** Runs a brigadier command and answers its whole reply, a refusal included. */
@@ -441,7 +442,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         </>
       }
       // With nothing queued the queue card isn't there to say why a Resume was refused.
-      status={<ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
+      status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={<SessionModel id={id} row={row} offline={offline} />}
       send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
       after={

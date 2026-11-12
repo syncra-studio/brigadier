@@ -360,7 +360,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "settings" => settings::run(data, args),
         "models" | "set" => models::run(data, args),
-        "accounts" | "switching" | "switch" => accounts::run(data, args),
+        "accounts" | "switching" | "switch" | "rebirth" => accounts::run(data, args),
         "awake" => settings::awake(data, args.get(1)),
         "transcript" => {
             let id = arg(args, 1)?;

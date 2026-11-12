@@ -215,6 +215,11 @@ impl Agent {
             .strip_prefix("[From session ")
             .and_then(|r| r.split_once("]\n\n")))
         .map_or(text, |(_, body)| body);
+        // A hand-off is prose: only the message after its Next step acts [D88].
+        let body = match text.split_once("\n## Next\n") {
+            Some((_, next)) => next.split_once('\n').map_or("", |n| n.1).trim(),
+            None => body,
+        };
         let first = body.split_whitespace().next().unwrap_or("");
         ledger(&format!("recv {} {first}", self.sid));
         self.note(&format!("recv {text}"));
@@ -259,7 +264,7 @@ impl Agent {
         }
         // A continuation Brigadier wrote ("[Your last turn stopped early…]") gets a plain reply,
         // not an echo of its first word, which reads as a cut-off answer.
-        if first.starts_with('[') {
+        if first.starts_with('[') || body.is_empty() {
             self.say("Carried on from where I stopped. All done.");
         } else if let Some(last) = text
             .trim_end()

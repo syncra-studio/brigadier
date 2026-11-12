@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use std::sync::Mutex;
 use std::thread;
 
 /// Moves a session at its limit on by itself, only where the user turned that on [D51]. Off costs
@@ -36,6 +37,28 @@ pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashM
                 Ok(r) => eprintln!("brigadierd: switch {id}: {}", r["error"]),
                 Err(e) => eprintln!("brigadierd: switch {id}: {e}"),
             }
+        });
+    }
+}
+
+/// Sessions with a rebirth under way in this daemon: one each at a time.
+static REBIRTHS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+/// Starts each rebirth Rust found due [D88, D108]: a running turn past its threshold, or one its
+/// window refused. Its fixed command id keeps a repeat or a racing pass to one.
+pub fn rebirth(data: &Path, rows: &BTreeMap<String, Value>) {
+    for (id, _) in rows.iter().filter(|(_, r)| !r["rebirth"].is_null()) {
+        if !REBIRTHS.lock().unwrap().insert(id.clone()) {
+            continue;
+        }
+        let (data, id) = (data.to_path_buf(), id.clone());
+        thread::spawn(move || {
+            match brigadier::run(&data, &["rebirth".into(), id.clone()]) {
+                Ok(r) if r["ok"] == true || r["error"] == "not_due" => {}
+                Ok(r) => eprintln!("brigadierd: rebirth {id}: {}", r["error"]),
+                Err(e) => eprintln!("brigadierd: rebirth {id}: {e}"),
+            }
+            REBIRTHS.lock().unwrap().remove(&id);
         });
     }
 }

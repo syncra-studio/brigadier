@@ -83,7 +83,7 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 /// Proposed: `SendMessage` stays, as its subagents need it (D3016), so it could still reach a
 /// session outside Brigadier by name [O3001].
 /// A worker's launch: no MCP servers, skills or user settings, only the project's, and its own
-/// memory and compaction off (code.claude.com/docs/en/env-vars) [D89, D98].
+/// memory off (code.claude.com/docs/en/env-vars) [D89].
 pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     let flags = [
         "--strict-mcp-config",
@@ -96,8 +96,7 @@ pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
         "project,local",
     ];
     argv.extend(flags.into_iter().chain(more).map(String::from));
-    let off = ["DISABLE_AUTO_COMPACT", "CLAUDE_CODE_DISABLE_AUTO_MEMORY"];
-    env.extend(off.map(|k| (k.into(), "1".into())));
+    env.push(("CLAUDE_CODE_DISABLE_AUTO_MEMORY".into(), "1".into()));
 }
 
 pub fn standing() -> [String; 6] {

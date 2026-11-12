@@ -14,6 +14,7 @@ pub mod host;
 pub mod message;
 pub mod norm;
 pub mod projects;
+pub mod rebirth;
 pub mod repos;
 pub mod rewind;
 mod send;

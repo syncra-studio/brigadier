@@ -147,6 +147,9 @@ pub struct Fold {
     /// The agent's to-do list as it last wrote it [D104].
     #[serde(default)]
     pub plan: Option<Value>,
+    /// The turn Brigadier stopped for a rebirth: it goes on in a fresh conversation [D108].
+    #[serde(default)]
+    pub cut: Option<String>,
 }
 
 impl Fold {
@@ -276,6 +279,7 @@ impl Fold {
                     if switch["fresh"] == true {
                         self.resume.remove(to);
                         self.pin.remove(to);
+                        self.context = None;
                     } else if let Some(id) = self.resume.get(to) {
                         self.convs.insert((to.into(), account.into(), id.clone()));
                     }
@@ -442,12 +446,7 @@ impl Fold {
                 }
                 self.resume.insert(backend, id);
             }
-            "context" => {
-                let known = self.context.as_ref().map(|c| c["window"].clone());
-                let window = item["window"].as_u64().map(Value::from);
-                self.context = Some(json!({"used": item["used"],
-                    "window": window.or(known).unwrap_or(Value::Null)}));
-            }
+            "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
             "plan" => self.plan = Some(item["steps"].clone()),
             "limited" => {
                 self.limit = Some(str_of("message"));
@@ -475,6 +474,7 @@ impl Fold {
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
+                Some("rebirth_cut") => self.cut = Some(str_of("turn")),
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),

@@ -231,6 +231,7 @@ impl Adapter for Fake {
                 s(&v, &["to"]).into(),
             )],
             "check" => vec![Event::Checking(v["on"] == true)],
+            "context" => vec![Event::Context(v["used"].as_u64().unwrap_or(0), None)],
             "deny" => vec![Event::Denied],
             "fail" => vec![Event::Failed(
                 match s(&v, &["why"]) {

@@ -149,10 +149,10 @@ export function QuestionRow({
 }
 
 const COMPACTION: Record<Exclude<Progress, "pending">, string> = {
-  running: "Optimizing conversation…",
-  done: "Conversation optimized",
-  failed: "Couldn’t optimize conversation · Nothing changed",
-  cancelled: "Couldn’t optimize conversation · Nothing changed",
+  running: "Optimizing context…",
+  done: "Context optimized",
+  failed: "Couldn’t optimize context · Nothing changed",
+  cancelled: "Couldn’t optimize context · Nothing changed",
 };
 
 /** The agent shortening its context, as a divider across the column. */

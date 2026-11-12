@@ -2,6 +2,8 @@
 //! first usable model, and a fixed window before a limited account is tried again), and the one
 //! transition `core::switch` makes through the host.
 
+pub mod rebirth;
+
 use crate::accounts::{STORE, accounts_of, agent, agents, check, listed, load, save};
 use crate::owner;
 use brigadier_core::adapters::Adapter;
