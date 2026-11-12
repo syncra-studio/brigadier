@@ -234,6 +234,17 @@ pub(super) fn serve(
                 reply["re"] = re;
                 let _ = out.send(reply.to_string());
             }
+            // The composer's `@` menu, from the rows this daemon holds [D2010].
+            "mention" => {
+                let rows = state.lock().unwrap().rows.clone();
+                let (out, data, req) = (out.clone(), PathBuf::from(data), req.clone());
+                // A big checkout's listing takes a moment: never hold up this connection's reads.
+                thread::spawn(move || {
+                    let mut reply = brigadier::mention::run(&data, &rows, &req);
+                    reply["re"] = re;
+                    let _ = out.send(reply.to_string());
+                });
+            }
             "search" => {
                 let q = req["q"].as_str().unwrap_or("");
                 let reply = match index::search(data, q) {

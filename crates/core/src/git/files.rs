@@ -125,7 +125,7 @@ pub fn ignored(checkout: &Checkout, rel: &str) -> bool {
 
 /// How `text` holds `query`, as the composer's menus match (best first): its start, inside it, or
 /// its letters in order. None when it doesn't.
-fn rank(text: &str, query: &str) -> Option<u8> {
+pub fn rank(text: &str, query: &str) -> Option<u8> {
     let text = text.to_lowercase();
     if text.starts_with(query) {
         return Some(0);
@@ -138,6 +138,38 @@ fn rank(text: &str, query: &str) -> Option<u8> {
         .chars()
         .all(|want| letters.any(|c| c == want))
         .then_some(2)
+}
+
+/// The `@` menu's search: every listed file and every folder holding one, from the full listing
+/// before any cap, as (rank, path, a folder), best first, then shortest [D2010, D2018].
+pub fn mention(
+    checkout: &Checkout,
+    query: &str,
+    stop: &AtomicBool,
+) -> io::Result<Vec<(u8, String, bool)>> {
+    let query = query.to_lowercase();
+    let _shared = lock(checkout, false, stop)?;
+    let files = listed(checkout, stop)?;
+    let mut folders = std::collections::BTreeSet::new();
+    for file in &files {
+        let mut at = file.as_str();
+        while let Some((folder, _)) = at.rsplit_once('/') {
+            if !folders.insert(folder.to_string()) {
+                break;
+            }
+            at = folder;
+        }
+    }
+    let ranked = |path: &str| {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        rank(name, &query).or_else(|| rank(path, &query).map(|r| r + 3))
+    };
+    let all = (files.into_iter().map(|p| (p, false))).chain(folders.into_iter().map(|p| (p, true)));
+    let mut found: Vec<(u8, String, bool)> = all
+        .filter_map(|(p, folder)| Some((ranked(&p)?, p, folder)))
+        .collect();
+    found.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())));
+    Ok(found)
 }
 
 /// The filename search over every listed file, not only the tree's first ones: those whose name

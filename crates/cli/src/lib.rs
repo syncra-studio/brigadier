@@ -13,6 +13,7 @@ mod git;
 mod host;
 pub mod index;
 mod last;
+pub mod mention;
 mod models;
 pub mod owner;
 mod panel;
