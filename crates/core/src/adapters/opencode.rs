@@ -24,6 +24,14 @@ use std::process::Command;
 
 pub struct OpenCode;
 
+/// Its `--version` line ("1.19.5", "opencode v2.2.7") names a version before 2.
+fn before_2(version: &str) -> bool {
+    let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
+    (number.split('.').next())
+        .and_then(|m| m.parse::<u32>().ok())
+        .is_some_and(|m| m < 2)
+}
+
 /// Providers that run on this Mac: OpenCode finds their servers by itself [D68].
 const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
 
@@ -99,9 +107,15 @@ impl Adapter for OpenCode {
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }
 
-    /// `opencode upgrade` (opencode.ai/v2/docs/cli/commands).
-    fn update(&self) -> Option<&'static [&'static str]> {
-        Some(&["upgrade"])
+    /// `opencode upgrade` (opencode.ai/v2/docs/cli/commands); OpenCode 1's stays on 1 unless given
+    /// `--major`, which OpenCode 2's refuses [D2115].
+    fn update(&self, exe: Option<&Path>) -> Option<&'static [&'static str]> {
+        let old = exe.is_some_and(|e| version(e, Path::new("/")).is_ok_and(|v| before_2(&v)));
+        Some(if old {
+            &["upgrade", "--major"]
+        } else {
+            &["upgrade"]
+        })
     }
 
     /// The frame of its mark (opencode.ai/favicon.svg), in the current colour, as the old app drew it [D123].
@@ -140,13 +154,7 @@ impl Adapter for OpenCode {
     fn check(&self, _spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
         let version = version(exe, cwd)?;
         // Every command here takes flags version 2 added; an older one answers them with its help.
-        let major = version.trim_start_matches(|c: char| !c.is_ascii_digit());
-        if major
-            .split('.')
-            .next()
-            .and_then(|m| m.parse::<u32>().ok())
-            .is_some_and(|m| m < 2)
-        {
+        if before_2(&version) {
             return Err(format!(
                 "This version of OpenCode ({version}) is too old. Brigadier needs OpenCode 2 or newer: update it, then check again."
             ));

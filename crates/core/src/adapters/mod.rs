@@ -229,8 +229,9 @@ pub trait Adapter: Sync {
     fn install(&self) -> Option<&'static str> {
         None
     }
-    /// Its own updater, as arguments to its binary; None: `install` runs again [D2082].
-    fn update(&self) -> Option<&'static [&'static str]> {
+    /// Its own updater, as arguments to its binary; None: `install` runs again [D2082]. `exe`: the CLI
+    /// it will run, which it may ask its version; None: the words shown, never probed [D272].
+    fn update(&self, _exe: Option<&Path>) -> Option<&'static [&'static str]> {
         None
     }
     /// Its own sign-in, as arguments to its binary run in a terminal, and the button's words.

@@ -177,7 +177,7 @@ fn available() -> Vec<&'static dyn Adapter> {
 
 /// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers.
 fn card(data: &Path, a: &dyn Adapter) -> Value {
-    let update = a.update().map(|w| format!("{} {}", a.bin().0, w.join(" ")));
+    let update = a.update(None).map(|w| format!("{} {}", a.bin().0, w.join(" ")));
     json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
         "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
@@ -352,7 +352,7 @@ fn start(
     let spec = setup_spec(a, id, action);
     let words = match action {
         "sign-in" => Some(a.sign_in().ok_or_else(|| io::Error::other("no sign-in"))?.1),
-        "update" => a.update(),
+        "update" => a.update(a.exe().as_deref()),
         _ => None,
     };
     let (argv, env) = if let Some(words) = words {

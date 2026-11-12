@@ -40,7 +40,7 @@ impl Adapter for Claude {
     }
 
     /// `claude update` (code.claude.com/docs/en/setup#update-manually).
-    fn update(&self) -> Option<&'static [&'static str]> {
+    fn update(&self, _: Option<&Path>) -> Option<&'static [&'static str]> {
         Some(&["update"])
     }
 

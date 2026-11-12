@@ -218,8 +218,13 @@ pub fn reason(out: &[u8]) -> Option<String> {
             continue;
         }
         match chars.next() {
-            // CSI: parameters up to a final byte.
-            Some('[') => _ = chars.find(|c| ('@'..='~').contains(c)),
+            // CSI: parameters up to a final byte. A move back or to a column starts the line again,
+            // as a spinner redraws its frame ("\x1b[999D\x1b[J").
+            Some('[') => {
+                if let Some('D' | 'G') = chars.find(|c| ('@'..='~').contains(c)) {
+                    plain.push('\r');
+                }
+            }
             // OSC (links, titles) and the other strings: up to BEL or ESC \.
             Some(']' | 'P' | 'X' | '^' | '_') => {
                 while let Some(c) = chars.next() {
