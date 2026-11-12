@@ -1,5 +1,6 @@
 //! Reading and trimming the files a CLI keeps for itself.
 
+use super::{Done, Event, Tool};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -195,4 +196,16 @@ pub fn denied(msg: &Value) -> String {
         "" => format!("{who} denied this."),
         why => format!("{who} denied this: {why}"),
     }
+}
+
+/// A subagent's own events as steps under its call `parent`, for its side panel: only its steps,
+/// never its words or its to-dos [D115].
+pub fn under(events: &mut Vec<Event>, parent: &str) {
+    events.retain_mut(|e| match e {
+        Event::ToolStart(Tool { parent: p, .. }) | Event::ToolEnd(Done { parent: p, .. }) => {
+            *p = Some(parent.into());
+            true
+        }
+        _ => false,
+    });
 }

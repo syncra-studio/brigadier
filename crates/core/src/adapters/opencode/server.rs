@@ -2,6 +2,8 @@
 //! adapter's lines on stdin (each one HTTP request to its V2 API) and prints the server's events
 //! for that session as lines, with the result of each request that names an id [D222].
 
+mod child;
+
 use super::grants::{allow, grant, granted, skipping};
 use super::http::Server;
 use brigadier_frames::base64;
@@ -296,25 +298,23 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
             if d["sessionID"] == st.session.as_str()
                 && d["item"]["payload"]["metadata"]["source"] == "subagent" =>
         {
-            let p = &d["item"]["payload"];
-            let child = p["metadata"]["childID"].as_str().unwrap_or("");
-            let Some(key) = st.children.get(child).cloned() else {
-                return;
-            };
-            let ok = p["metadata"]["state"] == "completed";
-            let t = st.tools.get(&key).cloned().unwrap_or_default();
-            let line = json!({"type": if ok { "session.tool.success" } else { "session.tool.failed" },
-                "created": v["created"], "data": {"sessionID": st.session, "id": key,
-                "name": t["name"], "input": t["input"], "metadata": {"sessionID": child},
-                "content": [{"type": "text", "text": p["text"]}],
-                "error": {"message": p["text"]}}});
+            let line = child::report(&st, &v);
             drop(st);
-            return say(line);
+            return line.into_iter().for_each(say);
         }
         "command.updated" | "skill.updated" => {
             let dir = st.dir.clone();
             drop(st);
             return super::commands::list(server, &dir);
+        }
+        // A subagent's own steps, for its side panel.
+        k if k.starts_with("session.tool.")
+            && (d["sessionID"].as_str()).is_some_and(|c| st.children.contains_key(c)) =>
+        {
+            let child = d["sessionID"].as_str().unwrap_or("").to_string();
+            if !child::step(&mut st, &child, k, &mut v) {
+                return;
+            }
         }
         k if k.starts_with("session.")
             && !st.session.is_empty()

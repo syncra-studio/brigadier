@@ -1,7 +1,7 @@
 //! OpenCode's lines as events: its server's events through the helper [D159], and the shapes its
 //! `run` gives a turn.
 
-use super::super::{Done, Event, Tool, change, classify, counts, question, s, shell_step};
+use super::super::{Done, Event, Tool, change, classify, counts, question, s, shell_step, under};
 use serde_json::{Value, json};
 
 /// An error of its API as an event, by the whole error, telling the user its message, not its JSON.
@@ -127,7 +127,10 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             let part = json!({"callID": d["id"], "tool": d["name"], "state": {
                 "status": status, "input": d["input"], "output": output.join("\n"),
                 "error": d["error"]["message"], "metadata": d["metadata"], "time": {at: v["created"]}}});
-            let events = tool_use(&part);
+            let mut events = tool_use(&part);
+            if let Some(call) = d["parent"].as_str() {
+                under(&mut events, call);
+            }
             // The start came with `called`: an end brings only its end.
             match kind {
                 "session.tool.called" => events,
