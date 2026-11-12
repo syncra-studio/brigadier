@@ -216,6 +216,9 @@ impl Thread {
             // A limit (or a refused resume) is no error of the turn: one row that a switch turns into
             // the switched line in place, as compaction's row changes, never a second row [D51, D132].
             "limited" | "unresumable" => {
+                if self.limit_again(item, &turn) {
+                    return;
+                }
                 self.break_group();
                 self.end_limit();
                 let backend = self.fold.backend.clone();
@@ -244,7 +247,8 @@ impl Thread {
             }
             // A failed turn: one row at its end, Rust's reason and the CLI's own words; the UI writes the rest and offers Retry [D487, D54].
             "failed" => {
-                if self.failed.as_deref() == Some(&turn) {
+                // A turn its limit ended fails with it: the limit's row says so.
+                if self.failed.as_deref() == Some(&turn) || self.limit_of(&turn).is_some() {
                     return;
                 }
                 self.failed = Some(turn.clone());
@@ -308,6 +312,7 @@ impl Thread {
                 };
                 self.add(json!({"kind": "unknown", "raw": raw}));
             }
+            "note" if item["event"] == "switch_failed" => self.switch_failed(item),
             // Send as new [D204]: one row per session started from here, its intent then its
             // result in place; never sent to the agent.
             "note" if item["event"] == "side" => {

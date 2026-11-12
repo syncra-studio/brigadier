@@ -6,8 +6,8 @@ use crate::fold::Turn;
 use serde_json::{Value, json};
 
 impl Thread {
-    /// A model picked for the conversation's agent: its line at once, kept out of a running turn's
-    /// fold as the user's own words are, and the next turn on it says nothing more [D76].
+    /// A model picked for the conversation's agent: its line at once, or after the turn that runs,
+    /// and the next turn on it says nothing more [D76].
     /// What a pick's line needs from before it's folded: the model the agent ran, and whether
     /// another agent was picked.
     pub(super) fn before_pick(&self, note: &Value) -> (Option<String>, bool) {
@@ -18,6 +18,9 @@ impl Thread {
     }
 
     pub(super) fn picked(&mut self, note: &Value, (was, back): (Option<String>, bool)) {
+        if self.open.is_some() {
+            return self.later.push((note.clone(), (was, back)));
+        }
         match note["pick"] == true {
             false => self.model_picked(s(note, &["backend"]).into(), was, note, back),
             true if note["to_label"].is_string() => self.agent_picked(note),
@@ -25,10 +28,18 @@ impl Thread {
         }
     }
 
+    /// The lines of picks made while the turn now ended ran [D76].
+    pub(super) fn picked_later(&mut self) {
+        for (note, before) in std::mem::take(&mut self.later) {
+            self.picked(&note, before);
+        }
+    }
+
     /// Its line names both models as the picker does; picked back from another agent, it reads as
     /// that switch's own, even on the same model.
     fn model_picked(&mut self, backend: String, was: Option<String>, note: &Value, back: bool) {
-        let Some(model) = self.fold.models.get(&backend).cloned() else {
+        let model = note["model"].as_str().map(String::from);
+        let Some(model) = model.or_else(|| self.fold.models.get(&backend).cloned()) else {
             return;
         };
         if back && note["to_label"].is_string() {
@@ -44,11 +55,8 @@ impl Thread {
         let named = |k: &str, id: String| note[k].as_str().map_or(id, String::from);
         let at = self.add(json!({"kind": "line", "reason": "model", "why": "changed",
             "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}));
-        match self.open.as_mut() {
-            Some(o) => o.kept.push(at as u64 + 1),
-            // Between turns it's in none, so the last one's answer keeps its actions above it.
-            None => self.items[at]["turnId"] = "".into(),
-        }
+        // Between turns it's in none, so the last one's answer keeps its actions above it.
+        self.items[at]["turnId"] = "".into();
         self.ran = Some((backend, model));
     }
 
@@ -62,10 +70,7 @@ impl Thread {
             "from": note["from_label"], "to": to, "model": model, "handoff": true,
             "automatic": false, "text": format!("Switched to {to} · {model}"), "op": note["op"]}),
         );
-        match self.open.as_mut() {
-            Some(o) => o.kept.push(at as u64 + 1),
-            None => self.items[at]["turnId"] = "".into(),
-        }
+        self.items[at]["turnId"] = "".into();
         self.pick_row = Some(at);
     }
 
@@ -83,6 +88,39 @@ impl Thread {
     pub(super) fn interrupted_line(&mut self) {
         if self.open.is_some() {
             self.kept_row(json!({"kind": "line", "reason": "interrupted"}));
+        }
+    }
+
+    /// The row of the limit `turn` ended on, while no switch took it.
+    pub(super) fn limit_of(&self, turn: &str) -> Option<usize> {
+        self.limit_row
+            .filter(|&at| self.items[at]["turnId"] == turn)
+    }
+
+    /// The same limit said again in its turn (a CLI's event, then its words): one row, its latest
+    /// words and the first time said [D74].
+    pub(super) fn limit_again(&mut self, item: &Value, turn: &str) -> bool {
+        let Some(at) = self.limit_of(turn) else {
+            return false;
+        };
+        self.items[at]["text"] = item["message"].clone();
+        if let Some(resets) = item["resets"].as_u64() {
+            self.items[at]["resets"] = resets.into();
+            self.reset_at = Some(resets);
+        }
+        self.changed_items.insert(at);
+        true
+    }
+
+    /// An automatic switch that couldn't happen: its limit's row says so, with Try again [D51].
+    pub(super) fn switch_failed(&mut self, item: &Value) {
+        if let Some(at) = self.limit_row {
+            let row = &mut self.items[at];
+            row["state"] = "failed".into();
+            row["automatic"] = true.into();
+            row["error"] = item["message"].clone();
+            row["to"] = item["to"].clone();
+            self.changed_items.insert(at);
         }
     }
 
@@ -134,7 +172,7 @@ impl Thread {
             let named = sw["to"].get("name").unwrap_or(&sw["to"]["model"]);
             let switched = json!({"state": "switched", "text": note, "from": sw["from_label"],
                 "to": sw["to_label"], "model": named, "handoff": sw["fresh"],
-                "automatic": sw["auto"]});
+                "automatic": sw["auto"], "error": null});
             // A picked agent's row was drawn at its pick [D76].
             let picked = (sw["why"] == "picked")
                 .then(|| self.pick_row.take())

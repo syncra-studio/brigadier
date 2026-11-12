@@ -429,3 +429,33 @@ pub fn fixed(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
     }
     list
 }
+
+/// An assistant message the CLI wrote for an API error, by the error its SDK types: a limit's own
+/// words (its time comes from its rate_limit_event), no credits, no capacity or no such model.
+pub fn api_error(v: &Value, text: String) -> Option<Event> {
+    Some(match s(v, &["error"]) {
+        "rate_limit" => Event::Limited(text, None),
+        "billing_error" => Event::OutOfCredits,
+        "overloaded" => Event::Failed("capacity", text),
+        "model_not_found" => Event::Failed("model", text),
+        _ => return None,
+    })
+}
+
+/// A limit hit, from its rate_limit_event: its reset time is in seconds [D74, D220]. Rejected while
+/// extra usage still pays, the turn carries on.
+pub fn rate_limit(info: &Value) -> Vec<Event> {
+    let overage = matches!(s(info, &["overageStatus"]), "allowed" | "allowed_warning");
+    if info["status"] != "rejected" || overage {
+        return vec![];
+    }
+    let words = match s(info, &["rateLimitType"]) {
+        "five_hour" => "5-hour limit reached",
+        t if t.starts_with("seven_day") => "Weekly limit reached",
+        _ => "Usage limit reached",
+    };
+    vec![Event::Limited(
+        words.into(),
+        info["resetsAt"].as_u64().map(|t| t * 1000),
+    )]
+}

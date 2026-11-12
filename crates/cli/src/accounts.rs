@@ -198,7 +198,7 @@ fn list(data: &Path) -> Value {
                             .into_iter()
                             .map(|(id, name, c)| {
                                 json!({"id": id, "name": name, "check": c,
-                                    "limited_at": v["limited"][format!("{}/{id}", a.name())],
+                                    "limited_until": v["limited"][format!("{}/{id}", a.name())],
                                     "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), Some(a)))})
                             })
                             .collect();

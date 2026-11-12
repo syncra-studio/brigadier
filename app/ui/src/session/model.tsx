@@ -64,7 +64,11 @@ function settle(id: string, op: string) {
   };
   const stop = threadSource.subscribe(() => has() && done());
   // shortcut: a pick Rust draws no row for (no model known before it) goes after 3s; drop once `set` says whether it drew one.
-  const timer = setTimeout(done, 3000);
+  // One made mid-turn has its row drawn once that turn ends [D76]: its line waits for it meanwhile.
+  let timer = setTimeout(function late() {
+    if (threadSource.get()?.turns.some((turn) => turn.status === "running")) timer = setTimeout(late, 1000);
+    else done();
+  }, 3000);
   if (has()) done();
 }
 

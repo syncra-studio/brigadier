@@ -296,7 +296,7 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
       );
     case "switching":
       // Under way, it shimmers as compaction's running line does (D59).
-      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}` : `Switching to ${to}`}</span>;
+      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}` : to ? `Switching to ${to}` : "Switching"}</span>;
     case "switched":
       // A switch logged before the shape has only Rust's sentence.
       if (!change.to) return <span>{change.text}</span>;
@@ -304,6 +304,20 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
       if (change.reason === "picked") return <span>Switched to {to}</span>;
       return <WithTip words={refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`} tip={hit} />;
     case "failed":
+      // An automatic one keeps the limit's words: nothing was clicked that the line could name.
+      if (change.automatic)
+        return (
+          <>
+            {status}
+            <WithTip words={to ? `· couldn’t switch to ${to}` : "· couldn’t switch automatically"} tip={change.error ?? ""} />
+            {onRetry && (
+              <Button variant="link-blue" size={null} onClick={onRetry}>
+                Try again
+              </Button>
+            )}
+            {actions}
+          </>
+        );
       return (
         <>
           {change.error ? <WithTip words={`Couldn’t switch to ${to} · the thread is unchanged`} tip={change.error} /> : <span>Couldn’t switch to {to} · the thread is unchanged</span>}

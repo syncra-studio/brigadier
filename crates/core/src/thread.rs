@@ -86,6 +86,8 @@ pub struct Thread {
     limit_row: Option<usize>,
     /// The switch row of another agent picked, until the message that goes to it [D76].
     pick_row: Option<usize>,
+    /// Picks made while a turn ran: their lines land after it, which runs on as it began [D76].
+    later: Vec<(Value, (Option<String>, bool))>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
@@ -302,6 +304,7 @@ impl Thread {
                 );
             }
         }
+        self.picked_later();
     }
 
     /// Ends whatever still runs because its host or agent is gone, which no frame may ever say:

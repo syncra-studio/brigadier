@@ -19,7 +19,8 @@ pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashM
             continue;
         };
         let settings = settings.get_or_insert_with(|| brigadier::switch_settings(data));
-        let at = json!([row["items"], settings]);
+        // Asked again at a new limit or a settings change; a failure's own note isn't one.
+        let at = json!([row["finished"], settings]);
         if seen.get(id) == Some(&at) {
             continue;
         }

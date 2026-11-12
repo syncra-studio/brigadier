@@ -22,6 +22,8 @@ pub struct Target<'a> {
     pub backend: &'a str,
     pub account: &'a str,
     pub model: Option<&'a str>,
+    /// The model as the picker names it, where known [D76].
+    pub name: Option<&'a str>,
     pub label: &'a str,
     pub from: &'a str,
 }
@@ -87,7 +89,7 @@ pub fn switch(
     } else {
         ("system", CARRY_ON.to_string())
     };
-    let to_named = match to.model {
+    let to_named = match to.name.or(to.model) {
         Some(m) => format!("{} · {m}", to.label),
         None => to.label.to_string(),
     };
@@ -101,10 +103,13 @@ pub fn switch(
     } else {
         format!("Usage limit on {} · {how} {to_named}", to.from)
     };
-    let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
+    let mut switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to.backend, "account": to.account, "model": to.model},
         "auto": auto, "fresh": fresh, "why": why, "note": note,
         "from_label": to.from, "to_label": to.label});
+    if let Some(name) = to.name {
+        switch["to"]["name"] = name.into();
+    }
     if let Some(m) = to.model {
         run.model = Some(m.into());
     }
@@ -185,15 +190,28 @@ fn handoff(spec: &Spec, why: &str, last: &Value, from: &str) -> std::io::Result<
     let mut each = |item: &Value| {
         let text = item["text"].as_str().unwrap_or("");
         match item["kind"].as_str().unwrap_or("") {
+            // A control (a Stop, a model change) is no message.
+            "input" if item["control"].is_object() => {}
             // A message a switch sent again is the same message: counted once. A picked agent's
             // first message is the user's own, sent once.
             "input"
-                if item["origin"] != "system"
+                if item["origin"] == "user"
                     && (item["switch"].is_null() || item["switch"]["why"] == "picked") =>
             {
                 since = thread.len();
                 asked.push(text.to_string());
                 thread += &format!("\n## User\n\n{text}\n");
+                said = false;
+            }
+            // A worker's result or another session's message: named by its source, never the user's.
+            "input" => {
+                let origin = item["origin"].as_str().unwrap_or("");
+                let from = match origin.split(':').collect::<Vec<_>>()[..] {
+                    ["result", how, worker] => format!("Worker {worker}'s result ({how})"),
+                    ["peer", from] => format!("Message from session {from}"),
+                    _ => return,
+                };
+                thread += &format!("\n## {from}\n\n{text}\n");
                 said = false;
             }
             "text" => {

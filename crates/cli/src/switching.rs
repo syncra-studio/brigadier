@@ -17,9 +17,8 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.get(i + 1).map(String::as_str)
 }
 
-/// How long an account that hit its limit is skipped by an automatic pick (proposed: no reset
-/// time is read yet). shortcut: a fixed 5 hours, the shortest plan window; read each CLI's reset
-/// time when one is reliable.
+/// How long an account that hit its limit is skipped by an automatic pick when its CLI gave no
+/// reset time: 5 hours, the shortest plan window (proposed).
 const SKIP_MS: u64 = 5 * 3600 * 1000;
 
 /// `switching [--agent A --auto on|off] [--agents on|off]`. The confirmation
@@ -81,6 +80,30 @@ fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
 /// computer's login), or, with `--auto`, to the one the settings allow, if any. A refused resume
 /// starts a new conversation with a hand-off on the same account (D90 Q4).
 pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
+    let mut r = attempt(data, id, pick, auto);
+    // A log moved meanwhile (a note, a check) is no reason to give up on an automatic switch.
+    for _ in 0..3 {
+        match &r {
+            Ok(v) if auto && v["error"] == "changed" => r = attempt(data, id, pick, auto),
+            _ => break,
+        }
+    }
+    // One that can't happen says so on its limit's row, with Try again, not only in a log [D51].
+    let failed = match &r {
+        Ok(v) if v["ok"] == true => None,
+        Ok(v) if matches!(v["error"].as_str(), Some("off" | "not_limited" | "changed")) => None,
+        Ok(v) => Some((v["message"].as_str().or(v["error"].as_str()).unwrap_or("")).to_string()),
+        Err(e) => Some(e.to_string()),
+    };
+    if let Some(message) = failed.filter(|_| auto) {
+        let to = r.as_ref().map_or(Value::Null, |v| v["to"].clone());
+        let note = json!({"event": "switch_failed", "message": message, "to": to});
+        let _ = owner::call(data, id, json!({"op": "note", "data": note}));
+    }
+    r
+}
+
+fn attempt(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     owner::ensure(data, &spec)?;
     crate::rewind::settled(data, &spec)?;
@@ -103,8 +126,10 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
     let v = {
         let _one = STORE.lock().unwrap();
         let mut v = load(data);
+        // Skipped until its CLI said it resets [D74].
         if why == "limited" {
-            v["limited"][format!("{b}/{cur}")] = log::now_ms().into();
+            let until = f.resets.unwrap_or(log::now_ms() + SKIP_MS);
+            v["limited"][format!("{b}/{cur}")] = until.into();
             save(data, &v)?;
         }
         v
@@ -140,6 +165,7 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
         );
     };
     let to_label = label(&v, to, &account);
+    let name = (model.as_deref()).and_then(|m| model_name(data, to.name(), m, &spec.cwd));
     // Asked again last: a setting turned off meanwhile stops an automatic switch [D51].
     let still = || {
         let v = load(data);
@@ -154,18 +180,28 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
         backend: to.name(),
         account: &account,
         model: model.as_deref(),
+        name: name.as_deref(),
         label: &to_label,
         from: &from,
     };
-    Ok(switch::switch(
-        &spec, &f, &ping, &call, &target, auto, &still,
-    ))
+    let mut reply = switch::switch(&spec, &f, &ping, &call, &target, auto, &still);
+    reply["to"] = to_label.into();
+    Ok(reply)
+}
+
+/// A model's name as the picker shows it, from the agent's last check here.
+fn model_name(data: &Path, agent: &str, model: &str, cwd: &str) -> Option<String> {
+    let args = ["agents", agent, "--cwd", cwd, "--cached"].map(String::from);
+    let checks = crate::setup::run(data, &args).ok()?;
+    let models = checks["agents"][0]["models"].as_array()?;
+    let m = models.iter().find(|m| m["id"] == model)?;
+    m["name"].as_str().map(String::from)
 }
 
 fn recent(v: &Value, key: &str) -> bool {
     v["limited"][key]
         .as_u64()
-        .is_some_and(|t| log::now_ms().saturating_sub(t) < SKIP_MS)
+        .is_some_and(|until| log::now_ms() < until)
 }
 
 /// The next account of the same agent, in order, that isn't the current one, hit no limit lately,

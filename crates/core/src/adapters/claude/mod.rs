@@ -301,21 +301,16 @@ impl Adapter for Claude {
             ("system", "permission_denied") => vec![Event::Denied],
             // A running subagent's heartbeat says nothing to show.
             ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
+            // An API error the CLI answers for, as its SDK types it [D74].
             ("assistant", _)
-                if parent.is_none()
-                    && matches!(s(&v, &["error"]), "model_not_found" | "overloaded") =>
+                if parent.is_none() && control::api_error(&v, String::new()).is_some() =>
             {
-                let cause = if v["error"] == "overloaded" {
-                    "capacity"
-                } else {
-                    "model"
-                };
                 let text = blocks()
                     .iter()
                     .filter_map(|b| b["text"].as_str())
                     .collect::<Vec<_>>()
                     .join("\n");
-                vec![Event::Failed(cause, text)]
+                control::api_error(&v, text).into_iter().collect()
             }
             ("assistant", _) => blocks()
                 .iter()
@@ -339,14 +334,7 @@ impl Adapter for Claude {
                     tool_end(b, result, parent.clone())
                 })
                 .collect(),
-            // Its reset time is in seconds [D74, D220].
-            ("rate_limit_event", _) => match s(&v, &["rate_limit_info", "status"]) {
-                "rejected" => vec![Event::Limited(
-                    line.chars().take(300).collect(),
-                    v["rate_limit_info"]["resetsAt"].as_u64().map(|t| t * 1000),
-                )],
-                _ => vec![],
-            },
+            ("rate_limit_event", _) => control::rate_limit(&v["rate_limit_info"]),
             ("result", _) => {
                 let mut events = vec![Event::Usage(v["usage"].clone())];
                 if v["is_error"].as_bool() == Some(true) {
@@ -357,6 +345,8 @@ impl Adapter for Claude {
                     };
                     events.push(if v["api_error_status"] == 529 {
                         Event::Failed("capacity", text)
+                    } else if v["api_error_status"] == 429 {
+                        Event::Limited(text, None)
                     } else {
                         classify(&said).unwrap_or(Event::Failed("", text))
                     });

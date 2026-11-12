@@ -24,8 +24,9 @@ type Switch = Extract<Item, { kind: "switch" }>;
 export function SwitchRow({ item }: { item: Switch }) {
   const session = useContext(SessionOfThread);
   const { agents, error } = useAccounts();
-  const [pending, setPending] = useState<{ account: string | undefined; to: string; error?: string } | null>(null);
-  const live = item.state === "limit" && session !== null;
+  const [pending, setPending] = useState<{ account: string | undefined; to: string; auto?: boolean; error?: string } | null>(null);
+  // At its limit, or past an automatic switch that couldn't happen (Rust's `failed`): still the user's to move on.
+  const live = (item.state === "limit" || item.state === "failed") && session !== null;
 
   useEffect(() => {
     if (live && !session.offline) void loadAccounts();
@@ -42,11 +43,11 @@ export function SwitchRow({ item }: { item: Switch }) {
   // Named as Rust names a side once switched: the account and its agent, or the agent alone with one login.
   const named = (id: string) => (agent?.accounts ? `${name(id)} (${label})` : label);
   const others = list.filter((a) => a.id !== (item.account ?? "") && a.check.signed_in === true && a.check.kept_apart !== false);
-  const go = (account: string | undefined, to: string) => {
+  const go = (account: string | undefined, to: string, auto = false) => {
     if (!session) return;
-    setPending({ account, to });
+    setPending({ account, to, auto });
     // Done when Rust's row turns switched; only a refusal comes back here.
-    switchSession(session.id, account).catch((cause) => setPending({ account, to, error: errorText(cause) }));
+    switchSession(session.id, account, auto).catch((cause) => setPending({ account, to, auto, error: errorText(cause) }));
   };
   const link = (key: string, text: string, onClick: () => void) => (
     <Button key={key} variant="link-blue" size={null} disabled={session?.offline || (pending !== null && !pending.error)} onClick={onClick}>
@@ -56,7 +57,7 @@ export function SwitchRow({ item }: { item: Switch }) {
 
   // The shape the row draws: Rust's, with the click's pending state over it while Rust's still reads limit.
   const row: Switch =
-    live && pending ? { ...item, state: pending.error ? "failed" : "switching", to: pending.to, error: pending.error } : item;
+    live && pending ? { ...item, state: pending.error ? "failed" : "switching", to: pending.to, automatic: pending.auto === true, error: pending.error } : item;
   // What follows the limit's words. Kept in every state within a session, so the row keeps its room as it moves on.
   let actions: ReactNode = null;
   if (session !== null && item.reason === "unresumable") {
@@ -81,7 +82,7 @@ export function SwitchRow({ item }: { item: Switch }) {
         change={row}
         from={named(item.account ?? "")}
         actions={actions}
-        onRetry={() => go(pending?.account, pending?.to ?? "")}
+        onRetry={() => (pending ? go(pending.account, pending.to, pending.auto) : go(undefined, item.to ?? "", true))}
       />
       {live && agents === undefined && <ErrorLine error={error} />}
     </div>

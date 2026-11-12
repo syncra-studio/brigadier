@@ -23,7 +23,9 @@ export type Account = {
   };
   /** An added account the computer's own login is signed in to as well: one row, saying so. */
   own_login?: boolean;
-  limited_at: number | null;
+  /** Until when an automatic switch skips it: its limit's reset, as its CLI said, or 5 hours on [D74]. */
+  /** Until when an automatic switch skips it: its limit's reset as its CLI said, or 5 hours on [D74]. */
+  limited_until: number | null;
   /** Its sign-in run, read as the setup's own [D29]. */
   sign_in: Run | null;
 };
@@ -137,6 +139,9 @@ export async function removeAccount(id: string): Promise<string | null> {
   return (reply.note as string | null) ?? null;
 }
 
-/** Switches a session at its limit to `account` ("" is the computer's login); no account: a new conversation with a hand-off. */
-export const switchSession = (session: string, account?: string) =>
-  run(["switch", session, ...(account === undefined ? [] : ["--account", account])]);
+/**
+ * Switches a session at its limit to `account` ("" is the computer's login); no account: a new conversation with a
+ * hand-off; `auto`: wherever the automatic switch's settings allow, its Try again [D51].
+ */
+export const switchSession = (session: string, account?: string, auto = false) =>
+  run(["switch", session, ...(account === undefined ? [] : ["--account", account]), ...(auto ? ["--auto"] : [])]);

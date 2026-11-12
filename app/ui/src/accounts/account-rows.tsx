@@ -15,8 +15,6 @@ import { LimitLine, TightestUsage, tightest } from "./usage";
 
 /** How often the accounts are checked again while a sign-in runs. */
 const RECHECK_MS = 2000;
-/** How long an account that hit its limit says so. */
-const LIMIT_SHOWN_MS = 5 * 3600 * 1000;
 const OWN_LOGIN = "This computer's login";
 
 /**
@@ -95,7 +93,7 @@ export function AccountRows({
     id: "",
     name,
     check: { installed: Boolean(agent.path), signed_in: signedIn, how },
-    limited_at: null,
+    limited_until: null,
     sign_in: null,
   });
   const rows: Account[] = (
@@ -263,7 +261,7 @@ function AccountRow({
   // Called "This computer's login" already, the line doesn't say it again.
   if ((own || account.own_login) && title !== OWN_LOGIN) line.push(OWN_LOGIN);
   const menu = Boolean(onRename) || !own;
-  const limited = account.limited_at !== null && Date.now() - account.limited_at < LIMIT_SHOWN_MS;
+  const limited = account.limited_until !== null && Date.now() < account.limited_until;
   const limitsId = useId();
   // Only an account with limits read opens.
   const limits = signedIn ? (c.usage ?? []) : [];
