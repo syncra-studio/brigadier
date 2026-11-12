@@ -241,7 +241,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }
                 return control::steer(data, id, text, &parts, flag(args, "--cid"));
             }
-            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"))? {
+            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"), None)? {
                 return Ok(reply);
             }
             let spec = core::load(data, id)?;

@@ -115,10 +115,24 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       );
     case "approval": {
       const shown = describe(item.request);
-      return <ApprovalRow keep={item.id} title={shown.title} detail={shown.detail} body={shown.body} decision={item.decision} action={item.request.action} waiting={turn?.status === "running"} />;
+      const { command, host, paths, input } = item.request;
+      const subject = command || host || paths?.join(", ") || input || undefined;
+      return (
+        <ApprovalRow
+          keep={item.id}
+          title={shown.title}
+          detail={shown.detail}
+          body={shown.body}
+          decision={item.decision}
+          action={item.request.action}
+          waiting={turn?.status === "running"}
+          subject={subject}
+          toParent={item.to === "parent"}
+        />
+      );
     }
     case "question":
-      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && turn?.status === "running"} />;
+      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && turn?.status === "running"} toParent={item.to === "parent"} />;
     case "childAgent":
       return <SubagentRow item={item} />;
     case "compaction":

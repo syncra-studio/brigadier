@@ -61,15 +61,18 @@ oldest; --last or --around reads fewer.",
         ),
         "send" => (
             "brigadier send <id> \"<message>\" [--wait] [--timeout S] [--json]
+brigadier send <worker> --allow | --deny \"<reason>\"
 
 Sends another session a message. It shows in both threads as from you, never as its user, and can't
 approve anything there. A busy session gets it after its turn, or in it where its user lets messages
 steer. --wait waits for the end of the turn that takes it and prints that turn's last message, giving
 up after S seconds (60 by default, at most 600). Without --wait, its answer comes only if it sends one.
 A back-and-forth between sessions stops after 8 hops, and a session after 20 messages a minute; only
-the user can let a stopped message through. Batch what you have to say into one message.",
-            &["--timeout"],
-            &["--wait"],
+the user can let a stopped message through. Batch what you have to say into one message.
+Your worker's permission prompt or question waits on you alone: --allow or --deny answers the
+prompt, and a message answers the question.",
+            &["--timeout", "--deny"],
+            &["--wait", "--allow"],
         ),
         "wait" => (
             "brigadier wait <id> [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
@@ -82,6 +85,8 @@ the user can let a stopped message through. Batch what you have to say into one 
 Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
 It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
 last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now.
+Its permission prompts and questions come to you the same way, never to the user: judge each and
+answer with `brigadier send <id> --allow`, `--deny \"<reason>\"` or your answer as the message.
 Without --agent, --model and --effort it runs on yours; `brigadier models` lists the others you may use.
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
@@ -254,6 +259,21 @@ pub fn run(
             .number("--timeout", WAIT, WAIT_MAX)
             .map(|s| wait(data, me, id, s, rows, here)),
         "stop" => Ok(workers::stop(data, me, id)),
+        "send"
+            if call.has("--allow")
+                || call.value("--deny").is_some()
+                || workers::asks_parent(data, me, id) =>
+        {
+            let text = call.text.unwrap_or("");
+            Ok(workers::answer(
+                data,
+                me,
+                id,
+                call.has("--allow"),
+                call.value("--deny"),
+                text,
+            ))
+        }
         "send" => {
             let row = rows()
                 .into_iter()
@@ -392,7 +412,7 @@ fn wait(
         };
         let state = str_of(&row, "state").to_string();
         let idle = row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
-        if idle || state == "waiting_answer" {
+        if idle || state == "waiting_answer" || state == "asking" {
             let last = crate::relay::archive(data, id, false)
                 .into_iter()
                 .rev()

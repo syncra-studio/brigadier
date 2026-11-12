@@ -160,8 +160,8 @@ export type Item = Base &
         endedAt?: number | null;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress }
-    | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null }
-    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean }
+    | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" }
+    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent" }
     | {
         kind: "childAgent";
         sessionId: string;

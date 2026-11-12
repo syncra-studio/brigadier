@@ -12,7 +12,7 @@ pub mod setup;
 mod shell;
 
 pub use classify::classify;
-pub use files::{change, counts, drop_lines, question, sha1, uuid};
+pub use files::{change, counts, denied, drop_lines, question, sha1, uuid};
 pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
@@ -205,10 +205,9 @@ pub enum Retune {
 /// What a turn runs with, as its input frame records it.
 pub fn setup(spec: &Spec) -> Value {
     let mut setup = json!({"model": spec.model, "effort": spec.effort, "level": spec.level});
-    // Only where on, so a setup without it reads as before.
-    if spec.fast {
-        setup["fast"] = true.into();
-    }
+    // Only where on, so a setup without them reads as before; a worker's asks go to its parent [D131].
+    let on = [("fast", spec.fast), ("worker", spec.naked)];
+    (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
     setup
 }
 

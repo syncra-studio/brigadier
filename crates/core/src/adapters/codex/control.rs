@@ -186,7 +186,7 @@ pub fn answer(spec: &Spec, msg: &Value) -> Result<Value, String> {
     }
     let why = msg["reason"].as_str().map_or("", str::trim);
     if !allowed && !why.is_empty() {
-        line["before"] = format!("The user denied this: {why}").into();
+        line["before"] = crate::adapters::denied(msg).into();
         line["thread"] = cli["thread"].clone();
         line["turn"] = cli["turn"].clone();
     }

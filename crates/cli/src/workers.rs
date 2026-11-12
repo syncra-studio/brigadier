@@ -5,10 +5,12 @@
 //! [D54]. Its result is written by Rust when its task ends and goes to the parent once (`result`).
 //! The parent's agent merges a worker's branch with plain git; Brigadier has no merge [D3003].
 
+mod asks;
 mod family;
 mod make;
 mod pause;
 mod result;
+pub use asks::{answer, asks_parent};
 pub use family::{delete, unlanded};
 pub use make::start;
 pub use pause::held;
@@ -386,6 +388,9 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         if !row["worker"].is_null() {
             result::written(data, id, row);
         }
+        if row["state"] == "asking" {
+            let _ = asks::asked(data, id);
+        }
         if row["worker"]["kind"] == "doneNotMerged" {
             merged(data, id);
         }
@@ -433,7 +438,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
         ),
         _ if l.paused => ("paused", "Paused".into()),
         "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking"
-        | "uncertain" | "stalled" => ("working", "Working".into()),
+        | "uncertain" | "stalled" | "asking" => ("working", "Working".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),

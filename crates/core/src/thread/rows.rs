@@ -172,13 +172,13 @@ impl Thread {
                 if let Some(o) = self.open.as_mut() {
                     o.asked = Some(at);
                 }
-                self.wait_on(at, ts);
+                self.wait_on(at, ts, item);
             }
             "approval" => {
                 self.break_group();
                 let at = self
                     .add(json!({"kind": "approval", "request": item["request"], "decision": null}));
-                self.wait_on(at, ts);
+                self.wait_on(at, ts, item);
             }
             "resolved" => {
                 self.withdraw(&str_of("id"), item["decision"].as_str());

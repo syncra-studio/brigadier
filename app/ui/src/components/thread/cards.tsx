@@ -1,4 +1,4 @@
-import { type ComponentType, type ReactNode } from "react";
+import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 
 import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
@@ -30,6 +30,9 @@ const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
   other: Tools,
 };
 
+/** The session that started the worker whose thread shows: a request it answers names it [D131]. */
+export const ParentName = createContext("Its parent");
+
 /**
  * An approval, read like a question: "Asking for approval · waiting" while it waits (the card to decide sits
  * in the composer's place), then "Asked for approval · allowed" or "· denied", which opens to what was asked.
@@ -43,6 +46,8 @@ export function ApprovalRow({
   decision,
   action = "other",
   waiting,
+  subject,
+  toParent,
 }: {
   keep: string;
   title: string;
@@ -52,14 +57,21 @@ export function ApprovalRow({
   action?: ApprovalAction;
   /** Its turn still runs, so an undecided approval waits rather than being withdrawn. */
   waiting: boolean;
+  /** What it asked for in a line: the command, site, files or tool. */
+  subject?: string;
+  /** A worker's, which only its parent answers: a quiet step, "‹parent› allowed: npm test" [D121, D131]. */
+  toParent?: boolean;
 }) {
   const icon = <StepIcon icon={ACTIONS[action]} />;
+  const parent = useContext(ParentName);
   if (decision === null || decision === "withdrawn") {
     waiting = waiting && decision === null;
+    const asking = toParent ? `Asking ${parent}` : "Asking for approval";
+    const asked = toParent ? `Asked ${parent}` : "Asked for approval";
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? "Asking for approval · waiting" : `Asked for approval · ${WITHDRAWN}`} live={waiting} />
+        <Words verb={waiting ? `${asking} · waiting` : `${asked} · ${WITHDRAWN}`} object={toParent ? subject : undefined} live={waiting} />
       </p>
     );
   }
@@ -75,7 +87,11 @@ export function ApprovalRow({
       }
     >
       {icon}
-      <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} />
+      {toParent ? (
+        <Words verb={`${parent} ${decision === "approved" ? "allowed" : "denied"}:`} object={subject} />
+      ) : (
+        <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} />
+      )}
     </OpeningRow>
   );
 }
@@ -103,6 +119,7 @@ export function QuestionRow({
   waiting,
   round,
   answers,
+  toParent,
 }: {
   keep: string;
   question: string;
@@ -112,17 +129,21 @@ export function QuestionRow({
   round?: PendingQuestion;
   /** One answer per question of the round, null for a skipped one. */
   answers?: (string | null)[];
+  /** A worker's, which only its parent answers: "Asking ‹parent›", then "‹parent› answered" [D121, D131]. */
+  toParent?: boolean;
 }) {
   const icon = <StepIcon icon={QuestionMarkCircle} />;
+  const parent = useContext(ParentName);
   const items = round?.items ?? [];
   const count = Math.max(items.length, 1);
   const title = round?.title ? ` · ${round.title}` : "";
-  const asked = `Asked ${count === 1 ? "a question" : `${count} questions`}${title}`;
+  const asked = toParent ? `${parent} answered${title}` : `Asked ${count === 1 ? "a question" : `${count} questions`}${title}`;
   if (answer === null) {
+    const asking = toParent ? `Asking ${parent}` : count === 1 ? "Asking a question" : "Asking questions";
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? `${count === 1 ? "Asking a question" : "Asking questions"} · waiting` : `${asked} · ${WITHDRAWN}`} live={waiting} />
+        <Words verb={waiting ? `${asking} · waiting` : `${toParent ? `Asked ${parent}${title}` : asked} · ${WITHDRAWN}`} live={waiting} />
       </p>
     );
   }

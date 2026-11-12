@@ -71,14 +71,6 @@ pub fn rules(spec: &Spec) -> Value {
     all.into()
 }
 
-/// What a deny tells the agent, with the user's reason when they gave one [D192].
-pub fn denied(reason: &str) -> String {
-    match reason.trim() {
-        "" => "The user denied this.".into(),
-        why => format!("The user denied this: {why}"),
-    }
-}
-
 /// A question's answers by field key, or the user's own message as the first one. A skipped
 /// question stays out; a multiselect takes the labels it names, else the text as one answer.
 pub fn answers(r: &Value, msg: &Value) -> Value {

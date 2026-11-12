@@ -24,12 +24,26 @@ impl Fold {
         }
     }
 
-    /// A request the agent made: pending in its turn until answered, withdrawn or ended.
+    /// A request the agent made: pending in its turn until answered, withdrawn or ended. One its
+    /// parent agent answers says so (`to: parent`).
     pub(super) fn ask(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("");
-        if let Some(t) = self.turns.first_mut().filter(|_| !id.is_empty()) {
-            t.asks.insert(id.into(), item["request"].clone());
+        let mut request = item["request"].clone();
+        if self.for_parent(item) {
+            request["to"] = "parent".into();
         }
+        if let Some(t) = self.turns.first_mut().filter(|_| !id.is_empty()) {
+            t.asks.insert(id.into(), request);
+        }
+    }
+
+    /// Whether a request goes to the parent agent rather than the user: a worker's question, and
+    /// its approval on Auto or Full access; on Ask its approvals stay the user's [D126, D131].
+    pub fn for_parent(&self, item: &Value) -> bool {
+        let Some(g) = self.given.as_ref().filter(|g| g["worker"] == true) else {
+            return false;
+        };
+        item["kind"] == "question" || matches!(g["level"].as_str(), Some("auto" | "full"))
     }
 
     /// A pending request leaves, saying why: answered, withdrawn, or how its turn ended.

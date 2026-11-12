@@ -106,13 +106,31 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         None => None,
     };
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
+    answered(data, id, request, control)
+}
+
+/// A worker's parent answers its approval, as the parent's (`by`), never the user's [D131].
+pub fn answer_as(
+    data: &Path,
+    id: &str,
+    request: &str,
+    decision: &str,
+    reason: Option<&str>,
+    by: &str,
+) -> io::Result<Option<Value>> {
+    let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "by": by});
+    answered(data, id, request, control).map(Some)
+}
+
+fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
+    let (decision, answers) = (
+        control["decision"].as_str().map(String::from),
+        control["answers"].as_array().cloned(),
+    );
     let req = json!({"cid": new_cid(), "control": control});
     deliver(data, id, req, true, |f| {
-        let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request.as_str())) else {
-            let why = f
-                .closed
-                .get(request.as_str())
-                .map_or("unknown", String::as_str);
+        let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request)) else {
+            let why = f.closed.get(request).map_or("unknown", String::as_str);
             return Err(refused("not_pending", why.into()));
         };
         let wrong = |what: &str| Err(refused("invalid", what.into()));
@@ -142,7 +160,13 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
 /// A plain message while the agent waits on a question: that question's answer, through its
 /// control channel, so the agent and the log agree on what's pending. None when no question waits
 /// or the agent can't take it there: the message goes as any other [D159, D222].
-pub fn reply(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result<Option<Value>> {
+pub fn reply(
+    data: &Path,
+    id: &str,
+    text: &str,
+    cid: Option<&str>,
+    by: Option<&str>,
+) -> io::Result<Option<Value>> {
     let f = core::fold(&core::session_dir(data, id), true)?;
     let asked = f.fold.turns.first().and_then(|t| {
         let mut questions = t.asks.iter().filter(|(_, r)| r["items"].is_array());
@@ -151,7 +175,7 @@ pub fn reply(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result
     let Some(request) = asked else {
         return Ok(None);
     };
-    let control = json!({"kind": "answer", "request": request, "reply": text});
+    let control = json!({"kind": "answer", "request": request, "reply": text, "by": by});
     let cid = cid.map_or_else(new_cid, String::from);
     let req = json!({"cid": cid, "control": control});
     let reply = deliver(data, id, req, true, |f| {

@@ -6,12 +6,17 @@ use serde_json::{Value, json};
 
 impl Thread {
     /// A request's row starts waiting: kept out of the work fold like the user's own messages
-    /// [D99], and its turn's wait starts [D77].
-    pub(super) fn wait_on(&mut self, at: usize, ts: u64) {
+    /// [D99], and its turn's wait starts [D77]. One the parent agent answers is a quiet step in the
+    /// fold instead, with no card and no wait for the user [D119, D122].
+    pub(super) fn wait_on(&mut self, at: usize, ts: u64, item: &Value) {
         self.approval_tool(at, true);
         self.agent_waits(at, true);
         self.pending.push(at);
         self.pending_changed = true;
+        if self.fold.for_parent(item) {
+            self.items[at]["to"] = "parent".into();
+            return;
+        }
         if let Some(o) = self.open.as_mut() {
             o.kept.push(at as u64 + 1);
             if o.wait.is_none() {
@@ -113,6 +118,9 @@ impl Thread {
                 o.asked = None;
             }
         }
+        if c["by"] == "parent" {
+            row["by"] = "parent".into();
+        }
         self.changed_items.insert(at);
         if row["decision"] == "approved" {
             self.approval_tool(at, false);
@@ -178,7 +186,7 @@ impl Thread {
     pub(super) fn requests(&self) -> Value {
         let of = |kind: &str| -> Vec<Value> {
             (self.pending.iter())
-                .filter(|&&at| self.items[at]["kind"] == kind)
+                .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"] != "parent")
                 .map(|&at| self.items[at]["request"].clone())
                 .collect()
         };

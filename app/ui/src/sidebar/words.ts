@@ -33,6 +33,7 @@ export type Project = { id: string; name: string; folder: string };
 // Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
 const STATE_WORDS: Record<string, string | null> = {
   waiting_answer: "Needs you · question",
+  asking: "Working",
   sign_in: "Needs you · sign-in",
   logged: "Starting",
   starting: "Starting",

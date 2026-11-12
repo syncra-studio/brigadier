@@ -98,7 +98,9 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         .unwrap_or(0);
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
-        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" => Some("working"),
+        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking" => {
+            Some("working")
+        }
         // The agent is done; what it left running is only a calm mark [D68, D105].
         "idle_jobs" if fold.finished > seen => Some("unread"),
         "idle_jobs" => Some("background"),
@@ -125,7 +127,7 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
     let (kind, id, text) = match state {
         "waiting_answer" => {
             let turn = turn?;
-            match turn.asks.iter().next() {
+            match turn.asks.iter().find(|(_, r)| r["to"] != "parent") {
                 Some((id, ask)) if ask["items"].is_array() => {
                     ("question", format!("ask:{id}"), turn.question.clone())
                 }
@@ -235,6 +237,15 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     };
     if child.stopped {
         return ("stalled", json!({"stopped": child.pid}));
+    }
+    // Only its parent agent is asked: the user sees it at work [D119].
+    if let Some((id, _)) = turn
+        .asks
+        .iter()
+        .next()
+        .filter(|_| turn.asks.values().all(|r| r["to"] == "parent"))
+    {
+        return ("asking", serde_json::json!({"ask": id}));
     }
     if let Some(q) = &turn.question {
         return ("waiting_answer", q.clone().into());

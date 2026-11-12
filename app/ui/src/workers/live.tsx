@@ -2,6 +2,7 @@ import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
+import { ParentName } from "../components/thread/cards";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
 import { X } from "../icons";
@@ -279,7 +280,7 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
             >
               {mounted &&
                 (opened ? (
-                  <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
+                  <WorkerView key={opened.id} worker={opened} owner={owner} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
                 ) : agent ? (
                   <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { open: true, worker: null, tab: SUBAGENTS_LABEL })} onClose={close} />
                 ) : tab === SUBAGENTS_LABEL ? (
@@ -305,8 +306,11 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
 }
 
 /** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
-function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () => void; onClose: () => void }) {
-  const updated = useDaemon().rows?.find((row) => row.id === worker.id)?.updated;
+function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner: string; onBack: () => void; onClose: () => void }) {
+  const rows = useDaemon().rows;
+  const updated = rows?.find((row) => row.id === worker.id)?.updated;
+  // Its asks name the session that answers them [D131].
+  const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
   const [{ items, turns }, setSnapshot] = useState<{ items: Item[]; turns: Turn[] }>({ items: [], turns: [] });
   const [details, setDetails] = useState(false);
   useEffect(() => {
@@ -334,7 +338,7 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
           </TitlebarTips>
         }
       />
-      {details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} />}
+      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} />}</ParentName>
     </section>
   );
 }

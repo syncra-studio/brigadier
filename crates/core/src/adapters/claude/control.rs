@@ -330,13 +330,7 @@ fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
         "allow" => json!({"behavior": "allow"}),
         "allowSession" if r["cli"]["rule"].is_object() => json!({"behavior": "allow",
             "updatedPermissions": [{"type": "addRules", "rules": widen(&r["cli"]["rule"]), "behavior": "allow", "destination": "session"}]}),
-        "deny" => {
-            let message = match s(msg, &["reason"]).trim() {
-                "" => "The user denied this.".to_string(),
-                why => format!("The user denied this: {why}"),
-            };
-            json!({"behavior": "deny", "message": message})
-        }
+        "deny" => json!({"behavior": "deny", "message": super::super::denied(msg)}),
         other => return Err(format!("no such decision here: {other:?}")),
     })
 }

@@ -53,6 +53,10 @@ impl Thread {
     /// of how it ended and whether it merged back [D97], in its place.
     pub(super) fn team_result(&mut self, rest: &str) {
         let (how, wid) = rest.split_once(':').unwrap_or(("finished", rest));
+        // A worker's ask to its parent is no row in the parent's thread [D121].
+        if how == "asks" {
+            return;
+        }
         let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
         let merge =
             (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));

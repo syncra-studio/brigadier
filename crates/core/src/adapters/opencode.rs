@@ -16,7 +16,7 @@ use super::{
     Timing, base_env, home_path, mark_superseded, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, denied, message, model, model_info, model_ref, prompt, rules};
+use control::{answers, message, model, model_info, model_ref, prompt, rules};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
@@ -341,7 +341,7 @@ impl Adapter for OpenCode {
                     }
                     "deny" => {
                         p["decision"] = "reject".into();
-                        p["message"] = denied(s(msg, &["reason"])).into();
+                        p["message"] = super::denied(msg).into();
                     }
                     other => return Err(format!("no such decision here: {other:?}")),
                 }

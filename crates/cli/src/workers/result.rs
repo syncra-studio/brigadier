@@ -26,25 +26,25 @@ const LAST: usize = 16 << 10;
 const TAKES: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
 
 #[derive(Serialize, Deserialize, Clone, Default)]
-struct Res {
+pub(super) struct Res {
     /// Its command id in the parent.
-    id: String,
-    wid: String,
-    /// The worker's turn it reports, by its stable id.
-    turn: String,
-    /// finished | failed | limit | stopped
-    how: String,
-    text: String,
-    at: u64,
+    pub id: String,
+    pub wid: String,
+    /// The worker's turn it reports, by its stable id; for `asks`, its request's id.
+    pub turn: String,
+    /// finished | failed | limit | stopped | asks (a request for the parent, `asks`)
+    pub how: String,
+    pub text: String,
+    pub at: u64,
     /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, not sent,
     /// proposed) | taken (by the parent's own `wait`) | dropped (its family is being deleted)
-    state: String,
+    pub state: String,
     /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
     #[serde(default)]
-    hop: u64,
+    pub hop: u64,
     /// `merged=<base>` or `unmerged=<base>` for a worker with commits of its own; else empty.
     #[serde(default)]
-    merge: String,
+    pub merge: String,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -54,11 +54,11 @@ static SEEN: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
 /// Parents a delivery runs for now.
 static SENDING: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
 
-fn dir_of(data: &Path, pid: &str) -> PathBuf {
+pub(super) fn dir_of(data: &Path, pid: &str) -> PathBuf {
     core::session_dir(data, pid).join("results")
 }
 
-fn path_of(data: &Path, pid: &str, wid: &str, turn: &str) -> PathBuf {
+pub(super) fn path_of(data: &Path, pid: &str, wid: &str, turn: &str) -> PathBuf {
     dir_of(data, pid).join(format!("{wid}.{turn}.json"))
 }
 
@@ -77,7 +77,7 @@ fn known(data: &Path) -> BTreeSet<String> {
     ids.filter(|id| dir_of(data, id).exists()).collect()
 }
 
-fn open(data: &Path, pid: &str) {
+pub(super) fn open(data: &Path, pid: &str) {
     let mut open = OPEN.lock().unwrap();
     open.get_or_insert_with(|| known(data)).insert(pid.into());
 }
@@ -330,13 +330,16 @@ pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
 pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<String> {
     let l = link(data, wid).filter(|l| l.parent == me)?;
     let _ = write_ended(data, wid, false);
+    let _ = super::asks::asked(data, wid);
     let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
-    let (path, mut res) = all(data, &l.parent)
-        .into_iter()
-        .rev()
-        .find(|(_, r)| r.wid == wid && r.state == "written" && turn.is_none_or(|t| r.turn == t))?;
+    let (path, mut res) = all(data, &l.parent).into_iter().rev().find(|(_, r)| {
+        r.wid == wid && r.state == "written" && turn.is_none_or(|t| r.turn == t) && fresh(data, r)
+    })?;
     res.state = "taken".into();
     write_json(&path, &res).ok()?;
+    if res.how == "asks" {
+        return Some(res.text);
+    }
     let note = json!({"event": "worker", "phase": "result", "result": said(&res)});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     Some(res.text)
@@ -375,6 +378,11 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
             SENDING.lock().unwrap().as_mut().map(|s| s.remove(&pid));
         });
     }
+}
+
+/// Whether a result still has something to say: a worker's ask only while it waits.
+fn fresh(data: &Path, r: &Res) -> bool {
+    r.how != "asks" || super::asks::waits(data, &r.wid, &r.turn)
 }
 
 /// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
@@ -424,6 +432,14 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
             continue;
         };
         r.state = state.into();
+        write_json(&path, &r)?;
+    }
+    // A worker's ask answered or gone before it went isn't sent [D131].
+    for (path, mut r) in all(data, pid)
+        .into_iter()
+        .filter(|(_, r)| r.state == "written" && !fresh(data, r))
+    {
+        r.state = "dropped".into();
         write_json(&path, &r)?;
     }
     let next = all(data, pid)
