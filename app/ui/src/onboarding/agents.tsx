@@ -8,7 +8,7 @@ import { Input } from "../components/input";
 import { useDaemon } from "../daemon";
 import { ArrowUpRight, Check, Spinner, Terminal } from "../icons";
 import { type Agent, checkAll, checkOne, errorText, run, useAgents } from "./api";
-import { MAC, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
+import { MAC, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
 /** How often an agent is checked again while its install or sign-in runs. */
 const RECHECK_MS = 2000;
@@ -255,22 +255,23 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
             Connected
           </span>
         ) : waiting ? (
-          // Waiting… is the way out too: hovered or focused it reads Cancel, in the same room (the
-          // wider of the two holds it), and stops the run.
-          <Button
-            variant={null}
-            size={null}
-            aria-label={`Cancel ${installing ? "installing" : "signing in to"} ${label}`}
-            disabled={starting}
-            onClick={onCancel}
-            className={cx(PILL, "group/wait grid px-1 text-muted-foreground hover:text-foreground focus-visible:text-foreground")}
-          >
-            <span className="col-start-1 row-start-1 flex items-center gap-1.75 group-hover/wait:invisible group-focus-visible/wait:invisible">
+          // Waiting… stays as it is; Cancel sits before it, so Waiting… keeps its place at the end [D15].
+          <span className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Cancel ${installing ? "installing" : "signing in to"} ${label}`}
+              disabled={starting}
+              onClick={onCancel}
+              className="text-muted-foreground"
+            >
+              Cancel
+            </Button>
+            <span className="inline-flex h-7.5 items-center gap-1.75 px-1 text-label font-medium text-muted-foreground">
               <Spinner className="size-3.25 animate-spin" />
               Waiting…
             </span>
-            <span className="invisible col-start-1 row-start-1 text-center group-hover/wait:visible group-focus-visible/wait:visible">Cancel</span>
-          </Button>
+          </span>
         ) : state === "error" ? (
           <Button variant={null} size={null} className={RAISED_BUTTON} disabled={!online || retrying} onClick={onRetry}>
             {retrying && <Spinner className="size-icon-md animate-spin" />}
