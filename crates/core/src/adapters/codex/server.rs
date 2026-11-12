@@ -357,7 +357,7 @@ fn notification(state: &Shared, v: &mut Value) {
     }
     // A subagent's own thread is its parent's tool call [D78]; only its requests come through.
     if p["threadId"] != st.thread.as_str() {
-        return child(st, &method, p);
+        return child(st, &method, v);
     }
     let subagent = method == "item/completed" && p["item"]["type"] == "subAgentActivity";
     // Statuses arriving after their turn ended must never hold the next reply [D492].

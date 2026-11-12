@@ -1,7 +1,7 @@
 //! The app-server's lines as the helper passes them on, in the same shapes as `exec --json` once
 //! named alike [D159]. Requests carry what an answer needs under `cli`, as D177 leaves room for.
 
-use super::super::super::{Event, s};
+use super::super::super::{Event, s, under};
 use super::{parse, refused, snake};
 use serde_json::{Value, json};
 
@@ -21,7 +21,11 @@ pub fn events(v: &Value) -> Vec<Event> {
         method @ ("item/started" | "item/completed") => {
             let kind = method.replace('/', ".");
             let exec = json!({"type": kind, "item": exec_item(&p["item"])});
-            parse(&exec.to_string())
+            let mut events = parse(&exec.to_string());
+            if let Some(thread) = p["parent"].as_str() {
+                under(&mut events, thread);
+            }
+            events
         }
         "thread/tokenUsage/updated" => {
             let (usage, window) = (

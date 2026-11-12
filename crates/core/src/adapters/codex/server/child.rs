@@ -1,15 +1,25 @@
 //! A subagent's own thread, as Codex's app-server reports it to the helper.
 
-use super::{Pending, State, ask, input};
+use super::{Pending, State, ask, input, say};
 use serde_json::{Value, json};
 use std::sync::mpsc::channel;
 
-/// A subagent's own thread: only its latest words are kept, its answer once it ends.
-pub(super) fn child(st: &mut State, method: &str, p: &Value) {
+/// A subagent's own thread: its latest words are kept, its answer once it ends; its steps go on,
+/// named by its thread, which is its row's id, for its side panel [D115].
+pub(super) fn child(st: &mut State, method: &str, v: &mut Value) {
+    let p = &v["params"];
     if method == "item/completed" && p["item"]["type"] == "agentMessage" {
         let id = p["threadId"].as_str().unwrap_or("");
         st.said
             .insert(id.into(), p["item"]["text"].as_str().unwrap_or("").into());
+    }
+    let step = matches!(
+        p["item"]["type"].as_str(),
+        Some("commandExecution" | "mcpToolCall" | "fileChange" | "webSearch")
+    );
+    if step && matches!(method, "item/started" | "item/completed") {
+        v["params"]["parent"] = v["params"]["threadId"].clone();
+        say(v.take());
     }
 }
 
