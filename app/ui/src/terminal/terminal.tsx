@@ -3,7 +3,6 @@ import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "../components/button";
 import { ask, setTermHandler, useDaemon } from "../daemon";
 
 /** The pane's states: the stream loading, the run not started yet, live, ended, failed. */
@@ -29,11 +28,11 @@ function theme(): ITheme {
 const bytesOf = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 
 /**
- * An account's sign-in (core::SETUP), run by its own host [D45]. The screen is the host's log
- * replayed, so it comes back the same after the app or daemon restarts [D60]. Keys and sizes go to
- * the host, named by the run's spawn id, so a stale one is refused. Close ends the run.
+ * A setup run's output (core::SETUP: an install, update or sign-in), run by its own host [D45], under its line's Show
+ * output [D29]. The screen is the host's log replayed, so it comes back the same after the app or daemon restarts
+ * [D60]. Keys and sizes go to the host, named by the run's spawn id, so a stale one is refused.
  */
-export function TerminalPane({ id, title, onClose }: { id: string; title: string; onClose: () => void }) {
+export function TerminalPane({ id }: { id: string }) {
   const { daemon } = useDaemon();
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<{ xterm: Terminal; fit: FitAddon; spawn?: number }>(null);
@@ -136,12 +135,6 @@ export function TerminalPane({ id, title, onClose }: { id: string; title: string
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-terminal-background">
-      <header className="flex h-control-md shrink-0 items-center gap-2 px-3 text-sm text-muted-foreground">
-        <span className="flex-1 truncate">{title}</span>
-        <Button size="xs" variant="ghost" onClick={onClose}>
-          Close
-        </Button>
-      </header>
       <div className={`relative min-h-0 flex-1 ${daemon ? "" : "opacity-disabled"}`}>
         <div ref={host} className="absolute inset-0 px-3 font-mono text-xs" />
         {(state.is === "closed" || state.is === "error") && (

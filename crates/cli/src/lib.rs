@@ -65,9 +65,9 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft] | host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
-       brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|close [--cols N] [--rows N]
+       brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
        brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
-       brigadier accounts [add <agent> [--name N] | sign-in|close|remove <id> | use <agent> <id> | rename <agent> <id> <name>]
+       brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
 

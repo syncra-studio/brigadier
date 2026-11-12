@@ -9,21 +9,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { DotsHorizontal, Eye, EyeOff, Plus, Spinner } from "../icons";
 import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
-import { TerminalPane } from "../terminal/terminal";
-import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, renameAccount, signIn, signInRun, startOn } from "./api";
-import { ConnectStatus, ROW_TITLE, hasEmail, maskEmails, planName, useFailed } from "./parts";
+import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, removeAccount, renameAccount, signIn, signInRun, startOn } from "./api";
+import { ROW_TITLE, SetupLine, hasEmail, maskEmails, planName, useFailed } from "./parts";
 
-/** How often the accounts are checked again while a sign-in terminal is open. */
+/** How often the accounts are checked again while a sign-in runs. */
 const RECHECK_MS = 2000;
 /** How long an account that hit its limit says so. */
 const LIMIT_SHOWN_MS = 5 * 3600 * 1000;
 const OWN_LOGIN = "This computer's login";
 
 /**
- * One agent's accounts on its page, inside a card the caller draws [D51]: the computer's own login, then each
- * added one, each signed in by its agent's own sign-in in a real terminal in its own folder [D45]; ending in one
- * link [D2080]: Sign in while nothing is signed in, then Add another account. An agent that keeps one login shows
- * that login alone.
+ * One agent's accounts on its page, inside a card the caller draws, the old app's [D51, D24]: the computer's own login
+ * while signed in [D2065], then each added one, each in its own folder; ending in "Add a/another <Agent> account"
+ * [D27]. Adding one signs it in with the setup's own sign-in and line in the link's place [D29]; the new account shows
+ * once signed in, and goes again if its sign-in is cancelled. An agent that keeps its logins in one home lists each,
+ * and adds another with its own sign-in.
  */
 export function AccountRows({
   agent,
@@ -39,42 +39,50 @@ export function AccountRows({
   onRemove: (account: Account) => void;
 }) {
   const { failed, act } = useFailed();
-  // The sign-in terminal shown, and whether an account is being added or signed in to again.
-  const [open, setOpen] = useState<string | null>(null);
-  const [starting, setStarting] = useState<string | null>(null);
+  // The account being signed in to here; `fresh`: just added, so it goes again if its sign-in never finishes.
+  const [signing, setSigning] = useState<{ id: string; fresh: boolean } | null>(null);
+  const [starting, setStarting] = useState(false);
   // The rows showing their email: the page's own, so leaving it hides them again.
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  const list = accounts?.accounts?.list;
+  // An agent that keeps its logins in one home adds one with its own sign-in, its line shown here.
+  const oneHome = accounts !== undefined && !accounts.accounts;
+  const ownSigning = oneHome && agent.setup?.action === "sign-in";
 
-  // An agent that keeps one login signs in with its own sign-in, in a terminal here [D2072].
-  const ownSignIn = agent.setup?.action === "sign-in" && agent.setup.running;
   // Read again while a sign-in runs, and once more when it ends, so the login it made shows.
+  const watching = signing !== null || (agent.setup?.action === "sign-in" && agent.setup.running);
   useEffect(() => {
-    if (!(open || ownSignIn) || !online) return;
+    if (!watching || !online) return;
     const timer = window.setInterval(() => void loadAccounts(), RECHECK_MS);
     return () => {
       clearInterval(timer);
       void loadAccounts();
     };
-  }, [open, ownSignIn, online]);
-  const list = accounts?.accounts?.list;
+  }, [watching, online]);
+  const account = signing ? list?.find((each) => each.id === signing.id) : undefined;
+  // Until the list has it, the sign-in just asked for.
+  const run = signing && (account?.sign_in ?? { id: signInRun(agent.name, signing.id), action: "sign-in", running: true, code: null, signal: null, code_page: null, reason: null });
   // A sign-in that ended well closes by itself.
-  const signing = open !== null ? list?.find((account) => account.id === open) : undefined;
-  const endedWell = signing?.sign_in && !signing.sign_in.running && signing.sign_in.code === 0;
+  const endedWell = account?.sign_in && !account.sign_in.running && account.sign_in.code === 0;
   useEffect(() => {
-    if (endedWell && open) close(open);
+    if (endedWell && signing) void finish(signing);
   }, [endedWell]);
 
-  const close = (id: string) => {
-    setOpen((current) => (current === id ? null : current));
-    void act(id, () => closeSignIn(id));
-  };
-  const start = (key: string, work: () => Promise<string>) =>
-    act(key, async () => {
-      setStarting(key);
+  /** Ends the sign-in run; a new account that never signed in goes again. */
+  const finish = (ending: { id: string; fresh: boolean }) =>
+    act(ending.id, async () => {
+      setSigning(null);
+      await closeSignIn(agent.name, ending.id);
+      if (ending.fresh && account?.check.signed_in !== true) await removeAccount(ending.id);
+    });
+  const signInAgain = (id: string) => act(id, () => signIn(agent.name, id));
+  const add = () =>
+    act("add", async () => {
+      setStarting(true);
       try {
-        setOpen(await work());
+        setSigning({ id: await addAccount(agent.name), fresh: true });
       } finally {
-        setStarting(null);
+        setStarting(false);
       }
     });
 
@@ -89,75 +97,62 @@ export function AccountRows({
   });
   const rows: Account[] = (
     list ?? (agent.logins?.length ? agent.logins.map((login) => own(login, true)) : [own("", agent.signed_in, agent.how ?? undefined)])
-  ).filter((account) => account.id !== "" || account.check.signed_in === true);
-  const anySignedIn = rows.some((account) => account.check.signed_in === true);
-  // One action ends the card [D2080]: the agent's own sign-in while nothing is signed in, then another account,
-  // kept apart where the agent keeps them apart, else its own sign-in again.
-  const adds = anySignedIn && Boolean(accounts?.accounts);
+  ).filter((each) => (each.id !== "" || each.check.signed_in === true) && !(signing?.fresh && each.id === signing.id && each.check.signed_in !== true));
+  const anySignedIn = rows.some((each) => each.check.signed_in === true);
+  const addLabel = anySignedIn ? `Add another ${agent.label} account` : `Add a ${agent.label} account`;
   return (
     <>
       {accounts === undefined && agent.path === undefined ? (
         <p className="px-4 py-3 text-sm text-quiet-foreground">Reading the accounts…</p>
       ) : (
-        rows.map((account) => (
+        rows.map((each) => (
           <AccountRow
-            key={account.id || account.name}
-            name={list ? undefined : account.name || undefined}
-            account={account}
+            key={each.id || each.name}
+            name={list ? undefined : each.name || undefined}
+            account={each}
             label={agent.label}
             online={online}
-            busy={open !== null || starting !== null}
-            inUse={account.id === (accounts?.accounts?.use ?? "")}
-            error={failed[account.id]}
-            revealed={revealed.has(account.id)}
+            busy={signing !== null || starting}
+            inUse={each.id === (accounts?.accounts?.use ?? "")}
+            error={failed[each.id]}
+            revealed={revealed.has(each.id)}
             onReveal={() =>
               setRevealed((all) => {
                 const next = new Set(all);
-                if (!next.delete(account.id)) next.add(account.id);
+                if (!next.delete(each.id)) next.add(each.id);
                 return next;
               })
             }
-            onSignIn={() => void start(account.id, () => signIn(account.id).then(() => account.id))}
-            onUse={() => void act(account.id, () => startOn(agent.name, account.id))}
-            onRename={list && ((name) => void act(account.id, () => renameAccount(agent.name, account.id, name)))}
-            onRemove={() => onRemove(account)}
+            onSignIn={() => {
+              setSigning({ id: each.id, fresh: false });
+              void signInAgain(each.id);
+            }}
+            onUse={() => void act(each.id, () => startOn(agent.name, each.id))}
+            onRename={list && ((name) => void act(each.id, () => renameAccount(agent.name, each.id, name)))}
+            onRemove={() => onRemove(each)}
           />
         ))
       )}
-      {open !== null ? (
-        <div className="px-4 py-3">
-          <div className="flex h-64 overflow-hidden rounded-surface border border-divider">
-            <TerminalPane key={open} id={signInRun(agent.name, open)} title={`${agent.label} · Sign in`} onClose={() => close(open)} />
-          </div>
-        </div>
-      ) : ownSignIn ? (
-        <div className="px-4 py-3">
-          <div className="flex h-64 overflow-hidden rounded-surface border border-divider">
-            <TerminalPane id={`setup-${agent.name}`} title={`${agent.label} · ${agent.sign_in}`} onClose={() => void setup.close(agent.name)} />
-          </div>
-        </div>
+      {signing && run ? (
+        <SetupLine
+          agent={agent}
+          run={run}
+          account={signing.id}
+          failed={failed[signing.id]}
+          onRetry={() => void signInAgain(signing.id)}
+          onCancel={() => void finish(signing)}
+          className="px-4 py-3"
+        />
+      ) : ownSigning ? (
+        <SetupLine agent={agent} failed={setup.failed[agent.name]} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 py-3" />
       ) : (
         <div className="flex flex-col">
-          {adds ? (
-            <LinkRow
-              label={`Add another ${agent.label} account`}
-              busy={starting === "add"}
-              disabled={!online || !accounts?.installed || starting !== null}
-              onClick={() => void start("add", () => addAccount(agent.name))}
-            />
-          ) : (
-            agent.sign_in && (
-              <LinkRow
-                label={anySignedIn ? `Add another ${agent.label} account` : "Sign in"}
-                busy={setup.starting === agent.name}
-                disabled={!online || !agent.path || setup.starting !== null}
-                onClick={() => void setup.begin(agent, "sign-in")}
-              />
-            )
-          )}
-          {agent.setup?.action === "sign-in" && (
-            <ConnectStatus agent={agent} failed={undefined} onRetry={() => void setup.begin(agent, "sign-in")} onCancel={() => void setup.close(agent.name)} className="px-4 pb-3" />
-          )}
+          <LinkRow
+            label={addLabel}
+            busy={starting || (oneHome && setup.starting === agent.name)}
+            disabled={!online || !agent.path || starting || setup.starting !== null || (!oneHome && !accounts?.installed)}
+            onClick={() => void (oneHome ? setup.begin(agent, "sign-in") : add())}
+          />
           <ErrorLine error={failed.add} className="px-4 pb-3" />
         </div>
       )}
@@ -165,7 +160,7 @@ export function AccountRows({
   );
 }
 
-/** The card's last row: a link that adds an account or signs in, the old app's. */
+/** The card's last row: a link that adds an account, the old app's. */
 function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled: boolean; onClick: () => void }) {
   return (
     <button

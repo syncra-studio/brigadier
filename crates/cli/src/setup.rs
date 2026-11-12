@@ -2,7 +2,7 @@
 //! terminal on a host (`setup-<agent>`, see `core::SETUP`), and the profile onboarding fills in.
 //! Nothing here names a provider; each adapter says how it is found, installed and signed in.
 
-use crate::{flag, owner};
+use crate::{accounts, flag, owner};
 use brigadier_core::adapters::{self, Adapter, setup};
 use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir, writer};
 use brigadier_frames::log;
@@ -41,17 +41,29 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "setup" => {
             let a = agent(args.get(1).map_or("", String::as_str))?;
-            let id = format!("{SETUP}{}", a.name());
+            // `--account <id>`: an added account's sign-in, the same run in its own home [D51].
+            let account = flag(args, "--account")
+                .map(|id| accounts::find(data, id))
+                .transpose()?;
+            if account.as_ref().is_some_and(|(b, _)| b.name() != a.name()) {
+                return Err(io::Error::other("that account is another agent's"));
+            }
+            let account = account.map(|(_, id)| id);
+            let id = match &account {
+                Some(acc) => accounts::sign_in_id(a.name(), acc),
+                None => format!("{SETUP}{}", a.name()),
+            };
             let size = |name: &str| flag(args, name).and_then(|n| n.parse::<u16>().ok());
             match args.get(2).map(String::as_str) {
                 Some("close") => close(data, &id).map(|()| json!({"ok": true})),
                 // `setup <agent> code <code>`: a code pasted from its sign-in's code page.
                 Some("code") => send_code(data, a, &id, args.get(3).map_or("", String::as_str)),
                 Some(action @ ("install" | "sign-in" | "update")) => {
-                    start(data, a, &id, action, size("--cols"), size("--rows"))
+                    let size = (size("--cols"), size("--rows"));
+                    start(data, a, &id, action, account.as_deref(), size)
                 }
                 _ => Err(io::Error::other(
-                    "usage: brigadier setup <agent> install|sign-in|update|close|code <code>",
+                    "usage: brigadier setup <agent> install|sign-in|update|close|code <code> [--account <id>]",
                 )),
             }
         }
@@ -265,7 +277,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     let exe = a.exe();
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
-        match a.check(&crate::accounts::check_as(data, a, cwd), &exe, cwd) {
+        match a.check(&accounts::check_as(data, a, cwd), &exe, cwd) {
             Ok(c) => {
                 let older: Vec<&str> = (c.models.iter().filter(|m| m.legacy))
                     .map(|m| m.id.as_str())
@@ -348,23 +360,29 @@ fn send_code(data: &Path, a: &dyn Adapter, id: &str, code: &str) -> io::Result<V
 }
 
 /// Runs the vendor's installer, or the CLI's own sign-in or updater (else its installer again), in a
-/// terminal on a host [D45, D60, D2082]. The setup run's action names which.
+/// terminal on a host [D45, D60, D2082]. The setup run's action names which; an added account's
+/// sign-in is its CLI's own, with its home variable on the account.
 /// A run still going is shown again; an ended one is replaced.
-fn start(
+pub(crate) fn start(
     data: &Path,
     a: &dyn Adapter,
     id: &str,
     action: &str,
-    cols: Option<u16>,
-    rows: Option<u16>,
+    account: Option<&str>,
+    (cols, rows): (Option<u16>, Option<u16>),
 ) -> io::Result<Value> {
     if let Some(running) = still_running(data, id)? {
         return Ok(running);
     }
-    let spec = setup_spec(a, id, action);
-    let words = match action {
-        "sign-in" => Some(a.sign_in().ok_or_else(|| io::Error::other("no sign-in"))?.1),
-        "update" => a.update(a.exe().as_deref()),
+    let mut spec = setup_spec(a, id, action);
+    let home = account.zip(a.accounts());
+    if let Some((acc, x)) = &home {
+        spec.account = Some((x.var.into(), core::account_home(data, acc)));
+    }
+    let words = match (action, home) {
+        ("sign-in", Some((_, x))) => Some(x.sign_in),
+        ("sign-in", None) => Some(a.sign_in().ok_or_else(|| io::Error::other("no sign-in"))?.1),
+        ("update", _) => a.update(a.exe().as_deref()),
         _ => None,
     };
     let (argv, env) = if let Some(words) = words {

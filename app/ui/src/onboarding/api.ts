@@ -97,7 +97,7 @@ export type Agent = {
    * failed, a sign-in's own `error` words; and `reason`: a failed run's or an ended update's last line, in the CLI's
    * own words [D2077].
    */
-  setup: { id: string; action: "install" | "sign-in" | "update"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null } | null;
+  setup: { id: string; action: "install" | "sign-in" | "update"; running: boolean; code: number | null; signal: number | null; code_page: string | null; device_code?: string | null; error?: string | null; reason: string | null; prompts?: boolean } | null;
   path?: string | null;
   version?: string | null;
   signed_in?: boolean;

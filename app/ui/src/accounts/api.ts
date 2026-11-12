@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import type { Run } from "../onboarding/agents";
 import { errorText, run } from "../onboarding/api";
 
 /** One account as Rust checked it in its own home [D51]; `id` "" is the computer's own login. */
@@ -21,7 +22,8 @@ export type Account = {
   /** An added account the computer's own login is signed in to as well: one row, saying so. */
   own_login?: boolean;
   limited_at: number | null;
-  sign_in: { id: string; running: boolean; code: number | null; signal: number | null } | null;
+  /** Its sign-in run, read as the setup's own [D29]. */
+  sign_in: Run | null;
 };
 
 /** An agent with its switching settings; `accounts` is null for one that keeps one login. `use`: the account new sessions start on. */
@@ -102,22 +104,26 @@ export const renameAccount = (agent: string, id: string, name: string) =>
     changed(agent, (accounts) => ({ ...accounts, list: accounts.list.map((account) => (account.id === id ? { ...account, name: name.trim() } : account)) })),
   );
 
-/** The account's sign-in terminal id, as Rust names its setup run. */
+/** The account's sign-in run id, as Rust names it. */
 export const signInRun = (agent: string, id: string) => `setup-${agent}-${id}`;
 
-/** Adds an account and opens its CLI's own sign-in; returns the new account's id. */
+/** Wide, so a link its CLI prints stays on one line (the setup's own size). */
+const SIZE = ["--cols", "500", "--rows", "10"];
+
+/** Adds an account and opens its sign-in, the setup's own; returns the new account's id. */
 export async function addAccount(agent: string): Promise<string> {
-  const reply = await run(["accounts", "add", agent, "--cols", "100", "--rows", "10"]);
+  const reply = await run(["accounts", "add", agent, ...SIZE]);
   void loadAccounts();
   return reply.account as string;
 }
 
-export async function signIn(id: string): Promise<void> {
-  await run(["accounts", "sign-in", id, "--cols", "100", "--rows", "10"]);
+/** Signs an added account in again, with the setup's own sign-in in its folder [D29]. */
+export async function signIn(agent: string, id: string): Promise<void> {
+  await run(["setup", agent, "sign-in", "--account", id, ...SIZE]);
   void loadAccounts();
 }
 
-export const closeSignIn = (id: string) => run(["accounts", "close", id]).then(() => loadAccounts());
+export const closeSignIn = (agent: string, id: string) => run(["setup", agent, "close", "--account", id]).then(() => loadAccounts());
 
 /** Removes an account; Rust refuses while a session runs on it and says why. */
 export async function removeAccount(id: string): Promise<string | null> {

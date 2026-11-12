@@ -15,7 +15,7 @@ import { type Agent, changeAgentPath, checkOne, setEnabled, setModelOn } from ".
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AccountRows } from "./account-rows";
 import { type Account, type SwitchAgent, loadAccounts } from "./api";
-import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, PlanChip, ROW_LINE, ROW_TITLE, standing, versionText } from "./parts";
+import { AgentMark, CheckAgainButton, OVERVIEW_ROWS, PlanChip, ROW_LINE, ROW_TITLE, SetupLine, standing, versionText } from "./parts";
 
 /**
  * An agent's page under Providers, the old app's [D2053]: Providers to go back, its mark, name and how it stands,
@@ -83,7 +83,7 @@ export function AgentPage({
     >
       <div className={cx("flex flex-col gap-10", !online && "opacity-disabled")}>
         <SettingsSection title="Installation" setting="Installation">
-          <Installation agent={agent} online={online} setup={setup} failed={failed} act={act} />
+          <Installation agent={agent} oneHome={accounts !== undefined && !accounts.accounts} online={online} setup={setup} failed={failed} act={act} />
         </SettingsSection>
         <SettingsSection title="Accounts" setting="Accounts">
           <SettingsCard>
@@ -110,17 +110,21 @@ export function AgentPage({
 type Act = (key: string, work: () => Promise<unknown>) => Promise<void>;
 
 /**
- * The Installation card: the CLI's version and its one action (Install, else Update: its own updater as a setup
- * run, checked again once it ends), then where it runs from, with Change to run another CLI file [D2082].
+ * The Installation card: the CLI's version and its one action (Install; Sign in while it isn't signed in; else Update:
+ * its own updater as a setup run, checked again once it ends) with its line under it [D27], then where it runs from,
+ * with Change to run another CLI file [D2082]. An agent that keeps its logins in one home shows its sign-in's line in
+ * Accounts, where adding another login runs it too.
  */
 function Installation({
   agent,
+  oneHome,
   online,
   setup,
   failed,
   act,
 }: {
   agent: Agent;
+  oneHome: boolean;
   online: boolean;
   setup: ReturnType<typeof useAgentSetup>;
   failed: Record<string, string>;
@@ -148,6 +152,10 @@ function Installation({
       <Button variant="soft" size="sm" disabled={busy || !agent.install} onClick={() => void setup.begin(agent, "install")}>
         Install
       </Button>
+    ) : (state === "signIn" || agent.setup?.action === "sign-in") && agent.sign_in ? (
+      <Button variant="soft" size="sm" disabled={busy} onClick={() => void setup.begin(agent, "sign-in")}>
+        {agent.sign_in}
+      </Button>
     ) : (
       <Button variant="soft" size="sm" disabled={busy || !agent.update} title={agent.update ?? undefined} onClick={() => void setup.begin(agent, "update")}>
         {agent.setup?.running && agent.setup.action === "update" ? "Updating…" : "Update"}
@@ -169,9 +177,8 @@ function Installation({
           </div>
           {action}
         </div>
-        {/* A sign-in shows in Accounts, where it runs [D2072]. */}
-        {agent.setup?.action !== "sign-in" && (
-          <ConnectStatus
+        {!(oneHome && agent.setup?.action === "sign-in") && (
+          <SetupLine
             agent={agent}
             failed={setup.failed[agent.name]}
             onRetry={() => void setup.begin(agent, agent.setup?.action ?? (missing ? "install" : "sign-in"))}

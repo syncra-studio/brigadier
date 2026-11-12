@@ -247,6 +247,10 @@ pub trait Adapter: Sync {
     fn code_page(&self) -> bool {
         false
     }
+    /// Whether its sign-in asks in its own prompt (a picker, a key), so its output is shown open.
+    fn sign_in_prompts(&self) -> bool {
+        false
+    }
     /// The one-time code its sign-in printed for the user to enter on its page, the first `https`
     /// link it prints (a device code: nothing is pasted back), found in what it printed so far.
     fn device_code(&self, _out: &str) -> Option<String> {

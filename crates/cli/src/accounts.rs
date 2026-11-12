@@ -144,7 +144,7 @@ pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value 
     }
 }
 
-fn sign_in_id(agent: &str, id: &str) -> String {
+pub(crate) fn sign_in_id(agent: &str, id: &str) -> String {
     format!("{SETUP}{agent}-{id}")
 }
 
@@ -161,14 +161,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 size("--cols"),
                 size("--rows"),
             )
-        }
-        ("accounts", Some("sign-in")) => {
-            let (a, id) = find(data, args.get(2).map_or("", String::as_str))?;
-            sign_in(data, a, &id, size("--cols"), size("--rows"))
-        }
-        ("accounts", Some("close")) => {
-            let (a, id) = find(data, args.get(2).map_or("", String::as_str))?;
-            setup::close(data, &sign_in_id(a.name(), &id)).map(|()| json!({"ok": true}))
         }
         ("accounts", Some("remove")) => remove(data, args.get(2).map_or("", String::as_str)),
         ("accounts", Some(op @ ("use" | "rename"))) => {
@@ -207,7 +199,7 @@ fn list(data: &Path) -> Value {
                             .map(|(id, name, c)| {
                                 json!({"id": id, "name": name, "check": c,
                                     "limited_at": v["limited"][format!("{}/{id}", a.name())],
-                                    "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), None))})
+                                    "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), Some(a)))})
                             })
                             .collect();
                         // The account picked with Use, while it is usable; else the computer's login.
@@ -274,7 +266,7 @@ fn name_or_use(data: &Path, op: &str, a: &dyn Adapter, id: &str, name: &str) -> 
 }
 
 /// Finds an extra account by id: its agent and id.
-fn find(data: &Path, id: &str) -> io::Result<(&'static dyn Adapter, String)> {
+pub(crate) fn find(data: &Path, id: &str) -> io::Result<(&'static dyn Adapter, String)> {
     core::check_id(id)?;
     let v = load(data);
     let e = (v["accounts"].as_array().into_iter().flatten())
@@ -283,7 +275,7 @@ fn find(data: &Path, id: &str) -> io::Result<(&'static dyn Adapter, String)> {
     Ok((agent(e["agent"].as_str().unwrap_or(""))?, id.to_string()))
 }
 
-/// Makes the account's home (0700) with its history links, then opens the CLI's own sign-in on it.
+/// Makes the account's home (0700) with its history links, then opens its sign-in, the setup's own.
 fn add(
     data: &Path,
     a: &dyn Adapter,
@@ -323,34 +315,8 @@ fn add(
             .push(json!({"id": id, "agent": a.name(), "name": name}));
         save(data, &v)?;
     }
-    sign_in(data, a, &id, cols, rows)
-}
-
-/// The CLI's own sign-in, with its home variable on the account, in a terminal [D45].
-fn sign_in(
-    data: &Path,
-    a: &dyn Adapter,
-    id: &str,
-    cols: Option<u16>,
-    rows: Option<u16>,
-) -> io::Result<Value> {
-    let acc = a
-        .accounts()
-        .ok_or_else(|| io::Error::other("no accounts"))?;
-    let run = sign_in_id(a.name(), id);
-    if let Some(running) = setup::still_running(data, &run)? {
-        return Ok(running);
-    }
-    let exe = a
-        .exe()
-        .ok_or_else(|| io::Error::other(format!("{} is not installed", a.label())))?;
-    let mut spec = setup::setup_spec(a, &run, "account");
-    spec.account = Some((acc.var.into(), account_home(data, id)));
-    let argv = std::iter::once(exe.display().to_string())
-        .chain(acc.sign_in.iter().map(|w| w.to_string()))
-        .collect();
-    let env = adapters::base_env(&spec, &exe, a.keys());
-    let mut reply = setup::in_terminal(data, &spec, argv, env, cols, rows)?;
+    let run = sign_in_id(a.name(), &id);
+    let mut reply = setup::start(data, a, &run, "sign-in", Some(&id), (cols, rows))?;
     reply["account"] = id.into();
     Ok(reply)
 }

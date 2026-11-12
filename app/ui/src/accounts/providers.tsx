@@ -17,7 +17,7 @@ import { type Agent, checkAll, setEnabled, useAgents } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
 import { type Account, type SwitchAgent, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
-import { AgentMark, CheckAgainButton, ConnectStatus, OVERVIEW_ROWS, PlanChip, ROW_TITLE, standing, useFailed } from "./parts";
+import { AgentMark, CheckAgainButton, OVERVIEW_ROWS, PlanChip, ROW_TITLE, SetupLine, standing, useFailed } from "./parts";
 
 /** The page's rows, for Settings search. */
 export const PROVIDERS_ROWS = {
@@ -216,7 +216,7 @@ function Overview({
                   Set up
                 </Button>
               </div>
-              <ConnectStatus
+              <SetupLine
                 agent={agent}
                 failed={setup.failed[agent.name]}
                 onRetry={() => void setup.begin(agent, "install")}

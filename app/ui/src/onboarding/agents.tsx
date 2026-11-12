@@ -194,18 +194,7 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
   const setup = agent?.setup;
   const label = agent?.label ?? "";
   const waiting = starting || state === "running";
-  // A run that ended badly stays until tried again: the last line its CLI printed when there is one, else a sign-in's
-  // own error words where the agent gives them [D2078, D1324].
-  const runFailed =
-    setup && !setup.running && setup.code !== 0
-      ? setup.reason ||
-        (setup.action === "install"
-          ? `${label} couldn't be installed. Try again.`
-          : setup.error
-            ? `${label}: ${setup.error}`
-            : `Signing in to ${label} didn't finish. Try again.`)
-      : null;
-  const problem = failed ?? (state === "error" ? agent?.error : null) ?? runFailed;
+  const problem = failed ?? (state === "error" ? agent?.error : null) ?? runFailure(setup, label);
   const installing = (starting && state === "install") || setup?.action === "install";
 
   const line = problem
@@ -288,9 +277,33 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
         )}
       </div>
       {/* A device code to enter on its page; or, when the browser couldn't hand the sign-in back, the code its page shows goes in here. */}
-      {state === "running" && setup?.code_page && agent && (setup.device_code ? <DeviceCode page={setup.code_page} code={setup.device_code} /> : <ConnectCode agent={agent} page={setup.code_page} />)}
+      {state === "running" && agent && <SetupCode agent={agent} run={setup} />}
     </li>
   );
+}
+
+/** An install, update or sign-in run, as Rust reads it (an added account's sign-in too). */
+export type Run = NonNullable<Agent["setup"]>;
+
+/**
+ * Why a run ended badly, or null: the last line its CLI printed when there is one, else a sign-in's own error words
+ * where the agent gives them, else ours [D2078, D1324, D2077]. It stays until tried again.
+ */
+export function runFailure(run: Run | null | undefined, label: string): string | null {
+  if (!run || run.running || run.code === 0) return null;
+  if (run.reason) return run.reason;
+  if (run.action === "update") return run.code === null ? "The update was stopped." : `The update stopped with code ${run.code}.`;
+  if (run.action === "install") return `${label} couldn't be installed. Try again.`;
+  return run.error ? `${label}: ${run.error}` : `Signing in to ${label} didn't finish. Try again.`;
+}
+
+/**
+ * While a sign-in runs: the device code to enter on its page, or, for when the browser can't hand the sign-in back, a
+ * field for the code its page shows. `account`: an added account's sign-in. Nothing otherwise.
+ */
+export function SetupCode({ agent, run, account }: { agent: Agent; run: Run | null | undefined; account?: string }) {
+  if (!run?.running || !run.code_page) return null;
+  return run.device_code ? <DeviceCode page={run.code_page} code={run.device_code} /> : <ConnectCode agent={agent} page={run.code_page} account={account} />;
 }
 
 /** A device code sign-in: its one-time code in a mono chip with Copy, and the page to enter it on, as the old app's GitHub sign-in. */
@@ -310,7 +323,7 @@ function DeviceCode({ page, code }: { page: string; code: string }) {
 }
 
 /** For when the browser can't hand the sign-in back: a link to the page that shows a code, and a field to paste it into. */
-export function ConnectCode({ agent, page }: { agent: Agent; page: string }) {
+function ConnectCode({ agent, page, account }: { agent: Agent; page: string; account?: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -321,7 +334,7 @@ export function ConnectCode({ agent, page }: { agent: Agent; page: string }) {
     setBusy(true);
     setError(null);
     try {
-      await run(["setup", agent.name, "code", code]);
+      await run(["setup", agent.name, "code", code, ...(account ? ["--account", account] : [])]);
       setCode("");
     } catch (cause) {
       setError(errorText(cause));

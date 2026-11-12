@@ -5,8 +5,9 @@ import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { ExclamationMarkCircle, Spinner, Terminal } from "../icons";
 import { Reload } from "../icons/review";
-import { ConnectCode, stateOf } from "../onboarding/agents";
+import { type Run, SetupCode, runFailure, stateOf } from "../onboarding/agents";
 import { type Agent, errorText } from "../onboarding/api";
+import { TerminalPane } from "../terminal/terminal";
 import type { SwitchAgent } from "./api";
 
 /*
@@ -117,46 +118,46 @@ export function CheckAgainButton({ busy, label, onClick }: { busy: boolean; labe
   );
 }
 
-/** Why an agent's install or sign-in didn't finish, or null. */
-export function setupFailure(agent: Agent, failed: string | undefined): string | null {
-  const setup = agent.setup;
-  if (failed) return failed;
-  if (!setup || setup.running || setup.code === 0) return null;
-  // The CLI's own last line, else ours; an update's as the old app said it.
-  if (setup.reason) return setup.reason;
-  if (setup.action === "update") return setup.code === null ? "The update was stopped." : `The update stopped with code ${setup.code}.`;
-  return setup.action === "install" ? `${agent.label} couldn't be installed. Try again.` : `Signing in to ${agent.label} didn't finish. Try again.`;
-}
-
 /**
- * An agent's install, update or sign-in while it runs (with Cancel), or why it failed (with Try again), as the old
- * Connect line drew it. Nothing while neither.
+ * A run's line while it goes, or why it failed, as the old app's Connect line and sign-in row drew it [D27, D29]: a
+ * spinner (or the error mark), its words, Show output, then Cancel while it runs, Try again and Close once it failed;
+ * under it, a sign-in's code field or device code. Its output stays folded unless asked for, the run fails, or the
+ * agent's sign-in asks in its own prompt. `run` is the agent's own unless an added `account`'s is given. Nothing while
+ * neither runs nor failed.
  */
-export function ConnectStatus({
+export function SetupLine({
   agent,
+  run = agent.setup,
+  account,
   failed,
   onRetry,
   onCancel,
   className,
 }: {
   agent: Agent;
-  failed: string | undefined;
+  run?: Run | null;
+  account?: string;
+  failed?: string;
   onRetry: () => void;
   onCancel: () => void;
   className?: string;
 }) {
-  const setup = agent.setup;
-  const problem = setupFailure(agent, failed);
-  const text = problem
-    ? problem
-    : setup?.running
-      ? setup.action === "install"
-        ? `Installing ${agent.label}… This takes a minute or two.`
-        : setup.action === "update"
-          ? `Updating ${agent.label}…`
-          : `Finish signing in to ${agent.label} in your browser.`
-      : null;
+  const [shown, setShown] = useState<boolean | null>(null);
+  const label = agent.label;
+  const problem = failed ?? runFailure(run, label);
+  const text =
+    problem ??
+    (!run?.running
+      ? null
+      : run.action === "install"
+        ? `Installing ${label}… This takes a minute or two.`
+        : run.action === "update"
+          ? `Updating ${label}…`
+          : run.prompts
+            ? `Finish signing in to ${label} below.`
+            : `Finish signing in to ${label} in your browser.`);
   if (!text) return null;
+  const output = run && (shown ?? (Boolean(run.prompts) || (problem !== null && !run.running)));
   return (
     <div className={cx("flex min-w-0 flex-col gap-2", className)}>
       <div className="flex min-w-0 items-center gap-2">
@@ -168,11 +169,26 @@ export function ConnectStatus({
         <span role="status" className="min-w-0 flex-1 text-xs text-balance text-muted-foreground">
           {text}
         </span>
-        <Button size="xs" variant="ghost" onClick={problem ? onRetry : onCancel}>
-          {problem ? "Try again" : "Cancel"}
+        {run && (
+          <Button size="xs" variant="ghost" onClick={() => setShown(!output)}>
+            {output ? "Hide output" : "Show output"}
+          </Button>
+        )}
+        {problem && (
+          <Button size="xs" variant="ghost" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+        <Button size="xs" variant="ghost" onClick={onCancel}>
+          {problem ? "Close" : "Cancel"}
         </Button>
       </div>
-      {setup?.running && setup.code_page && <ConnectCode agent={agent} page={setup.code_page} />}
+      <SetupCode agent={agent} run={run} account={account} />
+      {output && (
+        <div className="flex h-64 overflow-hidden rounded-surface border border-divider">
+          <TerminalPane id={run.id} />
+        </div>
+      )}
     </div>
   );
 }

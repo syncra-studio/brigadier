@@ -136,6 +136,10 @@ impl Adapter for OpenCode {
         Some(("Sign in", &["auth", "login", "--standalone"]))
     }
 
+    fn sign_in_prompts(&self) -> bool {
+        true
+    }
+
     /// The models.dev variables of the providers people most often use with it; a saved account
     /// wins over a variable.
     fn keys(&self) -> &'static [&'static str] {

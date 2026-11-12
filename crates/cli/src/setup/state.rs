@@ -42,6 +42,6 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let said = ended_badly || (action == Some("update") && !exited.is_null());
     json!({"id": id, "action": action, "running": running, "code": exited["code"],
         "signal": exited["signal"], "code_page": setup::code_page(&out).filter(|_| shows),
-        "device_code": device_code, "error": error,
+        "device_code": device_code, "error": error, "prompts": page && agent.is_some_and(|a| a.sign_in_prompts()),
         "reason": said.then(|| setup::reason(&out)).flatten()})
 }
