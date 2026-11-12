@@ -218,7 +218,7 @@ pub fn run(
     let reply = match call.cmd {
         "sessions" => call
             .number("--limit", 20, 100)
-            .map(|n| sessions(me, n, &rows())),
+            .map(|n| sessions(data, me, n, &rows())),
         "read" => call
             .number("--last", 10, 1000)
             .map(|n| read(data, id, n, call.has("--user"))),
@@ -295,24 +295,41 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }
 
-fn sessions(me: &str, limit: u64, rows: &[Value]) -> Value {
-    let mut rows: Vec<&Value> = (rows.iter())
+fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
+    let mut rows: Vec<Value> = (rows.iter())
         .filter(|r| r["archived"].is_null() || r["archived"] == false)
+        .map(|r| {
+            let mut r = r.clone();
+            let dir = core::session_dir(data, str_of(&r, "id"));
+            r["updated"] = match crate::index::touched(&dir.join("log")) {
+                0 => Value::Null,
+                ms => ms.into(),
+            };
+            r
+        })
         .collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r["updated"].as_u64().unwrap_or(0)));
     let more = rows.len().saturating_sub(limit as usize);
     rows.truncate(limit as usize);
+    let all = brigadier_frames::procs::all();
     let list: Vec<Value> = (rows.iter())
         .map(|r| {
+            // A first turn can call us before the daemon's next index pass.
+            let status = crate::status_of(data, str_of(r, "id"), &all).ok();
+            let state = status.as_ref().map_or(&r["state"], |s| &s["state"]);
             json!({"id": r["id"], "title": r["title"], "agent": r["backend"], "model": r["model"],
-            "state": r["state"], "updated": r["updated"], "you": r["id"] == me})
+            "state": state, "updated": r["updated"], "you": r["id"] == me})
         })
         .collect();
     let mut text: String = (list.iter())
         .map(|s| {
             let you = if s["you"] == true { " (you)" } else { "" };
+            let age = s["updated"]
+                .as_u64()
+                .map(|ms| format!(" · {}", ago(ms)))
+                .unwrap_or_default();
             format!(
-                "{}{you}  {}  · {} · {} · {}\n",
+                "{}{you}  {}  · {} · {}{age}\n",
                 str_of(s, "id"),
                 s["title"]
                     .as_str()
@@ -320,7 +337,6 @@ fn sessions(me: &str, limit: u64, rows: &[Value]) -> Value {
                     .unwrap_or("Untitled"),
                 [str_of(s, "agent"), str_of(s, "model")].join(" ").trim(),
                 str_of(s, "state"),
-                ago(s["updated"].as_u64().unwrap_or(0)),
             )
         })
         .collect();
