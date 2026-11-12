@@ -237,23 +237,20 @@ export function PausedSendDialog({
   onSendNow,
   onKeepPaused,
   onClose,
-  held,
 }: {
   /** How many wait in the paused queue; null while closed. */
   waiting: number | null;
   onSendNow: () => void;
   onKeepPaused: () => void;
   onClose: () => void;
-  /** The gallery's box to hold it open in, not modal and not taking focus. */
-  held?: HTMLElement;
 }) {
   const sendNow = useRef<HTMLButtonElement>(null);
   // Kept while the dialog animates out.
   const [count, setCount] = useState(waiting ?? 0);
   if (waiting !== null && waiting !== count) setCount(waiting);
   return (
-    <Dialog open={waiting !== null} onOpenChange={(open) => !open && onClose()} modal={!held}>
-      <DialogContent container={held} initialFocus={held ? false : sendNow}>
+    <Dialog open={waiting !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent initialFocus={sendNow}>
         <ConfirmForm
           title="Send message?"
           description={`The queue is paused. ${count === 1 ? "One message waits" : `${count} messages wait`} until you resume it. Send this one now, or keep it in the queue with them.`}

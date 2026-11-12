@@ -125,12 +125,10 @@ export function FileTree({
   onReadIgnored,
   shown = null,
   results,
-  defaultQuery = "",
   onQuery,
   onOpen,
   onReveal,
   searchRequest = 0,
-  defaultOpen,
 }: {
   /** Whose files: what the open folders are remembered under. */
   scope: string;
@@ -144,22 +142,19 @@ export function FileTree({
   shown?: string | null;
   /** The files matching the query, best first; null with no query. */
   results: string[] | null;
-  defaultQuery?: string;
   onQuery: (query: string) => void;
   onOpen: OnOpen;
   /** Shows a row in Finder; without it, rows have no menu. */
   onReveal?: (path: string) => void;
   /** Counts up to put the keyboard in the search field (⌘P). */
   searchRequest?: number;
-  /** The folders open before any was opened or closed here (the gallery's frozen states). */
-  defaultOpen?: string[];
 }) {
   const search = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (searchRequest > 0) search.current?.focus({ preventScroll: true });
   }, [searchRequest]);
-  const [query, setQuery] = useState(defaultQuery);
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => openFolders.get(scope) ?? new Set(defaultOpen));
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => openFolders.get(scope) ?? new Set());
   const [active, setActive] = useState(0);
   const list = listing.state === "listed" ? listing.list : null;
   const rows = useMemo(() => (list ? visibleRows(buildTree(list, marks, loaded), open, marks) : []), [list, marks, loaded, open]);

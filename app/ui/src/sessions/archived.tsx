@@ -113,13 +113,12 @@ type Check = { state: "checking" } | ({ state: "done"; branch: string | null; st
  * Delete's confirm [D35, D181]: a branch with work that never landed is named, kept unless asked. Delete
  * waits for Rust's check; Rust checks again as it runs. The row leaves at once and comes back if it fails.
  */
-export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; onClose: () => void; check?: Check }) {
-  const [check, setCheck] = useState<Check>(given ?? { state: "checking" });
+export function DeleteForm({ row, onClose }: { row: SessionRow; onClose: () => void }) {
+  const [check, setCheck] = useState<Check>({ state: "checking" });
   const { rows } = useDaemon();
   const [drop, setDrop] = useState("keep");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (given) return;
     let live = true;
     setCheck({ state: "checking" });
     run(["delete", row.id, "--check"]).then(
@@ -129,7 +128,7 @@ export function DeleteForm({ row, onClose, check: given }: { row: SessionRow; on
     return () => {
       live = false;
     };
-  }, [row.id, attempt, given]);
+  }, [row.id, attempt]);
   const confirm = () => {
     onClose();
     hideDeleting(row.id, true);

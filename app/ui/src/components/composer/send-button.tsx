@@ -10,7 +10,7 @@ import type { FollowUp } from "./draft";
 const ESC_WINDOW_MS = 2000;
 /** How long Stop stays once the run can't be stopped any more, so the button doesn't flicker between steps. */
 const STOP_HOLD_MS = 700;
-/** Menus, dialogs and the composer's own menus take their Esc first (not the gallery's frozen ones, held open). */
+/** Menus, dialogs and the composer's own menus take their Esc first (not the gallery's, held open). */
 const TAKES_ESC = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
 const TEXT_FIELD = "input, textarea, select, [contenteditable=true], [contenteditable='']";
 
@@ -31,10 +31,9 @@ function useHeldOn(on: boolean, ms: number): boolean {
  * (keeping its text) and arms Stop; a second within two seconds stops. With nothing to stop, Esc puts the
  * cursor in the field. Returns whether Stop is armed.
  */
-function useEscToStop(on: boolean, stoppable: boolean, onStop: () => void, button: RefObject<HTMLElement | null>): boolean {
+function useEscToStop(stoppable: boolean, onStop: () => void, button: RefObject<HTMLElement | null>): boolean {
   const [armedAt, setArmedAt] = useState<number | null>(null);
   useEffect(() => {
-    if (!on) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matches(event, "stop") || event.defaultPrevented || document.querySelector(TAKES_ESC)) return;
       const field = button.current?.closest("[data-slot=composer-card]")?.querySelector<HTMLElement>("[contenteditable]");
@@ -53,7 +52,7 @@ function useEscToStop(on: boolean, stoppable: boolean, onStop: () => void, butto
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [on, stoppable, armedAt, onStop, button]);
+  }, [stoppable, armedAt, onStop, button]);
   useEffect(() => {
     if (armedAt === null) return;
     const timer = setTimeout(() => setArmedAt(null), ESC_WINDOW_MS);
@@ -100,9 +99,6 @@ export function SendButton({
   followUp = "queue",
   blocked,
   to,
-  keys = true,
-  armed: frozenArmed = false,
-  asNew: frozenNew = false,
   onSend,
   onSendNew,
   onStop,
@@ -117,12 +113,6 @@ export function SendButton({
   blocked?: string;
   /** The worker the message goes to alone (the composer's To:). */
   to?: string;
-  /** `false`: no Esc handling (the gallery's frozen copies, so one Esc doesn't reach them all). */
-  keys?: boolean;
-  /** Shows Stop armed (the gallery's frozen copy). */
-  armed?: boolean;
-  /** Shows ↗ as if ⌘ were held (the gallery's frozen copy). */
-  asNew?: boolean;
   onSend: () => void;
   /** Starts the message as a new session (⌘-click); without it ⌘ changes nothing. */
   onSendNew?: () => void;
@@ -131,10 +121,10 @@ export function SendButton({
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const stoppable = useHeldOn(canStop, STOP_HOLD_MS);
-  const armed = useEscToStop(keys, stoppable, onStop, button) || frozenArmed;
+  const armed = useEscToStop(stoppable, onStop, button);
   const state = armed || (stoppable && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
-  const modHeld = useModHeld(keys && onSendNew !== undefined);
-  const asNew = state === "send" && onSendNew !== undefined && ((modHeld && !empty) || frozenNew);
+  const modHeld = useModHeld(onSendNew !== undefined);
+  const asNew = state === "send" && onSendNew !== undefined && modHeld && !empty;
   const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";
   const tip =
     state === "stop"

@@ -37,24 +37,22 @@ export function AddProjectHost() {
   return <AddProjectDialog source={daemonSource} offline={useDaemon().daemon === null} />;
 }
 
-/** The view open, and for the gallery the state it starts in. */
+/** The view open. */
 export type View =
   | { kind: "pick" }
-  | { kind: "clone"; url?: string; cloning?: boolean; error?: string }
-  | { kind: "new"; parent: string; name: string; error?: string };
+  | { kind: "clone" }
+  | { kind: "new"; parent: string; name: string };
 
 export function AddProject({
   source,
   offline,
   initialPath = "",
-  start = { kind: "pick" },
 }: {
   source: Source;
   offline: boolean;
   initialPath?: string;
-  start?: View;
 }) {
-  const [view, setView] = useState<View>(start);
+  const [view, setView] = useState<View>({ kind: "pick" });
   // The repositories found, kept for the list's return from Clone or New repository.
   const found = useRef<Repo[] | null>(null);
   const back = () => setView({ kind: "pick" });
@@ -71,7 +69,7 @@ export function AddProject({
         />
       );
     case "clone":
-      return <CloneView source={source} offline={offline} start={view} onBack={back} />;
+      return <CloneView source={source} offline={offline} onBack={back} />;
     case "new":
       return <NewRepoView source={source} offline={offline} start={view} onBack={back} />;
   }

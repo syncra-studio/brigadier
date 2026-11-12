@@ -37,8 +37,6 @@ export type Preview = {
 type Look = { state: "looking" } | { state: "failed"; error: string } | { state: "ready"; preview: Preview };
 /** form; removing (its reply due); watching (no reply coming: the connection dropped, or another run holds it); removed with kept branches. */
 type Phase = { at: "form" } | { at: "removing" } | { at: "watching" } | { at: "removed"; repo: string; kept: string[] };
-/** The gallery's frozen states. */
-export type Given = { look: Look; phase?: Phase; error?: string };
 
 const opened = store<string | null>(null);
 /** Opens Remove project… from the project's menu [D171, D212]. */
@@ -66,10 +64,10 @@ const MB = 1024 * 1024;
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < MB ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * MB ? `${(bytes / MB).toFixed(1)} MB` : `${(bytes / (1024 * MB)).toFixed(1)} GB`;
 
-export function RemoveFlow({ project, onClose, given }: { project: Project; onClose: () => void; given?: Given }) {
-  const [look, setLook] = useState<Look>(given?.look ?? { state: "looking" });
-  const [phase, setPhase] = useState<Phase>(given?.phase ?? { at: "form" });
-  const [error, setError] = useState<string | null>(given?.error ?? null);
+export function RemoveFlow({ project, onClose }: { project: Project; onClose: () => void }) {
+  const [look, setLook] = useState<Look>({ state: "looking" });
+  const [phase, setPhase] = useState<Phase>({ at: "form" });
+  const [error, setError] = useState<string | null>(null);
   const [drops, setDrops] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
   const { daemon, rows, projects } = useDaemon();
@@ -81,7 +79,7 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
   };
 
   useEffect(() => {
-    if (given || phase.at !== "form") return;
+    if (phase.at !== "form") return;
     let current = true;
     setLook((last) => last.state === "ready" ? last : { state: "looking" });
     run(["projects", "remove", project.id, "--check"]).then(
@@ -95,11 +93,11 @@ export function RemoveFlow({ project, onClose, given }: { project: Project; onCl
     return () => {
       current = false;
     };
-  }, [project.id, attempt, given, phase.at, sessionStates]);
+  }, [project.id, attempt, phase.at, sessionStates]);
 
   // No reply is coming: Rust's list, by id, says how it ended once the daemon is back [D30, D40].
   useEffect(() => {
-    if (given || phase.at !== "watching" || !daemon || !projects) return;
+    if (phase.at !== "watching" || !daemon || !projects) return;
     const record = projects.find((each) => each.id === project.id);
     if (!record) return done();
     if (record.removing) return;

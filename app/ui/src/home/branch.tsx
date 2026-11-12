@@ -1,7 +1,6 @@
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
 import { ComposerPill } from "../components/composer/composer";
-import { STILL } from "../components/composer/pickers";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { itemClasses, MenuRow } from "../components/menu";
@@ -48,7 +47,6 @@ export function BranchPicker({
   worktree,
   onBase,
   onWorktree,
-  held,
 }: {
   workIn: WorkIn;
   repo: RepoState;
@@ -59,7 +57,6 @@ export function BranchPicker({
   worktree: string | null;
   onBase: (branch: string) => void;
   onWorktree: (path: string) => void;
-  held?: HTMLElement;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -102,7 +99,7 @@ export function BranchPicker({
   const kind = existing ? "worktrees" : "branches";
   return (
     <Popover
-      open={held ? true : open}
+      open={open}
       onOpenChange={(next) => {
         setOpen(next);
         setQuery("");
@@ -123,13 +120,13 @@ export function BranchPicker({
         <span className="truncate">{label}</span>
       </PopoverTrigger>
       {local ? (
-        <PopoverContent side="top" align="start" container={held} collisionAvoidance={held ? STILL : undefined} initialFocus={held ? false : undefined} className="w-72 max-w-full">
+        <PopoverContent side="top" align="start" className="w-72 max-w-full">
           <p className="px-2 py-1 text-sm text-muted-foreground">
             {info?.current ? `The session works in ${name} on ${info.current}, the branch it has checked out.` : `${name} isn't on a branch. Check one out to work there.`}
           </p>
         </PopoverContent>
       ) : (
-        <PopoverContent ref={popup} side="top" align="start" container={held} collisionAvoidance={held ? STILL : undefined} initialFocus={held ? false : popup} onKeyDown={onKeyDown} className="w-80 max-w-full">
+        <PopoverContent ref={popup} side="top" align="start" initialFocus={popup} onKeyDown={onKeyDown} className="w-80 max-w-full">
           <PickerSearch
             list={list}
             label={`Search ${name} ${kind}`}

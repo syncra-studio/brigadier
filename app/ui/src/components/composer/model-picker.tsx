@@ -9,7 +9,6 @@ import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
 import { focusChoice, moveKeys } from "./model-keys";
-import { STILL } from "./pickers";
 import { SwitchAgentDialog } from "./switch-agent";
 
 export { SwitchAgentDialog };
@@ -91,8 +90,6 @@ export function ModelPicker({
   onChange,
   onSetUp,
   disabled,
-  held,
-  search: typed = "",
   asksSwitch = true,
   asked = 0,
   automatic,
@@ -105,10 +102,6 @@ export function ModelPicker({
   /** Installs or signs in the agent; without it, no "Set up" button. */
   onSetUp?: (provider: string) => void;
   disabled?: boolean;
-  /** The gallery's box to hold it open in, not taking focus. */
-  held?: HTMLElement;
-  /** The gallery's search, already typed. */
-  search?: string;
   /** False before a session exists: another agent is then just a pick, with nothing to hand off. */
   asksSwitch?: boolean;
   /** A count that opens it each time it goes up: a notice's "Choose another model". */
@@ -127,7 +120,7 @@ export function ModelPicker({
     if (!disabled) setOpen(true);
   }
   const [browsing, setBrowsing] = useState(value.provider);
-  const [query, setQuery] = useState(typed);
+  const [query, setQuery] = useState("");
   const [inSearch, setInSearch] = useState(false);
   const [older, setOlder] = useState<ReadonlySet<string>>(new Set());
   // The model under the keyboard: the footer follows it.
@@ -226,7 +219,7 @@ export function ModelPicker({
   return (
     <>
       <Popover
-        open={held ? true : open}
+        open={open}
         onOpenChange={(next, details) => {
           if (!next && details.reason === "escape-key" && query) {
             details.cancel();
@@ -273,9 +266,7 @@ export function ModelPicker({
           align="end"
           padded={false}
           aria-label="Model"
-          container={held}
-          collisionAvoidance={held ? STILL : undefined}
-          initialFocus={held ? false : search}
+          initialFocus={search}
           className="max-w-full overflow-hidden"
         >
           {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the search's, the lists' and the footer's keys */}

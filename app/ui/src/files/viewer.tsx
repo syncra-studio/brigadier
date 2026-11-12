@@ -32,8 +32,6 @@ export function FileViewer({
   reveal = 0,
   active,
   onReveal,
-  defaultFind,
-  defaultGoing,
 }: {
   /** The file's path in the checkout. */
   path: string;
@@ -45,8 +43,6 @@ export function FileViewer({
   active: boolean;
   /** Shows the file in Finder; left out where there's nothing to show. */
   onReveal?: () => void;
-  defaultFind?: string;
-  defaultGoing?: boolean;
 }) {
   const file = read.state === "read" ? read.file : null;
   // A read that answers within a moment shows with no skeleton before it, as VS Code's does [D1310].
@@ -85,7 +81,7 @@ export function FileViewer({
               Showing the first {formatBytes(file!.text.length)} of {formatBytes(file!.size)}
             </p>
           )}
-          <CodeLines text={file!.text} path={path} line={line} reveal={reveal} active={active} defaultFind={defaultFind} defaultGoing={defaultGoing} />
+          <CodeLines text={file!.text} path={path} line={line} reveal={reveal} active={active} />
         </>
       )}
     </div>

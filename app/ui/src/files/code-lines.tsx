@@ -52,17 +52,12 @@ export function CodeLines({
   line = null,
   reveal = 0,
   active,
-  defaultFind,
-  defaultGoing = false,
 }: {
   text: string;
   path: string;
   line?: number | null;
   reveal?: number;
   active: boolean;
-  /** Opens with the find box holding this (the gallery's frozen states). */
-  defaultFind?: string;
-  defaultGoing?: boolean;
 }) {
   const lines = useMemo(() => text.replace(/\n$/, "").split("\n"), [text]);
   const [tokens, setTokens] = useState<{ text: string; tokens: Token[][] | null } | null>(null);
@@ -72,10 +67,10 @@ export function CodeLines({
   const asked = `${line}:${reveal}`;
   const [goneTo, setGoneTo] = useState<{ asked: string; line: number } | null>(null);
   const target = goneTo?.asked === asked ? goneTo.line : line;
-  const [finding, setFinding] = useState(defaultFind !== undefined);
-  const [query, setQuery] = useState(defaultFind ?? "");
+  const [finding, setFinding] = useState(false);
+  const [query, setQuery] = useState("");
   const [current, setCurrent] = useState(0);
-  const [going, setGoing] = useState(defaultGoing);
+  const [going, setGoing] = useState(false);
   const findInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

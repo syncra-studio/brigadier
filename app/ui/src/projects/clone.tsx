@@ -26,8 +26,8 @@ const folderFromUrl = (url: string) => (url.trim().replace(/\/+$/, "").split(/[/
  * a toast tells how it ended. Through a lost daemon it keeps waiting and settles when the projects
  * list holds its id, never shown failed [D30].
  */
-export function useAdd(started: string | null = null) {
-  const [running, setRunning] = useState<{ id: string; what: string; done?: string } | null>(started ? { id: "", what: started } : null);
+export function useAdd() {
+  const [running, setRunning] = useState<{ id: string; what: string; done?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [away, setAway] = useState(false);
   const mounted = useRef(false);
@@ -79,21 +79,19 @@ const cloneInto = (add: Add, source: Source, from: string, parent: string, folde
 export function CloneView({
   source,
   offline,
-  start,
   onBack,
 }: {
   source: Source;
   offline: boolean;
-  start: Extract<View, { kind: "clone" }>;
   onBack: () => void;
 }) {
   const id = useId();
-  const [url, setUrl] = useState(start.url ?? "");
+  const [url, setUrl] = useState("");
   const [parent, setParent] = useState(DEFAULT_PARENT);
   // The error is about the URL itself: its field shows it.
-  const [invalid, setInvalid] = useState(Boolean(start.error));
-  const clone = useAdd(start.cloning ? cloneUrl(start.url ?? "") : null);
-  const error = clone.error ?? start.error ?? null;
+  const [invalid, setInvalid] = useState(false);
+  const clone = useAdd();
+  const error = clone.error;
   const busy = clone.running !== null;
   const folder = folderFromUrl(url);
   const field = useRef<HTMLInputElement>(null);
@@ -175,7 +173,7 @@ export function NewRepoView({
   const [name, setName] = useState(start.name);
   const [parent, setParent] = useState(start.parent);
   const add = useAdd();
-  const [typed, setTyped] = useState<string | null>(start.error ?? null);
+  const [typed, setTyped] = useState<string | null>(null);
   const error = typed ?? add.error;
   const busy = add.running !== null;
   const folder = name.trim();

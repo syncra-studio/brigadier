@@ -53,17 +53,15 @@ export const WorkersPanel = createContext<{ open: (id: string | null) => void }>
  * A worker named in a line: its glyph and name in a pill that truncates a long name, shows it whole with its
  * state on hover, and opens it in the panel. An unknown worker reads "a worker".
  */
-export function WorkerChip({ worker, label, className, container }: {
+export function WorkerChip({ worker, label, className }: {
   worker: Worker | null;
   label?: string;
   className?: string;
-  /** Holds its tip open inside this box (the gallery's frozen states). */
-  container?: HTMLElement | null;
 }) {
   const { open } = useContext(WorkersPanel);
   if (!worker) return <span className="shrink-0">a worker</span>;
   return (
-    <Tooltip open={container ? true : undefined}>
+    <Tooltip>
       <TooltipTrigger
         render={
           <button
@@ -80,15 +78,15 @@ export function WorkerChip({ worker, label, className, container }: {
         <WorkerGlyph id={worker.id} className="size-icon-sm animate-glyph-in motion-reduce:animate-none" />
         <span className="min-w-0 truncate">{label ?? worker.name}</span>
       </TooltipTrigger>
-      <WorkerTip worker={worker} container={container} />
+      <WorkerTip worker={worker} />
     </Tooltip>
   );
 }
 
 /** The chip's tip: its whole name over its state, small and muted. */
-function WorkerTip({ worker, container }: { worker: Worker; container?: HTMLElement | null }) {
+function WorkerTip({ worker }: { worker: Worker }) {
   return (
-    <TooltipContent side="top" container={container} collisionAvoidance={container ? { side: "none", align: "none" } : undefined}>
+    <TooltipContent side="top">
       <span className="flex flex-col gap-0.5">
         <span className="wrap-break-word">{worker.name}</span>
         <span className="text-xs text-muted-foreground">{worker.word}</span>

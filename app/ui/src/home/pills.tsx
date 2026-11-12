@@ -1,7 +1,6 @@
 import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { ComposerPill } from "../components/composer/composer";
-import { STILL } from "../components/composer/pickers";
 import { cx } from "../components/cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, itemClasses, MenuRow } from "../components/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
@@ -77,7 +76,6 @@ export function ProjectPicker({
   onAdd,
   onNone,
   heading = false,
-  held,
 }: {
   projects: readonly DraftProject[];
   value: DraftProject | null;
@@ -87,7 +85,6 @@ export function ProjectPicker({
   /** "Don't work in a project": the draft becomes a chat. */
   onNone?: () => void;
   heading?: boolean;
-  held?: HTMLElement;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -132,7 +129,7 @@ export function ProjectPicker({
   );
   return (
     <Popover
-      open={held ? true : open}
+      open={open}
       onOpenChange={(next) => {
         setOpen(next);
         setQuery("");
@@ -160,9 +157,6 @@ export function ProjectPicker({
       <PopoverContent
         side={heading ? "bottom" : "top"}
         align={heading ? "center" : "start"}
-        container={held}
-        collisionAvoidance={held ? STILL : undefined}
-        initialFocus={held ? false : undefined}
         className="w-80 max-w-full"
       >
         <PickerSearch
@@ -210,7 +204,7 @@ function UsageRemaining() {
 }
 
 /** The "Work in" menu: a new worktree (the default), the project's own checkout or another worktree, each with the old tooltip, and the usage left. */
-export function WorkInPicker({ value, onChange, repo, held }: { value: WorkIn; onChange: (next: WorkIn) => void; repo: string; held?: HTMLElement }) {
+export function WorkInPicker({ value, onChange, repo }: { value: WorkIn; onChange: (next: WorkIn) => void; repo: string }) {
   const tips: Record<WorkIn, string> = {
     worktree: `Create a copy of ${repo} to work in parallel.`,
     local: `Work in ${repo} itself, on the branch it has checked out.`,
@@ -218,12 +212,12 @@ export function WorkInPicker({ value, onChange, repo, held }: { value: WorkIn; o
   };
   const { label, Icon } = PLACES[value];
   return (
-    <DropdownMenu modal={false} open={held ? true : undefined}>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger render={<ComposerPill aria-label={`Work in: ${label}`} title={tips[value]} className={RAIL_PILL} />}>
         <Icon />
         <span className="truncate">{label}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" container={held} collisionAvoidance={held ? STILL : undefined} className="w-72 max-w-full">
+      <DropdownMenuContent side="top" align="start" className="w-72 max-w-full">
         <DropdownMenuLabel variant="heading">Work in</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={value} onValueChange={(next: WorkIn) => onChange(next)}>
           {(Object.keys(PLACES) as WorkIn[]).map((place) => {

@@ -14,7 +14,7 @@ import type { Pr } from "../types";
 import { refreshStep } from "../git";
 import { gitFailed } from "../notice";
 import { failed } from "./branch-ops";
-import { Confirm, type Held } from "./dialogs";
+import { Confirm } from "./dialogs";
 
 /**
  * A session's PR facts as the host module reads them [D1030]: the host's name (null for one it doesn't know), whether
@@ -34,7 +34,7 @@ export const prWay = (info: HostInfo | null | undefined): PrWay => (info === und
 type Text = { title: string; body: string; draft: boolean };
 
 /** Create PR's dialog [D1030, D1085, D1100]: the title, the description, draft, into the session's base. */
-export function CreatePrDialog({ open, info, text, busy = null, error = null, offline = false, held, onText, onRetry, onCancel, onConfirm }: {
+export function CreatePrDialog({ open, info, text, busy = null, error = null, offline = false, onText, onRetry, onCancel, onConfirm }: {
   open: boolean;
   /** Undefined while Rust reads it. */
   info: HostInfo | undefined;
@@ -43,7 +43,6 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
   busy?: "creating" | "checking" | null;
   error?: string | null;
   offline?: boolean;
-  held?: Held;
   onText: (text: Text) => void;
   /** Reads the host again after a failed read (no `info`, an `error`). */
   onRetry?: () => void;
@@ -53,7 +52,7 @@ export function CreatePrDialog({ open, info, text, busy = null, error = null, of
   const working = busy !== null;
   const [said, details] = split(error);
   return (
-    <Confirm open={open} onOpenChange={(next) => !next && !working && onCancel()} held={held}>
+    <Confirm open={open} onOpenChange={(next) => !next && !working && onCancel()}>
       <ConfirmForm
         title="Create pull request"
         description={

@@ -186,13 +186,11 @@ export type PaletteProps = {
   search: TextSearch;
   onOpenSession: (id: string) => void;
   onOpenProject: (id: string) => void;
-  /** Where it opens with something typed (the gallery's frozen states). */
-  initialQuery?: string;
 };
 
 /** The palette's input, results and key hints: the old app's, with message text matches under their titles. */
-export function PaletteBody({ rows, projects, offline, search, onOpenSession, onOpenProject, initialQuery = "" }: PaletteProps) {
-  const [q, setQ] = useState(initialQuery);
+export function PaletteBody({ rows, projects, offline, search, onOpenSession, onOpenProject }: PaletteProps) {
+  const [q, setQ] = useState("");
   const query = q.trim();
   const text = useTextSearch(query, search, offline);
   const groups = rows ? results(rows, projects, q, text.hits) : [];

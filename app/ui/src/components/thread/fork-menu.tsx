@@ -2,7 +2,6 @@ import { useState } from "react";
 
 import { BranchAlt, Spinner } from "../../icons";
 import { type ModelChoice, type ModelGroup, ProviderMark, SwitchAgentDialog } from "../composer/model-picker";
-import { STILL } from "../composer/pickers";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import {
@@ -78,8 +77,6 @@ export function ForkMenu({
   busy = false,
   onOpen,
   onPick,
-  held,
-  openSub = false,
 }: {
   /** A chat's words: "Fork chat from here". */
   chat: boolean;
@@ -95,15 +92,11 @@ export function ForkMenu({
   busy?: boolean;
   onOpen?: () => void;
   onPick: (pick: ForkPick) => void;
-  /** The gallery's box: the menu held open in it, and its agent submenu with `openSub`. */
-  held?: HTMLElement;
-  openSub?: boolean;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
   // Held so a click opens it too: a hover-opening submenu ignores mouse presses.
   const [sub, setSub] = useState(false);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
-  const place = held && { container: held, collisionAvoidance: STILL };
   const others = (agents ?? [])
     .map((group) => ({ ...group, models: group.models.filter((each) => group.provider !== current || each.id !== model) }))
     .filter((group) => !group.unavailable && group.models.length > 0);
@@ -117,13 +110,13 @@ export function ForkMenu({
   };
   return (
     <>
-      <DropdownMenu modal={false} {...(held && { open: true })} onOpenChange={(open) => (open ? onOpen?.() : setSub(false))}>
+      <DropdownMenu modal={false} onOpenChange={(open) => (open ? onOpen?.() : setSub(false))}>
         <DropdownMenuTrigger
           render={<TooltipIconButton tooltip={tooltip} size="icon-answer" disabled={busy} aria-busy={busy || undefined} />}
         >
           {busy ? <Spinner className="animate-spin" /> : <BranchAlt />}
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="start" className="w-select" {...place}>
+        <DropdownMenuContent side="bottom" align="start" className="w-select">
           <DropdownMenuLabel variant="heading">{tooltip}</DropdownMenuLabel>
           {offer ? (
             <>
@@ -141,11 +134,11 @@ export function ForkMenu({
               {another && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuSub open={held ? openSub : sub} onOpenChange={setSub}>
+                  <DropdownMenuSub open={sub} onOpenChange={setSub}>
                     <DropdownMenuSubTrigger onClick={() => setSub(true)}>
                       <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
                     </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent {...place}>
+                    <DropdownMenuSubContent>
                       {agentsError ? (
                         <div className="px-2 py-1.5">
                           <ErrorLine size="sm" error={agentsError} />

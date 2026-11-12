@@ -8,9 +8,6 @@ import { Dialog, DialogContent } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { ComposerPill } from "./composer";
 
-// A popup held open in the gallery's box never shifts to stay in view.
-export const STILL = { side: "none", align: "none" } as const;
-
 /** How the agent's actions are approved. The words are the UI's; the level is Rust's. */
 export type PermissionLevel = "ask" | "auto" | "full";
 
@@ -32,22 +29,19 @@ export function PermissionPicker({
   onChange,
   levels = ALL_LEVELS,
   untrusted = false,
-  held,
 }: {
   value: PermissionLevel;
   onChange: (level: PermissionLevel) => void;
   /** The levels the agent has, from its adapter; one it lacks isn't offered. */
   levels?: readonly PermissionLevel[];
   untrusted?: boolean;
-  /** The gallery's box to hold the menu open in. */
-  held?: HTMLElement;
 }) {
   const [confirming, setConfirming] = useState(false);
   const value = untrusted ? "ask" : chosen;
   const { label, Icon } = LEVELS.find((each) => each.level === value)!;
   return (
     <>
-      <DropdownMenu modal={false} open={held ? true : undefined}>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger
           render={
             <ComposerPill
@@ -65,8 +59,6 @@ export function PermissionPicker({
           side="top"
           align="start"
           data-slot="permission-menu"
-          container={held}
-          collisionAvoidance={held ? STILL : undefined}
           className="w-125 max-w-full p-1.5"
         >
           <p className="px-2 pt-1 pb-1.5 text-sm text-muted-foreground">How should the agent’s actions be approved?</p>
@@ -131,18 +123,15 @@ export function FullAccessDialog({
   open,
   onCancel,
   onConfirm,
-  held,
 }: {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  /** The gallery's box to hold it open in, not modal and not taking focus. */
-  held?: HTMLElement;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   return (
-    <Dialog open={open} modal={!held} onOpenChange={(next) => !next && onCancel()}>
-      <DialogContent showCloseButton={false} container={held} initialFocus={held ? false : cancel}>
+    <Dialog open={open} onOpenChange={(next) => !next && onCancel()}>
+      <DialogContent showCloseButton={false} initialFocus={cancel}>
         <ConfirmForm
           title={
             <span className="flex items-center gap-2">

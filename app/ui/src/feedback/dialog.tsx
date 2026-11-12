@@ -38,7 +38,7 @@ export function FeedbackDialog() {
   );
 }
 
-/** The dialog's insides for one moment of a send; the gallery shows each. */
+/** The dialog's insides for one moment of a send. */
 export function FeedbackView({
   text,
   sending,

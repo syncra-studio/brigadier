@@ -73,8 +73,6 @@ export type HomeProps = {
   onSend: (text: string, parts?: string) => void;
   /** Changed to put the cursor back in the field (⌘N on Home). */
   focus?: number;
-  /** The gallery's box to hold a picker open in. */
-  held?: { box: HTMLElement; picker: "project" | "workIn" | "heading" | "branch" };
 };
 
 /**
@@ -84,7 +82,7 @@ export type HomeProps = {
  * rail, never under the card, so the composer doesn't move [D388].
  */
 export function HomeView(props: HomeProps) {
-  const { name, projects, project, offline, held } = props;
+  const { name, projects, project, offline } = props;
   const salutation = useGreeting(Boolean(name));
   const [empty, setEmpty] = useState(() => !props.initial || isEmpty(props.initial));
   const noModel = props.groups !== null && !props.model;
@@ -131,7 +129,7 @@ export function HomeView(props: HomeProps) {
           {project && projects ? (
             <>
               What should we build in{" "}
-              <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "heading" ? held.box : undefined} />?
+              <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
             </>
           ) : (
             "What should we build?"
@@ -171,11 +169,11 @@ export function HomeView(props: HomeProps) {
               <RailItem variant="controls" label="Composer utility bar">
                 {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
                 <UtilityBar className={projects ? undefined : "invisible"}>
-                  <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} held={held?.picker === "project" ? held.box : undefined} />
+                  <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
                   {project && (
                     <>
-                      <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} held={held?.picker === "workIn" ? held.box : undefined} />
-                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} held={held?.picker === "branch" ? held.box : undefined} />
+                      <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} />
+                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} />
                     </>
                   )}
                 </UtilityBar>

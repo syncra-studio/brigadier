@@ -11,15 +11,12 @@ export function SwitchAgentDialog({
   to,
   onCancel,
   onConfirm,
-  held,
   fork = false,
 }: {
   /** The agent's name; null while closed. */
   to: string | null;
   onCancel: () => void;
   onConfirm: () => void;
-  /** The gallery's box to hold it open in, not modal and not taking focus. */
-  held?: HTMLElement;
   fork?: boolean;
 }) {
   const confirm = useRef<HTMLButtonElement>(null);
@@ -27,8 +24,8 @@ export function SwitchAgentDialog({
   const [name, setName] = useState(to ?? "");
   if (to !== null && to !== name) setName(to);
   return (
-    <Dialog open={to !== null} modal={!held} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent container={held} initialFocus={held ? false : confirm}>
+    <Dialog open={to !== null} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent initialFocus={confirm}>
         <ConfirmForm
           title={fork ? `Fork to ${name}?` : `Switch to ${name}?`}
           description={

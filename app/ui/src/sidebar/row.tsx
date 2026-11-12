@@ -77,7 +77,6 @@ export function SessionRowItem({
   nested = false,
   forked = false,
   offline = false,
-  held,
   picked = false,
   menu,
   onOpen,
@@ -97,8 +96,6 @@ export function SessionRowItem({
   offline?: boolean;
   onOpen: (id: string) => void;
   onRename: (row: SessionRow) => void;
-  /** The gallery's box: the card shows there, held open. */
-  held?: HTMLElement;
   /** One of several picked with ⌘- or Shift-click [D185]. */
   picked?: boolean;
   /** Its menu, in place of the live row's (an archived row's Restore and Delete…). */
@@ -114,7 +111,7 @@ export function SessionRowItem({
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/row relative" />}>
-        <Tooltip open={held && true}>
+        <Tooltip>
           <TooltipTrigger
             delay={CARD_DELAY_MS}
             render={
@@ -140,13 +137,12 @@ export function SessionRowItem({
               <RowMark mark={mark} label={label} />
             </span>
           </TooltipTrigger>
-          <BaseTooltip.Portal container={held}>
+          <BaseTooltip.Portal>
             {/* Past the row's own inset, clear of the sidebar's edge. */}
             <BaseTooltip.Positioner
               side="right"
               align="start"
               sideOffset={() => spacingPx() * 4}
-              collisionAvoidance={held && { side: "none", align: "none" }}
               className="z-popup"
             >
               <BaseTooltip.Popup className="pointer-events-none flex w-66 flex-col rounded-surface border border-border bg-popover px-3 py-2.5 text-start text-sm text-foreground shadow-tooltip popup-motion">
