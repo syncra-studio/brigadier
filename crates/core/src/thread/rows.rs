@@ -25,15 +25,10 @@ impl Thread {
             return;
         };
         o.stop.1 = true;
-        // Brigadier's stop for a rebirth draws no line: its divider follows [D108].
-        if o.stop.0.as_deref() == Some("rebirth") {
+        let Some(reason) = super::turn::stop_line(o.stop.0.as_deref()) else {
             return;
-        }
-        let ms = ts.saturating_sub(o.started);
-        let reason = match o.stop.0.as_deref() {
-            Some("pause") => "paused",
-            _ => "stopped",
         };
+        let ms = ts.saturating_sub(o.started);
         self.kept_row(json!({"kind": "line", "reason": reason, "ms": ms}));
     }
 
@@ -210,7 +205,7 @@ impl Thread {
             "stopped" => {
                 self.end_children("cancelled", ts);
                 self.settle_held();
-                if let Some(by @ ("user" | "pause" | "rebirth")) = item["by"].as_str() {
+                if let Some(by @ ("user" | "pause" | "rebirth" | "stall")) = item["by"].as_str() {
                     if let Some(o) = self.open.as_mut() {
                         o.stop.0.get_or_insert(by.into());
                     }
@@ -260,8 +255,8 @@ impl Thread {
                 if self.stopping() {
                     return self.user_stopped(ts);
                 }
-                // A full window carries on in a fresh one: its divider says so [D88].
-                if item["why"] == "context" && crate::rebirth::goes_on(&self.fold) {
+                // A full window carries on in a fresh one, or the loop guard stops it [D88, D144].
+                if self.full(item) {
                     return;
                 }
                 self.break_group();

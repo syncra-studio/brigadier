@@ -46,7 +46,7 @@ export type ComposerRow = Row & {
 export type Runner = (args: string[]) => Promise<Record<string, any>>;
 export const daemonRun: Runner = (args) => new Promise((resolve) => ask({ op: "run", args }, resolve));
 
-const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running" : String(reply.message ?? reply.error ?? "Refused"));
+export const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running" : String(reply.message ?? reply.error ?? "Refused"));
 
 /*
  * Messages sent at once or steered, shown in the thread at once [D30]. A message goes under its command id, so trying

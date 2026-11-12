@@ -71,6 +71,9 @@ pub struct Turn {
     pub edited: BTreeSet<String>,
     #[serde(default)]
     pub editing: BTreeMap<String, Vec<String>>,
+    /// It did something new: an edit, a command or reply text, the rebirth guard's progress [D144].
+    #[serde(default)]
+    pub moved: bool,
 }
 
 /// The paths a FileChange list names.
@@ -89,6 +92,7 @@ impl Turn {
         if self.first_tool == 0 {
             self.first_tool = ts;
         }
+        self.moved |= matches!(item["step"].as_str(), Some("run" | "edit"));
         self.tools
             .insert(item["id"].as_str().unwrap_or_default().into());
         self.edit_started(item);
@@ -143,7 +147,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );

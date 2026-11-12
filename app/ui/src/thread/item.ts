@@ -246,6 +246,8 @@ export type Item = Base &
     | { kind: "line"; reason: "interrupted" }
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }
+    /** The rebirth loop guard stopped the turn: two fresh conversations in a row did nothing new; Continue goes on [D144]. */
+    | { kind: "line"; reason: "stalled" }
     /** Workers in the parent's thread, from Rust's notes and results [D3009, D3010]: started (in one turn, merged), ended, Stop left running. */
     | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[]; merge?: Merge | null }
     | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }

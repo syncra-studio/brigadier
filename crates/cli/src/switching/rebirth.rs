@@ -3,12 +3,29 @@
 //! stopped first; then the fresh conversation starts from the hand-off alone, in the same session.
 //! A rebirth at a turn's end waits for the next input, which `core::send` carries. A model or
 //! agent picked mid-turn cuts it the same way, and the new one carries on from there [D124].
+//! A turn the loop guard holds is stopped with no rebirth, till the user's Continue [D144].
 
 use crate::{owner, workers};
 use brigadier_core::{self as core, message::Message};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
+
+/// The user's Continue on a turn the guard stopped: the guard starts over and it carries on.
+pub fn go_on(data: &Path, id: &str) -> io::Result<Value> {
+    let spec = core::load(data, id)?;
+    owner::ensure(data, &spec)?;
+    let f = core::fold(&spec.dir, true)?.fold;
+    let Some(turn) = f.last.as_ref().filter(|_| core::rebirth::stalled(&f)) else {
+        return Ok(json!({"ok": false, "error": "not_due"}));
+    };
+    owner::call(
+        data,
+        id,
+        json!({"op": "note", "data": {"event": "go_on", "turn": turn["id"]}}),
+    )?;
+    run(data, id)
+}
 
 pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let not_due = json!({"ok": false, "error": "not_due"});
@@ -28,6 +45,12 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
     };
+    if why == "stall" {
+        if crate::control::interrupt(data, id, "stall")?.is_none() {
+            owner::call(data, id, json!({"op": "stop", "by": "stall"}))?;
+        }
+        return Ok(json!({"ok": true, "result": "stalled"}));
+    }
     if let Some(t) = f.turns.first() {
         // Logged before the stop, so its end is known as this one's, never the user's Stop.
         let cut = json!({"op": "note", "data": {"event": "rebirth_cut", "turn": t.id, "switch": why == "switch"}});

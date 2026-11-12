@@ -711,9 +711,10 @@ async function sleepCheck() {
 
 // Rebirth [D88, D108, D111, D116]. With the fake agent: one fresh conversation per crossing, at the
 // next message and mid-turn; a crash between a rebirth's intent and its spawn still makes exactly
-// one; a message queued during a cut lands after it, once. With REAL=claude[,codex,opencode]: one
-// long task per agent, its to-do tool on and off (BRIGADIER_NO_TODO), with each rebirth's pick-up
-// metrics read from the log and four probes after. REBIRTH_AT sets the real runs' threshold.
+// one; a message queued during a cut lands after it, once; the loop guard stops only a task that
+// does nothing new [D144]. With REAL=claude[,codex,opencode]: one long task per agent, its to-do
+// tool on and off (BRIGADIER_NO_TODO), with each rebirth's pick-up metrics read from the log and
+// four probes after. REBIRTH_AT sets the real runs' threshold.
 const LOOKUP = /brigadier (search|read)/
 const ORIENT = /^(git (status|log|diff|show)|brigadier (search|read)|ls|pwd)\b/
 async function settled(id, ms) {
@@ -768,6 +769,17 @@ async function rebirthDrill() {
   await settled('q1', 60000)
   const order = cli(['read', 'q1']).all.filter((i) => i.kind === 'input' && !i.control).map((i) => (i.switch?.why ?? i.text?.split(' ')[0]))
   r.queued = { order, received_once: ledger().recv.after === 1 }
+  // The loop guard [D144]: fresh conversations that keep doing something are cut as often as they
+  // fill; two in a row that do nothing new stop with the guard's line, and Continue carries on.
+  await fake('g1', `work reborn:5:shell:${DATA}/g1.txt+ctx:5+ctx:60+hang:8 ctx:5 ctx:60 hang:8`)
+  await settled('g1', 120000)
+  r.progress = { rebirths: rebirths('g1').length, last: status(['g1']).g1?.last?.outcome }
+  await fake('h1', 'work reborn:3:ctx:5+ctx:60+hang:8 ctx:5 ctx:60 hang:8')
+  const lines = () => (cli(['thread', 'h1']).out.items ?? []).filter((i) => i.reason === 'stalled').length
+  r.stall = { rebirths: rebirths('h1').length, lines: lines() }
+  r.stall.go_on = cli(['rebirth', 'h1', '--go-on']).out.ok
+  await settled('h1', 60000)
+  r.stall.after = { rebirths: rebirths('h1').length, lines: lines(), last: status(['h1']).h1?.last?.outcome }
   r.leftovers = cleanup()
   log({ drill: 'rebirth', ...r })
   for (const [, backend] of REAL) for (const todo of ['on', 'off']) log({ drill: 'rebirth-real', ...(await rebirthReal(backend, todo)) })

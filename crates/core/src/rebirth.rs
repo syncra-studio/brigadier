@@ -70,7 +70,8 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
 /// Why the session needs a rebirth on its own, now: "cut" for a running turn past its threshold
 /// with no tool running (it's stopped first) or a last turn the window refused; "switch" for a
 /// running turn whose model or agent the user picked another of, or the turn cut for that
-/// [D124]; none otherwise. A stopped or paused session is left as the user left it.
+/// [D124]; "stall" for a running turn past it that the guard stops instead [D144]; none
+/// otherwise. A stopped or paused session is left as the user left it.
 pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
         // A safe point: no tool runs, nothing waits on the user, and no turn its CLI queued
@@ -80,19 +81,23 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
         if idle && switching(spec, f, &t.backend) {
             return Some("switch");
         }
-        let idle = idle && again(&t.switch);
-        return (idle && full(spec, f)).then_some("cut");
+        return (idle && full(spec, f)).then_some(match again(f, &t.id, &t.switch, t.moved) {
+            true => "cut",
+            false => "stall",
+        });
     }
     // The last turn: the window refused it, Brigadier stopped it for this, or this rebirth's own
-    // input provably never reached a CLI; one that may have, isn't sent twice [D54].
+    // input provably never reached a CLI; one that may have, isn't sent twice [D54]. The user's
+    // Continue carries a stalled one on.
     let last = f.last.as_ref()?;
-    let refused = last["outcome"] == "failed" && last["why"] == "context" && again(&last["switch"]);
+    let refused = last["outcome"] == "failed" && last["why"] == "context" && again_last(f, last);
     let stopped = f.cut.as_deref() == last["id"].as_str();
     if stopped && f.switched {
         return Some("switch");
     }
     let lost = last["switch"]["why"] == "cut" && last["never_ran"] == true;
-    (refused || stopped || lost).then_some("cut")
+    let going = f.go_on.is_some() && f.go_on.as_deref() == last["id"].as_str();
+    (refused || stopped || lost || going).then_some("cut")
 }
 
 /// Whether the user picked another agent, or another model of `backend`, than the running turn
@@ -103,18 +108,41 @@ fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
         || (f.given.as_ref()).is_some_and(|g| g["model"].as_str() != model.as_deref())
 }
 
-/// Cuts in a row without the user, at most: past them a turn that redoes its work in every fresh
-/// conversation runs on to its window, and ends as Context full if it fills it [D98].
-const CHAIN: u64 = 3;
+/// The fresh conversations in a row, this turn's the last, that a cut began and that did nothing
+/// new: no edit, command or reply [D144]. The user's Continue starts it over.
+fn empty(f: &Fold, id: &str, switch: &Value, moved: bool) -> u64 {
+    let n = switch["empty"].as_u64().unwrap_or(0);
+    let going = f.go_on.as_deref() == Some(id);
+    if switch["why"] == "cut" && !moved && !going {
+        n + 1
+    } else {
+        0
+    }
+}
 
-/// Whether the turn this switch began may be cut for a rebirth: fewer than `CHAIN` before it.
-pub fn again(switch: &Value) -> bool {
-    switch["chain"].as_u64().unwrap_or(0) < CHAIN
+/// Whether this turn may be cut for a rebirth: it isn't the second empty fresh conversation in a
+/// row, which would only fill its context again [D144].
+pub fn again(f: &Fold, id: &str, switch: &Value, moved: bool) -> bool {
+    empty(f, id, switch, moved) < 2
+}
+
+/// The same, of the last turn.
+pub fn again_last(f: &Fold, last: &Value) -> bool {
+    let id = last["id"].as_str().unwrap_or("");
+    again(f, id, &last["switch"], last["moved"] == true)
+}
+
+/// The guard stopped the last turn: Continue carries it on [D144].
+pub fn stalled(f: &Fold) -> bool {
+    let last = f.last.as_ref().filter(|_| f.turns.is_empty());
+    last.is_some_and(|l| !again_last(f, l))
 }
 
 /// Whether the running turn, its window full, goes on in a fresh conversation.
 pub fn goes_on(f: &Fold) -> bool {
-    f.turns.first().is_some_and(|t| again(&t.switch))
+    f.turns
+        .first()
+        .is_some_and(|t| again(f, &t.id, &t.switch, t.moved))
 }
 
 /// The switch a rebirth's input carries: the same agent, account, model, effort and speed, in a
@@ -122,10 +150,20 @@ pub fn goes_on(f: &Fold) -> bool {
 pub fn record(spec: &Spec, f: &Fold, why: &str) -> Value {
     let b = backend(spec, f);
     let run = as_run(spec, f, b, None);
-    // A cut of a turn that a cut began extends its chain; the user's message starts none.
-    let before = &f.last.as_ref().map_or(Value::Null, |l| l["switch"].clone());
-    let chain = (why == "cut").then(|| before["chain"].as_u64().unwrap_or(0) + 1);
-    json!({"why": why, "fresh": true, "auto": true, "chain": chain,
+    // A cut carries the guard's count on; the user's message starts it over. One whose input
+    // never ran keeps the count it had.
+    let last = f.last.clone().unwrap_or_default();
+    let empty = match last["never_ran"] == true {
+        true => last["switch"]["empty"].as_u64().unwrap_or(0),
+        false => empty(
+            f,
+            last["id"].as_str().unwrap_or(""),
+            &last["switch"],
+            last["moved"] == true,
+        ),
+    };
+    let empty = (why == "cut").then_some(empty);
+    json!({"why": why, "fresh": true, "auto": true, "empty": empty,
         "to": {"backend": b, "account": f.accounts.get(b).map_or("", String::as_str),
                "model": run.model, "effort": run.effort, "fast": run.fast}})
 }

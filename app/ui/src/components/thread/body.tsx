@@ -56,7 +56,7 @@ const FAILED = {
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
  * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above. `again`:
- * a failed turn's actions, the app's (Retry and what its reason offers).
+ * a failed turn's actions, the app's (Retry and what its reason offers), or a line's (Continue).
  */
 export function Body({ item, turn, step, dated = false, actions = true, older, fork, again }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; older?: boolean; fork?: ReactNode; again?: ReactNode }) {
   switch (item.kind) {
@@ -165,7 +165,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         />
       );
     case "line":
-      return <ChangeLine item={item} />;
+      return <ChangeLine item={item} action={again} />;
     case "unknown":
       return <UnknownRow keep={item.id} raw={item.raw} />;
     // The app draws it (its switch needs the session); see thread/rows.tsx.

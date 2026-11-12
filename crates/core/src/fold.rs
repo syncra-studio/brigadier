@@ -170,6 +170,9 @@ pub struct Fold {
     /// That cut was for a model or agent the user picked mid-turn: it carries on there [D124].
     #[serde(default)]
     pub switched: bool,
+    /// The stalled turn the user's Continue carries on: the rebirth guard starts over [D144].
+    #[serde(default)]
+    pub go_on: Option<String>,
 }
 
 impl Fold {
@@ -227,6 +230,7 @@ impl Fold {
             "checking" | "text" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.checking = item["on"] == true;
+                    t.moved |= kind == "text" && !str_of("text").trim().is_empty();
                 }
             }
             "input" => self.input(item, ts),
@@ -418,6 +422,7 @@ impl Fold {
                 Some("rebirth_cut") => {
                     (self.cut, self.switched) = (Some(str_of("turn")), item["switch"] == true)
                 }
+                Some("go_on") => self.go_on = Some(str_of("turn")),
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),

@@ -42,8 +42,8 @@ export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?:
   );
 }
 
-/** Rust's `line` row in words: what changed, and the rest on its ⓘ. */
-export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) {
+/** Rust's `line` row in words: what changed, and the rest on its ⓘ. `action`: the app's, where the line offers one. */
+export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line" }>; action?: ReactNode }) {
   switch (item.reason) {
     case "limit-reset":
       return <ThreadLine icon={ArrowRotateCw}>Usage limit reset · {hhmm(item.at)}</ThreadLine>;
@@ -69,6 +69,13 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
       return (
         <ThreadLine icon={ShieldExclamation} tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on.">
           The automatic reviewer ended this turn
+        </ThreadLine>
+      );
+    case "stalled":
+      return (
+        <ThreadLine icon={Stop}>
+          Stopped: this task keeps filling its context without making progress
+          {action && <span className="ms-1.5">{action}</span>}
         </ThreadLine>
       );
     case "retried":

@@ -3,7 +3,7 @@ import { type Key, useContext, useEffect, useState, useSyncExternalStore } from 
 import { Button } from "../components/button";
 import type { Draft } from "../components/composer/draft";
 import { type Notice, Notices } from "../components/composer/rail";
-import { openThread, useThread } from "../daemon";
+import { openThread, type Row, useDaemon, useThread } from "../daemon";
 import type { Item, SetupStep } from "../thread/item";
 import { SessionOfThread } from "../accounts/limit";
 import { ErrorAction } from "../components/thread/error-state";
@@ -12,7 +12,7 @@ import { retry, useStart } from "../home/start";
 import { store } from "../onboarding/api";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
-import { daemonRun, retryMessage, type Runner } from "./composer";
+import { daemonRun, failure, retryMessage, type Runner } from "./composer";
 import { newId } from "./store";
 import { putBack } from "./side";
 import { useGitNotice } from "../panel/notice";
@@ -37,6 +37,31 @@ export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, 
       {choose}
       <ErrorAction disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(daemonRun, at.id, entry)}>
         Retry
+      </ErrorAction>
+    </>
+  );
+}
+
+/**
+ * The rebirth loop guard's Continue [D144]: Rust starts the guard over and carries the task on in a fresh
+ * conversation. Under way at once, gone once Rust's row no longer says stalled; a refusal says why, with Try again.
+ */
+export function GoOn({ turn }: { turn: string }) {
+  const at = useContext(SessionOfThread);
+  // Rust's row names the last turn, by id, while the loop guard holds it.
+  const row = useDaemon().rows?.find((r) => r.id === at?.id) as (Row & { stalled?: string | null }) | undefined;
+  const [state, setState] = useState<{ asking: boolean; error?: string }>({ asking: false });
+  if (!at || row?.stalled !== turn) return null;
+  if (state.asking) return <span className="shimmer">Continuing…</span>;
+  const go = () => {
+    setState({ asking: true });
+    void daemonRun(["rebirth", at.id, "--go-on"]).then((back) => setState(back.ok ? { asking: true } : { asking: false, error: failure(back) }));
+  };
+  return (
+    <>
+      {state.error && <span className="me-1.5">· Couldn’t continue: {state.error}</span>}
+      <ErrorAction disabled={at.offline} onClick={go}>
+        {state.error ? "Try again" : "Continue"}
       </ErrorAction>
     </>
   );

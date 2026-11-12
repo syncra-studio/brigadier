@@ -125,6 +125,18 @@ impl Thread {
     }
 
     /// The row of the limit `turn` ended on, while no switch took it.
+    /// A turn its full window failed: its rebirth's divider follows, or the loop guard's line
+    /// says it stopped [D88, D144]. True when that is all it shows.
+    pub(super) fn full(&mut self, item: &Value) -> bool {
+        if item["why"] != "context" {
+            return false;
+        }
+        if !crate::rebirth::goes_on(&self.fold) {
+            self.kept_row(json!({"kind": "line", "reason": "stalled"}));
+        }
+        true
+    }
+
     pub(super) fn limit_of(&self, turn: &str) -> Option<usize> {
         self.limit_row
             .filter(|&at| self.items[at]["turnId"] == turn)
@@ -372,5 +384,16 @@ impl Thread {
             json!({"turnId": turn, "ms": ms, "folded": [n + 1, n], "kept": [],
             "denied": t["denied"]}),
         );
+    }
+}
+
+/// The line a stop draws, by who stopped it: none for a rebirth's, whose divider follows [D108];
+/// the loop guard's says why, with Continue [D144].
+pub(super) fn stop_line(by: Option<&str>) -> Option<&'static str> {
+    match by {
+        Some("rebirth") => None,
+        Some("pause") => Some("paused"),
+        Some("stall") => Some("stalled"),
+        _ => Some("stopped"),
     }
 }
