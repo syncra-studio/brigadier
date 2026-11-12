@@ -7,8 +7,8 @@ import { showToast } from "./toast";
 /** Copies `text` from a menu, which has no button to show a check on: a toast says how it went. */
 export function copyWithToast(text: string, what: string): void {
   navigator.clipboard.writeText(text).then(
-    () => showToast(`Copied ${what}`),
-    () => showToast(`Failed to copy ${what}`, { tone: "error" }),
+    () => showToast(`Copied ${what}`, { id: "copied" }),
+    () => showToast(`Failed to copy ${what}`, { tone: "error", id: "copied" }),
   );
 }
 

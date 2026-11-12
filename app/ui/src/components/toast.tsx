@@ -12,9 +12,9 @@ type ToastAction = { label: string; run: () => void };
 /** The app's toasts, shown by the Toaster; `showToast` adds one from anywhere. */
 export const toastManager = Toast.createToastManager();
 
-/** Shows a short message ("Changes reverted", "Archived chat"), with buttons for what can follow it; `stays` until dismissed. */
-export function showToast(text: string, { tone = "neutral", actions = [], stays = false }: { tone?: Tone; actions?: ToastAction[]; stays?: boolean } = {}) {
-  return toastManager.add({ title: text, type: tone, data: { actions }, ...(stays && { timeout: 0 }) });
+/** Shows a short message ("Changes reverted", "Archived chat"), with buttons for what can follow it; `stays` until dismissed. One `id` shows once: a new one replaces it in place. */
+export function showToast(text: string, { tone = "neutral", actions = [], stays = false, id }: { tone?: Tone; actions?: ToastAction[]; stays?: boolean; id?: string } = {}) {
+  return toastManager.add({ id, title: text, type: tone, data: { actions }, ...(stays && { timeout: 0 }) });
 }
 
 const ICONS = { success: CheckCircle, error: Warning, neutral: InfoCircle };

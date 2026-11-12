@@ -299,7 +299,7 @@ createRoot(document.getElementById("root")!).render(
         </DrawBoundary>
         <AddProjectHost />
         <GlobalSearch />
-        <Toaster className="top-titlebar" />
+        <Toaster className="top-titlebar pt-2" />
         <ImageViewerHost />
       </>
     )}
