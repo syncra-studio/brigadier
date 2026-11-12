@@ -86,7 +86,8 @@ function PastePage({ owner, id, text, active }: { owner: string; id: string; tex
                 window.clearTimeout(timer.current);
                 timer.current = window.setTimeout(keep, KEEP_AFTER_MS);
               }}
-              className="block min-h-48 w-full resize-none bg-transparent text-plan whitespace-pre-wrap text-foreground caret-foreground outline-none field-sizing-content"
+              // The ring sits a little outside the words, which keep their place.
+              className="-m-2 block min-h-48 resize-none rounded-control bg-transparent p-2 text-plan whitespace-pre-wrap text-foreground caret-foreground outline-none field-sizing-content focus-visible:focus-ring"
             />
           </>
         )}
