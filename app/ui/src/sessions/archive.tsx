@@ -4,8 +4,10 @@ import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem, DropdownMenuShortcut } from "../components/menu";
+import { RowAction } from "../components/row-action";
 import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
@@ -227,15 +229,34 @@ export function useArchiveKeys(order: SessionRow[], active: string | null, onHom
 }
 
 /** The row menu's Archive: the picked rows when this is one of several picked, else this one. */
-export function ArchiveMenuItem({ row }: { row: SessionRow }) {
+/** What a row's Archive takes: the pick when the row is in it, else the row. */
+function useArchiveTarget(row: SessionRow) {
   const pick = usePicked();
   const several = pick.length > 1 && pick.some((each) => each.id === row.id);
+  return { rows: several ? pick : [row], label: several ? `Archive (${pick.length})` : "Archive session" };
+}
+
+export function ArchiveMenuItem({ row }: { row: SessionRow }) {
+  const target = useArchiveTarget(row);
   return (
-    <DropdownMenuItem onClick={() => archiveRows(several ? pick : [row])}>
+    <DropdownMenuItem onClick={() => archiveRows(target.rows)}>
       <Archive />
-      {several ? `Archive (${pick.length})` : "Archive session"}
+      {target.label}
       <DropdownMenuShortcut>{keysOf("archive")[0]}</DropdownMenuShortcut>
     </DropdownMenuItem>
+  );
+}
+
+/** The same Archive on the row itself, beside its ⋯ and shown as it is. */
+export function ArchiveRowAction({ row }: { row: SessionRow }) {
+  const target = useArchiveTarget(row);
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<RowAction aria-label={target.label} onClick={() => archiveRows(target.rows)} />}>
+        <Archive />
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{target.label}</TooltipContent>
+    </Tooltip>
   );
 }
 

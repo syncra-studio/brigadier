@@ -11,6 +11,7 @@ import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { BranchAlt, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
 import { PrChip, prList } from "../landing/pr-chip";
 import { openPr } from "../panel/open";
+import { ArchiveRowAction } from "../sessions/archive";
 import { RowMenuItems } from "./menu";
 import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -66,7 +67,7 @@ const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip
  * A session on one line: with `badged` (the one list) its project's badge first, then its title and one
  * mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
  * words and the project. Needs-you and unread marks aren't drawn on the row you're looking at (`active`).
- * Its actions are in a ⋯ menu over its end on hover, and on a right-click [D185].
+ * Its actions are in a ⋯ menu over its end on hover, with Archive beside it, and on a right-click [D185].
  */
 export function SessionRowItem({
   row,
@@ -107,6 +108,8 @@ export function SessionRowItem({
   const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
+  // Archived rows bring their own menu (Restore, Delete…) and no Archive.
+  const live = !menu && !row.archived;
   const items = menu ?? <RowMenuItems row={row} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
@@ -118,7 +121,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", nested && (forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", badged && "h-9")}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", badged && "h-9")}
                 onClick={(event) => {
                   if (onClick) onClick(event);
                   else onOpen(row.id);
@@ -174,6 +177,7 @@ export function SessionRowItem({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">{items}</DropdownMenuContent>
           </DropdownMenu>
+          {live && <ArchiveRowAction row={row} />}
         </RowActionsSlot>
       </ContextMenuTrigger>
       <ContextMenuContent>{items}</ContextMenuContent>
