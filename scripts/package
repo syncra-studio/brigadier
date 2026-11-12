@@ -23,6 +23,8 @@ await packager({
   dir: ".",
   name: "Brigadier",
   appBundleId: process.env.APP_ID ?? "sh.brigadier.app",
+  // The old app's icon, as it was: Dock, Finder and ⌘Tab.
+  icon: "app/main/icons/icon.icns",
   out: "out",
   overwrite: true,
   download: { checksums },
