@@ -26,7 +26,7 @@ const STAND_IN: ModelGroup[] = [{ provider: "cloud", label: "Cloud agent", mark:
 
 let agents: Promise<ModelGroup[]> | undefined;
 /** This Mac's agents and models as Rust lists them for Home, then a stand-in for each unavailable state none is in; read once a load. */
-function useAgents(): ModelGroup[] {
+export function useAgents(): ModelGroup[] {
   const [groups, setGroups] = useState(STAND_IN);
   useEffect(() => {
     agents ??= window.top!.galleryRun!(["models", "--fresh"]).then((reply) => {

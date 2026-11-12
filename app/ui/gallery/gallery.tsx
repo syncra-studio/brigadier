@@ -3,14 +3,23 @@ import { type RefObject, useEffect, useRef } from "react";
 
 import { connected } from "../src/daemon";
 import { run } from "../src/onboarding/api";
+import { ChangesGallery } from "./changes";
 import { ComposerGallery } from "./composer";
 import { Choices } from "./choices";
 import { Contents } from "./contents";
+import { FindGallery } from "./find";
+import { ForkGallery } from "./fork";
 import { Kit } from "./kit";
+import { Notices } from "./notices";
 import { Panes } from "./panes";
 import { Area } from "./parts";
+import { PeersGallery } from "./peers";
 import { PickersGallery } from "./pickers";
 import { Popups } from "./popups";
+import { QuestionGallery } from "./questions";
+import { RewindGallery } from "./rewind";
+import { ThreadGallery } from "./thread";
+import { WorkersGallery } from "./workers";
 import "./gallery.css";
 
 const SCROLL_KEY = "gallery-scroll";
@@ -87,6 +96,17 @@ function GalleryPage() {
           <main className="isolate flex flex-col gap-16 px-8 py-8">
             <Area name="Composer">
               <ComposerGallery />
+            </Area>
+            <Area name="Thread">
+              <ThreadGallery />
+              <QuestionGallery />
+              <RewindGallery />
+              <ForkGallery />
+              <FindGallery />
+              <Notices />
+              <ChangesGallery />
+              <WorkersGallery />
+              <PeersGallery />
             </Area>
             <Area name="Pickers">
               <PickersGallery />
