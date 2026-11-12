@@ -24,18 +24,18 @@ function words(step: SetupStep): string {
 
 /** Its steps open while it runs and when it fails, one line once done; it sits under its message, so nothing above moves [D77]. */
 export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
-  return <Card key={setup.state} keep={keep} setup={setup} />;
+  // Its worktree step's own state, so a later step starting never turns "Created" back into "Creating" nor opens it again [D85].
+  const phase = setup.state === "failed" ? "failed" : (setup.steps.find((step) => step.kind === "worktree")?.state ?? setup.state);
+  return <Card key={phase} keep={keep} setup={setup} phase={phase} />;
 }
 
-function Card({ keep, setup }: { keep: string; setup: Setup }) {
-  const starting = setup.state === "running";
-  const [open, setOpen] = useKept(`${keep}:${setup.state}`, setup.state !== "done");
+function Card({ keep, setup, phase }: { keep: string; setup: Setup; phase: Setup["state"] }) {
+  const [open, setOpen] = useKept(`${keep}:${phase}`, phase !== "done");
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex min-w-0 flex-col" data-slot="setup-line" data-state={setup.state}>
       <CollapsibleTrigger className={cx(ROW, TOGGLE)}>
         <Branch className="size-4 shrink-0" />
-        {/* Its worktree step's own state, so a later step starting never turns "Created" back into "Creating". */}
-        <Words verb={TITLES[setup.state === "failed" ? "failed" : (setup.steps.find((step) => step.kind === "worktree")?.state ?? setup.state)]} live={starting} />
+        <Words verb={TITLES[phase]} live={phase === "running"} />
         <Chevron />
       </CollapsibleTrigger>
       <CollapsibleContent>
