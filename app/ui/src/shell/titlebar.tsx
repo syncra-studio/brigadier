@@ -24,7 +24,7 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 
 /** Back, Forward and the sidebar toggle at a fixed spot on the traffic lights' line; they stay put while the sidebar moves. */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
-  const { open, toggleSidebar } = useSidebar();
+  const { open, toggleSidebar, canToggle } = useSidebar();
   const forward = ahead.use();
   const page = settingsPageOf(hash);
   const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") ? "" : null;
@@ -83,10 +83,12 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
         <TooltipIconButton look="toolbar" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
           <ArrowRight />
         </TooltipIconButton>
-        {/* Its name says which way it goes; aria-expanded would draw the toolbar look's open fill. */}
-        <TooltipIconButton look="toolbar" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
-          {open ? <Sidebar /> : <SidebarFloatingLeft />}
-        </TooltipIconButton>
+        {/* Its name says which way it goes; aria-expanded would draw the toolbar look's open fill. Settings holds the panel open, so it has none [D34]. */}
+        {canToggle && (
+          <TooltipIconButton look="toolbar" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+            {open ? <Sidebar /> : <SidebarFloatingLeft />}
+          </TooltipIconButton>
+        )}
       </TitlebarTips>
     </div>
   );
