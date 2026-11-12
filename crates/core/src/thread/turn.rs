@@ -81,6 +81,9 @@ impl Thread {
         if replaced && t.origin == "user" {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }
+        if let Some(rest) = t.origin.strip_prefix("result:") {
+            return self.team_result(rest);
+        }
         if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(

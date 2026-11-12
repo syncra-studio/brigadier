@@ -13,8 +13,9 @@ impl Runner {
     pub(super) fn intent(&self, req: &Value) -> Option<Value> {
         let cid = req["cid"].as_str()?;
         let origin = req["origin"].as_str().unwrap_or("");
-        if origin != "user" && origin != "system" {
-            return Some(fail("origin must be user or system"));
+        // A worker's result names it and how it ended: `result:<how>:<worker>` [D3006].
+        if origin != "user" && origin != "system" && !origin.starts_with("result:") {
+            return Some(fail("origin must be user, system or a worker's result"));
         }
         let mut cids = self.cids.lock().unwrap();
         if let Some(&delivered) = cids.get(cid) {

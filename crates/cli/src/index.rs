@@ -288,7 +288,8 @@ impl Index {
                              // Its last turn was the user's Stop: Send and the queue offer Resume [D373, D2004].
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
-                             "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch"))});
+                             "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
+                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets)});
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

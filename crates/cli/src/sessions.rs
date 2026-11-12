@@ -3,7 +3,7 @@
 //! so the row that shows it has `touched` as late. Remove project runs the same delete on each
 //! of its sessions [D172, D179].
 
-use crate::{arg, flag, has, index, owner};
+use crate::{arg, flag, has, index, owner, workers};
 use brigadier_core::{self as core, fold, projects, session};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
@@ -24,12 +24,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "restore" => session::restore(data, &spec)?,
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {
-            let mut reply = check(data, &args[1..2]);
+            // Its whole worker family goes with it [D3017]: the confirm lists their work too.
+            let family: Vec<String> = workers::below(data, id)
+                .into_iter()
+                .map(|r| r.wid)
+                .collect();
+            let mut reply = check(data, &[&args[1..2], &family[..]].concat());
             reply["branch"] = session::unlanded(&spec)?.into();
             reply["stays"] = session::stays(&spec).into();
+            reply["workers"] = workers::unlanded(data, &family).into();
             return Ok(reply);
         }
-        _ => return delete(data, id, flag(args, "--branch") == Some("delete"), "delete"),
+        _ => return workers::delete(data, id, flag(args, "--branch") == Some("delete")),
     }
     Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
 }
@@ -49,7 +55,7 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
 }
 
 /// One session's delete: its host stops, then core deletes it, recording its intent first.
-fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
     crate::rewind::settled(data, &spec)?;

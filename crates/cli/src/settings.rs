@@ -16,7 +16,7 @@ static SETTINGS: Mutex<()> = Mutex::new(());
 const SWITCH: &[&str] = &["true", "false"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 6] = [
+const KEYS: [(&str, &[&str]); 8] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -28,6 +28,16 @@ const KEYS: [(&str, &[&str]); 6] = [
     ("sound", SWITCH),
     // What the last notice did: none sent yet, shown, or refused by macOS [D2024].
     ("notices", &["unasked", "sent", "blocked"]),
+    // How many workers a session and all its workers may run at once [D3001, D3007]; its place in
+    // Configuration is proposed [D3029].
+    (
+        "workers",
+        &[
+            "6", "1", "2", "3", "4", "5", "7", "8", "9", "10", "11", "12",
+        ],
+    ),
+    // How deep workers may start workers of their own [D2026]; 1 to 8 is proposed.
+    ("worker_depth", &["4", "1", "2", "3", "5", "6", "7", "8"]),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.

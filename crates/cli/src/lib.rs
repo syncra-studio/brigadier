@@ -29,6 +29,7 @@ mod setup;
 mod side;
 mod switching;
 mod tabs;
+pub mod workers;
 pub use brigadier_core::title;
 
 use brigadier_core::fold;
@@ -304,7 +305,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(Value::Null)
         }
-        "stop" => queue::stop(data, arg(args, 1)?),
+        "stop" => queue::stop(data, arg(args, 1)?).inspect(|_| workers::still(data, &args[1])),
+        "workers" => workers::run(data, args),
         "rewind" => rewind::run(data, args),
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),

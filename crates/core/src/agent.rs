@@ -13,7 +13,9 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 6] = ["sessions", "read", "wait", "stop", "models", "help"];
+pub const COMMANDS: [&str; 7] = [
+    "sessions", "read", "wait", "start", "stop", "models", "help",
+];
 
 /// The line every session loads, its byte cap checked by `scripts/limits` [D2025].
 pub const LINE: &str = include_str!("agent-line.txt");
@@ -63,15 +65,48 @@ pub fn granted(dir: &Path, token: &str) -> bool {
 
 /// Whether a shell command (or an approval's pattern for one) is one plain `brigadier` agent
 /// command: no other program, no shell syntax, so a grant for one can safely cover them all.
-/// `helper` and the app's commands aren't agent commands, so no approval ever covers them.
+/// Quotes are words, so a brief can be passed: inside single quotes everything is literal, inside
+/// double quotes nothing that expands. `helper` and the app's commands aren't agent commands, so
+/// no approval ever covers them.
 pub fn call(command: &str) -> bool {
     let c = crate::adapters::unwrap_shell(command);
     let c = c.trim_end_matches(":*").trim_end_matches(" *");
-    if c.contains(|ch: char| "\n;&|<>$`()\\'\"*?{}[]~#!".contains(ch)) {
+    let Some(words) = plain_words(c) else {
         return false;
-    }
-    let mut words = c.split_whitespace();
-    let program = words.next().unwrap_or("");
+    };
+    let program = words.first().map_or("", String::as_str);
     (program == "brigadier" || program.ends_with("/brigadier"))
-        && words.next().is_some_and(|w| COMMANDS.contains(&w))
+        && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
+}
+
+/// A command's words when it has no shell syntax but quotes; None when it has any.
+fn plain_words(c: &str) -> Option<Vec<String>> {
+    let (mut words, mut word, mut quote, mut open) = (vec![], String::new(), None, false);
+    for ch in c.chars() {
+        match (quote, ch) {
+            (_, '\n') => return None,
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('"'), '$' | '`' | '\\' | '!') => return None,
+            (Some(_), ch) => word.push(ch),
+            (None, '\'' | '"') => (quote, open) = (Some(ch), true),
+            (None, ch) if ch.is_whitespace() => {
+                if open || !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+                open = false;
+            }
+            (None, ch) if ";&|<>$`()\\*?{}[]~#!".contains(ch) => return None,
+            (None, ch) => {
+                word.push(ch);
+                open = true;
+            }
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    if open || !word.is_empty() {
+        words.push(word);
+    }
+    Some(words)
 }

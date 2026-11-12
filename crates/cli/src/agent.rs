@@ -3,7 +3,7 @@
 //! approving `brigadier` is always safe: no command here runs a program, changes a session or
 //! prints a secret. Every wait has a timeout, and every reply is capped with a hint to read less.
 
-use crate::models;
+use crate::{models, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -21,6 +21,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier sessions          the sessions, newest first
   brigadier read <id>         a session's last messages; --user for only the user's own words
   brigadier wait <id>         wait until a session stops working, up to a timeout
+  brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
   brigadier models            the agents, models and efforts you may use
   brigadier help [command]    this, or one command's help
@@ -50,6 +51,20 @@ fn spec(
         "wait" => (
             "brigadier wait <id> [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
             &["--timeout"],
+            &[],
+        ),
+        "start" => (
+            "brigadier start \"<brief>\" [--agent A] [--model M] [--effort E] [--title T] [--json]
+
+Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
+It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
+last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now.
+Without --agent, --model and --effort it runs on yours; `brigadier models` lists the others you may use.
+
+Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
+Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
+For a helper on your own agent, use your own subagents instead: they share your context and cost less.",
+            &["--agent", "--model", "--effort", "--title"],
             &[],
         ),
         "stop" => (
@@ -162,6 +177,12 @@ pub fn run(
         };
         return json!({"ok": true, "text": text});
     }
+    if call.cmd == "start" {
+        let flag = |name: &str| call.value(name).map(String::from);
+        let running = |id: &str| rows().iter().any(|r| r["id"] == id && r["running"] == true);
+        let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
+        return finish(&call, reply);
+    }
     let takes_id = matches!(call.cmd, "read" | "wait" | "stop");
     let id = match (takes_id, call.id) {
         (true, None) => return refuse(&format!("`brigadier {}` needs a session id.", call.cmd)),
@@ -185,12 +206,15 @@ pub fn run(
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
         "wait" => call
             .number("--timeout", WAIT, WAIT_MAX)
-            .map(|s| wait(data, id, s, rows, here)),
-        // A worker's parent is recorded with 4.3's `start`; until then no session is the caller's.
-        "stop" => Err(refuse("You can stop only workers you started.")),
+            .map(|s| wait(data, me, id, s, rows, here)),
+        "stop" => Ok(workers::stop(data, me, id)),
         _ => Ok(self::models(data, me)),
     };
-    let mut reply = reply.unwrap_or_else(|e| e);
+    finish(&call, reply.unwrap_or_else(|e| e))
+}
+
+/// A reply as asked: JSON without its text, or its text capped.
+fn finish(call: &Call, mut reply: Value) -> Value {
     if call.has("--json") {
         if let Some(o) = reply.as_object_mut() {
             o.remove("text");
@@ -272,11 +296,16 @@ fn sessions(me: &str, limit: u64, rows: &[Value]) -> Value {
 
 /// The session's messages on its active branch, oldest first: the user's and other senders'
 /// inputs, and its agent's texts.
-fn messages(data: &Path, id: &str) -> Vec<(String, String)> {
+pub(crate) fn messages(data: &Path, id: &str) -> Vec<(String, String)> {
     let mut all: Vec<(String, String)> = vec![];
     let _ = core::rewind::read_active(&core::session_dir(data, id), |i| match str_of(i, "kind") {
         "input" => all.push((
-            i["origin"].as_str().unwrap_or("user").to_string(),
+            match i["origin"].as_str().unwrap_or("user") {
+                o if o.starts_with("result:") => {
+                    format!("result from {}", o.rsplit(':').next().unwrap_or(""))
+                }
+                o => o.to_string(),
+            },
             str_of(i, "text").into(),
         )),
         "text" => all.push(("agent".into(), str_of(i, "text").into())),
@@ -311,6 +340,7 @@ fn read(data: &Path, id: &str, last: u64, user: bool) -> Value {
 
 fn wait(
     data: &Path,
+    me: &str,
     id: &str,
     secs: u64,
     rows: &dyn Fn() -> Vec<Value>,
@@ -329,6 +359,10 @@ fn wait(
                 .rev()
                 .find(|(from, _)| from == "agent");
             let last = last.map(|(_, t)| t).unwrap_or_default();
+            // Its parent's own wait takes the worker's result, which then isn't sent again.
+            if let Some(result) = workers::take(data, me, id) {
+                return json!({"ok": true, "done": true, "state": state, "last": last, "result": result, "text": result});
+            }
             let text = format!("{id} is {state}. Its last message:\n{}", last.trim_end());
             return json!({"ok": true, "done": true, "state": state, "last": last, "text": text});
         }

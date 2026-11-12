@@ -10,7 +10,11 @@ pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashM
     seen.retain(|id, _| rows.contains_key(id));
     let mut settings = None; // read once a pass, and only with a session at its limit
     for (id, row) in rows {
-        let Some(why) = row["switchable"].as_str() else {
+        // A worker's limit moves follow its own routing, a later step [D3030].
+        let Some(why) = row["switchable"]
+            .as_str()
+            .filter(|_| row["worker"].is_null())
+        else {
             seen.remove(id);
             continue;
         };

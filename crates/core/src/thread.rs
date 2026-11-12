@@ -15,6 +15,7 @@ mod find;
 mod page;
 mod rows;
 mod saved;
+mod team;
 mod turn;
 
 pub use saved::{Rows, Saved};
