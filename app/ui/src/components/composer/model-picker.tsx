@@ -134,6 +134,7 @@ export function ModelPicker({
   const levelsNext = useRef(false);
   const search = useRef<HTMLInputElement>(null);
   const footer = useRef<HTMLDivElement>(null);
+  const pill = useRef<HTMLButtonElement>(null);
   const starred = useSettings().value?.models_starred ?? [];
   const isStarred = (provider: string, entry: Model) => starred.includes(`${provider}/${entry.id}`);
   const favorites = groups.filter((entry) => !entry.unavailable).flatMap((entry) => entry.models.filter((each) => isStarred(entry.provider, each)).map((each) => ({ group: entry, model: each })));
@@ -285,6 +286,7 @@ export function ModelPicker({
       >
         {!anchor && (
           <PopoverTrigger
+            ref={pill}
             disabled={disabled}
             render={
               trigger ?? (
@@ -316,7 +318,8 @@ export function ModelPicker({
           align="end"
           padded={false}
           aria-label="Model"
-          anchor={anchor}
+          // In a composer it sits above the card, as its other menus do, not over the field.
+          anchor={anchor ?? (() => pill.current?.closest("[data-slot=composer-card]") ?? pill.current)}
           initialFocus={search}
           className="max-w-full overflow-hidden"
         >
