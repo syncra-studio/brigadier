@@ -215,7 +215,7 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event>
         exit,
         cut,
         changes,
-        child,
+        child: child.or_else(|| result["backgroundTaskId"].as_str().map(String::from)),
         parent,
         at: None,
     })]

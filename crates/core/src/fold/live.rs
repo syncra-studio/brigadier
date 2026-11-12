@@ -109,6 +109,16 @@ fn label(all: &[procs::Proc], mut pid: i32) -> String {
     }
 }
 
+/// The id the agent's CLI gave the background command that started the job born at `start_us`:
+/// the first said to run in the background from just before it began to a few seconds after.
+pub fn task_of(fold: &Fold, start_us: u64) -> Option<String> {
+    let at = start_us / 1000;
+    (fold.tasks.iter())
+        .filter(|&&(ts, _)| ts + SLACK_MS >= at && ts <= at + 5000)
+        .min_by_key(|&&(ts, _)| ts)
+        .map(|(_, task)| task.clone())
+}
+
 /// Stops one job the session left running, its whole tree, only while it's still that job (one
 /// already gone is stopped): a TERM, then a KILL for whatever outlives the grace [D105].
 pub fn stop_job(fold: &Fold, data: &Path, pid: i32, start_us: u64) {

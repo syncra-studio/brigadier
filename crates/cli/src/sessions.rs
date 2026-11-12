@@ -4,7 +4,7 @@
 //! of its sessions [D172, D179].
 //! A job a turn left running is stopped here too, alone [D105].
 
-use crate::{arg, flag, has, index, owner, workers};
+use crate::{arg, control, flag, has, index, owner, workers};
 use brigadier_core::{self as core, fold, projects, session};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
@@ -27,7 +27,22 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "jobs" => {
             let f = core::fold(&spec.dir, true)?;
             let num = |i| arg(args, i)?.parse().map_err(io::Error::other);
-            fold::stop_job(&f.fold, data, num(3)? as i32, num(4)?);
+            let (pid, start_us) = (num(3)? as i32, num(4)?);
+            // First through its agent's own channel, where its CLI has one: else the agent reads an
+            // unexplained kill and may wake to start it again [D117].
+            if let Some(task) = fold::task_of(&f.fold, start_us) {
+                let msg = json!({"kind": "stop_task", "task": task});
+                let req = json!({"cid": control::new_cid(), "control": msg});
+                let sent = control::deliver(data, id, req, false, |_| Ok(msg.clone()))?;
+                let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                while sent["ok"] == true && procs::same(pid, start_us).is_some_and(|p| !p.zombie) {
+                    if std::time::Instant::now() > until {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+            fold::stop_job(&f.fold, data, pid, start_us);
             return Ok(json!({"ok": true}));
         }
         // Proposed: `--check` names the branch the confirm asks about [D181].

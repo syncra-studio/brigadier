@@ -288,6 +288,11 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
             let (line, _) = request(json!({"subtype": "interrupt", "cancel_queued": true}));
             return Ok(Delivery::Stdin(line));
         }
+        // Stopped through its own channel, it knows the user did it and doesn't wake to restart it [D117].
+        Some("stop_task") => {
+            let (line, _) = request(json!({"subtype": "stop_task", "task_id": msg["task"]}));
+            return Ok(Delivery::Stdin(line));
+        }
         Some("answer") => {
             let r = &msg["request"];
             let response = if r["items"].is_array() {

@@ -138,7 +138,7 @@ pub struct Done {
     pub exit: Option<i64>,
     pub cut: bool,
     pub changes: Vec<Value>,
-    /// A subagent's own session id.
+    /// A subagent's own session id, or the id its CLI gave a command it sent to the background.
     pub child: Option<String>,
     pub parent: Option<String>,
     pub at: Option<u64>,

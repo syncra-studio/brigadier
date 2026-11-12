@@ -10,7 +10,7 @@ mod rewind;
 pub mod runs;
 mod status;
 mod turns;
-pub use live::{Job, Live, live, live_groups, stop_job};
+pub use live::{Job, Live, live, live_groups, stop_job, task_of};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -50,6 +50,10 @@ pub struct Fold {
     /// runs under it was left running [D105].
     #[serde(default)]
     pub windows: Vec<(u64, u64)>,
+    /// The live child's commands sent to the background, by when that was said (ms), with the id
+    /// its CLI gave each, where it gives one.
+    #[serde(default)]
+    pub tasks: Vec<(u64, String)>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -338,6 +342,7 @@ impl Fold {
                 });
                 self.groups.push((pid, start_us));
                 self.windows.clear();
+                self.tasks.clear();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -393,6 +398,9 @@ impl Fold {
                 }
             }
             "tool_done" => {
+                if let (true, Some(task)) = (item["cut"] == true, item["child"].as_str()) {
+                    self.tasks.push((ts, task.into()));
+                }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.tools.remove(&str_of("id"));

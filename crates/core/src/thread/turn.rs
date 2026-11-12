@@ -281,9 +281,10 @@ impl Thread {
                 }
             };
             self.add(row);
-            if let Some(o) = self.open.as_mut() {
-                o.input = true;
-            }
+        }
+        // A turn its agent woke for on its own folds its work too, from its first row.
+        if let Some(o) = self.open.as_mut() {
+            o.input = true;
         }
     }
 }
