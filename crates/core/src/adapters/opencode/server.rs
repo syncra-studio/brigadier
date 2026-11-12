@@ -259,8 +259,22 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         }
         "permission.asked" => {
             let id = d["id"].as_str().unwrap_or("").to_string();
+            // OpenCode asks with a pipeline's parts; the card shows the command whole, as typed.
+            let src = &d["source"];
+            let call = format!(
+                "{}/{}/{}",
+                d["sessionID"].as_str().unwrap_or(""),
+                src["messageID"].as_str().unwrap_or(""),
+                src["id"].as_str().unwrap_or("")
+            );
+            let command = (st.tools.get(&call))
+                .and_then(|t| t["input"]["command"].as_str())
+                .map(String::from);
             if let Some(call) = (d["sessionID"].as_str()).and_then(|c| st.children.get(c)) {
                 v["data"]["parent"] = call.as_str().into();
+            }
+            if let Some(command) = command {
+                v["data"]["command"] = command.into();
             }
             st.asked.insert(id, v["data"].clone());
         }

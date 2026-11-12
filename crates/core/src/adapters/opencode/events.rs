@@ -171,7 +171,9 @@ fn approval(d: &Value) -> Event {
     let scope = match action {
         "shell" => {
             a["action"] = "command".into();
-            a["command"] = resources.join("\n").into();
+            a["command"] = (d["command"].as_str())
+                .map_or_else(|| resources.join("\n"), String::from)
+                .into();
             "command"
         }
         "edit" => {
