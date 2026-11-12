@@ -158,6 +158,11 @@ impl Adapter for Codex {
         false
     }
 
+    /// Started at its first code-mode call, inside a turn.
+    fn helpers(&self) -> &[&str] {
+        &["codex-code-mode-host"]
+    }
+
     /// Each line to the helper is one request to its server, applied only once its reply names it.
     fn acks(&self) -> bool {
         true

@@ -292,6 +292,10 @@ pub trait Adapter: Sync {
     }
     /// True when each turn is its own process; false when one child reads every message.
     fn per_turn(&self) -> bool;
+    /// Its CLI's own helper processes, by name: never work the agent left running [D105].
+    fn helpers(&self) -> &[&str] {
+        &[]
+    }
     /// True when a written input isn't applied until the agent's own reply names its command id
     /// (`Event::Reply`, from `spec.cid`); false when writing it is delivery [D222].
     fn acks(&self) -> bool {

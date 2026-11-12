@@ -44,9 +44,18 @@ const SLACK_MS: u64 = 1000;
 const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
 
 /// Each topmost process under the agent born in one of its ended turns' tool windows, still alive.
-/// The agent's own helpers (MCP servers) start with it, before any tool, so none count.
+/// The agent's own helpers (MCP servers) start with it, before any tool, so none count; those its
+/// CLI starts later it names.
 fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
     let below = procs::descendants(all, child);
+    let helpers = (fold.child.as_ref())
+        .and_then(|c| crate::adapters::get(&c.backend))
+        .map_or(&[][..], |a| a.helpers());
+    let own = |p: &procs::Proc| {
+        let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
+        let name = argv.first().and_then(|a| a.rsplit('/').next());
+        name.is_some_and(|n| helpers.contains(&n))
+    };
     let born = |p: &procs::Proc| {
         !p.zombie
             && (fold.windows.iter()).any(|&(a, b)| {
@@ -54,7 +63,7 @@ fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
             })
     };
     (below.iter())
-        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)))
+        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)) && !own(p))
         .map(|p| Job {
             pid: p.pid,
             start_us: p.start_us,
