@@ -130,7 +130,7 @@ fn line(id: &str, e: &Entry) -> String {
 
 /// The hand-off for session `spec` with fold `f`. `why`: rebirth (the next message follows), cut
 /// (its last turn was stopped mid-way for a fresh context, or its window filled), limited,
-/// unresumable, picked or forked; `from` names where it came from; `last` is its last turn.
+/// unresumable, picked, switched (picked mid-turn, which it carries on) or forked; `from` names where it came from; `last` is its last turn.
 pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::Result<String> {
     let id = spec.id.as_str();
     let p = past(&spec.dir)?;
@@ -138,7 +138,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     let reason = match why {
         "rebirth" | "cut" => "its context was getting full; this is a fresh one".to_string(),
         "unresumable" => format!("{from} couldn't resume it on this account"),
-        "picked" => format!("the user picked you to carry on from {from}"),
+        "picked" | "switched" => format!("the user picked you to carry on from {from}"),
         "forked" => {
             "the user forked it at one of the agent's answers to try another way from there".into()
         }
@@ -307,10 +307,11 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
 
     // The next step, by a fixed rule.
     let step = match why {
-        "cut" => {
+        "cut" | "switched" => {
             let tool = p.entries.iter().rev().find(|e| e.from == "tool" && !e.who.is_empty());
-            let at = tool.map_or(String::new(), |t| format!(" after {} ({id}#{})", t.who, t.at));
-            format!("Your last turn was stopped mid-way{at}. Check `git status` first, then carry on from there; don't redo what's done.")
+            let at = tool.map_or(String::new(), |t| format!(", right after {} ({id}#{}) ended", t.who, t.at));
+            // It's only ever cut with no step running: what began, ended, a failure listed as one.
+            format!("Your last turn was stopped mid-way between steps{at}. Every step it began had ended; any that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step; don't redo what's done.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),

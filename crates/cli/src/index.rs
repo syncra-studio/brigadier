@@ -316,14 +316,10 @@ impl Index {
             let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
             row["rebirth"] = json!(due.or(lost.then_some("cut")));
             // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].
-            row["optimizing"] = json!(
-                f.fold
-                    .turns
-                    .first()
-                    .is_some_and(|t| f.fold.cut.as_deref() == Some(&t.id)
-                        || (!t.began
-                            && matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"))))
-            );
+            // A cut for a model picked mid-turn is no rebirth [D124].
+            let cut = f.fold.cut.as_deref().filter(|_| !f.fold.switched);
+            row["optimizing"] = json!(f.fold.turns.first().is_some_and(|t| cut == Some(&t.id)
+                || (!t.began && matches!(t.switch["why"].as_str(), Some("rebirth" | "cut")))));
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

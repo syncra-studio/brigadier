@@ -64,23 +64,15 @@ function settle(id: string, op: string) {
   };
   const stop = threadSource.subscribe(() => has() && done());
   // shortcut: a pick Rust draws no row for (no model known before it) goes after 3s; drop once `set` says whether it drew one.
-  // One made mid-turn has its row drawn once that turn ends [D76]: its line waits for it meanwhile.
-  let timer = setTimeout(function late() {
-    if (threadSource.get()?.turns.some((turn) => turn.status === "running")) timer = setTimeout(late, 1000);
-    else done();
-  }, 3000);
+  const timer = setTimeout(done, 3000);
   if (has()) done();
 }
 
-/**
- * The divider a model pick leaves, drawn at once under the thread until Rust's row with its op takes its place [D76]; one
- * made mid-turn waits for that turn's end, where Rust draws it, never under its running steps.
- */
+/** The divider a model pick leaves, drawn at once where the user is until Rust's row with its op takes its place [D76, D124]. */
 export function PendingModelLine({ id }: { id: string }) {
   const line = picks.use().get(id);
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
-  if (!line || session?.id !== id || session.turns.some((turn) => turn.status === "running")) return null;
-  if (session.items.some((item) => "op" in item && item.op === line.op)) return null;
+  if (!line || session?.id !== id || session.items.some((item) => "op" in item && item.op === line.op)) return null;
   return (
     <div className="pt-2">
       {line.agent ? (

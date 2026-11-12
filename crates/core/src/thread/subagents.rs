@@ -20,7 +20,7 @@ impl Thread {
         }
     }
 
-    fn helpers(&self, turn: &str) -> usize {
+    pub(super) fn helpers(&self, turn: &str) -> usize {
         (self.children.values())
             .filter(|&&c| self.items[c]["turnId"] == turn)
             .count()
@@ -54,6 +54,10 @@ impl Thread {
             let (o, work) = self.held.remove(&id).unwrap();
             let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(o.started);
             self.turns[o.at]["held"] = Value::Null;
+            // A cut whose carry-on never came ended where it was stopped.
+            if o.cut() {
+                self.turns[o.at]["status"] = "cancelled".into();
+            }
             self.changed_turns.insert(o.at);
             self.final_answer(&o, true);
             if !work.is_null() {
@@ -75,7 +79,9 @@ impl Thread {
     /// The turn the agent woke for, on its own or at Brigadier's word, carries on the one its
     /// subagents held: one block, counting from that turn's start, folding above the new answer;
     /// the earlier answer becomes part of its work [D106].
-    pub(super) fn rejoin(&mut self, o: Open) {
+    pub(super) fn rejoin(&mut self, mut o: Open) {
+        // A Stop of the turn that carries it on draws its own line.
+        o.stop = (None, false);
         let turn = &mut self.turns[o.at];
         turn["status"] = "running".into();
         turn["endedAt"] = Value::Null;

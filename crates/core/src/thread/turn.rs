@@ -6,8 +6,8 @@ use crate::fold::Turn;
 use serde_json::{Value, json};
 
 impl Thread {
-    /// A model picked for the conversation's agent: its line at once, or after the turn that runs,
-    /// and the next turn on it says nothing more [D76].
+    /// A model picked for the conversation's agent: its line at once, where the user is, and the
+    /// next turn on it says nothing more [D76, D124, D125].
     /// What a pick's line needs from before it's folded: the model the agent ran, and whether
     /// another agent was picked.
     pub(super) fn before_pick(&self, note: &Value) -> (Option<String>, bool) {
@@ -18,20 +18,10 @@ impl Thread {
     }
 
     pub(super) fn picked(&mut self, note: &Value, (was, back): (Option<String>, bool)) {
-        if self.open.is_some() {
-            return self.later.push((note.clone(), (was, back)));
-        }
         match note["pick"] == true {
             false => self.model_picked(s(note, &["backend"]).into(), was, note, back),
             true if note["to_label"].is_string() => self.agent_picked(note),
             true => {}
-        }
-    }
-
-    /// The lines of picks made while the turn now ended ran [D76].
-    pub(super) fn picked_later(&mut self) {
-        for (note, before) in std::mem::take(&mut self.later) {
-            self.picked(&note, before);
         }
     }
 
@@ -51,27 +41,35 @@ impl Thread {
         let Some(from) = was.filter(|m| !m.is_empty() && *m != model) else {
             return;
         };
-        self.break_group();
         let named = |k: &str, id: String| note[k].as_str().map_or(id, String::from);
-        let at = self.add(json!({"kind": "line", "reason": "model", "why": "changed",
+        self.pick_line(json!({"kind": "line", "reason": "model", "why": "changed",
             "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}));
-        // Between turns it's in none, so the last one's answer keeps its actions above it.
-        self.items[at]["turnId"] = "".into();
         self.ran = Some((backend, model));
     }
 
-    /// Another agent picked for the next message: its switch row at once, which that message's
-    /// turn takes in place; every pick its own row [D76, D90].
+    /// Another agent picked: its switch row at once, which the turn that goes to it takes in
+    /// place; every pick its own row [D76, D90].
     fn agent_picked(&mut self, note: &Value) {
-        self.break_group();
         let (to, model) = (s(note, &["to_label"]), s(note, &["name"]));
-        let at = self.add(
+        let at = self.pick_line(
             json!({"kind": "switch", "reason": "picked", "state": "switched",
             "from": note["from_label"], "to": to, "model": model, "handoff": true,
             "automatic": false, "text": format!("Switched to {to} · {model}"), "op": note["op"]}),
         );
-        self.items[at]["turnId"] = "".into();
         self.pick_row = Some(at);
+    }
+
+    /// A pick's line where the user is: in the running turn, never folded into its work, as the
+    /// new model carries on under it [D124]; between turns in none, so the last one's answer keeps
+    /// its actions above it.
+    fn pick_line(&mut self, row: Value) -> usize {
+        self.break_group();
+        let at = self.add(row);
+        match self.open.as_mut() {
+            Some(o) => o.kept.push(at as u64 + 1),
+            None => self.items[at]["turnId"] = "".into(),
+        }
+        at
     }
 
     /// A turn the user's Stop ended, however its agent ended it: the clean interrupt too; one its
@@ -185,9 +183,14 @@ impl Thread {
         self.shown.insert(t.id.clone());
         // A turn no one sent while a turn is held for its subagents, or right after they ended: the
         // agent woke for them, and carries that block on [D106, D118]. Any other ends what waits.
-        let wakes = matches!(t.origin.as_str(), "agent" | "system") && t.switch.is_null();
+        // So does the input that carries on a turn Brigadier cut [D108, D124].
         let last = (self.held.values().map(|(o, _)| o.at).max())
             .and_then(|at| self.turns[at]["id"].as_str().map(String::from));
+        let cut = (last.as_ref())
+            .and_then(|id| self.held.get(id))
+            .is_some_and(|(o, _)| o.cut());
+        let wakes = matches!(t.origin.as_str(), "agent" | "system")
+            && (t.switch.is_null() || (cut && t.origin == "system"));
         match last.filter(|_| wakes).and_then(|id| self.held.remove(&id)) {
             Some((o, _)) => self.rejoin(o),
             None => {
@@ -202,7 +205,8 @@ impl Thread {
             .or_else(|| self.fold.models.get(&t.backend))
             .cloned()
             .unwrap_or_default();
-        if !model.is_empty() {
+        // One sent mid-turn runs on the setup the child kept, which says nothing of a pick.
+        if !model.is_empty() && !t.mid {
             let ran = self.ran.replace((t.backend.clone(), model.clone()));
             let moved = ran.filter(|(b, m)| *b == t.backend && *m != model);
             if let Some((_, from)) = moved.filter(|_| t.switch.is_null()) {
@@ -258,6 +262,10 @@ impl Thread {
                 self.reset_at = None;
                 self.add(json!({"kind": "line", "reason": "limit-reset", "at": at}));
             }
+        }
+        // Brigadier's words carrying on a cut turn are no row: its steps flow on in that block [D124].
+        if cut && wakes && t.origin == "system" {
+            return;
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].
         let replaced = (t.retry_of.as_ref()).is_some_and(|cid| !self.cids.contains(cid));

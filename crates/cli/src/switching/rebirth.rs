@@ -1,7 +1,8 @@
 //! Rebirth on its own [D88, D108]: the daemon asks here for a session whose running turn passed
 //! its threshold with no tool running, or whose window refused its last turn. A running turn is
 //! stopped first; then the fresh conversation starts from the hand-off alone, in the same session.
-//! A rebirth at a turn's end waits for the next input, which `core::send` carries.
+//! A rebirth at a turn's end waits for the next input, which `core::send` carries. A model or
+//! agent picked mid-turn cuts it the same way, and the new one carries on from there [D124].
 
 use crate::{owner, workers};
 use brigadier_core::{self as core, message::Message};
@@ -24,12 +25,12 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     crate::rewind::settled(data, &spec)?;
     let _fence = core::session::fence(data, &spec)?;
     let f = core::fold(&spec.dir, true)?.fold;
-    if core::rebirth::due(&spec, &f).is_none() {
+    let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
-    }
+    };
     if let Some(t) = f.turns.first() {
         // Logged before the stop, so its end is known as this one's, never the user's Stop.
-        let cut = json!({"op": "note", "data": {"event": "rebirth_cut", "turn": t.id}});
+        let cut = json!({"op": "note", "data": {"event": "rebirth_cut", "turn": t.id, "switch": why == "switch"}});
         owner::call(data, id, cut)?;
         if crate::control::interrupt(data, id, "rebirth")?.is_none() {
             // Its CLI can't end a turn and stay: its processes stop instead.
@@ -44,9 +45,9 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let Some(last) = f.last.as_ref().filter(|_| f.turns.is_empty()) else {
         return Ok(not_due);
     };
-    if core::rebirth::due(&spec, &f).is_none() {
+    let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
-    }
+    };
     // One per turn it carries on: a repeat or a racing pass finds its id logged [D54].
     let cid = format!("rb-{}", last["id"].as_str().unwrap_or(""));
     // A worker's cut turn would have reported to its parent: the fresh one does instead.
@@ -56,13 +57,21 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         workers::write_json(&spec.dir.join("worker.json"), &l)?;
     }
     let child = (ping["child"].as_i64()).map(|_| ping["spawn"].as_u64().unwrap_or(0));
+    // The first write only: a new setup the same agent confirms first moves the log itself.
+    let first = std::cell::Cell::new(true);
     let call = |mut req: Value| {
-        if req["if_len"].is_null() && matches!(req["op"].as_str(), Some("input" | "spawn")) {
+        let writes = matches!(req["op"].as_str(), Some("input" | "spawn"));
+        if req["if_len"].is_null() && writes && first.replace(false) {
             req["if_len"] = len.into();
         }
         owner::call(data, id, req)
     };
-    let msg = Message::plain("");
+    // Another agent picked carries on from the hand-off; another model of this one, in the same
+    // conversation, told why it stopped [D110, D124].
+    let msg = match why == "switch" && f.picked.is_none() {
+        true => Message::plain(core::switch::SWITCHED),
+        false => Message::plain(""),
+    };
     Ok(core::send(
         &spec, &f, child, &call, &cid, "system", &msg, None, None,
     ))

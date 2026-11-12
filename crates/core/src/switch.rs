@@ -11,6 +11,9 @@ use serde_json::{Value, json};
 /// The old app's words for a turn its account's limit cut short (D48).
 const CARRY_ON: &str = "[Your last turn stopped early: its account hit a usage limit. You now run on another account, in the same session. Carry on from where you stopped. Don't redo anything you already did.]";
 
+/// What the same agent is told when a model picked mid-turn stopped it [D124].
+pub const SWITCHED: &str = "[The user switched you to another model mid-turn, so your last turn was stopped. Carry on from where you stopped. Don't redo anything you already did.]";
+
 /// Where the session goes: a backend, its account ("" is the computer's login), and its model
 /// when it changes; `label` and `from` name both sides (the model apart) for the thread's row.
 pub struct Target<'a> {
@@ -150,10 +153,16 @@ pub fn picked(
     };
     let label = |b: &str| adapters::get(b).map_or_else(|| b.to_string(), |a| a.label().into());
     let (from_label, to_label) = (label(from), label(to));
+    // None of the user's words: picked mid-turn, it carries on from where that turn stopped [D124].
+    let why = if text.is_empty() {
+        "switched"
+    } else {
+        "picked"
+    };
     let seed = crate::handoff::build(
         spec,
         f,
-        "picked",
+        why,
         &f.last.clone().unwrap_or_default(),
         &from_label,
     )?;
@@ -161,7 +170,14 @@ pub fn picked(
         "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "name": p.name, "effort": p.effort, "fast": p.fast},
         "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {}", p.name),
         "from_label": from_label, "to_label": to_label});
-    Ok((switch, format!("{seed}\n\n{text}")))
+    Ok((
+        switch,
+        if text.is_empty() {
+            seed
+        } else {
+            format!("{seed}\n\n{text}")
+        },
+    ))
 }
 
 /// A fork's first message with no conversation of its own: the hand-off from its inherited copy,

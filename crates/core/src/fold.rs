@@ -158,6 +158,9 @@ pub struct Fold {
     /// The turn Brigadier stopped for a rebirth: it goes on in a fresh conversation [D108].
     #[serde(default)]
     pub cut: Option<String>,
+    /// That cut was for a model or agent the user picked mid-turn: it carries on there [D124].
+    #[serde(default)]
+    pub switched: bool,
 }
 
 impl Fold {
@@ -495,7 +498,9 @@ impl Fold {
             "unknown" | "unknown_frame" => self.unknown += 1,
             "note" => match item["event"].as_str() {
                 Some("interrupted") => self.close_all("interrupted", item["reason"].clone(), ts),
-                Some("rebirth_cut") => self.cut = Some(str_of("turn")),
+                Some("rebirth_cut") => {
+                    (self.cut, self.switched) = (Some(str_of("turn")), item["switch"] == true)
+                }
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),

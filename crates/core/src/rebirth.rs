@@ -68,11 +68,18 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
 }
 
 /// Why the session needs a rebirth on its own, now: "cut" for a running turn past its threshold
-/// with no tool running (it's stopped first) or a last turn the window refused; none otherwise.
-/// A stopped or paused session is left as the user left it.
+/// with no tool running (it's stopped first) or a last turn the window refused; "switch" for a
+/// running turn whose model or agent the user picked another of, or the turn cut for that
+/// [D124]; none otherwise. A stopped or paused session is left as the user left it.
 pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
+        // A safe point: no tool runs, nothing waits on the user, and no turn its CLI queued
+        // behind it would be stopped with it.
         let idle = t.tools.is_empty() && !t.stopping && t.question.is_none() && t.began;
+        let idle = idle && t.asks.is_empty() && f.turns.len() == 1;
+        if idle && switching(spec, f, &t.backend) {
+            return Some("switch");
+        }
         let idle = idle && again(&t.switch);
         return (idle && full(spec, f)).then_some("cut");
     }
@@ -81,8 +88,19 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     let last = f.last.as_ref()?;
     let refused = last["outcome"] == "failed" && last["why"] == "context" && again(&last["switch"]);
     let stopped = f.cut.as_deref() == last["id"].as_str();
+    if stopped && f.switched {
+        return Some("switch");
+    }
     let lost = last["switch"]["why"] == "cut" && last["never_ran"] == true;
     (refused || stopped || lost).then_some("cut")
+}
+
+/// Whether the user picked another agent, or another model of `backend`, than the running turn
+/// was given [D124].
+fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
+    let model = as_run(spec, f, backend, None).model;
+    f.picked.is_some()
+        || (f.given.as_ref()).is_some_and(|g| g["model"].as_str() != model.as_deref())
 }
 
 /// Cuts in a row without the user, at most: past them a turn that redoes its work in every fresh

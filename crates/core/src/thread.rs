@@ -47,9 +47,17 @@ struct Open {
     kept: Vec<u64>,
     /// Actions the CLI's own rule or reviewer turned down in it, with nobody asked [D487].
     denied: usize,
-    /// Who asked it to stop ("user", or "pause" for a worker's Pause), and whether its line is drawn.
+    /// Who asked it to stop ("user", "pause" for a worker's Pause, "rebirth" for Brigadier's cut),
+    /// and whether its line is drawn.
     #[serde(default)]
     stop: (Option<String>, bool),
+}
+
+impl Open {
+    /// Brigadier stopped it, for a rebirth or a model picked mid-turn, to carry it on [D108, D124].
+    fn cut(&self) -> bool {
+        self.stop.0.as_deref() == Some("rebirth")
+    }
 }
 
 /// Saved whole with its rows apart (`saved`); what only says what changed since the last send isn't.
@@ -94,8 +102,6 @@ pub struct Thread {
     /// A rebirth's divider until its fresh conversation names itself [D88].
     #[serde(default)]
     reborn: Option<usize>,
-    /// Picks made while a turn ran: their lines land after it, which runs on as it began [D76].
-    later: Vec<(Value, (Option<String>, bool))>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
@@ -308,8 +314,10 @@ impl Thread {
             .filter(|r| r["kind"] == "approval" && r["decision"] == "denied")
             .count()
             + o.denied;
+        // One Brigadier cut runs on, one open block, for the input that carries it on [D124].
+        let cut = o.cut() && self.helpers(&o.id) == 0;
         let turn = &mut self.turns[o.at];
-        turn["status"] = status.into();
+        turn["status"] = if cut { "running" } else { status }.into();
         turn["endedAt"] = ts.into();
         turn["denied"] = denied.into();
         self.changed_turns.insert(o.at);
@@ -329,8 +337,13 @@ impl Thread {
                 work = json!({"turnId": o.id, "folded": [first, answer - 1], "kept": kept, "denied": denied});
             }
         }
-        self.end_work(o, work, ts);
-        self.picked_later();
+        if cut {
+            self.turns[o.at]["held"] = true.into();
+            self.turns[o.at]["helpers"] = 0.into();
+            self.held.insert(o.id.clone(), (o, Value::Null));
+        } else {
+            self.end_work(o, work, ts);
+        }
     }
 
     /// Ends whatever still runs because its host or agent is gone, which no frame may ever say:

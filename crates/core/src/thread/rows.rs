@@ -206,7 +206,7 @@ impl Thread {
             "exited" => self.end_children("failed", ts),
             "stopped" => {
                 self.end_children("cancelled", ts);
-                if let Some(by @ ("user" | "pause")) = item["by"].as_str() {
+                if let Some(by @ ("user" | "pause" | "rebirth")) = item["by"].as_str() {
                     if let Some(o) = self.open.as_mut() {
                         o.stop.0.get_or_insert(by.into());
                     }
