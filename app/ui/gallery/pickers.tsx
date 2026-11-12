@@ -1,9 +1,9 @@
-// The pickers, one live copy each: project, Work in and branch as Home's bar has them, the model and the permission.
+// The pickers, one live copy each: the model and the permission; project, Work in and branch are in the composer's Home rail.
 import { useState } from "react";
 
-import { CheckboxRow } from "../src/components/checkbox-row";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
+import { RailItem } from "../src/components/composer/rail";
 import { BranchPicker, type RepoState } from "../src/home/branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "../src/home/pills";
 import { showToast } from "../src/components/toast";
@@ -42,17 +42,15 @@ const INFO: RepoState["info"] = {
   worktrees: [{ path: "/Users/you/code/todo-review", branch: "review" }],
 };
 
-/** Project, Work in and branch, live; the toggles are what only Rust's answer about the repository changes. */
-function ProjectBar() {
+/** Home's rail: project, Work in and branch, live; loading and failed are what only Rust's answer about the repository changes. */
+export function ProjectBar({ loading, failed }: { loading: boolean; failed: boolean }) {
   const [project, setProject] = useState<DraftProject | null>(PROJECTS[0]!);
   const [workIn, setWorkIn] = useState<WorkIn>("worktree");
   const [base, setBase] = useState<string | null>(null);
   const [worktree, setWorktree] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
   const repo: RepoState = { info: loading || failed ? undefined : INFO, error: failed ? "Couldn't read the branches: not a git repository" : undefined, loading, refresh: () => {} };
   return (
-    <div className="flex flex-col items-start gap-4">
+    <RailItem variant="controls" label="Composer utility bar">
       <UtilityBar>
         <ProjectPicker
           projects={PROJECTS}
@@ -68,11 +66,7 @@ function ProjectBar() {
           </>
         )}
       </UtilityBar>
-      <div className="flex flex-wrap gap-4">
-        <CheckboxRow label="Branches loading" checked={loading} onCheckedChange={setLoading} />
-        <CheckboxRow label="Branches can't be read" checked={failed} onCheckedChange={setFailed} />
-      </div>
-    </div>
+    </RailItem>
   );
 }
 
@@ -81,9 +75,6 @@ export function PickersGallery() {
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   return (
     <>
-      <Section title="Project, Work in and branch">
-        <ProjectBar />
-      </Section>
       <Section title="Model picker">
         <div className="self-start">
           <ModelPicker groups={GROUPS} value={model} onChange={setModel} />

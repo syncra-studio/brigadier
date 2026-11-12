@@ -1,7 +1,7 @@
 // The composer in full, live: the field with its @ and / menus, chips and attachments, the + menu, the permission
-// and model pickers, the context ring and send/stop; over it the workers strip, notices, the message queue and the
-// question card, and the approval card in its place. Rust's stand-in answers here; the toggles are what only Rust
-// would change.
+// and model pickers, the context ring and send/stop; over it the workers strip, notices, the message queue, the
+// question card and Home's project, Work in and branch pickers; the approval card in its place, and a sent message's
+// edit box. Rust's stand-in answers here; the toggles are what only Rust would change.
 import { useRef, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -24,7 +24,7 @@ import { duration, useSecond } from "../src/thread/words";
 import type { Worker } from "../src/workers/chip";
 import { WorkersStrip } from "../src/workers/strip";
 import { Section } from "./parts";
-import { GROUPS } from "./pickers";
+import { GROUPS, ProjectBar } from "./pickers";
 import picture from "./sample.svg?no-inline";
 
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
@@ -145,6 +145,7 @@ const WORKERS = [
   worker("w-held", "Docs table", "needsYou", "Needs you", { startedAt: NOW - 240_000 }),
 ];
 const HELD = draft("Rename the field to Message");
+const EDITED = draft("Fix the Enter key in the composer");
 
 function Live() {
   const field = useRef<ComposerFieldHandle>(null);
@@ -163,6 +164,10 @@ function Live() {
   const [aside, setAside] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [workers, setWorkers] = useState(false);
+  const [home, setHome] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchesFailed, setBranchesFailed] = useState(false);
   const [level, setLevel] = useState<PermissionLevel>("auto");
   const [model, setModel] = useState<ModelChoice>({ provider: "cloud", model: "large", effort: "high" });
   const [results, setResults] = useState<Mentions["results"]>(null);
@@ -248,9 +253,23 @@ function Live() {
       </ol>
       {/* Sent, it shows as the composer showed it [D2107]. */}
       <AttachmentsContext value={attachments}>
-        {sent.map((parts, at) => (
-          <UserBubble key={at} keep={`composer-sent-${at}`} text={plainText(parts)} owner="gallery" parts={parts} />
-        ))}
+        {sent.map((parts, at) =>
+          editing && at === sent.length - 1 ? (
+            <EditComposer
+              key={at}
+              initial={draft(...parts)}
+              onCancel={() => setEditing(false)}
+              onSend={(next) => {
+                setEditing(false);
+                setSent((list) => [...list.slice(0, -1), next]);
+                setStopped(false);
+                setStartedAt(Date.now());
+              }}
+            />
+          ) : (
+            <UserBubble key={at} keep={`composer-sent-${at}`} text={plainText(parts)} owner="gallery" parts={parts} />
+          ),
+        )}
       </AttachmentsContext>
       <AttachmentsContext value={attachments}>
         <SharedComposer
@@ -306,6 +325,7 @@ function Live() {
                   />
                 </RailItem>
               )}
+              {home && <ProjectBar loading={branchesLoading} failed={branchesFailed} />}
             </>
           }
           above={approvals.length > 0 && <ApprovalSlot approvals={approvals} onAnswer={answerApproval} />}
@@ -382,6 +402,22 @@ function Live() {
           }}
         />
         <CheckboxRow label="Workers" checked={workers} onCheckedChange={setWorkers} />
+        <CheckboxRow label="At Home" checked={home} onCheckedChange={setHome} />
+        <CheckboxRow
+          label="Edit and resend"
+          checked={editing}
+          onCheckedChange={(on) => {
+            // With nothing sent yet, a sample message to edit.
+            if (on && sent.length === 0) setSent([EDITED.parts]);
+            setEditing(on);
+          }}
+        />
+        {home && (
+          <>
+            <CheckboxRow label="Branches loading" checked={branchesLoading} onCheckedChange={setBranchesLoading} />
+            <CheckboxRow label="Branches can't be read" checked={branchesFailed} onCheckedChange={setBranchesFailed} />
+          </>
+        )}
         <Button size="sm" variant="outline" onClick={() => setNotices((list) => [...list, { id: next.current++, ...NOTICE_SAMPLES[next.current % NOTICE_SAMPLES.length]! }])}>
           Add a notice
         </Button>
@@ -393,35 +429,14 @@ function Live() {
   );
 }
 
-/** Opened by a press, as a sent message's Edit opens it: it takes focus as it mounts, which would scroll the page on load. */
-function EditLive() {
-  const [editing, setEditing] = useState(false);
-  if (!editing)
-    return (
-      <Button size="sm" variant="outline" className="self-start" onClick={() => setEditing(true)}>
-        Edit a sent message
-      </Button>
-    );
-  return (
-    <div className="w-full max-w-reading">
-      <EditComposer initial={draft("Fix the Enter key in the composer")} onCancel={() => setEditing(false)} onSend={() => setEditing(false)} />
-    </div>
-  );
-}
-
 export function ComposerGallery() {
   return (
-    <>
-      <Section title="Composer">
-        {/* Its field keeps an empty menu anchor open: held, so the approval card keeps its keys. */}
-        <div data-held className="contents">
-          <Live />
-        </div>
-        <Toaster />
-      </Section>
-      <Section title="Edit and resend">
-        <EditLive />
-      </Section>
-    </>
+    <Section title="Composer">
+      {/* Its field keeps an empty menu anchor open: held, so the approval card keeps its keys. */}
+      <div data-held className="contents">
+        <Live />
+      </div>
+      <Toaster />
+    </Section>
   );
 }
