@@ -227,9 +227,10 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       className={cx(
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
-        // As the old app: the reading column glides aside and takes its narrower width at once.
+        // As the old app: the reading column glides aside and takes its narrower width at once. Back, it widens as it
+        // glides home, so it never runs under the sidebar meanwhile (a side panel opening).
         "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
-        settled && "motion-safe:reading-column:transition-transform motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift",
+        settled && "motion-safe:reading-column:transition-all motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift motion-safe:summary-shift:reading-column:transition-transform",
       )}
     >
       {children}
