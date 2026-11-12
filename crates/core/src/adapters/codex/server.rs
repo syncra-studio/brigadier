@@ -7,13 +7,16 @@ use super::events::limited;
 use super::grants::{can_grant, covered};
 use crate::adapters::{unwrap_shell, uuid};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{self, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+mod child;
+use child::{activity, child};
 
 /// How long the limit read may hold back a turn's end (proposed).
 const LIMIT_WAIT: Duration = Duration::from_secs(5);
@@ -44,6 +47,11 @@ struct State {
     /// The account's rate limits by limit id; a turn's end waiting for them.
     limits: HashMap<String, Value>,
     held: Option<Value>,
+    /// Subagents running, by thread, and each one's latest words [D78].
+    running: HashSet<String>,
+    said: HashMap<String, String>,
+    /// The user stopped the thread: its subagents' ends don't wake it [D95].
+    stopped: bool,
 }
 
 type Shared = Arc<Mutex<State>>;
@@ -80,6 +88,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         items: HashMap::new(),
         limits: HashMap::new(),
         held: None,
+        running: HashSet::new(),
+        said: HashMap::new(),
+        stopped: false,
     }));
     let st = state.clone();
     thread::spawn(move || {
@@ -198,6 +209,7 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
     let cid = c["id"].as_str().unwrap_or("").to_string();
     let st = &mut *state.lock().unwrap();
     let (thread, turn) = (st.thread.clone(), st.turn.clone());
+    st.stopped = c["interrupt"] == true || (st.stopped && !c["turn"].is_object());
     if c["turn"].is_object() {
         let mut params = c["turn"].clone();
         params["threadId"] = thread.into();
@@ -345,8 +357,9 @@ fn notification(state: &Shared, v: &mut Value) {
     }
     // A subagent's own thread is its parent's tool call [D78]; only its requests come through.
     if p["threadId"] != st.thread.as_str() {
-        return;
+        return child(st, &method, p);
     }
+    let subagent = method == "item/completed" && p["item"]["type"] == "subAgentActivity";
     // Statuses arriving after their turn ended must never hold the next reply [D492].
     if matches!(
         method.as_str(),
@@ -387,6 +400,9 @@ fn notification(state: &Shared, v: &mut Value) {
         | "item/autoApprovalReview/started"
         | "item/autoApprovalReview/completed" => {}
         _ => return,
+    }
+    if subagent {
+        activity(st, &mut v["params"]["item"]);
     }
     say(v.take());
 }

@@ -40,6 +40,7 @@ pub fn parse(line: &str) -> Vec<Event> {
         {
             agents(item, done)
         }
+        "item.completed" if kind == "sub_agent_activity" => activity(item),
         "item.started" | "item.completed" if TOOLS.contains(&kind) => {
             let mut events = vec![Event::ToolStart(tool(item))];
             if done {
@@ -164,6 +165,33 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
         }
     }
     events
+}
+
+/// A subagent as Codex now reports it on its parent's thread: started, then ended once each of its
+/// turns completes, also after its parent's turn; its answer is what the helper heard it say [D78, D106].
+fn activity(item: &Value) -> Vec<Event> {
+    let id = s(item, &["agent_thread_id"]).to_string();
+    match s(item, &["kind"]) {
+        "started" => vec![Event::ToolStart(Tool {
+            id,
+            name: "spawn_agent".into(),
+            step: "agent",
+            input: s(item, &["agent_path"])
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .into(),
+            ..Default::default()
+        })],
+        kind @ ("completed" | "interrupted") => vec![Event::ToolEnd(Done {
+            child: Some(id.clone()),
+            id,
+            output: s(item, &["output"]).into(),
+            ok: kind == "completed",
+            ..Default::default()
+        })],
+        _ => vec![],
+    }
 }
 
 /// `CommandExecution` or `aggregatedOutput` as `command_execution` or `aggregated_output`.
