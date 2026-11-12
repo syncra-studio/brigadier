@@ -111,7 +111,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;
-      push({ type: "work", id: key, gap: "turn", turn, work: done, open: opened });
+      // A turn its agent woke to carry on runs again, the view still holding its earlier work [D106].
+      push({ type: "work", id: key, gap: "turn", turn, work: foldable ? done : undefined, open: opened });
       fold = foldable && !opened ? done.folded : null;
       kept = done?.kept ?? [];
     } else if (fold && !within(item.n, fold)) fold = null;

@@ -70,10 +70,13 @@ pub struct Thread {
     member: HashMap<usize, usize>,
     /// Subagents not yet ended, by tool id: one in the background may end turns later [D78].
     children: HashMap<String, usize>,
-    /// Turns that ended while their subagents ran on, by id: their end and work fold wait for the
-    /// last of them [D67, D114].
+    /// Turns that ended while their subagents ran on, by id, with their work: it folds when the
+    /// last of them ends [D67, D114].
     #[serde(default)]
-    held: HashMap<String, Value>,
+    held: HashMap<String, (Open, Value)>,
+    /// The turn whose last subagent just ended: the wake turn that follows joins it [D106].
+    #[serde(default)]
+    woke: Option<Open>,
     /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
     /// rows' `cid`s, rows by a custom id, and each turn's first row.
     cids: HashSet<String>,
@@ -323,12 +326,12 @@ impl Thread {
         if let (true, true, Some(first), Some(answer)) =
             (status == "done", o.input, o.first, o.answer)
         {
-            let kept: Vec<u64> = o.kept.into_iter().filter(|&n| n < answer).collect();
+            let kept: Vec<u64> = o.kept.iter().copied().filter(|&n| n < answer).collect();
             if first + (kept.len() as u64) < answer {
                 work = json!({"turnId": o.id, "folded": [first, answer - 1], "kept": kept, "denied": denied});
             }
         }
-        self.end_work(&o.id, o.at, work, (o.started, o.waited), ts);
+        self.end_work(o, work, ts);
         self.picked_later();
     }
 

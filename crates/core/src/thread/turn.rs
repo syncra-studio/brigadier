@@ -124,8 +124,7 @@ impl Thread {
         }
     }
 
-    pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
-        self.shown.insert(t.id.clone());
+    fn new_turn(&mut self, t: &Turn, ts: u64) {
         let at = self.turns.len();
         self.turns.push(
             json!({"id": t.id, "status": "running", "startedAt": ts, "endedAt": null,
@@ -150,6 +149,17 @@ impl Thread {
             denied: 0,
             stop: (None, false),
         });
+    }
+
+    pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
+        self.shown.insert(t.id.clone());
+        let woke = self.woke.take();
+        // A turn no one sent, right after the subagents of the one before ended: the agent woke for them.
+        match woke.filter(|_| matches!(t.origin.as_str(), "agent" | "system") && t.switch.is_null())
+        {
+            Some(o) => self.rejoin(o),
+            None => self.new_turn(t, ts),
+        }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
         let model = t
             .model

@@ -99,7 +99,8 @@ impl Agent {
                 emit(json!({"t": "tool_done", "id": id, "ok": started.is_ok()}));
             }
             // `agent:N`: a subagent that takes N one-second steps of its own, then answers [D78];
-            // `bgagent:N` runs it in the background, past its turn's end [D114].
+            // `bgagent:N` runs it in the background, past its turn's end, and wakes itself on its end
+            // as Claude's CLI does [D114, D106].
             "agent" | "bgagent" => {
                 self.tools += 1;
                 let id = format!("ag{}-{}", self.tools, now());
@@ -120,7 +121,14 @@ impl Agent {
                 if name == "agent" {
                     run();
                 } else {
-                    thread::spawn(run);
+                    thread::spawn(move || {
+                        run();
+                        emit(json!({"t": "turn"}));
+                        emit(
+                            json!({"t": "say", "text": "The subagent found it: the parser is in crates/core/src/norm.rs."}),
+                        );
+                        emit(json!({"t": "done"}));
+                    });
                 }
             }
             "tool_sleep" => {
