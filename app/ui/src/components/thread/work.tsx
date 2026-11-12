@@ -80,14 +80,14 @@ export function GroupRow({ item, live, open, onToggle }: { item: Group; live: It
 
 const WORKING = {
   live: "shimmer",
-  stalled: "text-warning",
+  stalled: "text-muted-foreground",
   interrupted: "text-muted-foreground",
   disconnected: "text-muted-foreground",
 } as const;
 
 /**
  * A turn's live status under its rows. Only `live` moves: its motion claims the work is proven live.
- * `stalled` is orange and still; `interrupted` and `disconnected` are muted and switch at once.
+ * `stalled`, `interrupted` and `disconnected` are muted and still, their words saying which; they switch at once.
  * `disconnected` names the last state known, whatever it was ("Unknown · last seen stalled 12s ago").
  */
 export function WorkingLine({ state, children }: { state: keyof typeof WORKING; children: string }) {
