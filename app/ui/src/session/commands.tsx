@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useState } from "react";
+import { type RefObject, useEffect, useMemo, useState } from "react";
 
 import type { OpenKind } from "../components/composer/chip";
 import type { ComposerFieldHandle } from "../components/composer/field";
@@ -38,8 +38,10 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     };
   }, [owner, backend, project, fresh]);
 
+  // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra` is [] or [/new].
+  const all = useMemo(() => listed && [...listed, ...extra], [listed, extra.length]);
   const commands: Commands = {
-    commands: listed && [...listed, ...extra],
+    commands: all,
     onRun: (command) => {
       // Home has no session to run it in yet: the old app's hint (its instant ones are /compact) [D2098].
       if (home) return void showToast("Send a message before compacting.");
