@@ -31,7 +31,33 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     if let Some(id) = resume {
         open["threadId"] = id.into();
     }
+    if spec.naked {
+        open["config"] = naked(spec);
+    }
     open
+}
+
+/// A worker's overrides: no memory, plugins, apps, skills or MCP servers of its own [D89].
+/// Codex can't turn its compaction off, so it keeps its own late one [D98].
+fn naked(spec: &Spec) -> Value {
+    let mut config = json!({"features.memories": false, "features.plugins": false,
+        "features.apps": false, "skills.include_instructions": false, "skills.bundled.enabled": false});
+    // Its servers can only be turned off by name: the user's and the project's, read only.
+    let files = [
+        super::super::cli_home(spec, ".codex", "config.toml"),
+        std::path::Path::new(&spec.cwd).join(".codex/config.toml"),
+    ];
+    for file in files {
+        let text = std::fs::read_to_string(file).unwrap_or_default();
+        let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
+            continue;
+        };
+        let servers = doc.get("mcp_servers").and_then(|t| t.as_table_like());
+        for (name, _) in servers.into_iter().flat_map(|t| t.iter()) {
+            config[format!("mcp_servers.{name}.enabled")] = false.into();
+        }
+    }
+    config
 }
 
 /// A message as Codex's input: its text, then each image by its path [D2008], then each skill its

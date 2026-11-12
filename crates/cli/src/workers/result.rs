@@ -121,6 +121,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
             "done" => "finished",
             "stopped" => "stopped",
             "limited" => "limit",
+            _ if last.is_some_and(|l| l["why"] == "context") => "context",
             _ => "failed",
         };
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
@@ -174,6 +175,7 @@ fn write(
         "finished" => "finished",
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
+        "context" => "stopped: its context is full",
         _ => "failed",
     };
     let mut text = format!("Worker {} ({wid}) {word}.\n", l.title);

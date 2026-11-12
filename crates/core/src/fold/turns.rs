@@ -19,6 +19,9 @@ pub struct Turn {
     #[serde(default)]
     pub parts: Value,
     pub retry_of: Option<String>,
+    /// Why it failed, by the adapter's cause ("context": its window filled) [D98].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
     /// The model recorded in this turn’s own setup, including the first input.
     #[serde(default)]
     pub model: Option<String>,
@@ -114,7 +117,7 @@ impl Fold {
             self.runs.agent.extend(turn.edited.iter().cloned());
             self.bound(&turn);
             self.last = Some(
-                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "ts": ts,
+                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),

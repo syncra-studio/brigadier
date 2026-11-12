@@ -267,6 +267,7 @@ impl Thread {
                     }
                     "model" => failed("model-unavailable"),
                     "ended" => failed("ended-for-safety"),
+                    "context" => failed("context-full"),
                     _ => failed("turn-failed"),
                 });
             }

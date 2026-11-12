@@ -292,6 +292,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 effort: r.effort.clone(),
                 created: log::now_ms(),
                 starts_on: r.account.clone(),
+                naked: true,
                 ..Default::default()
             },
         )?,

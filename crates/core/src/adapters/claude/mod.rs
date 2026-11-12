@@ -189,9 +189,13 @@ impl Adapter for Claude {
             }
         }
         let input = text.map(|t| self.encode(spec, t));
+        let mut env = base_env(spec, &exe, self.keys());
+        if spec.naked {
+            control::naked(&mut argv, &mut env);
+        }
         Launch {
             argv,
-            env: base_env(spec, &exe, self.keys()),
+            env,
             keep_stdin: true,
             input,
         }

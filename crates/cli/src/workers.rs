@@ -436,6 +436,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
         | "uncertain" | "stalled" => ("working", "Working".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
+            Some("context") => ("failed", "Context full".into()),
             Some("stopped") => ("stopped", "Stopped".into()),
             Some(_) if last["landed"] == false => ("doneNotMerged", "Done · not merged".into()),
             Some(_) => ("done", "Done".into()),

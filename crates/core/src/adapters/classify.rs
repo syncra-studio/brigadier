@@ -1,9 +1,19 @@
 use super::Event;
 
-/// Classifies an error message the way every backend needs: no credits, a limit, a sign-in, or
-/// neither.
+/// Classifies an error message the way every backend needs: a full context, no credits, a limit,
+/// a sign-in, or neither.
 pub fn classify(message: &str) -> Option<Event> {
     let m = message.to_lowercase();
+    // With its own compaction off, a CLI's turn fails once the window is full [D98].
+    let full = [
+        "prompt is too long",
+        "context_length_exceeded",
+        "maximum context length",
+        "context window",
+    ];
+    if full.iter().any(|k| m.contains(k)) {
+        return Some(Event::Failed("context", message.to_string()));
+    }
     let credits = [
         "insufficient account funds",
         "insufficient funds",

@@ -208,6 +208,11 @@ impl Fold {
             }
         }
         match kind {
+            "failed" => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.why = item["why"].as_str().map(String::from);
+                }
+            }
             "retrying" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.retry = json!({"attempt": item["attempt"], "max": item["max"], "at": item["at"], "ts": ts});
@@ -414,7 +419,8 @@ impl Fold {
                 self.end_ask(&str_of("id"), "answered");
             }
             "commands" => {
-                self.commands.insert(str_of("backend"), item["list"].clone());
+                self.commands
+                    .insert(str_of("backend"), item["list"].clone());
             }
             "resume_id" => {
                 let (backend, id) = (str_of("backend"), str_of("id"));

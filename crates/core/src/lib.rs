@@ -73,6 +73,10 @@ pub struct Spec {
     /// switches move it from there [D2082].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starts_on: Option<String>,
+    /// A worker's: its CLI loads no skills, MCP servers or memory of its own and doesn't compact;
+    /// it reaches them through `brigadier` [D89, D98].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub naked: bool,
     #[serde(skip)]
     pub dir: PathBuf,
     /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is

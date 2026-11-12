@@ -59,7 +59,7 @@ impl OpenCode {
         // merges with the user's own and loads beside AGENTS.md.
         let style = spec.dir.join("commit-style.md");
         if std::fs::write(&style, crate::agent::standing()).is_ok() {
-            let config = json!({"instructions": [style.display().to_string()]});
+            let config = control::config(spec, &style, &mut env);
             env.push(("OPENCODE_CONFIG_CONTENT".into(), config.to_string()));
         }
         env
