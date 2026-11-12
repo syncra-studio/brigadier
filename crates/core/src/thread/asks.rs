@@ -10,7 +10,7 @@ impl Thread {
     /// the parent agent answers is a quiet step in the fold instead, with no card and no wait for
     /// the user [D119, D122].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64, item: &Value) {
-        self.approval_tool(at, true);
+        self.approval_tool(at, None);
         self.agent_waits(at, true);
         self.pending.push(at);
         self.pending_changed = true;
@@ -90,7 +90,10 @@ impl Thread {
         if let Some(at) = self.unwait(c["request"].as_str().unwrap_or("")) {
             self.withdraw_row(at);
             let cid = item["cid"].as_str().unwrap_or("").to_string();
-            self.claims.insert(cid, (at, c.clone()));
+            // When it was given: an allowed subagent starts then.
+            let mut c = c.clone();
+            c["at"] = ts.into();
+            self.claims.insert(cid, (at, c));
             self.end_wait(ts);
         }
     }
@@ -127,25 +130,26 @@ impl Thread {
         }
         self.changed_items.insert(at);
         if row["decision"] == "approved" {
-            self.approval_tool(at, false);
+            self.approval_tool(at, Some(c["at"].as_u64().unwrap_or_default()));
         }
     }
 
     /// The CLI cleared a request [D77]; or another client, or the CLI's own rule, decided it.
-    pub(super) fn withdraw(&mut self, id: &str, decision: Option<&str>) {
+    pub(super) fn withdraw(&mut self, id: &str, decision: Option<&str>, ts: u64) {
         if let Some(at) = self.unwait(id) {
             self.withdraw_row(at);
             if let Some(d) = decision.filter(|_| self.items[at]["kind"] == "approval") {
                 self.items[at]["decision"] = d.into();
                 if d == "approved" {
-                    self.approval_tool(at, false);
+                    self.approval_tool(at, Some(ts));
                 }
             }
         }
     }
 
-    /// A tool awaiting permission has not run; only an approval makes its work visible again.
-    fn approval_tool(&mut self, at: usize, hidden: bool) {
+    /// A tool awaiting permission has not run; only an approval (`allowed`, when) makes its work
+    /// visible again. A subagent starts then, so its clock counts from then.
+    fn approval_tool(&mut self, at: usize, allowed: Option<u64>) {
         let row = &self.items[at];
         let Some(tool) = row["request"]["tool"]
             .as_str()
@@ -160,13 +164,17 @@ impl Thread {
         let Some(&tool) = self.keys.get(&key) else {
             return;
         };
+        // A claim kept from before its time was noted has none: its start stays.
+        if let Some(ts) = allowed.filter(|&t| t > 0 && self.items[tool]["kind"] == "childAgent") {
+            self.items[tool]["startedAt"] = ts.into();
+        }
         // Allowed, a step started before its ask runs after it: it moves below, so the thread reads in order.
-        if !hidden && tool < at {
+        if allowed.is_some() && tool < at {
             self.break_group();
             return self.move_down(tool);
         }
         let at = tool;
-        self.items[at]["hidden"] = hidden.into();
+        self.items[at]["hidden"] = allowed.is_none().into();
         self.changed_items.insert(at);
         if let Some(&g) = self.member.get(&at) {
             self.recount(g);
@@ -189,7 +197,7 @@ impl Thread {
         let ids: Vec<String> = (self.pending.iter())
             .filter_map(|&at| self.items[at]["request"]["id"].as_str().map(String::from))
             .collect();
-        ids.iter().for_each(|id| self.withdraw(id, None));
+        ids.iter().for_each(|id| self.withdraw(id, None, 0));
     }
 
     /// What still waits on the user, oldest first, in D177's shapes.

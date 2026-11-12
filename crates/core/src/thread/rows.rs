@@ -181,7 +181,7 @@ impl Thread {
                 self.wait_on(at, ts, item);
             }
             "resolved" => {
-                self.withdraw(&str_of("id"), item["decision"].as_str());
+                self.withdraw(&str_of("id"), item["decision"].as_str(), ts);
                 if self.pending.is_empty() {
                     self.end_wait(ts);
                 }
