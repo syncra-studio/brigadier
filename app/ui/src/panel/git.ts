@@ -7,7 +7,6 @@ import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
 import type { FileFlag, LastRun } from "../review/types";
-import type { GitStep } from "./control";
 import type { SourceFile, SourceState } from "./types";
 
 /*
@@ -35,19 +34,10 @@ export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; age
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
 
 /**
- * Rust's next step for the checkout [D1015, D1152]: the step and the commits it was worked out on, which a landing
- * pins [D1049]. `ran`: its last run's end, so the brief is read again when only a run changed [D1199].
- */
-type StepRead = { step: GitStep | null; at: StepAt | null; freshness?: Freshness | null; ran?: number | null };
-
-/**
  * What the checkout really is, from Rust (2.37) [D1187]: its folder gone (and whether Restore can bring it back), a
  * detached HEAD's short id, the branch it's on against the one the session's record holds, and the base's freshness.
  */
 export type Truth = { missing: boolean; restorable: boolean; branch: string | null; head: string | null; detached: string | null; recordedBranch: string | null; mismatch: boolean; base: Freshness | null };
-
-/** The session's HEAD and its base's commit a step was worked out on. */
-export type StepAt = { head: string; base: string | null };
 
 /** Whose checkout, as Rust's commands name it: a session's, or a project's folder. */
 export type Target = { session: string } | { project: string };
@@ -60,7 +50,6 @@ type Git = {
   counts: Counts;
   brief: Brief | null;
   error: string | null;
-  step: StepRead | null;
   /** Bumped by every read that changed something: Review reads again on it. */
   version: number;
   /** When the watch last read the checkout: Live's tip, and Offline's time [D1205, D1206]. */
@@ -71,10 +60,7 @@ type Git = {
   restoreError: string | null;
 };
 
-let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, step: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
-let stepAsk = 0;
-let shownAsk = 0;
-const waiting: { after: number; target: Target; then: () => void }[] = [];
+let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let re = 0;
 let n = 0;
 let counting = false;
@@ -131,7 +117,6 @@ function count(): void {
 function landed(): void {
   set({ version: git.version + 1, error: null });
   count();
-  refreshStep();
   readTruth();
 }
 
@@ -155,63 +140,8 @@ export function restoreCheckout(): void {
     if (!reply.ok) return;
     watch(target);
     readTruth();
-    refreshStep();
   });
 }
-
-/**
- * Asks Rust for the step again: after every read, each action and on focus, and every few seconds, since the base
- * moving or its checkout changing isn't this checkout's watch. An answer older than one already shown is dropped.
- * `then`: once this ask's answer, or a newer one, has shown.
- */
-export function refreshStep(then?: () => void): void {
-  const target = git.target;
-  if (!target) return then?.();
-  const mine = ++stepAsk;
-  if (then) waiting.push({ after: mine, target, then });
-  ask({ op: "run", args: sourceArgs(target, "step") }, (reply) => {
-    // Answers can come back out of order: one older than the step shown is dropped, but with none yet any answer
-    // counts, so a checkout changing faster than its step is worked out still gets its first [D1307].
-    const counts = (mine > shownAsk || !git.step) && git.target === target;
-    // A failed read keeps the last step: the next read tries again. With none, it's read as no step, so a card
-    // waiting for its first one draws.
-    if (counts && !reply.ok && reply.error !== "disconnected" && !git.step) set({ step: { step: null, at: null } });
-    if (counts && reply.ok) {
-      const ran = git.step?.ran;
-      shownAsk = Math.max(shownAsk, mine);
-      set({ step: reply.step });
-      // A run that ended without changing a file still changes the brief [D1199].
-      if (ran !== undefined && reply.step.ran !== ran) count();
-    }
-    // Each `then` waits for a step of its checkout asked at or after it to show, so a move's toast never shows before
-    // the step it led to and polling can't hold it back; its own read failing, or its checkout leaving, ends it too.
-    const shown = counts && reply.ok;
-    for (const each of [...waiting]) {
-      const done = (shown && each.target === target && each.after <= mine) || (each.after === mine && !reply.ok) || git.target !== each.target;
-      if (!done) continue;
-      waiting.splice(waiting.indexOf(each), 1);
-      each.then();
-    }
-  });
-}
-
-/**
- * One of the control's moves on the checkout (`land`, `catch-up`, `sync`, `publish`), Rust's: `done` gets Rust's
- * refusal, or null once the step it led to shows [D30, D1286]. A move changes refs the watch may not follow.
- */
-export function gitMove(args: string[], done: (error: string | null) => void): void {
-  const target = git.target;
-  if (!target) return done("This checkout isn't on screen.");
-  ask({ op: "run", args: sourceArgs(target, ...args) }, (reply) => {
-    ask({ op: "git_refresh" });
-    if (reply.ok) return refreshStep(() => done(null));
-    done(reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error));
-    refreshStep();
-  });
-}
-
-/** Lands the session's branch into its base, pinned to the commits `at` the user saw [D1028, D1049]. */
-export const landBranch = (at: StepAt | null, done: (error: string | null) => void) => (at ? gitMove(["land", at.head, at.base ?? "-"], done) : done("Nothing to merge yet."));
 
 function watch(target: Target, tries = 0): void {
   n = 0;
@@ -260,7 +190,7 @@ export function useGitWatch(owner: string | null): void {
     if (key !== git.key) {
       re = 0;
       const last = key ? kept.get(key) : undefined;
-      set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, step: last?.step ?? null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
+      set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
@@ -270,23 +200,16 @@ export function useGitWatch(owner: string | null): void {
   const recent = (rows ?? []).filter((each) => each.project && !each.archived).sort((a, b) => b.updated - a.updated).slice(0, 8).map((each) => each.id).join(" ");
   useEffect(() => void (daemon && warm(recent.split(" ").filter(Boolean))), [daemon, recent]);
   const working = isWorking(row);
-  // A turn's start or end moves the step even when no file changed [D1208].
-  // So does a PR read: one made or merged elsewhere changes Create PR [D1018].
-  useEffect(() => void (daemon && git.target && refreshStep()), [row?.finished, working, JSON.stringify(row?.prs?.prs)]);
+  // A turn's start or end changes Review's brief (its last run) even when no file changed [D1199].
+  useEffect(() => void (daemon && git.target && count()), [row?.finished, working]);
   useEffect(() => {
-    // On focus the step is read again too [D1143].
+    // On focus the checkout is read again [D48].
     const refresh = () => {
       ask({ op: "git_refresh" });
-      refreshStep();
       readTruth();
     };
     addEventListener("focus", refresh);
-    // shortcut: the base moving shows within this; a watch on the base checkout would show it at once.
-    const every = setInterval(refreshStep, 10_000);
-    return () => {
-      removeEventListener("focus", refresh);
-      clearInterval(every);
-    };
+    return () => removeEventListener("focus", refresh);
   }, []);
 }
 
@@ -310,16 +233,16 @@ function warm(ids: string[]): void {
   warming = true;
   const target: Target = { session: id };
   const key = JSON.stringify(target);
-  const asks = [sourceArgs(target, "status"), sourceArgs(target, "step"), sourceArgs(target, "truth"), sourceArgs(target, "review", "uncommitted")];
+  const asks = [sourceArgs(target, "status"), sourceArgs(target, "truth"), sourceArgs(target, "review", "uncommitted")];
   const replies: Record<string, any>[] = [];
   const next = () => {
     if (replies.length < asks.length) return ask({ op: "run", args: asks[replies.length]! }, (reply) => (replies.push(reply), next()));
     warming = false;
-    const [read, step, truth, review] = replies as [Record<string, any>, Record<string, any>, Record<string, any>, Record<string, any>];
+    const [read, truth, review] = replies as [Record<string, any>, Record<string, any>, Record<string, any>];
     if (replies.some((reply) => reply.error === "disconnected")) return;
-    if (!read.ok || !step.ok) tried.add(id);
+    if (!read.ok) tried.add(id);
     else if (!kept.has(key) && git.key !== key && kept.size < 8) {
-      const entry: Git = { key, target, head: read.git.head, files: new Map(read.git.files.map((each: Entry) => [each.path, each])), counts: new Map(), brief: null, ...(review.ok && countsOf(review.review)), error: null, step: step.step, version: 0, readAtMs: Date.now(), truth: truth.ok ? truth.truth : null, restoring: false, restoreError: null };
+      const entry: Git = { key, target, head: read.git.head, files: new Map(read.git.files.map((each: Entry) => [each.path, each])), counts: new Map(), brief: null, ...(review.ok && countsOf(review.review)), error: null, version: 0, readAtMs: Date.now(), truth: truth.ok ? truth.truth : null, restoring: false, restoreError: null };
       const seen = [...kept];
       kept.clear();
       kept.set(key, entry);
@@ -362,11 +285,11 @@ function sourceOf(now: Git): SourceState | null {
 
 let shown: { from: Git; source: SourceState | null } | null = null;
 
-/** The on-screen checkout: its state and Rust's step. */
-export function useGit(): { source: SourceState | null; step: StepRead | null; error: string | null; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
+/** The on-screen checkout: its state. */
+export function useGit(): { source: SourceState | null; error: string | null; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now) shown = { from: now, source: sourceOf(now) };
-  return { source: shown.source, step: now.step, error: now.error, version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
+  return { source: shown.source, error: now.error, version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 // The last files read, by checkout and path (the last 8, as `kept`): one opened again shows at once, then is read
@@ -409,15 +332,4 @@ export function useFileRead(path: string): FileRead {
     return () => void (live = false);
   }, [target, path, version, tick]);
   return read;
-}
-
-/**
- * The card's commit [D1029, D1107]: Rust commits the index, or with `all` every change, with `message`; a blank one is
- * written first for exactly what's committed. False with no checkout on screen. The watch shows the commit landing.
- */
-export function commitFiles(all: boolean, message: string, onReply: (reply: Record<string, any>) => void): boolean {
-  const target = git.target;
-  if (!target) return false;
-  ask({ op: "run", args: sourceArgs(target, "make-commit", ...(all ? ["--all"] : []), ...(message ? ["--message", message] : [])) }, onReply);
-  return true;
 }

@@ -132,23 +132,6 @@ pub fn reserve(
     Ok((lock, choose(repo, prefix, title, old)?))
 }
 
-/// Once a push is attempted the name stays put, even if tracking or the remote is later removed.
-pub fn publishing(checkout: &crate::git::Checkout, branch: &str) -> io::Result<()> {
-    // shortcut: a rejected push also fixes the name; track confirmed publication if retries need automatic renaming.
-    if checkout.worktree {
-        git(
-            &checkout.root,
-            &[
-                "config",
-                "--local",
-                &format!("branch.{branch}.brigadier-published"),
-                "true",
-            ],
-        )?;
-    }
-    Ok(())
-}
-
 /// Local evidence of publication, including refs on every remote. The caller holds the session
 /// lock and checkout lock, in that order, so a turn can't deadlock against a title rename.
 pub fn unpublished(dir: &Path) -> io::Result<bool> {

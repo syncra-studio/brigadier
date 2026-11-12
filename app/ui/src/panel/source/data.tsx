@@ -1,7 +1,6 @@
 import { ErrorLine } from "../../components/error-line";
 import type { FileFlag, LastRun } from "../../review/types";
-import type { Freshness, StepAt, Truth } from "../git";
-import type { GitStep } from "../control";
+import type { Freshness, Truth } from "../git";
 import type { Branch, KeptPrs, Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
 
@@ -9,23 +8,14 @@ import type { BranchRead } from "./branch-ops";
 export type SourceData = {
   /** Null while the first read is under way. */
   source: SourceState | null;
-  step: GitStep | null;
-  /** The commits Rust's step was worked out on: a landing is pinned to them [D1049]. */
-  at?: StepAt | null;
-  /** False until Rust's step has answered once: a card with nothing kept waits for it [D1307]. */
-  stepRead?: boolean;
   /** The read failed: shown over the last read, if any, which stays read-only. */
   error?: string | null;
   /** The daemon is out of reach: what was last read shows, read-only. */
   offline?: boolean;
-  host?: string | null;
   branches?: Branch[] | null;
-  /**
-   * Others work in this folder too, by name [D1070, D1082]: `with` lands its work, `busy` works there now, `includes`
-   * made changes still uncommitted here; `lands` false, no PR or merge from here. Null until Rust's first read.
-   */
-  share?: { with: string | null; busy: string | null; includes: string | null; lands: boolean } | null;
-  /** The session's agent is working: the button waits for its turn [D1208], and the user's own folder can't switch branches [D1021]. */
+  /** Another session works in this folder too and lands its work, by name [D1070, D1082]. Null until Rust's first read. */
+  share?: { with: string | null } | null;
+  /** The session's agent is working: the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
   /** When the watch last read the checkout: "Offline · 14:32" [D1205, D1206]. */
   readAtMs?: number | null;
@@ -45,31 +35,21 @@ export type SourceData = {
   prs?: Pr[];
   /** The watch's last read, kept: a gallery's stand-in for the session row's [D1009]. */
   kept?: KeptPrs;
-  /** A sync or publish is under way; the name a rename or switch is moving to, until the watch reads it [D30]. */
-  syncing?: boolean;
+  /** The name a switch or create is moving to, until the watch reads it [D30]. */
   naming?: string | null;
 };
 
 /** The branch item's moves on Rust's git (2.21) [D1020, D1021]; without them (the gallery) a pick only closes. */
 export type BranchOps = {
   read: (done: (read: BranchRead | null) => void) => void;
-  sync: () => void;
-  publish: () => void;
-  rename: (name: string) => void;
   switchTo: (name: string, remote: boolean) => void;
   create: (name: string, from: string | null) => void;
-  setBase: (base: string) => void;
-  /** Home, to start a session from `base` in this session's project. */
-  newSession: (base: string) => void;
-  openPage: (url: string) => void;
 };
 
 /** Rust's moves on the checkout, once wired: without them (the gallery) nothing moves. */
 export type SourceOps = {
   retry: () => void;
   branch?: BranchOps;
-  /** Rust's landing (2.22). Without it the step is the gallery's. */
-  land?: (at: StepAt | null, done: (error: string | null) => void) => void;
   /** Re-creates a session's gone folder from its branch [D180, D1187]. */
   restore?: () => void;
 };

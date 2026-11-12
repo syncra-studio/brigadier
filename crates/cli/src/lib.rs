@@ -58,11 +58,9 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
-       brigadier source <id> | source --project P [make-commit [--all] [--message M] | write pr]
-       brigadier source <id>|--project P branches | rename <name> | switch <branch> [--remote] | create <name> [--from <ref>] | sync | publish | push; source <id> base <ref>
-       brigadier source <id> | source --project P step | source <id> land <head> <base> | source <id> catch-up <head> <base>
+       brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> info|push|find | host <id> link|create --title T --body B [--draft] | host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
+       brigadier host <id> view <n> | host <id> merge <n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]

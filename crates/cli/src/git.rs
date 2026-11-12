@@ -4,10 +4,7 @@
 
 use super::{arg, flag, has};
 use brigadier_core::git::diff::{self, Scope};
-use brigadier_core::git::{
-    self, Checkout, Status, Target, branch, catch_up, files, land, push::Rejected, step, sync,
-    watch::Watch,
-};
+use brigadier_core::git::{self, Checkout, Status, Target, branch, files, watch::Watch};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
@@ -79,14 +76,6 @@ fn since(
     Ok((base, since))
 }
 
-/// A push the remote turned away says which branch, remote and ref [D1034].
-pub(super) fn rejected(e: io::Error) -> io::Result<Value> {
-    match Rejected::of(&e) {
-        Some(r) => Ok(json!({"ok": false, "error": e.to_string(), "rejected": r.json()})),
-        None => Err(e),
-    }
-}
-
 /// The sessions busy in this folder, by core's one test [D172, D1021].
 fn working(data: &Path, checkout: &git::Checkout) -> usize {
     let all = brigadier_frames::procs::all();
@@ -99,7 +88,7 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
     if let Some(reply) = super::last::route(data, args)? {
         return Ok(reply);
     }
-    let reply = source_of(data, args).or_else(rejected)?;
+    let reply = source_of(data, args)?;
     Ok(super::last::briefed(data, args, reply))
 }
 
@@ -128,20 +117,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     let me = match target {
         Target::Session(id) => Some(id),
         Target::Project(_) => None,
-    };
-    // Catch up's session lock comes before the checkout lock the guard takes, as a turn start's do [D1235].
-    let _one = match (word(0)?, me) {
-        ("catch-up", Some(id)) => Some(brigadier_core::worktrees::lock(
-            &brigadier_core::session_dir(data, id),
-        )?),
-        _ => None,
-    };
-    // Our own changes to a folder others share wait for no other session's turn [D1082].
-    let _shared = match word(0)? {
-        "sync" | "publish" | "push" | "catch-up" => {
-            super::sessions::guard(data, &git::folder(data, &target)?, me)?
-        }
-        _ => None,
     };
     Ok(match word(0)? {
         "review" if word(1)? == "branch" => {
@@ -201,31 +176,11 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             file["ignored"] = files::ignored(&checkout, word(1)?).into();
             json!({"ok": true, "file": file})
         }
-        // The card's commit and the message writer [D1029, D1107].
-        "make-commit" => {
-            // `--all` as a flag, never as the message's own text.
-            let all = (args.iter().enumerate())
-                .any(|(i, a)| a == "--all" && (i == 0 || args[i - 1] != "--message"));
-            super::commit::make(data, &target, &checkout, all, flag(args, "--message"))?
-        }
-        "write" => super::commit::write(data, &target, &checkout, word(1)?)?,
         // The branch item [D1020, D1021, D1026, D1034].
         "branches" => {
-            let mut read = branch::branches(data, &target, &checkout)?;
+            let mut read = branch::branches(&checkout)?;
             read["working"] = (!checkout.worktree && working(data, &checkout) > 0).into();
             json!({"ok": true, "branches": read})
-        }
-        "rename" => {
-            branch::rename(data, &target, &checkout, word(1)?, &stop)?;
-            done
-        }
-        "base" => {
-            let Target::Session(id) = target else {
-                return Err(io::Error::other(super::USAGE));
-            };
-            brigadier_core::load(data, id)?;
-            brigadier_core::worktrees::set_base(&brigadier_core::session_dir(data, id), word(1)?)?;
-            done
         }
         verb @ ("switch" | "create") => {
             // No turn starts here meanwhile, and none is under way [D1021, D1082]: a turn starting
@@ -243,46 +198,6 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 "switch" => branch::switch(&checkout, word(1)?, has(args, "--remote"), &stop)?,
                 _ => branch::create(&checkout, word(1)?, flag(args, "--from"), &stop)?,
             }
-            done
-        }
-        "sync" => {
-            sync::sync(&checkout, sync::trusted(data, &target), &stop)?;
-            done
-        }
-        "publish" => {
-            sync::publish(&checkout, sync::trusted(data, &target), &stop)?;
-            done
-        }
-        // The control's Push: to its upstream only, nothing pulled [D1285].
-        "push" => {
-            sync::push(&checkout, sync::trusted(data, &target), &stop)?;
-            done
-        }
-        // The card control's next step, and landing [D1028, D1049, D1286].
-        "step" => {
-            let mut reply =
-                json!({"ok": true, "step": step::step(data, &target, &checkout, &stop)?});
-            // The last run's end, so the brief is read again when only a run changed [D1199].
-            if let Target::Session(id) = target
-                && let Ok(f) = brigadier_core::fold(&brigadier_core::session_dir(data, id), true)
-            {
-                reply["step"]["ran"] = f.fold.runs.last.as_ref().map(|r| r.at).into();
-            }
-            reply
-        }
-        "land" => {
-            let Target::Session(id) = target else {
-                return Err(io::Error::other(super::USAGE));
-            };
-            let landed = land::land(data, id, (word(1)?, word(2)?), &stop)?;
-            json!({"ok": true, "landed": landed})
-        }
-        // Catch up with main, pinned to the commits the control showed (2.50) [D1286].
-        "catch-up" => {
-            let Target::Session(id) = target else {
-                return Err(io::Error::other(super::USAGE));
-            };
-            catch_up::catch_up(data, id, (word(1)?, word(2)?), &stop)?;
             done
         }
         _ => return Err(io::Error::other(super::USAGE)),

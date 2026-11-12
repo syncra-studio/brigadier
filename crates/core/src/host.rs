@@ -4,15 +4,14 @@
 
 use crate::adapters::setup;
 use crate::git::{self, Checkout, Target, push};
+use crate::load;
 use crate::repos::{failed, tool};
-use crate::{load, projects};
 
 mod prs;
 mod view;
 pub use prs::{chip, kept, moved_on, opened};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
@@ -20,11 +19,8 @@ use std::sync::atomic::AtomicBool;
 
 /// Proposed: gh gets this long for a look, and a create this long.
 const GH_SECS: u64 = 20;
-const CREATE_SECS: u64 = 60;
 /// Proposed: the GitHub list's length.
 const GH_LIMIT: &str = "200";
-/// Past this a link drops its prefilled body: hosts refuse very long URLs (GitHub with a 414).
-const LINK_MAX: usize = 6000;
 
 fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
@@ -79,10 +75,6 @@ impl Repo {
             Kind::Forgejo => "Forgejo",
         }
     }
-
-    fn web(&self) -> String {
-        format!("https://{}/{}", self.host, self.path)
-    }
 }
 
 /// The host of a remote URL (https, ssh or scp-like), or None for a server it can't name.
@@ -120,59 +112,6 @@ pub fn repo(url: &str) -> Option<Repo> {
     })
 }
 
-/// URL-encodes `text`; `/` stays when `slash`, for a branch in a path.
-fn enc(text: &str, slash: bool) -> String {
-    let mut out = String::new();
-    for b in text.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                out.push(b as char)
-            }
-            b'/' if slash => out.push('/'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
-/// The page that opens a PR from `head` into `base`, as each host links it after a push; GitHub's
-/// takes the title and body too (its documented query parameters).
-pub fn link(repo: &Repo, base: &str, head: &str, title: &str, body: &str) -> String {
-    let web = repo.web();
-    let (base_p, head_p, base_q, head_q) = (
-        enc(base, true),
-        enc(head, true),
-        enc(base, false),
-        enc(head, false),
-    );
-    match repo.kind {
-        Kind::GitHub => {
-            let page = format!(
-                "{web}/compare/{base_p}...{head_p}?quick_pull=1&title={}",
-                enc(title, false)
-            );
-            let full = format!("{page}&body={}", enc(body, false));
-            if full.len() <= LINK_MAX { full } else { page }
-        }
-        Kind::GitLab => format!(
-            "{web}/-/merge_requests/new?merge_request%5Bsource_branch%5D={head_q}&merge_request%5Btarget_branch%5D={base_q}"
-        ),
-        Kind::Bitbucket => format!("{web}/pull-requests/new?source={head_q}&dest={base_q}"),
-        Kind::Gitea | Kind::Forgejo => format!("{web}/compare/{base_p}...{head_p}"),
-    }
-}
-
-/// The branch's own page on its host, for the quick pick's Open branch on ‹host› [D1021].
-pub fn branch_page(repo: &Repo, branch: &str) -> String {
-    let (web, branch) = (repo.web(), enc(branch, true));
-    match repo.kind {
-        Kind::GitHub => format!("{web}/tree/{branch}"),
-        Kind::GitLab => format!("{web}/-/tree/{branch}"),
-        Kind::Bitbucket => format!("{web}/branch/{branch}"),
-        Kind::Gitea | Kind::Forgejo => format!("{web}/src/branch/{branch}"),
-    }
-}
-
 /// gh, when it's installed and its active account for `repo`'s server is signed in. Only GitHub
 /// has a CLI here yet; GitLab's glab is a later slice [D1030].
 fn gh(repo: &Repo) -> Option<String> {
@@ -198,8 +137,6 @@ pub struct Pr {
     base_ref: String,
     pub base: String,
     pub repo: Option<Repo>,
-    /// The project is trusted, so its own git hooks run on a push [D166, D211].
-    trusted: bool,
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
     dir: std::path::PathBuf,
@@ -231,8 +168,6 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
-    let trusted = (load(data, id)?.project)
-        .is_some_and(|p| projects::get(data, &p).is_ok_and(|p| p.trusted == Some(true)));
     Ok(Pr {
         id: id.to_string(),
         checkout,
@@ -241,131 +176,9 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         base_ref: base,
         base: host_base,
         repo,
-        trusted,
         record: crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
         dir: crate::session_dir(data, id),
     })
-}
-
-impl Pr {
-    /// What the UI needs before Create PR: the host's name, whether its CLI can make the PR, the
-    /// branch's PRs (null when gh can't say), the base, and the text to start from.
-    pub fn info(&self) -> io::Result<Value> {
-        let (title, body) = self.text()?;
-        let gh = self.repo.as_ref().and_then(gh);
-        Ok(json!({
-            "host": self.repo.as_ref().map(Repo::name),
-            "cli": gh.is_some(),
-            "prs": gh.and_then(|gh| self.prs(&gh)),
-            "base": self.base,
-            "branch": self.branch,
-            "title": title,
-            "body": body,
-        }))
-    }
-
-    /// The PR's first text.
-    // shortcut (proposed): from the branch's commits, as `gh pr create --fill` writes it, until
-    // 2.19's writer replaces this one function [D1029].
-    fn text(&self) -> io::Result<(String, String)> {
-        let range = format!("{}..HEAD", self.base_ref);
-        let out = git::read(
-            &self.checkout.root,
-            &["log", "--reverse", "--format=%s%x00%b%x00", &range, "--"],
-            &AtomicBool::new(false),
-        )?;
-        let text = String::from_utf8_lossy(&out);
-        let parts: Vec<&str> = text.split('\0').map(str::trim).collect();
-        let commits: Vec<(&str, &str)> = parts
-            .chunks(2)
-            .filter(|c| c.len() == 2 && !c[0].is_empty())
-            .map(|c| (c[0], c[1]))
-            .collect();
-        Ok(match &commits[..] {
-            [] => (String::new(), String::new()),
-            [(subject, body)] => (subject.to_string(), body.to_string()),
-            [(first, _), ..] => {
-                let list: Vec<String> = commits.iter().map(|(s, _)| format!("- {s}")).collect();
-                (first.to_string(), list.join("\n"))
-            }
-        })
-    }
-
-    pub fn push(&self) -> io::Result<()> {
-        push::push(
-            &self.checkout,
-            &self.remote,
-            &self.branch,
-            self.trusted,
-            &AtomicBool::new(false),
-        )
-    }
-
-    /// Pushes, then the host's new-PR page for the branch.
-    pub fn link(&self, title: &str, body: &str) -> io::Result<String> {
-        let Some(repo) = &self.repo else {
-            return err("This remote's host isn't one Brigadier knows.");
-        };
-        self.push()?;
-        Ok(link(repo, &self.base, &self.branch, title, body))
-    }
-
-    /// Pushes, then makes the PR through the user's own gh and returns its number and URL. If the
-    /// branch already has an open PR into the base, that one comes back instead.
-    pub fn create(&self, title: &str, body: &str, draft: bool) -> io::Result<Value> {
-        let Some((repo, gh)) = self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) else {
-            return err("gh isn't installed or signed in here.");
-        };
-        if title.trim().is_empty() {
-            return err("Give the PR a title.");
-        }
-        self.push()?;
-        let mut command = tool(&gh);
-        command
-            .env("GH_PROMPT_DISABLED", "1")
-            .current_dir(&self.checkout.root)
-            .args([
-                "pr",
-                "create",
-                &format!("--repo={}/{}", repo.host, repo.path),
-                &format!("--head={}", self.branch),
-                &format!("--base={}", self.base),
-                &format!("--title={title}"),
-                &format!("--body={body}"),
-            ]);
-        if draft {
-            command.arg("--draft");
-        }
-        let out = setup::run(&mut command, CREATE_SECS).map_err(io::Error::other)?;
-        let said = format!(
-            "{}\n{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let url =
-            (said.split_whitespace()).find(|w| w.starts_with("https://") && w.contains("/pull/"));
-        match (out.status.success(), url) {
-            (_, Some(url)) => Ok(self.made(url)),
-            (false, None) => err(failed(&out)),
-            (true, None) => err("gh made no PR it could name."),
-        }
-    }
-
-    /// A PR made or found for the branch, as the UI gets it: its number, read from its URL, and
-    /// the URL. Noted as the branch's open PR at once, so the step's next read has it.
-    fn made(&self, url: &str) -> Value {
-        let number = url.rsplit('/').next().and_then(|n| n.parse::<u64>().ok());
-        if number.is_some() {
-            note_open(&self.id, &self.branch, number);
-            // `prs.json` touched, so the app's watch reads the branch at once, made from a shell too.
-            let kept = fs::File::options()
-                .append(true)
-                .create(true)
-                .open(self.dir.join("prs.json"));
-            let _ = kept.and_then(|f| f.set_modified(std::time::SystemTime::now()));
-        }
-        json!({"number": number, "url": url})
-    }
 }
 
 /// Clones GitHub's `owner/name` into `dir` through gh, with gh's own sign-in and protocol [D168,

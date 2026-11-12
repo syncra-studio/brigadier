@@ -1,9 +1,9 @@
 //! The branch item's quick pick [D1020, D1021]: what it lists, and its moves. A session's own branch
-//! is renamed and its base changed in its record (`worktrees`); only a folder of the user's own (a
-//! Local checkout, the project folder) switches or makes branches, never while an agent works in it.
+//! never switches, its pick only copies [D62]; only a folder of the user's own (a Local checkout,
+//! the project folder) switches or makes branches, never while an agent works in it.
 
-use super::{Checkout, Target, folder, lock, push, read};
-use crate::{host, ids, load, session_dir, worktrees};
+use super::{Checkout, Target, folder, lock, read};
+use crate::{ids, session_dir, worktrees};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
@@ -14,9 +14,8 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
 }
 
-/// What the quick pick shows: the branches, newest first; a session's base; the host its branch
-/// pushes to and that branch's page there once published [D1030].
-pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result<Value> {
+/// What the folder's quick pick shows: the branches, newest first.
+pub fn branches(checkout: &Checkout) -> io::Result<Value> {
     let stop = AtomicBool::new(false);
     let out = read(
         &checkout.root,
@@ -47,39 +46,7 @@ pub fn branches(data: &Path, target: &Target, checkout: &Checkout) -> io::Result
             })
         })
         .collect();
-    let base = match target {
-        Target::Session(id) => crate::load(data, id)
-            .ok()
-            .and_then(|spec| crate::share::base(data, &spec)),
-        Target::Project(_) => None,
-    };
-    // The page of the branch it syncs with, on the remote that one's on, whatever it's called.
-    let (mut host_name, mut page) = (None, None);
-    let config = |key: String| super::sync::config(checkout, &key);
-    if let Ok(branch) = super::sync::branch(checkout)
-        && let Some(remote) = config(format!("branch.{branch}.remote"))
-        && let Some(merge) = config(format!("branch.{branch}.merge"))
-        && let Some(name) = merge.strip_prefix("refs/heads/")
-        && let Some(repo) = (push::url(checkout, &remote).ok()).and_then(|u| host::repo(&u))
-    {
-        host_name = Some(repo.name());
-        page = Some(host::branch_page(&repo, name));
-    }
-    let prs = match target {
-        Target::Session(id) => host::pr(data, id)
-            .ok()
-            .and_then(|p| p.list())
-            .and_then(|v| {
-                v.as_array().map(|rows| {
-                    rows.iter()
-                        .filter(|p| p["state"] == "open")
-                        .map(|p| p["number"].clone())
-                        .collect::<Vec<_>>()
-                })
-            }),
-        Target::Project(_) => None,
-    };
-    Ok(json!({"branches": branches, "base": base, "host": host_name, "page": page, "prs": prs}))
+    Ok(json!({"branches": branches}))
 }
 
 /// The sessions that work in this checkout, a subfolder of it included: none may have their branch
@@ -164,27 +131,4 @@ pub fn create(
         args.push(from);
     }
     git(checkout, &args, stop)
-}
-
-/// Renames what's checked out: a session's own branch through its record [D35, D1168], a
-/// folder's branch as VS Code does, its tracking kept.
-pub fn rename(
-    data: &Path,
-    target: &Target,
-    checkout: &Checkout,
-    new: &str,
-    stop: &AtomicBool,
-) -> io::Result<()> {
-    check_name(checkout, new)?;
-    match (target, checkout.worktree) {
-        (Target::Session(id), true) => {
-            load(data, id)?;
-            // Not while a Sync or push holds the checkout; the session's lock first, as everywhere.
-            let dir = session_dir(data, id);
-            let _one = worktrees::lock(&dir)?;
-            let _held = lock(checkout, true, stop)?;
-            worktrees::rename_held(&dir, new)
-        }
-        _ => git(checkout, &["branch", "-m", new], stop),
-    }
 }

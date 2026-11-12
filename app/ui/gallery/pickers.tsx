@@ -10,7 +10,7 @@ import { BranchPicker, type RepoState } from "../src/home/branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "../src/home/pills";
 import { showToast } from "../src/components/toast";
 import { useBranchPicker } from "../src/panel/branch-picker";
-import { BRANCHES, CLEAN, HOST } from "../src/panel/fake";
+import { BRANCHES, CLEAN } from "../src/panel/fake";
 import { asGroups } from "../src/session/model";
 import { Section } from "./parts";
 
@@ -95,12 +95,12 @@ export function BranchToggles({ loading, failed, onLoading, onFailed }: { loadin
   );
 }
 
-/** The panel's branch quick pick under the card's branch row: in the user's own folder it switches, in a session it offers its actions. A pick only closes here. */
+/** The panel's branch quick pick under the card's branch row: in the user's own folder it switches, in a session it offers its copies. A pick only closes here. */
 function PanelBranch({ folder }: { folder: boolean }) {
   const anchor = useRef<HTMLDivElement>(null);
   const [working, setWorking] = useState(false);
   const source = folder ? { ...CLEAN, checkout: "folder" as const, branch: "main" } : CLEAN;
-  const { open, pickers } = useBranchPicker({ data: { source, step: null, branches: BRANCHES, host: HOST, agentWorking: working }, base: "main", nowMs: Date.now(), anchor });
+  const { open, pickers } = useBranchPicker({ data: { source, branches: BRANCHES, agentWorking: working }, nowMs: Date.now(), anchor });
   return (
     <div className="flex flex-col items-start gap-3">
       <div ref={anchor}>

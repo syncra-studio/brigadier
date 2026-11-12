@@ -87,19 +87,6 @@ pub(crate) fn working(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
     })
 }
 
-/// Held through one of our own changes to `folder`: none of the other sessions working there
-/// starts a turn meanwhile, and the change is refused while one works [D1082].
-pub(crate) fn guard(
-    data: &Path,
-    folder: &Path,
-    except: Option<&str>,
-) -> io::Result<Option<fs::File>> {
-    let all = std::cell::OnceCell::new();
-    core::share::guard(data, folder, except, &|o| {
-        working(data, &o.id, all.get_or_init(procs::all))
-    })
-}
-
 /// Bytes a folder takes on disk, its links not followed.
 fn size(path: &Path) -> u64 {
     let mut stack = vec![path.to_path_buf()];

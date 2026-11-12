@@ -21,10 +21,6 @@ use std::time::{Duration, Instant};
 /// How the agents write their own commits, so theirs match the writer's [D1029].
 pub const STYLE: &str = "When you write a git commit message, write it the way this repository's recent commits are written. Otherwise: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No trailers or attribution in commits or pull requests.";
 
-/// The writer's rules, after its first line, which says what it writes.
-const RULES: &str = "Reply with the message only: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No quotes, no code fences, no trailers. Don't use any tool: everything you need is below.";
-/// Proposed: the diff the writer reads is cut after this many characters.
-const PATCH_CHARS: usize = 12_000;
 /// Proposed: the user's own messages the writer reads, newest first, and each one's length.
 const ASKS: usize = 10;
 const ASK_CHARS: usize = 500;
@@ -86,50 +82,6 @@ fn fail(why: impl Into<String>) -> Failure {
         .iter()
         .any(|w| why.to_lowercase().contains(&w.to_lowercase()));
     Failure { offline, why }
-}
-
-/// The repository's latest subjects and the session's own asks, the style and the why [D1029].
-fn context(subjects: &[String], asks: &[String]) -> String {
-    let mut text = String::new();
-    if !subjects.is_empty() {
-        text.push_str("\n\nMatch this repository's style: its form, prefixes, tense, capitals and length. Its latest commit subjects:");
-        for subject in subjects {
-            text.push_str(&format!("\n- {subject}"));
-        }
-    }
-    if !asks.is_empty() {
-        text.push_str("\n\nWhat the user asked for in this session, for the why:");
-        for ask in asks {
-            text.push_str(&format!("\n- {ask}"));
-        }
-    }
-    text
-}
-
-fn cut(patch: &str) -> String {
-    let shown: String = patch.chars().take(PATCH_CHARS).collect();
-    match shown.len() < patch.len() {
-        true => format!("{shown}\n[the rest of the diff is cut]"),
-        false => shown,
-    }
-}
-
-/// A commit message's prompt.
-pub fn commit_prompt(patch: &str, subjects: &[String], asks: &[String]) -> String {
-    format!(
-        "Write the commit message for these changes.\n{RULES}{}\n\nThe changes:\n{}",
-        context(subjects, asks),
-        cut(patch)
-    )
-}
-
-/// A pull request's prompt: its title on the first line, then its body.
-pub fn pr_prompt(patch: &str, commits: &[String], asks: &[String]) -> String {
-    format!(
-        "Write the pull request's title and body for these changes.\nReply with the title on the first line, of at most 72 characters, then a blank line and the body: a short summary of what changed and why. No quotes, no code fences, no trailers or attribution. Don't use any tool: everything you need is below.{}\n\nThe changes:\n{}",
-        context(commits, asks),
-        cut(patch)
-    )
 }
 
 /// The user's own messages in the session at `dir`, newest first, each cut short.

@@ -1,7 +1,7 @@
 //! Land's part of a session's record [D1028, D1049]: its last landing into the base, which goes
 //! wherever the record goes [D1082], and whether the branch still holds work that never landed.
 
-use super::{err, git, has_branch, read, write};
+use super::{git, has_branch, read, write};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -35,16 +35,6 @@ pub fn lands(dir: &Path) -> io::Result<Option<Lands>> {
         branch: o.branch,
         landing: o.landing,
     }))
-}
-
-/// Records a landing in the session's record, or puts back the one before (None: none). The
-/// caller holds the session's `lock`.
-pub fn set_landing_held(dir: &Path, landing: Option<Landing>) -> io::Result<()> {
-    let Some(mut owned) = read(dir)? else {
-        return err("This session has no worktree.".into());
-    };
-    owned.landing = landing;
-    write(dir, &owned)
 }
 
 /// A host-verified merge is recorded only while the recorded branch, base and clean HEAD agree.

@@ -14,7 +14,6 @@ use std::process::Command;
 mod branch;
 mod copy;
 pub use branch::rename_held;
-pub use branch::{rename, set_base};
 mod hand;
 pub(crate) mod landing;
 pub mod lost;

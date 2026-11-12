@@ -15,18 +15,13 @@ use std::thread;
 use std::time::Duration;
 
 pub mod branch;
-pub mod catch_up;
-pub mod commit;
 pub mod diff;
 pub mod files;
-pub mod land;
 pub mod last;
 mod listed;
-mod precheck;
 pub mod push;
 pub mod recover;
 pub mod risk;
-pub mod step;
 pub mod sync;
 pub mod truth;
 pub mod watch;

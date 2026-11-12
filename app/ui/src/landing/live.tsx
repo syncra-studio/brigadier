@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { showToast } from "../components/toast";
 import { ask, type Row, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
-import { refreshStep } from "../panel/git";
 import { gitDone, gitFailed } from "../panel/notice";
 import { openPr } from "../panel/open";
 import { type AgentChip, chipFor } from "./agent-chip";
@@ -109,7 +108,6 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
             }
           }
           read();
-          refreshStep();
         });
       }}
     />

@@ -1,19 +1,19 @@
 import { type ReactNode, useRef } from "react";
 
 import { FileTypeIcon } from "../components/composer/attachments";
+import { ComposerPill } from "../components/composer/composer";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ArrowUp, Branch, ChevronDown, ChevronRight } from "../icons";
-import { ArrowDown } from "../icons/sidebar";
-import { GitControl } from "./control";
+import { useDaemon } from "../daemon";
+import { Branch, ChevronDown, ChevronRight } from "../icons";
 import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
+import { SESSION_ITEMS } from "./source/quick-pick";
 import { Counts, Line, Note, PrLine } from "./source/rows";
-import { useSourceStep } from "./source/step";
 import { ago } from "../landing/pr-words";
-import { plural } from "./words";
 import { useBranchPicker } from "./branch-picker";
 
 /** One of the card's parts, a hairline under it as the old card's [D1075, D1198]; `end` ends its title row. */
@@ -33,31 +33,25 @@ export function CardSection({ title, end, children }: { title?: ReactNode; end?:
 
 /**
  * The card's one note, every fact it has joined in one line [D1198]: the checkout on another branch than its record's
- * [D1187], waiting for the turn [D1208], the base moved [D1282], merged on this machine, the base behind its own
- * upstream [D1193].
+ * [D1187], the base behind its own upstream [D1193].
  */
 function noteOf(data: SourceData): { text: string; warn: boolean } | null {
-  const { step, truth, freshness } = data;
-  const base = step?.base ?? "main";
+  const { truth, freshness } = data;
   const said: [string, boolean][] = [];
   if (truth?.mismatch && !truth.detached) said.push([`On ${truth.branch}, not ${truth.recordedBranch}`, true]);
-  if (data.agentWorking) said.push(["Waits for the turn to finish", false]);
-  if (step?.moved && step.landedAtMs === null) said.push([`${base} moved ${plural(step.moved, "commit")}: catch up first`, true]);
-  if (step?.landedAtMs) said.push([`Merged into ${base} on this machine`, false]);
   if (freshness?.behind && freshness.upstream) said.push([`${freshness.name} is ${freshness.behind} behind ${freshness.upstream}`, false]);
   return said.length ? { text: said.map(([text]) => text).join(" · "), warn: said.some(([, warn]) => warn) } : null;
 }
 
-/** The card has something whole to show: the read and its step, or why it can't read. Until then it isn't drawn at all. */
-export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing || data.error || (data.source && (data.stepRead !== false || data.offline)));
+/** The card has something whole to show: the checkout's read, or why it can't read. Until then it isn't drawn at all. */
+export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing || data.error || data.source);
 
 /**
- * The summary card's git part, The mix [D1186, D1198], with its control [D1278]: the project as a quiet title with the
- * control at its end; the branch row, a picker opening its quick pick, ↑n ↓n when not zero and the +/− counts opening
- * Review (no uncommitted count, D1209) [D1273]; one note line; a hairline, then the branch's pull requests in the old
- * card's icons, words and colours, the title and each row opening the Pull requests tab [D1017, D1116]. The counts,
- * the PR rows and the control change together from one read [D1263]. Disconnected, "Offline · 14:32" takes the
- * counts' place and the rest dims [D30, D1206]. Without `ops` (the gallery) it moves nothing.
+ * The summary card's git part, as the old card's [D64]: the project as a quiet title; the branch row, the composer's
+ * picker pill opening a session's copies menu or a folder's quick pick [D62, D72], with the +/− counts opening Review at its end (no uncommitted count, D1209) [D1273]; one note
+ * line; a hairline, then the branch's pull requests in the old card's icons, words and colours, the title and each row
+ * opening the Pull requests tab [D1017, D1116], then the Workers section [D65]. Disconnected, "Offline · 14:32" takes
+ * the counts' place and the rest dims [D30, D1206]. Without `ops` (the gallery) it moves nothing.
  */
 export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onReview, workers }: {
   data: SourceData;
@@ -67,15 +61,17 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   ops?: SourceOps;
   onPr?: (number: number) => void;
   onReview?: () => void;
-  /** The session's Workers section, between the branch and the PRs as the old card ordered them [D3045]. */
+  /** The session's Workers section, after the PRs [D65]. */
   workers?: ReactNode;
 }) {
-  const { source, step } = data;
+  const { source } = data;
   const offline = data.offline ?? false;
-  const control = useSourceStep({ data, session });
-  const prs = control.prs;
+  // The watch's kept PRs [D1009], the session row's where the gallery has none.
+  const rows = useDaemon().rows;
+  const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
+  const prs = data.prs ?? kept?.prs ?? [];
   const branchRow = useRef<HTMLDivElement>(null);
-  const { open, pickers } = useBranchPicker({ data, ops, base: step?.base ?? null, nowMs, anchor: branchRow });
+  const { picker, folder, copy, open, pickers } = useBranchPicker({ data, ops, session, nowMs, anchor: branchRow });
 
   if (data.truth?.missing) {
     return (
@@ -105,48 +101,55 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const shared = data.share?.with;
   const note = noteOf(data);
   const first = prs.find((pr) => pr.state === "open") ?? prs[0];
+  // Its start lines up with the title's; offline it can't open [D30].
+  const pill = { "aria-label": `Branch: ${name}`, disabled: offline, className: "-ms-2 max-w-full" };
+  const label = (
+    <span className="flex min-w-0 items-center gap-1">
+      <Branch />
+      <span className="truncate text-foreground">{name}</span>
+      {/* Both cut, so the share always shows [D1082]. */}
+      {shared && <span className="truncate">· shared with {shared}</span>}
+      <ChevronDown className="size-icon-xs" />
+    </span>
+  );
   return (
     <>
-      <CardSection title={project} end={step && <GitControl step={step} off={control.off} running={control.running} onRun={control.run} />}>
+      <CardSection title={project}>
         {/* A watch that failed after its first read: the last read stays under it [D30]. */}
         {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
         <div ref={branchRow} className="flex min-w-0 items-center gap-2">
-          <Line icon={<Branch />} {...(!offline && { onClick: () => open("branch") })}>
-            <span className="inline-flex max-w-full items-center gap-1 align-middle">
-              <span className="truncate">{name}</span>
-              {/* Both cut, so the share always shows [D1082]. */}
-              {shared && <span className="truncate text-muted-foreground">· shared with {shared}</span>}
-              {!offline && <ChevronDown className="size-icon-xs shrink-0 text-muted-foreground" />}
-            </span>
-          </Line>
+          {folder ? (
+            <ComposerPill {...pill} aria-expanded={picker === "branch"} onClick={() => open("branch")}>
+              {label}
+            </ComposerPill>
+          ) : (
+            // The composer's pickers' pill and menu [D72], its menu only the copies [D62].
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger render={<ComposerPill {...pill} />}>{label}</DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="start">
+                {SESSION_ITEMS.map((item) => (
+                  <DropdownMenuItem key={item.id} onClick={() => copy(item.id)}>
+                    {item.icon}
+                    {item.title}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <span className="flex-1" />
           {offline ? (
             <Offline readAtMs={data.readAtMs ?? null} />
           ) : (
-            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-              {source.behind > 0 && (
-                <span className="flex items-center text-warning">
-                  <ArrowDown className="size-icon-xs" />
-                  {source.behind}
-                </span>
-              )}
-              {source.ahead > 0 && (
-                <span className="flex items-center">
-                  <ArrowUp className="size-icon-xs" />
-                  {source.ahead}
-                </span>
-              )}
-              {(added > 0 || removed > 0) && (
-                <button type="button" aria-label="Review the changes" onClick={onReview} className="cursor-pointer rounded-control hover:underline focus-visible:focus-ring">
-                  <Counts added={added} removed={removed} />
-                </button>
-              )}
-            </span>
+            (added > 0 || removed > 0) && (
+              <button type="button" aria-label="Review the changes" onClick={onReview} className="shrink-0 cursor-pointer rounded-control hover:underline focus-visible:focus-ring">
+                <Counts added={added} removed={removed} />
+              </button>
+            )
           )}
         </div>
         {note && <Note text={note.text} warn={note.warn} />}
       </CardSection>
-      {workers}
-      {(first || control.kept?.error) && (
+      {(first || kept?.error) && (
         <CardSection
           title={
             <Tooltip>
@@ -163,14 +166,12 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
               <PrLine key={pr.number} pr={pr} onClick={() => onPr?.(pr.number)} />
             ))}
             {/* A watch read that failed: the last PRs stay above, with their age and why [D1009]. */}
-            {control.kept?.error && (
-              <Note warn text={["Couldn't check", control.kept.okAt && ago(control.kept.okAt, nowMs), control.kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />
-            )}
+            {kept?.error && <Note warn text={["Couldn't check", kept.okAt && ago(kept.okAt, nowMs), kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />}
           </div>
         </CardSection>
       )}
+      {workers}
       {pickers}
-      {control.dialogs}
     </>
   );
 }

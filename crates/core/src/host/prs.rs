@@ -182,34 +182,6 @@ impl Pr {
         self.prs(&self.repo.as_ref().and_then(gh)?)
     }
 
-    /// A lost create response is recovered only from this repository's head, branch and base.
-    pub fn find(&self) -> io::Result<Value> {
-        let Some((repo, gh)) = self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) else {
-            return Ok(Value::Null);
-        };
-        let mut command = tool(&gh);
-        command.args([
-            "pr",
-            "list",
-            &format!("--repo={}/{}", repo.host, repo.path),
-            &format!("--head={}", self.branch),
-            &format!("--base={}", self.base),
-            "--state=open",
-            "--limit=100",
-            "--json=url,headRefName,headRepository",
-        ]);
-        let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-        if !out.status.success() {
-            return Err(io::Error::other(failed(&out)));
-        }
-        let rows: Vec<Value> = serde_json::from_slice(&out.stdout)?;
-        Ok(rows
-            .iter()
-            .find(|p| belongs(p, repo, &self.branch))
-            .and_then(|p| p["url"].as_str())
-            .map_or(Value::Null, |url| self.made(url)))
-    }
-
     fn record_merge(&self, pr: &Value) {
         let (Some(head), Some(commit)) =
             (pr["headRefOid"].as_str(), pr["mergeCommit"]["oid"].as_str())

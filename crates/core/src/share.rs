@@ -1,11 +1,11 @@
 //! Sessions sharing one folder [D1070]: a "here" fork works in its source's folder, a worktree or
-//! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], who lands its work
-//! [D1082], and the guard our own changes to it take so no other session's turn runs meanwhile.
+//! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], and who lands its work
+//! [D1082].
 
-use crate::rewind::{checkout_lock, turn_paths};
+use crate::rewind::turn_paths;
 use crate::{Spec, fork, git, ids, load, worktrees};
 use serde_json::{Value, json};
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -77,29 +77,6 @@ pub fn title(spec: &Spec) -> String {
         .ok()
         .filter(|t| !t.trim().is_empty())
         .unwrap_or_else(|| "Another session".into())
-}
-
-/// Held through one of our own changes to a shared folder: each turn start holds the checkout
-/// lock shared (`session::fence`), so none starts meanwhile, and none may be running now [D1082].
-/// None where nobody else uses the folder. `busy` is the session's own test, with no lock of its
-/// own: a start that passed its check holds the shared lock until its turn is logged [D172].
-pub fn guard(
-    data: &Path,
-    folder: &Path,
-    except: Option<&str>,
-    busy: &dyn Fn(&Spec) -> bool,
-) -> io::Result<Option<File>> {
-    if in_folder(data, folder, except).is_empty() {
-        return Ok(None);
-    }
-    let lock = checkout_lock(data, true)?;
-    if let Some(o) = in_folder(data, folder, except).iter().find(|o| busy(o)) {
-        return Err(io::Error::other(format!(
-            "{} is working in this folder. Wait for its turn to end.",
-            title(o)
-        )));
-    }
-    Ok(Some(lock))
 }
 
 /// Who lands session `id`'s work instead of it (merge into base, a pull request): the folder's

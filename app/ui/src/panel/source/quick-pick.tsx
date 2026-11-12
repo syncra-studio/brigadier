@@ -3,7 +3,7 @@ import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useMemo,
 import { cx } from "../../components/cx";
 import { Input } from "../../components/input";
 import { Popover, PopoverContent } from "../../components/popover";
-import { ArrowUpRight, Branch as BranchIcon, Copy, Pencil, Plus } from "../../icons";
+import { Branch as BranchIcon, Copy, Plus } from "../../icons";
 import type { Branch } from "../types";
 import { ago } from "../words";
 
@@ -129,16 +129,12 @@ export function QuickPick({ place, placeholder, items, off = null, search = true
   );
 }
 
-/** A session's quick pick: what fits a branch that is the session. No switching [D1021]; the host is named by data [D1030]. */
-export function sessionItems(base: string, host: string | null): PickItem[] {
-  return [
-    { id: "copy", icon: <Copy />, title: "Copy branch name" },
-    { id: "rename", icon: <Pencil />, title: "Rename branch…" },
-    { id: "lands", icon: <BranchIcon />, title: "Change what it lands into…", note: `now ${base}` },
-    ...(host ? [{ id: "open", icon: <ArrowUpRight />, title: `Open branch on ${host}` }] : []),
-    { id: "new", icon: <Plus />, title: "New session from another branch…", rule: true },
-  ];
-}
+/** A session's quick pick: copies only, as its branch is its own and never switches [D62]. */
+export const SESSION_ITEMS: PickItem[] = [
+  { id: "id", icon: <Copy />, title: "Copy session id" },
+  { id: "path", icon: <Copy />, title: "Copy session path" },
+  { id: "copy", icon: <Copy />, title: "Copy branch name" },
+];
 
 /**
  * The user's own folder's quick pick, VS Code's: create, create from, then its branches and remote branches, each
@@ -164,17 +160,16 @@ export function folderItems(branches: Branch[] | null, current: string | null, n
   ];
 }
 
-/** The name box in the quick pick's place: Create's new branch name and Rename's. Enter takes it, Escape closes it. */
-export function BranchNameBox({ place, placeholder, hint, initial = "", onName, onClose }: {
+/** The name box in the quick pick's place: Create's new branch name. Enter takes it, Escape closes it. */
+export function BranchNameBox({ place, placeholder, hint, onName, onClose }: {
   place: Place;
   placeholder: string;
   /** What Enter does, under the field. */
   hint: string;
-  initial?: string;
   onName?: (name: string) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(initial);
+  const [name, setName] = useState("");
   return (
     <Surface place={place} onClose={onClose}>
       <Input
@@ -183,7 +178,6 @@ export function BranchNameBox({ place, placeholder, hint, initial = "", onName, 
         value={name}
         aria-label={placeholder}
         placeholder={placeholder}
-        onFocus={(event) => event.target.select()}
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => {
           // Enter that ends an input method's composition only ends it.

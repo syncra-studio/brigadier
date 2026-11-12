@@ -11,11 +11,11 @@ import type { Branch } from "../types";
  * the item) and Rust's answer settles it, the watch's next read showing the counts and the name [D30, D1143].
  */
 
-/** What the quick pick lists, as Rust reads it when it opens. `page`: the branch on its host, once published. */
-export type BranchRead = { branches: Branch[]; base: string | null; host: string | null; page: string | null; working: boolean; prs?: number[] | null };
+/** What the folder's quick pick lists, as Rust reads it when it opens. */
+export type BranchRead = { branches: Branch[]; working: boolean };
 
-type Op = { syncing: boolean; naming: string | null };
-const NONE: Op = { syncing: false, naming: null };
+type Op = { naming: string | null };
+const NONE: Op = { naming: null };
 const ops = new Map<string, Op>();
 const listeners = new Set<() => void>();
 const keyOf = (target: Target) => JSON.stringify(target);
@@ -53,23 +53,10 @@ export function failed(target: Target, reply: Record<string, any>): void {
   gitFailed(target, said, details);
 }
 
-/** Sync (pull then push) or Publish: the sync item spins until Rust answers. */
-export function sync(target: Target, verb: "sync" | "publish", branch: string): void {
-  if (opOf(target).syncing) return;
-  put(target, { syncing: true });
-  run(target, [verb], (reply) => {
-    put(target, { syncing: false });
-    if (!reply.ok) return failed(target, reply);
-    gitDone(target);
-    showToast(verb === "publish" ? `Published ${branch}` : `Synced ${branch}`, { tone: "success" });
-  });
-}
-
-/** Rename, switch or create: the item shows `name` at once, until the watch reads it or Rust says no. `done`: after it's made. */
-export function name(target: Target, args: string[], name: string, done?: () => void): void {
+/** Switch or create: the item shows `name` at once, until the watch reads it or Rust says no. */
+export function name(target: Target, args: string[], name: string): void {
   put(target, { naming: name });
   run(target, args, (reply) => {
-    if (reply.ok) done?.();
     // A read that never shows it (git took another name) doesn't hold it.
     if (reply.ok) return void setTimeout(() => opOf(target).naming === name && put(target, { naming: null }), 3000);
     put(target, { naming: null });
@@ -79,15 +66,6 @@ export function name(target: Target, args: string[], name: string, done?: () => 
 
 /** The watch read the branch `name` showed: it's settled. */
 export const named = (target: Target) => put(target, { naming: null });
-
-/** Changes what the session lands into; `done` reads again what follows the base [D1143]. */
-export function setBase(target: Target, base: string, done: () => void): void {
-  run(target, ["base", base], (reply) => {
-    if (!reply.ok) return failed(target, reply);
-    done();
-    showToast(`Lands into ${base} now`, { tone: "success" });
-  });
-}
 
 /** The quick pick's list, read as it opens; null when Rust couldn't read it, after saying why. */
 export function readBranches(target: Target, done: (read: BranchRead | null) => void): void {
