@@ -100,6 +100,12 @@ fn ran(command: &mut Command, secs: u64) -> io::Result<()> {
     }
 }
 
+/// Whether a folder is in one macOS asks the user about (or the system's own): looking at it, even
+/// to check it is a repository, raises a prompt.
+pub fn protected(home: &Path, path: &Path) -> bool {
+    PROTECTED.iter().any(|f| path.starts_with(home.join(f)))
+}
+
 /// When a repository was last worked in: its index's or HEAD's last change.
 fn used_ms(repo: &Path) -> u64 {
     let modified = |f: &str| {
@@ -118,9 +124,7 @@ fn used_ms(repo: &Path) -> u64 {
 pub fn find(data: &Path) -> io::Result<Vec<Value>> {
     let home = fs::canonicalize(home_path("")).unwrap_or_else(|_| home_path(""));
     let data_dir = fs::canonicalize(data).unwrap_or_else(|_| data.to_path_buf());
-    let usable = |p: &Path| {
-        !p.starts_with(&data_dir) && !PROTECTED.iter().any(|f| p.starts_with(home.join(f)))
-    };
+    let usable = |p: &Path| !p.starts_with(&data_dir) && !protected(&home, p);
     let history: Vec<PathBuf> = thread::scope(|s| {
         let all = adapters::all().map(|a| s.spawn(move || a.projects()));
         all.into_iter()

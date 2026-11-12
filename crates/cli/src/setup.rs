@@ -153,9 +153,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     .flat_map(|t| t.join().unwrap_or_default())
                     .collect::<Vec<_>>()
             });
-            let mut seen = BTreeSet::new();
+            // Each folder checked once (the history repeats them), and none macOS asks about.
+            let home = adapters::home_path("");
+            let home = fs::canonicalize(&home).unwrap_or(home);
+            let (mut checked, mut seen) = (BTreeSet::new(), BTreeSet::new());
             let found: Vec<String> = found
                 .iter()
+                .filter(|p| !repos::protected(&home, p) && checked.insert(p.as_path()))
                 .filter_map(|p| projects::root(p))
                 .map(|p| p.display().to_string())
                 .filter(|p| !taken.contains(p))
