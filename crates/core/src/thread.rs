@@ -74,9 +74,6 @@ pub struct Thread {
     /// last of them ends [D67, D114].
     #[serde(default)]
     held: HashMap<String, (Open, Value)>,
-    /// The turn whose last subagent just ended: the wake turn that follows joins it [D106].
-    #[serde(default)]
-    woke: Option<Open>,
     /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
     /// rows' `cid`s, rows by a custom id, and each turn's first row.
     cids: HashSet<String>,
@@ -343,6 +340,7 @@ impl Thread {
         self.interrupted_line();
         self.close_turn("interrupted", ts);
         self.end_children("failed", ts);
+        self.settle_held();
     }
 
     /// True while a turn or a subagent still runs.

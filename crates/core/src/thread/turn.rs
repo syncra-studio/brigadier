@@ -183,21 +183,17 @@ impl Thread {
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
         self.shown.insert(t.id.clone());
-        // A turn no one sent, right after the subagents of the one before ended, or while they still
-        // run: the agent woke for them [D106].
-        let woke = self.woke.take();
+        // A turn no one sent while a turn is held for its subagents, or right after they ended: the
+        // agent woke for them, and carries that block on [D106, D118]. Any other ends what waits.
         let wakes = matches!(t.origin.as_str(), "agent" | "system") && t.switch.is_null();
-        let woke = woke.or_else(|| {
-            let last = self.held.values().map(|(o, _)| o.at).max()?;
-            let id = self.turns[last]["id"].as_str()?.to_string();
-            wakes
-                .then(|| self.held.remove(&id))
-                .flatten()
-                .map(|(o, _)| o)
-        });
-        match woke.filter(|_| wakes) {
-            Some(o) => self.rejoin(o),
-            None => self.new_turn(t, ts),
+        let last = (self.held.values().map(|(o, _)| o.at).max())
+            .and_then(|at| self.turns[at]["id"].as_str().map(String::from));
+        match last.filter(|_| wakes).and_then(|id| self.held.remove(&id)) {
+            Some((o, _)) => self.rejoin(o),
+            None => {
+                self.settle_held();
+                self.new_turn(t, ts)
+            }
         }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
         let model = t

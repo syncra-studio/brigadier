@@ -59,6 +59,8 @@ export type Turn = {
   waitedMs?: number;
   /** Its subagents still running after its answer: its block stays open, counting, until the last ends [D114]. */
   helpers?: number;
+  /** Answered while its subagents run, or till the agent wakes once they ended: one open block, drawn as running [D118]. */
+  held?: boolean;
   /** When those subagents last did anything (ms); past 30 minutes of quiet, the block offers Stop. */
   heardAt?: number;
 };

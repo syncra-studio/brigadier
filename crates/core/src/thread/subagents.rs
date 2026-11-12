@@ -6,12 +6,14 @@ use super::{Open, Thread};
 use serde_json::{Value, json};
 
 impl Thread {
-    /// A turn's end: its work folds now, or, while subagents it started run on, when the last of
-    /// them ends; till then its header counts on, saying how many run [D67, D114].
+    /// A turn's end: its work folds now, or, while subagents it started run on, it stays one open
+    /// block, its answer an update in it, counting on and saying how many run [D67, D114, D118].
     pub(super) fn end_work(&mut self, o: Open, work: Value, ts: u64) {
         let helpers = self.helpers(&o.id);
         if helpers > 0 {
             self.turns[o.at]["helpers"] = helpers.into();
+            self.turns[o.at]["held"] = true.into();
+            self.final_answer(&o, false);
             self.held.insert(o.id.clone(), (o, work));
         } else if !work.is_null() {
             self.push_work(work, ts.saturating_sub(o.started).saturating_sub(o.waited));
@@ -24,9 +26,9 @@ impl Thread {
             .count()
     }
 
-    /// A subagent at row `row` ended: the turn that waits on it counts one fewer, and with none
-    /// left it ends now, its work folding with the subagent's time in it. The wake turn its agent
-    /// starts next may still join it.
+    /// A subagent at row `row` ended: the turn that waits on it counts one fewer. With none left it
+    /// stays open for the turn its agent wakes for next, which carries it on; one that can't come
+    /// now, as another turn runs, folds it at once.
     pub(super) fn helper_ended(&mut self, row: usize, ts: u64) {
         let turn = self.items[row]["turnId"].as_str().unwrap_or("").to_string();
         let Some(at) = self.held.get(&turn).map(|(o, _)| o.at) else {
@@ -34,19 +36,40 @@ impl Thread {
         };
         let left = self.helpers(&turn);
         self.turns[at]["helpers"] = left.into();
-        self.changed_turns.insert(at);
-        if left > 0 {
-            return;
-        }
-        let Some((o, work)) = self.held.remove(&turn) else {
-            return;
-        };
         self.turns[at]["endedAt"] = ts.into();
-        if !work.is_null() {
-            self.push_work(work, ts.saturating_sub(o.started).saturating_sub(o.waited));
+        self.changed_turns.insert(at);
+        if left == 0 && self.open.is_some() {
+            self.settle_held();
         }
-        // Not once another turn runs: a wake then would land after that one.
-        self.woke = self.open.is_none().then_some(o);
+    }
+
+    /// Every held turn whose subagents all ended, and whose wake didn't come, folds now: its time
+    /// up to its last subagent's end, its last answer final.
+    pub(super) fn settle_held(&mut self) {
+        let done: Vec<String> = (self.held.iter())
+            .filter(|(_, (o, _))| self.turns[o.at]["helpers"] == 0)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in done {
+            let (o, work) = self.held.remove(&id).unwrap();
+            let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(o.started);
+            self.turns[o.at]["held"] = Value::Null;
+            self.changed_turns.insert(o.at);
+            self.final_answer(&o, true);
+            if !work.is_null() {
+                self.push_work(
+                    work,
+                    ended.saturating_sub(o.started).saturating_sub(o.waited),
+                );
+            }
+        }
+    }
+
+    fn final_answer(&mut self, o: &Open, last: bool) {
+        if let Some(answer) = o.answer {
+            self.items[answer as usize - 1]["final"] = last.into();
+            self.changed_items.insert(answer as usize - 1);
+        }
     }
 
     /// The turn the agent woke for, on its own or at Brigadier's word, carries on the one its
@@ -56,11 +79,9 @@ impl Thread {
         let turn = &mut self.turns[o.at];
         turn["status"] = "running".into();
         turn["endedAt"] = Value::Null;
+        turn["held"] = Value::Null;
         self.changed_turns.insert(o.at);
-        if let Some(answer) = o.answer {
-            self.items[answer as usize - 1]["final"] = false.into();
-            self.changed_items.insert(answer as usize - 1);
-        }
+        self.final_answer(&o, false);
         // The view keeps the work it has until this turn's new work replaces it by turn id.
         if let Some(i) = self.work.iter().position(|w| w["turnId"] == o.id.as_str()) {
             self.work.remove(i);

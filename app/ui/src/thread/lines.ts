@@ -104,12 +104,14 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       counts.push(out.length);
     }
     const turn = turns.get(item.turnId);
+    // A turn held open for its subagents draws as running: one block, never folded till it ends [D118].
+    const live = turn?.status === "running" || turn?.held === true;
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
     // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
-    if (turn && opens(before) && before!.turnId === item.turnId && !ends(item) && (item.kind !== "message" || turn.status !== "done" || done || turn.denied)) {
+    if (turn && opens(before) && before!.turnId === item.turnId && !ends(item) && (item.kind !== "message" || turn.status !== "done" || live || done || turn.denied)) {
       const key = workKey(turn.id);
-      const foldable = done !== undefined && turn.status !== "running";
+      const foldable = done !== undefined && !live;
       const opened = foldable ? open.has(key) : null;
       // A turn its agent woke to carry on runs again, the view still holding its earlier work [D106].
       push({ type: "work", id: key, gap: "turn", turn, work: foldable ? done : undefined, open: opened });
@@ -124,7 +126,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     // Thinking is a row only while it lasts.
     if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
-      if (group.line && turn?.status === "running") group.line.live = item;
+      if (group.line && live) group.line.live = item;
       if (!group.open) continue;
       const step: StepLine = { type: "item", id: item.id, gap: group.line ? "step" : gap(item, false), item, turn, step: !group.single };
       if (group.line) group.line.steps.push(step);
@@ -134,7 +136,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     group = null;
     if (item.kind === "group") {
       // A finished group of one step draws as that step; running subagents draw as their own rows, never under a header saying the same [D85].
-      const single = turn?.status === "running" ? item.steps.every((step) => step.kind === "agent") : item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
+      const single = live ? item.steps.every((step) => step.kind === "agent") : item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
       const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), live: undefined, steps: [] };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };

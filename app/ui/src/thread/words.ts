@@ -35,9 +35,10 @@ const ENDED: Record<Turn["status"], string> = {
 /** "Working for 12s" while the turn runs (from `now`), "Worked for 3m 4s" once it's done. */
 export function workWords(turn: Turn, work: Work | undefined, now: number): string {
   // Like Rust's `Work.ms`, the turn's finished waits on the user don't count.
-  const ms = work?.ms ?? (turn.helpers ? now : (turn.endedAt ?? now)) - turn.startedAt - (turn.waitedMs ?? 0);
+  const ms = work?.ms ?? (turn.held ? now : (turn.endedAt ?? now)) - turn.startedAt - (turn.waitedMs ?? 0);
   // Answered, it still waits on its subagents, counting on [D114].
   if (turn.helpers) return `Working for ${duration(ms)} · ${turn.helpers} ${turn.helpers === 1 ? "subagent" : "subagents"} running`;
+  if (turn.held) return `Working for ${duration(ms)}`;
   if (turn.status === "running" && ms < 1000) return "Working";
   // The actions turned down in it, beside the time (D487).
   const denied = turn.denied ?? work?.denied;

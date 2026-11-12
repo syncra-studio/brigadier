@@ -20,12 +20,12 @@ const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
  * 1m 2s" when it waited), which opens and shuts the turn's folded work.
  */
 export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
-  const now = useSecond(turn.status === "running" || Boolean(turn.helpers));
+  const now = useSecond(turn.status === "running" || Boolean(turn.held));
   const { waitingSince, waitedMs } = turn;
   const label =
     turn.status === "running" && waitingSince != null
       ? `Waiting for ${duration(now - waitingSince)}`
-      : turn.status === "done" && !turn.helpers && waitedMs !== undefined && waitedMs >= 1000
+      : turn.status === "done" && !turn.held && waitedMs !== undefined && waitedMs >= 1000
         ? `${workWords(turn, work, now)} · waited for ${duration(waitedMs)}`
         : workWords(turn, work, now);
   if (open === null) {
