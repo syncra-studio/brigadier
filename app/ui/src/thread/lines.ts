@@ -113,6 +113,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       kept = done?.kept ?? [];
     } else if (fold && !within(item.n, fold)) fold = null;
     before = item;
+    // Brigadier's own words to the agent (a Resume, a carry-on) are no row, as the old app's: only the work they start shows.
+    if (item.kind === "message" && item.role === "user" && item.origin === "system") continue;
 
     if (fold && !kept.includes(item.n!)) continue;
     // Thinking is a row only while it lasts.
@@ -127,8 +129,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     group = null;
     if (item.kind === "group") {
-      // A finished group of one step draws as that step.
-      const single = turn?.status !== "running" && item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
+      // A finished group of one step draws as that step; running subagents draw as their own rows, never under a header saying the same [D85].
+      const single = turn?.status === "running" ? item.steps.every((step) => step.kind === "agent") : item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
       const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), live: undefined, steps: [] };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };

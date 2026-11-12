@@ -226,15 +226,6 @@ export function UserBubble({
   );
 }
 
-/** A line the app sent on the user's behalf: centred and muted. */
-export function SystemLine({ text }: { text: string }) {
-  return (
-    <div className="flex justify-center text-center text-xs text-muted-foreground">
-      <p className="max-w-4/5 whitespace-pre-wrap">{text}</p>
-    </div>
-  );
-}
-
 /**
  * The agent's message: `children` is the rendered reply. Under a turn's `final` answer, or one a follow-up
  * joined, its actions stay in view: copy, and the time only on hover or focus. Commentary between the turn's

@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, useRef } from "react";
 
 import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
@@ -176,21 +176,28 @@ export function ChildAgentRow({
 }) {
   const running = progress === "running";
   const now = useSecond(running && startedAt !== undefined);
+  // Its last step's words stay until the next one's, so the line under it never comes and goes between steps [D85].
+  const held = useRef(current);
+  if (current) held.current = current;
   if (running) {
+    const doing = current ?? held.current;
     return (
       <div className="flex min-w-0 flex-col">
         <p className={cx(ROW, "text-foreground")}>
-          <Spinner className="size-4 shrink-0 motion-safe:animate-spin" />
+          {/* Clipped: its turning corners would make an opened group's steps scroll, and their edge fade blink [D85]. */}
+          <span className="flex shrink-0 overflow-clip">
+            <Spinner className="size-4 motion-safe:animate-spin" />
+          </span>
           <span className="min-w-0 truncate">
             Running a subagent: <span className="font-medium">{title}</span>
           </span>
           {startedAt !== undefined && <span className="shrink-0 text-muted-foreground tabular-nums">{duration(now - startedAt)}</span>}
         </p>
-        {current && (
+        {doing && (
           <p className={cx(HANGING, "py-0.5")}>
             {/* Keyed by its words: each new step starts the sweep again. */}
-            <span key={`${current.step}${current.input}`} className="block truncate text-sm leading-5.25 shimmer">
-              {VERBS[current.step][0]} {current.input}
+            <span key={`${doing.step}${doing.input}`} className="block truncate text-sm leading-5.25 shimmer">
+              {VERBS[doing.step][0]} {doing.input}
             </span>
           </p>
         )}

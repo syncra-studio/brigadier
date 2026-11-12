@@ -15,7 +15,7 @@ import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, 
 import { FileChangeRow } from "./file-change";
 import { ShieldExclamation } from "../../icons";
 import { ChangeLine, InlineStatus } from "./line";
-import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./message";
+import { AssistantMessage, ThinkingLine, UserBubble } from "./message";
 import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
@@ -61,7 +61,6 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
     case "group":
       return null;
     case "message":
-      if (item.origin === "system") return <SystemLine text={item.text} />;
       if (item.origin === "peer" && item.from) return <PeerBubble from={item.from} text={item.text} at={item.sentAt ?? 0} />;
       if (item.role === "user") {
         return (

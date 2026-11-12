@@ -296,7 +296,6 @@ export function ThreadGallery() {
           <Wide label="long">{item({ ...base("u2"), kind: "message", role: "user", text: LONG_USER, streaming: false })}</Wide>
           <Wide label="markdown, line breaks kept">{item({ ...base("u4"), kind: "message", role: "user", text: MD_USER, streaming: false })}</Wide>
           <Wide label="long, a code block across the cut (cut after it)">{item({ ...base("u5"), kind: "message", role: "user", text: CODE_USER, streaming: false })}</Wide>
-          <Wide label="system line">{item({ ...base("u3"), kind: "message", role: "user", origin: "system", text: "Continued from the last session.", streaming: false })}</Wide>
         </Row>
         <Row name="User message: delivery">
           <Wide label="look only: the states session sets them">
