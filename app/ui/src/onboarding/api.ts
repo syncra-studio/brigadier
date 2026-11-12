@@ -35,6 +35,8 @@ declare global {
       notify(notice: { title: string; body: string; silent: boolean; session?: string }): Promise<"shown" | "blocked" | "failed">;
       /** The Dock's badge: the count, none at 0. */
       badge(count: number): void;
+      /** The menu bar item's Running list: the sessions an agent works in now. */
+      running(sessions: { id: string; title: string }[]): void;
       /** A click on a notice, with its session. */
       onNoticeClick(listener: (session: string) => void): () => void;
       openNotificationSettings(): void;

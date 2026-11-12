@@ -1,6 +1,6 @@
 // Only supervises: opens the window, starts the daemon, wires the page to the utility process. The
 // exceptions are what only a main process can do: the native folder picker, staging the window for the
-// first launch's intro (intro.ts), and macOS notices and the Dock badge (notices.ts) (D19, D40, D71, D200).
+// first launch's intro (intro.ts), macOS notices and the Dock badge (notices.ts) and the menu bar's item (tray.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { copyFile } from "node:fs/promises";
@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 
 import { holdForIntro } from "./intro";
 import { serveNotices } from "./notices";
+import { keepOnClose, serveTray } from "./tray";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
 
@@ -178,6 +179,7 @@ function openWindow(): void {
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, themeBackground, introColours);
+  keepOnClose(window);
   void window.loadURL(`${ORIGIN}/`);
 }
 
@@ -329,6 +331,7 @@ app.on("open-file", (event, file) => {
 void app.whenReady().then(() => {
   setMenu();
   serveNotices();
+  serveTray();
   startDaemon();
   serveUi();
   openWindow();

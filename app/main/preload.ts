@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("brigadier", {
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),
   badge: (count: number) => ipcRenderer.send("badge", count),
+  running: (sessions: { id: string; title: string }[]) => ipcRenderer.send("running", sessions),
   onNoticeClick: (listener: (session: string) => void) => {
     const heard = (_event: unknown, session: string) => listener(session);
     ipcRenderer.on("notice-click", heard);
