@@ -53,13 +53,14 @@ pub fn model_ref(spec: &Spec) -> Value {
 }
 
 /// A level as its permission rules, the last match winning [D175]. Ask (proposed): it reads,
-/// searches and asks questions freely, and asks before anything else and before reading secrets.
+/// searches, asks questions and keeps its to-do list freely [D116], and asks before anything else
+/// and before reading secrets.
 pub fn rules(spec: &Spec) -> Value {
     let rule = |action: &str, resource: &str, effect: &str| json!({"action": action, "resource": resource, "effect": effect});
     if spec.level.as_deref() == Some("full") {
         return json!([rule("*", "*", "allow")]);
     }
-    let free = ["read", "glob", "grep", "question"].map(|a| rule(a, "*", "allow"));
+    let free = ["read", "glob", "grep", "question", "todowrite"].map(|a| rule(a, "*", "allow"));
     let secrets = [
         rule("read", "*.env", "ask"),
         rule("read", "*.env.*", "ask"),
