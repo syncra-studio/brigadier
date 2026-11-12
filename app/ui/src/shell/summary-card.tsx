@@ -6,7 +6,8 @@ import { Popover } from "@base-ui/react/popover";
 import { cx } from "../components/cx";
 import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { GitCard } from "../panel/card";
+import { AttachmentsCard, type CardFile, GitCard } from "../panel/card";
+import { type ComposerRow, daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
@@ -249,7 +250,26 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const { rows, projects } = useDaemon();
   const projectId = rows?.find((row) => row.id === owner)?.project;
   const project = projects?.find((each) => each.id === projectId)?.name ?? null;
-  const card = has ? <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} /> : null;
+  const running = (rows?.find((row) => row.id === owner) as ComposerRow | undefined)?.running === true;
+  const [files, setFiles] = useState<CardFile[]>([]);
+  // Read again as a turn starts or ends, which is when a message's files have become the session's.
+  useEffect(() => {
+    if (!has) return;
+    let live = true;
+    void daemonRun(["attach", owner, "list"]).then((reply) => {
+      const sent = (reply.files ?? []).filter((file: { sent: boolean }) => file.sent);
+      if (live) setFiles(sent.map((file: CardFile) => ({ id: file.id, name: file.name, mime: file.mime, url: `/attachment/${owner}/${file.id}` })));
+    });
+    return () => {
+      live = false;
+    };
+  }, [owner, has, running]);
+  const card = has ? (
+    <>
+      <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} />
+      <AttachmentsCard files={files} onOpen={(file) => window.brigadier?.openAttachment(`/attachment/${owner}/${file.id}`)} />
+    </>
+  ) : null;
   return (
     <SummaryPane owner={owner} card={card}>
       {children}
