@@ -21,7 +21,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier sessions          the sessions, newest first
   brigadier read <id>[#n]     a session's last messages, or around one reference; --user for only the user's own words
   brigadier send <id> \"…\"    message another session; --wait for its answer
-  brigadier wait <id>         wait until a session stops working, up to a timeout
+  brigadier wait [<id>]       wait until a session, else one of your workers, stops working, up to a timeout
   brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
   brigadier models            the agents, models and efforts you may use
@@ -75,7 +75,7 @@ prompt, and a message answers the question.",
             &["--wait", "--allow"],
         ),
         "wait" => (
-            "brigadier wait <id> [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
+            "brigadier wait [<id>] [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message; with no id, the first of your workers to. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
             &["--timeout"],
             &[],
         ),
@@ -226,7 +226,9 @@ pub fn run(
     }
     let takes_id = matches!(call.cmd, "read" | "send" | "wait" | "stop");
     let id = match (takes_id, call.id) {
-        (true, None) => return refuse(&format!("`brigadier {}` needs a session id.", call.cmd)),
+        (true, None) if call.cmd != "wait" => {
+            return refuse(&format!("`brigadier {}` needs a session id.", call.cmd));
+        }
         (false, Some(extra)) => {
             return refuse(&format!("`brigadier {}` takes no {extra:?}.", call.cmd));
         }
@@ -237,7 +239,7 @@ pub fn run(
         Some((id, at)) if call.cmd == "read" => (id, Some(at)),
         _ => (id, None),
     };
-    if takes_id && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
+    if !id.is_empty() && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
         return refuse(&format!(
             "No session {id:?}. `brigadier sessions` lists them."
         ));
@@ -255,9 +257,10 @@ pub fn run(
                 .map(|n| crate::relay::read(data, id, at, n, call.has("--user")))
         }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
-        "wait" => call
-            .number("--timeout", WAIT, WAIT_MAX)
-            .map(|s| wait(data, me, id, s, rows, here)),
+        "wait" => workers::waited(data, me, id).and_then(|ids| {
+            call.number("--timeout", WAIT, WAIT_MAX)
+                .map(|s| wait(data, me, &ids, s, rows, here))
+        }),
         "stop" => Ok(workers::stop(data, me, id)),
         "send"
             if call.has("--allow")
@@ -396,38 +399,44 @@ fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
     json!({"ok": true, "sessions": list, "more": more, "text": text})
 }
 
+/// Waits for the first of `ids` to stop working or need its user.
 fn wait(
     data: &Path,
     me: &str,
-    id: &str,
+    ids: &[String],
     secs: u64,
     rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Value {
     let started = Instant::now();
+    let mut state = String::new();
     loop {
-        let row = rows().into_iter().find(|r| r["id"] == id);
-        let Some(row) = row else {
-            return refuse(&format!("Session {id} is gone."));
-        };
-        let state = str_of(&row, "state").to_string();
-        let idle = row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
-        if idle || state == "waiting_answer" || state == "asking" {
-            let last = crate::relay::archive(data, id, false)
-                .into_iter()
-                .rev()
-                .find(|e| e.from == "agent");
-            let last = last.map(|e| e.text).unwrap_or_default();
-            // Its parent's own wait takes the worker's result, which then isn't sent again.
-            if let Some(result) = workers::take(data, me, id, None) {
-                return json!({"ok": true, "done": true, "state": state, "last": last, "result": result, "text": result});
+        let rows = rows();
+        for id in ids.iter().map(String::as_str) {
+            let Some(row) = rows.iter().find(|r| r["id"] == id) else {
+                return refuse(&format!("Session {id} is gone."));
+            };
+            state = str_of(row, "state").to_string();
+            let idle =
+                row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
+            if idle || state == "waiting_answer" || state == "asking" {
+                let last = crate::relay::archive(data, id, false)
+                    .into_iter()
+                    .rev()
+                    .find(|e| e.from == "agent");
+                let last = last.map(|e| e.text).unwrap_or_default();
+                // Its parent's own wait takes the worker's result, which then isn't sent again.
+                if let Some(result) = workers::take(data, me, id, None) {
+                    return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "result": result, "text": result});
+                }
+                let text = format!("{id} is {state}. Its last message:\n{}", last.trim_end());
+                return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "text": text});
             }
-            let text = format!("{id} is {state}. Its last message:\n{}", last.trim_end());
-            return json!({"ok": true, "done": true, "state": state, "last": last, "text": text});
         }
         if started.elapsed() >= Duration::from_secs(secs) || !here() {
             let text = format!(
-                "{id} is still working after {secs}s. Wait again, or end your turn and check later."
+                "Still working after {secs}s: {}. Wait again, or end your turn and check later.",
+                ids.join(", ")
             );
             return json!({"ok": true, "done": false, "state": state, "text": text});
         }

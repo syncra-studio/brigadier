@@ -62,7 +62,7 @@ pub(super) fn path_of(data: &Path, pid: &str, wid: &str, turn: &str) -> PathBuf 
     dir_of(data, pid).join(format!("{wid}.{turn}.json"))
 }
 
-fn all(data: &Path, pid: &str) -> Vec<(PathBuf, Res)> {
+pub(super) fn all(data: &Path, pid: &str) -> Vec<(PathBuf, Res)> {
     let mut all: Vec<(PathBuf, Res)> = (fs::read_dir(dir_of(data, pid)).into_iter().flatten())
         .flatten()
         .filter_map(|e| read_json(&e.path()).map(|r| (e.path(), r)))
@@ -381,7 +381,7 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
 }
 
 /// Whether a result still has something to say: a worker's ask only while it waits.
-fn fresh(data: &Path, r: &Res) -> bool {
+pub(super) fn fresh(data: &Path, r: &Res) -> bool {
     r.how != "asks" || super::asks::waits(data, &r.wid, &r.turn)
 }
 

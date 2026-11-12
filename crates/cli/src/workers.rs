@@ -196,6 +196,27 @@ pub fn busy(data: &Path, id: &str) -> bool {
         || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
 }
 
+/// What session `me`'s `wait` is on: the session it names, else its own workers still working or
+/// with a result it hasn't taken, as the old app's bare wait.
+pub fn waited(data: &Path, me: &str, id: &str) -> Result<Vec<String>, Value> {
+    if !id.is_empty() {
+        return Ok(vec![id.into()]);
+    }
+    let results = result::all(data, me);
+    let pending = |w: &str| {
+        (results.iter()).any(|(_, r)| r.wid == w && r.state == "written" && result::fresh(data, r))
+    };
+    let ids: Vec<String> = (records(data, me).into_iter().map(|r| r.wid))
+        .filter(|w| busy(data, w) || pending(w))
+        .collect();
+    match ids.is_empty() {
+        true => Err(refuse(
+            "You have no workers working. `brigadier wait <id>` waits on a session.",
+        )),
+        false => Ok(ids),
+    }
+}
+
 /// `brigadier stop <id>` for session `me`'s agent: only its own workers and theirs [D3032].
 pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     let Some(r) = below(data, me).into_iter().find(|r| r.wid == id) else {
