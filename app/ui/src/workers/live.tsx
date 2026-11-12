@@ -14,7 +14,7 @@ import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
 import { setPanelOpen, usePanelMemory } from "../panel/memory";
 import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
-import type { Item, Turn } from "../thread/item";
+import type { Item, Setup, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
@@ -311,11 +311,11 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
   const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
-  const [{ items, turns }, setSnapshot] = useState<{ items: Item[]; turns: Turn[] }>({ items: [], turns: [] });
+  const [{ items, turns, setup }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null }>({ items: [], turns: [] });
   const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
-    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [] }));
+    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup }));
     return () => {
       live = false;
     };
@@ -338,7 +338,7 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
           </TitlebarTips>
         }
       />
-      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} />}</ParentName>
+      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
     </section>
   );
 }

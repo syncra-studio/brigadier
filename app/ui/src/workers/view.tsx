@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ArrowLeft, ChevronRight } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Body } from "../components/thread/body";
-import type { Item, Turn, Work } from "../thread/item";
+import { SetupRow } from "../components/thread/setup";
+import type { Item, Setup, Turn, Work } from "../thread/item";
 import { type Line, lineMaker } from "../thread/lines";
 import { Markdown } from "../thread/markdown";
 import { GroupLine } from "../thread/rows";
@@ -171,7 +172,7 @@ function thinking(items: readonly Item[]): boolean {
  * Its thread, read only, as the old WorkerTranscript: the brief, the receipt, how long it worked, its earlier rows
  * folded once it's over ("4 previous messages"), its last three, the live line while it works, and what it waits for.
  */
-export function WorkerThread({ worker, items, turns }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[] }) {
+export function WorkerThread({ worker, items, turns, setup }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[]; setup?: Setup | null }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -210,6 +211,8 @@ export function WorkerThread({ worker, items, turns }: { worker: Worker; items: 
         {worker.brief && <WorkerBrief id={worker.id} text={worker.brief} />}
         {worker.receipt && <p data-slot="worker-picked" className="text-sm text-muted-foreground">{worker.receipt}</p>}
         <WorkHeader worker={worker} turns={turns} />
+        {/* Its worktree, first in its work as in the thread [D70]. */}
+        {setup && <SetupRow keep={`${worker.id}:setup`} setup={setup} />}
         {count > 0 && (
           <Collapsible open={open} onOpenChange={setOpen}>
             <CollapsibleTrigger className="flex min-h-7 w-full cursor-pointer items-center gap-1 border-b border-border text-start text-sm text-faint-foreground hover:text-foreground focus-visible:focus-ring">
