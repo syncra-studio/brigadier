@@ -57,17 +57,22 @@ export function ProvidersPage({ detail }: { detail?: string }) {
   const { failed, act } = useFailed();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
 
+  // Opening shows the last check; the agents are checked at launch, on a schedule, after a setup run and on Check again.
   useEffect(() => {
     if (!online) return;
-    void checkAll(true);
     void loadAccounts();
     // Usage is read with the accounts: again every few minutes while the page is open.
     const timer = window.setInterval(() => void loadAccounts(), USAGE_MS);
     return () => clearInterval(timer);
   }, [online]);
 
-  const checkAgain = () => void act("check", () => Promise.all([checkAll(), loadAccounts()]));
+  const checkAgain = async () => {
+    setRechecking(true);
+    await act("check", () => Promise.all([checkAll(), loadAccounts()]));
+    setRechecking(false);
+  };
   const switchAgentsTo = (on: boolean) => (on ? setAsk({ kind: "agents" }) : void act("agents", () => setAgents(false)));
   const switchAccountsTo = (agent: SwitchAgent, on: boolean) => (on ? setAsk({ kind: "auto", agent }) : void act(`${agent.name}:auto`, () => setAuto(agent.name, false)));
 
@@ -114,7 +119,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
         <SettingsPage
           title="Providers"
           description="The coding agents Brigadier runs, the accounts you use with them, and which models do what."
-          actions={<CheckAgainButton busy={checking.has("*") || accounts.loading} label="Check the agents and accounts again" onClick={checkAgain} />}
+          actions={<CheckAgainButton busy={checking.has("*") || rechecking} label="Check the agents and accounts again" onClick={() => void checkAgain()} />}
         >
           {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
           <ErrorLine error={failed.check ?? checkError ?? accounts.error} />
