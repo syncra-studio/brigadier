@@ -11,13 +11,14 @@ import { SentAttachments } from "../composer/attachments";
 import type { Draft } from "../composer/draft";
 import { PASTE_LABEL } from "../../shell/attachment-tab";
 import { openAttachment } from "../../shell/tab-store";
-import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
+import { ApprovalRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
 import { ShieldExclamation } from "../../icons";
 import { ChangeLine, InlineStatus } from "./line";
 import { AssistantMessage, ThinkingLine, UserBubble } from "./message";
 import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
+import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 
 function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
@@ -119,18 +120,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
     case "question":
       return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && turn?.status === "running"} />;
     case "childAgent":
-      return (
-        <ChildAgentRow
-          keep={item.id}
-          title={item.title}
-          progress={item.progress}
-          startedAt={item.startedAt}
-          endedAt={item.endedAt}
-          current={item.current}
-          steps={item.steps}
-          answer={item.answer}
-        />
-      );
+      return <SubagentRow item={item} />;
     case "compaction":
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;

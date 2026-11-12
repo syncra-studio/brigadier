@@ -98,6 +98,23 @@ impl Agent {
                     .spawn();
                 emit(json!({"t": "tool_done", "id": id, "ok": started.is_ok()}));
             }
+            // `agent:N`: a subagent that takes N one-second steps of its own, then answers [D78].
+            "agent" => {
+                self.tools += 1;
+                let id = format!("ag{}-{}", self.tools, now());
+                emit(json!({"t": "tool", "id": id, "agent": "Find the parser"}));
+                for i in 0..n {
+                    let step = format!("{id}-{i}");
+                    emit(
+                        json!({"t": "tool", "id": step, "name": "shell", "command": format!("rg parser crates/{i}"), "parent": id}),
+                    );
+                    thread::sleep(Duration::from_secs(1));
+                    emit(json!({"t": "tool_done", "id": step, "ok": true, "parent": id}));
+                }
+                emit(
+                    json!({"t": "tool_done", "id": id, "ok": true, "output": "The parser is in crates/core/src/norm.rs."}),
+                );
+            }
             "tool_sleep" => {
                 if !self.tool(word, n, done_before, true, &format!("sleep {left}")) {
                     return false;

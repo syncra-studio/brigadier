@@ -57,9 +57,9 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
  * One worker on one line: its glyph, its name (a soft "working" while it works), and how long it has worked or how
  * long ago it finished; End in the time's place on hover. Its state in words is its tooltip. A click opens it.
  */
-export const AgentRow: FC<{ worker: Worker; act: Act }> = ({ worker, act }) => {
+export const AgentRow: FC<{ worker: Worker; act?: Act }> = ({ worker, act }) => {
   const { open } = useContext(WorkersPanel);
-  const stoppable = onHand(worker);
+  const stoppable = act && onHand(worker);
   return (
     <li className="group/row relative flex min-w-0">
       <button
@@ -97,7 +97,7 @@ function AgentSection({ title, workers, page, trailing, empty, className, act }:
   trailing?: string;
   empty?: string;
   className?: string;
-  act: Act;
+  act?: Act;
 }) {
   const [pages, setPages] = useState(1);
   if (workers.length === 0 && !empty) return null;
@@ -135,8 +135,8 @@ function AgentSection({ title, workers, page, trailing, empty, className, act }:
 const ACTIVE_PAGE = 4;
 const DONE_PAGE = 10;
 
-/** Every worker of the session, newest first: at work first, then finished. */
-export function WorkerList({ workers, act }: { workers: readonly Worker[]; act: Act }) {
+/** Every worker of the session, or its CLI's own subagents (no `act`: nothing to end from here), newest first: at work first, then finished. */
+export function WorkerList({ workers, act, label = WORKERS_LABEL }: { workers: readonly Worker[]; act?: Act; label?: string }) {
   const active = workers.filter((worker) => !finished(worker));
   const done = workers.filter(finished);
   const held = active.filter(waiting).length;
@@ -148,7 +148,7 @@ export function WorkerList({ workers, act }: { workers: readonly Worker[]; act: 
           workers={active}
           page={ACTIVE_PAGE}
           trailing={held > 0 ? `${held} waiting` : undefined}
-          empty={`No active ${WORKERS_LABEL.toLowerCase()}`}
+          empty={`No active ${label.toLowerCase()}`}
           act={act}
         />
         <AgentSection title="Done" workers={done} page={DONE_PAGE} className="mt-6" act={act} />

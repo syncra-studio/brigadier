@@ -64,14 +64,10 @@ impl Thread {
             "tool" => {
                 let step = str_of("step");
                 if let Some(parent) = item["parent"].as_str() {
-                    // A subagent's own step: its row shows it as the current one [D78].
                     if let Some(at) = self.row_of(&turn, parent)
                         && !step.is_empty()
                     {
-                        let row = &mut self.items[at];
-                        row["steps"] = (row["steps"].as_u64().unwrap_or(0) + 1).into();
-                        row["current"] = json!({"step": step, "input": item["input"]});
-                        self.changed_items.insert(at);
+                        self.sub_started(at, item, ts);
                     }
                     return;
                 }
@@ -90,8 +86,7 @@ impl Thread {
                 let row = match step.as_str() {
                     "agent" => {
                         json!({"kind": "childAgent", "sessionId": item["id"], "title": item["input"],
-                        "progress": "running", "startedAt": at, "endedAt": null, "current": null,
-                        "steps": null, "answer": null})
+                        "progress": "running", "startedAt": at, "endedAt": null, "answer": null})
                     }
                     "edit" => {
                         json!({"kind": "fileChange", "changes": item["changes"], "progress": "running"})
@@ -117,8 +112,7 @@ impl Thread {
             "tool_done" => {
                 if let Some(parent) = item["parent"].as_str() {
                     if let Some(at) = self.row_of(&turn, parent) {
-                        self.items[at]["current"] = Value::Null;
-                        self.changed_items.insert(at);
+                        self.sub_done(at, item, ts);
                     }
                     return;
                 }
@@ -144,7 +138,7 @@ impl Thread {
                     }
                     "childAgent" => {
                         row["endedAt"] = ended.into();
-                        row["current"] = Value::Null;
+                        super::subagents::settle(row, progress);
                         // Its end may come twice (its result and its notification): an empty one keeps the
                         // answer. A stopped one's says only that it was stopped.
                         let answer = str_of("output");
@@ -203,9 +197,9 @@ impl Thread {
                 self.end_wait(ts);
             }
             // A process gone ends its background subagents with it.
-            "exited" => self.end_children("failed"),
+            "exited" => self.end_children("failed", ts),
             "stopped" => {
-                self.end_children("cancelled");
+                self.end_children("cancelled", ts);
                 if let Some(by @ ("user" | "pause")) = item["by"].as_str() {
                     if let Some(o) = self.open.as_mut() {
                         o.stop.0.get_or_insert(by.into());

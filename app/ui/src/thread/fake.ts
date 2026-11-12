@@ -164,8 +164,6 @@ function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
           sessionId: id(fake, "session"),
           title: sentence(fake).slice(0, 48),
           progress: "done",
-          current: null,
-          steps: fake.rand() < 0.9 ? between(fake, 2, 40) : null,
           answer: fake.rand() < 0.85 ? paragraph(fake) : null,
         };
       case "other":

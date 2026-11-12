@@ -1,22 +1,21 @@
-import { type ComponentType, type ReactNode, useRef } from "react";
+import { type ComponentType, type ReactNode } from "react";
 
-import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, Spinner, TextShorterConcise, Tools, Warning } from "../../icons";
+import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
-import type { ApprovalAction, Item, Progress, StepKind } from "../../thread/item";
+import type { ApprovalAction, Item, Progress } from "../../thread/item";
 import type { PendingQuestion, QuestionItem } from "../composer/question";
-import { duration, hhmm, useSecond } from "../../thread/words";
+import { hhmm } from "../../thread/words";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { InfoTip, WithTip } from "./tip";
-import { ToolBox, VERBS } from "./tool";
+import { ToolBox } from "./tool";
 
 const WITHDRAWN = "withdrawn";
 
 /** Hangs under a row's words on a hairline, from its icon. */
-const HANGING = "ms-2 border-s border-divider ps-3.5 text-sm text-row-foreground";
 
 /** What an approval asks to do, as the old app's approval kinds drew it. */
 const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
@@ -145,89 +144,6 @@ export function QuestionRow({
     >
       {icon}
       <Words verb={asked} />
-    </OpeningRow>
-  );
-}
-
-/**
- * A subagent the agent started, hard to miss while it runs and calm once done. Running: a spinning mark,
- * "Running a subagent: Find the parser" in full white, how long it has run, and its current step hanging
- * under it on a hairline. Done: "Ran a subagent: Find the parser", its time and steps quiet after it, opening
- * to its answer. Whatever isn't reported (times, step, count, answer) isn't shown.
- */
-export function ChildAgentRow({
-  keep,
-  title,
-  progress,
-  startedAt,
-  endedAt,
-  current,
-  steps,
-  answer,
-}: {
-  keep: string;
-  title: string;
-  progress: Progress;
-  startedAt?: number;
-  endedAt?: number | null;
-  current?: { step: StepKind; input: string } | null;
-  steps?: number | null;
-  answer?: string | null;
-}) {
-  const running = progress === "running";
-  const now = useSecond(running && startedAt !== undefined);
-  // Its last step's words stay until the next one's, so the line under it never comes and goes between steps [D85].
-  const held = useRef(current);
-  if (current) held.current = current;
-  if (running) {
-    const doing = current ?? held.current;
-    return (
-      <div className="flex min-w-0 flex-col">
-        <p className={cx(ROW, "text-foreground")}>
-          {/* Clipped: its turning corners would make an opened group's steps scroll, and their edge fade blink [D85]. */}
-          <span className="flex shrink-0 overflow-clip">
-            <Spinner className="size-4 motion-safe:animate-spin" />
-          </span>
-          <span className="min-w-0 truncate">
-            Running a subagent: <span className="font-medium">{title}</span>
-          </span>
-          {startedAt !== undefined && <span className="shrink-0 text-muted-foreground tabular-nums">{duration(now - startedAt)}</span>}
-        </p>
-        {doing && (
-          <p className={cx(HANGING, "py-0.5")}>
-            {/* Keyed by its words: each new step starts the sweep again. */}
-            <span key={`${doing.step}${doing.input}`} className="block truncate text-sm leading-5.25 shimmer">
-              {VERBS[doing.step][0]} {doing.input}
-            </span>
-          </p>
-        )}
-      </div>
-    );
-  }
-  const head = (
-    <>
-      <StepIcon kind="agent" />
-      {progress === "pending" ? (
-        <Words verb="Waiting to run a subagent:" object={title} />
-      ) : (
-        <Words verb={progress === "cancelled" ? "Stopped a subagent:" : "Ran a subagent:"} object={progress === "failed" ? `${title} — failed` : title} />
-      )}
-    </>
-  );
-  const took = startedAt !== undefined && endedAt != null ? duration(endedAt - startedAt) : null;
-  const tail = [took, steps != null ? `${steps.toLocaleString()} ${steps === 1 ? "step" : "steps"}` : null].filter(Boolean).join(" · ");
-  const trail = tail && <span className="tabular-nums text-row-object">{tail}</span>;
-  if (answer == null) {
-    return (
-      <p className={ROW}>
-        {head}
-        {trail && <span className="ms-1">{trail}</span>}
-      </p>
-    );
-  }
-  return (
-    <OpeningRow keep={keep} trail={trail || undefined} detail={<p className={cx(HANGING, "whitespace-pre-wrap wrap-anywhere")}>{answer}</p>}>
-      {head}
     </OpeningRow>
   );
 }

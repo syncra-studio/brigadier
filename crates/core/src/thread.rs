@@ -16,6 +16,7 @@ mod page;
 mod peer;
 mod rows;
 mod saved;
+mod subagents;
 mod team;
 mod turn;
 
@@ -313,7 +314,7 @@ impl Thread {
         self.fold.interrupt(Value::Null, ts);
         self.interrupted_line();
         self.close_turn("interrupted", ts);
-        self.end_children("failed");
+        self.end_children("failed", ts);
     }
 
     /// True while a turn or a subagent still runs.
@@ -326,9 +327,11 @@ impl Thread {
         &self.fold
     }
 
-    fn end_children(&mut self, progress: &str) {
+    fn end_children(&mut self, progress: &str, ts: u64) {
         for (_, at) in std::mem::take(&mut self.children) {
             self.items[at]["progress"] = progress.into();
+            self.items[at]["endedAt"] = ts.into();
+            subagents::settle(&mut self.items[at], progress);
             self.changed_items.insert(at);
         }
     }

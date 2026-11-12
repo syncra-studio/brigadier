@@ -164,10 +164,8 @@ export type Item = Base &
         /** When it started and ended (ms); null while it runs. */
         startedAt?: number;
         endedAt?: number | null;
-        /** Its running step: the kind and what it acts on (a path, a command, a query, another tool's name); null between steps. */
-        current?: { step: StepKind; input: string } | null;
-        /** How many steps it took so far. */
-        steps?: number | null;
+        /** Its own steps, as tool rows without output, for the side panel; absent where its CLI doesn't stream them [D115]. */
+        log?: Item[];
         /** Its final answer, once done. */
         answer?: string | null;
       }

@@ -81,14 +81,7 @@ export function blocks(text: string) {
 
 const LONG_CODE = "```bash\n" + Array.from({ length: 30 }, (_, i) => `echo "step ${i + 1}"`).join("\n") + "\n```";
 
-/** A running subagent's own steps, one a second. */
-const SUBAGENT_STEPS: { step: StepKind; input: string }[] = [
-  { step: "read", input: "src/thread/lines.ts" },
-  { step: "search", input: "“toLines” in src" },
-  { step: "read", input: "src/thread/item.ts" },
-  { step: "run", input: "pnpm typecheck" },
-];
-/** A subagent that ran from a minute ago for 1m 2s in 12 steps, with its answer; each state overrides what it lacks. */
+/** A subagent that ran from a minute ago for 1m 2s, with its answer; each state overrides what it lacks. */
 const agent = (id: string, progress: Progress): Extract<Item, { kind: "childAgent" }> => ({
   ...base(id, progress === "running" || progress === "pending" ? RUNNING : DONE),
   kind: "childAgent",
@@ -97,8 +90,6 @@ const agent = (id: string, progress: Progress): Extract<Item, { kind: "childAgen
   progress,
   startedAt: NOW - 60_000,
   endedAt: NOW + 2_000,
-  current: null,
-  steps: 12,
   answer: "The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold.",
 });
 
@@ -372,23 +363,17 @@ export function ThreadGallery() {
         <Row
           name="Subagent row"
         >
-          <Wide label="waiting · running (its step changes each second)">
+          <Wide label="waiting · started working (its steps are in the side panel)">
             <div className="flex flex-col gap-1">
-              {item({ ...agent("c-wait", "pending"), startedAt: undefined, endedAt: null, steps: null, answer: null }, RUNNING)}
-              {item({ ...agent("c-run", "running"), endedAt: null, current: SUBAGENT_STEPS[tick % SUBAGENT_STEPS.length], answer: null }, RUNNING)}
+              {item({ ...agent("c-wait", "pending"), startedAt: undefined, endedAt: null, answer: null }, RUNNING)}
+              {item({ ...agent("c-run", "running"), endedAt: null, answer: null }, RUNNING)}
             </div>
           </Wide>
-          <Wide label="done, open · failed · stopped" open>
+          <Wide label="finished · failed · stopped">
             <div className="flex flex-col gap-1">
               {item(agent("c-done", "done"))}
-              {item({ ...agent("c-fail", "failed"), endedAt: NOW - 51_000, steps: 2, answer: null })}
-              {item({ ...agent("c-stop", "cancelled"), endedAt: NOW - 40_000, steps: 4, answer: null })}
-            </div>
-          </Wide>
-          <Wide label="no step or count reported: running · done">
-            <div className="flex flex-col gap-1">
-              {item({ ...agent("c-run-bare", "running"), endedAt: null, current: null, steps: null, answer: null }, RUNNING)}
-              {item({ ...agent("c-done-bare", "done"), steps: null, answer: null })}
+              {item({ ...agent("c-fail", "failed"), endedAt: NOW - 51_000, answer: null })}
+              {item({ ...agent("c-stop", "cancelled"), endedAt: NOW - 40_000, answer: null })}
             </div>
           </Wide>
         </Row>

@@ -24,16 +24,19 @@ import { WORKERS_LABEL } from "./list";
  */
 
 /** Its header: back, its glyph and name, its model and state (a click shows its details) and the panel's own actions; no End here. */
-export function WorkerHeader({ worker, details, onBack, onToggleDetails, actions }: {
+export function WorkerHeader({ worker, details = false, onBack, onToggleDetails, actions, list = WORKERS_LABEL }: {
   worker: Worker;
-  details: boolean;
+  /** The list Back goes to. */
+  list?: string;
+  details?: boolean;
   onBack: () => void;
-  onToggleDetails: () => void;
+  /** Absent for one with no details to show (a CLI's own subagent): its state stands as words. */
+  onToggleDetails?: () => void;
   actions?: ReactNode;
 }) {
   return (
     <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2">
-      <TooltipIconButton tooltip={details ? "Back to worker" : `Back to ${WORKERS_LABEL.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
+      <TooltipIconButton tooltip={details ? "Back to worker" : `Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
         <ArrowLeft />
       </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />
@@ -41,6 +44,9 @@ export function WorkerHeader({ worker, details, onBack, onToggleDetails, actions
         {worker.name}
       </h2>
       {/* Its model at the end; a click shows its details. Where the header is short it gives way first, the model before its state. */}
+      {!onToggleDetails ? (
+        <span className="ms-auto min-w-0 shrink-1000 truncate text-label text-muted-foreground">{worker.word}</span>
+      ) : (
       <Tooltip>
         <TooltipTrigger
           render={
@@ -61,6 +67,7 @@ export function WorkerHeader({ worker, details, onBack, onToggleDetails, actions
           Worker details · {worker.model} · {worker.word}
         </TooltipContent>
       </Tooltip>
+      )}
       {actions}
     </header>
   );

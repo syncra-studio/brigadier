@@ -18,6 +18,7 @@ import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerState
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
+import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
@@ -81,8 +82,8 @@ const stop = (parent: string, ids: readonly string[]) =>
     return false;
   });
 
-/** Whether each session's Workers panel is open and which worker it shows (null: the list), as the old app's. */
-type Shown = { open: boolean; worker: string | null };
+/** Whether each session's Workers panel is open, which worker or subagent it shows (null: the list), and which list. */
+type Shown = { open: boolean; worker: string | null; tab?: string };
 let shown: Record<string, Shown> = {};
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
@@ -98,9 +99,9 @@ let width: number | null = null;
 /** Opens a worker of `owner` in its Workers panel: its chip in a message, or a message just sent to it. */
 export const openWorker = (owner: string, worker: string) => show(owner, { open: true, worker });
 
-/** A worker named anywhere opens it in its parent's Workers panel; null opens the list. */
-function Opens({ owner, children }: { owner: string; children: ReactNode }) {
-  const open = (worker: string | null) => show(owner, { open: true, worker });
+/** A worker named anywhere opens it in its parent's Workers panel; null opens the list, `tab`'s. */
+export function Opens({ owner, tab, children }: { owner: string; tab?: string; children: ReactNode }) {
+  const open = (worker: string | null) => show(owner, { open: true, worker, tab });
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
@@ -203,6 +204,7 @@ function subscribeFold(onChange: () => void) {
  */
 export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (width: number) => void }) {
   const workers = useWorkers(owner);
+  const agents = useAgents(owner);
   const shown = useShown(owner);
   // Folded, it shows only once opened there, and each fold change closes it; the wide choice stays, as the old useSidebarChoice's.
   const fold = useSyncExternalStore(subscribeFold, folds);
@@ -255,6 +257,10 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
   }, [filesOpen, open, files.width, owner, worker, fold]);
 
   const opened = workers.find((each) => each.id === worker);
+  const agent = opened ? undefined : agents.find((each) => each.id === worker);
+  // Workers, and the CLI's own subagents once it has any, each a list of its own.
+  const tabs = [...(workers.length > 0 || agents.length === 0 ? [WORKERS_LABEL] : []), ...(agents.length > 0 ? [SUBAGENTS_LABEL] : [])];
+  const tab = shown.tab && tabs.includes(shown.tab) ? shown.tab : tabs[0]!;
   return (
     <div
       data-slot="workers-panel"
@@ -266,7 +272,7 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
       <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
         <div ref={content} className="right-panel-width flex h-full flex-col">
           <Opens owner={owner}>
-            {!opened && <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords={finishedWords(workers)} onSelect={() => {}} onClose={close} />}
+            {!opened && !agent && <PanelTabs active={tab} tabs={tabs} finishedWords={finishedWords(workers)} onSelect={(next) => show(owner, { ...shown, tab: next })} onClose={close} />}
             <div
               id="workers-panel-content"
               className={cx("flex min-h-0 flex-1 flex-col overflow-clip bg-background transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
@@ -274,6 +280,10 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
               {mounted &&
                 (opened ? (
                   <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
+                ) : agent ? (
+                  <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { open: true, worker: null, tab: SUBAGENTS_LABEL })} onClose={close} />
+                ) : tab === SUBAGENTS_LABEL ? (
+                  <WorkerList workers={agents.map(asSubagent).toReversed()} label={SUBAGENTS_LABEL} />
                 ) : (
                   <WorkerList workers={workers.toReversed()} act={act(owner)} />
                 ))}
@@ -345,9 +355,10 @@ function doneWords(workers: readonly Worker[]): string {
  * A worker at work, as the old card's WorkerLineRow: its glyph, its name, its state in a soft word ("working",
  * shimmering; "paused") and its +N −N, under its pause/resume and End on hover [D3045]. The row opens its panel.
  */
-function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
+function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
   const { open } = useContext(WorkersPanel);
   const here = onHand(worker);
+  const controls = here && act;
   // A finished one reads only done or ended here; a paused one, paused.
   const word = here ? lowerFirst(worker.word) : DONE.has(worker.kind) ? "done" : "ended";
   const changed = (worker.added ?? 0) + (worker.removed ?? 0) > 0;
@@ -356,14 +367,14 @@ function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
       <Line
         onClick={() => open(worker.id)}
         // The pointer on its controls is still on the row: the wash stays.
-        className={cx(here && "group-hover/row:before:bg-muted group-has-focus-visible/row:before:bg-muted")}
+        className={cx(controls && "group-hover/row:before:bg-muted group-has-focus-visible/row:before:bg-muted")}
         icon={<WorkerGlyph id={worker.id} className="size-4" />}
-        end={changed && <span className={cx("text-2xs", here && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
+        end={changed && <span className={cx("text-2xs", controls && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
       >
         {worker.name}
         <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
       </Line>
-      {here && (
+      {controls && (
         <span
           data-slot="summary-row-action"
           className="row-backing row-backing-washed pointer-events-none absolute inset-y-0 end-0 flex items-center ps-4 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100"
@@ -381,28 +392,33 @@ function WorkerLine({ worker, act }: { worker: Worker; act: Act }) {
  * Workers panel, or the worker's own.
  */
 export function WorkersCard({ owner }: { owner: string }) {
-  const workers = useWorkers(owner).toReversed();
+  return <TeamCard owner={owner} title={WORKERS_LABEL} workers={useWorkers(owner)} act={act(owner)} />;
+}
+
+/** The card's section for a session's workers or its CLI's own subagents, oldest first; with no `act`, no controls. */
+export function TeamCard({ owner, title, workers: all, act, tab }: { owner: string; title: string; workers: readonly Worker[]; act?: Act; tab?: string }) {
+  const workers = all.toReversed();
   if (workers.length === 0) return null;
   const active = workers.filter(onHand);
   const ended = doneWords(workers);
   // A few at work get a line each; so does a lone worker that finished.
   const lined = active.length > 0 && active.length <= WORKER_LINES ? active : workers.length === 1 ? workers : [];
   return (
-    <Opens owner={owner}>
-      <CardSection title={WORKERS_LABEL}>
-        <WorkersRows owner={owner} workers={workers} active={active} lined={lined} ended={ended} />
+    <Opens owner={owner} tab={tab}>
+      <CardSection title={title}>
+        <WorkersRows workers={workers} active={active} lined={lined} ended={ended} act={act} />
       </CardSection>
     </Opens>
   );
 }
 
-function WorkersRows({ owner, workers, active, lined, ended }: { owner: string; workers: Worker[]; active: Worker[]; lined: Worker[]; ended: string }) {
+function WorkersRows({ workers, active, lined, ended, act }: { workers: Worker[]; active: Worker[]; lined: Worker[]; ended: string; act?: Act }) {
   const { open } = useContext(WorkersPanel);
   if (lined.length > 0) {
     const first = workers.find((worker) => !onHand(worker));
     return (
       <>
-        {lined.map((worker) => <WorkerLine key={worker.id} worker={worker} act={act(owner)} />)}
+        {lined.map((worker) => <WorkerLine key={worker.id} worker={worker} act={act} />)}
         {ended && lined === active && first && (
           <Line onClick={() => open(null)} icon={<WorkerGlyph id={first.id} className="size-4" />}>
             <span className="text-muted-foreground">{ended}</span>

@@ -169,6 +169,14 @@ impl Adapter for Fake {
                 )],
                 ..Default::default()
             })],
+            // `agent:N`'s subagent, whose own steps name it as their parent [D78].
+            "tool" if v["agent"].is_string() => vec![Event::ToolStart(Tool {
+                id: s(&v, &["id"]).into(),
+                name: "Agent".into(),
+                step: "agent",
+                input: s(&v, &["agent"]).into(),
+                ..Default::default()
+            })],
             "tool" if v["command"].is_string() => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
@@ -179,6 +187,7 @@ impl Adapter for Fake {
                     "run"
                 },
                 input: s(&v, &["command"]).into(),
+                parent: v["parent"].as_str().map(String::from),
                 ..Default::default()
             })],
             "tool" => vec![Event::ToolStart(Tool {
@@ -191,6 +200,8 @@ impl Adapter for Fake {
                 id: s(&v, &["id"]).into(),
                 ok: v["ok"].as_bool().unwrap_or(true),
                 exit: v["exit"].as_i64(),
+                output: s(&v, &["output"]).into(),
+                parent: v["parent"].as_str().map(String::from),
                 ..Default::default()
             })],
             "mark" => vec![Event::Mark {

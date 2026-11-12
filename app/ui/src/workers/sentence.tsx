@@ -123,7 +123,8 @@ export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly
       </span>
     </>
   );
-  if (word !== "started") return <div data-slot="task-row" data-kind={word} className={ROW}>{line}</div>;
+  // A start opens to the briefs; with none to show (a CLI's own subagent), it stands alone.
+  if (word !== "started" || !workers.some((worker) => worker.brief)) return <div data-slot="task-row" data-kind={word} className={ROW}>{line}</div>;
   return (
     <OpeningLine keep={keep} detail={<Briefs workers={workers} />}>
       {line}
