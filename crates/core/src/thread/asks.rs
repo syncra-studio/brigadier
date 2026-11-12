@@ -5,9 +5,10 @@ use super::Thread;
 use serde_json::{Value, json};
 
 impl Thread {
-    /// A request's row starts waiting: kept out of the work fold like the user's own messages
-    /// [D99], and its turn's wait starts [D77]. One the parent agent answers is a quiet step in the
-    /// fold instead, with no card and no wait for the user [D119, D122].
+    /// A request's row starts waiting, and its turn's wait starts [D77]. A question stays out of
+    /// the work fold with its answer [D99]; an approval folds with the work it allowed [D118]. One
+    /// the parent agent answers is a quiet step in the fold instead, with no card and no wait for
+    /// the user [D119, D122].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64, item: &Value) {
         self.approval_tool(at, true);
         self.agent_waits(at, true);
@@ -17,8 +18,11 @@ impl Thread {
             self.items[at]["to"] = "parent".into();
             return;
         }
+        let question = self.items[at]["kind"] == "question";
         if let Some(o) = self.open.as_mut() {
-            o.kept.push(at as u64 + 1);
+            if question {
+                o.kept.push(at as u64 + 1);
+            }
             if o.wait.is_none() {
                 o.wait = Some(ts);
                 self.turns[o.at]["waitingSince"] = ts.into();

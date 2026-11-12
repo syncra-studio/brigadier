@@ -242,11 +242,8 @@ impl Thread {
                         row = Self::peer_item(from, text, ts, &item["cid"]);
                     }
                     row["steer"] = true.into();
+                    // It folds with the work it steered: only the last reply stays under "Worked for" [D118].
                     let at = self.add(row);
-                    // The user's own words stay out of the work fold, like a question [D99].
-                    if let Some(o) = self.open.as_mut() {
-                        o.kept.push(at as u64 + 1);
-                    }
                     self.below_steer(at);
                 }
             }
