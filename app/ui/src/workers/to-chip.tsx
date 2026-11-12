@@ -21,3 +21,8 @@ export function ToWorkerChip({ worker, sending = false, onClear }: { worker: Wor
     </>
   );
 }
+
+/** A queued row for a busy worker, as the old app's QueueCard ToWorker: it goes as that worker's next turn [D3050]. */
+export function ToWorker({ name }: { name: string | null }) {
+  return <span className="min-w-0 shrink-8 truncate text-xs text-muted-foreground">To {name ?? "a worker"}</span>;
+}

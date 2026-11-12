@@ -14,7 +14,7 @@ import { errorText, run } from "../onboarding/api";
 import { setPanelOpen, usePanelMemory } from "../panel/memory";
 import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
 import type { Item, Turn } from "../thread/item";
-import { finished, lowerFirst, onHand, type Worker, type WorkerStateKind, WorkersPanel } from "./chip";
+import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
@@ -102,6 +102,12 @@ export const openWorker = (owner: string, worker: string) => show(owner, { open:
 function Opens({ owner, children }: { owner: string; children: ReactNode }) {
   const open = (worker: string | null) => show(owner, { open: true, worker });
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
+}
+
+/** A worker the user @-mentioned, in their sent message: its chip, as the old app's Mentions' TaskByNumber. */
+export function SentWorker({ owner, id }: { owner: string; id: string }) {
+  const row = (useDaemon().rows ?? []).find((each) => each.id === id);
+  return <Opens owner={owner}><WorkerChip worker={row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : null} /></Opens>;
 }
 
 /** The parent's thread rows Rust builds from its notes and results [D3009, D3010]. */

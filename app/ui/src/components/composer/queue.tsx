@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { Draft } from "./draft";
 import { FromPeer } from "../../peers/message";
+import { ToWorker } from "../../workers/to-chip";
 import { RailItem } from "./rail";
 
 /**
@@ -25,6 +26,8 @@ export type QueuedMessage = {
   state: "local" | "queued" | "deciding" | "delivered";
   /** Another session's message: who sent it (null once that session is gone). It's never the user's to edit. */
   peer?: { title: string | null };
+  /** The user's message for one of the session's workers, held until its turn is over: that worker's name. */
+  to?: { name: string | null };
 };
 
 type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
@@ -287,12 +290,15 @@ function QueueRow({
       </span>
       <Words draft={item.draft} />
       {item.peer && <FromPeer title={item.peer.title} />}
-      {deciding && (
+      {deciding ? (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding
         </span>
+      ) : (
+        item.to && <ToWorker name={item.to.name} />
       )}
-      {steer && (
+      {/* One for a worker steers into that worker's turn. */}
+      {(steer || item.to) && (
         <TooltipIconButton
           tooltip="Submit without interrupting the model"
           side="top"

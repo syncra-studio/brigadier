@@ -137,6 +137,8 @@
   --color-row-object: color-mix(in oklab, var(--color-foreground) 40%, transparent);
   /* An activity row's chevron, quieter than its words (the old theme's --row-chevron). */
   --color-row-chevron: color-mix(in oklab, var(--color-foreground) 25%, transparent);
+  /* A worker's chip in a line: the old WorkerChip's bg-muted/60. */
+  --color-worker-chip: color-mix(in oklab, var(--color-muted) 60%, transparent);
   --color-shell-foreground: color-mix(in oklab, var(--color-foreground) 70%, transparent);
   /* Live words waiting on an approval: quieter than the shimmer's base. */
   --color-live-text-quiet: color-mix(in oklab, var(--color-foreground) 30%, transparent);
@@ -236,6 +238,8 @@
   --text-code-inline: 0.85em;
   /* A reply's line height (the old app's, Tailwind's relaxed). */
   --leading-relaxed: 1.625;
+  /* A worker's chip in a line (the old app's, Tailwind's normal). */
+  --leading-normal: 1.5;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, "Ubuntu",

@@ -71,7 +71,7 @@ export function WorkerChip({ worker, label, className, container }: {
             data-slot="worker-chip"
             onClick={() => open(worker.id)}
             className={cx(
-              "inline-flex h-control-xs max-w-56 min-w-0 shrink cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-fill ps-2 pe-2.5 align-middle text-sm leading-normal text-foreground transition-colors hover:bg-muted focus-visible:focus-ring",
+              "inline-flex h-control-xs max-w-56 min-w-0 shrink cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-worker-chip ps-2 pe-2.5 align-middle text-sm leading-normal text-foreground transition-colors hover:bg-muted focus-visible:focus-ring",
               className,
             )}
           />

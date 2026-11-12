@@ -16,6 +16,7 @@ import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { openChip } from "../../session/commands";
 import { urlOf } from "../../session/files";
+import { SentWorker } from "../../workers/live";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -116,7 +117,7 @@ export function UserBubble({
     const files = list.flatMap((chip): [string, Attachment][] => ("attachmentId" in chip ? [[chip.attachmentId, known.get(chip.attachmentId) ?? { id: chip.attachmentId, name: "", mime: "", state: "ready", url: urlOf(owner, chip.attachmentId) }]] : []));
     // shortcut: a sent /command chip opens nothing (its `/` list isn't kept with the message), until the message keeps its command's file.
     const open = { onOpen: (kind: OpenKind, id: string) => openChip(owner, kind, id), commands: new Map() };
-    return { markdown, numbers: numbersOf(parts), files: new Map(files), open, chip: (n: number) => list[n] && <ComposerChip chip={list[n]} /> };
+    return { markdown, numbers: numbersOf(parts), files: new Map(files), open, chip: (n: number) => list[n] && chipOf(owner, list[n]) };
   }, [owner, parts, known]);
   const [more, setMore] = useKept(`${keep}:more`);
   const box = useRef<HTMLDivElement>(null);
@@ -300,3 +301,6 @@ export function JumpSign({ running }: { running: boolean }) {
     </>
   );
 }
+
+/** A sent message's chip: a worker it names as the old app's worker pill, the rest as the composer drew them. */
+const chipOf = (owner: string, chip: Chip) => (chip.kind === "mention" && chip.type === "worker" ? <SentWorker owner={owner} id={chip.id} /> : <ComposerChip chip={chip} />);

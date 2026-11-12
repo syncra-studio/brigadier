@@ -27,11 +27,12 @@ import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
+import { queuedOf, type RustQueued, toArgs } from "./queued";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
   /** `error`: why Rust couldn't send it; the queue waits on it. `editing`: the message pulled back to edit, kept by Rust. */
-  queue?: { paused: boolean; items: { id: string; text: string; parts?: Draft; error?: string; origin?: string }[]; editing?: { id: string; text: string; parts?: Draft; slot: number } | null } | null;
+  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string } | null } | null;
   steer?: boolean;
   running?: boolean;
   model?: string | null;
@@ -155,7 +156,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const [stopError, setStopError] = useState<string | null>(null);
   // A queued message pulled back to edit, which Rust keeps meanwhile (`queue.editing`): sending puts it back in its
   // slot under its id, emptying the field puts the original back.
-  const editing = useRef<{ qid: string; slot: number; text: string } | null>(null);
+  const editing = useRef<{ qid: string; slot: number; text: string; to?: string } | null>(null);
   // A send into the paused queue, asked about first; its words stay in the field meanwhile.
   const [asking, setAsking] = useState<string | null>(null);
   // What waits above the field for the agent, and the chips the message being asked about carries [D1040].
@@ -176,8 +177,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   useEffect(() => {
     const now = field.current;
     if (!kept || editing.current?.qid === kept.id || !now) return;
-    editing.current = { qid: kept.id, slot: kept.slot, text: kept.text };
+    editing.current = { qid: kept.id, slot: kept.slot, text: kept.text, to: kept.to };
     if (!isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
+    if (kept.to) setTo(kept.to);
     now.set(kept.parts?.parts ?? [kept.text]);
     files.restore(kept.parts?.attachmentIds ?? []);
     setEmpty(!kept.text.trim());
@@ -207,14 +209,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setOps(live);
   });
 
-  let items: QueuedMessage[] = (row?.queue?.items ?? []).map((each) => {
-    const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
-    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued" };
-    // Another session's: its words without the envelope's first line, and who sent it [D3014].
-    const at = each.text.indexOf("]\n\n");
-    const words = at < 0 ? each.text : each.text.slice(at + 3);
-    return { id: each.id, draft: { parts: [words], attachmentIds: [] }, state: "queued", peer: { title: rows.find((r) => r.id === peer)?.title ?? null } };
-  });
+  let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows);
   let paused = row?.queue?.paused === true;
   for (const op of live) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
@@ -273,8 +268,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const edit = (qid: string) => {
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
-    const draft = row?.queue?.items.find((each) => each.id === qid)?.parts;
-    editing.current = { qid, slot: Math.max(slot, 0), text: message };
+    const { parts: draft, to: worker } = row?.queue?.items.find((each) => each.id === qid) ?? {};
+    editing.current = { qid, slot: Math.max(slot, 0), text: message, to: worker };
+    // One for a worker comes back with its To, as the old app's [D3050].
+    if (worker) setTo(worker);
     field.current?.set(draft?.parts ?? [message]);
     files.restore(draft?.attachmentIds ?? []);
     setEmpty(!message.trim());
@@ -318,22 +315,24 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     field.current?.focus();
   });
 
-  /** To the worker alone, as the user's own message, the follow-up's way while it works: one at a time, past this
-   * session's queue. Taken, the To: goes and the worker opens; refused, the message and its To: come back [D3006, D3013]. */
+  /** To the worker alone, as the user's own message: steered, into its turn; else Rust gives it now or holds it in this
+   * session's queue, "To ‹name›", until that worker's turn is over; an edited one goes back to its slot. Taken, the To:
+   * goes and the worker opens; refused, the message and its To: come back [D3006, D3013, D3050]. */
   const sendTo = (worker: string, parts: Draft["parts"], tiles: string[], other: boolean) => {
     if (toSending) return;
     const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
     const target = rows.find((each) => each.id === worker) as ComposerRow | undefined;
     const steer = sendMode(true, followUp, other, target?.steer === true) === "steer";
     const pulled = take();
-    if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
+    const back = pulled?.to === worker ? pulled : null;
+    if (pulled && !back) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
     files.sent();
     setToSending(true);
     setError(null);
-    const args = steer ? ["send", worker, message, "--cid", cid, "--steer"] : ["queue", worker, "add", message, "--qid", cid];
-    void run([...args, ...(draft ? ["--parts", draft, "--from", id] : [])]).then((reply) => {
+    void run(toArgs(id, worker, message, back && !steer ? back : { qid: cid }, steer, draft)).then((reply) => {
       setToSending(false);
       if (reply.ok || reply.result === "logged") {
+        if (steer && back) act({ kind: "remove", qid: back.qid }, ["remove", back.qid]);
         setTo((now) => (now === worker ? null : now));
         return openWorker(id, worker);
       }
@@ -341,6 +340,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       field.current?.set(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
       files.restore(tiles);
       setEmpty(false);
+      editing.current ??= back;
       setTo(worker);
       setError(failure(reply));
     });

@@ -15,6 +15,11 @@ use std::io;
 use std::path::Path;
 use std::thread;
 
+mod peer;
+mod to;
+pub use peer::{add_peer, pending};
+pub use to::held as give_held;
+
 #[derive(Serialize, Deserialize, Default, PartialEq)]
 struct Queue {
     paused: bool,
@@ -41,6 +46,9 @@ struct Item {
     /// Another session's message, `peer:<id>` [D2034]: never the user's. None is the user's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
+    /// The user's message for this worker of the session's (the To chip), held while it works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    to: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -52,6 +60,8 @@ struct Editing {
     slot: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    to: Option<String>,
 }
 
 fn read(dir: &Path) -> io::Result<Queue> {
@@ -82,7 +92,12 @@ pub fn hold(dir: &Path) -> io::Result<(fs::File, bool)> {
         .open(dir.join("queue.lock"))?;
     lock.lock()?;
     let q = read(dir)?;
-    Ok((lock, !q.items.is_empty() || q.editing.is_some()))
+    // A message for a worker never goes here.
+    let mine = q.items.iter().any(|i| i.to.is_none());
+    Ok((
+        lock,
+        mine || q.editing.as_ref().is_some_and(|e| e.to.is_none()),
+    ))
 }
 
 /// The same, for a caller that holds the lock.
@@ -132,6 +147,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if origin.as_ref().is_some_and(|o| !o.starts_with("peer:")) {
                 return Err(io::Error::other("--origin takes only peer:<id>"));
             }
+            let to = flag(args, "--to").map(String::from);
+            if let Some(wid) = &to {
+                to::check(data, id, wid)?;
+            }
             change(&dir, |q| {
                 // Sending an edited message puts it back: the edit is over.
                 if q.editing.as_ref().is_some_and(|e| e.id == qid) {
@@ -144,6 +163,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     at: brigadier_frames::log::now_ms(),
                     error: None,
                     origin,
+                    to: to.clone(),
                 };
                 // The same id again (a retry) replaces it in place.
                 match q.items.iter_mut().find(|i| i.id == qid) {
@@ -154,7 +174,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     }
                 }
                 q.paused |= q.stopping;
-                Ok(())
+                // A worker between turns takes it at once.
+                match to.as_deref().and_then(|wid| to::first(q, wid)) {
+                    Some(first) => to::give(data, id, q, &first, false).map(drop),
+                    None => Ok(()),
+                }
             })?;
         }
         "move" => {
@@ -190,6 +214,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     parts: item.parts,
                     slot,
                     origin: item.origin,
+                    to: item.to,
                 });
                 Ok(())
             })?;
@@ -207,6 +232,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     .iter()
                     .find(|i| i.id == qid)
                     .ok_or_else(|| missing(&qid))?;
+                if item.to.is_some() {
+                    let n = q.items.len();
+                    return Ok(match to::give(data, id, q, &qid, true)? {
+                        Some(reply) => (reply, q.items.len() < n),
+                        None => (Value::Null, true),
+                    });
+                }
                 let origin = item.origin.as_deref().unwrap_or("user");
                 let reply = control::steer_as(
                     data,
@@ -268,46 +300,6 @@ fn go_on(q: &mut Queue) {
     }
 }
 
-/// Another session's message [D2034]: under the queue's lock, a repeat of its id (queued, being
-/// edited or in the log) is dropped; else `first` records it and may take it itself (a steer),
-/// told whether anything waits; else it goes last, as its sender's. Says which happened.
-pub fn add_peer(
-    dir: &Path,
-    mid: &str,
-    origin: &str,
-    text: &str,
-    first: impl FnOnce(bool) -> io::Result<bool>,
-) -> io::Result<&'static str> {
-    change(dir, |q| {
-        let known = q.items.iter().any(|i| i.id == mid)
-            || q.editing.as_ref().is_some_and(|e| e.id == mid)
-            || core::fold(dir, true)?.fold.cids.contains_key(mid);
-        if known {
-            return Ok("repeat");
-        }
-        if first(!q.items.is_empty() || q.editing.is_some())? {
-            return Ok("steered");
-        }
-        q.items.push(Item {
-            id: mid.into(),
-            text: text.into(),
-            parts: Value::Null,
-            at: brigadier_frames::log::now_ms(),
-            error: None,
-            origin: Some(origin.into()),
-        });
-        q.paused |= q.stopping;
-        Ok("queued")
-    })
-}
-
-/// Whether `mid` waits in the queue, or is being edited there.
-pub fn pending(dir: &Path, mid: &str) -> bool {
-    read(dir).is_ok_and(|q| {
-        q.items.iter().any(|i| i.id == mid) || q.editing.as_ref().is_some_and(|e| e.id == mid)
-    })
-}
-
 /// The message being edited goes back to its place, unchanged.
 fn restore(q: &mut Queue) {
     if let Some(e) = q.editing.take() {
@@ -320,6 +312,7 @@ fn restore(q: &mut Queue) {
             at,
             error: None,
             origin: e.origin,
+            to: e.to,
         };
         q.items.insert(slot, item);
     }
@@ -366,11 +359,16 @@ pub fn stop(data: &Path, id: &str) -> io::Result<Value> {
 const DRAINS: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
 
 /// The daemon's pass: each session between turns whose queue waits and isn't paused sends its
-/// first message, off the daemon's loop.
+/// first message, off the daemon's loop; a worker's go to it once it's free.
 pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
+    to::pass(data, rows);
     for (id, row) in rows {
         let q = &row["queue"];
-        let first = &q["items"][0];
+        let mine = q["items"].as_array().into_iter().flatten();
+        let first = mine
+            .into_iter()
+            .find(|i| i["to"].is_null())
+            .unwrap_or(&Value::Null);
         let state = row["state"].as_str().unwrap_or("");
         if !first.is_object()
             || q["paused"] == true
@@ -400,16 +398,15 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     let spec = core::load(data, id)?;
     crate::rewind::settle_held(data, &spec)?;
     locked(&dir, |q| {
-        let Some(item) = q
-            .items
-            .first()
-            .filter(|i| !q.paused && i.error.is_none())
+        let at = q.items.iter().position(|i| i.to.is_none()).unwrap_or(0);
+        let Some(item) = (q.items.get(at))
+            .filter(|i| !q.paused && i.to.is_none() && i.error.is_none())
             .cloned()
         else {
             return Ok(());
         };
         if core::fold(&dir, true)?.fold.cids.contains_key(&item.id) {
-            q.items.remove(0);
+            q.items.remove(at);
             return Ok(());
         }
         owner::ensure(data, &spec)?;
@@ -445,13 +442,13 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             None,
         );
         if went(&dir, &reply, &item.id) {
-            q.items.remove(0);
+            q.items.remove(at);
         } else if reply["error"] != "changed" {
             let why = reply["message"]
                 .as_str()
                 .or(reply["error"].as_str())
                 .unwrap_or("refused");
-            q.items[0].error = Some(why.into());
+            q.items[at].error = Some(why.into());
         }
         Ok(())
     })

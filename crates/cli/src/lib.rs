@@ -52,7 +52,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
+       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
