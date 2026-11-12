@@ -4,7 +4,7 @@ use super::super::{Done, Event, Tool, change, classify, counts, s, shell_step};
 use serde_json::Value;
 
 mod app_server;
-pub use app_server::limited;
+pub use app_server::{compact, limited};
 
 const TOOLS: [&str; 4] = [
     "command_execution",

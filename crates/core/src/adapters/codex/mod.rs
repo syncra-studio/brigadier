@@ -188,6 +188,10 @@ impl Adapter for Codex {
         control::command(spec, name)
     }
 
+    fn fixed_commands(&self, _cwd: Option<&Path>, _run: Option<&Spec>) -> Vec<Value> {
+        vec![events::compact()]
+    }
+
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
         let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");

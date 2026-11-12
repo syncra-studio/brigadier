@@ -5,6 +5,11 @@ use super::http::Server;
 use super::server::say;
 use serde_json::{Value, json};
 
+/// Its compact, which runs at once: all of its list it has before it lists the rest [D2098].
+pub(super) fn compact() -> Value {
+    json!({"name": "compact", "description": "Compact the conversation", "kind": "command", "path": null, "instant": true})
+}
+
 /// Lists both again; one its server can't list stays out, and the listing goes on without it.
 pub(super) fn list(server: &Server, dir: &str) {
     let get = |what: &str| -> Vec<Value> {
@@ -15,8 +20,6 @@ pub(super) fn list(server: &Server, dir: &str) {
             .unwrap_or_default();
         v["data"].as_array().cloned().unwrap_or_default()
     };
-    let compact = json!({"name": "compact", "description": "Compact the conversation",
-        "kind": "command", "path": null, "instant": true});
     // Its API names no command's file; a skill's own is a path, a built-in one a `skill:` uri.
     let commands = get("command").into_iter().map(|c| {
         json!({"name": c["name"], "description": c["description"], "kind": "command", "path": null, "instant": false})
@@ -25,7 +28,7 @@ pub(super) fn list(server: &Server, dir: &str) {
         let path = k["path"].as_str().filter(|p| p.starts_with('/'));
         json!({"name": k["id"], "description": k["description"], "kind": "skill", "path": path, "instant": false})
     });
-    let all: Vec<Value> = std::iter::once(compact)
+    let all: Vec<Value> = std::iter::once(compact())
         .chain(commands)
         .chain(skills)
         .collect();

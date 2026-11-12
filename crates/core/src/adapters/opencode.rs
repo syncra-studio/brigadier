@@ -340,6 +340,10 @@ impl Adapter for OpenCode {
         Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
+    fn fixed_commands(&self, _cwd: Option<&Path>, _run: Option<&Spec>) -> Vec<Value> {
+        vec![commands::compact()]
+    }
+
     /// Its compact, as `POST /api/session/{id}/compact` [D2011].
     fn command(&self, spec: &Spec, name: &str) -> Result<Delivery, String> {
         match name {

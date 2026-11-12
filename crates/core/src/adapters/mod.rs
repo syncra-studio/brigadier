@@ -326,6 +326,14 @@ pub trait Adapter: Sync {
     fn command(&self, _spec: &Spec, _name: &str) -> Result<Delivery, String> {
         Err("This agent has no command by that name".into())
     }
+    /// The `/` menu before it has listed its own: the old app's builtin commands, and for an agent
+    /// whose list names no files, what its folders hold [D2098]. `run`: a session's spec as it runs
+    /// now; None on Home's draft, whose trusted project is at `cwd`.
+    fn fixed_commands(&self, _cwd: Option<&Path>, _run: Option<&Spec>) -> Vec<Value> {
+        vec![]
+    }
+    /// Fills in the file of each listed skill or command its list didn't name [D146, D2098].
+    fn locate(&self, _run: &Spec, _list: &mut [Value]) {}
     fn timing(&self) -> Timing;
     /// Files and folders this backend wrote outside the session folder for this session only, by
     /// exact path. Delete removes them entirely.

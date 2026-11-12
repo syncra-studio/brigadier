@@ -44,11 +44,15 @@ pub fn events(v: &Value) -> Vec<Event> {
     }
 }
 
-/// Its compact, which runs at once, then each enabled skill `skills/list` gave, by its file
+/// Its compact, which runs at once: all of its list it has before it lists its skills [D2098].
+pub fn compact() -> Value {
+    json!({"name": "compact", "description": "Summarize conversation to prevent hitting the context limit",
+        "kind": "command", "path": null, "instant": true})
+}
+
+/// Its compact, then each enabled skill `skills/list` gave, by its file
 /// [D2009, D2011]. Its own description of compact, from its TUI's (codex-rs/tui/src/slash_command.rs).
 fn commands(list: &Value) -> Vec<Value> {
-    let compact = json!({"name": "compact", "description": "Summarize conversation to prevent hitting the context limit",
-        "kind": "command", "path": null, "instant": true});
     let entries = list["data"].as_array().into_iter().flatten();
     let skills = (entries.flat_map(|e| e["skills"].as_array().into_iter().flatten()))
         .filter(|k| k["enabled"] != false)
@@ -56,7 +60,7 @@ fn commands(list: &Value) -> Vec<Value> {
             json!({"name": k["name"], "description": k["description"], "kind": "skill",
             "path": k["path"], "instant": false})
         });
-    std::iter::once(compact).chain(skills).collect()
+    std::iter::once(compact()).chain(skills).collect()
 }
 
 /// Whether a failed turn hit a usage limit.

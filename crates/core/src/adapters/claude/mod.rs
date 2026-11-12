@@ -218,6 +218,12 @@ impl Adapter for Claude {
         control::control(spec, msg)
     }
 
+    fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
+        control::fixed(cwd, run)
+    }
+    fn locate(&self, run: &Spec, list: &mut [Value]) {
+        control::locate(run, list)
+    }
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
@@ -469,8 +475,7 @@ impl Fork for Claude {
     }
 }
 
-/// Whether the record of `conv` still holds `entry`, in whichever folder it was written:
-/// `--resume` finds it from any.
+/// Whether the record of `conv` still holds `entry`, in any folder: `--resume` finds it from any.
 fn holds(conv: &str, entry: &str) -> bool {
     let dirs = std::fs::read_dir(home_path(".claude/projects"));
     (dirs.into_iter().flatten().flatten()).any(|d| {

@@ -3,7 +3,7 @@
 //! requests (a stop, a new level or model) get a reply by theirs. Shapes per the Agent SDK's
 //! public docs and types (code.claude.com/docs/en/agent-sdk/user-input).
 
-use super::super::{Delivery, Event, Retune, s, uuid};
+use super::super::{Delivery, Event, Retune, cli_home, home_path, s, uuid};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -268,32 +268,113 @@ fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
 }
 
 /// Its own commands, from its init line: skills and MCP prompts by name, the rest as commands, less
-/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. A skill or
-/// command opens as the file it's defined in, the project's before the user's.
-// shortcut: the user's own folder is ~/.claude, not an account's home; upgrade when accounts keep skills apart.
+/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. The line
+/// names no files: `locate` finds them, knowing the account [D2098].
 pub fn commands(v: &Value) -> Option<Event> {
     let names = |key: &str| -> Vec<&str> {
-        (v[key].as_array().into_iter().flatten()).filter_map(Value::as_str).collect()
+        (v[key].as_array().into_iter().flatten())
+            .filter_map(Value::as_str)
+            .collect()
     };
     let (skills, terminal) = (names("skills"), names("terminal_slash_commands"));
-    let cwd = Path::new(s(v, &["cwd"]));
-    let file = |rest: String| {
-        [cwd.join(".claude").join(&rest), super::super::home_path(&format!(".claude/{rest}"))]
-            .into_iter()
-            .find(|path| path.is_file())
-    };
     let listed = names("slash_commands");
-    let unlisted = skills.iter().filter(|name| !listed.contains(name)).copied().collect::<Vec<_>>();
-    let list = (listed.iter().chain(&unlisted)).copied().filter(|name| !terminal.contains(name));
+    let unlisted = skills
+        .iter()
+        .filter(|name| !listed.contains(name))
+        .copied()
+        .collect::<Vec<_>>();
+    let list = (listed.iter().chain(&unlisted))
+        .copied()
+        .filter(|name| !terminal.contains(name));
     let list = list.map(|name| {
-        let (kind, path) = if skills.contains(&name) {
-            ("skill", file(format!("skills/{name}/SKILL.md")))
+        let kind = if skills.contains(&name) {
+            "skill"
         } else if name.starts_with("mcp__") {
-            ("mcp", None)
+            "mcp"
         } else {
-            ("command", file(format!("commands/{name}.md")))
+            "command"
         };
-        json!({"name": name, "description": "", "kind": kind, "path": path, "instant": false})
+        json!({"name": name, "description": "", "kind": kind, "path": null, "instant": false})
     });
-    v["slash_commands"].is_array().then(|| Event::Commands(list.collect()))
+    v["slash_commands"]
+        .is_array()
+        .then(|| Event::Commands(list.collect()))
+}
+
+/// Where it keeps skills and commands, in the old app's order: the project's `.claude`, then the
+/// account's home (its CLAUDE_CONFIG_DIR), else ~/.claude (registry skills.rs, plugins/resolve.rs) [D2098].
+fn roots(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<PathBuf> {
+    let home = run.map_or_else(
+        || home_path(".claude"),
+        |spec| cli_home(spec, ".claude", ""),
+    );
+    cwd.map(|cwd| cwd.join(".claude"))
+        .into_iter()
+        .chain([home])
+        .collect()
+}
+
+/// A skill's or command's file under the first root holding it.
+fn file_of(roots: &[PathBuf], kind: &str, name: &str) -> Option<PathBuf> {
+    let rest = match kind {
+        "skill" => format!("skills/{name}/SKILL.md"),
+        "command" => format!("commands/{name}.md"),
+        _ => return None,
+    };
+    roots
+        .iter()
+        .map(|root| root.join(&rest))
+        .find(|path| path.is_file())
+}
+
+/// Each listed skill's or command's file, the project's before the account's.
+pub fn locate(run: &Spec, list: &mut [Value]) {
+    let roots = roots(Some(Path::new(&run.cwd)), Some(run));
+    for each in list {
+        if let Some(path) = file_of(&roots, s(each, &["kind"]), s(each, &["name"])) {
+            each["path"] = json!(path);
+        }
+    }
+}
+
+/// Before its first init line: the old app's builtin commands, then the commands and skills its
+/// folders hold, each by name once, as the old app scanned them [D2098].
+pub fn fixed(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
+    let builtin = [
+        ("compact", "Compact this conversation"),
+        ("context", "Show context usage"),
+        ("cost", "Show session usage"),
+        ("help", "Show Claude Code help"),
+    ];
+    let mut list: Vec<Value> = (builtin.iter())
+        .map(|(name, description)| json!({"name": name, "description": description, "kind": "command", "path": null, "instant": false}))
+        .collect();
+    let roots = roots(cwd, run);
+    for (kind, folder) in [("command", "commands"), ("skill", "skills")] {
+        let mut names: Vec<String> = (roots.iter())
+            .flat_map(|root| {
+                std::fs::read_dir(root.join(folder))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+            })
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                match kind {
+                    "skill" => entry.path().join("SKILL.md").is_file().then_some(name),
+                    _ => name.strip_suffix(".md").map(String::from),
+                }
+            })
+            .collect();
+        names.sort();
+        names.dedup();
+        for name in names {
+            if list.iter().any(|l| l["name"] == *name) {
+                continue;
+            }
+            let path = file_of(&roots, kind, &name);
+            list.push(json!({"name": name, "description": "", "kind": kind, "path": path, "instant": false}));
+        }
+    }
+    list
 }
