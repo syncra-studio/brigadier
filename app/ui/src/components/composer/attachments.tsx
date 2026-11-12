@@ -104,6 +104,7 @@ export function InlineAttachment({
   const n = useContext(ChipNumbers).get(id);
   const label = paste ? (preview ? `Pasted text: ${preview}…` : `Pasted text${n ? ` #${n}` : ""}`) : `Image${n ? ` #${n}` : ""}`;
   const busy = attachment?.state === "uploading";
+  const failed = attachment?.state === "failed";
   const face = (
     <>
       <span aria-hidden className={cx("inline-flex min-w-0 items-center gap-1 rounded-sm", paste ? "px-0.5" : "pe-0.5", busy && "opacity-disabled")}>
@@ -124,8 +125,8 @@ export function InlineAttachment({
   return (
     <span
       data-slot={paste ? "inline-paste" : "inline-image"}
-      title={label}
-      className="inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border border-border bg-muted p-0.5 align-middle text-label text-foreground"
+      title={failed ? attachment.error : label}
+      className={cx("inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border bg-muted p-0.5 align-middle text-label text-foreground", failed ? "border-destructive" : "border-border")}
     >
       {onOpen ? (
         // A button where it opens, so Tab reaches it and Enter or Space opens it.
@@ -190,7 +191,7 @@ function FileTile({ attachment, remove }: { attachment: Attachment; remove: Reac
   return (
     <Tile
       slot="attachment-file"
-      hint={baseName(name)}
+      hint={failed ? (attachment.error ?? "Couldn't attach this file") : baseName(name)}
       invalid={failed}
       icon={
         failed ? (

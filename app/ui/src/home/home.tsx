@@ -137,11 +137,11 @@ export function HomeDraft() {
         initial={draft.text}
         onDraft={(text) => {
           setHomeDraft({ text });
-          keepDraft(daemonRun, HOME_DRAFT, text.parts);
+          keepDraft(daemonRun, HOME_DRAFT, text);
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text) => model && start(id ?? null, { workIn: draft.workIn, base, worktree }, model, text, pick ?? agent?.level ?? undefined)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base, worktree }, model, text, pick ?? agent?.level ?? undefined, parts)}
       />
       <SetUpAgentDialog
         name={setUp}

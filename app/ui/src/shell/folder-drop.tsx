@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { FolderPlus } from "../icons";
 import { daemonSource, openFolders } from "../projects/store";
 
-/** Where a drop isn't a project's: the composer, whose drop is its own [D2018]. */
-const OWN_DROP = "[data-slot=composer]";
+/** Where a drop isn't a project's: the composer and the thread, whose drops are their own [D2004, D2018]. */
+const OWN_DROP = "[data-slot=composer], [data-drop=attach]";
 
 const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
 const elsewhere = (event: DragEvent) => !(event.target instanceof Element && event.target.closest(OWN_DROP));

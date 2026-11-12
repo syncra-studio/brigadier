@@ -9,6 +9,9 @@ import { ComposerRail, NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
 import { showToast } from "../components/toast";
 import { BrigadierMark } from "../onboarding/mark";
+import { daemonRun } from "../session/composer";
+import { HOME_DRAFT } from "../session/draft";
+import { payload, useComposerFiles } from "../session/files";
 import { BranchPicker, type RepoState } from "./branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
 
@@ -64,8 +67,9 @@ export type HomeProps = {
   initial?: Draft;
   onDraft?: (draft: Draft) => void;
   /** The words Rust kept across a restart, if any. */
-  loadDraft?: () => Promise<Draft["parts"] | null>;
-  onSend: (text: string) => void;
+  loadDraft?: () => Promise<Draft | null>;
+  /** `parts`: the draft as Rust takes it, when it holds more than words [D109]. */
+  onSend: (text: string, parts?: string) => void;
   /** Changed to put the cursor back in the field (⌘N on Home). */
   focus?: number;
   /** The gallery's box to hold a picker open in. */
@@ -85,20 +89,26 @@ export function HomeView(props: HomeProps) {
   const noModel = props.groups !== null && !props.model;
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : undefined;
-  const send = (parts: Draft["parts"]) => {
-    if (isEmpty({ parts, attachmentIds: [] })) return;
-    // Said in a toast: text under the composer would move it [D388].
-    if (blocked) return void showToast(blocked);
-    props.onSend(plainText(parts).trim());
-  };
   const field = useRef<ComposerFieldHandle>(null);
+  const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
+  const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
+  const send = (parts: Draft["parts"]) => {
+    const tiles = files.tiles();
+    if (isEmpty({ parts, attachmentIds: tiles })) return;
+    // Said in a toast: text under the composer would move it [D388].
+    const waits = blocked ?? files.hold(parts);
+    if (waits) return void showToast(waits);
+    props.onSend(plainText(parts).trim(), payload(parts, tiles));
+    files.sent();
+  };
   useEffect(() => field.current?.focus(), [props.focus]);
   // After a restart the draft is Rust's alone: it comes back unless something was typed first.
   useEffect(() => {
     void props.loadDraft?.().then((saved) => {
       const now = field.current;
       if (!saved || !now || !isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
-      now.set(saved);
+      now.set(saved.parts);
+      files.restore(saved.attachmentIds);
       setEmpty(false);
     });
   }, []);
@@ -166,15 +176,19 @@ export function HomeView(props: HomeProps) {
               </UtilityBar>
             </RailItem>
           </ComposerRail>
-          <ComposerCard>
+          <ComposerCard onDragOver={files.onDragOver} onDrop={files.onDrop}>
+            {files.tilesRow}
             <ComposerField
               ref={field}
               initial={props.initial}
               placeholder="Do anything"
               autoFocus
+              attachments={files.attachments}
+              onAttach={files.attach}
+              mentions={files.mentions}
               onChange={(parts) => {
                 setEmpty(isEmpty({ parts, attachmentIds: [] }));
-                props.onDraft?.({ parts, attachmentIds: [] });
+                props.onDraft?.({ parts, attachmentIds: files.tileIds });
               }}
               onSubmit={() => send(field.current?.parts() ?? [])}
             />
@@ -182,7 +196,7 @@ export function HomeView(props: HomeProps) {
               {props.level}
               <ComposerTools />
               {props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
-              <SendButton empty={empty} running={false} canStop={false} blocked={blocked} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
+              <SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(field.current?.parts() ?? [])} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />
             </ComposerFooter>
           </ComposerCard>
         </Composer>

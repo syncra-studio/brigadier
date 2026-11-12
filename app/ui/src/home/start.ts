@@ -2,7 +2,8 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
 import { daemonRun } from "../session/composer";
-import { HOME_DRAFT, keepDraft } from "../session/draft";
+import { EMPTY_DRAFT } from "../components/composer/draft";
+import { dropDraft, HOME_DRAFT, keepDraft } from "../session/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
@@ -127,17 +128,20 @@ const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
   workIn === "local" ? ["--local"] : workIn === "existing" ? ["--local", "--cwd", worktree!] : base ? ["--base", base] : [];
 
 /** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
-export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string): void {
+export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string): void {
   const id = sessionId();
   const cid = newId();
   const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
   if (model.effort) args.push("--effort", model.effort);
   if (level) args.push("--level", level);
+  // Its files move from Home's draft folder into the session, which then clears Home's draft itself [D2022 #18].
+  if (parts) args.push("--parts", parts);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
-  keepDraft(daemonRun, HOME_DRAFT, []);
+  if (parts) dropDraft(HOME_DRAFT);
+  else keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   carryHome(id, () => runStart(entry));
 }
@@ -178,7 +182,7 @@ export function discard(id: string): void {
       return;
     }
     setHomeDraft({ ...(entry.project ? { project: entry.project, chat: false } : { chat: true }), text: { parts: [entry.text], attachmentIds: [] } });
-    keepDraft(daemonRun, HOME_DRAFT, [entry.text]);
+    keepDraft(daemonRun, HOME_DRAFT, { parts: [entry.text], attachmentIds: [] });
     if (isOpen(id)) window.location.hash = "";
   });
 }

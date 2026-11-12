@@ -20,6 +20,8 @@ export type Model = {
   defaultEffort?: string;
   /** Being retired, as its CLI's list says: when (ms) and the model it suggests instead, each null where not said. */
   retiring?: { at: number | null; to: string | null } | null;
+  /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
+  images?: boolean | null;
 };
 
 /**

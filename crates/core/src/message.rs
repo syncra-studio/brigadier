@@ -8,7 +8,6 @@ use serde_json::Value;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 
 /// The app-wide ceiling, as the old app's [D2022 #14].
 pub const MAX_BYTES: u64 = 10 * 1024 * 1024;
@@ -97,12 +96,15 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             "at most {MAX_FILES} attachments per message"
         )));
     }
+    let mut from_home = false;
     for id in ids {
         if file_in(&sent(dir), &id).is_some() {
             continue;
         }
         let to = sent(dir).join(&id);
-        if let Some(file) = file_in(&draft(dir), &id).or_else(|| file_in(&home(data), &id)) {
+        let homes = file_in(&home(data), &id);
+        from_home |= homes.is_some();
+        if let Some(file) = file_in(&draft(dir), &id).or(homes) {
             fs::create_dir_all(sent(dir))?;
             fs::rename(file.parent().unwrap(), &to)?;
         } else if let Some(file) = from.and_then(|s| {
@@ -113,22 +115,12 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             fs::copy(&file, to.join(file.file_name().unwrap()))?;
         }
     }
-    Ok(())
-}
-
-/// A cleared draft's files go; those added in the last moments may be a paste on its way, and
-/// a file a send is taking leaves first [D2022 #18].
-/// shortcut: an image only taken out of the text stays until the draft is cleared or the session deleted.
-pub fn clear(folder: &Path) -> io::Result<()> {
-    let recent = SystemTime::now() - Duration::from_secs(5);
-    for entry in fs::read_dir(folder).into_iter().flatten().flatten() {
-        if entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .is_ok_and(|at| at < recent)
-        {
-            fs::remove_dir_all(entry.path())?;
-        }
+    // Home's draft became this session: what it held and didn't send goes with it [D2022 #18].
+    // shortcut: a draft emptied without a send keeps its files (a send's take may be on its way)
+    // until the session's delete, or Home's next send with a file; a tile's ✕ removes its own at once.
+    if from_home {
+        let _ = fs::remove_file(data.join("home-draft"));
+        let _ = fs::remove_dir_all(home(data));
     }
     Ok(())
 }

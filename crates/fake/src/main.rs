@@ -248,6 +248,14 @@ impl Agent {
         // not an echo of its first word, which reads as a cut-off answer.
         if first.starts_with('[') {
             self.say("Carried on from where I stopped. All done.");
+        } else if let Some(last) = text
+            .trim_end()
+            .lines()
+            .last()
+            .filter(|_| text.trim().contains('\n'))
+        {
+            // A message of several lines: its last one quoted, as a long paste's or a file's line [D2007].
+            self.say(&format!("ok {first} · last line: {last}"));
         } else {
             self.say(&format!("ok {first}"));
         }
@@ -300,6 +308,15 @@ fn agent(args: &[String]) {
                 .collect::<Vec<_>>()
                 .join(", "),
             None => v["text"].as_str().unwrap_or("").to_string(),
+        };
+        // The images a message carried, named back, so a demo sees them arrive [D2008].
+        let images: Vec<&str> = (v["images"].as_array().into_iter().flatten())
+            .filter_map(|p| p.as_str()?.rsplit('/').next())
+            .collect();
+        let text = if images.is_empty() {
+            text
+        } else {
+            format!("{text}\n[sees images: {}]", images.join(", "))
         };
         if !text.trim().is_empty() || (agent.waiting && v["answer"]["answers"].is_array()) {
             agent.handle(&text);

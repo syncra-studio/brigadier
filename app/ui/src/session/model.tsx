@@ -24,6 +24,9 @@ export const asGroups = (groups: Rust[]): ModelGroup[] =>
   groups.map((group) => ({ ...group, models: group.models.map(({ default_effort, ...model }) => ({ ...model, defaultEffort: default_effort ?? undefined })) }));
 
 let lastGroups: ModelGroup[] | null = null;
+/** Whether a session's model takes images, by the last list read; unknown counts as yes [D2022 #14]. */
+export const takesImages = (provider?: string, model?: string | null) =>
+  lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model)?.images !== false;
 
 /** Opens a session's model picker: a notice's "Choose another model" (D487). */
 export const askModel = new EventTarget();

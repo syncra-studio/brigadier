@@ -18,18 +18,20 @@ import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
-import { SessionModel } from "./model";
+import { SessionModel, takesImages } from "./model";
 import { SessionNotices } from "./notices";
 import { draftOf, keepDraft, loadDraft } from "./draft";
+import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
   /** `error`: why Rust couldn't send it; the queue waits on it. `editing`: the message pulled back to edit, kept by Rust. */
-  queue?: { paused: boolean; items: { id: string; text: string; error?: string }[]; editing?: { id: string; text: string; slot: number } | null } | null;
+  queue?: { paused: boolean; items: { id: string; text: string; parts?: Draft; error?: string }[]; editing?: { id: string; text: string; parts?: Draft; slot: number } | null } | null;
   steer?: boolean;
   running?: boolean;
+  model?: string | null;
   /** The last turn was the user's Stop: Resume carries it on, from Send or the queue [D373]. */
   resumable?: boolean;
 };
@@ -45,7 +47,7 @@ const failure = (reply: Record<string, any>) => (reply.error === "disconnected" 
  * it again can't send it twice (the host drops a repeated id). It settles when Rust's thread has it under that id: a
  * sent one's turn, a steer's message. A refusal stays, with Try again.
  */
-type Sent = { cid: string; text: string; steer: boolean; at: number; retryOf?: string; error?: string };
+type Sent = { cid: string; text: string; parts?: string; steer: boolean; at: number; retryOf?: string; error?: string };
 let sent = new Map<string, Sent[]>();
 const sentListeners = new Set<() => void>();
 function setSent(id: string, change: (list: Sent[]) => Sent[]): void {
@@ -60,6 +62,7 @@ const subscribeSent = (listener: () => void) => {
 function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   const args = ["send", id, message.text, "--cid", message.cid];
   if (message.retryOf) args.push("--retry-of", message.retryOf);
+  if (message.parts) args.push("--parts", message.parts);
   return run(message.steer ? [...args, "--steer"] : args).then((reply) => {
     // Logged: the thread shows the turn and how it ended, so the message has its place there.
     if (reply.ok || reply.result === "logged") return;
@@ -138,7 +141,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   // An approval takes the composer's place [D199, D317].
   const approval = useApprovalWaiting(id, source);
   const [initial] = useState(() => draftOf(id));
-  const [empty, setEmpty] = useState(() => isEmpty({ parts: initial ?? [], attachmentIds: [] }));
+  const [empty, setEmpty] = useState(() => isEmpty({ parts: initial?.parts ?? [], attachmentIds: [] }));
+  const files = useComposerFiles({ owner: id, run, field, backend: row?.backend, project: null, images: takesImages(row?.backend, row?.model), onTiles: (tiles) => keepDraft(run, id, { parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
@@ -162,7 +166,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (!kept || editing.current?.qid === kept.id || !now) return;
     editing.current = { qid: kept.id, slot: kept.slot, text: kept.text };
     if (!isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
-    now.set([kept.text]);
+    now.set(kept.parts?.parts ?? [kept.text]);
+    files.restore(kept.parts?.attachmentIds ?? []);
     setEmpty(!kept.text.trim());
   }, [kept?.id]);
   // After a restart the draft is Rust's alone: it comes back unless something was typed first.
@@ -172,7 +177,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       if (!saved || !now) return;
       const parts = now.parts();
       if (!isEmpty({ parts, attachmentIds: [] }) && plainText(parts) !== editing.current?.text) return;
-      now.set(saved);
+      now.set(saved.parts);
+      files.restore(saved.attachmentIds);
       setEmpty(false);
     });
   }, []);
@@ -189,7 +195,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setOps(live);
   });
 
-  let items: QueuedMessage[] = (row?.queue?.items ?? []).map((each) => ({ id: each.id, draft: { parts: [each.text], attachmentIds: [] }, state: "queued" }));
+  let items: QueuedMessage[] = (row?.queue?.items ?? []).map((each) => ({ id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued" }));
   let paused = row?.queue?.paused === true;
   for (const op of live) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
@@ -211,8 +217,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       fail?.(reply);
     });
   };
-  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void) =>
-    act({ kind: "add", qid, text: message, slot }, slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)], fail);
+  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string) =>
+    act({ kind: "add", qid, text: message, slot }, [...(slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]), ...(parts ? ["--parts", parts] : [])], fail);
   /** The chips a message carries leave with it, and come back if Rust refused to queue it; a lost connection may have
    * queued it, so they stay in its message rather than go twice. */
   const carry = (sent: readonly Chip[], msg: string) => {
@@ -235,8 +241,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setError(failure(reply));
     }, into);
   };
-  const now = (message: string, steer = false, cid = newId()) => {
-    const entry: Sent = { cid, text: message, steer, at: Date.now() };
+  const now = (message: string, steer = false, cid = newId(), parts?: string) => {
+    const entry: Sent = { cid, text: message, parts, steer, at: Date.now() };
     onSent?.(entry.cid);
     setSent(id, (list) => [...list, entry]);
     deliver(run, id, entry);
@@ -245,8 +251,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const edit = (qid: string) => {
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
+    const draft = row?.queue?.items.find((each) => each.id === qid)?.parts;
     editing.current = { qid, slot: Math.max(slot, 0), text: message };
-    field.current?.set([message]);
+    field.current?.set(draft?.parts ?? [message]);
+    files.restore(draft?.attachmentIds ?? []);
     setEmpty(!message.trim());
     act({ kind: "remove", qid }, ["edit", qid], () => {
       editing.current = null;
@@ -267,10 +275,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
-    if (held || (isEmpty({ parts: rest, attachmentIds: [] }) && chips.length === 0)) return;
+    const tiles = files.tiles();
+    if (held || files.hold(rest) || (isEmpty({ parts: rest, attachmentIds: tiles }) && chips.length === 0)) return;
     const text = withChips(plainText(rest), chips);
     const made = { id: sessionId(), cid: newId() };
-    going(chips, made.cid, (pulled) => sendAsNew(id, text, pulled?.qid, made), made.id);
+    const parts = payload(rest, tiles);
+    files.sent();
+    going(chips, made.cid, (pulled) => sendAsNew(id, text, pulled?.qid, made, parts), made.id);
   };
   usePutBack(id, (message, above) => {
     // A rewound message goes above what's already being typed, never over it [D363].
@@ -282,9 +293,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
 
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
-    if (held) return;
+    if (held || files.hold(parts)) return;
     if (inProject && parts.some(isNew)) return submitNew();
-    if (isEmpty({ parts, attachmentIds: [] }) && chips.length === 0) {
+    const tiles = files.tiles();
+    if (isEmpty({ parts, attachmentIds: tiles }) && chips.length === 0) {
       // ⌘⏎ with nothing typed steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued") steerQueued(items[0].id);
       return;
@@ -297,11 +309,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       return setAsking(message);
     }
     const msg = (mode === "queue" && editing.current?.qid) || newId();
-    going(chips, msg, (pulled, back) => (mode === "queue" ? queue(message, msg, pulled?.slot, back) : sendNow(message, pulled, mode === "steer", msg)));
+    const body = payload(parts, tiles);
+    files.sent();
+    going(chips, msg, (pulled, back) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, body) : sendNow(message, pulled, mode === "steer", msg, body)));
   };
   // Sent at once or steered, an edited message's kept copy goes.
-  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string) => {
-    now(message, steer, cid);
+  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string, parts?: string) => {
+    now(message, steer, cid, parts);
     if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
   };
   const changed = (blank: boolean) => {
@@ -342,7 +356,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       </ComposerRail>
       <SessionApprovals id={id} run={run} source={source} />
       {/* Kept while an approval has its place, so the draft and its caret stay. */}
-      <ComposerCard className={approval ? "hidden" : undefined}>
+      <ComposerCard className={approval ? "hidden" : undefined} onDragOver={files.onDragOver} onDrop={files.onDrop}>
+        {files.tilesRow}
         {chips.length > 0 && (
           <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
             {chips.map((chip) =>
@@ -356,10 +371,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         )}
         <ComposerField
           ref={field}
-          initial={initial && { parts: initial, attachmentIds: [] }}
+          initial={initial}
           placeholder="Do anything"
+          attachments={files.attachments}
+          onAttach={files.attach}
+          mentions={files.mentions}
           onChange={(parts) => {
-            keepDraft(run, id, parts);
+            keepDraft(run, id, { parts, attachmentIds: files.tileIds });
             changed(isEmpty({ parts, attachmentIds: [] }));
           }}
           onSubmit={submit}
@@ -378,7 +396,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           {/* With nothing queued the queue card isn't there to say why a Resume was refused. */}
           <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />
           <SessionModel id={id} row={row} offline={offline} />
-          <SendButton followUp={followUp} empty={empty && chips.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />
+          <SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held ?? files.hold(field.current?.parts() ?? [])} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />
         </ComposerFooter>
       </ComposerCard>
       <PausedSendDialog

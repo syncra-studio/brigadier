@@ -1,7 +1,5 @@
-import { type Draft, isEmpty } from "../components/composer/draft";
+import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
 import type { Runner } from "./composer";
-
-type Parts = Draft["parts"];
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -9,7 +7,7 @@ type Parts = Draft["parts"];
  */
 export const HOME_DRAFT = "@home";
 const SAVE_MS = 400;
-const drafts = new Map<string, Parts>();
+const drafts = new Map<string, Draft>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const writing = new Set<string>();
 
@@ -19,32 +17,39 @@ export const draftOf = (id: string) => drafts.get(id);
 function write(run: Runner, id: string): void {
   if (writing.has(id)) return;
   writing.add(id);
-  const parts = drafts.get(id) ?? [];
-  void run(["draft", id, isEmpty({ parts, attachmentIds: [] }) ? "" : JSON.stringify(parts)]).then(() => {
+  const draft = drafts.get(id) ?? EMPTY_DRAFT;
+  void run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft)]).then(() => {
     writing.delete(id);
-    if (drafts.get(id) !== parts) write(run, id);
+    if (drafts.get(id) !== draft) write(run, id);
   });
 }
 
-/** Keeps what the field holds now; an emptied field (a sent message) drops the draft at once. */
-export function keepDraft(run: Runner, id: string, parts: Parts): void {
-  drafts.set(id, parts);
+/** Keeps what the composer holds now, its files' ids too; an emptied one (a sent message) drops the draft at once. */
+export function keepDraft(run: Runner, id: string, draft: Draft): void {
+  drafts.set(id, draft);
   clearTimeout(timers.get(id));
-  timers.set(id, setTimeout(() => write(run, id), isEmpty({ parts, attachmentIds: [] }) ? 0 : SAVE_MS));
+  timers.set(id, setTimeout(() => write(run, id), isEmpty(draft) ? 0 : SAVE_MS));
+}
+
+/** Forgets the draft here only: Rust clears its own copy (Home's, once its start has taken the files). */
+export function dropDraft(id: string): void {
+  clearTimeout(timers.get(id));
+  drafts.set(id, EMPTY_DRAFT);
 }
 
 /** The draft Rust holds, the first time this run opens the session; later opens have it in memory. */
-export async function loadDraft(run: Runner, id: string): Promise<Parts | null> {
+export async function loadDraft(run: Runner, id: string): Promise<Draft | null> {
   if (drafts.has(id)) return null;
   const reply = await run(["draft", id]);
   if (!reply.ok || drafts.has(id)) return null;
-  let parts: Parts = [];
+  let saved: unknown = null;
   try {
-    parts = reply.draft ? JSON.parse(reply.draft) : [];
+    saved = reply.draft ? JSON.parse(reply.draft) : null;
   } catch {
     // Not ours to show; the next words typed replace it.
   }
-  if (!Array.isArray(parts)) parts = [];
-  drafts.set(id, parts);
-  return parts.length > 0 ? parts : null;
+  // Saved before its files were kept, a draft was its parts alone.
+  const draft: Draft = Array.isArray(saved) ? { parts: saved, attachmentIds: [] } : saved && typeof saved === "object" && Array.isArray((saved as Draft).parts) ? { parts: (saved as Draft).parts, attachmentIds: (saved as Draft).attachmentIds ?? [] } : EMPTY_DRAFT;
+  drafts.set(id, draft);
+  return isEmpty(draft) ? null : draft;
 }

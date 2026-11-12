@@ -3,7 +3,7 @@
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022].
 
 use super::{HOME_DRAFT, arg, flag, remove};
-use brigadier_core::message::{self, MAX_BYTES, draft, draft_of, file_in, is_image, sent};
+use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};
 use brigadier_core::{self as core, adapters, check_id};
 use serde_json::{Value, json};
 use std::fs;
@@ -64,14 +64,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 _ => Ok(json!({"ok": true})),
             }
         }
-        // The session's sent files, oldest first, for its card [D1274].
+        // The files the owner holds, oldest first: its draft's again after a restart, and a session's
+        // sent ones for its card [D363, D1274].
         "list" => {
-            let dir = core::session_dir(data, owner);
+            let mut folders = vec![(folder.clone(), false)];
+            if owner != HOME_DRAFT {
+                folders.push((sent(&core::session_dir(data, owner)), true));
+            }
             let mut files: Vec<(std::time::SystemTime, Value)> = vec![];
-            for entry in fs::read_dir(sent(&dir)).into_iter().flatten().flatten() {
-                let id = entry.file_name().to_string_lossy().to_string();
-                if let Some(file) = file_in(&sent(&dir), &id) {
-                    let at = entry
+            for (at, is_sent) in folders {
+                for entry in fs::read_dir(&at).into_iter().flatten().flatten() {
+                    let id = entry.file_name().to_string_lossy().to_string();
+                    let Some(file) = file_in(&at, &id) else {
+                        continue;
+                    };
+                    let when = entry
                         .metadata()
                         .and_then(|m| m.modified())
                         .unwrap_or(std::time::UNIX_EPOCH);
@@ -80,10 +87,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
-                    files.push((
-                        at,
-                        json!({"id": id, "name": name, "mime": message::mime(&file), "path": file}),
-                    ));
+                    files.push((when, json!({"id": id, "name": name, "mime": message::mime(&file), "path": file, "sent": is_sent})));
                 }
             }
             files.sort_by_key(|(at, _)| *at);
@@ -111,30 +115,36 @@ fn refused(a: &dyn adapters::Adapter, bytes: &[u8]) -> Option<String> {
     let (w, h) = message::size(bytes)?;
     side.filter(|s| w.max(h) > *s).map(|s| {
         format!(
-            "{} takes images up to {s} pixels a side; this one is {w} × {h}",
-            a.label()
+            "{} takes images up to {} pixels a side; this one is {} × {}",
+            a.label(),
+            grouped(s),
+            grouped(w),
+            grouped(h)
         )
     })
 }
 
 /// What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
-/// Cleared, its files go too [D2022 #18].
 pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    let (path, files) = if id == HOME_DRAFT {
-        (data.join("home-draft"), message::home(data))
+    let path = if id == HOME_DRAFT {
+        data.join("home-draft")
     } else {
         core::load(data, id)?;
-        let dir = core::session_dir(data, id);
-        (dir.join("draft"), draft(&dir))
+        core::session_dir(data, id).join("draft")
     };
     match args.get(2).map(String::as_str) {
         None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),
-        Some("") => {
-            remove(&path)?;
-            message::clear(&files)?;
-        }
+        Some("") => remove(&path)?,
         Some(parts) => core::write_atomic(&path, parts.as_bytes())?,
     }
     Ok(json!({"ok": true}))
+}
+
+/// 8000 as "8,000".
+fn grouped(n: u32) -> String {
+    match n {
+        0..1000 => n.to_string(),
+        _ => format!("{},{:03}", grouped(n / 1000), n % 1000),
+    }
 }

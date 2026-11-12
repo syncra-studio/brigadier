@@ -18,7 +18,7 @@ import { newId } from "./store";
 /** Brigadier's own `/` command, the only one until wave 3 [D164]: a chip in the text, so the message says where it goes. */
 export const NEW_SESSION: SlashCommand = { id: "new-session", kind: "command", label: "/new", description: "Send the message as a new session, and stay here", instant: false };
 
-type Pending = { source: string; id: string; cid: string; text: string; title: string; qid?: string; asking: boolean; unknown?: boolean; landed?: boolean; error?: string };
+type Pending = { source: string; id: string; cid: string; text: string; title: string; qid?: string; parts?: string; asking: boolean; unknown?: boolean; landed?: boolean; error?: string };
 const pending = store<ReadonlyMap<string, Pending>>(new Map());
 const get = (id: string) => pending.get().get(id);
 function put(id: string, change: Partial<Pending> | null): void {
@@ -33,7 +33,7 @@ function put(id: string, change: Partial<Pending> | null): void {
 function run(entry: Pending): void {
   put(entry.id, { asking: true, unknown: false, error: undefined });
   if (!entry.title) ask({ op: "run", args: ["title", entry.text] }, (reply) => reply.ok && put(entry.id, { title: reply.title }));
-  const args = ["side", entry.source, entry.id, "--text", entry.text, "--cid", entry.cid, ...(entry.qid ? ["--qid", entry.qid] : [])];
+  const args = ["side", entry.source, entry.id, "--text", entry.text, "--cid", entry.cid, ...(entry.qid ? ["--qid", entry.qid] : []), ...(entry.parts ? ["--parts", entry.parts] : [])];
   ask({ op: "run", args }, (reply) => {
     if (!get(entry.id)) return;
     if (reply.error === "disconnected") return put(entry.id, { asking: false, unknown: true });
@@ -44,8 +44,8 @@ function run(entry: Pending): void {
 
 /** Starts `text` as a new session from session `source`; `qid`: the queued message it was edited from [D237];
  * `made`: its new session's id and the message's, when chips were handed to it first. */
-export function sendAsNew(source: string, text: string, qid?: string, made = { id: sessionId(), cid: newId() }): void {
-  const entry: Pending = { source, ...made, text, title: "", qid, asking: true };
+export function sendAsNew(source: string, text: string, qid?: string, made = { id: sessionId(), cid: newId() }, parts?: string): void {
+  const entry: Pending = { source, ...made, text, title: "", qid, parts, asking: true };
   pending.set(new Map(pending.get()).set(entry.id, entry));
   run(entry);
 }
