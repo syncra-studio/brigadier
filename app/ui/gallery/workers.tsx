@@ -11,6 +11,7 @@ import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/worker
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
+import { GlyphOptions, GlyphSet } from "./glyph-options";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
@@ -139,16 +140,16 @@ export function WorkersGallery() {
   return (
     <>
       <Section title="Worker glyphs">
-        <Row name="One per worker, the same wherever it shows (the old 30 shapes in 8 colours)">
-          <div className="flex max-w-160 flex-wrap gap-3">
-            {Array.from({ length: 48 }, (_, i) => (
-              <WorkerGlyph key={i} id={`worker-${i}`} className="size-6" />
-            ))}
-          </div>
+        <GlyphSet
+          name="Today · one per worker, the same wherever it shows (the old shapes in 8 colours)"
+          count={48}
+          glyph={(i, className) => <WorkerGlyph key={i} id={`worker-${i}`} className={className} />}
+        >
           <State label="With its working dot">
             <WorkerGlyph id="worker-3" working className="size-6" />
           </State>
-        </Row>
+        </GlyphSet>
+        <GlyphOptions />
       </Section>
 
       <Section title="Worker chip and name">
