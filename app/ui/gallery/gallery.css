@@ -1,37 +1,5 @@
-/* Dev-only: the gallery's classes, and every component's again with frozen states. Never in the app's CSS. */
+/* Dev-only: the gallery's own classes. Never in the app's CSS. */
 @reference "../src/theme.css";
-
-/* A wrapper's data-frozen="hover focus active" holds those states still. Disabled controls skip hover and
-   press, as in theme.css. */
-@custom-variant hover {
-  @media (hover: hover) {
-    &:hover:not(:disabled, [data-disabled]) {
-      @slot;
-    }
-  }
-  :where([data-frozen~="hover"]) &:not(:disabled, [data-disabled]) {
-    @slot;
-  }
-}
-@custom-variant focus-visible {
-  &:focus-visible {
-    @slot;
-  }
-  :where([data-frozen~="focus"]) & {
-    @slot;
-  }
-}
-@custom-variant active {
-  &:active:not(:disabled, [data-disabled]) {
-    @slot;
-  }
-  :where([data-frozen~="active"]) &:not(:disabled, [data-disabled]) {
-    @slot;
-  }
-}
-
-/* A menu row marked data-frozen="highlight" shows highlighted. */
-@custom-variant highlighted (&:where([data-highlighted], [data-frozen~="highlight"]));
 
 @import "tailwindcss/utilities.css" layer(utilities) source("../src");
 @source "./";

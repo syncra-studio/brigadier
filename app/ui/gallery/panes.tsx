@@ -1,4 +1,4 @@
-// Slice 3's layout and shared parts: the sidebar frame live, the rest in their states.
+// Slice 3's layout and shared parts live: the sidebar frame, and each part's variants side by side.
 import { useId, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -173,17 +173,9 @@ export function Panes() {
         </Row>
       </Section>
       <Section title="Copy button">
-        <Row>
-          <State label="live">
-            <CopyButton text="brigadier --version" />
-          </State>
-          <State label="hover" frozen="hover">
-            <CopyButton text="brigadier --version" />
-          </State>
-          <State label="focus" frozen="focus">
-            <CopyButton text="brigadier --version" />
-          </State>
-        </Row>
+        <div className="self-start">
+          <CopyButton text="brigadier --version" />
+        </div>
       </Section>
       <Section title="Labeled divider">
         <div className="w-72">

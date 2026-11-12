@@ -1,4 +1,4 @@
-// Slice 3's controls in every state. The first copy in each row is live.
+// Slice 3's controls live: each variant side by side, disabled where it has one.
 import { useState } from "react";
 
 import { CheckboxRow } from "../src/components/checkbox-row";
@@ -7,7 +7,7 @@ import { Radio, RadioGroup } from "../src/components/radio";
 import { ScrollFade } from "../src/components/scroll-fade";
 import { type Choice, Segmented } from "../src/components/segmented";
 import { Skeleton } from "../src/components/skeleton";
-import { ChevronDown, Copy, InfoCircle, Warning } from "../src/icons";
+import { ChevronDown, InfoCircle, Warning } from "../src/icons";
 import { Row, Section, State } from "./parts";
 
 const RANGES: Choice<string>[] = [
@@ -79,12 +79,6 @@ export function Choices() {
           <State label="live">
             <SegmentedDemo />
           </State>
-          <State label="hover" frozen="hover">
-            <SegmentedDemo />
-          </State>
-          <State label="focus" frozen="focus">
-            <SegmentedDemo />
-          </State>
           <State label="fill">
             <SegmentedDemo fill />
           </State>
@@ -102,9 +96,6 @@ export function Choices() {
       <Section title="Radio">
         <Row>
           <State label="live">
-            <RadioDemo />
-          </State>
-          <State label="focus" frozen="focus">
             <RadioDemo />
           </State>
           <State label="disabled">

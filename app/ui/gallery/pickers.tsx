@@ -1,12 +1,13 @@
-// The composer's pickers (slice 3): the model and permission pickers, one live copy each.
+// The pickers, one live copy each: project, Work in and branch as Home's bar has them, the model and the permission.
 import { useState } from "react";
 
+import { CheckboxRow } from "../src/components/checkbox-row";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../src/components/dialog";
-import { AgentCard } from "../src/onboarding/agents";
-import type { Agent } from "../src/onboarding/api";
-import { Held, Row, Section, State } from "./parts";
+import { BranchPicker, type RepoState } from "../src/home/branch";
+import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "../src/home/pills";
+import { showToast } from "../src/components/toast";
+import { Section } from "./parts";
 
 // Stand-in marks: no agent's real logo in gallery code (onboarding takes them from the adapters).
 const RING = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5.5"/></svg>';
@@ -30,53 +31,63 @@ export const GROUPS: ModelGroup[] = [
   { provider: "away", label: "Signed-out agent", mark: RING, models: [], unavailable: "sign-in" },
 ];
 
-const AWAY: Agent = { name: "away", label: "Agent", install: true, sign_in: "Sign in", mark: RING, enabled: true, update: null, models_off: [], setup: null, path: "/usr/local/bin/away", signed_in: false };
-const SIGN_IN = { id: "setup-away", action: "sign-in", running: true, code: null, signal: null, reason: null } as const;
-const SET_UP: [string, Agent][] = [
-  ["sign in", AWAY],
-  ["browser", { ...AWAY, setup: { ...SIGN_IN, code_page: null } }],
-  ["device code", { ...AWAY, setup: { ...SIGN_IN, code_page: "https://example.com/device", device_code: "ABCD-12345" } }],
-  ["code page", { ...AWAY, setup: { ...SIGN_IN, code_page: "https://example.com/code" } }],
+const PROJECTS: DraftProject[] = [
+  { id: "p-todo", name: "todo-app" },
+  { id: "p-invoice", name: "invoice-service" },
+  { id: "p-tokens", name: "design-tokens" },
 ];
+const INFO: RepoState["info"] = {
+  current: "main",
+  branches: ["main", "feat/invoices", "fix/rounding"],
+  worktrees: [{ path: "/Users/you/code/todo-review", branch: "review" }],
+};
 
-/** The model picker's Set up dialog, as `SetUpAgentDialog` draws it, held open. */
-function SetUp({ agent }: { agent: Agent }) {
+/** Project, Work in and branch, live; the toggles are what only Rust's answer about the repository changes. */
+function ProjectBar() {
+  const [project, setProject] = useState<DraftProject | null>(PROJECTS[0]!);
+  const [workIn, setWorkIn] = useState<WorkIn>("worktree");
+  const [base, setBase] = useState<string | null>(null);
+  const [worktree, setWorktree] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const repo: RepoState = { info: loading || failed ? undefined : INFO, error: failed ? "Couldn't read the branches: not a git repository" : undefined, loading, refresh: () => {} };
   return (
-    <Held className="h-80 w-128 overflow-hidden rounded-surface">
-      {(box) => (
-        <Dialog open modal={false}>
-          <DialogContent container={box} initialFocus={false}>
-            <DialogHeader>
-              <DialogTitle>Set up {agent.label}</DialogTitle>
-            </DialogHeader>
-            <ul className="flex min-w-0 flex-col">
-              <AgentCard agent={agent} online starting={false} retrying={false} failed={undefined} onAction={() => {}} onCancel={() => {}} onRetry={() => {}} />
-            </ul>
-          </DialogContent>
-        </Dialog>
-      )}
-    </Held>
+    <div className="flex flex-col items-start gap-4">
+      <UtilityBar>
+        <ProjectPicker
+          projects={PROJECTS}
+          value={project}
+          onChange={(id) => setProject(PROJECTS.find((each) => each.id === id)!)}
+          onAdd={(path) => showToast(path ? `Add project at ${path}` : "Add project")}
+          onNone={() => setProject(null)}
+        />
+        {project && (
+          <>
+            <WorkInPicker value={workIn} onChange={setWorkIn} repo={project.name} />
+            <BranchPicker workIn={workIn} repo={repo} name={project.name} base={base} worktree={worktree} onBase={setBase} onWorktree={setWorktree} />
+          </>
+        )}
+      </UtilityBar>
+      <div className="flex flex-wrap gap-4">
+        <CheckboxRow label="Branches loading" checked={loading} onCheckedChange={setLoading} />
+        <CheckboxRow label="Branches can't be read" checked={failed} onCheckedChange={setFailed} />
+      </div>
+    </div>
   );
 }
 
-const LARGE: ModelChoice = { provider: "cloud", model: "large", effort: "high" };
-
 export function PickersGallery() {
-  const [model, setModel] = useState(LARGE);
+  const [model, setModel] = useState<ModelChoice>({ provider: "cloud", model: "large", effort: "high" });
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   return (
     <>
+      <Section title="Project, Work in and branch">
+        <ProjectBar />
+      </Section>
       <Section title="Model picker">
         <div className="self-start">
           <ModelPicker groups={GROUPS} value={model} onChange={setModel} />
         </div>
-        <Row name="Set up: sign in · in the browser · device code · code page">
-          {SET_UP.map(([label, agent]) => (
-            <State key={label} label={label}>
-              <SetUp agent={agent} />
-            </State>
-          ))}
-        </Row>
       </Section>
       <Section title="Permission picker">
         <div className="self-start">

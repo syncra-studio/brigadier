@@ -1,4 +1,4 @@
-// Every slice 1 component in every state. The first copy in each row is live.
+// Slice 1's components live: each variant and size side by side, disabled where it has one.
 import { Badge } from "../src/components/badge";
 import { Button, type ButtonProps } from "../src/components/button";
 import { Checkbox, CheckboxMark } from "../src/components/checkbox";
@@ -6,9 +6,9 @@ import { TooltipIconButton } from "../src/components/icon-button";
 import { Input } from "../src/components/input";
 import { Kbd } from "../src/components/kbd";
 import { Switch } from "../src/components/switch";
-import { TitlebarTips } from "../src/components/tooltip";
+import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
 import { Copy, X } from "../src/icons";
-import { OpenTip, Row, Section, State } from "./parts";
+import { Row, Section, State } from "./parts";
 
 const VARIANTS = ["default", "outline", "ghost", "soft", "soft-destructive", "secondary", "destructive", "link", "link-blue"] as const;
 const SIZES = ["xs", "sm", "md", "inline"] as const;
@@ -20,19 +20,23 @@ function ButtonStates(props: ButtonProps) {
       <State label="live">
         <Button {...props} />
       </State>
-      <State label="hover" frozen="hover">
-        <Button {...props} />
-      </State>
-      <State label="focus" frozen="focus">
-        <Button {...props} />
-      </State>
-      <State label="pressed" frozen="hover active">
-        <Button {...props} />
-      </State>
       <State label="disabled">
         <Button {...props} disabled />
       </State>
     </>
+  );
+}
+
+/** A tip on a button, shown on hover. */
+function Tip({ label, shortcut, side }: { label: string; shortcut?: string; side?: "top" | "bottom" }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button size="sm" variant="outline" />}>Trigger</TooltipTrigger>
+      <TooltipContent side={side}>
+        {label}
+        {shortcut && <Kbd>{shortcut}</Kbd>}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -94,20 +98,8 @@ function IconButtons() {
               </TooltipIconButton>
             </TitlebarTips>
           </State>
-          {(["hover", "focus", "hover active"] as const).map((frozen) => (
-            <State key={frozen} label={frozen === "hover active" ? "pressed" : frozen} frozen={frozen}>
-              <TooltipIconButton look={look} tooltip="Copy" tip={false}>
-                <Copy />
-              </TooltipIconButton>
-            </State>
-          ))}
           <State label="switched on">
             <TooltipIconButton look={look} tooltip="Copy" tip={false} pressed>
-              <Copy />
-            </TooltipIconButton>
-          </State>
-          <State label="menu open">
-            <TooltipIconButton look={look} tooltip="Copy" tip={false} aria-expanded>
               <Copy />
             </TooltipIconButton>
           </State>
@@ -121,32 +113,17 @@ function IconButtons() {
               <Copy />
             </TooltipIconButton>
           </State>
-          <State label="tip open">
-            <OpenTip
-              label="Copy"
-              shortcut="⌘C"
-              trigger={
-                <TooltipIconButton look={look} tooltip="Copy" tip={false}>
-                  <Copy />
-                </TooltipIconButton>
-              }
-            />
-          </State>
         </Row>
       ))}
-      <Row name="tooltip">
+      <Row name="tooltip (hover each)">
         <State label="above">
-          <OpenTip side="top" label="Close" trigger={<Button size="sm" variant="outline">Trigger</Button>} />
+          <Tip side="top" label="Close" />
         </State>
         <State label="with a key">
-          <OpenTip label="Dictate" shortcut="⌃⇧D" trigger={<Button size="sm" variant="outline">Trigger</Button>} />
+          <Tip label="Dictate" shortcut="⌃⇧D" />
         </State>
         <State label="long text wraps">
-          <OpenTip
-            wide
-            label="Starts a new session in the background and keeps this one open"
-            trigger={<Button size="sm" variant="outline">Trigger</Button>}
-          />
+          <Tip label="Starts a new session in the background and keeps this one open" />
         </State>
       </Row>
     </Section>
@@ -173,11 +150,6 @@ function Fields() {
       <Section title="Input">
         <Row>
           <State label="live">
-            <div className="w-52">
-              <Input placeholder="Search settings" />
-            </div>
-          </State>
-          <State label="focus" frozen="focus">
             <div className="w-52">
               <Input placeholder="Search settings" />
             </div>
@@ -210,10 +182,6 @@ function Fields() {
           <State label="mixed">
             <Checkbox aria-label="Mixed" indeterminate />
           </State>
-          <State label="focus" frozen="focus">
-            <Checkbox aria-label="Focus" />
-            <Checkbox aria-label="Focus checked" defaultChecked />
-          </State>
           <State label="disabled">
             <Checkbox aria-label="Disabled" disabled />
             <Checkbox aria-label="Disabled checked" disabled defaultChecked />
@@ -231,10 +199,6 @@ function Fields() {
           </State>
           <State label="on">
             <Switch aria-label="On" defaultChecked />
-          </State>
-          <State label="focus" frozen="focus">
-            <Switch aria-label="Focus" />
-            <Switch aria-label="Focus on" defaultChecked />
           </State>
           <State label="disabled">
             <Switch aria-label="Disabled" disabled />

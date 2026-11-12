@@ -1,41 +1,14 @@
-// Dev-only: every kit component in every state (D2). Opened by `pnpm gallery`.
+// Dev-only: every component, live (D2). Screens are built from them in the app. Opened by `pnpm gallery`.
 import { type RefObject, useEffect, useRef } from "react";
 
-import { CardGallery } from "./card";
-import { ChangesGallery } from "./changes";
-import { Choices } from "./choices";
-import { PullRequestsGallery } from "./pull-requests";
-import { Contents } from "./contents";
 import { ComposerGallery } from "./composer";
-import { RailGallery } from "./rail";
-import { TabsGallery } from "./tabs";
-import { AidsGallery } from "./aids";
-import { DecisionsGallery } from "./decisions";
-import { FeedbackGallery } from "./feedback";
-import { FilesGallery } from "./files";
-import { RewindGallery } from "./rewind";
-import { ForkGallery } from "./fork";
-import { FindGallery } from "./find";
-import { HomeGallery } from "./home";
-import { PickersGallery } from "./pickers";
+import { Choices } from "./choices";
+import { Contents } from "./contents";
 import { Kit } from "./kit";
-import { Notices } from "./notices";
-import { PaletteGallery } from "./palette";
 import { Panes } from "./panes";
 import { Area } from "./parts";
+import { PickersGallery } from "./pickers";
 import { Popups } from "./popups";
-import { ArchiveGallery } from "./archive";
-import { ProjectSettingsGallery } from "./project-settings";
-import { ProjectsGallery } from "./projects";
-import { ReviewGallery } from "./review";
-import { SessionGallery } from "./session";
-import { SidebarGallery } from "./sidebar";
-import { Thread } from "./thread";
-import { RightPanelGallery } from "./right-panel";
-import { CommitGallery } from "./commit";
-import { BranchGallery } from "./branch";
-import { WorkersGallery } from "./workers";
-import { PeersGallery } from "./peers";
 import "./gallery.css";
 
 const SCROLL_KEY = "gallery-scroll";
@@ -102,30 +75,11 @@ function GalleryPage() {
         <Contents scroller={scroller} />
         <div ref={scroller} className="min-w-0 flex-1 overflow-y-auto">
           <main className="isolate flex flex-col gap-16 px-8 py-8">
-            <Area name="Screens">
-              <HomeGallery />
-              <ProjectsGallery />
-              <ProjectSettingsGallery />
-              <ArchiveGallery />
-              <FeedbackGallery />
-              <SidebarGallery />
-              <PaletteGallery />
-              <SessionGallery />
-            </Area>
             <Area name="Composer">
               <ComposerGallery />
-              <RailGallery />
-              <AidsGallery />
-              <PickersGallery />
-              <DecisionsGallery />
             </Area>
-            <Area name="Thread">
-              <Thread />
-              <RewindGallery />
-              <ForkGallery />
-              <FindGallery />
-              <Notices />
-              <ChangesGallery />
+            <Area name="Pickers">
+              <PickersGallery />
             </Area>
             <Area name="Controls">
               <Kit />
@@ -134,26 +88,8 @@ function GalleryPage() {
             <Area name="Popups and status">
               <Popups />
             </Area>
-            <Area name="Review">
-              <ReviewGallery />
-            </Area>
-            <Area name="Layout">
-              <TabsGallery />
+            <Area name="Layout and shared parts">
               <Panes />
-              <FilesGallery />
-            </Area>
-            <Area name="Landing the work">
-              <PullRequestsGallery />
-            </Area>
-            <Area name="Right panel">
-              <RightPanelGallery />
-              <CardGallery />
-              <CommitGallery />
-              <BranchGallery />
-            </Area>
-            <Area name="Workers and messages">
-              <WorkersGallery />
-              <PeersGallery />
             </Area>
           </main>
         </div>
