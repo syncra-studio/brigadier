@@ -8,23 +8,9 @@ import type { FollowUp } from "./draft";
 
 /** A second Esc within this long stops the run (the first one arms the button). */
 const ESC_WINDOW_MS = 2000;
-/** How long Stop stays once the run can't be stopped any more, so the button doesn't flicker between steps. */
-const STOP_HOLD_MS = 700;
 /** Menus, dialogs and the composer's own menus take their Esc first (not the gallery's, held open). */
 const TAKES_ESC = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
 const TEXT_FIELD = "input, textarea, select, [contenteditable=true], [contenteditable='']";
-
-/** `on`, staying true for `ms` after it goes false (and true at once when it comes back). */
-function useHeldOn(on: boolean, ms: number): boolean {
-  const [held, setHeld] = useState(on);
-  if (on && !held) setHeld(true);
-  useEffect(() => {
-    if (on) return;
-    const timer = setTimeout(() => setHeld(false), ms);
-    return () => clearTimeout(timer);
-  }, [on, ms]);
-  return on || held;
-}
 
 /**
  * The two-press stop: while the run can be stopped, the first Esc outside menus and dialogs leaves the field
@@ -120,9 +106,8 @@ export function SendButton({
   onResume?: () => void;
 }) {
   const button = useRef<HTMLButtonElement>(null);
-  const stoppable = useHeldOn(canStop, STOP_HOLD_MS);
-  const armed = useEscToStop(stoppable, onStop, button);
-  const state = armed || (stoppable && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
+  const armed = useEscToStop(canStop, onStop, button);
+  const state = armed || (canStop && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
   const modHeld = useModHeld(onSendNew !== undefined);
   const asNew = state === "send" && onSendNew !== undefined && modHeld && !empty;
   const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";

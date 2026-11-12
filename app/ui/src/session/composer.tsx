@@ -197,8 +197,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setEmpty(false);
     });
   }, []);
-
-  const running = row?.running === true;
+  // The thread's newest turn, as its Thinking line reads it, so the button changes in the same frame; else Rust's row.
+  const thread = useSyncExternalStore(source.subscribe, source.get);
+  const running = thread?.id === id && thread.after === null ? thread.turns.at(-1)?.status === "running" : row?.running === true;
   const canSteer = row?.steer === true;
   // Queue or Steer, Rust's setting [D188].
   const followUp = useSettings().value?.follow_up ?? "queue";
@@ -209,7 +210,6 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     ops.filter((op) => !live.includes(op)).forEach((op) => op.done?.());
     setOps(live);
   });
-
   let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows);
   let paused = row?.queue?.paused === true;
   for (const op of live) {
