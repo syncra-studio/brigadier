@@ -229,7 +229,7 @@ impl Thread {
             if !self.shown.contains(&t.id) {
                 self.open_turn(t, ts);
             }
-            self.stop_ended(t, item, ts);
+            self.turn_ended(t, item, &outcome, ts);
             self.close_turn(&outcome, ts);
         }
         if let Some(t) = self
@@ -308,6 +308,7 @@ impl Thread {
     /// the daemon calls this when the session's live state reads interrupted.
     pub fn interrupt(&mut self, ts: u64) {
         self.fold.interrupt(Value::Null, ts);
+        self.interrupted_line();
         self.close_turn("interrupted", ts);
         self.end_children("failed");
     }

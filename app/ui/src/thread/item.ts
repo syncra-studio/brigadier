@@ -231,13 +231,15 @@ export type Item = Base &
      * A line across the thread where something changed, its words written here (D487): a usage limit that reset
      * (`at`, ms); a model the same agent moved to, picked between turns or the CLI's own reroute; the user's Stop
      * (`ms` since the turn started; null when not known), or a worker's Pause in its own thread; a turn the agent's
-     * automatic reviewer ended; a failed turn's message sent again in its place (D492).
+     * automatic reviewer ended; a failed turn's message sent again in its place (D492); a run that stopped before its
+     * turn ended (D92).
      */
     | { kind: "line"; reason: "limit-reset"; at: number }
     /** `op`: the app's pick it came from, to take its pending line's place [D76]. */
     | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string; op?: string }
     | { kind: "line"; reason: "stopped"; ms: number | null }
     | { kind: "line"; reason: "paused"; ms: number }
+    | { kind: "line"; reason: "interrupted" }
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }
     /** Workers in the parent's thread, from Rust's notes and results [D3009, D3010]: started (in one turn, merged), ended, Stop left running. */

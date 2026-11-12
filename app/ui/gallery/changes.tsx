@@ -32,6 +32,7 @@ const LINES: [string, Line][] = [
   ["stopped", { ...base, reason: "stopped", ms: 62_000 }],
   ["stopped, time unknown", { ...base, reason: "stopped", ms: null }],
   ["a worker paused", { ...base, reason: "paused", ms: 41_000 }],
+  ["interrupted", { ...base, reason: "interrupted" }],
   ["automatic review ended", { ...base, reason: "review-ended" }],
   ["retry replaces attempt", { ...base, reason: "retried" }],
 ];

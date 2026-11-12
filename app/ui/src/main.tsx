@@ -204,7 +204,6 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   const sides = useSidePending(id);
   const picking = useModelPick(id);
   const line =
-    row?.state === "interrupted" ? <WorkingLine state="interrupted">Interrupted · the run stopped before it finished</WorkingLine> :
     row?.state === "stalled" ? <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine> :
     // The agent's own retry and safety hold, in its words' place (D487).
     row?.state === "retrying" ? <WorkingLine state="live">{retryWords(row.reason)}</WorkingLine> :

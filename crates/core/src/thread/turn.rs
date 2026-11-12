@@ -1,4 +1,4 @@
-//! Opening a turn and the change lines that precede its message.
+//! Opening a turn, the change lines that precede its message, and the line its end leaves.
 
 use super::{Open, Thread};
 use crate::adapters::s;
@@ -67,6 +67,23 @@ impl Thread {
             None => self.items[at]["turnId"] = "".into(),
         }
         self.pick_row = Some(at);
+    }
+
+    /// A turn the user's Stop ended, however its agent ended it: the clean interrupt too; one its
+    /// agent says ended well finished before the Stop took. One its host or agent dropped says
+    /// so, a line that stays once another turn runs [D92].
+    pub(super) fn turn_ended(&mut self, t: &Turn, item: &Value, outcome: &str, ts: u64) {
+        if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
+            self.user_stopped(ts);
+        } else if outcome == "interrupted" && t.delivered.is_some() {
+            self.interrupted_line();
+        }
+    }
+
+    pub(super) fn interrupted_line(&mut self) {
+        if self.open.is_some() {
+            self.kept_row(json!({"kind": "line", "reason": "interrupted"}));
+        }
     }
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {

@@ -62,6 +62,9 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
     // A worker's Pause, in its own thread: Resume carries it on [D90].
     case "paused":
       return <ThreadLine icon={PauseCircle}>You paused after {duration(item.ms)}</ThreadLine>;
+    // The run's host or agent was gone before the turn ended; Resume carries it on (D92).
+    case "interrupted":
+      return <ThreadLine icon={Stop}>Interrupted · the run stopped before it finished</ThreadLine>;
     case "review-ended":
       return (
         <ThreadLine icon={ShieldExclamation} tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on.">

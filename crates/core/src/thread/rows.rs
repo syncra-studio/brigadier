@@ -1,7 +1,6 @@
 //! The thread's rows: what each normalised item adds or changes, and the groups steps make [D48, D65].
 
 use super::Thread;
-use crate::fold::Turn;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -32,14 +31,6 @@ impl Thread {
             _ => "stopped",
         };
         self.kept_row(json!({"kind": "line", "reason": reason, "ms": ms}));
-    }
-
-    /// A turn the user's Stop ended, however its agent ended it: the clean interrupt too. One its
-    /// agent says ended well finished before the Stop took.
-    pub(super) fn stop_ended(&mut self, t: &Turn, item: &Value, ts: u64) {
-        if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
-            self.user_stopped(ts);
-        }
     }
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
