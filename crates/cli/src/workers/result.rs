@@ -101,9 +101,8 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed.
-fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
-    // A paused one reports nothing until Resume [D3041].
-    let Some(l) = link(data, wid).filter(|l| !l.paused) else {
+pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
+    let Some(l) = link(data, wid) else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
@@ -124,6 +123,11 @@ fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
             "limited" => "limit",
             _ => "failed",
         };
+        // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
+        // ended by itself before the Pause took reports as ever.
+        if l.paused && how == "stopped" {
+            continue;
+        }
         write(data, &l, wid, turn, how, None)?;
     }
     Ok(())
@@ -400,7 +404,10 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
     let f = core::fold(&dir, true)?;
     let live = fold::live(&f.fold, owner::state(data, pid), data, &procs::all());
     let status = fold::status(&f.fold, &live);
-    if live.owner != Owner::Alive || !TAKES.contains(&status["state"].as_str().unwrap_or("")) {
+    let state = status["state"].as_str().unwrap_or("");
+    // A parent the user stopped (or paused) isn't woken: its results go after the next message
+    // or Resume [D95].
+    if live.owner != Owner::Alive || !TAKES.contains(&state) || fold::resumable(&f.fold, state) {
         return Ok(());
     }
     let child = ping["child"]

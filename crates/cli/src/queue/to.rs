@@ -27,12 +27,16 @@ pub(super) fn first(q: &Queue, wid: &str) -> Option<String> {
     first.map(|i| i.id.clone())
 }
 
+/// Whether the user or its parent ended it: nothing goes to it any more.
+fn ended(l: &crate::workers::Link) -> bool {
+    !l.paused && l.last["how"] == "stopped"
+}
+
 /// Whether worker `wid` takes a message now: between turns, not paused or ended, nothing of its
 /// own waiting.
 fn free(data: &Path, wid: &str) -> bool {
     let dir = core::session_dir(data, wid);
-    let open =
-        crate::workers::link(data, wid).is_some_and(|l| !l.paused && l.last["how"] != "stopped");
+    let open = crate::workers::link(data, wid).is_some_and(|l| !l.paused && !ended(&l));
     let idle = read(&dir).is_ok_and(|w| w.items.is_empty() && w.editing.is_none() && !w.paused);
     open && idle
         && core::fold(&dir, true).is_ok_and(|f| {
@@ -110,10 +114,12 @@ pub fn held(data: &Path, pid: &str, wid: &str) -> io::Result<()> {
 /// The daemon's pass: a session whose queue holds a message for a worker now between turns gives
 /// it, off the daemon's loop.
 pub(super) fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
+    // An ended one's messages are looked at too, to say so on their row [D96].
     let ready = |w: &Value| {
-        w["queue"].is_null()
-            && !matches!(w["worker"]["kind"].as_str(), Some("paused" | "stopped"))
-            && DRAINS.contains(&w["state"].as_str().unwrap_or(""))
+        w["worker"]["kind"] == "stopped"
+            || w["queue"].is_null()
+                && w["worker"]["kind"] != "paused"
+                && DRAINS.contains(&w["state"].as_str().unwrap_or(""))
     };
     for (id, row) in rows {
         let items = row["queue"]["items"].as_array().into_iter().flatten();
@@ -137,7 +143,7 @@ pub(super) fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
 }
 
 /// Each worker's first message, under the queue's lock (another pass that finds it held leaves
-/// it); one that can't go says why and waits there.
+/// it); one that can't go says why and waits there, as each for a worker that ended does [D96].
 fn give_firsts(data: &Path, id: &str) -> io::Result<()> {
     let dir = core::session_dir(data, id);
     let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
@@ -148,6 +154,12 @@ fn give_firsts(data: &Path, id: &str) -> io::Result<()> {
         wids.sort();
         wids.dedup();
         for wid in wids {
+            if let Some(l) = crate::workers::link(data, &wid).filter(ended) {
+                (q.items.iter_mut())
+                    .filter(|i| i.to.as_deref() == Some(wid.as_str()) && i.error.is_none())
+                    .for_each(|i| i.error = Some(format!("{} has ended", l.title)));
+                continue;
+            }
             let Some(qid) =
                 first(q, &wid).filter(|f| q.items.iter().any(|i| &i.id == f && i.error.is_none()))
             else {

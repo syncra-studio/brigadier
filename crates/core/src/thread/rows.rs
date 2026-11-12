@@ -1,6 +1,7 @@
 //! The thread's rows: what each normalised item adds or changes, and the groups steps make [D48, D65].
 
 use super::Thread;
+use crate::fold::Turn;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -16,16 +17,28 @@ impl Thread {
     }
 
     /// The user's Stop ends the limit: its line stays, without its switch [D51]. Said in the
-    /// thread too, out of the work fold, like the user's words [D99, D487].
-    fn user_stopped(&mut self, ts: u64) {
+    /// thread too, out of the work fold, like the user's words [D99, D487]: once a turn, and a
+    /// worker's Pause says Paused.
+    pub(super) fn user_stopped(&mut self, ts: u64) {
         self.end_limit();
         // A Stop that lands after the turn ended stopped none of it: no line.
-        let Some(ms) = self.open.as_ref().map(|o| ts.saturating_sub(o.started)) else {
+        let Some(o) = self.open.as_mut().filter(|o| !o.stop.1) else {
             return;
         };
-        let at = self.add(json!({"kind": "line", "reason": "stopped", "ms": ms}));
-        if let Some(o) = self.open.as_mut() {
-            o.kept.push(at as u64 + 1);
+        o.stop.1 = true;
+        let ms = ts.saturating_sub(o.started);
+        let reason = match o.stop.0.as_deref() {
+            Some("pause") => "paused",
+            _ => "stopped",
+        };
+        self.kept_row(json!({"kind": "line", "reason": reason, "ms": ms}));
+    }
+
+    /// A turn the user's Stop ended, however its agent ended it: the clean interrupt too. One its
+    /// agent says ended well finished before the Stop took.
+    pub(super) fn stop_ended(&mut self, t: &Turn, item: &Value, ts: u64) {
+        if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
+            self.user_stopped(ts);
         }
     }
 
@@ -202,7 +215,10 @@ impl Thread {
             "exited" => self.end_children("failed"),
             "stopped" => {
                 self.end_children("cancelled");
-                if item["by"] == "user" {
+                if let Some(by @ ("user" | "pause")) = item["by"].as_str() {
+                    if let Some(o) = self.open.as_mut() {
+                        o.stop.0.get_or_insert(by.into());
+                    }
                     self.user_stopped(ts);
                 }
             }
@@ -220,14 +236,14 @@ impl Thread {
                     .unwrap_or_default();
                 // `backend` and `account` name the side at its limit until a switch names both.
                 let at = self.add(json!({"kind": "switch", "state": "limit",
-                    "reason": if item["credits"] == true { "credits" } else { super::reason(Some(kind)) }, "backend": backend, "account": account,
+                    "reason": if item["credits"] == true { "credits" } else { super::turn::reason(Some(kind)) }, "backend": backend, "account": account,
                     "handoff": false, "automatic": false, "text": item["message"], "resets": item["resets"]}));
                 self.limit_row = Some(at);
                 self.reset_at = item["resets"].as_u64();
             }
+            // Kept out of the work fold: where the model changed shows once the turn is done [D92].
             "rerouted" => {
-                self.break_group();
-                self.add(json!({"kind": "line", "reason": "model", "why": "rerouted",
+                self.kept_row(json!({"kind": "line", "reason": "model", "why": "rerouted",
                     "from": item["from"], "to": item["to"]}));
             }
             "denied" => {
@@ -276,11 +292,13 @@ impl Thread {
                         self.items[at]["progress"] = progress.into();
                         self.changed_items.insert(at);
                     }
+                    // Kept out of the work fold, as where it summarised matters later [D92].
                     None => {
-                        let at = self.add(
+                        self.kept_row(
                             json!({"kind": "compaction", "summary": null, "progress": progress}),
                         );
-                        self.keys.insert(key("compaction".into()), at);
+                        self.keys
+                            .insert(key("compaction".into()), self.items.len() - 1);
                     }
                 }
             }

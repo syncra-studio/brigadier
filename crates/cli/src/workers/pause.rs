@@ -6,7 +6,9 @@
 
 use super::{busy, family_lock, halt, link, make, note, place, record, refuse, write_json};
 use brigadier_core::{self as core};
+use brigadier_frames::procs;
 use serde_json::{Value, json};
+use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -42,30 +44,47 @@ pub(super) fn run(data: &Path, top: &str, how: &str, wid: &str) -> Value {
 }
 
 fn pause(data: &Path, top: &str, wid: &str) -> Value {
+    let dir = core::session_dir(data, wid);
+    let mark = |paused: bool| -> io::Result<Value> {
+        let (root, _) = place(data, wid);
+        let _family = family_lock(data, &root)?;
+        let mut l = link(data, wid).ok_or_else(|| io::Error::other("the worker has ended"))?;
+        l.paused = paused;
+        write_json(&dir.join("worker.json"), &l)?;
+        Ok(l.last)
+    };
     {
         let (root, _) = place(data, wid);
         let Ok(_family) = family_lock(data, &root) else {
             return refuse("Couldn't pause the worker");
         };
-        let Some(mut l) = link(data, wid) else {
+        let Some(l) = link(data, wid) else {
             return refuse("the worker has ended");
         };
         if l.paused {
             return json!({"ok": true});
         }
-        if !busy(data, wid) {
-            return refuse("the worker has ended");
-        }
-        // Marked before its turn ends, so the stopped turn writes no result.
-        l.paused = true;
-        if let Err(e) = write_json(&core::session_dir(data, wid).join("worker.json"), &l) {
-            return refuse(&e.to_string());
+        // Its reported task, or a turn the user started in it.
+        if !busy(data, wid) && !crate::sessions::working(data, wid, &procs::all()) {
+            return refuse("the worker isn't running");
         }
     }
-    match halt(data, top, wid) {
-        Ok(()) => json!({"ok": true}),
-        Err(e) => refuse(&e.to_string()),
+    // Marked before its turn ends, so the stopped turn writes no result.
+    let before = match mark(true) {
+        Ok(last) => last,
+        Err(e) => return refuse(&e.to_string()),
+    };
+    if let Err(e) = halt(data, top, wid, "pause") {
+        let _ = mark(false);
+        return refuse(&e.to_string());
     }
+    // Its task ended by itself before the Pause took: its result goes as ever, nothing is paused.
+    let _ = super::result::write_ended(data, wid, false);
+    if link(data, wid).is_some_and(|l| l.last != before) {
+        let _ = mark(false);
+        return refuse("the worker finished before it could pause");
+    }
+    json!({"ok": true})
 }
 
 /// Queues the continue after what was held, then lets the queue go, the stopped turn not carried

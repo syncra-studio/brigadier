@@ -235,8 +235,8 @@ fn command_left(dir: &Path, since: u64) -> io::Result<bool> {
 
 /// Stops the running turn through the adapter's own stop, the process staying alive. None when it
 /// can't, the turn didn't end in time, or the turn's command outlived it: the caller kills
-/// instead, and the next message resumes [D159, D222].
-pub fn interrupt(data: &Path, id: &str) -> io::Result<Option<Value>> {
+/// instead, and the next message resumes [D159, D222]. `by`: "user", or "pause" for a worker's Pause.
+pub fn interrupt(data: &Path, id: &str, by: &str) -> io::Result<Option<Value>> {
     let dir = core::session_dir(data, id);
     let turn = core::fold(&dir, true)?.fold.turns.into_iter().next();
     // From its open tool, not the turn: a helper's own server can start after the turn's input.
@@ -245,7 +245,7 @@ pub fn interrupt(data: &Path, id: &str) -> io::Result<Option<Value>> {
     let tool_since = turn
         .filter(|t| !t.tools.is_empty())
         .map(|t| t.tools_since.saturating_sub(1000));
-    let req = json!({"cid": new_cid(), "control": {"kind": "interrupt"}});
+    let req = json!({"cid": new_cid(), "control": {"kind": "interrupt", "by": by}});
     let reply = deliver(data, id, req, false, |f| {
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().stop);
         match !f.turns.is_empty() && can {

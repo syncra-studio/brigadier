@@ -46,6 +46,9 @@ struct Open {
     kept: Vec<u64>,
     /// Actions the CLI's own rule or reviewer turned down in it, with nobody asked [D487].
     denied: usize,
+    /// Who asked it to stop ("user", or "pause" for a worker's Pause), and whether its line is drawn.
+    #[serde(default)]
+    stop: (Option<String>, bool),
 }
 
 /// Saved whole with its rows apart (`saved`); what only says what changed since the last send isn't.
@@ -108,16 +111,6 @@ pub struct Thread {
     #[serde(skip)]
     setup_changed: bool,
     points: Vec<String>,
-}
-
-/// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
-/// another agent the user picked [D129].
-fn reason(why: Option<&str>) -> &'static str {
-    match why {
-        Some("unresumable") => "unresumable",
-        Some("picked") => "picked",
-        _ => "usage-limit",
-    }
 }
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
@@ -236,6 +229,7 @@ impl Thread {
             if !self.shown.contains(&t.id) {
                 self.open_turn(t, ts);
             }
+            self.stop_ended(t, item, ts);
             self.close_turn(&outcome, ts);
         }
         if let Some(t) = self

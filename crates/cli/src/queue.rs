@@ -327,18 +327,18 @@ fn went(dir: &Path, reply: &Value, cid: &str) -> bool {
 
 /// Stop [D159]: the queue is paused first, so nothing goes on while the turn ends, and stays paused
 /// if anything waits, including what was added during the Stop. Then the agent's own stop, and the
-/// kill only when it has none or it didn't stop in time.
-pub fn stop(data: &Path, id: &str) -> io::Result<Value> {
+/// kill only when it has none or it didn't stop in time. `by`: "user", or "pause" for a worker's Pause.
+pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
     let dir = core::session_dir(data, id);
     change(&dir, |q| {
         (q.paused, q.stopping) = (true, true);
         Ok(())
     })?;
     let stopped = (|| {
-        if let Ok(Some(stopped)) = control::interrupt(data, id) {
+        if let Ok(Some(stopped)) = control::interrupt(data, id, by) {
             return Ok(stopped);
         }
-        match owner::call(data, id, json!({"op": "stop", "by": "user"})) {
+        match owner::call(data, id, json!({"op": "stop", "by": by})) {
             Ok(v) => Ok(v),
             // No owner: nothing can be running under us, but leftovers recorded in the log still go.
             Err(e) => {

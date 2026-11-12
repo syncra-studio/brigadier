@@ -1,6 +1,6 @@
 //! Opening a turn and the change lines that precede its message.
 
-use super::{Open, Thread, reason};
+use super::{Open, Thread};
 use crate::adapters::s;
 use crate::fold::Turn;
 use serde_json::{Value, json};
@@ -93,6 +93,7 @@ impl Thread {
             waited: 0,
             kept: vec![],
             denied: 0,
+            stop: (None, false),
         });
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].
         let model = t
@@ -162,5 +163,15 @@ impl Thread {
                 o.input = true;
             }
         }
+    }
+}
+
+/// A switch row's reason, from the status fold's: a usage limit, a resume the agent refused, or
+/// another agent the user picked [D129].
+pub(super) fn reason(why: Option<&str>) -> &'static str {
+    match why {
+        Some("unresumable") => "unresumable",
+        Some("picked") => "picked",
+        _ => "usage-limit",
     }
 }

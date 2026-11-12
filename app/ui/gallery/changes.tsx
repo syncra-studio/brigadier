@@ -31,10 +31,9 @@ const LINES: [string, Line][] = [
   ["rerouted, previous unknown", { ...base, reason: "model", why: "rerouted", from: null, to: "Small" }],
   ["stopped", { ...base, reason: "stopped", ms: 62_000 }],
   ["stopped, time unknown", { ...base, reason: "stopped", ms: null }],
+  ["a worker paused", { ...base, reason: "paused", ms: 41_000 }],
   ["automatic review ended", { ...base, reason: "review-ended" }],
   ["retry replaces attempt", { ...base, reason: "retried" }],
-  ["continuation, waits for forks", { ...base, reason: "continued", session: "example", title: "Fix login" }],
-  ["continuation, title unknown", { ...base, reason: "continued", session: "example", title: null }],
 ];
 
 function Column({ children }: { children: ReactNode }) {

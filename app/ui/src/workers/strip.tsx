@@ -15,7 +15,7 @@ import { finished, onHand, type Worker, WorkersPanel, waiting } from "./chip";
 /*
  * The Workers strip above the composer, never under it [D388], as the old app's WorkersStrip, StripRow, StopWorker
  * and RowTime: while workers run or wait, those only; finished ones leave it. A lone worker is its own row; more,
- * folded, are counted; open, one row each, and Pause all [D3010, D3041].
+ * folded, are counted; open, one row each, Pause all (Resume all once all are paused) and End all [D3010, D3041, D94].
  */
 
 /** The user's End, Pause or Resume of workers: Rust's `workers <id> stop|pause|resume`, rejecting with its error. */
@@ -87,7 +87,8 @@ export function StopWorker({ worker, act }: { worker: Worker; act: Act }) {
 /** The user's pause/resume toggle for one worker [D3041]: one "Paused …" or "Resumed …" line in the thread. */
 export function PauseWorker({ worker, act }: { worker: Worker; act: Act }) {
   const toggle = useAction();
-  if (!onHand(worker)) return null;
+  // At a limit nothing of it runs to pause; End still shows.
+  if (!onHand(worker) || worker.kind === "limit") return null;
   const paused = worker.kind === "paused";
   return (
     <>
@@ -193,9 +194,13 @@ export const WorkersStrip: FC<{ workers: readonly Worker[]; act: Act; initiallyO
 const Strip: FC<{ workers: readonly Worker[]; act: Act; initiallyOpen?: boolean }> = ({ workers, act, initiallyOpen = false }) => {
   const [open, setOpen] = useState(initiallyOpen);
   const pause = useAction();
+  const end = useAction();
   const live = workers.filter(onHand).toSorted((a, b) => a.startedAt - b.startedAt);
-  // Pause all pauses those at work or waiting.
-  const pausable = live.filter((worker) => worker.kind !== "paused").map((worker) => worker.id);
+  // Pause all pauses those at work or waiting on the user; once none is left, Resume all resumes the paused.
+  const pausable = live.filter((worker) => worker.kind !== "paused" && worker.kind !== "limit").map((worker) => worker.id);
+  const paused = live.filter((worker) => worker.kind === "paused").map((worker) => worker.id);
+  const resuming = pausable.length === 0;
+  const toggled = resuming ? paused : pausable;
   // One worker shows as itself: its name, what it does, its End; two or more fold into a count.
   if (live.length === 1) {
     return (
@@ -229,7 +234,7 @@ const Strip: FC<{ workers: readonly Worker[]; act: Act; initiallyOpen?: boolean 
             </span>
           </span>
         </button>
-        {pausable.length > 0 && (
+        {toggled.length > 0 && (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -237,20 +242,31 @@ const Strip: FC<{ workers: readonly Worker[]; act: Act; initiallyOpen?: boolean 
                   size="xs"
                   variant="ghost"
                   data-slot="workers-pause-all"
+                  data-state={resuming ? "paused" : "running"}
                   disabled={pause.busy}
-                  onClick={() => pause.run(() => Promise.all(pausable.map((id) => act("pause", [id]))))}
+                  onClick={() => pause.run(() => Promise.all(toggled.map((id) => act(resuming ? "resume" : "pause", [id]))))}
                   className="text-row-foreground hover:text-foreground"
                 />
               }
             >
-              <PauseCircle />
-              Pause all
+              {resuming ? <PlayCircle /> : <PauseCircle />}
+              {resuming ? "Resume all" : "Pause all"}
             </TooltipTrigger>
-            <TooltipContent side="top">Pause every worker running or waiting to run</TooltipContent>
+            <TooltipContent side="top">{resuming ? "Resume every paused worker" : "Pause every worker running or waiting to run"}</TooltipContent>
           </Tooltip>
         )}
+        <TooltipIconButton
+          tooltip="End all workers · their work stays on their branches"
+          aria-label="End all workers"
+          data-slot="workers-end-all"
+          disabled={end.busy}
+          onClick={() => end.run(() => act("stop", live.map((worker) => worker.id)))}
+          className={BUTTON}
+        >
+          <X />
+        </TooltipIconButton>
       </div>
-      <ErrorLine error={pause.error} className="px-2" />
+      <ErrorLine error={pause.error ?? end.error} className="px-2" />
       {open && (
         <ul className="flex max-h-queue-max flex-col overflow-y-auto">
           {live.map((worker) => (

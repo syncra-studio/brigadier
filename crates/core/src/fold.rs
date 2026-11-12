@@ -439,8 +439,8 @@ impl Fold {
                 self.close("unresumable", item["message"].clone(), ts);
             }
             "stopped" => {
-                // The user's Stop ends the limit; a handoff's stop keeps it [D51].
-                if item["by"] == "user" {
+                // The user's Stop or Pause ends the limit; a handoff's stop keeps it [D51].
+                if matches!(item["by"].as_str(), Some("user" | "pause")) {
                     (self.limit, self.resets, self.refused) = (None, None, None);
                 }
                 self.close_all("stopped", item["by"].clone(), ts)

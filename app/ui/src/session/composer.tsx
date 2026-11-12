@@ -380,7 +380,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     editing.current = null;
     act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
   };
-  const firstError = row?.queue?.items[0]?.error;
+  const firstError = row?.queue?.items.find((each) => each.error)?.error;
   const stop = () => {
     setStopError(null);
     void run(["stop", id]).then((reply) => !reply.ok && setStopError(failure(reply)));

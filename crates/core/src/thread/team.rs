@@ -6,7 +6,8 @@ use super::Thread;
 use serde_json::{Value, json};
 
 impl Thread {
-    pub(super) fn team_row(&mut self, row: Value) {
+    /// A row that stays out of its turn's work fold, as the user's words do [D99].
+    pub(super) fn kept_row(&mut self, row: Value) {
         self.break_group();
         let at = self.add(row);
         if let Some(o) = self.open.as_mut() {
@@ -32,15 +33,15 @@ impl Thread {
                     self.changed_items.insert(at);
                     return;
                 }
-                self.team_row(json!({"kind": "team", "word": "started", "workers": ids}));
+                self.kept_row(json!({"kind": "team", "word": "started", "workers": ids}));
             }
-            Some("ended") => self.team_row(
+            Some("ended") => self.kept_row(
                 json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}),
             ),
-            Some("still") => self.team_row(json!({"kind": "team_still", "workers": ids})),
+            Some("still") => self.kept_row(json!({"kind": "team_still", "workers": ids})),
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
-                self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}))
+                self.kept_row(json!({"kind": "team_step", "type": p, "workers": ids}))
             }
             _ => {}
         }
@@ -54,6 +55,6 @@ impl Thread {
             "stopped" => "stopped",
             _ => "failed",
         };
-        self.team_row(json!({"kind": "team", "word": word, "workers": [wid]}));
+        self.kept_row(json!({"kind": "team", "word": word, "workers": [wid]}));
     }
 }

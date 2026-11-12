@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-import { ArrowRotateCw, Chat, type IconProps, ShieldExclamation, Sparkle, Stop } from "../../icons";
+import { ArrowRotateCw, type IconProps, PauseCircle, ShieldExclamation, Sparkle, Stop } from "../../icons";
 import type { Item } from "../../thread/item";
 import { duration, hhmm } from "../../thread/words";
 import { cx } from "../cx";
@@ -59,6 +59,9 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
       );
     case "stopped":
       return <ThreadLine icon={Stop}>{item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</ThreadLine>;
+    // A worker's Pause, in its own thread: Resume carries it on [D90].
+    case "paused":
+      return <ThreadLine icon={PauseCircle}>You paused after {duration(item.ms)}</ThreadLine>;
     case "review-ended":
       return (
         <ThreadLine icon={ShieldExclamation} tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on.">
@@ -67,14 +70,5 @@ export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) 
       );
     case "retried":
       return <ThreadLine icon={ArrowRotateCw}>Sent again · the previous attempt was replaced</ThreadLine>;
-    case "continued":
-      return (
-        <ThreadLine icon={Chat}>
-          Continued from{" "}
-          <a href={`#thread/${encodeURIComponent(item.session)}`} className="text-link hover:underline">
-            {item.title ?? "another conversation"}
-          </a>
-        </ThreadLine>
-      );
   }
 }

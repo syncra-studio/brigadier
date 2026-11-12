@@ -41,6 +41,11 @@ impl Thread {
             self.acking
                 .insert(item["cid"].as_str().unwrap_or("").to_string());
         }
+        if c["kind"] == "interrupt"
+            && let Some(o) = self.open.as_mut()
+        {
+            o.stop.0 = Some(c["by"].as_str().unwrap_or("user").into());
+        }
         if c["kind"] != "answer" {
             return;
         }

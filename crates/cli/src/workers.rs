@@ -199,7 +199,7 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     let Some(r) = below(data, me).into_iter().find(|r| r.wid == id) else {
         return refuse("You can stop only workers you started.");
     };
-    if let Err(e) = end(data, me, id) {
+    if let Err(e) = end(data, me, id, "agent") {
         return refuse(&e.to_string());
     }
     ended(data, me, &[id.to_string()], "agent");
@@ -213,8 +213,8 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
 }
 
 /// Stops worker `wid` below `top`. One still being made is marked so its brief never goes, and
-/// stopped once its making ends, if it got that far.
-fn halt(data: &Path, top: &str, wid: &str) -> io::Result<()> {
+/// stopped once its making ends, if it got that far. `by`: "user", or "pause".
+fn halt(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
     if let Some(pid) = parent_of(data, top, wid) {
         let (root, _) = place(data, &pid);
         let _family = family_lock(data, &root)?;
@@ -227,15 +227,33 @@ fn halt(data: &Path, top: &str, wid: &str) -> io::Result<()> {
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));
     }
-    if core::session_dir(data, wid).join("session.json").exists() {
-        queue::stop(data, wid)?;
+    if core::session_dir(data, wid).join("session.json").exists()
+        && queue::stop(data, wid, by)?["ok"] == false
+    {
+        return Err(io::Error::other("Couldn't stop the worker"));
     }
     Ok(())
 }
 
-/// End: `halt`, and a paused one is no longer paused but stopped; what it held stays held.
-fn end(data: &Path, top: &str, wid: &str) -> io::Result<()> {
-    halt(data, top, wid)?;
+/// End: `halt`, and a paused one is no longer paused but stopped; what it held stays held. Its
+/// own workers on hand end with it, its thread saying so; `by` names who ended them.
+fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
+    halt(data, top, wid, "user")?;
+    let all = procs::all();
+    let mine: Vec<String> = (records(data, wid).into_iter())
+        .filter(|r| {
+            r.state == "starting"
+                || crate::sessions::working(data, &r.wid, &all)
+                || link(data, &r.wid).is_some_and(|l| l.paused)
+        })
+        .map(|r| r.wid)
+        .collect();
+    for w in &mine {
+        end(data, top, w, by)?;
+    }
+    if !mine.is_empty() {
+        ended(data, wid, &mine, by);
+    }
     // Paused, or resumed with its report turn still queued: no turn will end to write how it ended, so End does.
     let queued = crate::queue::row(&core::session_dir(data, wid))["items"].clone();
     let unrun = |l: &Link| {
@@ -334,7 +352,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         std::thread::scope(|scope| {
             let stops: Vec<_> = ids
                 .iter()
-                .map(|w| scope.spawn(move || end(data, id, w)))
+                .map(|w| scope.spawn(move || end(data, id, w, "user")))
                 .collect();
             let results: Vec<_> = stops
                 .into_iter()
