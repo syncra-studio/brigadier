@@ -149,6 +149,12 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                     label,
                 ));
             }
+            // By its id, which its `brigadier` commands take, as the old app's `[mentions task-N: title]`.
+            (Some("mention"), Some("worker")) => {
+                agent += label;
+                let id = part["id"].as_str().unwrap_or("");
+                notes.push(format!("[mentions worker {id}: {label}]"));
+            }
             (Some("mention"), Some(kind)) => {
                 agent += label;
                 notes.push(format!("[mentions the {kind} {label}]"));

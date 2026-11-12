@@ -5,12 +5,13 @@ import { type Draft, isEmpty, plainText, sendMode } from "../components/composer
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { PausedSendDialog } from "../components/composer/rail";
-import { SessionWorkersStrip } from "../workers/live";
+import { openWorker, SessionWorkersStrip, useWorkers } from "../workers/live";
+import { ToWorkerChip } from "../workers/to-chip";
 import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble, datedAfter } from "../components/thread/message";
-import { ask, type Row, threadSource } from "../daemon";
+import { ask, type Row, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
 import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
 import { AgentChipTile } from "../landing/agent-chip";
@@ -30,7 +31,7 @@ import { newId } from "./store";
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
   /** `error`: why Rust couldn't send it; the queue waits on it. `editing`: the message pulled back to edit, kept by Rust. */
-  queue?: { paused: boolean; items: { id: string; text: string; parts?: Draft; error?: string }[]; editing?: { id: string; text: string; parts?: Draft; slot: number } | null } | null;
+  queue?: { paused: boolean; items: { id: string; text: string; parts?: Draft; error?: string; origin?: string }[]; editing?: { id: string; text: string; parts?: Draft; slot: number } | null } | null;
   steer?: boolean;
   running?: boolean;
   model?: string | null;
@@ -146,6 +147,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const approval = useApprovalWaiting(id, source);
   const [initial] = useState(() => draftOf(id));
   const [empty, setEmpty] = useState(() => isEmpty({ parts: initial?.parts ?? [], attachmentIds: [] }));
+  // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
+  const typed = useRef(initial?.parts ?? []);
   const files = useComposerFiles({ owner: id, run, field, backend: row?.backend, project: null, images: takesImages(row?.backend, row?.model), onTiles: (tiles) => keepDraft(run, id, { parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +161,11 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   // What waits above the field for the agent, and the chips the message being asked about carries [D1040].
   const chips = useChips(id);
   const askingChips = useRef<readonly Chip[]>([]);
+  // The To: the worker the next message goes to alone (@ › Message directly); leaving the session takes it away.
+  const [to, setTo] = useState<string | null>(null);
+  const [toSending, setToSending] = useState(false);
+  const rows = useDaemon().rows ?? [];
+  const toWorker = useWorkers(id).find((each) => each.id === to) ?? null;
   useLayoutEffect(() => () => void (hadKeyboard = document.activeElement?.closest("[data-slot=composer-field]") != null), []);
   useEffect(() => {
     if (hadKeyboard) field.current?.focus();
@@ -199,7 +207,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setOps(live);
   });
 
-  let items: QueuedMessage[] = (row?.queue?.items ?? []).map((each) => ({ id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued" }));
+  let items: QueuedMessage[] = (row?.queue?.items ?? []).map((each) => {
+    const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
+    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued" };
+    // Another session's: its words without the envelope's first line, and who sent it [D3014].
+    const at = each.text.indexOf("]\n\n");
+    const words = at < 0 ? each.text : each.text.slice(at + 3);
+    return { id: each.id, draft: { parts: [words], attachmentIds: [] }, state: "queued", peer: { title: rows.find((r) => r.id === peer)?.title ?? null } };
+  });
   let paused = row?.queue?.paused === true;
   for (const op of live) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
@@ -303,9 +318,38 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     field.current?.focus();
   });
 
+  /** To the worker alone, as the user's own message, the follow-up's way while it works: one at a time, past this
+   * session's queue. Taken, the To: goes and the worker opens; refused, the message and its To: come back [D3006, D3013]. */
+  const sendTo = (worker: string, parts: Draft["parts"], tiles: string[], other: boolean) => {
+    if (toSending) return;
+    const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
+    const target = rows.find((each) => each.id === worker) as ComposerRow | undefined;
+    const steer = sendMode(true, followUp, other, target?.steer === true) === "steer";
+    const pulled = take();
+    if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
+    files.sent();
+    setToSending(true);
+    setError(null);
+    const args = steer ? ["send", worker, message, "--cid", cid, "--steer"] : ["queue", worker, "add", message, "--qid", cid];
+    void run([...args, ...(draft ? ["--parts", draft, "--from", id] : [])]).then((reply) => {
+      setToSending(false);
+      if (reply.ok || reply.result === "logged") {
+        setTo((now) => (now === worker ? null : now));
+        return openWorker(id, worker);
+      }
+      const since = field.current?.parts() ?? [];
+      field.current?.set(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
+      files.restore(tiles);
+      setEmpty(false);
+      setTo(worker);
+      setError(failure(reply));
+    });
+  };
+
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
     if (held || files.hold(parts)) return;
+    if (to && !isEmpty({ parts, attachmentIds: files.tiles() })) return sendTo(to, parts, files.tiles(), other);
     if (inProject && parts.some(isNew)) return submitNew();
     const tiles = files.tiles();
     if (isEmpty({ parts, attachmentIds: tiles }) && chips.length === 0) {
@@ -390,11 +434,16 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         </>
       }
       plus={extras.plus}
-      level={<SessionLevel id={id} row={row} />}
+      level={
+        <>
+          <SessionLevel id={id} row={row} />
+          {toWorker && <ToWorkerChip worker={toWorker} sending={toSending} onClear={() => setTo(null)} />}
+        </>
+      }
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={<ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={<SessionModel id={id} row={row} offline={offline} />}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} blocked={held ?? files.hold(field.current?.parts() ?? [])} onSend={() => submit(false)} onSendNew={inProject ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={running} canStop={running && !offline} canResume={row?.resumable === true} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}
@@ -423,11 +472,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerField
         ref={field}
         initial={initial}
-        placeholder="Do anything"
+        placeholder={toWorker ? `Message ${toWorker.name}` : "Do anything"}
         attachments={files.attachments}
         onAttach={files.attach}
-        mentions={files.mentions}
+        mentions={{ ...files.mentions, onDirect: setTo }}
         onChange={(parts) => {
+          typed.current = parts;
           keepDraft(run, id, { parts, attachmentIds: files.tileIds });
           changed(isEmpty({ parts, attachmentIds: [] }));
         }}
@@ -436,6 +486,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         commands={extras.commands}
         onOpen={extras.onOpen}
         onPullQueued={() => {
+          // None is pulled into a composer whose next message goes to a worker.
+          if (toWorker) return false;
           const last = items.findLast((each) => each.state === "queued");
           if (!last) return false;
           edit(last.id);

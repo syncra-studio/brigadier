@@ -63,7 +63,7 @@ export function ComposerPill({ className, ...props }: Omit<BaseButton.Props, "cl
       type="button"
       className={cx(
         "inline-flex h-control-sm min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-sm text-muted-foreground",
-        "transition-all hover:bg-fill aria-expanded:bg-fill aria-pressed:bg-fill focus-visible:focus-ring motion-safe:active:scale-press-button",
+        "transition-all hover:bg-fill aria-expanded:bg-fill focus-visible:focus-ring motion-safe:active:scale-press-button",
         "disabled:cursor-not-allowed disabled:opacity-disabled svg:size-icon-md svg:shrink-0",
         className,
       )}

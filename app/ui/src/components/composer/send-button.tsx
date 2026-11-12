@@ -99,6 +99,7 @@ export function SendButton({
   canResume = false,
   followUp = "queue",
   blocked,
+  to,
   keys = true,
   armed: frozenArmed = false,
   asNew: frozenNew = false,
@@ -114,6 +115,8 @@ export function SendButton({
   followUp?: FollowUp;
   /** Why it can't send now ("Reconnecting…"): disabled, with this as its tip. */
   blocked?: string;
+  /** The worker the message goes to alone (the composer's To:). */
+  to?: string;
   /** `false`: no Esc handling (the gallery's frozen copies, so one Esc doesn't reach them all). */
   keys?: boolean;
   /** Shows Stop armed (the gallery's frozen copy). */
@@ -140,7 +143,7 @@ export function SendButton({
         : "Stop"
       : state === "resume"
         ? "Resume"
-        : (blocked ?? (asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
+        : (blocked ?? (to !== undefined ? `Send to ${to}` : asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
   // A circle, as the old app's: not the icon-button corner (D27-D29 are about ghost icons).
   return (
     <Tooltip>

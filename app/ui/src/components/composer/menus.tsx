@@ -13,10 +13,13 @@ import { ChipNode } from "./chip";
 import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
 
-/** A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title). PROPOSED. */
+/**
+ * A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title, a worker's
+ * name). A `direct` row is no mention: picking it sends the next message to that worker alone. PROPOSED.
+ */
 export type Mention = {
   id: string;
-  type: "file" | "folder" | "chat";
+  type: "file" | "folder" | "chat" | "worker" | "direct";
   label: string;
   /** The row's name, when it isn't the label (a file's name for its path). */
   name?: string;
@@ -33,7 +36,12 @@ export type MentionGroup = { title: string | null; items: Mention[]; note?: stri
  * What the `@` menu shows: Rust's latest reply, echoing the query it answers, asked for as the query changes
  * (`onQuery(null)`: the menu closed). A reply to an older query is dropped; the last current one stays.
  */
-export type Mentions = { results: { query: string; groups: MentionGroup[] } | null; onQuery: (query: string | null) => void };
+export type Mentions = {
+  results: { query: string; groups: MentionGroup[] } | null;
+  onQuery: (query: string | null) => void;
+  /** A "Message directly" row was picked: the next message goes to that worker. */
+  onDirect?: (worker: string) => void;
+};
 
 /** A command of the `/` menu, from the agent's adapter. PROPOSED. */
 export type SlashCommand = {
@@ -200,10 +208,11 @@ export const KIND_HEADINGS = { command: "Commands", skill: "Skills", mcp: "MCP p
 export function MentionRow({ item, query }: { item: Mention; query: string }) {
   return (
     <MenuRow
-      icon={<MentionKindIcon type={item.type} label={item.label} />}
+      icon={<MentionKindIcon type={item.type} id={item.id} label={item.label} />}
       title={<MatchedText text={item.name ?? item.label} query={query} />}
       detail={item.detail}
       hint={item.type === "chat" ? "Chat" : item.hint}
+      mono={item.type === "worker"}
     />
   );
 }
@@ -276,7 +285,7 @@ function OptionRow<T>({
 }
 
 /** The `@` menu: Rust's groups for the query, each row an icon, the matched name, a grey detail; picked, a chip. */
-export function MentionPlugin({ results, onQuery }: Mentions) {
+export function MentionPlugin({ results, onQuery, onDirect }: Mentions) {
   const [query, setQuery] = useState("");
   // The last reply to the query as typed: one to an older query never shows.
   const kept = useRef<MentionGroup[]>([]);
@@ -308,7 +317,11 @@ export function MentionPlugin({ results, onQuery }: Mentions) {
       }}
       onSelectOption={(option, replacing, close) => {
         const { id, type, label } = option.value;
-        $putWithSpace(new ChipNode({ kind: "mention", id, type, label }), replacing);
+        // Message directly leaves no mention in the text: only the To: chip.
+        if (type === "direct") {
+          replacing?.remove();
+          onDirect?.(id);
+        } else $putWithSpace(new ChipNode({ kind: "mention", id, type, label }), replacing);
         close();
       }}
       menuRenderFn={(anchor, props) => {
@@ -461,7 +474,7 @@ export function PlusMenu({
           {kind("mcp")}
           {chats.length > 0 && <DropdownMenuLabel variant="heading">Chats</DropdownMenuLabel>}
           {chats.slice(0, CHAT_ROWS).map((chat) => (
-            <DropdownMenuItem key={chat.id} onClick={() => add({ kind: "mention", id: chat.id, type: chat.type, label: chat.label })}>
+            <DropdownMenuItem key={chat.id} onClick={() => add({ kind: "mention", id: chat.id, type: "chat", label: chat.label })}>
               <MentionRow item={chat} query="" />
             </DropdownMenuItem>
           ))}

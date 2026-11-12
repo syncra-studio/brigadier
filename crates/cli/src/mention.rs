@@ -1,6 +1,6 @@
-//! The `@` menu's search, as the old app's: with nothing typed, its sections (Workers, Files, the
-//! top folders, the newest chats); typed, one list ranked across files, folders and other
-//! sessions, capped. Rust searches; the UI only marks the matched letters. Each reply echoes its
+//! The `@` menu's search, as the old app's: with nothing typed, its sections (Workers, Message
+//! directly, Files, the top folders, the newest chats); typed, one list ranked across workers,
+//! files, folders and other sessions, capped. Rust searches; the UI only marks the matched letters. Each reply echoes its
 //! query, so an older one drops [D71, D127, D2010, D2021].
 
 use brigadier_core::git::{self, Target, files};
@@ -29,6 +29,8 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         .unwrap_or_default();
     let mut chats: Vec<&Value> = (rows.values())
         .filter(|r| r["id"] != owner && matches!(r["archived"], Value::Null | Value::Bool(false)))
+        // Its own workers are under Workers.
+        .filter(|r| r["worker"]["parent"] != owner)
         .collect();
     chats.sort_by_key(|r| std::cmp::Reverse(r["touched"].as_u64().unwrap_or(0)));
     let chat = |r: &Value| {
@@ -38,6 +40,24 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .unwrap_or("New session");
         json!({"id": r["id"], "type": "chat", "label": title})
     };
+    // The owner's own workers, oldest first; the ones still on hand can take a message directly.
+    let mut workers: Vec<&Value> = (rows.values())
+        .filter(|r| r["worker"]["parent"] == owner)
+        .collect();
+    workers.sort_by_key(|r| r["worker"]["started"].as_u64().unwrap_or(0));
+    let ended = |r: &Value| {
+        let kind = r["worker"]["kind"].as_str().unwrap_or("");
+        matches!(
+            kind,
+            "failed" | "stopped" | "merged" | "doneNotMerged" | "done"
+        )
+    };
+    let title = |r: &Value| r["title"].as_str().unwrap_or("a worker").to_string();
+    let worker = |r: &Value| {
+        let word = r["worker"]["word"].as_str().unwrap_or("").to_lowercase();
+        json!({"id": r["id"], "type": "worker", "label": title(r), "hint": word})
+    };
+    let direct = |r: &Value, detail: Option<&str>| json!({"id": r["id"], "type": "direct", "label": title(r), "detail": detail});
     let path = |(_, p, folder): &(u8, String, bool)| {
         let (detail, name) = p
             .rsplit_once('/')
@@ -50,22 +70,36 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .filter(|f| f.2 && !f.1.contains('/'))
             .take(SECTION_ROWS);
         json!([
-            // Drawn as the old app's, filled once wave 4 brings workers [D2021].
-            {"title": "Workers", "items": []},
+            {"title": "Workers", "items": workers.iter().map(|r| worker(r)).collect::<Vec<_>>()},
+            {"title": "Message directly", "items": workers.iter().filter(|r| !ended(r)).map(|r| direct(r, None)).collect::<Vec<_>>()},
             {"title": "Files", "items": [], "note": "Type to search for files"},
             {"title": "Folders", "items": top.map(path).collect::<Vec<_>>()},
             {"title": "Chats", "items": chats.iter().take(SECTION_ROWS).map(|r| chat(r)).collect::<Vec<_>>()},
         ])
     } else {
         let query = q.to_lowercase();
-        // The old app's tie order: files, then folders, then chats.
+        // The old app's tie order: workers (a mention before its Message directly), files, folders, chats.
         let mut all: Vec<(u8, u8, usize, Value)> = (found.iter().take(RESULT_ROWS * 4))
-            .map(|f| (f.0, u8::from(f.2), f.1.len(), path(f)))
+            .map(|f| (f.0, 1 + u8::from(f.2), f.1.len(), path(f)))
             .collect();
+        for r in &workers {
+            let name = title(r);
+            if let Some(rank) = files::rank(&name, &query) {
+                all.push((rank, 0, name.len() * 2, worker(r)));
+                if !ended(r) {
+                    all.push((
+                        rank,
+                        0,
+                        name.len() * 2 + 1,
+                        direct(r, Some("Message directly")),
+                    ));
+                }
+            }
+        }
         for r in &chats {
             let title = chat(r);
             if let Some(rank) = files::rank(title["label"].as_str().unwrap_or(""), &query) {
-                all.push((rank, 2, 0, title));
+                all.push((rank, 3, 0, title));
             }
         }
         all.sort_by_key(|a| (a.0, a.1, a.2));

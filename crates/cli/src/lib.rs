@@ -43,7 +43,7 @@ use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
 pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T] [--carry-tabs]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer] | side <id> <new-id> --text T --cid C [--qid Q]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
@@ -52,7 +52,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
+       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N]
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
@@ -235,6 +235,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let (id, text) = (arg(args, 1)?, arg(args, 2)?);
             let parts = parts(args)?;
             if has(args, "--steer") {
+                // A worker's message from its parent's composer brings the parent's files [D3013].
+                if let Some(from) = flag(args, "--from") {
+                    core::message::take(data, &core::load(data, id)?.dir, &parts, Some(from))?;
+                }
                 return control::steer(data, id, text, &parts, flag(args, "--cid"));
             }
             if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"))? {
@@ -242,7 +246,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
-            core::message::take(data, &spec.dir, &parts, None)?;
+            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             send(
                 data,
                 &spec,

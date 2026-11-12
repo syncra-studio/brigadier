@@ -126,7 +126,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             check_id(qid)?;
             let at = flag(args, "--at").and_then(|n| n.parse().ok());
             let parts = crate::parts(args)?;
-            core::message::take(data, &dir, &parts, None)?;
+            core::message::take(data, &dir, &parts, flag(args, "--from"))?;
             // Only another session's message names its sender; anything else is the user's [D2034].
             let origin = flag(args, "--origin").map(String::from);
             if origin.as_ref().is_some_and(|o| !o.starts_with("peer:")) {
@@ -240,10 +240,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         return Ok(Some(reply));
                     }
                 }
-                (q.paused, q.stopping) = (false, false);
-                if let Some(first) = q.items.first_mut() {
-                    first.error = None;
-                }
+                go_on(q);
                 Ok(None)
             })?;
             if let Some(reply) = refused {
@@ -253,6 +250,22 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => return Err(io::Error::other(crate::USAGE)),
     }
     Ok(json!({"ok": true, "at": index::touched(&dir)}))
+}
+
+/// Lets a paused queue go without carrying its stopped turn on: a worker's Resume, whose
+/// "Continue where you stopped." is that turn's one carry-on, as the old app's [D3049].
+pub fn release(dir: &Path) -> io::Result<()> {
+    change(dir, |q| {
+        go_on(q);
+        Ok(())
+    })
+}
+
+fn go_on(q: &mut Queue) {
+    (q.paused, q.stopping) = (false, false);
+    if let Some(first) = q.items.first_mut() {
+        first.error = None;
+    }
 }
 
 /// Another session's message [D2034]: under the queue's lock, a repeat of its id (queued, being

@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useMemo, useState } from "react";
 
 import type { OpenKind } from "../components/composer/chip";
+import { openWorker } from "../workers/live";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../components/composer/menus";
 import { viewImage } from "../components/image-viewer";
@@ -59,12 +60,13 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
 }
 
 /**
- * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, an image in
- * the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list.
+ * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in
+ * its panel, an image in the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list.
  */
 export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner) {
   const home = owner === HOME_DRAFT;
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
+  if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].
   if (kind === "paste") return openAttachment(owner, id, PASTE_LABEL);

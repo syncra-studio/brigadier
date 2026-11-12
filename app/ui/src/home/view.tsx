@@ -91,6 +91,8 @@ export function HomeView(props: HomeProps) {
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : undefined;
   const field = useRef<ComposerFieldHandle>(null);
+  // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
+  const typed = useRef(props.initial?.parts ?? []);
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
   const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
@@ -186,7 +188,7 @@ export function HomeView(props: HomeProps) {
           plus={extras.plus}
           level={props.level}
           model={props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
-          send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(field.current?.parts() ?? [])} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
+          send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(typed.current)} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
         >
           <ComposerField
             ref={field}
@@ -199,6 +201,7 @@ export function HomeView(props: HomeProps) {
             commands={extras.commands}
             onOpen={extras.onOpen}
             onChange={(parts) => {
+              typed.current = parts;
               setEmpty(isEmpty({ parts, attachmentIds: [] }));
               props.onDraft?.({ parts, attachmentIds: files.tileIds });
             }}

@@ -5,8 +5,7 @@ import type { Worker } from "./chip";
 
 /**
  * The composer's To: chip, as the old app's ToWorkerChip [D3013]: while it shows, the next message goes to that worker
- * alone (picked from the @ menu's "Message directly"); a click takes it back. Drawn for the gallery only: it joins the
- * composer once wave 3's composer work has landed [D561].
+ * alone (picked from the @ menu's "Message directly"); a click takes it back.
  */
 export function ToWorkerChip({ worker, sending = false, onClear }: { worker: Worker; sending?: boolean; onClear: () => void }) {
   return (

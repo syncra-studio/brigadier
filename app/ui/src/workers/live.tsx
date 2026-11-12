@@ -95,6 +95,9 @@ const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[
 // shortcut: the panel's dragged width lasts until the app quits; keep it in Rust's panel memory if the owner wants it kept.
 let width: number | null = null;
 
+/** Opens a worker of `owner` in its Workers panel: its chip in a message, or a message just sent to it. */
+export const openWorker = (owner: string, worker: string) => show(owner, { open: true, worker });
+
 /** A worker named anywhere opens it in its parent's Workers panel; null opens the list. */
 function Opens({ owner, children }: { owner: string; children: ReactNode }) {
   const open = (worker: string | null) => show(owner, { open: true, worker });

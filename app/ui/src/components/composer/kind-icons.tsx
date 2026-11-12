@@ -1,5 +1,6 @@
 import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Mcp, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
+import { WorkerGlyph } from "../../icons/worker-glyphs";
 import { ProviderMark } from "./model-picker";
 
 const extensionOf = (name: string) => (name.includes(".") ? (name.split(".").pop()?.toLowerCase() ?? "") : "");
@@ -40,8 +41,9 @@ export function FileBadge({ name, className }: { name: string; className?: strin
 /** A file's colour, where its kind's glyph has one: for its chip's name, as a command's chip takes its kind's. */
 export const fileTone = (name: string) => GLYPHS.find(([pattern]) => pattern.test(extensionOf(name)))?.[2];
 
-/** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat. `className` sizes it (a menu row's own size otherwise). */
-export function MentionKindIcon({ type, label, className }: { type: "file" | "folder" | "chat"; label: string; className?: string }) {
+/** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat, a worker's glyph. `className` sizes it (a menu row's own size otherwise). */
+export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct"; id?: string; label: string; className?: string }) {
+  if (type === "worker" || type === "direct") return <WorkerGlyph id={id ?? label} className={className} />;
   if (type === "chat") return <Chat aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "folder") return <Folder aria-hidden className={cx("text-muted-foreground", className)} />;
   return <FileBadge name={label} className={className} />;

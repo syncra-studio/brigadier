@@ -68,8 +68,9 @@ fn pause(data: &Path, top: &str, wid: &str) -> Value {
     }
 }
 
-/// Queues the continue after what was held, then lets the queue go. It stays paused when the
-/// continue can't be queued.
+/// Queues the continue after what was held, then lets the queue go, the stopped turn not carried
+/// on first: the continue is the one turn [D3049]. It stays paused when the continue can't be
+/// queued.
 fn resume(data: &Path, wid: &str) -> Value {
     let (root, _) = place(data, wid);
     let Ok(_family) = family_lock(data, &root) else {
@@ -90,8 +91,8 @@ fn resume(data: &Path, wid: &str) -> Value {
     if let Err(e) = write_json(&dir.join("worker.json"), &l) {
         return refuse(&e.to_string());
     }
-    match crate::run(data, &["queue", wid, "resume"].map(String::from)) {
-        Ok(_) => json!({"ok": true}),
+    match crate::queue::release(&dir) {
+        Ok(()) => json!({"ok": true}),
         Err(e) => refuse(&e.to_string()),
     }
 }

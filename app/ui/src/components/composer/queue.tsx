@@ -11,6 +11,7 @@ import { TooltipIconButton } from "../icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { Draft } from "./draft";
+import { FromPeer } from "../../peers/message";
 import { RailItem } from "./rail";
 
 /**
@@ -18,7 +19,13 @@ import { RailItem } from "./rail";
  * not yet confirmed (its actions wait); `deciding`: the session is judging whether it joins the work in
  * progress; `delivered`: the session has it, so it can't be pulled back to edit.
  */
-export type QueuedMessage = { id: string; draft: Draft; state: "local" | "queued" | "deciding" | "delivered" };
+export type QueuedMessage = {
+  id: string;
+  draft: Draft;
+  state: "local" | "queued" | "deciding" | "delivered";
+  /** Another session's message: who sent it (null once that session is gone). It's never the user's to edit. */
+  peer?: { title: string | null };
+};
 
 type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
 
@@ -279,6 +286,7 @@ function QueueRow({
         )}
       </span>
       <Words draft={item.draft} />
+      {item.peer && <FromPeer title={item.peer.title} />}
       {deciding && (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding
@@ -305,7 +313,7 @@ function QueueRow({
           <DotsHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered"} onClick={() => onEdit(item.id)}>
+          <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered" || !!item.peer} onClick={() => onEdit(item.id)}>
             <EditPencil />
             Edit message
           </DropdownMenuItem>
