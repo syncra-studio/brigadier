@@ -5,9 +5,10 @@ import { Body } from "../components/thread/body";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
 import { X } from "../icons";
-import { run } from "../onboarding/api";
+import { showToast } from "../components/toast";
+import { errorText, run } from "../onboarding/api";
 import { setPanelOpen } from "../panel/memory";
-import type { Item } from "../thread/item";
+import type { Item, Turn } from "../thread/item";
 import { finished, type Worker, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
@@ -65,7 +66,8 @@ function useNamed(ids: readonly string[]): Worker[] {
 }
 
 /** The user's Stop them and End: Rust stops each and logs "You ended …" in the parent [D3011]. */
-const stop = (parent: string, ids: readonly string[]) => void run(["workers", parent, "stop", ...ids]).catch(() => {});
+const stop = (parent: string, ids: readonly string[]) =>
+  void run(["workers", parent, "stop", ...ids]).catch((cause) => showToast(`Couldn't stop ${ids.length === 1 ? "the worker" : "the workers"}: ${errorText(cause)}`, { tone: "error" }));
 
 /** Which worker each session's panel shows (null: the list) and its tab. */
 let shown: Record<string, { tab: string; open: string | null }> = {};
@@ -140,7 +142,7 @@ export function PanelBody({ owner, files }: { owner: string; files: ReactNode })
   return (
     <Opens owner={owner}>
       {opened ? (
-        <WorkerView worker={opened} onBack={() => show(owner, { tab, open: null })} onClose={close} />
+        <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { tab, open: null })} onClose={close} />
       ) : (
         <>
           <PanelTabs active={tab} tabs={["Files", WORKERS_LABEL]} onSelect={(next) => show(owner, { tab: next, open: null })} onClose={close} />
@@ -154,9 +156,13 @@ export function PanelBody({ owner, files }: { owner: string; files: ReactNode })
 /** A worker opened: its header, brief and thread, Rust's snapshot of it, asked again as its row changes [D3013]. */
 function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () => void; onClose: () => void }) {
   const updated = useDaemon().rows?.find((row) => row.id === worker.id)?.updated;
-  const [items, setItems] = useState<Item[]>([]);
+  const [{ items, turns }, setSnapshot] = useState<{ items: Item[]; turns: Turn[] }>({ items: [], turns: [] });
   useEffect(() => {
-    ask({ op: "peek", session: worker.id }, (reply) => reply.ok && setItems(reply.session.items));
+    let live = true;
+    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [] }));
+    return () => {
+      live = false;
+    };
   }, [worker.id, updated]);
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
@@ -177,7 +183,7 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
         {items
           .filter((item) => item !== brief)
           .map((item) => (
-            <Body key={item.id} item={item} turn={undefined} step={item.kind === "tool"} />
+            <Body key={item.id} item={item} turn={turns.find((turn) => turn.id === item.turnId)} step={item.kind === "tool"} />
           ))}
       </WorkerThread>
     </>
