@@ -1,7 +1,12 @@
+import { useState } from "react";
+
+import { useThread } from "../../daemon";
+import { errorText, run } from "../../onboarding/api";
 import type { Item, Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
 import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
+import { showToast } from "../toast";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { FILE_VERBS, fileName } from "./file-change";
 import { toolObject, VERBS } from "./tool";
@@ -15,18 +20,19 @@ const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
  * 1m 2s" when it waited), which opens and shuts the turn's folded work.
  */
 export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
-  const now = useSecond(turn.status === "running");
+  const now = useSecond(turn.status === "running" || Boolean(turn.helpers));
   const { waitingSince, waitedMs } = turn;
   const label =
     turn.status === "running" && waitingSince != null
       ? `Waiting for ${duration(now - waitingSince)}`
-      : turn.status === "done" && waitedMs !== undefined && waitedMs >= 1000
+      : turn.status === "done" && !turn.helpers && waitedMs !== undefined && waitedMs >= 1000
         ? `${workWords(turn, work, now)} · waited for ${duration(waitedMs)}`
         : workWords(turn, work, now);
   if (open === null) {
     return (
       <p className={RULE}>
         <span className={LABEL}>{label}</span>
+        {turn.helpers && now - (turn.heardAt ?? turn.endedAt ?? now) >= QUIET_MS ? <StillWaiting /> : null}
       </p>
     );
   }
@@ -42,6 +48,31 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
         <Chevron always />
       </span>
     </button>
+  );
+}
+
+/** Past this with no word from its subagents, an answered turn's block offers to stop waiting [D114]. */
+const QUIET_MS = 30 * 60_000;
+
+/** "· still waiting · Stop": the user's Stop ends the agent and its subagents, and the block with them. */
+function StillWaiting() {
+  const id = useThread()?.id;
+  const [stopping, setStopping] = useState(false);
+  const stop = () => {
+    if (!id || stopping) return;
+    setStopping(true);
+    run(["stop", id]).catch((cause: unknown) => {
+      setStopping(false);
+      showToast(`Couldn't stop it: ${errorText(cause)}`, { tone: "error" });
+    });
+  };
+  return (
+    <span className={LABEL}>
+      {" · still waiting · "}
+      <button type="button" onClick={stop} disabled={stopping} className="cursor-pointer rounded-control text-strip-foreground hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled">
+        {stopping ? "Stopping…" : "Stop"}
+      </button>
+    </span>
   );
 }
 

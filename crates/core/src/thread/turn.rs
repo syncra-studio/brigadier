@@ -268,7 +268,10 @@ impl Thread {
         else {
             return;
         };
-        if self.work.iter().any(|w| w["turnId"] == turn) {
+        // A turn held for its subagents gets its block when the last ends, timed then.
+        if self.work.iter().any(|w| w["turnId"] == turn)
+            || turn.as_str().is_some_and(|t| self.held.contains_key(t))
+        {
             return;
         }
         let at = |k: &str| t[k].as_u64().unwrap_or(0);

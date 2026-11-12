@@ -70,6 +70,10 @@ pub struct Thread {
     member: HashMap<usize, usize>,
     /// Subagents not yet ended, by tool id: one in the background may end turns later [D78].
     children: HashMap<String, usize>,
+    /// Turns that ended while their subagents ran on, by id: their end and work fold wait for the
+    /// last of them [D67, D114].
+    #[serde(default)]
+    held: HashMap<String, Value>,
     /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
     /// rows' `cid`s, rows by a custom id, and each turn's first row.
     cids: HashSet<String>,
@@ -291,6 +295,7 @@ impl Thread {
             self.items[at]["final"] = true.into();
             self.changed_items.insert(at);
         }
+        let mut work = Value::Null;
         // "Worked for" folds a done turn's work up to its answer, and leaves its waits out [D77]. Its
         // questions, with the user's answers, stay visible inside it [D99].
         if let (true, true, Some(first), Some(answer)) =
@@ -298,13 +303,10 @@ impl Thread {
         {
             let kept: Vec<u64> = o.kept.into_iter().filter(|&n| n < answer).collect();
             if first + (kept.len() as u64) < answer {
-                let ms = ts.saturating_sub(o.started).saturating_sub(o.waited);
-                self.work.push(
-                    json!({"turnId": o.id, "ms": ms, "folded": [first, answer - 1],
-                    "kept": kept, "denied": denied}),
-                );
+                work = json!({"turnId": o.id, "folded": [first, answer - 1], "kept": kept, "denied": denied});
             }
         }
+        self.end_work(&o.id, o.at, work, (o.started, o.waited), ts);
         self.picked_later();
     }
 
@@ -329,6 +331,7 @@ impl Thread {
 
     fn end_children(&mut self, progress: &str, ts: u64) {
         for (_, at) in std::mem::take(&mut self.children) {
+            self.helper_ended(at, ts);
             self.items[at]["progress"] = progress.into();
             self.items[at]["endedAt"] = ts.into();
             subagents::settle(&mut self.items[at], progress);

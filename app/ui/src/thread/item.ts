@@ -57,6 +57,10 @@ export type Turn = {
   waitingSince?: number | null;
   /** How long the turn has waited on the user in all (ms). */
   waitedMs?: number;
+  /** Its subagents still running after its answer: its block stays open, counting, until the last ends [D114]. */
+  helpers?: number;
+  /** When those subagents last did anything (ms); past 30 minutes of quiet, the block offers Stop. */
+  heardAt?: number;
 };
 
 /** What a step of work did, provider-neutral. */

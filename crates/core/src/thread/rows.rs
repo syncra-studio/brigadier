@@ -119,7 +119,9 @@ impl Thread {
                 let Some(at) = self.row_of(&turn, &str_of("id")) else {
                     return;
                 };
-                self.children.remove(&str_of("id"));
+                if self.children.remove(&str_of("id")).is_some() {
+                    self.helper_ended(at, item["at"].as_u64().unwrap_or(ts));
+                }
                 let progress = match item["ok"] == true {
                     true => "done",
                     false if self.stopping() => "cancelled",
