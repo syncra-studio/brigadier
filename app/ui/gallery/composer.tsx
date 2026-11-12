@@ -12,7 +12,6 @@ import { ContextRing, EditComposer, SharedComposer } from "../src/components/com
 import { type Draft, isEmpty, plainText, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { fuzzyMatch, type Mention, type MentionGroup, type Mentions, PlusMenu, type SlashCommand } from "../src/components/composer/menus";
-import { type ModelChoice, ModelPicker } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { type PendingQuestion, QuestionCard } from "../src/components/composer/question";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
@@ -24,7 +23,7 @@ import { duration, useSecond } from "../src/thread/words";
 import type { Worker } from "../src/workers/chip";
 import { WorkersStrip } from "../src/workers/strip";
 import { Section } from "./parts";
-import { GROUPS, ProjectBar } from "./pickers";
+import { BranchToggles, LiveModelPicker, ProjectBar } from "./pickers";
 import picture from "./sample.svg?no-inline";
 
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
@@ -169,7 +168,6 @@ function Live() {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [branchesFailed, setBranchesFailed] = useState(false);
   const [level, setLevel] = useState<PermissionLevel>("auto");
-  const [model, setModel] = useState<ModelChoice>({ provider: "cloud", model: "large", effort: "high" });
   const [results, setResults] = useState<Mentions["results"]>(null);
   const [attachments, setAttachments] = useState<ReadonlyMap<string, Attachment>>(new Map());
   const [tiles, setTiles] = useState<string[]>([]);
@@ -325,7 +323,11 @@ function Live() {
                   />
                 </RailItem>
               )}
-              {home && <ProjectBar loading={branchesLoading} failed={branchesFailed} />}
+              {home && (
+                <RailItem variant="controls" label="Composer utility bar">
+                  <ProjectBar loading={branchesLoading} failed={branchesFailed} />
+                </RailItem>
+              )}
             </>
           }
           above={approvals.length > 0 && <ApprovalSlot approvals={approvals} onAnswer={answerApproval} />}
@@ -335,7 +337,7 @@ function Live() {
           plus={<PlusMenu field={field} commands={commands} chats={CHATS} onFiles={(files) => files.forEach((file) => attach(crypto.randomUUID(), file, false))} />}
           level={<PermissionPicker value={level} onChange={setLevel} />}
           ring={<ContextRing usedTokens={45_000} windowTokens={258_000} />}
-          model={<ModelPicker groups={GROUPS} value={model} onChange={setModel} />}
+          model={<LiveModelPicker />}
           send={
             <SendButton
               empty={empty && tiles.length === 0}
@@ -412,12 +414,7 @@ function Live() {
             setEditing(on);
           }}
         />
-        {home && (
-          <>
-            <CheckboxRow label="Branches loading" checked={branchesLoading} onCheckedChange={setBranchesLoading} />
-            <CheckboxRow label="Branches can't be read" checked={branchesFailed} onCheckedChange={setBranchesFailed} />
-          </>
-        )}
+        {home && <BranchToggles loading={branchesLoading} failed={branchesFailed} onLoading={setBranchesLoading} onFailed={setBranchesFailed} />}
         <Button size="sm" variant="outline" onClick={() => setNotices((list) => [...list, { id: next.current++, ...NOTICE_SAMPLES[next.current % NOTICE_SAMPLES.length]! }])}>
           Add a notice
         </Button>

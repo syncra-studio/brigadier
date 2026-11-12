@@ -1,6 +1,8 @@
 // Dev-only: every component, live (D2). Screens are built from them in the app. Opened by `pnpm gallery`.
 import { type RefObject, useEffect, useRef } from "react";
 
+import { connected } from "../src/daemon";
+import { run } from "../src/onboarding/api";
 import { ComposerGallery } from "./composer";
 import { Choices } from "./choices";
 import { Contents } from "./contents";
@@ -12,6 +14,14 @@ import { Popups } from "./popups";
 import "./gallery.css";
 
 const SCROLL_KEY = "gallery-scroll";
+
+declare global {
+  interface Window {
+    /** The window's daemon, for the frame: main wires the daemon to the window, and the frame reloads on every build. */
+    galleryRun?: typeof run;
+  }
+}
+if (window.top === window) window.galleryRun = (args) => connected().then(() => run(args));
 
 // The build's stamp (vite.config.mts), or nothing while a rebuild is writing.
 function buildStamp(): Promise<number | undefined> {
