@@ -73,6 +73,8 @@ export function statusWords(row: SessionRow): string | null {
   }
   // A pending approval waits as a question does; only its reason says which [D173].
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
+  // Answered, but its block stays open on its subagents [D118].
+  if (row.mark === "working" && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS.working;
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
 }

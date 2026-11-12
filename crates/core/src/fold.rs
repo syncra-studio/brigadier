@@ -59,6 +59,10 @@ pub struct Fold {
     /// sent to the background, so its Background row reads `python3 …`, not the process's name.
     #[serde(default)]
     pub typed: BTreeMap<String, String>,
+    /// The live child's subagents still running, by step id: a turn that answered stays held open
+    /// till they end [D118].
+    #[serde(default)]
+    pub agents: BTreeSet<String>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -244,6 +248,7 @@ impl Fold {
                 self.windows.clear();
                 self.tasks.clear();
                 self.typed.clear();
+                self.agents.clear();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -255,6 +260,7 @@ impl Fold {
                     return;
                 };
                 child.exited = true;
+                self.agents.clear();
                 let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
                 let clean = item["code"].as_i64() == Some(0);
                 let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
@@ -297,6 +303,9 @@ impl Fold {
                 {
                     self.typed.insert(str_of("id"), input.into());
                 }
+                if item["step"] == "agent" && item["parent"].is_null() {
+                    self.agents.insert(str_of("id"));
+                }
                 self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.tool_started(item, ts);
@@ -309,6 +318,9 @@ impl Fold {
                     if let Some(typed) = typed {
                         self.typed.insert(task.into(), typed);
                     }
+                }
+                if item["parent"].is_null() {
+                    self.agents.remove(&str_of("id"));
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
@@ -385,6 +397,7 @@ impl Fold {
                 if matches!(item["by"].as_str(), Some("user" | "pause")) {
                     (self.limit, self.resets, self.refused) = (None, None, None);
                 }
+                self.agents.clear();
                 self.close_all("stopped", item["by"].clone(), ts)
             }
             "compaction" if item["progress"] != "running" => self.compactions += 1,

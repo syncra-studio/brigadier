@@ -101,6 +101,8 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking" => {
             Some("working")
         }
+        // Its answer is in, but the block stays open on its subagents: still working [D118].
+        "idle" | "idle_jobs" if !fold.agents.is_empty() && live.child.is_some() => Some("working"),
         // The agent is done; what it left running is only a calm mark [D68, D105].
         "idle_jobs" if fold.finished > seen => Some("unread"),
         "idle_jobs" => Some("background"),

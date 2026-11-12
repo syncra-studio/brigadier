@@ -14,6 +14,7 @@ import { setHomeDraft } from "../home/start";
 import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { showToast } from "../components/toast";
+import { useMark } from "../session/turn";
 import { keysOf, matches } from "../shortcuts";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
@@ -64,7 +65,7 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
   const archived = Boolean(row.archived);
   // A start Rust hasn't titled yet shows no name, not "Chat", for the moment until its title lands [D102].
   const title = row.title || (row.state === "starting" ? "" : "Chat");
-  const working = row.mark === "working" && !archived;
+  const working = useMark(row, true) === "working" && !archived;
   const startRename = archived ? undefined : () => setRenaming(true);
   return (
     <ContextMenu>

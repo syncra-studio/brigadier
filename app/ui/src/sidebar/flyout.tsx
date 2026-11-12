@@ -10,6 +10,7 @@ import { spacingPx } from "../components/tooltip";
 import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
 import { newSessionIn } from "../projects/menu";
 import { openAddProject } from "../projects/store";
+import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
 import { RowMark } from "./row";
 import { type Project, type SessionRow, useStatusWords } from "./words";
@@ -57,12 +58,13 @@ function Flyout({ label, icon, lit = false, children }: { label: string; icon: R
 function Line({ row, nested = false, pick, active, offline, onOpen }: Rows & { row: SessionRow; nested?: boolean; pick: Choose }) {
   const here = row.id === active;
   const words = useStatusWords(row);
+  const mark = useMark(row, here);
   return (
     <li>
       <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className={cx("pe-1.5", nested && "ps-8")} onClick={() => pick(() => onOpen(row.id))}>
         <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
         <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
-          <RowMark mark={markOf(row, active)} label={words ?? ""} />
+          <RowMark mark={mark} label={words ?? ""} />
         </span>
       </NavRow>
     </li>

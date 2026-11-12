@@ -12,6 +12,7 @@ import { BranchAlt, Comment, DotsHorizontal, SidebarError, SidebarQuestion, Side
 import { PrChip, prList } from "../landing/pr-chip";
 import { openPr } from "../panel/open";
 import { ArchiveRowAction } from "../sessions/archive";
+import { useMark } from "../session/turn";
 import { RowMenuItems } from "./menu";
 import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -72,7 +73,7 @@ const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip
 /**
  * A session on one line: with `badged` (the one list) its project's badge first, then its title and one
  * mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
- * words and the project. Needs-you and unread marks aren't drawn on the row you're looking at (`active`).
+ * words and the project. The row you are looking at (`active`) draws its thread's mark (`useMark`).
  * Its actions are in a ⋯ menu over its end on hover, with Archive beside it, and on a right-click [D185].
  */
 export function SessionRowItem({
@@ -110,7 +111,7 @@ export function SessionRowItem({
   /** A click with its keys, in place of opening it. */
   onClick?: (event: MouseEvent) => void;
 }) {
-  const mark = active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark;
+  const mark = useMark(row, active);
   const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";

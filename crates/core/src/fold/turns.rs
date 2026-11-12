@@ -2,6 +2,7 @@
 //! [D1023]: an edit counts once it ended well, or when the backend's own record lists it.
 
 use super::Fold;
+use crate::adapters;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -130,6 +131,11 @@ impl Fold {
             });
             self.turns.remove(0);
             self.finished = ts;
+            // Only an agent whose process lives on keeps its subagents past its turn.
+            if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
+            {
+                self.agents.clear();
+            }
             self.runs.agent.extend(turn.edited.iter().cloned());
             self.bound(&turn);
             if turn.first_tool > 0 {
