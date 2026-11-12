@@ -374,6 +374,8 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
             || q["paused"] == true
             || !first["error"].is_null()
             || !DRAINS.contains(&state)
+            // A rebirth due goes first: what's queued lands in its fresh conversation [D88].
+            || !row["rebirth"].is_null()
         {
             continue;
         }

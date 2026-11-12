@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, catalogue, scale, sleep
+//   drills: killloop, hang, catalogue, scale, sleep, rebirth
 //   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -709,9 +709,145 @@ async function sleepCheck() {
   log({ drill: 'sleepcheck', ...r })
 }
 
+// Rebirth [D88, D108, D111, D116]. With the fake agent: one fresh conversation per crossing, at the
+// next message and mid-turn; a crash between a rebirth's intent and its spawn still makes exactly
+// one; a message queued during a cut lands after it, once. With REAL=claude[,codex,opencode]: one
+// long task per agent, its to-do tool on and off (BRIGADIER_NO_TODO), with each rebirth's pick-up
+// metrics read from the log and four probes after. REBIRTH_AT sets the real runs' threshold.
+const LOOKUP = /brigadier (search|read)/
+const ORIENT = /^(git (status|log|diff|show)|brigadier (search|read)|ls|pwd)\b/
+async function settled(id, ms) {
+  let last = null
+  return waitFor(() => {
+    const s = status([id])[id]
+    const idle = ['idle', 'idle_jobs'].includes(s?.state)
+    const same = idle && last === s.last?.id
+    last = idle ? s.last?.id : null
+    return same
+  }, ms, 2000)
+}
+const rebirths = (id) => cli(['read', id]).all.filter((i) => i.kind === 'input' && ['rebirth', 'cut'].includes(i.switch?.why))
+const dividers = (id) => (cli(['thread', id]).out.items ?? []).filter((i) => i.kind === 'compaction').map((i) => i.progress)
+const handoffs = (id) => {
+  const dir = `${DATA}/sessions/${id}/fake`
+  return fs.readdirSync(dir).filter((f) => f.endsWith('.conv') && fs.readFileSync(`${dir}/${f}`, 'utf8').includes('\n## Next\n')).length
+}
+
+async function rebirthDrill() {
+  const r = {}
+  process.env.BRIGADIER_REBIRTH_AT = '50000'
+  freshData('rebirth')
+  startDaemon()
+  const fake = async (id, text, before) => {
+    startFake(id)
+    if (before) await before(id)
+    cli(['send', id, text])
+    return settled(id, 60000)
+  }
+  // The next message after a turn that ended past it; then a turn cut mid-way.
+  await fake('n1', 'goal ctx:5 say:1 ctx:60')
+  cli(['send', 'n1', 'next say:1'])
+  await settled('n1', 30000)
+  r.next_input = { rebirths: rebirths('n1').length, dividers: dividers('n1'), handoffs: handoffs('n1') }
+  const m = await fake('m1', 'work ctx:5 ctx:60 hang:4 say:1')
+  r.mid_turn = { settled: m.ok, rebirths: rebirths('m1').length, dividers: dividers('m1'), handoffs: handoffs('m1') }
+  // Its host dies after logging the rebirth's input, before any agent read it.
+  await fake('x1', 'work ctx:5 ctx:60 hang:4 say:1', async (id) => {
+    cli(['send', id, 'warm say:1'])
+    await settled(id, 30000)
+    kill(ownerPid(id))
+    await sleep(300)
+    cli(['up', id], { BRIGADIER_CRASH_AT: 'after_intent:rb-' })
+  })
+  r.crash = { inputs: rebirths('x1').length, dividers: dividers('x1'), handoffs: handoffs('x1') }
+  // Queued while the cut turn runs.
+  startFake('q1')
+  cli(['send', 'q1', 'work ctx:5 ctx:60 hang:4 say:1'])
+  await sleep(1000)
+  cli(['queue', 'q1', 'add', 'after say:1', '--qid', 'qa1'])
+  await settled('q1', 60000)
+  const order = cli(['read', 'q1']).all.filter((i) => i.kind === 'input' && !i.control).map((i) => (i.switch?.why ?? i.text?.split(' ')[0]))
+  r.queued = { order, received_once: ledger().recv.after === 1 }
+  r.leftovers = cleanup()
+  log({ drill: 'rebirth', ...r })
+  for (const [, backend] of REAL) for (const todo of ['on', 'off']) log({ drill: 'rebirth-real', ...(await rebirthReal(backend, todo)) })
+}
+
+// Six files of seeded words, and how often omega is in each.
+function wordFiles(dir) {
+  const words = ['alpha', 'beta', 'gamma', 'delta', 'omega', 'sigma']
+  const truth = {}
+  for (let f = 1; f <= 6; f++) {
+    let seed = f * 7919, omegas = 0
+    const lines = Array.from({ length: 220 }, (_, n) => `row ${n}: ` + Array.from({ length: 12 }, () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      const w = words[seed % 6]
+      if (w === 'omega') omegas++
+      return w
+    }).join(' '))
+    fs.writeFileSync(`${dir}/f${f}.txt`, lines.join('\n') + '\n')
+    truth[`f${f}.txt`] = omegas
+  }
+  spawnSync('sh', ['-c', 'git add . && git -c user.email=drill@example.invalid -c user.name=drill commit -qm files'], { cwd: dir })
+  return truth
+}
+
+const TASK = 'The code word is HERON. We decided to count case-insensitively. Keep a to-do list as you go. Read f1.txt to f6.txt one at a time with your file-reading tool, one file per step, never in parallel, then write counts.md with how many times the word omega appears in each file, commit it, and reply with the code word. After this, the next job will be adding a total row.'
+const PROBE = 'Without running any tools, answer in four numbered lines: 1) quote the first sentence of my first message, 2) which files changed, 3) what is next, 4) what did we decide?'
+
+async function rebirthReal(backend, todo) {
+  const name = `rb-${backend}-${todo}`
+  freshData(name)
+  process.env.BRIGADIER_REBIRTH_AT = process.env.REBIRTH_AT ?? '55000'
+  if (todo === 'off') process.env.BRIGADIER_NO_TODO = '1'
+  else delete process.env.BRIGADIER_NO_TODO
+  startDaemon()
+  const dir = gitRepo(name)
+  const truth = wordFiles(dir)
+  const id = name
+  cli(['start', id, '--backend', backend, '--cwd', dir, '--level', 'full', ...(backend === 'claude' ? ['--model', 'haiku'] : [])])
+  const t0 = now()
+  cli(['send', id, TASK])
+  const done = await settled(id, 15 * 60000)
+  const ms = now() - t0
+  const items = cli(['read', id]).all
+  // Each rebirth's pick-up: its first step that isn't looking around, how long and how full by then, and its lookups.
+  const seams = items.flatMap((it, k) => (it.kind === 'input' && ['rebirth', 'cut'].includes(it.switch?.why) ? [k] : []))
+  const pickup = seams.map((at, n) => {
+    const part = items.slice(at, seams[n + 1] ?? items.length)
+    // A step its CLI reports twice (Codex's start and its update) counts once.
+    const tools = part.filter((i, k) => i.kind === 'tool' && part.findIndex((j) => j.kind === 'tool' && j.id === i.id) === k)
+    const real = tools.find((t) => !ORIENT.test(t.input ?? ''))
+    const contexts = part.filter((i) => i.kind === 'context' && (!real || i.n <= real.n))
+    return { why: items[at].switch.why, to_first_step_ms: real ? real.ts - items[at].ts : null, start_tokens: part.find((i) => i.kind === 'context')?.used ?? null,
+      tokens_at_first_step: contexts.at(-1)?.used ?? null, lookups: tools.filter((t) => LOOKUP.test(t.input ?? '')).length, first_lookups: tools.filter((t) => LOOKUP.test(t.input ?? '')).slice(0, 4).map((t) => t.input.slice(0, 120)), orienting_steps: real ? tools.indexOf(real) : tools.length }
+  })
+  const said = items.filter((i) => i.kind === 'text').at(-1)?.text ?? ''
+  const counts = fs.existsSync(`${dir}/counts.md`) ? fs.readFileSync(`${dir}/counts.md`, 'utf8') : ''
+  const right = Object.entries(truth).filter(([f, n]) => new RegExp(`${f.replace('.', '\\.')}\\D+${n}\\b`).test(counts)).length
+  const commits = +spawnSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir, encoding: 'utf8' }).stdout.trim()
+  const plans = items.filter((i) => i.kind === 'plan')
+  const thread = cli(['thread', id]).out.items ?? []
+  // Four probes, answered from what this conversation has: its own memory or its hand-off.
+  cli(['send', id, PROBE])
+  await settled(id, 5 * 60000)
+  const answer = cli(['read', id]).all.filter((i) => i.kind === 'text').at(-1)?.text ?? ''
+  const probes = { asked: /HERON/.test(answer), changed: /counts\.md/.test(answer), next: /total/i.test(answer), decided: /case/i.test(answer) }
+  const result = { backend, todo, settled: done.ok, ms, rebirths: seams.length, cuts: items.filter((i) => i.event === 'rebirth_cut').length, pickup,
+    peak_context: Math.max(0, ...items.filter((i) => i.kind === 'context').map((i) => i.used ?? 0)),
+    outcome: { counts_right: `${right}/6`, committed: commits > 2, code_word: /HERON/.test(said) },
+    plan: { updates: plans.length, before_first_seam: seams.length > 0 && plans.some((p) => p.n < items[seams[0]].n) },
+    probes, corrections: Object.values(probes).filter((v) => !v).length,
+    noise: { thread_items: thread.length, todo_steps: thread.filter((i) => /todo|plan/i.test(`${i.name ?? ''}${i.step ?? ''}`)).length } }
+  delete process.env.BRIGADIER_NO_TODO
+  result.leftovers = cleanup()
+  fs.rmSync(dir, { recursive: true, force: true })
+  return result
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth')
 await run()
