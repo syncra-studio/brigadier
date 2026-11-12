@@ -1,10 +1,11 @@
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useState } from "react";
 
+import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
 import { cx } from "../components/cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
-import { Radio, RadioGroup } from "../components/radio";
 import { RowAction } from "../components/row-action";
+import { Segmented } from "../components/segmented";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Plus, SettingsSlider } from "../icons";
 import { openAddProject } from "../projects/store";
@@ -41,23 +42,22 @@ export function useShowFilter(storeKey: string, projects: Project[]): ShowFilter
 }
 
 const GROUPINGS = [
-  ["none", "None"],
-  ["project", "Project"],
+  { value: "none", label: "None" },
+  { value: "project", label: "Project" },
 ] as const;
 
 const HEADING = "px-2 py-1.5 text-sm text-muted-foreground";
 const ROW = "flex h-control-sm cursor-pointer items-center gap-2 rounded-menu-item px-2 text-sm hover:bg-fill has-focus-visible:bg-fill";
 const RULE = "mx-2 my-1 border-t border-divider";
 
-/** A line of the Show list: its tick, what it stands for, and how many it holds. */
-function ShowRow({ name, checked, onChange, mark, count, none }: { name: string; checked: boolean; onChange: (on: boolean) => void; mark?: ReactNode; count: number; none?: string }) {
-  const empty = count === 0 && none !== undefined;
+/** A line of the Show list: its tick, what it stands for, and how many it holds (dimmed when none). */
+function ShowRow({ name, checked, onChange, mark, count }: { name: string; checked: boolean; onChange: (on: boolean) => void; mark: ReactNode; count: number }) {
   return (
     <label className={ROW}>
       <Checkbox aria-label={name} checked={checked} onCheckedChange={(next) => onChange(next)} />
       {mark}
-      <span title={name} className={cx("min-w-0 flex-1 truncate", empty && "text-muted-foreground")}>{name}</span>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{empty ? none : count}</span>
+      <span title={name} className={cx("min-w-0 flex-1 truncate", count === 0 && "text-muted-foreground")}>{name}</span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{count}</span>
     </label>
   );
 }
@@ -80,7 +80,8 @@ export function ViewTrigger({ projects, show }: { projects: Project[]; show: Sho
 
 /**
  * Around the sidebar's lists, so it stays open while Group by moves its button to the other list's header:
- * Group by None or Project, and Show: All, No project, then each project with its count [D440], then Add project.
+ * Group by None or Project, and Show: each project, then chats without one, each with its count, and Show all
+ * while any is unticked [D440, D50]; then Add project.
  */
 export function ViewMenu({
   grouping,
@@ -99,39 +100,32 @@ export function ViewMenu({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const heading = useId();
   const count = (project: string | null) => rows.filter((row) => row.project === project).length;
-  // All counts the lines ticked below it, No project and the projects.
-  const ticked = projects.filter((project) => !show.hiddenProjects.has(project.id)).length + (show.hideChats ? 0 : 1);
   const tickProject = (id: string, on: boolean) => {
     const others = [...show.hiddenProjects].filter((each) => each !== id);
     show.setHiddenProjects(on ? others : [...others, id]);
   };
-  // With everything ticked it unticks everything; from anything else it ticks everything.
-  const tickAll = () => {
-    show.setHiddenProjects(show.all ? projects.map((project) => project.id) : []);
-    show.setHideChats(show.all);
+  const showAll = () => {
+    show.setHiddenProjects([]);
+    show.setHideChats(false);
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
       {children}
       <PopoverContent side="bottom" align="end" className="w-60">
-        <div id={heading} className={HEADING}>
-          Group by
+        <div className="flex items-center gap-2 px-2 py-1">
+          <span className="shrink-0 text-sm text-muted-foreground">Group by</span>
+          <Segmented fill label="Group by" value={grouping} options={GROUPINGS} onChange={onGrouping} />
         </div>
-        <RadioGroup aria-labelledby={heading} value={grouping} onValueChange={(next) => onGrouping(next as Grouping)}>
-          {GROUPINGS.map(([value, label]) => (
-            <label key={value} className={ROW}>
-              <Radio value={value} />
-              {label}
-            </label>
-          ))}
-        </RadioGroup>
         <div className={RULE} />
-        <div className={HEADING}>Show</div>
-        <ShowRow name="All" checked={show.all} onChange={tickAll} count={ticked} />
-        <ShowRow name="No project" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<ProjectBadge name={null} tone={undefined} />} count={count(null)} none="No chats" />
-        <div className={RULE} />
+        <div className="flex items-center justify-between pe-2">
+          <div className={HEADING}>Show</div>
+          {!show.all && (
+            <Button variant="link-blue" size="inline" onClick={showAll}>
+              Show all
+            </Button>
+          )}
+        </div>
         <div className="scroll-edge-fade edge-fade-sidebar max-h-60 overflow-y-auto">
           {projects.map((project, tone) => (
             <ShowRow
@@ -141,9 +135,9 @@ export function ViewMenu({
               onChange={(on) => tickProject(project.id, on)}
               mark={<ProjectBadge name={project.name} tone={tone} />}
               count={count(project.id)}
-              none="No sessions"
             />
           ))}
+          <ShowRow name="Chats without a project" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<ProjectBadge name={null} tone={undefined} />} count={count(null)} />
         </div>
         <div className={RULE} />
         <button
