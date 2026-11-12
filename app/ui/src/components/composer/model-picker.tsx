@@ -1,4 +1,4 @@
-import { type HTMLAttributes, type ReactElement, useEffect, useRef, useState } from "react";
+import { type HTMLAttributes, type ReactElement, type RefObject, useEffect, useRef, useState } from "react";
 
 import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Star, StarFilled, Terminal } from "../../icons";
 import { setStar, useSettings } from "../../settings/api";
@@ -99,6 +99,8 @@ export function ModelPicker({
   automatic,
   efforts = true,
   trigger,
+  anchor,
+  onClose,
 }: {
   groups: ModelGroup[];
   value: ModelChoice;
@@ -116,6 +118,10 @@ export function ModelPicker({
   efforts?: boolean;
   /** Its own trigger in place of the composer's pill (a settings row's select). */
   trigger?: (props: HTMLAttributes<HTMLElement>) => ReactElement;
+  /** No trigger: it opens by `asked`, placed by this element (the fork menu's button). */
+  anchor?: RefObject<Element | null>;
+  /** As it closes; `cancelled` when by Escape. */
+  onClose?: (cancelled: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(asked);
@@ -273,40 +279,44 @@ export function ModelPicker({
             return;
           }
           if (next) opening();
+          else onClose?.(details.reason === "escape-key");
           setOpen(next);
         }}
       >
-        <PopoverTrigger
-          disabled={disabled}
-          render={
-            trigger ?? (
-              <ComposerPill
-                aria-label={`Model: ${auto ? automatic?.label : `${model?.name ?? value.model}${fastLabel ? ", Fast" : ""}${word ? `, ${word}` : ""}`}`}
-                data-slot="model-picker-trigger"
-              />
-            )
-          }
-        >
-          {/* The old pill's tighter gap; the pill's own is set in its base. */}
-          <span className="flex min-w-0 items-center gap-1">
-            {auto ? (
-              <span className="truncate text-foreground">{automatic?.label}</span>
-            ) : (
-              <>
-                <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
-                {fastLabel && <Bolt aria-hidden className="text-foreground" />}
-                <span className="truncate text-foreground">{model?.name ?? value.model}</span>
-                {word && <span className="shrink-0">{word}</span>}
-              </>
-            )}
-            <ChevronDown className="size-icon-xs" />
-          </span>
-        </PopoverTrigger>
+        {!anchor && (
+          <PopoverTrigger
+            disabled={disabled}
+            render={
+              trigger ?? (
+                <ComposerPill
+                  aria-label={`Model: ${auto ? automatic?.label : `${model?.name ?? value.model}${fastLabel ? ", Fast" : ""}${word ? `, ${word}` : ""}`}`}
+                  data-slot="model-picker-trigger"
+                />
+              )
+            }
+          >
+            {/* The old pill's tighter gap; the pill's own is set in its base. */}
+            <span className="flex min-w-0 items-center gap-1">
+              {auto ? (
+                <span className="truncate text-foreground">{automatic?.label}</span>
+              ) : (
+                <>
+                  <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
+                  {fastLabel && <Bolt aria-hidden className="text-foreground" />}
+                  <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+                  {word && <span className="shrink-0">{word}</span>}
+                </>
+              )}
+              <ChevronDown className="size-icon-xs" />
+            </span>
+          </PopoverTrigger>
+        )}
         <PopoverContent
           side="top"
           align="end"
           padded={false}
           aria-label="Model"
+          anchor={anchor}
           initialFocus={search}
           className="max-w-full overflow-hidden"
         >

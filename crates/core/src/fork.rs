@@ -28,15 +28,15 @@ pub struct Source {
 }
 
 /// What the command was asked: the new session's id and title, the answer (its turn's message
-/// id), the place (else the one rule's), the menu's fingerprint, and the agent, model and effort
-/// it goes on with when another was picked [D1081].
+/// id), the place (else the one rule's), the menu's fingerprint, and the agent, model, effort
+/// and fast tier it goes on with when another was picked [D1081].
 pub struct Ask<'a> {
     pub fork: &'a str,
     pub title: &'a str,
     pub at: &'a str,
     pub place: Option<&'a str>,
     pub fingerprint: Option<&'a str>,
-    pub to: Option<(&'a str, &'a str, Option<&'a str>)>,
+    pub to: Option<(&'a str, &'a str, Option<&'a str>, bool)>,
 }
 
 pub fn record(dir: &Path) -> Option<Value> {
@@ -337,10 +337,11 @@ fn build(
             project: src.project.clone(),
             // The picked model in the fork's own record, as a model switch; no effort is the CLI's
             // default, as `set` [D1081, D1089].
-            model: ask.to.map_or(run.model.clone(), |(_, m, _)| Some(m.into())),
+            model: ask.to.map_or(run.model.clone(), |(_, m, ..)| Some(m.into())),
             effort: ask
                 .to
-                .map_or(run.effort.clone(), |(.., e)| e.map(String::from)),
+                .map_or(run.effort.clone(), |(_, _, e, _)| e.map(String::from)),
+            fast: ask.to.map_or(run.fast, |(.., fast)| fast),
             // Full access isn't carried into a session nobody picked it for [D187].
             level: src.level.clone().filter(|l| l != "full"),
             opts: src.opts.clone(),

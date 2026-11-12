@@ -34,7 +34,7 @@ const FILES: [string, ForkOffer["worktree"]][] = [
 /** An answer's marks with its fork menu, opened on press; another vendor's agent in its submenu asks first. */
 function Menu({ chat, value, error }: { chat: boolean; value?: ForkOffer; error?: string }) {
   const agents = useAgents();
-  return <AnswerMarks text="Done." fork={<ForkMenu chat={chat} {...(value && { offer: value })} {...(error && { error })} agents={agents} current="cloud" model="large" onPick={noop} />} />;
+  return <AnswerMarks text="Done." fork={<ForkMenu chat={chat} {...(value && { offer: value })} {...(error && { error })} agents={agents} current="cloud" value={{ provider: "cloud", model: "large", effort: null }} onPick={noop} />} />;
 }
 
 const PENDING: Setup = { state: "running", before: null, steps: [{ kind: "worktree", state: "running", branch: "brigadier/fork-of-login", base: "main", error: null }] };

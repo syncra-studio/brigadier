@@ -1,9 +1,9 @@
 //! `fork <id> --check <cid>`: what the Fork menu offers on an answer; `fork <id> <new-id> --at <cid>
-//! [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E]]`: the fork, on
-//! agent B's model M when picked [D1081], settled and fenced on the answer's source
+//! [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]`: the
+//! fork, on agent B's model M (on its fast tier with `--fast`) when picked [D1081], settled and fenced on the answer's source
 //! [D1063, D1089]. Run again under the same ids, it finishes or rolls back what its record proves.
 
-use crate::{USAGE, arg, flag, owner, rewind, title};
+use crate::{USAGE, arg, flag, has, owner, rewind, title};
 use brigadier_core::fork::{self, Ask};
 use brigadier_core::{self as core, check_id};
 use serde_json::{Value, json};
@@ -49,7 +49,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         place: flag(args, "--where"),
         fingerprint: flag(args, "--fingerprint"),
         to: match (flag(args, "--to"), flag(args, "--model")) {
-            (Some(b), Some(m)) => Some((b, m, flag(args, "--effort"))),
+            (Some(b), Some(m)) => Some((b, m, flag(args, "--effort"), has(args, "--fast"))),
             (None, None) => None,
             _ => return Err(io::Error::other(USAGE)),
         },

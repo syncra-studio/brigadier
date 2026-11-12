@@ -9,12 +9,13 @@ import { startFork } from "../home/start";
 import { errorText, run } from "../onboarding/api";
 import type { Item } from "../thread/item";
 import { asGroups } from "./model";
+import { SetUpAgentDialog } from "./set-up";
 
 /*
  * Fork, wired for a new worktree, the same folder [D1070] and a chat's own fork [D1063]: the menu reads Rust's one
  * check as it opens; a pick opens the new session at once, pending, and runs `fork` behind it (home/start.ts), the
  * menu's fingerprint going with it so Rust refuses if the answer changed meanwhile (proposed). Another agent [D1081]:
- * the switch picker's list, read as the menu opens; it goes where the one destination rule says (proposed).
+ * the composer's model picker, its list read as the menu opens; it goes where the one destination rule says (proposed).
  */
 
 /** The fork icon under answer `at` (its turn's message id) in the open session. */
@@ -26,6 +27,7 @@ export function ForkAction({ at }: { at: string }) {
   const [error, setError] = useState<string>();
   const [agents, setAgents] = useState<ModelGroup[]>();
   const [agentsError, setAgentsError] = useState<string>();
+  const [setUp, setSetUp] = useState<string | null>(null);
   if (!session) return null;
   const open = () => {
     setOffer(undefined);
@@ -37,24 +39,35 @@ export function ForkAction({ at }: { at: string }) {
       reply.ok ? setOffer(reply as unknown as ForkOffer) : setError(String(reply.message ?? reply.error ?? "Couldn't check this answer")),
     );
   };
+  const now = row as { model?: string | null; effort?: string | null; fast?: boolean } | undefined;
   return (
-    <ForkMenu
-      chat={!row?.project}
-      offer={offer}
-      error={error}
-      agents={agents}
-      {...(agentsError && { agentsError })}
-      current={offer?.agent ?? row?.backend ?? ""}
-      model={(row as { model?: string | null } | undefined)?.model}
-      busy={session.offline}
-      onOpen={open}
-      onPick={(pick) => {
-        if (!offer) return;
-        const title = `Fork of ${row?.title ?? ""}`;
-        if ("where" in pick) startFork(session.id, row?.project ?? null, at, pick.where, offer.fingerprint, title);
-        else startFork(session.id, row?.project ?? null, at, offer.default, offer.fingerprint, title, pick.to);
-      }}
-    />
+    <>
+      <ForkMenu
+        chat={!row?.project}
+        offer={offer}
+        error={error}
+        agents={agents}
+        {...(agentsError && { agentsError })}
+        current={offer?.agent ?? row?.backend ?? ""}
+        value={now?.model && row ? { provider: row.backend, model: now.model, effort: now.effort ?? null, fast: now.fast === true } : null}
+        busy={session.offline}
+        onSetUp={setSetUp}
+        onOpen={open}
+        onPick={(pick) => {
+          if (!offer) return;
+          const title = `Fork of ${row?.title ?? ""}`;
+          if ("where" in pick) startFork(session.id, row?.project ?? null, at, pick.where, offer.fingerprint, title);
+          else startFork(session.id, row?.project ?? null, at, offer.default, offer.fingerprint, title, pick.to);
+        }}
+      />
+      <SetUpAgentDialog
+        name={setUp}
+        onClose={() => {
+          setSetUp(null);
+          open();
+        }}
+      />
+    </>
   );
 }
 

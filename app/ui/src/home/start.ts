@@ -154,7 +154,7 @@ export function startFork(source: string, project: string | null, at: string, wh
   const id = sessionId();
   const args = ["fork", source, id, "--at", at, "--where", where, "--fingerprint", fingerprint];
   // Another agent or model goes on from there [D1081].
-  if (to) args.push("--to", to.provider, "--model", to.model, ...(to.effort ? ["--effort", to.effort] : []));
+  if (to) args.push("--to", to.provider, "--model", to.model, ...(to.effort ? ["--effort", to.effort] : []), ...(to.fast ? ["--fast"] : []));
   const entry: Starting = { id, cid: at, project, text: "", title, args, sent: Date.now(), asking: true, fork: { source, where } };
   starting.set(new Map(starting.get()).set(id, entry));
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

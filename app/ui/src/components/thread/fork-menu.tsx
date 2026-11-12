@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { BranchAlt, Spinner } from "../../icons";
-import { type ModelChoice, type ModelGroup, ProviderMark, SwitchAgentDialog } from "../composer/model-picker";
+import { type ModelChoice, type ModelGroup, ModelPicker, SwitchAgentDialog } from "../composer/model-picker";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import {
@@ -10,9 +10,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   MenuRow,
 } from "../menu";
@@ -34,7 +31,7 @@ export type ForkOffer = {
   fingerprint: string;
 };
 
-/** Where a pick sends the fork; `to`, another agent or model, goes by the one destination rule (proposed). */
+/** Where a pick sends the fork; `to`, another agent, model, effort or speed, goes by the one destination rule (proposed). */
 export type ForkPick = { where: "worktree" | "here" | "chat" } | { to: ModelChoice };
 
 // Proposed words, shown to the owner on screen [D1068].
@@ -64,7 +61,9 @@ function Place({ title, detail, onClick, disabled }: { title: string; detail: st
 
 /**
  * The fork icon after Copy under an answer, and its menu [D48, D1069, D1070, D1071]: the old ForkMenu's rows on our
- * kit's menu. The offer is read as it opens (`onOpen`); until then a spinner row, or why it couldn't be read.
+ * kit's menu. The offer is read as it opens (`onOpen`); until then a spinner row, or why it couldn't be read. "Fork with
+ * another agent" opens the composer's own model picker by the button, on this session's model: what is picked there is
+ * held, and the fork goes on it as the picker closes, another vendor's agent asked first; Escape forks nothing.
  */
 export function ForkMenu({
   chat,
@@ -73,8 +72,9 @@ export function ForkMenu({
   agents,
   agentsError,
   current,
-  model,
+  value,
   busy = false,
+  onSetUp,
   onOpen,
   onPick,
 }: {
@@ -82,35 +82,36 @@ export function ForkMenu({
   chat: boolean;
   offer?: ForkOffer;
   error?: string;
-  /** The agents and models the switch picker lists, undefined while they're read; `current` is this session's agent. */
+  /** The agents and models the picker lists, undefined while they're read; `current` is this session's agent. */
   agents: ModelGroup[] | undefined;
   /** Why the list couldn't be read; opening the menu again reads it again. */
   agentsError?: string;
   current: string;
-  /** This session's model: forking to it isn't another agent, so it's left out with `current`. */
-  model?: string | null;
+  /** This session's model, effort and speed, where known: the picker opens on it. */
+  value?: ModelChoice | null;
   busy?: boolean;
+  /** The picker's "Set up" for an agent not installed or signed in. */
+  onSetUp?: (provider: string) => void;
   onOpen?: () => void;
   onPick: (pick: ForkPick) => void;
 }) {
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
-  // Held so a click opens it too: a hover-opening submenu ignores mouse presses.
-  const [sub, setSub] = useState(false);
+  const [asked, setAsked] = useState(0);
+  const [held, setHeld] = useState<ModelChoice | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
-  const others = (agents ?? [])
-    .map((group) => ({ ...group, models: group.models.filter((each) => group.provider !== current || each.id !== model) }))
-    .filter((group) => !group.unavailable && group.models.length > 0);
-  // Read and nothing else to fork to: no row that opens empty.
-  const another = !agents || Boolean(agentsError) || others.length > 0;
-  const pickModel = (group: ModelGroup, model: string) => {
-    const choice = { provider: group.provider, model, effort: null };
-    // Another model of the same agent forks natively; another vendor's agent asks first [D1081, D90].
-    if (group.provider === current) onPick({ to: choice });
-    else setVendor({ choice, label: group.label });
+  // Read and no agent set up: no row that opens empty.
+  const another = !agents || agents.some((group) => !group.unavailable && group.models.length > 0);
+  const close = (cancelled: boolean) => {
+    setHeld(null);
+    if (cancelled || !held) return;
+    // The same agent forks natively; another vendor's agent asks first [D1081, D90].
+    if (held.provider === current) onPick({ to: held });
+    else setVendor({ choice: held, label: agents?.find((group) => group.provider === held.provider)?.label ?? held.provider });
   };
   return (
-    <>
-      <DropdownMenu modal={false} onOpenChange={(open) => (open ? onOpen?.() : setSub(false))}>
+    <span ref={anchor} className="inline-flex">
+      <DropdownMenu modal={false} onOpenChange={(open) => open && onOpen?.()}>
         <DropdownMenuTrigger
           render={<TooltipIconButton tooltip={tooltip} size="icon-answer" disabled={busy} aria-busy={busy || undefined} />}
         >
@@ -134,35 +135,15 @@ export function ForkMenu({
               {another && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuSub open={sub} onOpenChange={setSub}>
-                    <DropdownMenuSubTrigger onClick={() => setSub(true)}>
-                      <MenuRow icon={<BranchAlt />} title="Fork with another agent" />
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      {agentsError ? (
-                        <div className="px-2 py-1.5">
-                          <ErrorLine size="sm" error={agentsError} />
-                        </div>
-                      ) : !agents ? (
-                        <DropdownMenuItem disabled>
-                          <MenuRow icon={<Spinner className="animate-spin" />} title="Checking the agents" />
-                        </DropdownMenuItem>
-                      ) : null}
-                      {others.map((group) => (
-                        <div key={group.provider} role="group" aria-label={group.label}>
-                          <DropdownMenuLabel variant="heading" className="flex items-center gap-2">
-                            <ProviderMark mark={group.mark} className="size-icon-sm" />
-                            {group.label}
-                          </DropdownMenuLabel>
-                          {group.models.map((model) => (
-                            <DropdownMenuItem key={model.id} inset onClick={() => pickModel(group, model.id)}>
-                              {model.name}
-                            </DropdownMenuItem>
-                          ))}
-                        </div>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
+                  {agentsError ? (
+                    <div className="px-2 py-1.5">
+                      <ErrorLine size="sm" error={agentsError} />
+                    </div>
+                  ) : (
+                    <DropdownMenuItem disabled={!agents} onClick={() => setAsked((n) => n + 1)}>
+                      <MenuRow icon={agents ? <BranchAlt /> : <Spinner className="animate-spin" />} title="Fork with another agent" />
+                    </DropdownMenuItem>
+                  )}
                 </>
               )}
             </>
@@ -177,6 +158,16 @@ export function ForkMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+      <ModelPicker
+        groups={agents ?? []}
+        value={held ?? value ?? { provider: current, model: "", effort: null }}
+        onChange={setHeld}
+        {...(onSetUp && { onSetUp })}
+        asksSwitch={false}
+        asked={asked}
+        anchor={anchor}
+        onClose={close}
+      />
       <SwitchAgentDialog
         fork
         to={vendor?.label ?? null}
@@ -186,6 +177,6 @@ export function ForkMenu({
           setVendor(null);
         }}
       />
-    </>
+    </span>
   );
 }
