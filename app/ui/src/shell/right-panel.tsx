@@ -11,7 +11,6 @@ import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from ".
 import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
 import { keysOf, matches } from "../shortcuts";
-import { PanelBody } from "../workers/live";
 import { HOME, openFile, useTabs } from "./tab-store";
 
 /*
@@ -64,8 +63,8 @@ function Files({ owner }: { owner: string }) {
   return <FilesView owner={owner} shown={front} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />;
 }
 
-/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]. */
-export function RightPanelSlot({ owner }: { owner: string }) {
+/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]; `beside`: the Workers panel's width while it shows. */
+export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: number }) {
   useArchivedGitNotice(owner);
   const has = useHasPanel(owner);
   const memory = usePanelMemory();
@@ -97,6 +96,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
       aria-label="Files"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
+      data-beside={beside || undefined}
       className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
     >
       <div
@@ -107,38 +107,47 @@ export function RightPanelSlot({ owner }: { owner: string }) {
       >
         <div className="right-panel-width flex h-full min-h-0 flex-col">
           <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
-            {shown && <PanelBody owner={owner} files={<Files key={owner} owner={owner} />} />}
+            {shown && <Files key={owner} owner={owner} />}
           </div>
         </div>
       </div>
-      {open && <ResizeHandle resizing={resizing} setResizing={setResizing} />}
+      {open && (
+        <ResizeHandle label="Resize Files" resizing={resizing} setResizing={setResizing} onWidth={setPanelWidth} onClose={() => setPanelOpen(false)} />
+      )}
     </aside>
   );
 }
 
-/** The grab area straddling the panel's start edge (the old SidebarResizeHandle's right side). */
-function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizing: (resizing: boolean) => void }) {
+/** A theme length (rem) in CSS pixels. */
+export const px = (name: string) => {
+  const root = getComputedStyle(document.documentElement);
+  return Number.parseFloat(root.getPropertyValue(name)) * Number.parseFloat(root.fontSize);
+};
+
+/** The grab area straddling a right column's start edge (the old SidebarResizeHandle's right side): Files' and Workers'. */
+export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose }: {
+  label: string;
+  resizing: boolean;
+  setResizing: (resizing: boolean) => void;
+  onWidth: (width: number) => void;
+  onClose: () => void;
+}) {
   const start = useRef<{ x: number; width: number } | null>(null);
   const latest = useRef<number | null>(null);
-  // A theme length (rem) in CSS pixels.
-  const px = (name: string) => {
-    const root = getComputedStyle(document.documentElement);
-    return Number.parseFloat(root.getPropertyValue(name)) * Number.parseFloat(root.fontSize);
-  };
 
   const end = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!start.current) return;
     start.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setResizing(false);
-    if (latest.current !== null) setPanelWidth(latest.current);
+    if (latest.current !== null) onWidth(latest.current);
   };
 
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize Files"
+      aria-label={label}
       data-resizing={resizing || undefined}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -162,7 +171,7 @@ function ResizeHandle({ resizing, setResizing }: { resizing: boolean; setResizin
           latest.current = Math.round(start.current.width);
           event.currentTarget.parentElement?.setAttribute("data-width", String(latest.current));
           end(event);
-          setPanelOpen(false);
+          onClose();
           return;
         }
         latest.current = Math.round(Math.min(Math.max(wanted, min), px("--spacing-sidebar-max")));

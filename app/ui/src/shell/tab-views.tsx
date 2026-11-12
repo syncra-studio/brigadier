@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -11,6 +11,7 @@ import { LivePrTab } from "../landing/live";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { keysOf } from "../shortcuts";
+import { WorkersPanelSlot } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
@@ -103,6 +104,7 @@ function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
  */
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);
+  const [workersShown, setWorkersShown] = useState(0);
   return (
     <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
       <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -124,7 +126,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           </div>
         ))}
       </div>
-      <RightPanelSlot owner={owner} />
+      <WorkersPanelSlot owner={owner} onShown={setWorkersShown} />
+      <RightPanelSlot owner={owner} beside={workersShown} />
     </main>
   );
 }

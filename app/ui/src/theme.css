@@ -1167,10 +1167,13 @@
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* The right panel's width: where it was dragged (data-width on the panel, right-panel.tsx) or the default, kept in its
-   range and leaving the chat its least room beside the left sidebar (the old workspace-pane-width). */
+/* A right column's width, Files' or Workers': where it was dragged (data-width on it) or the default, kept in its range
+   and leaving the chat its least room beside the left sidebar and the other right column (data-beside: Workers' width
+   while open, for Files; Files' least width while open, for Workers), as the old workspace-pane-width and
+   right-sidebar-panel-width. */
 @utility right-panel-width-source {
   --right-panel-width: attr(data-width px, var(--spacing-sidebar));
+  --right-panel-beside: attr(data-beside px, 0px);
 }
 @utility right-panel-width {
   width: clamp(
@@ -1178,7 +1181,7 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
     )
   );
 }

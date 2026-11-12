@@ -123,7 +123,6 @@ function View({ shown, children, workedMs, previous, live }: { shown: Worker; ch
 /** The panel live: the list, a row opening its worker, back to the list. */
 function LivePanel() {
   const [open, setOpen] = useState<string | null>(null);
-  const [tab, setTab] = useState(WORKERS_LABEL);
   const [ended, setEnded] = useState<string[]>([]);
   const all = [RETRY, PROGRESS, HELD, ...STATES.slice(6), ...DONE_MANY].map((each) => (ended.includes(each.id) ? { ...each, kind: "stopped" as const, word: "Ended", lastAt: Date.now() } : each));
   const shown = all.find((each) => each.id === open);
@@ -139,8 +138,8 @@ function LivePanel() {
           </>
         ) : (
           <>
-            <PanelTabs active={tab} tabs={["Files", WORKERS_LABEL]} finishedWords="11 done · 4 ended" onSelect={setTab} onClose={noop} />
-            {tab === WORKERS_LABEL ? <WorkerList workers={all} onStop={(id) => setEnded((now) => [...now, id])} /> : <p className="m-auto text-sm text-muted-foreground">Files</p>}
+            <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords="11 done · 4 stopped" onSelect={noop} onClose={noop} />
+            <WorkerList workers={all} onStop={(id) => setEnded((now) => [...now, id])} />
           </>
         )}
       </Panel>
@@ -264,13 +263,13 @@ export function WorkersGallery() {
         <Row name="The list (the tab row shows only here until 4.3 wires it)">
           <State label="Active and Done">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={["Files", WORKERS_LABEL]} onSelect={noop} onClose={noop} />
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
               <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} onStop={noop} />
             </Panel>
           </State>
           <State label="None active">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={["Files", WORKERS_LABEL]} onSelect={noop} onClose={noop} />
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
               <WorkerList workers={DONE_MANY.slice(0, 3)} onStop={noop} />
             </Panel>
           </State>

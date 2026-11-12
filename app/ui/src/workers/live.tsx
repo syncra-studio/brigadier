@@ -1,13 +1,15 @@
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
 import { X } from "../icons";
+import { cx } from "../components/cx";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
-import { setPanelOpen } from "../panel/memory";
+import { setPanelOpen, usePanelMemory } from "../panel/memory";
+import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
 import type { Item, Turn } from "../thread/item";
 import { finished, type Worker, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
@@ -72,22 +74,23 @@ const stop = (parent: string, ids: readonly string[]) =>
     return false;
   });
 
-/** Which worker each session's panel shows (null: the list) and its tab. */
-let shown: Record<string, { tab: string; open: string | null }> = {};
+/** Whether each session's Workers panel is open and which worker it shows (null: the list), as the old app's. */
+type Shown = { open: boolean; worker: string | null };
+let shown: Record<string, Shown> = {};
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
-function show(owner: string, next: { tab: string; open: string | null }) {
+function show(owner: string, next: Shown) {
   shown = { ...shown, [owner]: next };
   for (const listener of listeners) listener();
 }
-const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? { tab: "Files", open: null };
+const CLOSED: Shown = { open: false, worker: null };
+const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? CLOSED;
+// shortcut: the panel's dragged width lasts until the app quits; keep it in Rust's panel memory if the owner wants it kept.
+let width: number | null = null;
 
-/** A worker named anywhere opens it in its parent's Workers tab. */
+/** A worker named anywhere opens it in its parent's Workers panel; null opens the list. */
 function Opens({ owner, children }: { owner: string; children: ReactNode }) {
-  const open = (id: string | null) => {
-    show(owner, { tab: WORKERS_LABEL, open: id });
-    setPanelOpen(true);
-  };
+  const open = (worker: string | null) => show(owner, { open: true, worker });
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
@@ -139,24 +142,96 @@ export function SessionWorkersStrip({ id }: { id: string }) {
   );
 }
 
-/** The right panel: Files alone until the session has workers, then Files · Workers [D3012]. */
-export function PanelBody({ owner, files }: { owner: string; files: ReactNode }) {
+/** "1 done · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
+function finishedWords(workers: readonly Worker[]): string {
+  const counts = { done: 0, stopped: 0, failed: 0 };
+  for (const { kind } of workers) {
+    if (kind === "done" || kind === "merged" || kind === "doneNotMerged") counts.done += 1;
+    else if (kind === "stopped" || kind === "failed") counts[kind] += 1;
+  }
+  return Object.entries(counts).filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`).join(" · ");
+}
+
+/** A right column's chosen width, not its rendered one; one never resized counts at its default. */
+const chosen = (dragged: number | null) => dragged ?? px("--spacing-sidebar");
+
+/**
+ * The Workers panel, as the old app's RightSidebar [D3012, D3013]: its own column between the chat and Files, opened
+ * from a worker named anywhere, its tab and close in a row at its top, or a worker's header in their place. It slides
+ * as Files does; where the window can't hold the chat beside both, the one opened last stays and the other closes.
+ */
+export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (width: number) => void }) {
   const workers = useWorkers(owner);
-  const { tab, open } = useShown(owner);
-  if (workers.length === 0) return files;
-  const opened = workers.find((each) => each.id === open);
-  const close = () => setPanelOpen(false);
+  const { open, worker } = useShown(owner);
+  const files = usePanelMemory();
+  const filesOpen = useHasPanel(owner) && files.open;
+  const [resizing, setResizing] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
+  const close = () => show(owner, { open: false, worker });
+
+  // Files leaves room for this column's full width while it's open, as this one leaves Files its least width.
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!open || !element) return;
+    const measure = () => onShown(Math.round(element.getBoundingClientRect().width));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onShown(0);
+    };
+  }, [open, onShown]);
+
+  const was = useRef({ files: filesOpen, workers: open });
+  useLayoutEffect(() => {
+    const opened = { files: filesOpen && !was.current.files, workers: open && !was.current.workers };
+    was.current = { files: filesOpen, workers: open };
+    const left = document.querySelector('[data-slot="sidebar-panel"]')?.getBoundingClientRect().width ?? 0;
+    if (!filesOpen || !open || innerWidth >= left + px("--spacing-sidebar-thread-min") + chosen(width) + chosen(files.width)) return;
+    if (opened.files) show(owner, { open: false, worker });
+    else if (opened.workers) setPanelOpen(false);
+  }, [filesOpen, open, files.width, owner, worker]);
+
+  const opened = workers.find((each) => each.id === worker);
   return (
-    <Opens owner={owner}>
-      {opened ? (
-        <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { tab, open: null })} onClose={close} />
-      ) : (
-        <>
-          <PanelTabs active={tab} tabs={["Files", WORKERS_LABEL]} onSelect={(next) => show(owner, { tab: next, open: null })} onClose={close} />
-          {tab === WORKERS_LABEL ? <WorkerList workers={workers} onStop={(wid) => stop(owner, [wid])} /> : files}
-        </>
+    <div
+      data-slot="workers-panel"
+      data-state={open ? "expanded" : "collapsed"}
+      data-width={width ?? undefined}
+      data-beside={filesOpen ? px("--spacing-sidebar-min") : undefined}
+      className={cx("right-panel-width-source start-hairline relative flex h-full shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
+    >
+      <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
+        <div ref={content} className="right-panel-width flex h-full flex-col">
+          <Opens owner={owner}>
+            {!opened && <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords={finishedWords(workers)} onSelect={() => {}} onClose={close} />}
+            <div
+              id="workers-panel-content"
+              className={cx("flex min-h-0 flex-1 flex-col overflow-clip bg-background transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
+            >
+              {mounted &&
+                (opened ? (
+                  <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
+                ) : (
+                  <WorkerList workers={workers.toReversed()} onStop={(wid) => stop(owner, [wid])} />
+                ))}
+            </div>
+          </Opens>
+        </div>
+      </div>
+      {open && (
+        <ResizeHandle
+          label="Resize Workers"
+          resizing={resizing}
+          setResizing={setResizing}
+          onWidth={(next) => (width = next)}
+          onClose={close}
+        />
       )}
-    </Opens>
+    </div>
   );
 }
 

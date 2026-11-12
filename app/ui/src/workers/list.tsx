@@ -9,9 +9,8 @@ import { finished, lowerFirst, type Worker, WorkersPanel, waiting } from "./chip
 import { RowTime, StopWorker } from "./strip";
 
 /*
- * The right panel's Workers tab, as the old app's RightSidebar tab row, WorkerList and AgentRow [D3012]: "Active · N"
- * and "Done · N", a page at a time. The live panel keeps Files alone until 4.3 wires Workers; the tab row shows in
- * the gallery only.
+ * The Workers panel, as the old app's RightSidebar tab row, WorkerList and AgentRow [D3012]: "Active · N" and
+ * "Done · N", a page at a time.
  */
 
 /** What the UI calls a session's workers (the user chose "Workers" over "Subagents"). */
@@ -36,8 +35,7 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
             role="tab"
             aria-selected={active === tab}
             pressed={active === tab}
-            size={null}
-            className="inline-flex h-control-sm items-center px-2 text-label"
+            className="w-auto px-2 text-label"
             tooltip={tab === WORKERS_LABEL && finishedWords ? `${tab} · ${finishedWords}` : tab}
             onClick={() => onSelect(tab)}
           >
