@@ -212,6 +212,11 @@ function openLink(url: string): void {
   if (/^https:/.test(url)) void shell.openExternal(url);
 }
 ipcMain.on("open-link", (_event, url: string) => openLink(url));
+// A sent file opens in its default app, as the old app's file card; only from the folders the app: handler serves [D146].
+ipcMain.on("open-attachment", (_event, at: string) => {
+  const file = attachmentFile(at);
+  if (file) void shell.openPath(file);
+});
 // The windows whose ⌘W closes a tab (the tab bar says so) [D360].
 const closesTab = new WeakSet<Electron.WebContents>();
 ipcMain.on("closes-tab", (event, on: boolean) => void (on ? closesTab.add(event.sender) : closesTab.delete(event.sender)));

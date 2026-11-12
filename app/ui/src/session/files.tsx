@@ -202,7 +202,7 @@ export function ThreadDrop({ owner, children }: { owner: string; children: React
     >
       {children}
       {dragging && (
-        <div aria-hidden data-slot="drop-overlay" className="pointer-events-none absolute inset-0 z-30 flex animate-fade-in items-center justify-center bg-link/8">
+        <div aria-hidden data-slot="drop-overlay" className="pointer-events-none absolute inset-0 z-30 flex animate-fade-in items-center justify-center bg-drop-tint">
           <div data-slot="drop-pill" className="flex items-center gap-1.5 rounded-capsule bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-sm">
             <Paperclip className="size-icon-sm text-muted-foreground" />
             Drop to attach

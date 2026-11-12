@@ -1,7 +1,9 @@
 import { createContext, type MouseEventHandler, type ReactNode, useContext } from "react";
 
 import { File, FileCode, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../icons";
+import { formatBytes } from "../../files/viewer";
 import { cx } from "../cx";
+import { ImagePreview } from "../image-viewer";
 
 /**
  * A file going with a message: an image or a long paste in the text (a chip), any other file as a tile beside
@@ -251,5 +253,53 @@ export function AttachmentTiles({ ids, onRemove }: { ids: readonly string[]; onR
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A sent message's files, above its bubble: images as smaller thumbnails that open the viewer, other files as
+ * cards with their kind and size that open with one click, as the old app's message attachments [D146].
+ */
+export function SentAttachments({
+  files,
+  onOpen,
+}: {
+  files: readonly { id: string; name: string; mime: string; bytes: number; url: string }[];
+  onOpen: (id: string) => void;
+}) {
+  if (files.length === 0) return null;
+  const images = files.filter((file) => file.mime.startsWith("image/"));
+  return (
+    <ul data-slot="message-attachments" aria-label="Attachments" className="flex flex-wrap items-end justify-end gap-2">
+      {files.map((file) => (
+        <li key={file.id} className="flex">
+          {file.mime.startsWith("image/") ? (
+            <ImagePreview url={file.url} name={file.name} gallery={images.length > 1 ? { images, index: images.indexOf(file) } : undefined}>
+              <button
+                type="button"
+                data-slot="attachment-image"
+                aria-label={`Preview ${file.name}`}
+                title={file.name}
+                className="relative size-attachment-sent shrink-0 cursor-pointer overflow-hidden rounded-surface bg-muted focus-visible:focus-ring"
+              >
+                <img src={file.url} alt={file.name} draggable={false} className="size-full object-cover" />
+                <span aria-hidden className="pointer-events-none absolute inset-0 rounded-surface ring-1 ring-border ring-inset" />
+              </button>
+            </ImagePreview>
+          ) : (
+            <button type="button" aria-label={`Open ${file.name}`} onClick={() => onOpen(file.id)} className="cursor-pointer rounded-surface text-start focus-visible:focus-ring">
+              <Tile
+                slot="attachment-file"
+                hint={file.name}
+                icon={<FileTypeIcon name={file.name} className="size-icon-md" />}
+                title={file.name}
+                detail={`${kindOf(file.name, file.mime)} · ${formatBytes(file.bytes)}`}
+                remove={null}
+              />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

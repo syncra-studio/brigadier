@@ -112,6 +112,9 @@ type Base = {
   inherited?: boolean;
 };
 
+/** A file a user message carried, by its attachment id. */
+export type SentFile = { id: string; name: string; mime: string; bytes: number };
+
 export type Item = Base &
   (
     | {
@@ -131,6 +134,8 @@ export type Item = Base &
         cid?: string;
         /** Steered into the running turn: it sits inside that turn's work and starts no turn of its own. */
         steer?: boolean;
+        /** A user message's files (its images and attached files, not its pastes), stored in its session's folder. */
+        files?: SentFile[] | null;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first

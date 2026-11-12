@@ -102,6 +102,8 @@
   --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
   /* Behind an open dialog: the page, dimmed. */
   --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
+  /* The image viewer's backdrop: near-black, so the image reads as itself. */
+  --color-image-viewer: oklch(0 0 0 / 90%);
   /* The folder drop's veil and its dashed edge, the old app's FolderDropZone values. */
   --color-drop-veil: color-mix(in oklab, var(--color-background) 70%, transparent);
   --color-drop-edge: color-mix(in oklab, var(--color-foreground) 25%, transparent);
@@ -139,6 +141,8 @@
   --color-link-hover: color-mix(in oklab, var(--color-link) 80%, transparent);
   /* A row picked with ⌘- or Shift-click: the old app's bg-link/20. */
   --color-picked: color-mix(in oklab, var(--color-link) 20%, transparent);
+  /* "Drop to attach": the old app's soft link tint over the thread. */
+  --color-drop-tint: color-mix(in oklab, var(--color-link) 8%, transparent);
   /* Settings › Archived's picked row (the old app's). */
   --color-picked-row: color-mix(in oklab, var(--color-link) 15%, transparent);
   /* A reply's blockquote edge, its rules (hr), and the lines between its table rows. */
@@ -348,6 +352,8 @@
   /* A composer attachment: an image's thumbnail, a file's card. */
   /* As tall as a file card: its icon box, padding and border (D136). */
   --spacing-attachment-thumb: calc(var(--spacing-control-lg) + 0.75rem + 2px);
+  /* A sent message's image, above its bubble (the old app's). */
+  --spacing-attachment-sent: 5rem;
   --spacing-attachment-card: 14rem;
   /* The model picker: its width and its one height. */
   --spacing-model-picker: 33.75rem;
@@ -360,6 +366,8 @@
   --radius-icon-button: 0.625rem;
   --radius-control: 0.5rem;
   --radius-surface: 0.75rem;
+  /* The image the viewer shows (the old app's rounded-lg). */
+  --radius-image-viewer: 0.625rem;
   --radius-tooltip: 1rem;
   --radius-overlay: 1.25rem;
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
@@ -386,6 +394,8 @@
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
+  /* The image viewer's round buttons: the old app's black 5% ring over Tailwind's shadow-md. */
+  --shadow-image-viewer-button: 0 0 0 1px rgb(0 0 0 / 0.05), 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   /* A dialog card's hairline edges (light inside, dark outside) and soft shadow (D46). */
   --shadow-material:
     inset 0 0 0 0.5px oklch(1 0 0 / 15%), 0 0 0 0.5px oklch(0 0 0 / 60%), 0 12px 32px oklch(0 0 0 / 35%);
@@ -921,6 +931,48 @@
    it downward. */
 @utility dialog-top {
   top: attr(data-top px, 0px);
+}
+
+/* The image viewer's fade in and out (image-viewer.tsx): no fade-in once grown out of its thumbnail, none
+   while it morphs, and gone at once when it morphs back into the thumbnail. */
+@utility image-viewer-motion {
+  transition-property: opacity;
+  transition-duration: var(--default-transition-duration);
+  transition-timing-function: var(--ease-popup);
+  &[data-ending-style],
+  &[data-starting-style]:not([data-grown]) {
+    opacity: 0;
+  }
+  &[data-morph] {
+    transition: none;
+  }
+  &[data-gone] {
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* The image viewer's sizes, measured as it runs (image-viewer.tsx): its frame, its canvas and the image. */
+@utility image-viewer-size {
+  width: attr(data-width px, auto);
+  height: attr(data-height px, auto);
+  max-height: attr(data-max-height px, none);
+}
+
+/* The image viewer's morph: the thumbnail grows into the shown image over 0.2s (and back), while the rest
+   of the window cross-fades. Unlayered, as the morph's name is set on whatever thumbnail opened it. */
+[data-image-morph] {
+  view-transition-name: image-viewer-image;
+}
+::view-transition-group(image-viewer-image) {
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--default-transition-duration);
 }
 
 /* The old Add project's 1rem window margin (tokens.css's add-project-top). The card never scrolls: its

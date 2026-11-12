@@ -85,7 +85,7 @@ impl Thread {
             let origin = if t.origin == "user" { "user" } else { "system" };
             self.add(
                 json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
-                "origin": origin, "sentAt": t.ts, "cid": t.id}),
+                "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"]}),
             );
             if let Some(o) = self.open.as_mut() {
                 o.input = true;

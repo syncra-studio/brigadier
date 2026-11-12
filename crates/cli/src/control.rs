@@ -174,7 +174,7 @@ pub fn steer(
     let msg = core::message::compose(&spec, text, parts.clone())?;
     let mut req = json!({"cid": cid, "text": text, "steer": true});
     if !parts.is_null() {
-        req["parts"] = parts.clone();
+        req["parts"] = msg.parts;
     }
     let images = msg.images;
     deliver(data, id, req, false, |f| {

@@ -74,6 +74,7 @@ export function UserBubble({
   unconfirmed = false,
   dimmed = false,
   dated = false,
+  files,
 }: {
   /** Keeps its fold while it scrolls out of view. */
   keep: string;
@@ -91,6 +92,8 @@ export function UserBubble({
   dimmed?: boolean;
   /** Its date and time above it (`datedMessages`). */
   dated?: boolean;
+  /** Its files, above the bubble. */
+  files?: ReactNode;
 }) {
   const [more, setMore] = useKept(`${keep}:more`);
   const box = useRef<HTMLDivElement>(null);
@@ -123,6 +126,7 @@ export function UserBubble({
     <div className="group/user flex flex-col items-end gap-y-1">
       {dated && time !== undefined && <TimeSeparator at={time} />}
       <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
+        {files}
         <div className={cx("flex max-w-full min-w-0 flex-col rounded-bubble bg-muted px-4 py-2.5 text-foreground", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             <Markdown text={text} keep={keep} breaks />

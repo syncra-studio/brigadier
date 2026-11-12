@@ -27,6 +27,7 @@ import { ArchivedPage } from "./sessions/archived";
 import { ChecksFailedRows, failing } from "./landing/live";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
+import { ImageViewerHost } from "./components/image-viewer";
 import { ThreadDrop } from "./session/files";
 import { RewindProvider } from "./session/rewind";
 import { answeringSource } from "./session/decisions";
@@ -294,6 +295,7 @@ createRoot(document.getElementById("root")!).render(
         <AddProjectHost />
         <GlobalSearch />
         <Toaster className="top-titlebar" />
+        <ImageViewerHost />
       </>
     )}
   </TooltipProvider>,

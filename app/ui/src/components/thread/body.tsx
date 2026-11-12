@@ -1,9 +1,11 @@
 import { type ReactNode, useContext } from "react";
 
-import type { Item, Turn } from "../../thread/item";
+import { SessionOfThread } from "../../accounts/limit";
+import type { Item, SentFile, Turn } from "../../thread/item";
 import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
 import { describe } from "../composer/approval";
+import { SentAttachments } from "../composer/attachments";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
 import { ShieldExclamation } from "../../icons";
@@ -12,9 +14,14 @@ import { AssistantMessage, SystemLine, ThinkingLine, UserBubble } from "./messag
 import { RewindContext } from "./rewind";
 import { ToolRow } from "./tool";
 
-function UserRow({ id, cid, text, time, dated }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean }) {
+function UserRow({ id, cid, text, time, dated, files }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[] }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} />;
+  const session = useContext(SessionOfThread)?.id;
+  const at = (file: string) => `/attachment/${session}/${file}`;
+  const sent = session && files.length > 0 && (
+    <SentAttachments files={files.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => window.brigadier?.openAttachment(at(file))} />
+  );
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={sent} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
@@ -35,7 +42,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
       return null;
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
-      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} />;
+      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} />;
       return (
         <AssistantMessage
           text={item.text}

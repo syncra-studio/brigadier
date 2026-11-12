@@ -27,6 +27,8 @@ declare global {
       pathForFile(file: File): string;
       /** Opens an https link in the browser, with no click needed. */
       openLink(url: string): void;
+      /** Opens an attachment (`/attachment/<home|session>/<id>`) in its default app. */
+      openAttachment(at: string): void;
       /** A macOS notice; what macOS did with it: shown, blocked (notifications are off for Brigadier), or failed. */
       notify(notice: { title: string; body: string; silent: boolean; session?: string }): Promise<"shown" | "blocked" | "failed">;
       /** The Dock's badge: the count, none at 0. */
