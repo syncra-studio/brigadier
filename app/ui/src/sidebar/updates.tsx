@@ -10,13 +10,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { useSidebar } from "../components/sidebar";
 import { ArrowRotateCw, Check, DownloadSimple, Spinner, X } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { store } from "../onboarding/api";
+import { type Agent, checkAll, useAgents } from "../onboarding/api";
+import { runFailure, useAgentSetup } from "../onboarding/agents";
+import { versionText } from "../accounts/parts";
+import { useDaemon } from "../daemon";
 import { footPlacement } from "./foot";
 
 /*
  * The update pill at the sidebar's foot: one, whatever kinds of update there are, and what to update is chosen
- * in its list. Nothing on this branch checks for updates, so it stays away until a backend fills it; Update
- * and Skip have nothing to call.
+ * in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
+ * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does.
+ * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
  */
 
 export type UpdateItem = {
@@ -30,7 +34,22 @@ export type UpdateItem = {
   action: { type: "run" } | { type: "download" } | { type: "restart" } | { type: "manual"; command: string };
   progress: { type: "available" } | { type: "updating" } | { type: "updated" } | { type: "failed"; error: string };
 };
-export const updates = store<UpdateItem[]>([]);
+
+/** The old app's: the agents are checked a minute after launch, then this often. */
+const FIRST_CHECK_MS = 60_000;
+const CHECK_EVERY_MS = 6 * 60 * 60_000;
+/** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them. */
+const SKIPPED = "skipped-updates";
+const readSkipped = (): string[] => JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
+
+/** An agent's update as a row: one newer than it, its run while it goes, or why it failed until tried again or closed. */
+function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined): UpdateItem | null {
+  const run = agent.setup?.action === "update" ? agent.setup : null;
+  const error = runFailure(run, agent.label) ?? (agent.outdated ? failed : undefined);
+  if (!run?.running && !error && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
+  const progress = run?.running ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: "available" } as const);
+  return { target: agent.name, name: agent.label, mark: agent.mark, current: versionText(agent) ?? "", latest: agent.latest ? `v${agent.latest}` : "", action: { type: "run" }, progress };
+}
 
 /** How long an item takes to grow in or shrink away. */
 const ITEM_MS = 200;
@@ -83,7 +102,7 @@ function rowLabel(items: readonly UpdateItem[]) {
 }
 
 /** One update in the list: its mark, name and versions, then Update or Download, its progress or its check, and Skip. */
-function UpdateRow({ item }: { item: UpdateItem }) {
+function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () => void; onSkip: () => void }) {
   const { progress, action } = item;
   return (
     <div className="flex flex-col gap-1.5 px-1.5 py-1.5">
@@ -103,11 +122,11 @@ function UpdateRow({ item }: { item: UpdateItem }) {
         ) : (
           <>
             {action.type !== "manual" && (
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" onClick={onUpdate}>
                 {action.type === "restart" ? "Restart" : action.type === "download" ? "Download" : progress.type === "failed" ? "Try again" : "Update"}
               </Button>
             )}
-            <TooltipIconButton tooltip="Skip this version" side="top" aria-label={`Skip ${item.name} ${item.latest}`}>
+            <TooltipIconButton tooltip="Skip this version" side="top" aria-label={`Skip ${item.name} ${item.latest}`} onClick={onSkip}>
               <X />
             </TooltipIconButton>
           </>
@@ -133,7 +152,37 @@ function UpdateRow({ item }: { item: UpdateItem }) {
 
 /** The foot's one update pill, there only while something has a newer version: a chip of marks, lying along the row or standing up in the strip. A click always opens the list. */
 export function UpdatesRow() {
-  const items = updates.use();
+  const online = Boolean(useDaemon().daemon);
+  const { list } = useAgents();
+  const setup = useAgentSetup(list, online);
+  const [skipped, setSkipped] = useState(readSkipped);
+  useEffect(() => {
+    if (!online) return;
+    let every: number | undefined;
+    const first = window.setTimeout(() => {
+      void checkAll(true);
+      every = window.setInterval(() => void checkAll(), CHECK_EVERY_MS);
+    }, FIRST_CHECK_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, [online]);
+  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name]) ?? []);
+  const update = (item: UpdateItem) => {
+    const agent = list?.find((each) => each.name === item.target);
+    if (agent) void setup.begin(agent, "update");
+  };
+  const skip = (item: UpdateItem) => {
+    const agent = list?.find((each) => each.name === item.target);
+    // A failed run is closed; an available version is hidden until a newer one comes out.
+    if (item.progress.type === "failed") void setup.close(item.target);
+    else if (agent) {
+      const next = [...skipped, `${agent.name}@${agent.latest}`];
+      localStorage.setItem(SKIPPED, JSON.stringify(next));
+      setSkipped(next);
+    }
+  };
   const { open: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
   // Kept while the chip leaves, so it doesn't empty as it shrinks.
@@ -168,7 +217,7 @@ export function UpdatesRow() {
         <PopoverContent {...footPlacement(expanded)} padded={false} className="flex w-96 flex-col p-1.5">
           {shown.map((item) => (
             <BarItem key={item.target} axis="y" show={items.includes(item)}>
-              <UpdateRow item={item} />
+              <UpdateRow item={item} onUpdate={() => update(item)} onSkip={() => skip(item)} />
             </BarItem>
           ))}
           <BarItem axis="y" show={items.some((item) => item.target !== "app" && item.progress.type !== "available")}>

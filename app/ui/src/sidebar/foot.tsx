@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
@@ -7,25 +7,33 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
 import { useSidebar } from "../components/sidebar";
 import { StateDot } from "../components/state-dot";
-import { Switch } from "../components/switch";
 import { spacingPx, tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { openSettings } from "../settings/shell";
-import { errorText } from "../onboarding/api";
 import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
+import { keysOf } from "../shortcuts";
 import { UpdatesRow } from "./updates";
+import { type Limit, type SwitchAgent, loadAccounts, useAccounts } from "../accounts/api";
+import { agentHref } from "../accounts/providers";
+import { Share, countdown, tightest } from "../accounts/usage";
+import { Button } from "../components/button";
+import { ProviderMark } from "../components/composer/model-picker";
+import { stateOf } from "../onboarding/agents";
+import { type Agent, errorText, useAgents } from "../onboarding/api";
 
 /** Where a foot menu opens: up from the row, or beside the strip. */
 export const footPlacement = (expanded: boolean) =>
   expanded ? ({ side: "top", align: "start" } as const) : ({ side: "right", align: "end", sideOffset: () => spacingPx() * 3 } as const);
 
-/** Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands and when to stay awake. */
+/**
+ * Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands and when to stay awake.
+ * With the lid closed too stays away, as the old app's did where it wasn't supported: nothing here can do it yet.
+ */
 function KeepAwakeMenu() {
   const { open: expanded } = useSidebar();
   const { rows } = useDaemon();
-  const lid = useId();
   // The same value as Settings › General's row [D2016].
   const mode = useSettings().value?.awake;
   const [error, setError] = useState<string | null>(null);
@@ -65,31 +73,66 @@ function KeepAwakeMenu() {
           <p className="text-xs text-muted-foreground">{option?.hint}</p>
           <ErrorLine error={error} />
         </div>
-        {/* shortcut: drawn only, this branch has no lid-closed backend; wire it when one lands. */}
-        <div className="flex items-start gap-3 border-t border-divider pt-3">
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span id={`${lid}-label`} className="text-sm">
-              With the lid closed too
-            </span>
-            <span id={`${lid}-hint`} className="text-xs text-muted-foreground">
-              Applied whenever the computer is kept awake
-            </span>
-          </span>
-          <Switch className="mt-0.5" aria-labelledby={`${lid}-label`} aria-describedby={`${lid}-hint`} checked={false} disabled />
-        </div>
       </PopoverContent>
     </Popover>
   );
 }
 
-/** Usage: the list of what each agent has used. Nothing on this branch reports it, so it says so, as the old app did with none. */
+/** One agent in Usage: its account in use's tightest limit, or none while it needs signing in. */
+type UsageEntry = { name: string; label: string; mark: string | null; limit: Limit | null };
+
+/** The agents on and set up that report usage or need signing in: those needing the user first, then the most used. */
+function usageEntries(accounts: readonly SwitchAgent[], agents: readonly Agent[]): UsageEntry[] {
+  const entries = accounts.flatMap((each): UsageEntry[] => {
+    const agent = agents.find((card) => card.name === each.name);
+    if (!each.installed || agent?.enabled === false) return [];
+    const base = { name: each.name, label: each.label, mark: agent?.mark ?? null };
+    const inUse = each.accounts?.list.find((account) => account.id === each.accounts?.use);
+    if (inUse?.check.signed_in === false || stateOf(agent) === "signIn") return [{ ...base, limit: null }];
+    const limit = inUse?.check.signed_in ? tightest(inUse.check.usage ?? []) : null;
+    return limit ? [{ ...base, limit }] : [];
+  });
+  return entries.toSorted((a, b) => (b.limit?.used ?? Infinity) - (a.limit?.used ?? Infinity));
+}
+
+/**
+ * Usage, the old app's [D41]: one row per agent, the tightest limit of its account in use (the one new work starts on), most
+ * used first; its icon tinted with a dot from 80% used. The accounts Settings › Providers reads, read again as it opens. A
+ * row opens its agent's page; one that needs signing in says so with Sign in.
+ */
 function UsageMenu() {
   const { open: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
+  const accounts = useAccounts().agents;
+  const agents = useAgents().list;
+  const entries = usageEntries(accounts ?? [], agents ?? []);
+  const top = entries.find((entry) => entry.limit);
+  const used = top?.limit?.used ?? 0;
+  const alert = used >= 90 ? "destructive" : used >= 80 ? "warning" : null;
+  const now = Date.now();
+  const go = (name: string) => {
+    setOpen(false);
+    window.location.hash = agentHref(name);
+  };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<TooltipIconButton look="strip" side={expanded ? "top" : "right"} tooltip="Usage" />}>
-        <BarChart />
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) void loadAccounts();
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <TooltipIconButton
+            look="strip"
+            side={expanded ? "top" : "right"}
+            tooltip={top?.limit ? `Usage · ${top.label} ${used}% used` : "Usage"}
+            dot={alert === "destructive" ? "bg-destructive" : alert === "warning" ? "bg-warning" : undefined}
+          />
+        }
+      >
+        <BarChart className={alert === "destructive" ? "text-destructive" : alert === "warning" ? "text-warning" : undefined} />
       </PopoverTrigger>
       {/* In the row, it lines up with the row's start: Settings and Keep awake sit before it. */}
       <PopoverContent {...footPlacement(expanded)} alignOffset={expanded ? -spacingPx() * 18 : 0} className="w-90">
@@ -107,11 +150,40 @@ function UsageMenu() {
             <ChevronRight className="size-icon-xs" />
           </button>
         </div>
-        <p className="px-2 py-1.5 text-xs text-muted-foreground">No agent has reported usage yet.</p>
+        {entries.length === 0 ? (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">No agent has reported usage yet.</p>
+        ) : (
+          entries.map(({ name, label, mark, limit }) =>
+            limit ? (
+              <button key={name} type="button" onClick={() => go(name)} className={cx(USAGE_ROW, "cursor-pointer text-start outline-none hover:bg-fill focus-visible:focus-ring")}>
+                <ProviderMark mark={mark} className="size-icon-md" />
+                <span className="truncate">{label}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {[limit.used >= 100 ? "At limit" : limit.name, limit.resets !== null && `resets in ${countdown(limit.resets, now)}`].filter(Boolean).join(" · ")}
+                </span>
+                <Share limit={limit} />
+              </button>
+            ) : (
+              <div key={name} className={USAGE_ROW}>
+                <ProviderMark mark={mark} className="size-icon-md" />
+                <span className="truncate">{label}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <StateDot tone="needs" />
+                  <span className="truncate text-xs text-warning">Not signed in</span>
+                </span>
+                <Button variant="outline" size="xs" onClick={() => go(name)}>
+                  Sign in
+                </Button>
+              </div>
+            ),
+          )
+        )}
       </PopoverContent>
     </Popover>
   );
 }
+
+const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item px-2 text-sm";
 
 /** Glides the foot's icons between the row and the stack with the sidebar's own motion, the same elements throughout. */
 function useGlide(open: boolean) {
@@ -159,7 +231,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   const foot = useGlide(open);
   // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
   const icons = [
-    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" onClick={() => openSettings("general")}>
+    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} onClick={() => openSettings("general")}>
       <Settings />
     </TooltipIconButton>,
     <KeepAwakeMenu key="awake" />,

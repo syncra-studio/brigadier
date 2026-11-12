@@ -37,6 +37,17 @@ export function LimitLine({ limit, now }: { limit: Limit; now: number }) {
   );
 }
 
+/** The sidebar's Usage row's figure, the old app's Share: a short bar and the share used. */
+export function Share({ limit }: { limit: Limit }) {
+  const { text, fill } = tone(limit.used);
+  return (
+    <>
+      <UsageBar value={limit.used} fill={fill} label={limit.name} className="w-11" />
+      <span className={cx("w-16 shrink-0 text-end text-xs font-medium tabular-nums", text)}>{limit.used}% used</span>
+    </>
+  );
+}
+
 /** The overview row's figure: the in-use account's tightest limit over its bar. */
 export function UsageMeter({ limit, now }: { limit: Limit; now: number }) {
   const { text, fill } = tone(limit.used);
@@ -63,7 +74,7 @@ function resetsWords(resets: number, now: number): string {
 }
 
 /** "now", "42m", "2h 5m", "3d 4h": the time left until `ms`. */
-function countdown(ms: number, now: number): string {
+export function countdown(ms: number, now: number): string {
   const minutes = Math.ceil((ms - now) / 60_000);
   if (minutes <= 0) return "now";
   if (minutes < 60) return `${minutes}m`;
