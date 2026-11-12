@@ -31,30 +31,30 @@ impl Thread {
         Some(at)
     }
 
-    /// A subagent waits on the user while a request for it, or one it asks (`parent` names its
+    /// A subagent waits on the user while any request for it, or one it asks (`parent` names its
     /// call), waits; then it works on.
     fn agent_waits(&mut self, at: usize, waits: bool) {
-        let row = &self.items[at];
-        let r = &row["request"];
-        let Some(id) = r["parent"].as_str().or(r["tool"].as_str()) else {
+        let Some(a) = self.agent_of(at) else {
             return;
         };
-        let turn = row["turnId"].as_str().unwrap_or("");
-        let Some(a) = self
-            .row_of(turn, id)
-            .filter(|&a| self.items[a]["kind"] == "childAgent")
-        else {
-            return;
-        };
-        let (from, to) = if waits {
-            ("running", "pending")
-        } else {
-            ("pending", "running")
+        let (from, to) = match waits {
+            true => ("running", "pending"),
+            false if (self.pending.iter()).any(|&p| self.agent_of(p) == Some(a)) => return,
+            false => ("pending", "running"),
         };
         if self.items[a]["progress"] == from {
             self.items[a]["progress"] = to.into();
             self.changed_items.insert(a);
         }
+    }
+
+    /// The subagent row a request at row `at` is for, or asked inside.
+    fn agent_of(&self, at: usize) -> Option<usize> {
+        let row = &self.items[at];
+        let r = &row["request"];
+        let id = r["parent"].as_str().or(r["tool"].as_str())?;
+        let turn = row["turnId"].as_str().unwrap_or("");
+        (self.row_of(turn, id)).filter(|&a| self.items[a]["kind"] == "childAgent")
     }
 
     pub(super) fn unwait_row(&mut self, at: usize) {
