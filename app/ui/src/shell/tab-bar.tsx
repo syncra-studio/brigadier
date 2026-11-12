@@ -62,7 +62,8 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
   const [renaming, setRenaming] = useState(false);
   const words = useStatusWords(row);
   const archived = Boolean(row.archived);
-  const title = row.title || "Chat";
+  // A start Rust hasn't titled yet shows no name, not "Chat", for the moment until its title lands [D102].
+  const title = row.title || (row.state === "starting" ? "" : "Chat");
   const working = row.mark === "working" && !archived;
   const startRename = archived ? undefined : () => setRenaming(true);
   return (
@@ -73,7 +74,7 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
           role="tab"
           aria-selected={active}
           tabIndex={active ? 0 : -1}
-          title={archived ? `${title} (Archived)` : words ? `${title} · ${words}` : title}
+          title={archived ? `${title} (Archived)` : words ? [title, words].filter(Boolean).join(" · ") : title}
           onMouseDown={noAutoscroll}
           onMouseUp={(event) => {
             if (event.button !== 1) return;
