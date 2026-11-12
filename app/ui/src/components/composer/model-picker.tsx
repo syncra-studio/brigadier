@@ -9,7 +9,7 @@ import { Segment, SegmentedRoot } from "../segmented";
 import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
-import { focusChoice, moveKeys, useClosesOnTyping } from "./model-keys";
+import { focusChoice, moveKeys, named, useClosesOnTyping } from "./model-keys";
 import { SwitchAgentDialog } from "./switch-agent";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
@@ -139,6 +139,7 @@ export function ModelPicker({
   const group = browsing === FAVORITES ? undefined : (groups.find((entry) => entry.provider === browsing) ?? groups[0]);
   const current = groups.find((entry) => entry.provider === value.provider);
   const model = current?.models.find((entry) => entry.id === value.model);
+  const name = named(groups, value.provider, value.model);
   const auto = automatic?.chosen === true;
   const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
   // Where it opens: Favorites when the model in use is starred, or with none in use any are; else the agent in use.
@@ -290,7 +291,7 @@ export function ModelPicker({
             render={
               trigger ?? (
                 <ComposerPill
-                  aria-label={`Model: ${auto ? automatic?.label : `${model?.name ?? value.model}${fastLabel ? ", Fast" : ""}${word ? `, ${word}` : ""}`}`}
+                  aria-label={`Model: ${auto ? automatic?.label : `${name}${fastLabel ? ", Fast" : ""}${word ? `, ${word}` : ""}`}`}
                   data-slot="model-picker-trigger"
                 />
               )
@@ -304,7 +305,7 @@ export function ModelPicker({
                 <>
                   <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
                   {fastLabel && <Bolt aria-hidden className="text-foreground" />}
-                  <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+                  <span className="truncate text-foreground">{name}</span>
                   {word && <span className="shrink-0">{word}</span>}
                 </>
               )}
