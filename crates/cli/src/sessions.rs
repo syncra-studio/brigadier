@@ -2,6 +2,7 @@
 //! core does the work under the session's lock. Each answers the folder's time after its marks,
 //! so the row that shows it has `touched` as late. Remove project runs the same delete on each
 //! of its sessions [D172, D179].
+//! A job a turn left running is stopped here too, alone [D105].
 
 use crate::{arg, flag, has, index, owner, workers};
 use brigadier_core::{self as core, fold, projects, session};
@@ -22,6 +23,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             .and_then(|()| core::git::recover::settled(data, id))
             .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
         "restore" => session::restore(data, &spec)?,
+        // `jobs <id> stop <pid> <start_us>`: one process tree its turns left running [D105].
+        "jobs" => {
+            let f = core::fold(&spec.dir, true)?;
+            let num = |i| arg(args, i)?.parse().map_err(io::Error::other);
+            fold::stop_job(&f.fold, data, num(3)? as i32, num(4)?);
+            return Ok(json!({"ok": true}));
+        }
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {
             // Its whole worker family goes with it [D3017]: the confirm lists their work too.

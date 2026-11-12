@@ -32,6 +32,8 @@ export type Row = {
   error: string | null;
   /** An agent is working in it now: what keeps the computer awake "while agents work". */
   works?: boolean;
+  /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
+  background?: Job[];
   /** The session it was forked from, which its row sits under [D48]. */
   forkOf?: string | null;
   /** Where it works: its worktree, else its project's folder; null for a chat with no folder [D348, D2022]. */
@@ -41,6 +43,9 @@ export type Row = {
   /** A worker's facts, Rust's, for 4.2's parts; absent for a session that isn't one [D3012]. */
   worker?: import("./workers/live").WorkerRow | null;
 };
+
+/** One process tree a turn left running: its topmost process, checked by its start time (μs), and its command. */
+export type Job = { pid: number; start_us: number; label: string };
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */

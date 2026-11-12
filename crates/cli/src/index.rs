@@ -286,7 +286,7 @@ impl Index {
                 .spec
                 .as_ref()
                 .map(|s| core::as_run(s, &f.fold, backend, None));
-            let row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
+            let mut row = json!({"id": id, "title": title, "pinned": e.marks.pinned, "touched": e.marks.at, "state": state, "reason": reason, "mark": mark,
                              "notice": e.error.is_none().then(|| fold::notice(&f.fold, state.as_str().unwrap_or(""))).flatten(),
                              "resets": f.fold.resets, "sent": f.fold.sent, "context": f.fold.context, "finished": f.fold.finished, "backend": backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
@@ -305,6 +305,7 @@ impl Index {
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets)});
+            row["background"] = json!(live.left);
             if self.rows.get(id) != Some(&row) {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);

@@ -35,6 +35,9 @@ pub struct Turn {
     /// When the earliest of its open tools started (ms).
     #[serde(default)]
     pub tools_since: u64,
+    /// When its first tool started (ms); 0 before any.
+    #[serde(default)]
+    pub first_tool: u64,
     pub question: Option<String>,
     /// Requests waiting on the user (approvals and questions), by the id their CLI gave them.
     #[serde(default)]
@@ -77,8 +80,21 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
+    /// A tool began: it's open until its end, and an edit's paths wait for it.
+    pub(super) fn tool_started(&mut self, item: &Value, ts: u64) {
+        if self.tools.is_empty() {
+            self.tools_since = ts;
+        }
+        if self.first_tool == 0 {
+            self.first_tool = ts;
+        }
+        self.tools
+            .insert(item["id"].as_str().unwrap_or_default().into());
+        self.edit_started(item);
+    }
+
     /// An edit step began: its paths, from its changes or else its input, wait for its end.
-    pub(super) fn edit_started(&mut self, item: &Value) {
+    fn edit_started(&mut self, item: &Value) {
         if item["step"] != "edit" {
             return;
         }
@@ -116,6 +132,9 @@ impl Fold {
             self.finished = ts;
             self.runs.agent.extend(turn.edited.iter().cloned());
             self.bound(&turn);
+            if turn.first_tool > 0 {
+                self.windows.push((turn.first_tool, ts));
+            }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch,

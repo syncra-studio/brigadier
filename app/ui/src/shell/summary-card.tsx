@@ -6,6 +6,7 @@ import { Popover } from "@base-ui/react/popover";
 import { cx } from "../components/cx";
 import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
+import { BackgroundCard } from "../panel/background";
 import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
@@ -274,7 +275,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   // Not drawn until its data is in: no skeleton first.
   const card = has && summaryReady(shown) ? (
     <>
-      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<WorkersCard owner={owner} />} />
+      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><BackgroundCard owner={owner} /></>} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

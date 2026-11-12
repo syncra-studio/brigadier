@@ -4,8 +4,8 @@ import type { Row } from "../daemon";
 import type { PrChipState } from "../landing/pr-chip";
 import { hhmm } from "../thread/words";
 
-/** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, or nothing. */
-export type Mark = "working" | "needs" | "amber" | "unread" | null;
+/** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, a calm grey dot for what it left running [D68], or nothing. */
+export type Mark = "working" | "needs" | "amber" | "unread" | "background" | null;
 
 /** What a sidebar row draws: the daemon's row, its mark and the facts behind it [D65, D173]. */
 export type SessionRow = {
@@ -40,7 +40,7 @@ const STATE_WORDS: Record<string, string | null> = {
   silent: "Working",
   retrying: "Reconnecting",
   checking: "Running safety checks",
-  idle_jobs: "Working · background job",
+  idle_jobs: "Background job",
   failed: "Failed",
   out_of_credits: "Out of credits",
   interrupted: "Interrupted",
@@ -57,7 +57,7 @@ const STATE_WORDS: Record<string, string | null> = {
 };
 
 // A state this build has no words for yet still says what its mark means.
-const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply" };
+const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
 
 /** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
 const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();

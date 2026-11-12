@@ -21,7 +21,7 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 40] = [
+const ROUTED: [&str; 41] = [
     "attach",
     "command",
     "commands",
@@ -62,6 +62,7 @@ const ROUTED: [&str; 40] = [
     "fork",
     "host",
     "workers",
+    "jobs",
 ];
 
 pub(super) fn serve(

@@ -320,7 +320,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => queue::recover(data, arg(args, 1)?, false),
-        "archive" | "restore" | "delete" => sessions::run(data, args),
+        "archive" | "restore" | "delete" | "jobs" => sessions::run(data, args),
         // The short title a first message gives its session, for the app's row before Rust's [D186].
         "feedback" => feedback::run(data, args),
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),

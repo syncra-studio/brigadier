@@ -2,13 +2,18 @@
 
 use super::{Fold, Owner};
 use brigadier_frames::{log, procs};
+use serde::Serialize;
 use std::collections::BTreeSet;
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 pub struct Live {
     pub owner: Owner,
     pub child: Option<procs::Proc>,
     pub running_below: usize,
     pub jobs: usize,
+    /// What its ended turns left running under the live agent: a dev server, a watcher [D105].
+    pub left: Vec<Job>,
     pub orphans: usize,
     pub disk_full: bool,
     pub now: u64,
@@ -23,6 +28,110 @@ pub fn live_groups(fold: &Fold, all: &[procs::Proc]) -> Vec<(i32, u64)> {
         .filter(|&&(g, s)| pgids.contains(&g) && !procs::group(all, g, s).is_empty())
         .copied()
         .collect()
+}
+
+/// One process tree a turn left running, by its topmost process.
+#[derive(Serialize, Clone, PartialEq, Debug)]
+pub struct Job {
+    pub pid: i32,
+    pub start_us: u64,
+    /// Its command, as the agent ran it.
+    pub label: String,
+}
+
+/// A tool's process can start just before its step reaches the log, or after its turn's end does.
+const SLACK_MS: u64 = 1000;
+const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
+
+/// Each topmost process under the agent born in one of its ended turns' tool windows, still alive.
+/// The agent's own helpers (MCP servers) start with it, before any tool, so none count.
+fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
+    let below = procs::descendants(all, child);
+    let born = |p: &procs::Proc| {
+        !p.zombie
+            && (fold.windows.iter()).any(|&(a, b)| {
+                (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000).contains(&p.start_us)
+            })
+    };
+    (below.iter())
+        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)))
+        .map(|p| Job {
+            pid: p.pid,
+            start_us: p.start_us,
+            label: label(all, p.pid),
+        })
+        .collect()
+}
+
+/// A job's command: a shell's own child when it has one, else the shell's script.
+fn label(all: &[procs::Proc], mut pid: i32) -> String {
+    loop {
+        let argv = procs::args(pid).map(|a| a.0).unwrap_or_default();
+        let name = |a: &String| {
+            a.rsplit('/')
+                .next()
+                .unwrap_or(a)
+                .trim_start_matches('-')
+                .to_string()
+        };
+        let shell = argv
+            .first()
+            .is_some_and(|a| SHELLS.contains(&name(a).as_str()));
+        match all.iter().find(|p| p.ppid == pid && !p.zombie) {
+            Some(next) if shell || argv.is_empty() => pid = next.pid,
+            _ => {
+                let flag =
+                    |a: &&String| a.starts_with('-') && !a.starts_with("--") && a.contains('c');
+                let mut after = argv.iter().skip(1).skip_while(|a| !flag(a));
+                let script = shell.then(|| after.find(|a| !a.starts_with('-'))).flatten();
+                let words = match script {
+                    Some(s) => s.lines().next().unwrap_or("").trim().to_string(),
+                    None => argv
+                        .first()
+                        .map(name)
+                        .into_iter()
+                        .chain(argv.iter().skip(1).cloned())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                };
+                return words.chars().take(200).collect();
+            }
+        }
+    }
+}
+
+/// Stops one job the session left running, its whole tree, only while it's still that job (one
+/// already gone is stopped): a TERM, then a KILL for whatever outlives the grace [D105].
+pub fn stop_job(fold: &Fold, data: &Path, pid: i32, start_us: u64) {
+    let all = procs::all();
+    let l = live(fold, Owner::Alive, data, &all);
+    if !l
+        .left
+        .iter()
+        .any(|j| j.pid == pid && j.start_us == start_us)
+    {
+        return;
+    }
+    let tree: Vec<_> = std::iter::once(procs::same(pid, start_us))
+        .flatten()
+        .chain(procs::descendants(&all, pid))
+        .map(|p| (p.pid, p.start_us))
+        .collect();
+    let signal = |sig| {
+        let left: Vec<_> = (tree.iter())
+            .filter(|&&(p, s)| procs::same(p, s).is_some_and(|p| !p.zombie))
+            .collect();
+        left.iter().for_each(|&&(p, _)| unsafe {
+            libc::kill(p, sig);
+        });
+        !left.is_empty()
+    };
+    signal(libc::SIGTERM);
+    let until = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < until && signal(0) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    signal(libc::SIGKILL);
 }
 
 pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs::Proc]) -> Live {
@@ -41,13 +150,15 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
         .iter()
         .map(|&(g, s)| procs::group(all, g, s).len())
         .sum();
-    let jobs = members.saturating_sub(child.is_some() as usize + running_below);
+    let left = child.map_or(vec![], |c| left_running(fold, all, c.pid));
+    let jobs = members.saturating_sub(child.is_some() as usize + running_below) + left.len();
     let orphans = if owner == Owner::Dead { members } else { 0 };
     Live {
         owner,
         child,
         running_below,
         jobs,
+        left,
         orphans,
         disk_full: free_bytes(data_dir) < (2 << 20),
         now: log::now_ms(),

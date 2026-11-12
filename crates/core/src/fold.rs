@@ -10,7 +10,7 @@ mod rewind;
 pub mod runs;
 mod status;
 mod turns;
-pub use live::{Live, live, live_groups};
+pub use live::{Job, Live, live, live_groups, stop_job};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -46,6 +46,10 @@ pub struct Fold {
     pub last_out: u64,
     pub child: Option<Child>,
     pub groups: Vec<(i32, u64)>,
+    /// The live child's ended turns, from first tool to end (ms): what was born in one and still
+    /// runs under it was left running [D105].
+    #[serde(default)]
+    pub windows: Vec<(u64, u64)>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -329,6 +333,7 @@ impl Fold {
                     exited: false,
                 });
                 self.groups.push((pid, start_us));
+                self.windows.clear();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -380,11 +385,7 @@ impl Fold {
             "tool" => {
                 self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {
-                    if t.tools.is_empty() {
-                        t.tools_since = ts;
-                    }
-                    t.tools.insert(str_of("id"));
-                    t.edit_started(item);
+                    t.tool_started(item, ts);
                 }
             }
             "tool_done" => {

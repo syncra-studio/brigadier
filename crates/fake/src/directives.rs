@@ -83,6 +83,21 @@ impl Agent {
                     return false;
                 }
             }
+            // `serve:N`: a shell step that starts `sleep N` and leaves it running, as a dev server [D105].
+            "serve" => {
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                let cmd = format!("sleep {n}");
+                emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
+                let started = Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
+                emit(json!({"t": "tool_done", "id": id, "ok": started.is_ok()}));
+            }
             "tool_sleep" => {
                 if !self.tool(word, n, done_before, true, &format!("sleep {left}")) {
                     return false;

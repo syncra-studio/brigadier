@@ -17,7 +17,7 @@ import { type Mark, type Project, projectInitials, type SessionRow, useStatusWor
 
 const SLOT = "flex size-icon-lg shrink-0 items-center justify-center";
 
-/** A row's one mark, no words [D173]: spinner, blue ring, amber ring, blue dot, or nothing. `label` names it. */
+/** A row's one mark, no words [D173]: spinner, blue ring, amber ring, blue dot, grey dot, or nothing. `label` names it. */
 export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   switch (mark) {
     case "working":
@@ -43,6 +43,12 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
       return (
         <span className={SLOT}>
           <StateDot tone="unread" label={label} />
+        </span>
+      );
+    case "background":
+      return (
+        <span role="img" aria-label={label} className={SLOT}>
+          <StateDot />
         </span>
       );
     default:
