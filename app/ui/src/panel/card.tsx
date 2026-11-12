@@ -3,7 +3,6 @@ import { type ReactNode, useRef } from "react";
 import { FileTypeIcon } from "../components/composer/attachments";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
-import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ArrowUp, Branch, ChevronDown, ChevronRight } from "../icons";
 import { ArrowDown } from "../icons/sidebar";
@@ -49,6 +48,9 @@ function noteOf(data: SourceData): { text: string; warn: boolean } | null {
   return said.length ? { text: said.map(([text]) => text).join(" · "), warn: said.some(([, warn]) => warn) } : null;
 }
 
+/** The card has something whole to show: the read and its step, or why it can't read. Until then it isn't drawn at all. */
+export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing || data.error || (data.source && (data.stepRead !== false || data.offline)));
+
 /**
  * The summary card's git part, The mix [D1186, D1198], with its control [D1278]: the project as a quiet title with the
  * control at its end; the branch row, a picker opening its quick pick, ↑n ↓n when not zero and the +/− counts opening
@@ -85,18 +87,11 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
     );
   }
 
-  // Nothing kept: the skeleton until the read and its step are both in, so it's drawn once whole [D1307].
-  if (!source || (data.stepRead === false && !data.error && !offline)) {
+  // Shown only once its read is in (summaryReady), so it's drawn once whole; with no read, only why [D1307].
+  if (!source) {
     return (
       <CardSection title={project}>
-        {data.error ? (
-          <ReadError error={data.error} onRetry={ops?.retry} />
-        ) : (
-          <div aria-busy className="flex flex-col gap-2 py-1">
-            <Skeleton className="h-5 w-1/2" />
-            <Skeleton className="h-control-sm" />
-          </div>
-        )}
+        {data.error && <ReadError error={data.error} onRetry={ops?.retry} />}
       </CardSection>
     );
   }

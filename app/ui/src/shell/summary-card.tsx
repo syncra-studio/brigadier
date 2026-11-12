@@ -6,7 +6,7 @@ import { Popover } from "@base-ui/react/popover";
 import { cx } from "../components/cx";
 import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { AttachmentsCard, type CardFile, GitCard } from "../panel/card";
+import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
@@ -265,7 +265,8 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       live = false;
     };
   }, [owner, has, updated]);
-  const card = has ? (
+  // Not drawn until its data is in: no skeleton first.
+  const card = has && summaryReady(data) ? (
     <>
       <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<WorkersCard owner={owner} />} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
