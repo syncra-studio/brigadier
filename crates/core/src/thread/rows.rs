@@ -19,7 +19,10 @@ impl Thread {
     /// thread too, out of the work fold, like the user's words [D99, D487].
     fn user_stopped(&mut self, ts: u64) {
         self.end_limit();
-        let ms = self.open.as_ref().map(|o| ts.saturating_sub(o.started));
+        // A Stop that lands after the turn ended stopped none of it: no line.
+        let Some(ms) = self.open.as_ref().map(|o| ts.saturating_sub(o.started)) else {
+            return;
+        };
         let at = self.add(json!({"kind": "line", "reason": "stopped", "ms": ms}));
         if let Some(o) = self.open.as_mut() {
             o.kept.push(at as u64 + 1);
