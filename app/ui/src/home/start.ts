@@ -82,6 +82,8 @@ export type Starting = {
   worktree?: { base: string };
 };
 const starting = store<ReadonlyMap<string, Starting>>(new Map());
+// Each start's title, kept past the start: Rust's row is untitled until its index reads the first message, after the thread has it.
+const titles = new Map<string, string>();
 export const useStarting = starting.use;
 
 const get = (id: string) => starting.get().get(id);
@@ -216,8 +218,8 @@ export function useStartingRows(open: string | null): Row[] | undefined {
     if (known && open && thread?.id === open && thread.status === "missing") openThread(open);
   }, [known, open, thread?.status]);
   if (!rows) return rows;
-  // Rust's row is untitled until its first message is logged, after the worktree is made: the start's title meanwhile.
-  const named = rows.some((row) => !row.title && pending.get(row.id)?.title) ? rows.map((row) => (row.title ? row : { ...row, title: pending.get(row.id)?.title ?? row.title })) : rows;
+  for (const entry of pending.values()) if (entry.title) titles.set(entry.id, entry.title);
+  const named = rows.some((row) => !row.title && titles.has(row.id)) ? rows.map((row) => (row.title ? row : { ...row, title: titles.get(row.id) ?? row.title })) : rows;
   const mine = [...pending.values()].filter((entry) => !rows.some((row) => row.id === entry.id));
   if (mine.length === 0) return named;
   return [
