@@ -108,9 +108,16 @@ impl Adapter for OpenCode {
     }
 
     /// `opencode upgrade` (opencode.ai/v2/docs/cli/commands); OpenCode 1's stays on 1 unless given
-    /// `--major`, which OpenCode 2's refuses [D2115].
+    /// `--major`, which OpenCode 2's refuses and a 1 before it lacks, so only where its help offers
+    /// it; an older 1 first updates to the newest 1 [D2115].
     fn update(&self, exe: Option<&Path>) -> Option<&'static [&'static str]> {
-        let old = exe.is_some_and(|e| version(e, Path::new("/")).is_ok_and(|v| before_2(&v)));
+        let offers = |e: &Path| {
+            probe(e, Path::new("/"), &[], &["upgrade", "--help"], 10).is_ok_and(|o| {
+                String::from_utf8_lossy(&[o.stdout, o.stderr].concat()).contains("--major")
+            })
+        };
+        let old = exe
+            .is_some_and(|e| version(e, Path::new("/")).is_ok_and(|v| before_2(&v)) && offers(e));
         Some(if old {
             &["upgrade", "--major"]
         } else {
