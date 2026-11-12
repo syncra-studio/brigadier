@@ -126,7 +126,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| {
-        *a != "--all" && !(matches!(cmd, "draft" | "tabs" | "attach") && *a == HOME_DRAFT)
+        *a != "--all" && !(matches!(cmd, "draft" | "tabs" | "attach" | "commands") && *a == HOME_DRAFT)
     }) {
         core::check_id(id)?;
     }

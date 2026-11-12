@@ -92,7 +92,8 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
   const go = (restore: boolean) => {
     if (!asking?.preview) return;
     const { cid, op, text, preview } = asking;
-    const n = session?.items.find((item) => "cid" in item && item.cid === cid)?.n;
+    const item = session?.items.find((each) => "cid" in each && each.cid === cid);
+    const n = item?.n;
     setAsking(null);
     setRunning({ cid, n, replied: false });
     void run(["rewind", id, cid, "--op", op, ...(restore ? ["--restore"] : [])]).then((reply) => {
@@ -102,7 +103,7 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
         return;
       }
       setRunning((now) => now && { ...now, replied: true });
-      putBack(id, text, true);
+      putBack(id, text, true, item?.kind === "message" ? item.draft : null);
       // Rewind removes the message itself, so Redo file changes lives on its toast [D1192, D1196, D1246].
       const actions = restore && reply.restored > 0 ? [{ label: "Redo file changes", run: () => undoRestore(run, id, cid, op) }] : [];
       showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });

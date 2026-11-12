@@ -202,7 +202,7 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
         let mut params = c["turn"].clone();
         params["threadId"] = thread.into();
         ask(st, "turn/start", params, Pending::Reply(cid));
-    } else if c["steer"].is_string() || c["interrupt"] == true {
+    } else if !c["steer"].is_null() || c["interrupt"] == true {
         if turn.is_empty() {
             reply(&cid, Some("No turn is running.".into()));
         } else if c["interrupt"] == true {

@@ -1,6 +1,7 @@
 import { type Key, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
+import type { Draft } from "../components/composer/draft";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, useThread } from "../daemon";
 import type { RailNotice, SetupStep } from "../thread/item";
@@ -65,7 +66,7 @@ export function retiringNotice({ name, at, to }: Retiring): Notice {
 }
 
 // shortcut: pending retries survive navigation and reconnects; use durable commands when renderer-restart recovery is added.
-type Retrying = { turn: string; text: string; op: string; asking: boolean; unknown?: boolean; error?: string };
+type Retrying = { turn: string; text: string; draft?: Draft | null; op: string; asking: boolean; unknown?: boolean; error?: string };
 const retries = store<ReadonlyMap<string, Retrying>>(new Map());
 function keepRetry(id: string, entry: Retrying | null) {
   const next = new Map(retries.get());
@@ -82,7 +83,7 @@ function rewindRetry(run: Runner, id: string, entry: Retrying) {
       keepRetry(id, { ...entry, asking: false, unknown: back.error === "disconnected", error: String(back.message ?? back.error ?? "Refused") });
       return;
     }
-    await retryMessage(run, id, entry.text, entry.turn);
+    await retryMessage(run, id, entry.text, entry.turn, entry.draft);
     keepRetry(id, null);
   }, () => keepRetry(id, { ...entry, asking: false, unknown: true }));
 }
@@ -113,7 +114,7 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
     if (retrying && retrying.turn !== turn) return null;
     if (retrying && !retrying.error) return <span className="text-xs text-muted-foreground shimmer">Retrying…</span>;
     return (
-      <Button variant="link-blue" size="xs" className="-my-0.5" disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(run, id, retrying ?? { turn, text: message.text, op: newId(), asking: false })}>
+      <Button variant="link-blue" size="xs" className="-my-0.5" disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(run, id, retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false })}>
         Retry
       </Button>
     );
@@ -123,7 +124,7 @@ export function SessionNotices({ id, offline, source, run }: { id: string; offli
     id: retrying.op,
     level: retrying.unknown ? "info" : retrying.error ? "error" : "info",
     text: retrying.unknown ? "Rewind not confirmed yet. It’s checked once Brigadier reconnects." : retrying.error ? `Couldn’t retry: ${retrying.error}` : "Retrying this turn…",
-    action: retrying.error && !retrying.unknown && <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => { putBack(id, retrying.text, true); keepRetry(id, null); }}>Put back message</Button>,
+    action: retrying.error && !retrying.unknown && <Button variant="link-blue" size="xs" className="-my-0.5" onClick={() => { putBack(id, retrying.text, true, retrying.draft); keepRetry(id, null); }}>Put back message</Button>,
   });
   const failed = session?.id === id ? session.setup?.steps.find((step) => step.state === "failed") : undefined;
   if (failed) notices.push({ id: "setup", level: "warning", text: `Setup didn’t finish: ${STEP[failed.kind]} failed. Its step above says why.` });

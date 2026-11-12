@@ -201,7 +201,7 @@ impl Thread {
                     let at = self.add(
                         json!({"kind": "message", "role": "user", "text": item["text"],
                         "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
-                        "steer": true, "files": item["parts"]["files"]}),
+                        "steer": true, "files": item["parts"]["files"], "draft": item["parts"]}),
                     );
                     // The user's own words stay out of the work fold, like a question [D99].
                     if let Some(o) = self.open.as_mut() {

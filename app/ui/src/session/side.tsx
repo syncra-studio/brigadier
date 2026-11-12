@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
+import type { Draft } from "../components/composer/draft";
 import type { SlashCommand } from "../components/composer/menus";
 import { StartedLine, type StartedStatus } from "../components/thread/started";
 import { ask, threadSource, useDaemon } from "../daemon";
@@ -50,16 +51,16 @@ export function sendAsNew(source: string, text: string, qid?: string, made = { i
   run(entry);
 }
 
-// Put back: the text goes to the composer of the session it came from.
-const back = store<{ source: string; text: string; n: number; above: boolean } | null>(null);
-export const putBack = (source: string, text: string, above = false) => back.set({ source, text, above, n: (back.get()?.n ?? 0) + 1 });
+// Put back: the text, and the draft it was sent from, go to the composer of the session it came from.
+const back = store<{ source: string; text: string; n: number; above: boolean; draft?: Draft | null } | null>(null);
+export const putBack = (source: string, text: string, above = false, draft?: Draft | null) => back.set({ source, text, above, draft, n: (back.get()?.n ?? 0) + 1 });
 
 /** Fills session `id`'s composer when one of its lines puts a message back. */
-export function usePutBack(id: string, fill: (text: string, above: boolean) => void): void {
+export function usePutBack(id: string, fill: (text: string, above: boolean, draft?: Draft | null) => void): void {
   const asked = back.use();
   useEffect(() => {
     if (asked?.source !== id) return;
-    fill(asked.text, asked.above);
+    fill(asked.text, asked.above, asked.draft);
     // Taken once: the composer mounts again each time its session opens.
     back.set(null);
   }, [asked?.n]);
@@ -94,7 +95,7 @@ export function PendingSideLines({ source }: { source: string }) {
       error={entry.error}
       onPutBack={() => {
         put(entry.id, null);
-        putBack(source, entry.text);
+        putBack(source, entry.text, false, entry.parts ? JSON.parse(entry.parts) : null);
       }}
     />
   ));

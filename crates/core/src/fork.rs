@@ -381,6 +381,15 @@ fn build(
         .map(|item| format!("{item}\n"))
         .collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;
+    // The copied messages' files are the fork's own, so they show and open after the source's delete.
+    let sent = crate::message::sent(&src.dir);
+    for each in fs::read_dir(&sent).into_iter().flatten().flatten() {
+        let to = crate::message::sent(&new.dir).join(each.file_name());
+        fs::create_dir_all(&to)?;
+        for file in fs::read_dir(each.path())?.flatten() {
+            fs::copy(file.path(), to.join(file.file_name()))?;
+        }
+    }
     let forked = match other {
         Some(_) => None,
         None => conversation(src, f, op, &run, &cwd)?,

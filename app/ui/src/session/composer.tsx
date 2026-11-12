@@ -76,8 +76,8 @@ function deliver(run: Runner, id: string, message: Sent): Promise<void> {
 }
 
 /** The retry after a rewind uses the same pending bubble and command-id recovery as any send. */
-export function retryMessage(run: Runner, id: string, text: string, retryOf: string): Promise<void> {
-  const entry: Sent = { cid: newId(), text, steer: false, at: Date.now(), retryOf };
+export function retryMessage(run: Runner, id: string, text: string, retryOf: string, draft?: Draft | null): Promise<void> {
+  const entry: Sent = { cid: newId(), text, parts: draft ? JSON.stringify(draft) : undefined, steer: false, at: Date.now(), retryOf };
   setSent(id, (list) => [...list, entry]);
   return deliver(run, id, entry);
 }
@@ -230,10 +230,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
    * and both come back [D30, D1174, D1195]. `into`: the session it starts. */
   const going = (sent: readonly Chip[], msg: string, go: (pulled: typeof editing.current, back: (reply: Record<string, any>) => void) => void, into?: string) => {
     const parts = field.current?.parts() ?? [];
+    const tiles = files.tileIds;
     const pulled = take();
+    files.sent();
     const back = carry(sent, msg);
     handOff(id, sent, msg, () => go(pulled, back), (reply) => {
       restoreChips(id, msg, sent);
+      files.restore(tiles);
       editing.current ??= pulled;
       // The refused words go back above anything typed meanwhile, never over it, as a put-back does [D363].
       const typed = field.current?.parts() ?? [];
@@ -274,6 +277,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setEmpty(true);
     return pulled;
   };
+  /** The draft for Rust, which builds the agent's words from its parts: the chips' words go after them, as in the text. */
+  const body = (parts: Draft["parts"], tiles: readonly string[], sent: readonly Chip[]) =>
+    payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
   const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
@@ -281,15 +287,16 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (held || files.hold(rest) || (isEmpty({ parts: rest, attachmentIds: tiles }) && chips.length === 0)) return;
     const text = withChips(plainText(rest), chips);
     const made = { id: sessionId(), cid: newId() };
-    const parts = payload(rest, tiles);
-    files.sent();
+    const parts = body(rest, tiles, chips);
     going(chips, made.cid, (pulled) => sendAsNew(id, text, pulled?.qid, made, parts), made.id);
   };
-  usePutBack(id, (message, above) => {
-    // A rewound message goes above what's already being typed, never over it [D363].
+  usePutBack(id, (message, above, draft) => {
+    // A rewound message goes above what's already being typed, never over it [D363]; its files come back with it.
     const typed = above ? (field.current?.parts() ?? []) : [];
-    field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? [message] : [`${message}\n\n`, ...typed]);
-    setEmpty(!message.trim());
+    const back = draft?.parts ?? [message];
+    field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? back : [...back, "\n\n", ...typed]);
+    if (draft?.attachmentIds.length) files.restore([...files.tileIds, ...draft.attachmentIds]);
+    setEmpty(isEmpty({ parts: back, attachmentIds: draft?.attachmentIds ?? [] }));
     field.current?.focus();
   });
 
@@ -311,9 +318,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       return setAsking(message);
     }
     const msg = (mode === "queue" && editing.current?.qid) || newId();
-    const body = payload(parts, tiles);
-    files.sent();
-    going(chips, msg, (pulled, back) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, body) : sendNow(message, pulled, mode === "steer", msg, body)));
+    const draft = body(parts, tiles, chips);
+    going(chips, msg, (pulled, back) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, draft) : sendNow(message, pulled, mode === "steer", msg, draft)));
   };
   // Sent at once or steered, an edited message's kept copy goes.
   const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string, parts?: string) => {
@@ -406,15 +412,15 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
         waiting={asking === null ? null : items.length}
         onSendNow={() => {
           if (asking !== null) {
-            const [text, msg] = [asking, newId()];
-            going(askingChips.current, msg, (pulled) => sendNow(text, pulled, false, msg));
+            const [text, msg, draft] = [asking, newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
+            going(askingChips.current, msg, (pulled) => sendNow(text, pulled, false, msg, draft));
           }
           setAsking(null);
         }}
         onKeepPaused={() => {
           if (asking !== null) {
-            const [text, msg] = [asking, editing.current?.qid ?? newId()];
-            going(askingChips.current, msg, (pulled, back) => queue(text, msg, pulled?.slot, back));
+            const [text, msg, draft] = [asking, editing.current?.qid ?? newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
+            going(askingChips.current, msg, (pulled, back) => queue(text, msg, pulled?.slot, back, draft));
           }
           setAsking(null);
         }}

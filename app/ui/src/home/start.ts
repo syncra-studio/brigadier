@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { Draft } from "../components/composer/draft";
 import { daemonRun } from "../session/composer";
 import { EMPTY_DRAFT } from "../components/composer/draft";
-import { dropDraft, HOME_DRAFT, keepDraft } from "../session/draft";
+import { HOME_DRAFT, keepDraft } from "../session/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
@@ -134,14 +134,14 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
   if (model.effort) args.push("--effort", model.effort);
   if (level) args.push("--level", level);
-  // Its files move from Home's draft folder into the session, which then clears Home's draft itself [D2022 #18].
+  // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
   const entry: Starting = { id, cid, project, text, title: "", args, sent: Date.now(), asking: true };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   setHomeDraft({ text: undefined, model, ...(project && { project }) });
-  if (parts) dropDraft(HOME_DRAFT);
-  else keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
+  // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
+  keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   carryHome(id, () => runStart(entry));
 }

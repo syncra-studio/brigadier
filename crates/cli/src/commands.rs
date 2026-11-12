@@ -23,13 +23,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     } else {
         let spec = core::load(data, owner)?;
         let f = core::fold(&spec.dir, true)?;
-        let mut listed = f.fold.commands.get(&spec.backend).cloned();
+        // The agent the session runs on now, after any switch; the spec's before the first turn.
+        let backend = match f.fold.backend.as_str() {
+            "" => spec.backend.clone(),
+            b => b.to_string(),
+        };
+        let mut listed = f.fold.commands.get(&backend).cloned();
         // A file in the checkout opens in Files' viewer by its path there; one outside it, not [D146].
         for each in (listed.iter_mut()).flat_map(|l| l.as_array_mut()).flatten() {
             let path = Path::new(each["path"].as_str().unwrap_or(""));
             each["path"] = (path.strip_prefix(&spec.cwd).ok()).map(|p| p.to_string_lossy()).into();
         }
-        (spec.backend, spec.project, listed)
+        (backend, spec.project, listed)
     };
     let at = kept(data, &backend, project.as_deref());
     let commands = match (listed, &at) {

@@ -1,4 +1,5 @@
 import type { PendingApproval } from "../components/composer/approval";
+import type { Draft } from "../components/composer/draft";
 import type { PendingQuestion } from "../components/composer/question";
 
 // What the thread view draws. Rust folds provider events into these; the UI only draws them.
@@ -136,6 +137,8 @@ export type Item = Base &
         steer?: boolean;
         /** A user message's files (its images, pastes and attached files), stored in its session's folder. */
         files?: SentFile[] | null;
+        /** A user message's whole draft, which Retry and Rewind send again or put back. */
+        draft?: Draft | null;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first

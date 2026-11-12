@@ -31,12 +31,6 @@ export function keepDraft(run: Runner, id: string, draft: Draft): void {
   timers.set(id, setTimeout(() => write(run, id), isEmpty(draft) ? 0 : SAVE_MS));
 }
 
-/** Forgets the draft here only: Rust clears its own copy (Home's, once its start has taken the files). */
-export function dropDraft(id: string): void {
-  clearTimeout(timers.get(id));
-  drafts.set(id, EMPTY_DRAFT);
-}
-
 /** The draft Rust holds, the first time this run opens the session; later opens have it in memory. */
 export async function loadDraft(run: Runner, id: string): Promise<Draft | null> {
   if (drafts.has(id)) return null;
