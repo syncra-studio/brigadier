@@ -23,7 +23,22 @@ pub fn events(v: &Value) -> Vec<Event> {
             let exec = json!({"type": kind, "item": exec_item(&p["item"])});
             parse(&exec.to_string())
         }
-        "thread/tokenUsage/updated" => vec![Event::Usage(snake_keys(&p["tokenUsage"]["last"]))],
+        "thread/tokenUsage/updated" => {
+            let (usage, window) = (
+                &p["tokenUsage"]["last"],
+                &p["tokenUsage"]["modelContextWindow"],
+            );
+            let used = Event::Context(usage["totalTokens"].as_u64().unwrap_or(0), window.as_u64());
+            vec![Event::Usage(snake_keys(usage)), used]
+        }
+        "turn/plan/updated" => {
+            let steps = p["plan"].as_array().into_iter().flatten();
+            vec![Event::Plan(
+                steps
+                    .map(|x| json!({"text": x["step"], "status": x["status"]}))
+                    .collect(),
+            )]
+        }
         "serverRequest/resolved" => vec![Event::Resolved(s(p, &["requestId"]).into())],
         // A transient error it retries by itself; one it won't retry ends the turn [D487].
         "error" if p["willRetry"] == true => vec![retrying(s(p, &["error", "message"]))],

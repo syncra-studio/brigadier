@@ -28,6 +28,7 @@ pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool) -> ModelInfo {
         name: m["name"].as_str().unwrap_or(&id).into(),
         efforts: (variants.filter_map(|v| v["id"].as_str().map(String::from))).collect(),
         images: Some(input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"))),
+        window: m["limit"]["context"].as_u64(),
         ..ModelInfo::plain(&id, local(&id))
     }
 }

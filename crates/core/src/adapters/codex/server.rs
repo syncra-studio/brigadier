@@ -379,6 +379,7 @@ fn notification(state: &Shared, v: &mut Value) {
         }
         "item/completed" => drop(st.items.remove(p["item"]["id"].as_str().unwrap_or(""))),
         "thread/tokenUsage/updated"
+        | "turn/plan/updated"
         | "error"
         | "model/rerouted"
         | "model/safetyBuffering/updated"

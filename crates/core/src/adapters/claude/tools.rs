@@ -1,7 +1,60 @@
 //! Claude's tool calls as steps: a `tool_use` block as it starts, its `tool_result` as it ends.
 
 use super::super::{Done, Event, Tool, change, counts, s, shell_step};
-use serde_json::Value;
+use serde_json::{Value, json};
+
+/// Tokens a request read: what's in the window as it was sent.
+fn read(u: &Value) -> u64 {
+    let keys = [
+        "input_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ];
+    keys.iter().map(|k| u[k].as_u64().unwrap_or(0)).sum()
+}
+
+/// Its window and to-do list [D88, D104]: a main reply's usage as what's in the window; at the
+/// turn's end its last request's, and the window of the model that read the most; TodoWrite's list.
+pub fn records(v: &Value) -> Vec<Event> {
+    match v["type"].as_str() {
+        Some("assistant") if v["parent_tool_use_id"].is_null() => {
+            let usage = &v["message"]["usage"];
+            let blocks = v["message"]["content"].as_array().into_iter().flatten();
+            let todos = blocks.filter(|b| b["type"] == "tool_use" && b["name"] == "TodoWrite");
+            let plans = todos.map(|b| {
+                let todos = b["input"]["todos"].as_array().into_iter().flatten();
+                Event::Plan(
+                    todos
+                        .map(|t| json!({"text": t["content"], "status": t["status"]}))
+                        .collect(),
+                )
+            });
+            (usage
+                .is_object()
+                .then(|| Event::Context(read(usage), None))
+                .into_iter())
+            .chain(plans)
+            .collect()
+        }
+        Some("result") => {
+            let models = v["modelUsage"].as_object().into_iter().flatten();
+            let main = models.map(|(_, m)| m).max_by_key(|m| {
+                let keys = [
+                    "inputTokens",
+                    "cacheReadInputTokens",
+                    "cacheCreationInputTokens",
+                ];
+                keys.iter().map(|k| m[k].as_u64().unwrap_or(0)).sum::<u64>()
+            });
+            let window = main.and_then(|m| m["contextWindow"].as_u64());
+            let last = v["usage"]["iterations"].as_array().and_then(|i| i.last());
+            last.map(|u| Event::Context(read(u), window))
+                .into_iter()
+                .collect()
+        }
+        _ => vec![],
+    }
+}
 
 /// A `tool_use` block as a step, by Claude Code's tool names [D48, D65].
 pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {

@@ -119,6 +119,8 @@ pub struct ModelInfo {
     pub fast: Option<String>,
     /// An older model its CLI still offers beside a newer one: pickers tuck it under Older models.
     pub legacy: bool,
+    /// Its context window in tokens, where its CLI's list says [D113].
+    pub window: Option<u64>,
 }
 
 impl ModelInfo {

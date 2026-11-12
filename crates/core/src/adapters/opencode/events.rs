@@ -85,6 +85,14 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         }
         "session.execution.started" => vec![Event::Resume(id("sessionID")), Event::TurnStart],
         "session.execution.succeeded" => vec![Event::TurnEnd(true)],
+        // What the next request reads: this one's input, cache and output [D88].
+        "session.step.ended" => {
+            let t = &d["tokens"];
+            let n = |v: &Value| v.as_u64().unwrap_or(0);
+            let used =
+                n(&t["input"]) + n(&t["cache"]["read"]) + n(&t["cache"]["write"]) + n(&t["output"]);
+            vec![Event::Context(used, None)]
+        }
         "session.execution.interrupted" => vec![Event::TurnEnd(false)],
         "session.execution.failed" => {
             let said = match failed(&d["error"]) {

@@ -366,6 +366,7 @@ impl Adapter for Claude {
             _ => vec![Event::Unknown(line.into())],
         };
         events.extend(mark);
+        events.extend(tools::records(&v));
         events
     }
 

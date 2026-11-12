@@ -136,6 +136,13 @@ pub struct Fold {
     pub rewinds: BTreeSet<String>,
     #[serde(default)]
     pub runs: runs::Runs,
+    /// How full the conversation's window is, `{used, window}`, as its CLI last said; none since
+    /// a new conversation began [D88].
+    #[serde(default)]
+    pub context: Option<Value>,
+    /// The agent's to-do list as it last wrote it [D104].
+    #[serde(default)]
+    pub plan: Option<Value>,
 }
 
 impl Fold {
@@ -187,6 +194,8 @@ impl Fold {
                 | "stderr"
                 | "unknown"
                 | "usage"
+                | "context"
+                | "plan"
                 | "question"
                 | "answer"
                 | "approval"
@@ -427,8 +436,18 @@ impl Fold {
                 let account = self.accounts.get(&backend).cloned().unwrap_or_default();
                 self.convs.insert((backend.clone(), account, id.clone()));
                 self.branched(&backend, &id);
+                if self.resume.get(&backend) != Some(&id) {
+                    self.context = None;
+                }
                 self.resume.insert(backend, id);
             }
+            "context" => {
+                let known = self.context.as_ref().map(|c| c["window"].clone());
+                let window = item["window"].as_u64().map(Value::from);
+                self.context = Some(json!({"used": item["used"],
+                    "window": window.or(known).unwrap_or(Value::Null)}));
+            }
+            "plan" => self.plan = Some(item["steps"].clone()),
             "limited" => {
                 self.limit = Some(str_of("message"));
                 self.credits = item["credits"] == true;
