@@ -3,6 +3,7 @@ import { Virtualizer, type CacheSnapshot, type VirtualizerHandle } from "virtua"
 
 import type { Session } from "./item";
 import { lineMaker, type Line } from "./lines";
+import { MessageRail } from "./rail";
 import { LineRow } from "./rows";
 import { Find } from "./find";
 import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
@@ -366,6 +367,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       </div>
       {/* A screen reader hears a turn start and end, as a polite status. */}
       <p role="status" className="sr-only">{running ? `${agent} is working` : ran.current ? `${agent} finished` : ""}</p>
+      <MessageRail rows={data} items={items ?? []} list={list} scroller={scroller} box={box} away={leaveEnd} />
       <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button

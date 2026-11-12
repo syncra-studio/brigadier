@@ -9,6 +9,7 @@ import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/i
 import type { Group } from "../src/thread/lines";
 import "../src/thread/markdown.css";
 import { Row, Section, State } from "./parts";
+import { RailGallery } from "./rail";
 import { SetupGallery } from "./setup";
 
 const NOW = Date.now();
@@ -175,6 +176,7 @@ export function ThreadGallery() {
     // The thread's own type, as the app's thread sets it.
     <div className="contents text-sm antialiased">
       <SetupGallery tick={tick} />
+      <RailGallery />
       <Section title="Work header, group, working line">
         <Row name="Work header">
           <Wide label="running">

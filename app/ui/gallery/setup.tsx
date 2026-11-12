@@ -33,7 +33,7 @@ export function SetupGallery({ tick }: { tick: number }) {
             <SetupRow keep={`setup-failed-${index}`} setup={setup} />
           </State>
         ))}
-        <State label="live · one line, opens on failure">
+        <State label="live · open while it runs, one line once made">
           <SetupRow key={`${Math.floor(tick / 12)}:${live.state}`} keep={`setup-live-${Math.floor(tick / 12)}`} setup={live} />
         </State>
       </Row>
