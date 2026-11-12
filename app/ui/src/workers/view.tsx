@@ -139,7 +139,7 @@ function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] 
 const NO_WORK: ReadonlyMap<string, Work> = new Map();
 
 /** One row of its thread: a group, a reply with no actions, a message it was sent as a bubble, or the thread's own row. */
-function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }) {
+function Row({ line, onToggle, breaks }: { line: Shown; onToggle: (id: string) => void; breaks: boolean }) {
   if (line.type === "group") return <GroupLine {...line} onToggle={onToggle} />;
   const { item } = line;
   if (item.kind === "message" && item.origin !== "system") {
@@ -151,7 +151,7 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
       </div>
     ) : (
       <div className="min-w-0 leading-relaxed wrap-anywhere text-foreground">
-        <Markdown text={item.text} keep={item.id} />
+        <Markdown text={item.text} keep={item.id} breaks={breaks} />
       </div>
     );
   }
@@ -171,7 +171,7 @@ function thinking(items: readonly Item[]): boolean {
  * Its thread, read only, as the old WorkerTranscript: the brief, the receipt, how long it worked, its earlier rows
  * folded once it's over ("4 previous messages"), its last three, the live line while it works, and what it waits for.
  */
-export function WorkerThread({ worker, items, turns }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[] }) {
+export function WorkerThread({ worker, items, turns, breaks = false }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[]; breaks?: boolean }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -218,12 +218,12 @@ export function WorkerThread({ worker, items, turns }: { worker: Worker; items: 
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="flex flex-col gap-4 py-4">
-                {previous.map((line) => <Row key={line.id} line={line} onToggle={toggle} />)}
+                {previous.map((line) => <Row key={line.id} line={line} onToggle={toggle} breaks={breaks} />)}
               </div>
             </CollapsibleContent>
           </Collapsible>
         )}
-        {rows.slice(previous.length).map((line) => <Row key={line.id} line={line} onToggle={toggle} />)}
+        {rows.slice(previous.length).map((line) => <Row key={line.id} line={line} onToggle={toggle} breaks={breaks} />)}
         {working && thinking(items) && <div className="shimmer truncate text-sm motion-reduce:animate-none">Thinking</div>}
         {/* What it waits for: the user, or a limit's reset. */}
         {(worker.kind === "needsYou" || worker.kind === "limit") && <p data-slot="worker-waits" className="text-sm text-quiet-foreground">{worker.word}</p>}
