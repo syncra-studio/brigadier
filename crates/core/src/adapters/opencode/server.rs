@@ -4,7 +4,7 @@
 
 mod child;
 
-use super::grants::{allow, grant, granted, skipping};
+use super::grants::{allow, grant, granted, inside, skipping};
 use super::http::Server;
 use brigadier_frames::base64;
 use serde_json::{Value, json};
@@ -257,7 +257,7 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
     let d = &v["data"];
     let kind = v["type"].as_str().unwrap_or("").to_string();
     match kind.as_str() {
-        "permission.asked" if granted(&st.grants, d) => {
+        "permission.asked" if granted(&st.grants, d) || inside(&st.rules, &st.dir, d) => {
             let d = d.clone();
             drop(st);
             return allow(server, &d);

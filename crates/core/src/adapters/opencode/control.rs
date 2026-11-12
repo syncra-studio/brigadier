@@ -60,6 +60,9 @@ const RISKY: &str = concat!(
     "pip3 install *|uv add *|cargo install *|brew install *|gem install *",
 );
 
+/// The Auto rules that ask for a command naming an absolute, home or `..` path [D130].
+pub(super) const PATHS: [&str; 3] = ["* /*", "* ~*", "*..*"];
+
 /// A level as its permission rules, the last match winning [D175]. Ask (proposed): it reads,
 /// searches, asks questions and keeps its to-do list freely [D116], and asks before anything else
 /// and before reading secrets. Auto, on OpenCode's own per-tool rules: it also edits, runs commands,
@@ -80,23 +83,9 @@ pub fn rules(spec: &Spec) -> Value {
     all.extend(free);
     if spec.level.as_deref() == Some("auto") {
         all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
-        // OpenCode checks only a command's folder (cd), not the paths it names: a command naming one
-        // outside the project asks; two absolute paths ask, as one may be outside.
-        // shortcut: a project path beside a ~ or .. one runs unasked; parse paths ourselves if that matters.
-        all.extend(["* /*", "* ~*", "* ..*"].map(|p| rule("shell", p, "ask")));
-        // The folder as given and as the shell prints it (macOS's /tmp is /private/tmp).
-        let real =
-            std::fs::canonicalize(&spec.cwd).map_or(String::new(), |p| p.display().to_string());
-        let inside = [spec.cwd.trim_end_matches('/'), &real]
-            .into_iter()
-            .filter(|c| !c.is_empty());
-        let inside = inside.flat_map(|c| [format!("* {c}"), format!("* {c}/*")]);
-        all.extend(
-            inside
-                .chain(["* /dev/null*".into()])
-                .map(|p| rule("shell", &p, "allow")),
-        );
-        all.push(rule("shell", "* /* /*", "ask"));
+        // OpenCode checks only a command's folder (cd), not the paths it names: a command naming
+        // one asks, and the helper answers it when each resolves inside the project (`inside`).
+        all.extend(PATHS.map(|p| rule("shell", p, "ask")));
         all.extend(RISKY.split('|').map(|c| rule("shell", c, "ask")));
     }
     all.extend(secrets);

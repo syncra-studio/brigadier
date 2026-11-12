@@ -6,6 +6,7 @@ use super::http::Server;
 use super::server::Shared;
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
+use std::path::{Component, Path, PathBuf};
 
 /// A new session grant `{action, save}`. It also answers the asks already waiting that it covers,
 /// as OpenCode's own lasting answer would, but only for this session [D193].
@@ -184,6 +185,68 @@ pub(super) fn granted(grants: &[Value], ask: &Value) -> bool {
                 })
             })
     })
+}
+
+/// Whether a shell ask only the Auto path rules made names nothing outside the project: each path,
+/// resolved against it, stays inside [D130]. A risky command's own later rule still asks.
+pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
+    let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
+    let text = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
+    let last = |r: &str| {
+        (rules.iter().rev())
+            .find(|x| matches(&text(x, "action"), "shell") && matches(&text(x, "resource"), r))
+    };
+    let resources = ask["resources"].as_array().map_or(&[][..], Vec::as_slice);
+    let roots = [
+        PathBuf::from(dir),
+        std::fs::canonicalize(dir).unwrap_or_default(),
+    ];
+    ask["action"] == "shell"
+        && !dir.is_empty()
+        && !resources.is_empty()
+        && resources.iter().all(|r| {
+            let r = r.as_str().unwrap_or("");
+            last(r).is_some_and(|x| super::control::PATHS.contains(&text(x, "resource").as_str()))
+                && r.split_whitespace().all(|w| named_inside(&roots, w))
+        })
+}
+
+/// A command's word, if it names a path, resolved against the project: `~` is home; a redirect's
+/// file (2>/dev/null) and an option's value (--out=/x) count; a variable's path never is inside.
+fn named_inside(roots: &[PathBuf; 2], word: &str) -> bool {
+    let w = word.trim_matches(['\'', '"']);
+    let w = w
+        .rfind(['<', '>'])
+        .map_or(w, |i| w[i + 1..].trim_start_matches('&'));
+    let w = w.rsplit_once('=').map_or(w, |(_, v)| v);
+    if !(w.contains('/') || w.starts_with('~') || w.starts_with("..")) {
+        return true;
+    }
+    let path = match w.strip_prefix('~') {
+        _ if w.contains(['$', '`']) => return false,
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            format!("{}{rest}", std::env::var("HOME").unwrap_or_default())
+        }
+        Some(_) => return false,
+        None => w.into(),
+    };
+    let mut out = PathBuf::new();
+    for c in roots[0].join(path).components() {
+        match c {
+            Component::ParentDir => drop(out.pop()),
+            Component::CurDir => {}
+            c => out.push(c),
+        }
+    }
+    // As the shell sees it (macOS's /tmp is /private/tmp), a new file by its folder.
+    let real = |p: &Path| std::fs::canonicalize(p).ok();
+    let out = real(&out)
+        .or_else(|| Some(real(out.parent()?)?.join(out.file_name()?)))
+        .unwrap_or(out);
+    out == Path::new("/dev/null")
+        || roots
+            .iter()
+            .any(|r| !r.as_os_str().is_empty() && out.starts_with(r))
 }
 
 /// OpenCode's whole-value wildcard: `*` any run, `?` one character; `cmd *` also matches `cmd`.
