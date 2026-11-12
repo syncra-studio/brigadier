@@ -103,13 +103,33 @@ pub fn run(command: &mut Command, secs: u64) -> Result<Output, String> {
 
 /// `run`, also ended as soon as `stop` is set, so whoever waits on it can leave at once.
 pub fn run_until(command: &mut Command, secs: u64, stop: &AtomicBool) -> Result<Output, String> {
+    run_fed(command, secs, stop, None)
+}
+
+/// `run_until` with `input` written to its stdin, which then closes.
+pub fn run_fed(
+    command: &mut Command,
+    secs: u64,
+    stop: &AtomicBool,
+    input: Option<&str>,
+) -> Result<Output, String> {
+    let stdin = match input {
+        Some(_) => Stdio::piped(),
+        None => Stdio::null(),
+    };
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
         .spawn()
         .map_err(|e| e.to_string())?;
+    if let (Some(text), Some(mut w)) = (input.map(String::from), child.stdin.take()) {
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = w.write_all(text.as_bytes());
+        });
+    }
     let pipe = |r: Option<Box<dyn Read + Send>>| {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {

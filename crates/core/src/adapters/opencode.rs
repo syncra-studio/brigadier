@@ -13,10 +13,10 @@ mod server;
 use super::setup::run as bounded;
 use super::{
     Adapter, Can, Check, Cut, Delivery, Event, Failed, Landing, Launch, ModelInfo, Retune, Rewound,
-    Timing, base_env, home_path, probe, s, sha1, uuid, version,
+    Timing, base_env, home_path, mark_superseded, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, denied, message, model, model_ref, prompt, rules};
+use control::{answers, denied, message, model, model_info, model_ref, prompt, rules};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
@@ -188,25 +188,17 @@ impl Adapter for OpenCode {
             .map(|p| s(p, &["name"]))
             .collect();
         let local = |id: &str| LOCAL.iter().any(|p| id.starts_with(&format!("{p}/")));
-        // Its server's list says what each model takes, as the old app read it: images where its input names
-        // them or says nothing [D2098]. Where that can't be read, its plain list of ids.
+        // Its server's list, as the old app read it; where that can't be read, its plain list of ids.
         let listed = text(&["api", "--standalone", "GET", "/api/model"]).ok();
         let listed: Value = (listed
             .and_then(|t| serde_json::from_str(&t[t.find('{').unwrap_or(0)..]).ok()))
         .unwrap_or_default();
         let mut models: Vec<ModelInfo> = (listed["data"].as_array().into_iter().flatten())
             .filter(|m| m["enabled"] != false)
-            .map(|m| {
-                let id = format!("{}/{}", s(m, &["providerID"]), s(m, &["id"]));
-                let input = m["capabilities"]["input"].as_array();
-                let images = input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"));
-                ModelInfo {
-                    images: Some(images),
-                    ..ModelInfo::plain(&id, local(&id))
-                }
-            })
+            .map(|m| model_info(m, &local))
             .collect();
         models.sort_by(|a, b| a.id.cmp(&b.id));
+        mark_superseded(&mut models);
         if models.is_empty() {
             models = text(&["models", "--standalone"])?
                 .lines()

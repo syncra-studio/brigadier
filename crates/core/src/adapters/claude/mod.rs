@@ -4,6 +4,7 @@
 
 mod cleanup;
 mod control;
+mod models;
 mod tools;
 
 use super::setup::{first_field, newest};
@@ -29,6 +30,10 @@ impl Adapter for Claude {
 
     fn label(&self) -> &'static str {
         "Claude Code"
+    }
+
+    fn short_label(&self) -> &'static str {
+        "Claude"
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
@@ -88,12 +93,9 @@ impl Adapter for Claude {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
             how: how.into(),
-            models: if signed_in {
-                ["sonnet", "opus", "haiku"]
-                    .map(|m| ModelInfo::plain(m, false))
-                    .into()
-            } else {
-                vec![]
+            models: match signed_in {
+                true => models::list(spec, exe, cwd),
+                false => vec![],
             },
             ..Default::default()
         })

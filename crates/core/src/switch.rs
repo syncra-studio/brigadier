@@ -139,10 +139,10 @@ pub fn picked(
     spec: &Spec,
     f: &Fold,
     to: &str,
-    model: &str,
-    effort: Option<&str>,
+    p: &crate::fold::Picked,
     text: &str,
 ) -> std::io::Result<(Value, String)> {
+    let model = &p.model;
     let from = if f.backend.is_empty() {
         spec.backend.as_str()
     } else {
@@ -157,7 +157,7 @@ pub fn picked(
         &from_label,
     )?;
     let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
-        "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "effort": effort},
+        "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "effort": p.effort, "fast": p.fast},
         "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {model}"),
         "from_label": from_label, "to_label": to_label});
     Ok((switch, format!("{seed}\n\n{text}")))

@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{Failed, ModelInfo, base_env};
+use super::super::{Failed, ModelInfo, base_env, mark_superseded, versioned};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -94,8 +94,29 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Vec<ModelI
     });
     let mut models = found??;
     models.sort_by_key(|m| m["isDefault"] != true);
-    Some(models.iter().map(info).collect())
+    let mut models: Vec<ModelInfo> = models.iter().map(info).collect();
+    mark_legacy(&mut models);
+    Some(models)
 }
+
+/// Marks legacy, beside what its list names an upgrade for, older namesakes and the models of an
+/// older generation than the newest: Codex versions its lineup together.
+fn mark_legacy(models: &mut [ModelInfo]) {
+    mark_superseded(models);
+    let generation = |m: &ModelInfo| versioned(&m.name).and_then(|(_, v)| v.first().copied());
+    let newest = models.iter().filter_map(generation).max();
+    for model in models.iter_mut() {
+        if generation(model)
+            .zip(newest)
+            .is_some_and(|(own, newest)| own < newest)
+        {
+            model.legacy = true;
+        }
+    }
+}
+
+/// Its fast service tier, as `model/list` names it.
+pub const FAST_TIER: &str = "priority";
 
 /// Codex's own delete of a thread and the agents it spawned. Ok only on its word that they're gone:
 /// done now, or one of its two "unknown thread" answers, given only with no row and no rollout left.
@@ -184,6 +205,10 @@ fn info(m: &Value) -> ModelInfo {
             .collect(),
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
         images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
+        fast: (m["serviceTiers"].as_array().into_iter().flatten())
+            .find(|t| t["id"] == FAST_TIER)
+            .map(|t| t["description"].as_str().unwrap_or("").into()),
+        legacy: !m["upgrade"].is_null(),
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);

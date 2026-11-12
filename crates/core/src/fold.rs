@@ -32,6 +32,8 @@ pub struct Picked {
     pub backend: String,
     pub model: String,
     pub effort: Option<String>,
+    #[serde(default)]
+    pub fast: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -75,6 +77,9 @@ pub struct Fold {
     /// The effort each backend runs at, as the app last set it; none is the CLI's default [D129].
     #[serde(default)]
     pub efforts: BTreeMap<String, String>,
+    /// The backends whose model runs on its fast tier, as the app last set it.
+    #[serde(default)]
+    pub fast: BTreeSet<String>,
     /// Another agent the user picked: the next message goes to it in a new conversation [D90].
     #[serde(default)]
     pub picked: Option<Picked>,
@@ -137,16 +142,22 @@ impl Fold {
         let b = item["backend"].as_str().unwrap_or("").to_string();
         let model = item["model"].as_str().unwrap_or("").to_string();
         let effort = item["effort"].as_str().map(String::from);
+        let fast = item["fast"] == true;
         self.setup_op = item["op"].as_str().map(String::from);
         if item["pick"] == true {
             self.picked = Some(Picked {
                 backend: b,
                 model,
                 effort,
+                fast,
             });
             return;
         }
         self.picked = None;
+        match fast {
+            true => self.fast.insert(b.clone()),
+            false => self.fast.remove(&b),
+        };
         match effort {
             Some(e) => self.efforts.insert(b.clone(), e),
             None => self.efforts.remove(&b),
@@ -233,6 +244,10 @@ impl Fold {
                     match switch["to"]["effort"].as_str() {
                         Some(e) => self.efforts.insert(to.into(), e.into()),
                         None => self.efforts.remove(to),
+                    };
+                    match switch["to"]["fast"] == true {
+                        true => self.fast.insert(to.into()),
+                        false => self.fast.remove(to),
                     };
                     self.picked = None;
                     // For delete, `convs` keeps the old conversation, or the same one's new account.

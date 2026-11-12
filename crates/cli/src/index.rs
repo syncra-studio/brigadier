@@ -278,7 +278,7 @@ impl Index {
                              "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
                              "project": project, "model": run.as_ref().and_then(|s| s.model.as_ref()),
                              "archived": e.marks.archived, "lifecycle": e.marks.lifecycle,
-                             "effort": run.as_ref().and_then(|s| s.effort.as_ref()), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
+                             "effort": run.as_ref().and_then(|s| s.effort.as_ref()), "fast": run.as_ref().is_some_and(|s| s.fast), "picked": f.fold.picked, "setup_op": f.fold.setup_op,
                              "queue": e.marks.queue, "steer": steer, "prs": e.marks.prs, "pr": e.marks.pr,
                              // A turn whose host is gone has nothing left to stop or queue behind [D60].
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),

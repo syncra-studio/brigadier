@@ -93,11 +93,12 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
         .map(|m| {
             json!({"id": m["id"], "name": m.get("name").unwrap_or(&m["id"]), "local": m["local"],
                 "efforts": m.get("efforts").cloned().unwrap_or_else(|| json!([])),
-                "default_effort": m["default_effort"], "retiring": m["retiring"], "images": m["images"]})
+                "default_effort": m["default_effort"], "retiring": m["retiring"], "images": m["images"],
+                "fast": m["fast"], "legacy": m["legacy"] == true})
         })
         .collect();
     let (levels, level) = levels(&check["name"], held, chosen);
-    json!({"provider": check["name"], "label": check["label"], "mark": check["mark"],
+    json!({"provider": check["name"], "label": check["label"], "short": check["short"], "mark": check["mark"],
         "unavailable": unavailable, "models": models, "error": check["error"],
         "levels": levels, "level": level, "held": held})
 }
@@ -153,9 +154,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "groups": groups}))
 }
 
-/// `set <session> --agent B --model M [--effort E] --op OP` [D129, D218]: the conversation's own
-/// agent takes M and E from its next turn; another agent is picked, and the next message goes to
-/// it in a new conversation with the hand-off [D90]. Checked against B's last check in the
+/// `set <session> --agent B --model M [--effort E] [--fast] --op OP` [D129, D218]: the
+/// conversation's own agent takes M, E and the fast tier (where M has one) from its next turn;
+/// another agent is picked, and the next message goes to it in a new conversation with the
+/// hand-off [D90]. Checked against B's last check in the
 /// session's folder. One note in the log carries it, with the app's op id to reconcile by [D30].
 fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = args.get(1).map_or("", String::as_str);
@@ -165,7 +167,7 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     let (Some(b), Some(m)) = (flag(args, "--agent"), flag(args, "--model")) else {
         return Err(io::Error::other(
-            "usage: brigadier set <session> --agent B --model M [--effort E] --op OP",
+            "usage: brigadier set <session> --agent B --model M [--effort E] [--fast] --op OP",
         ));
     };
     let effort = flag(args, "--effort");
@@ -200,6 +202,10 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     if effort.is_some_and(|e| !efforts.iter().any(|x| x == e)) {
         return refuse("no_effort", "That effort isn't one this model has.");
     }
+    let fast = args.iter().any(|a| a == "--fast");
+    if fast && model["fast"].is_null() {
+        return refuse("no_fast", "This model has no fast tier.");
+    }
     let f = core::fold(&spec.dir, true)?.fold;
     let current = if f.backend.is_empty() {
         &spec.backend
@@ -211,7 +217,7 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     owner::ensure(data, &spec)?;
     let note = json!({"event": "setup", "op": op, "backend": b, "model": m, "effort": effort,
-        "pick": b != current});
+        "fast": fast, "pick": b != current});
     owner::call(data, id, json!({"op": "note", "data": note}))?;
     Ok(json!({"ok": true, "op": op}))
 }

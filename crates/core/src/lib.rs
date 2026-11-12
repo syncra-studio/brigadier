@@ -63,6 +63,9 @@ pub struct Spec {
     /// Its model's reasoning effort; None: the CLI's own default [D129].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    /// On its model's fast tier, where the model has one; its adapter runs it so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fast: bool,
     /// The session it was forked from, which its row nests under [D48, D1063].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_of: Option<String>,

@@ -13,13 +13,13 @@ mod shell;
 
 pub use classify::classify;
 pub use files::{change, counts, drop_lines, sha1, uuid};
-pub use model::ModelInfo;
+pub use model::{ModelInfo, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};
 
 use crate::Spec;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub struct Launch {
@@ -207,7 +207,12 @@ pub enum Retune {
 
 /// What a turn runs with, as its input frame records it.
 pub fn setup(spec: &Spec) -> Value {
-    serde_json::json!({"model": spec.model, "effort": spec.effort, "level": spec.level})
+    let mut setup = json!({"model": spec.model, "effort": spec.effort, "level": spec.level});
+    // Only where on, so a setup without it reads as before.
+    if spec.fast {
+        setup["fast"] = true.into();
+    }
+    setup
 }
 
 pub trait Adapter: Sync {
@@ -215,6 +220,10 @@ pub trait Adapter: Sync {
     /// The name people know it by.
     fn label(&self) -> &'static str {
         self.name()
+    }
+    /// The short name a list of agents shows it by, as the old app's model picker did.
+    fn short_label(&self) -> &'static str {
+        self.label()
     }
     /// Its binary, and the folders under HOME its own installer puts it in.
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
@@ -466,11 +475,8 @@ pub fn probe_as(
 
 /// A one-question PendingQuestion (D177) from a CLI that asks one at a time.
 pub fn question(id: &str, text: &str, options: &[String]) -> Event {
-    let options: Vec<Value> = options
-        .iter()
-        .map(|o| serde_json::json!({"label": o}))
-        .collect();
-    Event::Question(serde_json::json!({"id": id, "title": null, "items": [
+    let options: Vec<Value> = options.iter().map(|o| json!({"label": o})).collect();
+    Event::Question(json!({"id": id, "title": null, "items": [
         {"text": text, "options": options, "recommended": null, "multiSelect": false}]}))
 }
 

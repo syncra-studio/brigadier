@@ -45,5 +45,6 @@ pub fn as_run(spec: &Spec, f: &Fold, backend: &str, account: Option<&str>) -> Sp
     } else if backend != spec.backend {
         run.effort = None;
     }
+    run.fast = f.fast.contains(backend);
     run
 }

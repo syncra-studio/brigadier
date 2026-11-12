@@ -93,7 +93,8 @@ pub fn send(
     let (change, sent) = if let Some(p) = picked {
         run.model = Some(p.model.clone());
         run.effort = p.effort.clone();
-        match crate::switch::picked(spec, f, &b, &p.model, p.effort.as_deref(), text) {
+        run.fast = p.fast;
+        match crate::switch::picked(spec, f, &b, p, text) {
             Ok((change, sent)) => (Some(change), sent),
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
@@ -146,6 +147,7 @@ pub fn send(
                 model: text("model"),
                 effort: text("effort"),
                 level: text("level"),
+                fast: g["fast"] == true,
                 ..run.clone()
             };
             match a.retune(&last, &run) {

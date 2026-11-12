@@ -1,9 +1,23 @@
 //! What OpenCode's server is told: the model, the level as its permission rules, messages and
 //! answers.
 
-use super::super::s;
+use super::super::{ModelInfo, s};
 use crate::Spec;
 use serde_json::{Value, json};
+
+/// A model from its server's list, as the old app read it: its name, its variants as its efforts,
+/// and images where its input names them or says nothing [D2098].
+pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool) -> ModelInfo {
+    let id = format!("{}/{}", s(m, &["providerID"]), s(m, &["id"]));
+    let input = m["capabilities"]["input"].as_array();
+    let variants = m["variants"].as_array().into_iter().flatten();
+    ModelInfo {
+        name: m["name"].as_str().unwrap_or(&id).into(),
+        efforts: (variants.filter_map(|v| v["id"].as_str().map(String::from))).collect(),
+        images: Some(input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"))),
+        ..ModelInfo::plain(&id, local(&id))
+    }
+}
 
 /// The model a session runs; a free one OpenCode serves when none is picked.
 pub fn model(spec: &Spec) -> String {

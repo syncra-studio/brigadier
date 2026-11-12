@@ -182,7 +182,7 @@ fn available() -> Vec<&'static dyn Adapter> {
 /// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers.
 fn card(data: &Path, a: &dyn Adapter) -> Value {
     let update = a.update(None).map(|w| format!("{} {}", a.bin().0, w.join(" ")));
-    json!({"name": a.name(), "label": a.label(), "install": a.install().is_some(),
+    json!({"name": a.name(), "label": a.label(), "short": a.short_label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
         "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
         "update": update.or(a.install().map(String::from)),
@@ -265,6 +265,11 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     if let Some(exe) = exe {
         match a.check(&crate::accounts::check_as(data, a, cwd), &exe, cwd) {
             Ok(c) => {
+                let older: Vec<&str> = (c.models.iter().filter(|m| m.legacy))
+                    .map(|m| m.id.as_str())
+                    .collect();
+                crate::settings::older_off(data, a.name(), &older)?;
+                out["models_off"] = crate::settings::models_off(data, a.name()).into();
                 out["version"] = c.version.into();
                 out["signed_in"] = c.signed_in.into();
                 out["how"] = c.how.into();
@@ -272,7 +277,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["models"] = c
                     .models
                     .into_iter()
-                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "fast": m.fast, "legacy": m.legacy}))
                     .collect();
             }
             Err(e) => out["error"] = e.trim().into(),

@@ -59,7 +59,7 @@ pub fn read(data: &Path) -> Value {
         })
         .collect();
     all.insert("awake".into(), core::awake_mode(data).into());
-    for key in ["agents_off", "models_off"] {
+    for key in ["agents_off", "models_off", "older_seen"] {
         let off = saved[key].as_array().cloned().unwrap_or_default();
         all.insert(key.into(), off.into());
     }
@@ -114,6 +114,28 @@ fn check_path(a: &dyn adapters::Adapter, path: &Path) -> io::Result<()> {
         true => Ok(()),
         false => refuse(format!("{shown} isn't {}.", a.label())),
     }
+}
+
+/// An agent's older models (`<id>`s its check marks legacy) start hidden, each once, as the old
+/// app's did: the first check that lists one adds it to `models_off` and to `older_seen`, and the
+/// user's choice stands from then on.
+pub fn older_off(data: &Path, agent: &str, ids: &[&str]) -> io::Result<()> {
+    let _one = SETTINGS.lock().unwrap();
+    let mut saved = read(data);
+    saved.as_object_mut().map(|o| o.remove("awake"));
+    let seen = saved["older_seen"].as_array().cloned().unwrap_or_default();
+    let new: Vec<Value> = (ids.iter().map(|id| json!(format!("{agent}/{id}"))))
+        .filter(|m| !seen.contains(m))
+        .collect();
+    if new.is_empty() {
+        return Ok(());
+    }
+    for key in ["older_seen", "models_off"] {
+        let list = saved[key].as_array_mut().unwrap();
+        list.retain(|m| !new.contains(m));
+        list.extend(new.iter().cloned());
+    }
+    save(data, saved)
 }
 
 /// Whether an agent is on: one turned off is left out of new sessions, onboarding and switching,
