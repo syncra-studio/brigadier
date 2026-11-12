@@ -10,6 +10,21 @@ pub(super) fn compact() -> Value {
     json!({"name": "compact", "description": "Compact the conversation", "kind": "command", "path": null, "instant": true})
 }
 
+/// Its compact, then the skills its folders hold, the project's first (opencode.ai/docs/skills).
+pub(super) fn fixed(cwd: Option<&std::path::Path>) -> Vec<Value> {
+    let home = super::super::home_path("");
+    let local = [".opencode", ".claude", ".agents"].into_iter();
+    let roots = (cwd.into_iter()).flat_map(|c| local.clone().map(|d| c.join(d).join("skills")));
+    let global = [
+        ".config/opencode/skills",
+        ".claude/skills",
+        ".agents/skills",
+    ]
+    .map(|d| home.join(d));
+    let skills = super::super::files::skills_in(roots.chain(global).map(|r| (r, String::new())));
+    std::iter::once(compact()).chain(skills).collect()
+}
+
 /// Lists both again; one its server can't list stays out, and the listing goes on without it.
 pub(super) fn list(server: &Server, dir: &str) {
     let get = |what: &str| -> Vec<Value> {

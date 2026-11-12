@@ -23,7 +23,7 @@ static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
 fn fixed_line(parent: &str, pid: &str) -> String {
     format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. Commit your work on your branch and don't merge it. `brigadier read {pid} --user` has the user's own words."
+        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. Commit your work on your branch and don't merge it. `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill` and `brigadier search` (past sessions) bring what you need."
     )
 }
 

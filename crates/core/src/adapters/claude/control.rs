@@ -427,6 +427,26 @@ pub fn fixed(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
             list.push(json!({"name": name, "description": "", "kind": kind, "path": path, "instant": false}));
         }
     }
+    // shortcut: only user-scope plugins, as `plugin:skill`; a project-scope one's enabling isn't read.
+    let home = run.map_or_else(|| home_path(".claude"), |s| cli_home(s, ".claude", ""));
+    let installed = std::fs::read(home.join("plugins/installed_plugins.json")).unwrap_or_default();
+    let installed: Value = serde_json::from_slice(&installed).unwrap_or_default();
+    let plugins =
+        (installed["plugins"].as_object().into_iter().flatten()).flat_map(|(key, all)| {
+            let at = (all.as_array().into_iter().flatten()).find(|i| i["scope"] == "user");
+            let name = key.split('@').next().unwrap_or(key);
+            at.map(|i| {
+                (
+                    PathBuf::from(s(i, &["installPath"])).join("skills"),
+                    format!("{name}:"),
+                )
+            })
+        });
+    for more in super::super::files::skills_in(plugins.collect::<Vec<_>>()) {
+        if !list.iter().any(|l| l["name"] == more["name"]) {
+            list.push(more);
+        }
+    }
     list
 }
 

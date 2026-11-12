@@ -25,6 +25,8 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
   brigadier models            the agents, models and efforts you may use
+  brigadier skill [name]      the user's skills, or one whole
+  brigadier search \"…\"        past sessions holding these words
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.
@@ -95,7 +97,7 @@ For a helper on your own agent, use your own subagents instead: they share your 
             &[],
             &[],
         ),
-        _ => return None,
+        _ => return crate::relay::spec(cmd),
     })
 }
 
@@ -200,6 +202,9 @@ pub fn run(
         let flag = |name: &str| call.value(name).map(String::from);
         let running = |id: &str| rows().iter().any(|r| r["id"] == id && r["running"] == true);
         let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
+        return finish(&call, reply);
+    }
+    if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &rows()) {
         return finish(&call, reply);
     }
     let takes_id = matches!(call.cmd, "read" | "send" | "wait" | "stop");

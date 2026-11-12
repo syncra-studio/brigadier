@@ -22,6 +22,7 @@ pub mod owner;
 mod panel;
 pub mod peers;
 pub mod queue;
+mod relay;
 mod rename;
 pub mod rewind;
 mod sessions;

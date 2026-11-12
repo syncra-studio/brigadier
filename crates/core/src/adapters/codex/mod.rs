@@ -194,8 +194,14 @@ impl Adapter for Codex {
         control::command(spec, name)
     }
 
-    fn fixed_commands(&self, _cwd: Option<&Path>, _run: Option<&Spec>) -> Vec<Value> {
-        vec![events::compact()]
+    /// Its compact, then the skills its folders hold: the repo's `.agents`, its home's, the user's
+    /// `.agents` (ext/skills host_roots.rs).
+    fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
+        let home = run.map_or_else(|| home_path(".codex"), |s| cli_home(s, ".codex", ""));
+        let roots = (cwd.map(|c| c.join(".agents/skills")).into_iter())
+            .chain([home.join("skills"), home_path(".agents/skills")]);
+        let skills = super::files::skills_in(roots.map(|r| (r, String::new())));
+        std::iter::once(events::compact()).chain(skills).collect()
     }
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {

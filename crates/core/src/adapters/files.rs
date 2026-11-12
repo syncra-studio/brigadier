@@ -1,7 +1,33 @@
 //! Reading and trimming the files a CLI keeps for itself.
 
-use serde_json::Value;
-use std::path::Path;
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+
+/// The skills a CLI keeps as `<folder>/<name>/SKILL.md`, each named with its folder's prefix (a
+/// plugin's `plugin:`), by name once, the first folder's first [D100].
+pub fn skills_in(folders: impl IntoIterator<Item = (PathBuf, String)>) -> Vec<Value> {
+    let mut list: Vec<Value> = vec![];
+    for (folder, prefix) in folders {
+        let mut found: Vec<(String, PathBuf)> = (std::fs::read_dir(&folder).into_iter().flatten())
+            .flatten()
+            .map(|e| {
+                (
+                    e.file_name().to_string_lossy().to_string(),
+                    e.path().join("SKILL.md"),
+                )
+            })
+            .filter(|(_, path)| path.is_file())
+            .collect();
+        found.sort();
+        for (name, path) in found {
+            let name = format!("{prefix}{name}");
+            if !list.iter().any(|l| l["name"] == *name) {
+                list.push(json!({"name": name, "description": "", "kind": "skill", "path": path, "instant": false}));
+            }
+        }
+    }
+    list
+}
 
 /// A random UUID (v4), for a conversation id the CLI lets us pick.
 pub fn uuid() -> String {
