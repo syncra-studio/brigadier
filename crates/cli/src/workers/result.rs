@@ -175,6 +175,8 @@ fn write(
     if let Some(e) = error {
         text += &format!("It didn't start: {e}\n");
     }
+    // Proposed: the extras past how it ended, its last message, branch and commits: the diff
+    // stat, uncommitted files, the receipt and the `read` pointer [D3029].
     let (mut added, mut removed, mut commits) = (0u64, 0u64, 0usize);
     if let (Some(branch), Some(base)) = (&branch, &base) {
         let range = format!("{base}..HEAD");

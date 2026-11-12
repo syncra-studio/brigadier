@@ -139,6 +139,7 @@ pub fn start(
     });
     let dirty = base.is_some()
         && git(&parent.cwd, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
+    // Proposed: `--title` names it; else its brief does [D3029].
     let named = flags("--title").filter(|t| !t.trim().is_empty());
     let title = named.unwrap_or_else(|| title::from(brief));
     let asked =
