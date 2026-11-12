@@ -5,6 +5,7 @@ import { PeerBubble } from "../../peers/live";
 import type { Item, SentFile, Turn } from "../../thread/item";
 import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
+import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
 import type { Draft } from "../composer/draft";
@@ -40,6 +41,10 @@ function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid
   );
 }
 
+function Said({ backend }: { backend: string | undefined }) {
+  return <h2 className="sr-only">{useAgentLabel(backend)} said:</h2>;
+}
+
 const FAILED = {
   "turn-failed": "This turn didn’t finish",
   "model-unavailable": "This model isn’t available",
@@ -58,8 +63,18 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
     case "message":
       if (item.origin === "system") return <SystemLine text={item.text} />;
       if (item.origin === "peer" && item.from) return <PeerBubble from={item.from} text={item.text} at={item.sentAt ?? 0} />;
-      if (item.role === "user") return <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} />;
+      if (item.role === "user") {
+        return (
+          <>
+            {/* Each side of a turn heads itself for a screen reader. */}
+            <h2 className="sr-only">You said:</h2>
+            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} />
+          </>
+        );
+      }
       return (
+        <>
+        {(item.final || item.joined) && <Said backend={turn?.backend} />}
         <AssistantMessage
           text={item.text}
           final={actions && (item.final === true || item.joined === true)}
@@ -69,6 +84,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         >
           <Markdown text={item.text} keep={item.id} at={item.sentAt} />
         </AssistantMessage>
+        </>
       );
     case "reasoning":
       // Finished thinking isn't drawn: "Worked for …" covers it.

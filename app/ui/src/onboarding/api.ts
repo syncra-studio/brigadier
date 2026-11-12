@@ -117,6 +117,8 @@ export type Agent = {
 type Agents = { list?: Agent[]; checking: ReadonlySet<string>; error?: string };
 const agents = store<Agents>({ checking: new Set() });
 export const useAgents = agents.use;
+/** An agent's name as people read it, by its id; "The agent" until the list is in. */
+export const useAgentLabel = (name: string | undefined) => useAgents().list?.find((agent) => agent.name === name)?.label ?? "The agent";
 
 // Each agent's last shown check: an older reply never lands over a newer one. "*" is every agent.
 const shown = new Map<string, number>();

@@ -6,7 +6,7 @@ import { lineMaker, type Line } from "./lines";
 import { LineRow } from "./rows";
 import { Find } from "./find";
 import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
-import { store } from "../onboarding/api";
+import { store, useAgentLabel } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
 import { JumpSign, ThinkingLine, datedMessages } from "../components/thread/message";
@@ -164,6 +164,10 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const drawnData = useRef(data);
 
   const running = turnList?.at(-1)?.status === "running";
+  const agent = useAgentLabel(turnList?.at(-1)?.backend);
+  // Said once a turn ran here, not for one that ended before the view opened.
+  const ran = useRef(false);
+  if (running) ran.current = true;
   // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
   const tail = all.at(-1);
   // A finished setup under the newest message leaves it the turn's top, so Thinking shows under it.
@@ -360,6 +364,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           <div data-end aria-hidden className="end-snap-target" />
         </div>
       </div>
+      {/* A screen reader hears a turn start and end, as a polite status. */}
+      <p role="status" className="sr-only">{running ? `${agent} is working` : ran.current ? `${agent} finished` : ""}</p>
       <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Kept in place and faded in and out (the old app's look). */}
       <button
