@@ -14,6 +14,9 @@ export type RepoInfo = { current: string | null; branches: string[]; worktrees: 
 export type RepoState = { info?: RepoInfo; error?: string; loading: boolean; refresh: () => void };
 
 /** The project's branches and worktrees, read again each time a picker opens. */
+/** Each project's last read, so Home shows its branch at once while it's read again. */
+const known = new Map<string, RepoInfo>();
+
 export function useRepo(project: string | undefined, on: boolean): RepoState {
   const [got, setGot] = useState<{ project: string; info?: RepoInfo; error?: string } | null>(null);
   const [asked, setAsked] = useState(0);
@@ -21,7 +24,10 @@ export function useRepo(project: string | undefined, on: boolean): RepoState {
     if (!project || !on) return;
     let live = true;
     run(["projects", "branches", project]).then(
-      (reply) => live && setGot({ project, info: reply.repo as RepoInfo }),
+      (reply) => {
+        if (reply.repo) known.set(project, reply.repo as RepoInfo);
+        if (live) setGot({ project, info: reply.repo as RepoInfo });
+      },
       (cause) => live && setGot({ project, error: errorText(cause) }),
     );
     return () => {
@@ -29,7 +35,8 @@ export function useRepo(project: string | undefined, on: boolean): RepoState {
     };
   }, [project, on, asked]);
   const mine = got?.project === project ? got : null;
-  return { info: mine?.info, error: mine?.error, loading: !mine, refresh: () => setAsked((now) => now + 1) };
+  const last = project === undefined ? undefined : known.get(project);
+  return { info: mine?.info ?? (mine ? undefined : last), error: mine?.error, loading: !mine && !last, refresh: () => setAsked((now) => now + 1) };
 }
 
 const folderName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
@@ -112,7 +119,8 @@ export function BranchPicker({
           <ComposerPill
             aria-label={local ? `Branch: ${label}` : existing ? `Worktree: ${label}` : `Base branch: ${label}`}
             title={local ? "The branch your checkout has: the session works on it" : existing ? "Which worktree should this session work in?" : "What branch should this session start from?"}
-            className={RAIL_PILL}
+            // Never a placeholder for the branch: held unseen, in its place, until the first read.
+            className={cx(RAIL_PILL, loading && "invisible")}
           />
         }
       >
