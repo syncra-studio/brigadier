@@ -182,7 +182,9 @@ export const isWorking = (row: Row | undefined) => (row as ComposerRow | undefin
 export function useGitWatch(owner: string | null): void {
   const { daemon, rows } = useDaemon();
   const project = useHomeProject();
-  const starting = useStart(owner ?? "")?.asking === true;
+  // A Local or existing checkout is there once Rust has the session: no wait for its agent to start [D85].
+  const start = useStart(owner ?? "");
+  const starting = start?.asking === true && !(start.args.includes("--local") && rows?.some((each) => each.id === owner));
   const target: Target | null = owner === null ? null : owner !== HOME ? { session: owner } : project ? { project: project.id } : null;
   const key = target && JSON.stringify(target);
   // Before the paint, so a switch never shows the last checkout's read or an empty one for a frame [D1258].

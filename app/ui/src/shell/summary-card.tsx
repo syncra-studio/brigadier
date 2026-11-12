@@ -5,7 +5,7 @@ import { Popover } from "@base-ui/react/popover";
 
 import { cx } from "../components/cx";
 import { tokenMs } from "../components/tooltip";
-import { useDaemon } from "../daemon";
+import { threadSource, useDaemon } from "../daemon";
 import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
@@ -265,10 +265,16 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       live = false;
     };
   }, [owner, has, updated]);
+  // Until its new worktree's first read, the branch Rust named for it, so the card is whole as the session starts [D85].
+  // shortcut: a branch renamed since shows its old name until that read lands; have Rust's row carry the branch if that shows.
+  const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
+  const making = session?.id === owner ? session.setup?.steps.find((step) => step.kind === "worktree" && step.state !== "failed") : undefined;
+  const named = making?.kind === "worktree" ? making.branch : null;
+  const shown = summaryReady(data) || !named ? data : { ...data, source: { checkout: "worktree" as const, branch: named, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] } };
   // Not drawn until its data is in: no skeleton first.
-  const card = has && summaryReady(data) ? (
+  const card = has && summaryReady(shown) ? (
     <>
-      <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<WorkersCard owner={owner} />} />
+      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} workers={<WorkersCard owner={owner} />} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;
