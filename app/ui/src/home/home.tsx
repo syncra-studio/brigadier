@@ -210,8 +210,8 @@ export function StartingBubble({ id }: { id: string }) {
       time={entry.sent}
       // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
       dated
-      // Its files are still in Home's draft folder until the start moves them.
-      owner={HOME_DRAFT}
+      // Rust moves its files into the session as the start begins, before the worktree is made.
+      owner={id}
       parts={entry.parts ? (JSON.parse(entry.parts) as Draft).parts : undefined}
       unconfirmed={entry.unknown}
       failed={entry.error}

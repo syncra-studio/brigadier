@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -62,7 +62,17 @@ type Node = {
 
 /** Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. */
 const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
-  ...(chip && { a: ({ node: _, href, ...link }) => (href?.startsWith("chip:") ? chip(Number(href.slice(5))) : <a href={href} {...link} />) }),
+  ...(chip && {
+    a: ({ node: _, href, ...link }) => (href?.startsWith("chip:") ? chip(Number(href.slice(5))) : <a href={href} {...link} />),
+    // A chip typed between backticks still shows as itself, as the old app lifted it out of the code.
+    // shortcut: one inside a fenced block shows its placeholder, until a user's code block draws chips.
+    code: ({ node: _, children, ...rest }) =>
+      typeof children === "string" ? (
+        children.split(/\[@\]\(chip:(\d+)\)/).map((piece, at) => (at % 2 ? <Fragment key={at}>{chip(Number(piece))}</Fragment> : piece && <code key={at} {...rest}>{piece}</code>))
+      ) : (
+        <code {...rest}>{children}</code>
+      ),
+  }),
   pre: ({ node, children }) => {
     const code = (node as Node | undefined)?.children?.[0];
     if (code?.tagName !== "code") return <pre>{children}</pre>;
