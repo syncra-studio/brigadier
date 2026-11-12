@@ -75,6 +75,9 @@ fn pick(
     Ok((agent, Some(model), effort))
 }
 
+/// How deep workers may start workers of their own; a worker at this depth can't [D2026, D3038].
+const DEEPEST: u64 = 4;
+
 /// `brigadier start "<brief>" [--agent A] [--model M] [--effort E] [--title T]`, for session `me`'s
 /// agent: reserves the worker under its family's lock and answers at once [D3000]; the worker is
 /// made and launched off this call. `running`: whether a session's turn runs now.
@@ -86,8 +89,7 @@ pub fn start(
     running: &dyn Fn(&str) -> bool,
 ) -> Value {
     let (root, depth) = place(data, me);
-    let deepest = setting(data, "worker_depth", 4);
-    if depth >= deepest {
+    if depth >= DEEPEST {
         return refuse(&format!(
             "You're a worker at depth {depth}, the deepest allowed, so you can't start workers. Do it yourself, or use your own subagents."
         ));

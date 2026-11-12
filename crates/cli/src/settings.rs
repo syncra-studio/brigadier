@@ -16,7 +16,7 @@ static SETTINGS: Mutex<()> = Mutex::new(());
 const SWITCH: &[&str] = &["true", "false"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 8] = [
+const KEYS: [(&str, &[&str]); 7] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -36,8 +36,6 @@ const KEYS: [(&str, &[&str]); 8] = [
             "6", "1", "2", "3", "4", "5", "7", "8", "9", "10", "11", "12",
         ],
     ),
-    // How deep workers may start workers of their own [D2026]; 1 to 8 is proposed.
-    ("worker_depth", &["4", "1", "2", "3", "5", "6", "7", "8"]),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.

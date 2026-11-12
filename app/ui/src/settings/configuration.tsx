@@ -12,13 +12,12 @@ import { SettingsPage, SettingsSection } from "./parts";
 export const CONFIGURATION_ROWS = {
   permission: { label: "Default permission level", description: "Choose how much new sessions may do without asking" },
   ...Object.fromEntries(LEVELS.map(({ level, label, detail }) => [level, { label, description: detail, section: "Default permission level" }])),
-  // The old app's row; its description and the depth row are proposed [D3029].
+  // The old app's row; its description is proposed [D3029].
   workers: { label: "Workers at once", description: "How many workers a session and its workers may run at the same time", section: "Workers" },
-  worker_depth: { label: "Worker depth", description: "How many levels of workers may start workers of their own", section: "Workers" },
 } as const;
 
-/** The numbers each Workers row offers; Rust refuses any other [D3001, D2026]. */
-const COUNTS = { workers: 12, worker_depth: 8 } as const;
+/** The numbers Workers at once offers; Rust refuses any other [D3001]. */
+const COUNTS = 12;
 
 /**
  * Configuration, the old app's page cut to its one row we have [D187, D2022]: the level a new session starts on in
@@ -47,16 +46,14 @@ export function ConfigurationPage() {
       {settings && (
         <SettingsSection title="Workers">
           <SettingsCard>
-            {(["workers", "worker_depth"] as const).map((key) => (
-              <SettingsRow key={key} label={CONFIGURATION_ROWS[key].label} description={CONFIGURATION_ROWS[key].description}>
-                <Select
-                  label={CONFIGURATION_ROWS[key].label}
-                  value={settings[key]}
-                  options={Array.from({ length: COUNTS[key] }, (_, at) => ({ value: String(at + 1), label: String(at + 1) }))}
-                  onChange={(count) => save.run(() => setSetting(key, count))}
-                />
-              </SettingsRow>
-            ))}
+            <SettingsRow label={CONFIGURATION_ROWS.workers.label} description={CONFIGURATION_ROWS.workers.description}>
+              <Select
+                label={CONFIGURATION_ROWS.workers.label}
+                value={settings.workers}
+                options={Array.from({ length: COUNTS }, (_, at) => ({ value: String(at + 1), label: String(at + 1) }))}
+                onChange={(count) => save.run(() => setSetting("workers", count))}
+              />
+            </SettingsRow>
           </SettingsCard>
         </SettingsSection>
       )}
