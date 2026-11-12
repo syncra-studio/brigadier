@@ -5,7 +5,6 @@ import { type ReactNode, useState } from "react";
 import { ComposerCard } from "../src/components/composer/composer";
 import { ComposerRail } from "../src/components/composer/rail";
 import { TooltipIconButton } from "../src/components/icon-button";
-import { Body } from "../src/components/thread/body";
 import { TitlebarTips } from "../src/components/tooltip";
 import { X } from "../src/icons";
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
@@ -14,7 +13,7 @@ import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/worker
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
 import { WorkersStrip } from "../src/workers/strip";
-import { WorkerHeader, WorkerThread } from "../src/workers/view";
+import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
@@ -95,19 +94,21 @@ const tool = (id: string, step: "read" | "run" | "edit" | "search", name: string
   exitCode: 0,
 });
 const reply = (id: string, text: string): Item => ({ id, turnId: DONE_TURN.id, kind: "message", role: "assistant", text, streaming: false, final: true });
-const body = (item: Item) => <Body key={item.id} item={item} turn={DONE_TURN} step={item.kind === "tool"} />;
 
 const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2", "run", "shell", "cargo test -p upload")];
 const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
 const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
-/** A worker opened in the panel: its header and thread. */
-function View({ shown, children, workedMs, previous, live }: { shown: Worker; children?: ReactNode; workedMs?: number; previous?: ReactNode[]; live?: string }) {
+/** A worker opened in the panel: its header and thread, or its details. */
+function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
+  const [details, setDetails] = useState(false);
   return (
     <Panel>
       <WorkerHeader
         worker={shown}
-        onBack={noop}
+        details={details}
+        onBack={() => setDetails(false)}
+        onToggleDetails={() => setDetails(!details)}
         actions={
           <TitlebarTips>
             <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={noop}>
@@ -116,9 +117,7 @@ function View({ shown, children, workedMs, previous, live }: { shown: Worker; ch
           </TitlebarTips>
         }
       />
-      <WorkerThread worker={shown} workedMs={workedMs} previous={previous} live={live}>
-        {children}
-      </WorkerThread>
+      {details ? <WorkerDetails worker={shown} /> : <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />}
     </Panel>
   );
 }
@@ -134,10 +133,8 @@ function LivePanel() {
       <Panel>
         {shown ? (
           <>
-            <WorkerHeader worker={shown} onBack={() => setOpen(null)} />
-            <WorkerThread worker={shown} workedMs={184_000} live="Thinking">
-              {RECENT.map(body)}
-            </WorkerThread>
+            <WorkerHeader worker={shown} details={false} onBack={() => setOpen(null)} onToggleDetails={noop} />
+            <WorkerThread worker={shown} items={RECENT} turns={[DONE_TURN]} />
           </>
         ) : (
           <>
@@ -295,22 +292,16 @@ export function WorkersGallery() {
         </Row>
         <Row name="A worker opened">
           <State label="Working">
-            <View shown={RETRY} live="Thinking">
-              {RECENT.map(body)}
-            </View>
+            <View shown={RETRY} items={RECENT} />
           </State>
           <State label="Needs you">
-            <View shown={HELD}>{RECENT.map(body)}</View>
+            <View shown={HELD} items={RECENT} />
           </State>
           <State label="Ended">
-            <View shown={STATES[7]!} workedMs={190_000}>
-              {RECENT.map(body)}
-            </View>
+            <View shown={STATES[7]!} items={RECENT} />
           </State>
           <State label="Done, its earlier work folded">
-            <View shown={STATES[10]!} workedMs={184_000} previous={EARLIER.map(body)}>
-              {[...RECENT, ANSWER].map(body)}
-            </View>
+            <View shown={STATES[10]!} items={[...EARLIER, ...RECENT, ANSWER]} />
           </State>
         </Row>
       </Section>

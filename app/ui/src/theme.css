@@ -270,6 +270,8 @@
   --spacing-control-sm: 1.75rem;
   --spacing-control-md: 2rem;
   --spacing-control-lg: 2.5rem;
+  /* How near the bottom a worker's thread still follows new output (old tokens.css:310). */
+  --spacing-row: 2rem;
   --spacing-icon-xs: 0.75rem;
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;

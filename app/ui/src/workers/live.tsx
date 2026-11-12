@@ -1,4 +1,4 @@
-import { type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
@@ -18,7 +18,7 @@ import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerState
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
-import { WorkerHeader, WorkerThread } from "./view";
+import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
  * 4.2's drawn parts on Rust's rows [D3010, D3012, D3013, D3018]: a worker's row carries `worker`, which Rust folds
@@ -294,10 +294,11 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
   );
 }
 
-/** A worker opened: its header, brief and thread, Rust's snapshot of it, asked again as its row changes [D3013]. */
+/** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
 function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () => void; onClose: () => void }) {
   const updated = useDaemon().rows?.find((row) => row.id === worker.id)?.updated;
   const [{ items, turns }, setSnapshot] = useState<{ items: Item[]; turns: Turn[] }>({ items: [], turns: [] });
+  const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
     ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [] }));
@@ -307,11 +308,14 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
   }, [worker.id, updated]);
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
+  const rest = useMemo(() => items.filter((item) => item !== brief), [items, brief]);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
         worker={worker}
-        onBack={onBack}
+        details={details}
+        onBack={() => (details ? setDetails(false) : onBack())}
+        onToggleDetails={() => setDetails(!details)}
         actions={
           <TitlebarTips>
             <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
@@ -320,13 +324,7 @@ function WorkerView({ worker, onBack, onClose }: { worker: Worker; onBack: () =>
           </TitlebarTips>
         }
       />
-      <WorkerThread worker={worker}>
-        {items
-          .filter((item) => item !== brief)
-          .map((item) => (
-            <Body key={item.id} item={item} turn={turns.find((turn) => turn.id === item.turnId)} step={item.kind === "tool"} />
-          ))}
-      </WorkerThread>
+      {details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} />}
     </section>
   );
 }

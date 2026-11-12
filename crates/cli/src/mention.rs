@@ -29,8 +29,8 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         .unwrap_or_default();
     let mut chats: Vec<&Value> = (rows.values())
         .filter(|r| r["id"] != owner && matches!(r["archived"], Value::Null | Value::Bool(false)))
-        // Its own workers are under Workers.
-        .filter(|r| r["worker"]["parent"] != owner)
+        // No worker is a chat: its own are under Workers, others' none, as the old app's workers weren't conversations.
+        .filter(|r| r["worker"].is_null())
         .collect();
     chats.sort_by_key(|r| std::cmp::Reverse(r["touched"].as_u64().unwrap_or(0)));
     let chat = |r: &Value| {
