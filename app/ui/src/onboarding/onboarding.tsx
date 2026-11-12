@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AgentsStep } from "./agents";
-import { type Profile, setProfile } from "./api";
+import { errorText, type Profile, setProfile } from "./api";
 import "./onboarding.css";
 import { type Step, STEPS, TopBar } from "./parts";
 import { ProjectsStep } from "./projects";
@@ -16,6 +16,8 @@ export function Onboarding({ profile }: { profile: Profile }) {
   const [step, setStep] = useState<Step>(() => (!profile.intro_seen ? "intro" : profile.name ? "agents" : "name"));
   const [reached, setReached] = useState(() => Math.max(STEPS.indexOf(step), 0));
   const stopSound = useRef<(() => void) | null>(null);
+  // A name that couldn't be saved brings its step back, with the name as typed and why.
+  const [nameFailed, setNameFailed] = useState<{ name: string; error: string } | null>(null);
   // Leaving the welcome before its sound has ended fades it out.
   useEffect(() => () => stopSound.current?.(), []);
 
@@ -30,15 +32,21 @@ export function Onboarding({ profile }: { profile: Profile }) {
       {step === "intro" || step === "name" ? (
         <Welcome
           step={step}
-          name={profile.name}
+          name={nameFailed?.name ?? profile.name}
+          nameError={nameFailed?.error ?? null}
           onSound={(stop) => (stopSound.current = stop)}
           onContinue={() => {
             go("name");
             setProfile(["--intro"], { intro_seen: true }).catch((error: unknown) => console.error(error));
           }}
-          onName={async (name) => {
-            await setProfile(["--name", name], { name });
+          onName={(name) => {
+            // The agents come in at once; the name is saved meanwhile.
+            setNameFailed(null);
             go("agents");
+            setProfile(["--name", name], { name }).catch((cause: unknown) => {
+              setNameFailed({ name, error: errorText(cause) });
+              go("name");
+            });
           }}
         />
       ) : step === "agents" ? (

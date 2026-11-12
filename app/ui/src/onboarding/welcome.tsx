@@ -2,7 +2,7 @@ import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 
 
 import { ErrorLine } from "../components/error-line";
 import { tokenMs } from "../components/tooltip";
-import { errorText, intro } from "./api";
+import { intro } from "./api";
 import { IntroCanvas, WINDOW_SHAPED } from "./intro-canvas";
 import { BrigadierMark } from "./mark";
 import { ContinueButton, useFocusOnMount } from "./parts";
@@ -37,13 +37,14 @@ const logged = (promise: Promise<unknown> | undefined) => void promise?.catch((e
  * Escape, or reduced motion, shows the end at once. Continuing fades the title and the waves out,
  * and the name comes in on the same dark.
  */
-export function Welcome({ step, name, onSound, onContinue, onName }: {
+export function Welcome({ step, name, nameError, onSound, onContinue, onName }: {
   step: "intro" | "name";
   name: string;
+  nameError: string | null;
   /** The sound started: stops it (fading) if the welcome closes before it ends. */
   onSound: (stop: () => void) => void;
   onContinue: () => void;
-  onName: (name: string) => Promise<void>;
+  onName: (name: string) => void;
 }) {
   const [start, setStart] = useState<number | null>(null);
   const [settled, setSettled] = useState(() => step !== "intro" || reducedMotion());
@@ -235,37 +236,27 @@ export function Welcome({ step, name, onSound, onContinue, onName }: {
           </div>
         </div>
       ) : (
-        <NameForm name={name} onName={onName} />
+        <NameForm name={name} error={nameError} onName={onName} />
       )}
     </div>
   );
 }
 
 /** "What should we call you?" under the mark: one borderless field; Continue saves it once it holds more than spaces. */
-function NameForm({ name, onName }: { name: string; onName: (name: string) => Promise<void> }) {
+function NameForm({ name, error, onName }: { name: string; error: string | null; onName: (name: string) => void }) {
   const id = useId();
   const [value, setValue] = useState(name);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const trimmed = value.trim();
   const input = useFocusOnMount<HTMLInputElement>();
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!trimmed || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onName(trimmed);
-    } catch (cause) {
-      setError(errorText(cause));
-      setBusy(false);
-    }
+    if (trimmed) onName(trimmed);
   };
 
   return (
     <div className="welcome-name app-no-drag">
-      <form id={id} className="welcome-name-body" onSubmit={(event) => void submit(event)}>
+      <form id={id} className="welcome-name-body" onSubmit={submit}>
         <div className="welcome-mark" aria-hidden>
           <BrigadierMark className="block size-full overflow-visible" />
         </div>
@@ -281,15 +272,14 @@ function NameForm({ name, onName }: { name: string; onName: (name: string) => Pr
           placeholder="Your name"
           maxLength={80}
           value={value}
-          disabled={busy}
           aria-invalid={error !== null || undefined}
           onChange={(event) => setValue(event.target.value)}
-          className="w-full max-w-80 bg-transparent text-center text-lg outline-none placeholder:text-setup-hint disabled:opacity-disabled"
+          className="w-full max-w-80 bg-transparent text-center text-lg outline-none placeholder:text-setup-hint"
         />
         <ErrorLine size="sm" error={error} className="mt-3" />
       </form>
       <div className="welcome-continue">
-        <ContinueButton ready={trimmed !== ""} busy={busy} form={id} />
+        <ContinueButton ready={trimmed !== ""} form={id} />
       </div>
     </div>
   );
