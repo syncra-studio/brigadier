@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 
 import { BranchAlt, Spinner } from "../../icons";
-import { type ModelChoice, type ModelGroup, ModelPicker, SwitchAgentDialog } from "../composer/model-picker";
+import { type ModelChoice, type ModelGroup, ModelPicker } from "../composer/model-picker";
+import { SwitchAgentDialog } from "../composer/switch-agent";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import {

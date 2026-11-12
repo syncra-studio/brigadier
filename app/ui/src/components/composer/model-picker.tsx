@@ -9,10 +9,8 @@ import { Segment, SegmentedRoot } from "../segmented";
 import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
-import { focusChoice, moveKeys } from "./model-keys";
+import { focusChoice, moveKeys, useClosesOnTyping } from "./model-keys";
 import { SwitchAgentDialog } from "./switch-agent";
-
-export { SwitchAgentDialog };
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
 export type Model = {
@@ -181,6 +179,7 @@ export function ModelPicker({
     focusChoice(footer.current?.querySelector("[data-picker-part=effort]") ?? null);
   });
 
+  useClosesOnTyping(open, () => (setOpen(false), onClose?.(false)));
   // Another agent's model is a switch (Rust starts a new conversation with a hand-off): asked first.
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
@@ -373,7 +372,7 @@ export function ModelPicker({
                   <div aria-hidden className="w-px shrink-0 bg-divider" />
                 </>
               )}
-              <div className={cx("flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1.5", auto && "opacity-disabled")}>
+              <div className={cx("flex min-h-0 min-w-0 flex-1 scroll-edge-fade edge-fade-settings-nav flex-col overflow-y-auto p-1.5", auto && "opacity-disabled")}>
                 <div
                   role="listbox"
                   aria-label={matches ? "Matching models" : group ? `${group.label} models` : "Favorites"}
@@ -437,7 +436,8 @@ export function ModelPicker({
               </div>
             </div>
             {efforts && (
-              <div ref={footer} className={cx("shrink-0 border-t border-divider", auto && "opacity-disabled")}>
+              // Another model's levels start fresh: the last one's fill never fades out over the new one's.
+              <div ref={footer} key={inHand ? `${inHand.provider}/${inHand.model.id}` : ""} className={cx("shrink-0 border-t border-divider", auto && "opacity-disabled")}>
                 <div className={cx(FOOTER_ROW, "h-11")}>
                   <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                     Effort

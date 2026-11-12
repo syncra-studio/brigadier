@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+import { type KeyboardEvent, useEffect } from "react";
 
 const rowsOf = (list: Element | null) => [...(list?.querySelectorAll<HTMLElement>("[role=option], [data-picker-older]") ?? [])];
 const part = (root: Element, name: string) => root.querySelector<HTMLElement>(`[data-picker-part=${name}]`);
@@ -53,4 +53,18 @@ export function moveKeys(event: KeyboardEvent<HTMLDivElement>, search: HTMLInput
   else if (event.key === "ArrowLeft" && name === "models") selected(rowsOf(part(root, "agents")))?.focus();
   else return;
   event.preventDefault();
+}
+
+const TEXT_FIELD = "input, textarea, [contenteditable=true], [contenteditable='']";
+
+/** Base UI keeps a popover open when focus goes back to the field it came from: typing there, or in any field outside the picker, closes it. */
+export function useClosesOnTyping(open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const typing = (event: FocusEvent) => {
+      if (event.target instanceof Element && event.target.matches(TEXT_FIELD) && !event.target.closest("[data-slot=model-picker]")) close();
+    };
+    document.addEventListener("focusin", typing, true);
+    return () => document.removeEventListener("focusin", typing, true);
+  }, [open]);
 }
