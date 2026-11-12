@@ -294,6 +294,8 @@
   --container-trust: 26.25rem;
   --container-project-dialog: 35rem;
   --container-feedback: 37.5rem;
+  /* The reader: its title, then its text scrolling under it (the old .page-paste-dialog's rows). */
+  --grid-template-rows-reader: auto minmax(0, 1fr);
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;

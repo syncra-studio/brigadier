@@ -28,7 +28,10 @@ declare global {
       /** Opens an https link in the browser, with no click needed. */
       openLink(url: string): void;
       /** Opens an attachment (`/attachment/<home|session>/<id>`) in its default app. */
-      openAttachment(at: string): void;
+      /** False when the file would run a program, so it wasn't opened. */
+      openAttachment(at: string): Promise<boolean>;
+      /** Asks where, then saves a copy; false when cancelled. */
+      saveAttachment(at: string, name: string): Promise<boolean>;
       /** A macOS notice; what macOS did with it: shown, blocked (notifications are off for Brigadier), or failed. */
       notify(notice: { title: string; body: string; silent: boolean; session?: string }): Promise<"shown" | "blocked" | "failed">;
       /** The Dock's badge: the count, none at 0. */

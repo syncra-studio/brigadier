@@ -1,6 +1,7 @@
 //! `commands <id>` or `commands @home --backend B [--project P]`: the / menu's list, the agent's own
 //! commands as it last listed them. Kept per agent and project, so Home's draft and a session the
-//! agent hasn't started in yet show it without starting a CLI [D2009, D2022].
+//! agent hasn't started in yet show it without starting a CLI [D2009, D2022]. `commands <id> reveal <name>`
+//! shows a listed one's file in Finder.
 
 use super::{HOME_DRAFT, arg, flag};
 use brigadier_core::{self as core, check_id};
@@ -12,7 +13,11 @@ use std::path::{Path, PathBuf};
 fn kept(data: &Path, backend: &str, project: Option<&str>) -> Option<PathBuf> {
     let project = project.filter(|p| check_id(p).is_ok())?;
     check_id(backend).ok()?;
-    Some(data.join("commands").join(backend).join(format!("{project}.json")))
+    Some(
+        data.join("commands")
+            .join(backend)
+            .join(format!("{project}.json")),
+    )
 }
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -29,10 +34,28 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             b => b.to_string(),
         };
         let mut listed = f.fold.commands.get(&backend).cloned();
-        // A file in the checkout opens in Files' viewer by its path there; one outside it, not [D146].
+        // `reveal <name>`: a listed file outside the checkout shows in Finder, as the old app's file links [D2098].
+        if args.get(2).map(String::as_str) == Some("reveal") {
+            let name = arg(args, 3)?;
+            let path = (listed.iter().flat_map(|l| l.as_array()).flatten())
+                .find(|each| each["name"] == name)
+                .and_then(|each| each["path"].as_str())
+                .ok_or_else(|| io::Error::other(format!("/{name} has no file to show")))?;
+            let shown = std::process::Command::new("open")
+                .arg("-R")
+                .arg(path)
+                .status()?;
+            return match shown.success() {
+                true => Ok(json!({"ok": true})),
+                false => Err(io::Error::other(format!("Couldn't reveal {path}"))),
+            };
+        }
+        // A file in the checkout opens in Files' viewer by its path there; one outside it keeps its whole path [D146].
         for each in (listed.iter_mut()).flat_map(|l| l.as_array_mut()).flatten() {
             let path = Path::new(each["path"].as_str().unwrap_or(""));
-            each["path"] = (path.strip_prefix(&spec.cwd).ok()).map(|p| p.to_string_lossy()).into();
+            if let Ok(inside) = path.strip_prefix(&spec.cwd) {
+                each["path"] = inside.to_string_lossy().into();
+            }
         }
         (backend, spec.project, listed)
     };

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "../src/components/button";
 import { Copy, X } from "../src/icons";
+import { Reader } from "../src/components/reader";
 import * as k from "./current";
 import { Row, Section, State } from "./parts";
 
@@ -145,6 +146,29 @@ function Dialogs() {
   );
 }
 
+/** A sent text file or paste, read only: plain text as written, Markdown as the answers show it. */
+function Readers() {
+  const [reading, setReading] = useState<{ title: string; url: string; markdown: boolean } | null>(null);
+  const [open, setOpen] = useState(false);
+  const read = (title: string, text: string, markdown: boolean) => {
+    setReading({ title, url: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`, markdown });
+    setOpen(true);
+  };
+  return (
+    <Section title="Reader">
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => read("Pasted text #1", "npm ERR! code ERESOLVE\nnpm ERR! ERESOLVE unable to resolve dependency tree\n\n    at node:internal/main:1:1", false)}>
+          Pasted text
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => read("notes.md", "# Release notes\n\n- The reader opens sent text files\n- `Download` saves an image\n\n```ts\nconst a = 1;\n```", true)}>
+          Markdown file
+        </Button>
+      </div>
+      <Reader reading={reading} open={open} onOpenChange={setOpen} />
+    </Section>
+  );
+}
+
 /** Confirming shows it busy for a moment, as a real action does. */
 function Confirms() {
   const [open, setOpen] = useState(false);
@@ -234,6 +258,7 @@ export function Popups() {
       <Popovers />
       <Selects />
       <Dialogs />
+      <Readers />
       <Confirms />
       <Toasts />
       <Spinners />

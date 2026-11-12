@@ -178,32 +178,35 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
 }
 
 /** A sent file on the card, as `attach <id> list` gives it. */
-export type CardFile = { id: string; name: string; mime: string; url: string };
+export type CardFile = { id: string; name: string; label?: string | null; mime: string; url: string };
 
 /**
  * The old card's "Attachments": the files the session's messages carried, each opening with one click, an image in
  * the viewer with the others beside it [D1048, D1274]. A name already taken gets " (2)" after it, as the old rows.
  */
-export function AttachmentsCard({ files, onOpen }: { files: readonly CardFile[]; onOpen: (file: CardFile) => void }) {
+export function AttachmentsCard({ files, onOpen }: { files: readonly CardFile[]; onOpen: (file: CardFile, label: string) => void }) {
   if (files.length === 0) return null;
   const taken = new Set<string>();
-  const label = (file: CardFile) => {
-    const name = file.name === "Pasted text.txt" ? "Pasted text" : file.name;
-    let each = name;
-    for (let copy = 2; taken.has(each); copy += 1) each = `${name} (${copy})`;
-    taken.add(each);
-    return each;
-  };
+  const labels = new Map(
+    files.map((file) => {
+      const name = file.label ?? (file.name === "Pasted text.txt" ? "Pasted text" : file.name);
+      let each = name;
+      for (let copy = 2; taken.has(each); copy += 1) each = `${name} (${copy})`;
+      taken.add(each);
+      return [file.id, each];
+    }),
+  );
   const images = files.filter((file) => file.mime.startsWith("image/"));
+  const gallery = images.map((file) => ({ name: labels.get(file.id)!, url: file.url }));
   return (
     <CardSection title="Attachments">
       {files.map((file) => (
         <Line
           key={file.id}
           icon={file.mime.startsWith("image/") ? <img src={file.url} alt="" draggable={false} className="size-icon-md rounded-xs object-cover" /> : <FileTypeIcon name={file.name} />}
-          onClick={() => (file.mime.startsWith("image/") ? viewImage(images, images.indexOf(file)) : onOpen(file))}
+          onClick={() => (file.mime.startsWith("image/") ? viewImage(gallery, images.indexOf(file)) : onOpen(file, labels.get(file.id)!))}
         >
-          {label(file)}
+          {labels.get(file.id)}
         </Line>
       ))}
     </CardSection>

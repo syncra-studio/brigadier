@@ -28,6 +28,7 @@ import { ChecksFailedRows, failing } from "./landing/live";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { ImageViewerHost } from "./components/image-viewer";
+import { ReaderHost } from "./components/reader";
 import { ThreadDrop } from "./session/files";
 import { RewindProvider } from "./session/rewind";
 import { answeringSource } from "./session/decisions";
@@ -296,6 +297,7 @@ createRoot(document.getElementById("root")!).render(
         <GlobalSearch />
         <Toaster className="top-titlebar" />
         <ImageViewerHost />
+        <ReaderHost />
       </>
     )}
   </TooltipProvider>,

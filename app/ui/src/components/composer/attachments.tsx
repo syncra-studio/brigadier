@@ -256,6 +256,8 @@ export function AttachmentTiles({ ids, onRemove }: { ids: readonly string[]; onR
   );
 }
 
+type SentTile = { id: string; name: string; mime: string; bytes: number; pasted?: boolean; url: string };
+
 /**
  * A sent message's files, above its bubble: images as smaller thumbnails that open the viewer, other files as
  * cards with their kind and size that open with one click, as the old app's message attachments [D146].
@@ -264,8 +266,8 @@ export function SentAttachments({
   files,
   onOpen,
 }: {
-  files: readonly { id: string; name: string; mime: string; bytes: number; pasted?: boolean; url: string }[];
-  onOpen: (id: string) => void;
+  files: readonly SentTile[];
+  onOpen: (file: SentTile) => void;
 }) {
   if (files.length === 0) return null;
   const images = files.filter((file) => file.mime.startsWith("image/"));
@@ -287,7 +289,7 @@ export function SentAttachments({
               </button>
             </ImagePreview>
           ) : (
-            <button type="button" aria-label={`Open ${file.pasted ? "Pasted text" : file.name}`} onClick={() => onOpen(file.id)} className="cursor-pointer rounded-surface text-start focus-visible:focus-ring">
+            <button type="button" aria-label={`Open ${file.pasted ? "Pasted text" : file.name}`} onClick={() => onOpen(file)} className="cursor-pointer rounded-surface text-start focus-visible:focus-ring">
               <Tile
                 slot="attachment-file"
                 hint={file.name}

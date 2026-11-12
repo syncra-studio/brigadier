@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Popover } from "@base-ui/react/popover";
 
 import { cx } from "../components/cx";
+import { openSent } from "../components/reader";
 import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { AttachmentsCard, type CardFile, GitCard } from "../panel/card";
@@ -258,7 +259,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
     let live = true;
     void daemonRun(["attach", owner, "list"]).then((reply) => {
       const sent = (reply.files ?? []).filter((file: { sent: boolean }) => file.sent);
-      if (live) setFiles(sent.map((file: CardFile) => ({ id: file.id, name: file.name, mime: file.mime, url: `/attachment/${owner}/${file.id}` })));
+      if (live) setFiles(sent.map((file: CardFile) => ({ id: file.id, name: file.name, label: file.label, mime: file.mime, url: `/attachment/${owner}/${file.id}` })));
     });
     return () => {
       live = false;
@@ -267,7 +268,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const card = has ? (
     <>
       <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} />
-      <AttachmentsCard files={files} onOpen={(file) => window.brigadier?.openAttachment(`/attachment/${owner}/${file.id}`)} />
+      <AttachmentsCard files={files} onOpen={(file, label) => openSent(file, file.url, label)} />
     </>
   ) : null;
   return (

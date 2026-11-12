@@ -16,7 +16,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import { ChevronLeft, ChevronRight, Minus, Plus, X } from "../icons";
+import { ChevronLeft, ChevronRight, Download, Minus, Plus, X } from "../icons";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./context-menu";
 import { cx } from "./cx";
 import { Dialog, DialogClose, DialogTitle, DialogTrigger } from "./dialog";
@@ -63,6 +63,15 @@ async function copyImage(url: string): Promise<void> {
   }
 }
 
+/** Saves a copy of a sent image where the user picks, starting in Downloads, as the old viewer's Download. */
+async function downloadImage(image: ViewerImage): Promise<void> {
+  try {
+    await window.brigadier?.saveAttachment(new URL(image.url, location.href).pathname, image.name || "image");
+  } catch {
+    showToast("Could not download image", { tone: "error" });
+  }
+}
+
 /** Reuse around thumbnail triggers so their right-click menu matches the full image. */
 export function ImageContextMenu({
   image,
@@ -75,6 +84,7 @@ export function ImageContextMenu({
       <ContextMenuTrigger render={children} {...trigger} />
       <ContextMenuContent>
         <ContextMenuItem onClick={() => void copyImage(image.url)}>Copy image</ContextMenuItem>
+        <ContextMenuItem onClick={() => void downloadImage(image)}>Download image</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -399,6 +409,9 @@ function ShownImage({
   return (
     <>
       <div className="absolute top-3 right-3 z-10 flex gap-2">
+        <button type="button" aria-label="Download image" title="Download image" className={roundButton} onClick={() => void downloadImage(image)}>
+          <Download className="size-icon-md" />
+        </button>
         <DialogClose aria-label="Close image preview" title="Close image preview" className={roundButton}>
           <X className="size-icon-md" />
         </DialogClose>
