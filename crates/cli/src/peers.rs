@@ -154,6 +154,8 @@ pub fn send(
     if text.len() > MOST {
         return refuse("Keep a message under 16 KB. Point to a file for more.");
     }
+    // One send at a time is counted and recorded, so parallel ones can't pass the rate together.
+    let one = COUNTING.lock().unwrap_or_else(|e| e.into_inner());
     let now = log::now_ms();
     let turn = core::fold(&core::session_dir(data, me), true).ok();
     let turn = turn.and_then(|f| f.fold.turns.first().map(|t| t.id.clone()));
@@ -179,6 +181,7 @@ pub fn send(
     if let Err(e) = save(data, me, "out", &out.mid, &out) {
         return refuse(&e.to_string());
     }
+    drop(one);
     let phase = if why.is_some() { "stopped" } else { "sent" };
     note(
         data,
@@ -186,7 +189,7 @@ pub fn send(
         json!({"phase": phase, "mid": out.mid, "to": to, "text": text, "wait": out.wait, "why": why}),
     );
     crash_at("sent");
-    open(me);
+    open(data, me);
     match why {
         Some("hops") => {
             return refuse(
@@ -377,19 +380,27 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     (out.hop, out.state, out.why, out.at) = (1, "written".into(), None, log::now_ms());
     save(data, id, "out", mid, &out)?;
     note(data, id, json!({"phase": "sent", "mid": mid}));
-    open(id);
+    open(data, id);
     let how = hand(data, id, &mut out)?;
     Ok(json!({"ok": true, "how": how, "at": crate::index::touched(&core::session_dir(data, id))}))
 }
 
 /// Senders with a message not yet settled; filled from disk at the daemon's first pass.
+static COUNTING: Mutex<()> = Mutex::new(());
 static OPEN: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
 /// Senders a pass runs for now.
 static PASSING: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
 
-fn open(id: &str) {
+/// Senders with messages on disk, read once at the daemon's first use.
+fn known(data: &Path) -> BTreeSet<String> {
+    let ids = core::ids(data).into_iter();
+    ids.filter(|id| core::session_dir(data, id).join("peers/out").exists())
+        .collect()
+}
+
+fn open(data: &Path, id: &str) {
     let mut open = OPEN.lock().unwrap();
-    open.get_or_insert_with(BTreeSet::new).insert(id.into());
+    open.get_or_insert_with(|| known(data)).insert(id.into());
 }
 
 const DONE: [&str; 5] = ["delivered", "uncertain", "dropped", "stopped", "refused"];
@@ -398,11 +409,7 @@ const DONE: [&str; 5] = ["delivered", "uncertain", "dropped", "stopped", "refuse
 pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
     let senders: Vec<String> = {
         let mut open = OPEN.lock().unwrap();
-        let open = open.get_or_insert_with(|| {
-            let ids = core::ids(data).into_iter();
-            ids.filter(|id| core::session_dir(data, id).join("peers/out").exists())
-                .collect()
-        });
+        let open = open.get_or_insert_with(|| known(data));
         open.retain(|id| rows.contains_key(id));
         open.iter().cloned().collect()
     };
