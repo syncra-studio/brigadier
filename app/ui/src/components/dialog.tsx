@@ -45,6 +45,21 @@ function usePinnedTop(area: HTMLElement | null | undefined) {
   );
 }
 
+/**
+ * Base UI's modal only hides the page from screen readers, so code focusing a field behind it (the composer)
+ * would let typing and Enter reach it. While the card is open, focus that lands outside every popup comes back
+ * to it. The gallery's held cards are left alone.
+ */
+function holdFocus(card: HTMLDivElement | null) {
+  if (!card || card.closest("[data-held]")) return;
+  const take = (event: FocusEvent) => {
+    // Focus moved inside a focus event doesn't take: moved right after it.
+    if (card.hasAttribute("data-open") && event.target instanceof Element && !event.target.closest("[data-base-ui-portal]")) queueMicrotask(() => card.focus());
+  };
+  document.addEventListener("focusin", take, true);
+  return () => document.removeEventListener("focusin", take, true);
+}
+
 type DialogContentProps = Omit<BaseDialog.Popup.Props, "className"> & {
   className?: string;
   /** A close button in the top corner. */
@@ -60,6 +75,17 @@ type DialogContentProps = Omit<BaseDialog.Popup.Props, "className"> & {
 /** A centred see-through card over the dimmed page. */
 export function DialogContent({ className, children, showCloseButton = true, container, frame = "max-w-dialog gap-4 p-5", top, ...props }: DialogContentProps) {
   const pin = usePinnedTop(container);
+  const ref = useCallback(
+    (card: HTMLDivElement | null) => {
+      const unpin = top ? undefined : pin(card);
+      const release = holdFocus(card);
+      return () => {
+        unpin?.();
+        release?.();
+      };
+    },
+    [pin, top],
+  );
   return (
     <BaseDialog.Portal container={container}>
       <BaseDialog.Backdrop
@@ -67,7 +93,7 @@ export function DialogContent({ className, children, showCloseButton = true, con
         className="fixed inset-0 isolate z-popup bg-dialog-backdrop backdrop-motion"
       />
       <BaseDialog.Popup
-        ref={top ? undefined : pin}
+        ref={ref}
         data-slot="dialog-content"
         className={cx(
           "fixed start-1/2 z-popup grid w-full -translate-x-1/2 bg-material text-sm text-foreground shadow-material dialog-card",
