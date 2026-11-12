@@ -174,11 +174,33 @@ impl Adapter for OpenCode {
             })
             .map(|p| s(p, &["name"]))
             .collect();
-        let models = text(&["models", "--standalone"])?
-            .lines()
-            .filter(|l| l.contains('/') && !l.contains(' '))
-            .map(|l| ModelInfo::plain(l, LOCAL.iter().any(|p| l.starts_with(&format!("{p}/")))))
+        let local = |id: &str| LOCAL.iter().any(|p| id.starts_with(&format!("{p}/")));
+        // Its server's list says what each model takes, as the old app read it: images where its input names
+        // them or says nothing [D2098]. Where that can't be read, its plain list of ids.
+        let listed = text(&["api", "--standalone", "GET", "/api/model"]).ok();
+        let listed: Value = (listed
+            .and_then(|t| serde_json::from_str(&t[t.find('{').unwrap_or(0)..]).ok()))
+        .unwrap_or_default();
+        let mut models: Vec<ModelInfo> = (listed["data"].as_array().into_iter().flatten())
+            .filter(|m| m["enabled"] != false)
+            .map(|m| {
+                let id = format!("{}/{}", s(m, &["providerID"]), s(m, &["id"]));
+                let input = m["capabilities"]["input"].as_array();
+                let images = input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"));
+                ModelInfo {
+                    images: Some(images),
+                    ..ModelInfo::plain(&id, local(&id))
+                }
+            })
             .collect();
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+        if models.is_empty() {
+            models = text(&["models", "--standalone"])?
+                .lines()
+                .filter(|l| l.contains('/') && !l.contains(' '))
+                .map(|l| ModelInfo::plain(l, local(l)))
+                .collect();
+        }
         Ok(Check {
             version,
             signed_in: Some(!saved.is_empty()),
