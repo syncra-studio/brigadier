@@ -54,6 +54,10 @@ pub struct Fold {
     /// its CLI gave each, where it gives one.
     #[serde(default)]
     pub tasks: Vec<(u64, String)>,
+    /// Each command as the agent typed it: by its step's id while it runs, by its task's id once
+    /// sent to the background, so its Background row reads `python3 …`, not the process's name.
+    #[serde(default)]
+    pub typed: BTreeMap<String, String>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -343,6 +347,7 @@ impl Fold {
                 self.groups.push((pid, start_us));
                 self.windows.clear();
                 self.tasks.clear();
+                self.typed.clear();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -392,14 +397,22 @@ impl Fold {
             }
             "mark" => self.mark(item),
             "tool" => {
+                if let (Some("run"), Some(input)) = (item["step"].as_str(), item["input"].as_str())
+                {
+                    self.typed.insert(str_of("id"), input.into());
+                }
                 self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.tool_started(item, ts);
                 }
             }
             "tool_done" => {
+                let typed = self.typed.remove(&str_of("id"));
                 if let (true, Some(task)) = (item["cut"] == true, item["child"].as_str()) {
                     self.tasks.push((ts, task.into()));
+                    if let Some(typed) = typed {
+                        self.typed.insert(task.into(), typed);
+                    }
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {

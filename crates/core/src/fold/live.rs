@@ -56,18 +56,23 @@ fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
         let name = argv.first().and_then(|a| a.rsplit('/').next());
         name.is_some_and(|n| helpers.contains(&n))
     };
+    // In the running turn, one its CLI said it sent to the background counts at once, not at its end.
+    let running = (fold.turns.first()).map_or(0, |t| t.first_tool);
     let born = |p: &procs::Proc| {
         !p.zombie
-            && (fold.windows.iter()).any(|&(a, b)| {
+            && ((fold.windows.iter()).any(|&(a, b)| {
                 (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000).contains(&p.start_us)
-            })
+            }) || (running > 0
+                && p.start_us >= running.saturating_sub(SLACK_MS) * 1000
+                && task_of(fold, p.start_us).is_some()))
     };
     (below.iter())
         .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)) && !own(p))
         .map(|p| Job {
             pid: p.pid,
             start_us: p.start_us,
-            label: label(all, p.pid),
+            label: (task_of(fold, p.start_us).and_then(|t| fold.typed.get(&t).cloned()))
+                .unwrap_or_else(|| label(all, p.pid)),
         })
         .collect()
 }
