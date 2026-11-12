@@ -149,7 +149,7 @@ fn parse(args: &[String]) -> Result<Call<'_>, Value> {
         values: vec![],
         flags: vec![],
     };
-    let mut rest = args[1..].iter().map(String::as_str);
+    let mut rest = args.iter().skip(1).map(String::as_str);
     while let Some(a) = rest.next() {
         if values.contains(&a) {
             let v = rest
@@ -393,7 +393,7 @@ fn wait(
             return refuse(&format!("Session {id} is gone."));
         };
         let state = str_of(&row, "state").to_string();
-        let idle = row["running"] != true && !workers::busy(data, id);
+        let idle = row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
         if idle || state == "waiting_answer" {
             let last = messages(data, id)
                 .into_iter()

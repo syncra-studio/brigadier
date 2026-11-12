@@ -72,14 +72,35 @@ pub fn granted(dir: &Path, token: &str) -> bool {
 /// double quotes nothing that expands. `helper` and the app's commands aren't agent commands, so
 /// no approval ever covers them.
 pub fn call(command: &str) -> bool {
-    let c = crate::adapters::unwrap_shell(command);
-    let c = c.trim_end_matches(":*").trim_end_matches(" *");
-    let Some(words) = plain_words(c) else {
+    let c = command.trim().trim_end_matches(":*").trim_end_matches(" *");
+    let Some(mut words) = past_cd(c).and_then(plain_words) else {
         return false;
     };
+    // `zsh -lc '<it>'` with nothing after it: its script is checked the same way.
+    if words.len() == 3
+        && matches!(words[0].rsplit('/').next(), Some("sh" | "bash" | "zsh"))
+        && matches!(words[1].as_str(), "-c" | "-lc")
+    {
+        let Some(inner) = past_cd(&words[2]).and_then(plain_words) else {
+            return false;
+        };
+        words = inner;
+    }
     let program = words.first().map_or("", String::as_str);
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
+}
+
+/// The command after any `cd <folder> &&`, each folder plain words only; None when one isn't.
+fn past_cd(mut c: &str) -> Option<&str> {
+    while c.starts_with("cd ") {
+        let (head, rest) = c.split_once("&&")?;
+        if plain_words(head)?.len() != 2 {
+            return None;
+        }
+        c = rest.trim_start();
+    }
+    Some(c)
 }
 
 /// A command's words when it has no shell syntax but quotes; None when it has any.
