@@ -250,6 +250,7 @@ export type Item = Base &
     /** Workers in the parent's thread, from Rust's notes and results [D3009, D3010]: started (in one turn, merged), ended, Stop left running. */
     | { kind: "team"; word: "started" | "finished" | "failed" | "stopped"; workers: string[] }
     | { kind: "team_step"; type: "stopped"; byUser: boolean; workers: string[] }
+    | { kind: "team_step"; type: "paused" | "resumed"; workers: string[] }
     | { kind: "team_still"; workers: string[] }
     /** A message this session's agent sent another, from Rust's notes [D2034, D3014]; `waited` once a `--wait` ended. */
     | {

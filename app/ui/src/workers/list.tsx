@@ -5,8 +5,8 @@ import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips } from "../components/tooltip";
 import { X } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
-import { finished, lowerFirst, type Worker, WorkersPanel, waiting } from "./chip";
-import { RowTime, StopWorker } from "./strip";
+import { finished, lowerFirst, onHand, type Worker, WorkersPanel, waiting } from "./chip";
+import { type Act, RowTime, StopWorker } from "./strip";
 
 /*
  * The Workers panel, as the old app's RightSidebar tab row, WorkerList and AgentRow [D3012]: "Active · N" and
@@ -57,9 +57,9 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
  * One worker on one line: its glyph, its name (a soft "working" while it works), and how long it has worked or how
  * long ago it finished; End in the time's place on hover. Its state in words is its tooltip. A click opens it.
  */
-export const AgentRow: FC<{ worker: Worker; onStop: (id: string) => void }> = ({ worker, onStop }) => {
+export const AgentRow: FC<{ worker: Worker; act: Act }> = ({ worker, act }) => {
   const { open } = useContext(WorkersPanel);
-  const stoppable = !finished(worker);
+  const stoppable = onHand(worker);
   return (
     <li className="group/row relative flex min-w-0">
       <button
@@ -82,7 +82,7 @@ export const AgentRow: FC<{ worker: Worker; onStop: (id: string) => void }> = ({
       {/* Its End on the row, without opening the worker first. */}
       {stoppable && (
         <span className="absolute inset-y-0 end-1 hidden items-center group-focus-within/row:flex group-hover/row:flex">
-          <StopWorker worker={worker} onStop={onStop} />
+          <StopWorker worker={worker} act={act} />
         </span>
       )}
     </li>
@@ -90,14 +90,14 @@ export const AgentRow: FC<{ worker: Worker; onStop: (id: string) => void }> = ({
 };
 
 /** One section of the list, a page at a time: the first `page` rows, then "Show N more" for the next page. */
-function AgentSection({ title, workers, page, trailing, empty, className, onStop }: {
+function AgentSection({ title, workers, page, trailing, empty, className, act }: {
   title: string;
   workers: readonly Worker[];
   page: number;
   trailing?: string;
   empty?: string;
   className?: string;
-  onStop: (id: string) => void;
+  act: Act;
 }) {
   const [pages, setPages] = useState(1);
   if (workers.length === 0 && !empty) return null;
@@ -114,7 +114,7 @@ function AgentSection({ title, workers, page, trailing, empty, className, onStop
       ) : (
         <ul className="flex flex-col gap-0.5">
           {shown.map((worker) => (
-            <AgentRow key={worker.id} worker={worker} onStop={onStop} />
+            <AgentRow key={worker.id} worker={worker} act={act} />
           ))}
         </ul>
       )}
@@ -136,7 +136,7 @@ const ACTIVE_PAGE = 4;
 const DONE_PAGE = 10;
 
 /** Every worker of the session, newest first: at work first, then finished. */
-export function WorkerList({ workers, onStop }: { workers: readonly Worker[]; onStop: (id: string) => void }) {
+export function WorkerList({ workers, act }: { workers: readonly Worker[]; act: Act }) {
   const active = workers.filter((worker) => !finished(worker));
   const done = workers.filter(finished);
   const held = active.filter(waiting).length;
@@ -149,9 +149,9 @@ export function WorkerList({ workers, onStop }: { workers: readonly Worker[]; on
           page={ACTIVE_PAGE}
           trailing={held > 0 ? `${held} waiting` : undefined}
           empty={`No active ${WORKERS_LABEL.toLowerCase()}`}
-          onStop={onStop}
+          act={act}
         />
-        <AgentSection title="Done" workers={done} page={DONE_PAGE} className="mt-6" onStop={onStop} />
+        <AgentSection title="Done" workers={done} page={DONE_PAGE} className="mt-6" act={act} />
       </div>
     </div>
   );

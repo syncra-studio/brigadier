@@ -19,6 +19,7 @@ import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const noop = () => {};
+const act = () => Promise.resolve();
 
 const BRIEF =
   "Target src/upload/retry.rs\n\nChange: retry failed uploads 5 times with doubling waits from 1 s; stop at once on a 4xx. Keep the public API as it is, and commit on your branch when the tests pass.";
@@ -41,6 +42,7 @@ export const RETRY = worker("w-retry", "Retry backoff", "working", "Working", { 
 export const PROGRESS = worker("w-progress", "Progress bar", "working", "Working", { now: "Writing…", startedAt: NOW - 210_000, added: 18, model: "Fast model", receipt: "Quick → Fast model · low · Personal (5-hour 12%, resets 17:40)" });
 const HELD = worker("w-held", "Docs table", "needsYou", "Needs you", { startedAt: NOW - 240_000 });
 const LIMIT = worker("w-limit", "Schema check", "limit", "Limit until 15:10");
+const PAUSED = worker("w-paused", "Upload copy", "paused", "Paused", { startedAt: NOW - 300_000 });
 
 /** Every state word wave 4 has a cause for [D3029]. */
 const STATES: Worker[] = [
@@ -55,6 +57,7 @@ const STATES: Worker[] = [
   worker("w-merged", "Daemon storage", "merged", "Merged"),
   worker("w-notmerged", "Upload list", "doneNotMerged", "Done · not merged"),
   worker("w-done", "Release notes", "done", "Done"),
+  PAUSED,
 ];
 
 const DONE_MANY = Array.from({ length: 12 }, (_, i) => worker(`w-d${i}`, `Finished task ${i + 1}`, i % 4 === 0 ? "stopped" : "done", i % 4 === 0 ? "Ended" : "Done", { lastAt: NOW - (i + 1) * 9 * 60_000 }));
@@ -139,7 +142,7 @@ function LivePanel() {
         ) : (
           <>
             <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords="11 done · 4 stopped" onSelect={noop} onClose={noop} />
-            <WorkerList workers={all} onStop={(id) => setEnded((now) => [...now, id])} />
+            <WorkerList workers={all} act={async (_, ids) => setEnded((now) => [...now, ...ids])} />
           </>
         )}
       </Panel>
@@ -216,6 +219,8 @@ export function WorkersGallery() {
             <TeamStepRow keep="g-step-2" step={{ type: "messaged", byUser: true, worker: RETRY, text: "Skip the 4xx case for now." }} />
             <TeamStepRow keep="g-step-3" step={{ type: "stopped", byUser: false, workers: [STATES[7]!], afterMs: 190_000, reason: "Its approach duplicated the importer's own retry; not needed." }} />
             <TeamStepRow keep="g-step-4" step={{ type: "stopped", byUser: true, workers: [RETRY], afterMs: 190_000 }} />
+            <TeamStepRow keep="g-step-7" step={{ type: "paused", workers: [PAUSED] }} />
+            <TeamStepRow keep="g-step-8" step={{ type: "resumed", workers: [PAUSED] }} />
           </Column>
         </Row>
         <Row name="Stop with workers running: the turn stops, the workers run on, one click ends them [D3009, D3011]">
@@ -250,11 +255,17 @@ export function WorkersGallery() {
           <State label="One, needs you">
             <Strip workers={[HELD]} />
           </State>
+          <State label="One, paused">
+            <Strip workers={[PAUSED]} />
+          </State>
           <State label="Three, folded">
             <Strip workers={[RETRY, PROGRESS, HELD]} />
           </State>
           <State label="Three, open">
             <Strip workers={[RETRY, PROGRESS, HELD]} open />
+          </State>
+          <State label="With one paused, open">
+            <Strip workers={[RETRY, HELD, PAUSED]} open />
           </State>
         </Row>
       </Section>
@@ -264,18 +275,18 @@ export function WorkersGallery() {
           <State label="Active and Done">
             <Panel>
               <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
-              <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} onStop={noop} />
+              <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} act={act} />
             </Panel>
           </State>
           <State label="None active">
             <Panel>
               <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
-              <WorkerList workers={DONE_MANY.slice(0, 3)} onStop={noop} />
+              <WorkerList workers={DONE_MANY.slice(0, 3)} act={act} />
             </Panel>
           </State>
           <State label="A row hovered: End in its time's place" frozen="hover">
             <Panel>
-              <WorkerList workers={[RETRY]} onStop={noop} />
+              <WorkerList workers={[RETRY]} act={act} />
             </Panel>
           </State>
           <State label="Live: open a worker, End one">
@@ -312,7 +323,7 @@ function Strip({ workers, open = false }: { workers: Worker[]; open?: boolean })
   return (
     <div className="w-140">
       <ComposerRail>
-        <WorkersStrip workers={workers} onStop={noop} initiallyOpen={open} />
+        <WorkersStrip workers={workers} act={act} initiallyOpen={open} />
       </ComposerRail>
       <ComposerCard>
         <textarea aria-label="Message" placeholder="Do anything" className="min-h-16 w-full resize-none bg-transparent px-2 py-1 text-sm outline-none" />

@@ -4,7 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { Chevron, DETAIL, ROW, TOGGLE } from "../components/thread/activity-row";
 import { cx } from "../components/cx";
 import { useKept } from "../thread/kept";
-import { Chat, Spinner, StopCircle } from "../icons";
+import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
 import { duration } from "../thread/words";
 import { Glyphs, lowerFirst, type Worker, WorkerName, WorkersPanel } from "./chip";
 
@@ -124,7 +124,8 @@ export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly
 /** A row of the lead managing its team: "Messaged Retry backoff", "You ended Retry backoff after 3m 10s". */
 export type TeamStep =
   | { type: "messaged"; byUser: boolean; worker: Worker; text?: string }
-  | { type: "stopped"; byUser: boolean; workers: readonly Worker[]; afterMs?: number; reason?: string };
+  | { type: "stopped"; byUser: boolean; workers: readonly Worker[]; afterMs?: number; reason?: string }
+  | { type: "paused" | "resumed"; workers: readonly Worker[] };
 
 export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }) => {
   let icon: ReactNode;
@@ -146,6 +147,15 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
         </>
       );
       detail = step.reason && !step.byUser ? <QuietBrief>{step.reason}</QuietBrief> : undefined;
+      break;
+    // The user's Pause and Resume [D3041].
+    case "paused":
+      icon = <PauseCircle aria-hidden className="size-4 shrink-0" />;
+      line = <>Paused <Names workers={step.workers} glyph /></>;
+      break;
+    case "resumed":
+      icon = <PlayCircle aria-hidden className="size-4 shrink-0" />;
+      line = <>Resumed <Names workers={step.workers} glyph /></>;
       break;
   }
   const words = <span className="flex min-w-0 items-center gap-1 truncate">{line}</span>;

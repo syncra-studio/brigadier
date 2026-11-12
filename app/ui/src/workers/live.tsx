@@ -67,9 +67,12 @@ function useNamed(ids: readonly string[]): Worker[] {
   });
 }
 
-/** The user's Stop them and End: Rust stops each and logs "You ended …" in the parent [D3011]. */
+/** The user's End, Pause and Resume: Rust does each and logs "You ended …", "Paused …" or "Resumed …" in the parent [D3011, D3041]. */
+const act = (parent: string) => (how: "stop" | "pause" | "resume", ids: readonly string[]) => run(["workers", parent, how, ...ids]);
+
+/** The user's Stop them: as End, its failure a toast. */
 const stop = (parent: string, ids: readonly string[]) =>
-  run(["workers", parent, "stop", ...ids]).then(() => true).catch((cause) => {
+  act(parent)("stop", ids).then(() => true).catch((cause) => {
     showToast(`Couldn't stop ${ids.length === 1 ? "the worker" : "the workers"}: ${errorText(cause)}`, { tone: "error" });
     return false;
   });
@@ -104,7 +107,7 @@ export function TeamRow({ item }: { item: TeamItem }) {
     item.kind === "team" ? (
       <TeamSentence keep={item.id} word={item.word} workers={workers} />
     ) : item.kind === "team_step" ? (
-      <TeamStepRow keep={item.id} step={{ type: "stopped", byUser: item.byUser, workers }} />
+      <TeamStepRow keep={item.id} step={item.type === "stopped" ? { type: "stopped", byUser: item.byUser, workers } : { type: item.type, workers }} />
     ) : (
       <StillRows owner={owner} workers={workers} />
     );
@@ -137,7 +140,7 @@ export function SessionWorkersStrip({ id }: { id: string }) {
   const workers = useWorkers(id);
   return (
     <Opens owner={id}>
-      <WorkersStrip workers={workers} onStop={(wid) => stop(id, [wid])} />
+      <WorkersStrip workers={workers} act={act(id)} />
     </Opens>
   );
 }
@@ -216,7 +219,7 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
                 (opened ? (
                   <WorkerView key={opened.id} worker={opened} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
                 ) : (
-                  <WorkerList workers={workers.toReversed()} onStop={(wid) => stop(owner, [wid])} />
+                  <WorkerList workers={workers.toReversed()} act={act(owner)} />
                 ))}
             </div>
           </Opens>

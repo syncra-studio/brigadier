@@ -11,7 +11,7 @@ import { WorkerGlyph } from "../icons/worker-glyphs";
  */
 
 /** A worker's state, first match wins in Rust, as the old `workerStateOf`; the ones wave 4 has a cause for [D3029]. */
-export type WorkerStateKind = "needsYou" | "limit" | "cliEnded" | "freshContext" | "working" | "failed" | "stopped" | "merged" | "doneNotMerged" | "done";
+export type WorkerStateKind = "needsYou" | "limit" | "paused" | "cliEnded" | "freshContext" | "working" | "failed" | "stopped" | "merged" | "doneNotMerged" | "done";
 
 /** One worker as the UI draws it. `word` is its state in a word or two ("Needs you", "Limit until 15:10"). */
 export type Worker = {
@@ -32,10 +32,13 @@ export type Worker = {
   receipt?: string;
 };
 
-const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["failed", "stopped", "merged", "doneNotMerged", "done"]);
+const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["paused", "failed", "stopped", "merged", "doneNotMerged", "done"]);
 
 /** Whether it's finished: the Done section's, not the strip's. */
 export const finished = (worker: Worker) => FINISHED.has(worker.kind);
+
+/** Whether the strip and End hold it: at work, waiting, or paused, its toggle resuming it. */
+export const onHand = (worker: Worker) => worker.kind === "paused" || !finished(worker);
 
 /** Whether it waits rather than works: for the user, a limit to reset, or the message that continues it. */
 export const waiting = (worker: Worker) => worker.kind === "needsYou" || worker.kind === "limit" || worker.kind === "cliEnded";
