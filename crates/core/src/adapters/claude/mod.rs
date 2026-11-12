@@ -10,13 +10,11 @@ mod tools;
 
 use super::setup::{first_field, newest};
 use super::{
-    Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Forked, Launch,
-    ModelInfo, Retune, Rewound, Timing, Who, base_env, classify, home_path, probe_as, s, version,
+    Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Launch, ModelInfo,
+    Retune, Rewound, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
-use crate::fold::Boundary;
 use serde_json::Value;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
 
@@ -468,42 +466,5 @@ impl Adapter for Claude {
             }
         }
         Some((texts, tools))
-    }
-}
-
-/// Its CLI makes a fork only on the fork's first launch, `--resume <conv>
-/// --resume-session-at=<entry> --fork-session` [D1089]: until then nothing is made, so there is
-/// nothing to list or remove, and `fork` hands back the source's own `conv`.
-impl Fork for Claude {
-    fn fork(
-        &self,
-        _spec: &Spec,
-        at: &Boundary,
-        _next: Option<&Boundary>,
-        _cwd: &Path,
-    ) -> Result<Forked, Failed> {
-        match &at.end {
-            Some(entry) if cleanup::holds(&at.conv, entry) => Ok(Forked {
-                conv: at.conv.clone(),
-                turns: 0,
-            }),
-            _ => Err(Failed::Refused(
-                "Claude's record of this conversation no longer has that point.".into(),
-            )),
-        }
-    }
-
-    fn forks(&self, _spec: &Spec, _conv: &str) -> Option<Vec<String>> {
-        Some(vec![])
-    }
-
-    fn unfork(
-        &self,
-        _spec: &Spec,
-        _conv: &str,
-        _before: &[String],
-        _owned: &BTreeSet<String>,
-    ) -> Result<(), String> {
-        Ok(())
     }
 }

@@ -56,12 +56,12 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
               aria-pressed={details}
               data-slot="worker-header-model"
               onClick={onToggleDetails}
-              className="ms-auto grid shrink-1000 cursor-pointer grid-cols-[minmax(0,auto)_auto] rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
+              className="ms-auto flex shrink-1000 cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
             />
           }
         >
           <span className="min-w-0 truncate">{worker.model}</span>
-          <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
+          <span className="shrink-0 whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
         </TooltipTrigger>
         <TooltipContent>
           Worker details · {worker.model} · {worker.word}

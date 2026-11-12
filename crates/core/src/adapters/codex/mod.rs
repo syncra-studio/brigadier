@@ -8,7 +8,6 @@ use super::{
 };
 use crate::Spec;
 use crate::fold::Boundary;
-use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -21,7 +20,7 @@ mod models;
 mod record;
 mod server;
 mod trust;
-use record::{diff, held, helpers, rollouts, thread_files};
+use record::{clear_records, diff, held, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
@@ -478,28 +477,4 @@ fn forget_thread(codex: &Codex, spec: &Spec, id: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(&lock);
     }
     Ok(())
-}
-
-/// What Codex's own delete leaves naming the thread. Its import record's path goes, not the row:
-/// without the row Codex would import every rollout again [D371, D382]. Its log rows go too: ones
-/// from before the thread had started carry its id only in their text, which Codex's delete, by
-/// the id column, misses. A busy or changed database keeps them, and delete still finishes.
-fn clear_records(spec: &Spec, id: &str) {
-    let run = |file: &str, sql: &str, like: String| {
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE;
-        if let Ok(db) = Connection::open_with_flags(cli_home(spec, ".codex", file), flags) {
-            let _ = db.busy_timeout(Duration::from_secs(2));
-            let _ = db.execute(sql, [like]);
-        }
-    };
-    run(
-        "state_5.sqlite",
-        "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
-        format!("-{id}.jsonl"),
-    );
-    run(
-        "logs_2.sqlite",
-        "DELETE FROM logs WHERE instr(feedback_log_body, ?1) > 0",
-        id.to_string(),
-    );
 }

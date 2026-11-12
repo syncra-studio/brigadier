@@ -424,68 +424,7 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
     all().into_iter().find(|a| a.name() == name)
 }
 
-/// The environment every child starts from, the same for a session, a status check and a sign-in:
-/// the basics, the login shell's PATH after the CLI's own folder, and the variables `keys` names.
-pub fn base_env(spec: &Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)> {
-    let var = |k: &str| std::env::var(k).unwrap_or_default();
-    let dir = exe
-        .parent()
-        .map(|p| p.display().to_string())
-        .unwrap_or_default();
-    let login = setup::login();
-    let agent = crate::agent::env(spec);
-    let bin = agent
-        .as_ref()
-        .map_or(String::new(), |(bin, _)| format!("{bin}:"));
-    let mut env = vec![
-        ("HOME".into(), var("HOME")),
-        ("USER".into(), var("USER")),
-        ("LANG".into(), "en_US.UTF-8".into()),
-        ("TMPDIR".into(), var("TMPDIR")),
-        ("PATH".into(), format!("{bin}{dir}:{}", login.path)),
-    ];
-    env.extend(
-        keys.iter()
-            .filter_map(|k| Some((k.to_string(), login.vars.get(*k)?.clone()))),
-    );
-    if let Some((var, home)) = &spec.account {
-        env.push((var.clone(), home.display().to_string()));
-    }
-    env.extend(agent.into_iter().flat_map(|(_, vars)| vars));
-    if spec.mode == "pty" {
-        env.push(("TERM".into(), "xterm-256color".into()));
-    }
-    env
-}
-
-/// One bounded status probe of a CLI, in the environment its sessions get.
-pub fn probe(
-    exe: &Path,
-    cwd: &Path,
-    keys: &[&str],
-    args: &[&str],
-    secs: u64,
-) -> Result<std::process::Output, String> {
-    probe_as(&Spec::default(), exe, cwd, keys, args, secs)
-}
-
-/// `probe` on an account: `spec.account` sets its home.
-pub fn probe_as(
-    spec: &Spec,
-    exe: &Path,
-    cwd: &Path,
-    keys: &[&str],
-    args: &[&str],
-    secs: u64,
-) -> Result<std::process::Output, String> {
-    let mut command = std::process::Command::new(exe);
-    command
-        .args(args)
-        .env_clear()
-        .envs(base_env(spec, exe, keys))
-        .current_dir(cwd);
-    setup::run(&mut command, secs)
-}
+pub use setup::{base_env, probe, probe_as};
 
 pub fn home_path(rest: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)

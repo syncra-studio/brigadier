@@ -1,7 +1,9 @@
 //! Per-conversation files, recorded before removal so delete can retry after a failure.
 
+use super::Claude;
 use crate::Spec;
-use crate::adapters::{cli_home, drop_lines, home_path, s};
+use crate::adapters::{Failed, Fork, Forked, cli_home, drop_lines, home_path, s};
+use crate::fold::Boundary;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -117,4 +119,41 @@ pub(super) fn holds(conv: &str, entry: &str) -> bool {
         std::fs::read_to_string(d.path().join(format!("{conv}.jsonl")))
             .is_ok_and(|text| text.contains(entry))
     })
+}
+
+/// Its CLI makes a fork only on the fork's first launch, `--resume <conv>
+/// --resume-session-at=<entry> --fork-session` [D1089]: until then nothing is made, so there is
+/// nothing to list or remove, and `fork` hands back the source's own `conv`.
+impl Fork for Claude {
+    fn fork(
+        &self,
+        _spec: &Spec,
+        at: &Boundary,
+        _next: Option<&Boundary>,
+        _cwd: &Path,
+    ) -> Result<Forked, Failed> {
+        match &at.end {
+            Some(entry) if holds(&at.conv, entry) => Ok(Forked {
+                conv: at.conv.clone(),
+                turns: 0,
+            }),
+            _ => Err(Failed::Refused(
+                "Claude's record of this conversation no longer has that point.".into(),
+            )),
+        }
+    }
+
+    fn forks(&self, _spec: &Spec, _conv: &str) -> Option<Vec<String>> {
+        Some(vec![])
+    }
+
+    fn unfork(
+        &self,
+        _spec: &Spec,
+        _conv: &str,
+        _before: &[String],
+        _owned: &BTreeSet<String>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }

@@ -1,8 +1,11 @@
 //! Codex's own session record (its rollout files): where they are and the diffs they keep.
 
 use super::super::s;
+use crate::Spec;
+use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Rollouts whose names end with one of `names`: they live under sessions/YYYY/MM/DD/.
 /// Per thread in Codex's home: its shell snapshots and generated images [D35].
@@ -115,4 +118,28 @@ pub(super) fn held(spec: &crate::Spec, id: &str) -> u64 {
             .filter(|v| s(&v["payload"], &["type"]) == "task_started")
             .count() as u64
     })
+}
+
+/// What Codex's own delete leaves naming the thread. Its import record's path goes, not the row:
+/// without the row Codex would import every rollout again [D371, D382]. Its log rows go too: ones
+/// from before the thread had started carry its id only in their text, which Codex's delete, by
+/// the id column, misses. A busy or changed database keeps them, and delete still finishes.
+pub(super) fn clear_records(spec: &Spec, id: &str) {
+    let run = |file: &str, sql: &str, like: String| {
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE;
+        if let Ok(db) = Connection::open_with_flags(super::cli_home(spec, ".codex", file), flags) {
+            let _ = db.busy_timeout(Duration::from_secs(2));
+            let _ = db.execute(sql, [like]);
+        }
+    };
+    run(
+        "state_5.sqlite",
+        "UPDATE backfill_state SET last_watermark = NULL WHERE id = 1 AND instr(last_watermark, ?1) > 0",
+        format!("-{id}.jsonl"),
+    );
+    run(
+        "logs_2.sqlite",
+        "DELETE FROM logs WHERE instr(feedback_log_body, ?1) > 0",
+        id.to_string(),
+    );
 }
