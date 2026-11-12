@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import { Button } from "../components/button";
 import { CopyButton } from "../components/copy-button";
@@ -33,13 +33,11 @@ const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${
 
 /**
  * What drives an agent's card: its install or sign-in run, checked again while it goes and closed once it ends well,
- * an install's sign-in following by itself, and why one failed. Onboarding's step and the model picker's Set up share it.
+ * and why one failed; a finished install waits for its Sign in to be pressed. Onboarding's step and the model picker's Set up share it.
  */
 export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
   const [starting, setStarting] = useState<string | null>(null);
   const [failed, setFailed] = useState<Record<string, string>>({});
-  // Agents whose install just ended well: their sign-in follows.
-  const signInNext = useRef(new Set<string>());
 
   // While a run goes its agent is checked again; one that ended well goes by itself.
   const runningNames = list?.filter((agent) => agent.setup?.running).map((agent) => agent.name).join(" ") ?? "";
@@ -52,22 +50,9 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
   const endedWell = list?.filter((agent) => agent.setup && !agent.setup.running && (agent.setup.code === 0 || (agent.setup.action === "install" && agent.path)));
   const endedKey = endedWell?.map((agent) => `${agent.name}:${agent.setup!.action}`).join(" ");
   useEffect(() => {
-    for (const agent of endedWell ?? []) {
-      if (agent.setup!.action === "install") signInNext.current.add(agent.name);
-      close(agent.name);
-    }
+    for (const agent of endedWell ?? []) close(agent.name);
     // endedKey names exactly what endedWell holds.
   }, [endedKey]);
-  // Installed, its sign-in starts, as the old app's Install did; already usable, nothing follows.
-  useEffect(() => {
-    for (const agent of list ?? []) {
-      if (!signInNext.current.has(agent.name) || agent.setup) continue;
-      const state = stateOf(agent);
-      if (state === "checking") continue;
-      signInNext.current.delete(agent.name);
-      if ((state === "signIn" || state === "noModel") && agent.sign_in) void begin(agent, "sign-in");
-    }
-  }, [list]);
 
   const close = (name: string) =>
     run(["setup", name, "close"]).then(
@@ -96,7 +81,7 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
 /**
  * Connecting the agents, as the old app drew it [D43, D45]: a card each, two to a row, connected
  * ones first. Each card says how its agent stands and offers the one thing it needs next: Install
- * (the vendor's own installer, then its sign-in) or Sign in (its own, in the browser), the card
+ * (the vendor's own installer) or Sign in (its own, in the browser), the card
  * waiting meanwhile; both run unseen on a host. Every word on a card comes from its adapter;
  * nothing here names a provider. Continue needs one agent with a model to pick.
  */
