@@ -450,7 +450,9 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
             Some(_) if last["landed"] == false => ("doneNotMerged", "Done · not merged".into()),
             Some(_) => ("done", "Done".into()),
             None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),
-            None => ("working", "Starting".into()),
+            None if state == "new" => ("working", "Starting".into()),
+            // Its turn ended, its outcome not yet written: still finishing, never back to Starting.
+            None => ("working", "Working".into()),
         },
     };
     let ran = &l.ran;
