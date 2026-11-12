@@ -45,6 +45,11 @@ pub fn as_run(spec: &Spec, f: &Fold, backend: &str, account: Option<&str>) -> Sp
     } else if backend != spec.backend {
         run.effort = None;
     }
-    run.fast = f.fast.contains(backend);
+    // As the app last set it for that agent, else as the session started.
+    if f.models.contains_key(backend) {
+        run.fast = f.fast.contains(backend);
+    } else if backend != spec.backend {
+        run.fast = false;
+    }
     run
 }

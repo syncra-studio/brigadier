@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { Button } from "../components/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { ErrorLine } from "../components/error-line";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { showToast } from "../components/toast";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
+import { ChevronRight } from "../icons";
 import { stateOf, type useAgentSetup } from "../onboarding/agents";
 import { type Agent, changeAgentPath, checkOne, setEnabled, setModelOn } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
@@ -191,13 +193,39 @@ function Installation({
   );
 }
 
-/** The Models section: a row each, with its switch; one off is left out of new sessions' pickers [D2082]. */
+/**
+ * The Models section: a row each, with its switch; one off is left out of new sessions' pickers [D2082]. Older models
+ * fold under Older models, as the old app's.
+ */
 function Models({ agent, online, failed, act }: { agent: Agent; online: boolean; failed: Record<string, string>; act: Act }) {
   const state = stateOf(agent);
   const models = agent.models ?? [];
-  const onCount = models.filter((model) => !agent.models_off.includes(model.id)).length;
+  const current = models.filter((model) => !model.legacy);
+  const older = models.filter((model) => model.legacy);
+  const onCount = current.filter((model) => !agent.models_off.includes(model.id)).length;
+  const aside = models.length > 0 ? [`${onCount} on`, older.length > 0 && `${older.length} older`].filter(Boolean).join(" · ") : undefined;
+  const row = (model: (typeof models)[number]) => {
+    const key = `${agent.name}:model:${model.id}`;
+    return (
+      <div key={model.id} className="flex items-center gap-6 px-4 py-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.25">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className={ROW_TITLE}>{model.name ?? model.id}</span>
+            {model.name && model.name !== model.id && <span className="font-mono text-xs whitespace-pre text-quiet-foreground">{model.id}</span>}
+          </span>
+          <ErrorLine error={failed[key]} />
+        </div>
+        <Switch
+          checked={!agent.models_off.includes(model.id)}
+          disabled={!online}
+          aria-label={`Use ${model.name ?? model.id}`}
+          onCheckedChange={(next) => void act(key, () => setModelOn(agent.name, model.id, next))}
+        />
+      </div>
+    );
+  };
   return (
-    <SettingsSection title="Models" setting="Models" aside={models.length > 0 ? `${onCount} on` : undefined}>
+    <SettingsSection title="Models" setting="Models" aside={aside}>
       <SettingsCard>
         {models.length === 0 ? (
           <p className="px-4 py-3 text-sm text-quiet-foreground">
@@ -210,23 +238,16 @@ function Models({ agent, online, failed, act }: { agent: Agent; online: boolean;
                   : "No model available."}
           </p>
         ) : (
-          models.map((model) => {
-            const key = `${agent.name}:model:${model.id}`;
-            return (
-              <div key={model.id} className="flex items-center gap-6 px-4 py-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-1.25">
-                  <span className={cx(ROW_TITLE, "truncate font-mono")}>{model.id}</span>
-                  <ErrorLine error={failed[key]} />
-                </div>
-                <Switch
-                  checked={!agent.models_off.includes(model.id)}
-                  disabled={!online}
-                  aria-label={`Use ${model.id}`}
-                  onCheckedChange={(next) => void act(key, () => setModelOn(agent.name, model.id, next))}
-                />
-              </div>
-            );
-          })
+          current.map(row)
+        )}
+        {older.length > 0 && (
+          <Collapsible className="settings-rows flex flex-col">
+            <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2.5 px-4 py-3 text-label text-quiet-foreground outline-none hover:text-foreground focus-visible:focus-ring">
+              <ChevronRight aria-hidden className="size-icon-sm transition-transform group-data-panel-open:rotate-90 motion-reduce:transition-none" />
+              Older models · {older.length}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="settings-rows flex flex-col">{older.map(row)}</CollapsibleContent>
+          </Collapsible>
         )}
       </SettingsCard>
     </SettingsSection>

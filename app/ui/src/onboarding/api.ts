@@ -104,7 +104,7 @@ export type Agent = {
   how?: string | null;
   /** Each login of an agent that keeps several in one home. */
   logins?: string[];
-  models?: { id: string; local: boolean }[];
+  models?: { id: string; name?: string; local: boolean; legacy?: boolean }[];
   error?: string;
 };
 

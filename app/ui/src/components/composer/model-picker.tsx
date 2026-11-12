@@ -1,16 +1,18 @@
-import { type HTMLAttributes, type KeyboardEvent, type ReactElement, useRef, useState } from "react";
+import { type HTMLAttributes, type ReactElement, useEffect, useRef, useState } from "react";
 
-import { Check, ChevronDown, MagnifyingGlassSmSearch, Sparkles, Terminal } from "../../icons";
+import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Terminal } from "../../icons";
 import { Button } from "../button";
-import { ConfirmForm } from "../confirm-dialog";
 import { cx } from "../cx";
-import { Dialog, DialogContent } from "../dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
-import { Segmented } from "../segmented";
+import { Segment, SegmentedRoot } from "../segmented";
 import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
+import { focusChoice, moveKeys } from "./model-keys";
 import { STILL } from "./pickers";
+import { SwitchAgentDialog } from "./switch-agent";
+
+export { SwitchAgentDialog };
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
 export type Model = {
@@ -22,16 +24,28 @@ export type Model = {
   retiring?: { at: number | null; to: string | null } | null;
   /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
   images?: boolean | null;
+  /** What its fast tier offers, where it has one: the footer's Speed picks it. */
+  fast?: string | null;
+  /** An older model its CLI still offers beside a newer one: under Older models. */
+  legacy?: boolean;
 };
 
 /**
  * An agent's models, under its name and mark (one SVG from its adapter, as onboarding draws it). `unavailable`: its CLI
  * isn't installed ("install") or isn't signed in ("sign-in"), so it has no models to show yet. PROPOSED.
  */
-export type ModelGroup = { provider: string; label: string; mark: string | null; models: Model[]; unavailable?: "install" | "sign-in" | null };
+export type ModelGroup = {
+  provider: string;
+  label: string;
+  /** The short name the agents column shows it by ("Claude" for "Claude Code"). */
+  short?: string | null;
+  mark: string | null;
+  models: Model[];
+  unavailable?: "install" | "sign-in" | null;
+};
 
-/** What the session runs on. */
-export type ModelChoice = { provider: string; model: string; effort: string | null };
+/** What the session runs on; `fast` on its model's fast tier. */
+export type ModelChoice = { provider: string; model: string; effort: string | null; fast?: boolean };
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
@@ -48,56 +62,28 @@ export function ProviderMark({ mark, className }: { mark: string | null; classNa
 }
 
 const SIDEBAR_ROW = cx(
-  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-icon-button px-2.5 text-start text-label text-toolbar-foreground outline-none",
+  "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded-icon-button px-2.5 text-start text-label text-shell-foreground outline-none",
   "hover:bg-fill focus-visible:bg-fill aria-selected:bg-fill aria-selected:text-foreground",
 );
 const MODEL_ROW = cx(
   "flex h-8 w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-surface ps-2.5 pe-8 text-start text-sm outline-none",
   "hover:bg-fill focus-visible:bg-fill",
 );
-const rowsOf = (list: Element | null) => [...(list?.querySelectorAll<HTMLElement>("[role=option]") ?? [])];
-
+/** One level or speed in the footer: the fill is the chosen one, the ring the keyboard. */
+const SEGMENT = cx(
+  "flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-capsule px-2 text-label whitespace-nowrap text-faint-foreground transition-colors outline-none",
+  "hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground",
+);
+const FOOTER_ROW = "flex items-center gap-3 ps-4 pe-2.25";
 /**
- * ↑ ↓ move through a list's rows, ← → between the agents and the models; ↓ from the search goes to the models and ↑
- * from the first model back to it. A letter typed in a list goes to the search.
- */
-function moveKeys(event: KeyboardEvent<HTMLDivElement>, search: HTMLInputElement | null, type: (key: string) => void) {
-  const target = event.target as HTMLElement;
-  const models = event.currentTarget.querySelector("[data-picker-part=models]");
-  if (target === search) {
-    if (event.key !== "ArrowDown") return;
-    event.preventDefault();
-    rowsOf(models)[0]?.focus();
-    return;
-  }
-  const here = target.closest<HTMLElement>("[role=listbox]");
-  if (!here) return;
-  // Space stays the row's own press.
-  if ((event.key.length === 1 && event.key !== " " && !event.metaKey && !event.ctrlKey && !event.altKey) || event.key === "Backspace") {
-    event.preventDefault();
-    type(event.key);
-    search?.focus();
-    return;
-  }
-  const all = rowsOf(here);
-  const at = all.indexOf(target);
-  let next: HTMLElement | null | undefined;
-  if (event.key === "ArrowDown") next = all[Math.min(at + 1, all.length - 1)];
-  else if (event.key === "ArrowUp") next = at <= 0 && here === models ? search : all[Math.max(at - 1, 0)];
-  else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-    const list = rowsOf(event.currentTarget.querySelector(`[data-picker-part=${here.dataset["pickerPart"] === "agents" ? "models" : "agents"}]`));
-    next = list.find((row) => row.getAttribute("aria-selected") === "true") ?? list[0];
-  } else return;
-  event.preventDefault();
-  next?.focus();
-}
-
-/**
- * The model pill and its picker, opening upward: a search across every agent on top, then the agents beside the
- * browsed one's models, a check on the one in use, and a footer with its effort levels. It opens on the agent in use
- * with the keyboard in the search; a pick closes it, an effort level keeps it open. While searching, the matches of every agent set up show in
- * one list with their marks, and Enter picks the first; Esc clears the search before it closes the picker. An agent
- * not installed or not signed in is dimmed, and shows what it needs and "Set up" in place of its models.
+ * The model pill and its picker, opening upward, as the old app's: a search across every agent on top, then the agents
+ * beside the browsed one's models (older ones folded under Older models), a check on the one in use, and a footer with
+ * the effort levels of the model under the keyboard, else the one in use, and its Speed where it has a fast tier. It
+ * opens on the agent in use with the keyboard in the search. A pick keeps it open and takes the keyboard to its levels;
+ * a level or speed of a model not picked yet picks it so. While searching, the matches of every agent set up show in one
+ * list with their marks, and Enter picks the first; Esc clears the search before it closes the picker. An agent not
+ * installed or not signed in is dimmed, and shows what it needs and "Set up" in place of its models. Another agent's
+ * model asks "Switch to X?" first, closing the picker.
  */
 export function ModelPicker({
   groups,
@@ -129,7 +115,7 @@ export function ModelPicker({
   asked?: number;
   /** A setting Brigadier may pick for, as the old app's: a switch over the columns, and picking a model turns it off. */
   automatic?: { chosen: boolean; label: string; hint: string; onChoose: () => void; onTurnOff: () => void };
-  /** False for a setting that takes no effort level: no Effort footer. */
+  /** False for a setting that takes no effort level or speed: no footer. */
   efforts?: boolean;
   /** Its own trigger in place of the composer's pill (a settings row's select). */
   trigger?: (props: HTMLAttributes<HTMLElement>) => ReactElement;
@@ -143,10 +129,17 @@ export function ModelPicker({
   const [browsing, setBrowsing] = useState(value.provider);
   const [query, setQuery] = useState(typed);
   const [inSearch, setInSearch] = useState(false);
+  const [older, setOlder] = useState<ReadonlySet<string>>(new Set());
+  // The model under the keyboard: the footer follows it.
+  const [underKeys, setUnderKeys] = useState<{ provider: string; model: Model } | null>(null);
+  const levelsNext = useRef(false);
   const search = useRef<HTMLInputElement>(null);
+  const footer = useRef<HTMLDivElement>(null);
   const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
   const current = groups.find((entry) => entry.provider === value.provider);
   const model = current?.models.find((entry) => entry.id === value.model);
+  const auto = automatic?.chosen === true;
+  const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
   const needle = query.trim();
   // Every set-up agent's models that match, best match first, in agent order within each.
   const matches = needle
@@ -157,22 +150,38 @@ export function ModelPicker({
         .toSorted((a, b) => a.rank! - b.rank!)
     : null;
   const first = matches?.[0];
-  const auto = automatic?.chosen === true;
-  // A new model keeps the effort when it has that level, else takes its own default.
+  // An older model shows under Older models unless it is the one in use.
+  const shownOf = (entry: ModelGroup) => entry.models.filter((each) => !each.legacy || isChecked(entry.provider, each) || older.has(entry.provider));
+  const olderCount = group && !group.unavailable ? group.models.filter((each) => each.legacy && !isChecked(group.provider, each)).length : 0;
+  // A pick takes the keyboard to its levels once it shows as the one in use.
+  useEffect(() => {
+    if (!levelsNext.current || !open) return;
+    levelsNext.current = false;
+    focusChoice(footer.current?.querySelector("[data-picker-part=effort]") ?? null);
+  });
+
   // Another agent's model is a switch (Rust starts a new conversation with a hand-off): asked first.
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
-  const pick = (provider: string, next: Model) => {
-    const choice = {
-      provider,
-      model: next.id,
-      effort: value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? next.efforts[0] ?? null),
-    };
-    setOpen(false);
-    if (provider === value.provider || !asksSwitch) onChange(choice);
-    else setSwitching(choice);
+  const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
+    const same = provider === value.provider;
+    // A new model keeps the effort within the agent when it has that level, else takes its own default; fast carries
+    // over to a model with a fast tier too.
+    const kept = same && value.effort && next.efforts.includes(value.effort) ? value.effort : (next.defaultEffort ?? null);
+    const fast = Boolean(next.fast) && (also?.fast ?? value.fast === true);
+    const choice = { provider, model: next.id, effort: also?.effort ?? kept, ...(fast ? { fast } : {}) };
+    setUnderKeys(null);
+    if (same || !asksSwitch) {
+      onChange(choice);
+      if (!also) levelsNext.current = true;
+    } else {
+      setOpen(false);
+      setSwitching(choice);
+    }
   };
+  // Leaving a row for the footer keeps the model it acts on.
+  const keepsInHand = (to: EventTarget | null) => to instanceof Node && Boolean(footer.current?.contains(to));
   const modelRow = (provider: string, entry: Model, mark?: { mark: string | null; label: string }) => {
-    const checked = !auto && provider === value.provider && entry.id === value.model;
+    const checked = isChecked(provider, entry);
     return (
       <button
         key={`${provider}:${entry.id}`}
@@ -180,6 +189,8 @@ export function ModelPicker({
         role="option"
         aria-selected={checked}
         onClick={() => pick(provider, entry)}
+        onFocus={() => setUnderKeys({ provider, model: entry })}
+        onBlur={(event) => !keepsInHand(event.relatedTarget) && setUnderKeys(null)}
         // While the search has the keyboard, the first match is the one Enter picks.
         className={cx(MODEL_ROW, inSearch && entry === first?.model && "bg-fill")}
       >
@@ -192,6 +203,26 @@ export function ModelPicker({
       </button>
     );
   };
+
+  // The footer's model: the one under the keyboard (the first match while searching), else the one in use.
+  const inHand = (inSearch && first ? { provider: first.group.provider, model: first.model } : underKeys) ?? (model && !auto ? { provider: value.provider, model } : null);
+  const inHandChecked = Boolean(inHand && isChecked(inHand.provider, inHand.model));
+  const levels = auto ? [] : (inHand?.model.efforts ?? []);
+  const columnName = auto ? automatic?.label : inHand?.model.name;
+  const hasFast = !auto && Boolean(inHand?.model.fast);
+  const fastOn = inHandChecked && value.fast === true;
+  const chooseLevel = (level: string) => {
+    if (!inHand) return;
+    if (inHandChecked) onChange({ ...value, effort: level });
+    else pick(inHand.provider, inHand.model, { effort: level });
+  };
+  const chooseSpeed = (fast: boolean) => {
+    if (!inHand) return;
+    if (inHandChecked) onChange({ ...value, fast });
+    else pick(inHand.provider, inHand.model, { fast });
+  };
+  const fastLabel = value.fast === true && model?.fast;
+  const word = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
   return (
     <>
       <Popover
@@ -206,19 +237,34 @@ export function ModelPicker({
           if (next) {
             setBrowsing(value.provider);
             setQuery("");
+            setUnderKeys(null);
           }
           setOpen(next);
         }}
       >
         <PopoverTrigger
           disabled={disabled}
-          render={trigger ?? <ComposerPill aria-label={`Model: ${model?.name ?? value.model}${value.effort ? `, ${effortLabel(value.effort)}` : ""}`} data-slot="model-picker-trigger" />}
+          render={
+            trigger ?? (
+              <ComposerPill
+                aria-label={`Model: ${auto ? automatic?.label : `${model?.name ?? value.model}${fastLabel ? ", Fast" : ""}${word ? `, ${word}` : ""}`}`}
+                data-slot="model-picker-trigger"
+              />
+            )
+          }
         >
           {/* The old pill's tighter gap; the pill's own is set in its base. */}
           <span className="flex min-w-0 items-center gap-1">
-            <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
-            <span className="truncate text-foreground">{model?.name ?? value.model}</span>
-            {value.effort && <span className="shrink-0">{effortLabel(value.effort)}</span>}
+            {auto ? (
+              <span className="truncate text-foreground">{automatic?.label}</span>
+            ) : (
+              <>
+                <ProviderMark mark={current?.mark ?? null} className="size-icon-sm" />
+                {fastLabel && <Bolt aria-hidden className="text-foreground" />}
+                <span className="truncate text-foreground">{model?.name ?? value.model}</span>
+                {word && <span className="shrink-0">{word}</span>}
+              </>
+            )}
             <ChevronDown className="size-icon-xs" />
           </span>
         </PopoverTrigger>
@@ -232,7 +278,7 @@ export function ModelPicker({
           initialFocus={held ? false : search}
           className="max-w-full overflow-hidden"
         >
-          {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the search's and the lists' keys */}
+          {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- the search's, the lists' and the footer's keys */}
           <div
             data-slot="model-picker"
             onKeyDown={(event) => moveKeys(event, search.current, (key) => setQuery((now) => (key === "Backspace" ? now.slice(0, -1) : now + key)))}
@@ -250,7 +296,7 @@ export function ModelPicker({
                   pick(first.group.provider, first.model);
                 }}
                 onFocus={() => setInSearch(true)}
-                onBlur={() => setInSearch(false)}
+                onBlur={(event) => !keepsInHand(event.relatedTarget) && setInSearch(false)}
                 placeholder="Search every agent"
                 aria-label="Search every agent"
                 autoComplete="off"
@@ -278,13 +324,15 @@ export function ModelPicker({
                         key={entry.provider}
                         type="button"
                         role="option"
+                        aria-label={entry.label}
                         aria-selected={entry.provider === group?.provider}
                         onClick={() => setBrowsing(entry.provider)}
+                        onFocus={() => setBrowsing(entry.provider)}
                         className={cx(SIDEBAR_ROW, entry.unavailable && "opacity-disabled")}
                       >
                         <ProviderMark mark={entry.mark} className="size-icon-md" />
-                        <span className="min-w-0 truncate">{entry.label}</span>
-                        {!entry.unavailable && <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.length}</span>}
+                        <span className="min-w-0 truncate">{entry.short ?? entry.label}</span>
+                        {!entry.unavailable && <span className="ms-auto shrink-0 text-xs text-muted-foreground">{entry.models.filter((each) => !each.legacy || isChecked(entry.provider, each)).length}</span>}
                       </button>
                     ))}
                   </div>
@@ -300,7 +348,25 @@ export function ModelPicker({
                 >
                   {matches
                     ? matches.map((row) => modelRow(row.group.provider, row.model, row.group))
-                    : !group?.unavailable && group?.models.map((entry) => modelRow(group.provider, entry))}
+                    : group && !group.unavailable && shownOf(group).map((entry) => modelRow(group.provider, entry))}
+                  {!matches && olderCount > 0 && (
+                    <button
+                      type="button"
+                      data-picker-older=""
+                      aria-expanded={older.has(group!.provider)}
+                      onClick={() =>
+                        setOlder((now) => {
+                          const next = new Set(now);
+                          if (!next.delete(group!.provider)) next.add(group!.provider);
+                          return next;
+                        })
+                      }
+                      className="group flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-surface px-2.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:bg-fill"
+                    >
+                      <ChevronRight aria-hidden className="size-icon-sm transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none" />
+                      Older models · {olderCount}
+                    </button>
+                  )}
                 </div>
                 {matches?.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models match “{needle}”</p>}
                 {!matches && group?.unavailable && (
@@ -333,22 +399,51 @@ export function ModelPicker({
                 )}
               </div>
             </div>
-            {/* Hidden when the model has no levels (some agents report none). */}
-            {efforts && model && model.efforts.length > 0 && (
-              <div className="flex h-11 shrink-0 items-center gap-3 border-t border-divider ps-4 pe-2.25">
-                <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  Effort
-                  <span className="opacity-75"> · {model.name}</span>
+            {efforts && (
+              <div ref={footer} className={cx("shrink-0 border-t border-divider", auto && "opacity-disabled")}>
+                <div className={cx(FOOTER_ROW, "h-11")}>
+                  <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    Effort
+                    {columnName && <span className="opacity-75"> · {columnName}</span>}
+                  </div>
+                  {levels.length === 0 ? (
+                    <div className="shrink-0 pe-1.75 text-xs text-muted-foreground">{auto || inHand ? "No effort levels" : "Pick a model"}</div>
+                  ) : (
+                    <SegmentedRoot
+                      aria-label="Effort"
+                      data-picker-part="effort"
+                      value={inHandChecked && value.effort ? [value.effort] : []}
+                      onValueChange={([level]) => level && chooseLevel(level)}
+                      className="flex shrink-0 items-center gap-0.5"
+                    >
+                      {levels.map((level) => (
+                        <Segment key={level} value={level} title={level === inHand?.model.defaultEffort ? "Default" : undefined} className={SEGMENT}>
+                          {effortLabel(level)}
+                        </Segment>
+                      ))}
+                    </SegmentedRoot>
+                  )}
                 </div>
-                <div className="shrink-0">
-                  <Segmented
-                    label="Effort"
-                    value={value.effort ?? ""}
-                    options={model.efforts.map((level) => ({ value: level, label: effortLabel(level) }))}
-                    onChange={(level) => onChange({ ...value, effort: level })}
-                    fill
-                  />
-                </div>
+                {hasFast && (
+                  <div className={cx(FOOTER_ROW, "h-10 pb-2")}>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Speed</span>
+                    <SegmentedRoot
+                      aria-label="Speed"
+                      data-picker-part="speed"
+                      value={[fastOn ? "fast" : "standard"]}
+                      onValueChange={([speed]) => speed && chooseSpeed(speed === "fast")}
+                      className="flex shrink-0 items-center gap-0.5"
+                    >
+                      <Segment value="standard" className={SEGMENT}>
+                        Standard
+                      </Segment>
+                      <Segment value="fast" title={inHand?.model.fast ?? undefined} className={SEGMENT}>
+                        <Bolt aria-hidden className="size-icon-xs" />
+                        Fast
+                      </Segment>
+                    </SegmentedRoot>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -365,47 +460,3 @@ export function ModelPicker({
     </>
   );
 }
-
-/**
- * "Switch to X?": the chat goes on with another agent, as a new conversation it hands what's done to. `fork`: the
- * same confirm with Fork's words, naming the agent before the conversation goes to it [D90, D162, D1071].
- */
-export function SwitchAgentDialog({
-  to,
-  onCancel,
-  onConfirm,
-  held,
-  fork = false,
-}: {
-  /** The agent's name; null while closed. */
-  to: string | null;
-  onCancel: () => void;
-  onConfirm: () => void;
-  /** The gallery's box to hold it open in, not modal and not taking focus. */
-  held?: HTMLElement;
-  fork?: boolean;
-}) {
-  const confirm = useRef<HTMLButtonElement>(null);
-  // Kept while the dialog animates out.
-  const [name, setName] = useState(to ?? "");
-  if (to !== null && to !== name) setName(to);
-  return (
-    <Dialog open={to !== null} modal={!held} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent container={held} initialFocus={held ? false : confirm}>
-        <ConfirmForm
-          title={fork ? `Fork to ${name}?` : `Switch to ${name}?`}
-          description={
-            fork
-              ? `The fork goes on with ${name} in a new conversation, and it gets everything up to this answer.`
-              : `The chat goes on with ${name} in a new conversation, and it gets everything so far, so nothing is lost.`
-          }
-          confirm={fork ? "Fork" : "Switch"}
-          onCancel={onCancel}
-          onConfirm={onConfirm}
-          confirmRef={confirm}
-        />
-      </DialogContent>
-    </Dialog>
-  );
-}
-

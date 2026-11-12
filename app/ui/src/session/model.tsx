@@ -12,12 +12,21 @@ import { newId } from "./store";
 type ModelRow = Row & {
   model?: string | null;
   effort?: string | null;
-  picked?: { backend: string; model: string; effort: string | null } | null;
+  /** On its model's fast tier. */
+  fast?: boolean;
+  picked?: { backend: string; model: string; effort: string | null; fast?: boolean } | null;
   /** The last `set` Rust took, by the app's op id [D30]. */
   setup_op?: string | null;
 };
 
-type Rust = { provider: string; label: string; mark: string | null; unavailable: "install" | "sign-in" | null; models: { id: string; name: string; efforts: string[]; default_effort: string | null }[] };
+type Rust = {
+  provider: string;
+  label: string;
+  short: string | null;
+  mark: string | null;
+  unavailable: "install" | "sign-in" | null;
+  models: { id: string; name: string; efforts: string[]; default_effort: string | null; fast: string | null; legacy: boolean }[];
+};
 
 /** Rust's groups in the kit picker's shape. */
 export const asGroups = (groups: Rust[]): ModelGroup[] =>
@@ -98,9 +107,9 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
 
   const picked = row?.picked;
   const shown: ModelChoice | null = picked
-    ? { provider: picked.backend, model: picked.model, effort: picked.effort }
+    ? { provider: picked.backend, model: picked.model, effort: picked.effort, fast: picked.fast === true }
     : row?.model
-      ? { provider: row.backend, model: row.model, effort: row.effort ?? null }
+      ? { provider: row.backend, model: row.model, effort: row.effort ?? null, fast: row.fast === true }
       : null;
   const value = pending?.choice ?? shown;
 
@@ -121,7 +130,9 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     setPending({ op, choice });
     setError(null);
     const args = ["set", id, "--agent", choice.provider, "--model", choice.model, "--op", op];
-    run(choice.effort ? [...args, "--effort", choice.effort] : args).catch((cause) => {
+    if (choice.effort) args.push("--effort", choice.effort);
+    if (choice.fast) args.push("--fast");
+    run(args).catch((cause) => {
       // Only this pick's refusal undoes it; a newer pick stands.
       setPending((now) => (now?.op === op ? null : now));
       setError(errorText(cause));

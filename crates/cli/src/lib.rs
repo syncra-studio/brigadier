@@ -42,7 +42,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--level L] [--opt K=V] [--text T] [--carry-tabs]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -165,8 +165,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let worktree = project.is_some() && !has(args, "--local");
             // A chat with no project works in a folder of its own, gone with the session [D35, D388].
-            let scratch =
-                has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
+            let scratch = has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
             let cwd = flag(args, "--cwd")
                 .map(String::from)
                 .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
@@ -188,6 +187,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         .and_then(|a| models::default_level(a, held, &chosen).map(String::from))
                 }),
                 effort: flag(args, "--effort").map(String::from),
+                fast: has(args, "--fast"),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()

@@ -1,0 +1,11 @@
+// The composer's icons, from @openai/apps-sdk-ui 0.2.2 (MIT, see THIRD_PARTY_NOTICES.md).
+import type { IconProps } from "./index";
+
+/** A model's fast tier: the model pill and the picker's Speed. */
+export function Bolt(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M15.24 3.486v.002l-1.056 4.517h5.823c1.726 0 2.596 2.021 1.518 3.3l-.002.003-9.308 10.965-.002.002c-1.397 1.656-3.922.223-3.454-1.76v-.003l1.057-4.517H3.993c-1.726 0-2.596-2.021-1.519-3.3l.003-.003 9.308-10.965.002-.002c1.397-1.656 3.922-.223 3.454 1.76Zm-1.95-.444-1.34 5.735a.998.998 0 0 0 .973 1.226h7.074a.04.04 0 0 1 .003.01.045.045 0 0 1-.004.005l-9.287 10.94 1.341-5.735a.998.998 0 0 0-.973-1.226H4.003a.041.041 0 0 1-.003-.01l.004-.005 9.287-10.94Z" />
+    </svg>
+  );
+}

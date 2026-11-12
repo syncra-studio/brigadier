@@ -495,3 +495,4 @@ export * from "./source";
 export * from "./file-types";
 export * from "./review";
 export * from "./settings";
+export * from "./composer";

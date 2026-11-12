@@ -135,6 +135,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const cid = newId();
   const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
   if (model.effort) args.push("--effort", model.effort);
+  if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
