@@ -5,6 +5,7 @@ pub use recover::recover;
 
 use crate::adapters::{Delivery, Retune};
 use crate::fold::Fold;
+use crate::message::Message;
 use crate::{Spec, adapters, as_run, cli_version};
 use serde_json::{Value, json};
 use std::io;
@@ -28,10 +29,12 @@ pub fn send(
     call: Call,
     cid: &str,
     origin: &str,
-    text: &str,
+    msg: &Message,
     backend: Option<&str>,
     retry_of: Option<&str>,
 ) -> Value {
+    // The agent reads the message as composed; the record keeps what the user wrote [D109, D127].
+    let text = msg.agent.as_str();
     let picking = origin == "user" && backend.is_none() && f.picked.is_some();
     let mut replace = None;
     let picked_fold;
@@ -81,6 +84,7 @@ pub fn send(
     };
     let spec = &Spec {
         level: level.map(String::from),
+        images: msg.images.clone(),
         ..spec.clone()
     };
     let mut run = as_run(spec, f, &b, None);
@@ -108,7 +112,10 @@ pub fn send(
         (None, text.to_string())
     };
     let setup = adapters::setup(&run);
-    let mut base = json!({"cid": cid, "origin": origin, "text": text, "backend": b, "retry_of": retry_of, "setup": setup});
+    let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup});
+    if !msg.parts.is_null() {
+        base["parts"] = msg.parts.clone();
+    }
     if held {
         base["setup"]["held"] = true.into();
     }

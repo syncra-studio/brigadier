@@ -192,8 +192,13 @@ impl Adapter for Claude {
         }
     }
 
-    fn encode(&self, _spec: &Spec, text: &str) -> String {
-        control::user(text)
+    fn encode(&self, spec: &Spec, text: &str) -> String {
+        control::user(text, &spec.images)
+    }
+
+    /// Anthropic's own limits for an image in a message: 5 MB, 8,000 pixels a side.
+    fn image_limits(&self) -> (Option<u64>, Option<u32>) {
+        (Some(5 << 20), Some(8000))
     }
 
     fn can(&self) -> Can {
@@ -209,8 +214,8 @@ impl Adapter for Claude {
         control::retune(last, next)
     }
 
-    fn control(&self, _spec: &Spec, msg: &Value) -> Result<Delivery, String> {
-        control::control(msg)
+    fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+        control::control(spec, msg)
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {

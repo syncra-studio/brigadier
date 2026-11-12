@@ -51,6 +51,10 @@ fn deliver(
         };
         let run = core::Spec {
             cid: req["cid"].as_str().map(String::from),
+            // A steer's images, in the agent's own form [D2008].
+            images: (msg["images"].as_array().into_iter().flatten())
+                .filter_map(|p| p.as_str().map(Into::into))
+                .collect(),
             ..as_run(&spec, &f.fold, &backend, None)
         };
         let Delivery::Stdin(bytes) = match a.control(&run, &msg) {
@@ -157,16 +161,29 @@ pub fn reply(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result
 }
 
 /// A message into the turn that runs, where the agent can take one [D109, D159].
-pub fn steer(data: &Path, id: &str, text: &str, cid: Option<&str>) -> io::Result<Value> {
+pub fn steer(
+    data: &Path,
+    id: &str,
+    text: &str,
+    parts: &Value,
+    cid: Option<&str>,
+) -> io::Result<Value> {
     let cid = cid.map_or_else(new_cid, String::from);
-    let req = json!({"cid": cid, "text": text, "steer": true});
+    let spec = core::load(data, id)?;
+    core::message::take(data, &spec.dir, parts, None)?;
+    let msg = core::message::compose(&spec, text, parts.clone())?;
+    let mut req = json!({"cid": cid, "text": text, "steer": true});
+    if !parts.is_null() {
+        req["parts"] = parts.clone();
+    }
+    let images = msg.images;
     deliver(data, id, req, false, |f| {
         let running = f.turns.first().is_some_and(|t| t.began);
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
         match (running, can) {
             (false, _) => Err(refused("not_running", Value::Null)),
             (_, false) => Err(refused("unsupported", Value::Null)),
-            _ => Ok(json!({"kind": "steer", "text": text})),
+            _ => Ok(json!({"kind": "steer", "text": msg.agent, "images": images})),
         }
     })
 }

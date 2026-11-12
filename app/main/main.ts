@@ -2,7 +2,7 @@
 // exceptions are what only a main process can do: the native folder picker, staging the window for the
 // first launch's intro (intro.ts), and macOS notices and the Dock badge (notices.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -62,9 +62,35 @@ function startDaemon(): void {
   daemon.unref();
 }
 
+// A plain name: a session's or an attachment's id, so a path can't climb out of its folder.
+const PLAIN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/;
+
+/**
+ * An attachment's file, by `/attachment/<home|session id>/<attachment id>`: only from Home's draft folder or that
+ * session's own `attachments/` and `draft-attachments/`, so the page shows its thumbnails under its own origin [D127].
+ */
+function attachmentFile(pathname: string): string | null {
+  const [, kind, owner, id] = pathname.split("/");
+  if (kind !== "attachment" || !PLAIN.test(owner ?? "") || !PLAIN.test(id ?? "")) return null;
+  const folders = owner === "home" ? [path.join(dataDir, "home-draft-attachments")] : ["attachments", "draft-attachments"].map((name) => path.join(dataDir, "sessions", owner, name));
+  for (const folder of folders) {
+    try {
+      const [name] = readdirSync(path.join(folder, id));
+      if (name) return path.join(folder, id, name);
+    } catch {
+      // Not in this one.
+    }
+  }
+  return null;
+}
+
 function serveUi(): void {
   protocol.handle("app", (request) => {
     const url = new URL(request.url);
+    if (url.host === APP_ID && url.pathname.startsWith("/attachment/")) {
+      const file = attachmentFile(url.pathname);
+      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+    }
     const file = path.join(uiDist, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
     if (url.host !== APP_ID || !file.startsWith(uiDist + path.sep)) return new Response(null, { status: 403 });
     return net.fetch(pathToFileURL(file).toString());

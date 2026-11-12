@@ -6,7 +6,7 @@
 use super::super::{Delivery, Event, Retune, s, uuid};
 use crate::Spec;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// A level as Claude's own permission mode: Auto is its real auto mode [D175].
 pub fn mode(level: &str) -> &'static str {
@@ -32,11 +32,21 @@ pub fn model(spec: &Spec) -> String {
     spec.model.clone().unwrap_or_else(|| "haiku".into())
 }
 
-/// A user message on stdin.
-pub fn user(text: &str) -> String {
+/// A user message on stdin, its images as Claude's own base64 blocks [D2008].
+pub fn user(text: &str, images: &[PathBuf]) -> String {
+    let mut content = json!(text);
+    if !images.is_empty() {
+        let blocks = images.iter().filter_map(|p| {
+            let data = brigadier_frames::base64(&std::fs::read(p).ok()?);
+            Some(json!({"type": "image", "source": {"type": "base64", "media_type": crate::message::mime(p), "data": data}}))
+        });
+        content = std::iter::once(json!({"type": "text", "text": text}))
+            .chain(blocks)
+            .collect();
+    }
     format!(
         "{}\n",
-        json!({"type": "user", "message": {"role": "user", "content": text}})
+        json!({"type": "user", "message": {"role": "user", "content": content}})
     )
 }
 
@@ -201,9 +211,9 @@ fn host(url: &str) -> &str {
 const SKIPPED: &str = "The user skipped this question. Use your own judgment.";
 
 /// A control message as the line Claude reads [D159, D192, D193].
-pub fn control(msg: &Value) -> Result<Delivery, String> {
+pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
     let line = match msg["kind"].as_str() {
-        Some("steer") => return Ok(Delivery::Stdin(user(s(msg, &["text"])))),
+        Some("steer") => return Ok(Delivery::Stdin(user(s(msg, &["text"]), &spec.images))),
         Some("interrupt") => {
             // Messages Claude still holds would run after a stop: they go with it.
             let (line, _) = request(json!({"subtype": "interrupt", "cancel_queued": true}));

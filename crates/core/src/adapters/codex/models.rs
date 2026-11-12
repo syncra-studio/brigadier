@@ -183,6 +183,7 @@ fn info(m: &Value) -> ModelInfo {
             .filter_map(|e| e["reasoningEffort"].as_str().map(String::from))
             .collect(),
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
+        images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);

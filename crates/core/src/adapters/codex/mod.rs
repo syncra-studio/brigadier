@@ -182,7 +182,9 @@ impl Adapter for Codex {
     fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         let line = match msg["kind"].as_str() {
             Some("answer") => control::answer(spec, msg)?,
-            Some("steer") => json!({"id": spec.cid, "steer": msg["text"]}),
+            Some("steer") => {
+                json!({"id": spec.cid, "steer": control::input(s(msg, &["text"]), &spec.images)})
+            }
             Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
             _ => return Err("Codex takes no such control message.".into()),
         };

@@ -41,15 +41,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     owner::ensure(data, &src)?;
     let note = |data_: Value| owner::call(data, source, json!({"op": "note", "data": data_}));
     // A replay keeps the logged command id and text: the log holds the operation.
-    let (cid, text) = match intent {
-        Some(i) => (str_of(&i, "cid"), str_of(&i, "text")),
+    let (cid, text, parts) = match intent {
+        Some(i) => (str_of(&i, "cid"), str_of(&i, "text"), i["parts"].clone()),
         None => {
             let (cid, text) = (need("--cid")?.to_string(), need("--text")?.to_string());
             core::check_id(&cid)?;
+            let parts = crate::parts(args)?;
             note(
-                json!({"event": "side", "phase": "intent", "session": target, "cid": cid, "text": text}),
+                json!({"event": "side", "phase": "intent", "session": target, "cid": cid, "text": text, "parts": parts}),
             )?;
-            (cid, text)
+            (cid, text, parts)
         }
     };
     if let Some(qid) = flag(args, "--qid") {
@@ -65,7 +66,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     } else {
         match crate::run(
             data,
-            &start_args(data, &src, &project, target, &text, &cid)?,
+            &start_args(data, &src, &project, target, &text, &parts, &cid)?,
         ) {
             Ok(r) if r["result"] == "delivered" || r["result"] == "logged" => None,
             Ok(r) => Some(
@@ -111,6 +112,7 @@ fn start_args(
     project: &str,
     target: &str,
     text: &str,
+    parts: &Value,
     cid: &str,
 ) -> io::Result<Vec<String>> {
     let f = core::fold(&src.dir, true)?.fold;
@@ -140,6 +142,9 @@ fn start_args(
     );
     push("--base", core::share::base(data, src));
     push("--text", Some(text.into()));
+    // Its files are copied in from the source, so deleting that leaves this one whole [D204].
+    push("--parts", (!parts.is_null()).then(|| parts.to_string()));
+    push("--from", (!parts.is_null()).then(|| src.id.clone()));
     push("--cid", Some(cid.into()));
     Ok(args)
 }

@@ -13,6 +13,8 @@ pub struct ModelInfo {
     /// Being retired, where its CLI's list says so [D487]: `{at, to}`, when (ms) and the model it
     /// suggests instead, each null where not said. None for a model nothing says of [D74].
     pub retiring: Option<Value>,
+    /// Whether it takes images, where its CLI's list says; None where nothing says [D2022 #14].
+    pub images: Option<bool>,
 }
 
 impl ModelInfo {

@@ -33,11 +33,21 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     open
 }
 
+/// A message as Codex's input: its text, then each image by its path [D2008].
+pub fn input(text: &str, images: &[std::path::PathBuf]) -> Value {
+    let images = images
+        .iter()
+        .map(|p| json!({"type": "localImage", "path": p}));
+    std::iter::once(json!({"type": "text", "text": text}))
+        .chain(images)
+        .collect()
+}
+
 /// One line for the helper to send as `turn/start`. Level, model and effort ride on every turn, so
 /// Codex checks them with the prompt and refuses it whole if it can't apply them [D222].
 pub fn turn(spec: &Spec, text: &str) -> Value {
     let (policy, reviewer, _, sandbox) = level(spec);
-    let mut turn = json!({"input": [{"type": "text", "text": text}], "approvalPolicy": policy,
+    let mut turn = json!({"input": input(text, &spec.images), "approvalPolicy": policy,
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     if let Some(model) = &spec.model {
         turn["model"] = model.as_str().into();

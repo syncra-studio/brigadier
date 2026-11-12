@@ -54,3 +54,25 @@ pub fn base64(bytes: &[u8]) -> String {
     }
     s
 }
+
+/// Standard base64 back to bytes; None for anything else.
+pub fn unbase64(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim_end_matches('=').as_bytes();
+    let six = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    for c in s.chunks(4) {
+        let n = c
+            .iter()
+            .try_fold(0u32, |n, &b| Some(n << 6 | six(b)? as u32))?
+            << (6 * (4 - c.len()));
+        out.extend(&n.to_be_bytes()[1..c.len()]);
+    }
+    (s.len() % 4 != 1).then_some(out)
+}

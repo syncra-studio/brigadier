@@ -3,6 +3,7 @@
 
 mod accounts;
 pub mod archived;
+mod attach;
 mod chips;
 mod commit;
 mod control;
@@ -71,6 +72,11 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
+/// A message's `--parts`: the composer's draft as its JSON, chips and files; Null for plain text [D109].
+pub(crate) fn parts(args: &[String]) -> io::Result<Value> {
+    flag(args, "--parts").map_or(Ok(Value::Null), |p| Ok(serde_json::from_str(p)?))
+}
+
 fn has(args: &[String], name: &str) -> bool {
     args.iter().any(|a| a == name)
 }
@@ -116,10 +122,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         | "panel" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
-    for id in ids
-        .iter()
-        .filter(|a| *a != "--all" && !(matches!(cmd, "draft" | "tabs") && *a == HOME_DRAFT))
-    {
+    for id in ids.iter().filter(|a| {
+        *a != "--all" && !(matches!(cmd, "draft" | "tabs" | "attach") && *a == HOME_DRAFT)
+    }) {
         core::check_id(id)?;
     }
     match cmd {
@@ -190,6 +195,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::load(data, id)?
             };
+            // Home's files, or a message sent as new's, come into the new session first, before
+            // a cleared draft can take them [D204, D2022 #18].
+            let parts = parts(args)?;
+            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             // The tabs are extras: a failure here never stops the session from starting.
             if fresh && has(args, "--carry-tabs") {
                 let _ = tabs::carry(data, id);
@@ -212,24 +221,27 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
-                Some(text) => send(data, &spec, text, flag(args, "--cid"), None, None),
+                Some(text) => send(data, &spec, text, parts, flag(args, "--cid"), None, None),
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
         "send" => {
             let (id, text) = (arg(args, 1)?, arg(args, 2)?);
+            let parts = parts(args)?;
             if has(args, "--steer") {
-                return control::steer(data, id, text, flag(args, "--cid"));
+                return control::steer(data, id, text, &parts, flag(args, "--cid"));
             }
             if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"))? {
                 return Ok(reply);
             }
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
+            core::message::take(data, &spec.dir, &parts, None)?;
             send(
                 data,
                 &spec,
                 text,
+                parts,
                 flag(args, "--cid"),
                 flag(args, "--backend"),
                 // A failed turn's message again, after its rewind: it replaces that attempt [D492].
@@ -269,22 +281,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
-        // What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
-        "draft" => {
-            let id = arg(args, 1)?;
-            let path = if id == HOME_DRAFT {
-                data.join("home-draft")
-            } else {
-                core::load(data, id)?;
-                core::session_dir(data, id).join("draft")
-            };
-            match args.get(2).map(String::as_str) {
-                None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),
-                Some("") => remove(&path)?,
-                Some(parts) => core::write_atomic(&path, parts.as_bytes())?,
-            }
-            Ok(json!({"ok": true}))
-        }
+        "draft" => attach::kept(data, args),
+        "attach" => attach::run(data, args),
         "status" => {
             let all = procs::all();
             let ids: Vec<String> = if has(args, "--all") {
@@ -387,6 +385,7 @@ fn send(
     data: &Path,
     spec: &Spec,
     text: &str,
+    parts: Value,
     cid: Option<&str>,
     backend: Option<&str>,
     retry_of: Option<&str>,
@@ -395,11 +394,12 @@ fn send(
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(control::new_cid, String::from);
     let call = call_fn(data, &spec.id);
+    let msg = core::message::compose(spec, text, parts)?;
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
         let running = child(data, &spec.id);
         Ok(core::send(
-            spec, &f.fold, running, &call, &cid, "user", text, backend, retry_of,
+            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
         ))
     };
     let mut reply = go()?;

@@ -31,6 +31,9 @@ struct Queue {
 struct Item {
     id: String,
     text: String,
+    /// The composer's draft it was queued as, its files already in the session's folder [D127].
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    parts: Value,
     at: u64,
     /// Why the drain couldn't send it: it stays first, and the queue waits on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -41,6 +44,8 @@ struct Item {
 struct Editing {
     id: String,
     text: String,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    parts: Value,
     slot: usize,
 }
 
@@ -115,6 +120,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let qid = flag(args, "--qid").ok_or_else(|| io::Error::other(crate::USAGE))?;
             check_id(qid)?;
             let at = flag(args, "--at").and_then(|n| n.parse().ok());
+            let parts = crate::parts(args)?;
+            core::message::take(data, &dir, &parts, None)?;
             change(&dir, |q| {
                 // Sending an edited message puts it back: the edit is over.
                 if q.editing.as_ref().is_some_and(|e| e.id == qid) {
@@ -123,6 +130,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let item = Item {
                     id: qid.into(),
                     text,
+                    parts,
                     at: brigadier_frames::log::now_ms(),
                     error: None,
                 };
@@ -168,6 +176,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 q.editing = Some(Editing {
                     id: item.id,
                     text: item.text,
+                    parts: item.parts,
                     slot,
                 });
                 Ok(())
@@ -186,7 +195,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     .iter()
                     .find(|i| i.id == qid)
                     .ok_or_else(|| missing(&qid))?;
-                let reply = control::steer(data, id, &item.text.clone(), Some(&qid))?;
+                let reply = control::steer(
+                    data,
+                    id,
+                    &item.text.clone(),
+                    &item.parts.clone(),
+                    Some(&qid),
+                )?;
                 let went = went(&dir, &reply, &qid);
                 if went {
                     q.items.retain(|i| i.id != qid);
@@ -234,6 +249,7 @@ fn restore(q: &mut Queue) {
         let item = Item {
             id: e.id,
             text: e.text,
+            parts: e.parts,
             at,
             error: None,
         };
@@ -350,7 +366,15 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             owner::call(data, id, req)
         };
         let reply = core::send(
-            &spec, &f.fold, child, &call, &item.id, "user", &item.text, None, None,
+            &spec,
+            &f.fold,
+            child,
+            &call,
+            &item.id,
+            "user",
+            &core::message::compose(&spec, &item.text, item.parts.clone())?,
+            None,
+            None,
         );
         if went(&dir, &reply, &item.id) {
             q.items.remove(0);

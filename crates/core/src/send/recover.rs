@@ -3,6 +3,7 @@
 
 use super::{Call, Running, send};
 use crate::fold::{self, Fold, Live};
+use crate::message::Message;
 use crate::{Spec, adapters, as_run, sweep};
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -60,7 +61,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 call,
                 &cid,
                 &turn.origin,
-                &turn.text,
+                &again(spec, &turn.text, &turn.parts),
                 Some(&turn.backend),
                 Some(&old),
             );
@@ -98,7 +99,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 call,
                 &format!("rc{now}"),
                 "system",
-                text,
+                &Message::plain(text),
                 Some(&backend),
                 Some(&root),
             );
@@ -121,10 +122,10 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             if !resend && child.is_none() && !f.resume.contains_key(backend.unwrap_or(&f.backend)) {
                 return json!({"ok": false, "error": "The agent stopped before its conversation began, so there's nothing to carry on. Send your message again."});
             }
-            let text = if resend {
-                last["text"].as_str().unwrap_or("")
+            let msg = if resend {
+                again(spec, last["text"].as_str().unwrap_or(""), &last["parts"])
             } else {
-                RESUME
+                Message::plain(RESUME)
             };
             let mut reply = send(
                 spec,
@@ -133,7 +134,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 call,
                 &cid,
                 origin,
-                text,
+                &msg,
                 backend,
                 resend.then_some(old),
             );
@@ -142,4 +143,9 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
         }
         _ => json!({"ok": false, "error": format!("nothing to recover: {state}")}),
     }
+}
+
+/// A message sent again as it was first sent, its files already in the session's folder.
+fn again(spec: &Spec, text: &str, parts: &Value) -> Message {
+    crate::message::compose(spec, text, parts.clone()).unwrap_or_else(|_| Message::plain(text))
 }

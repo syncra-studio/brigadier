@@ -168,7 +168,11 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
     }
 }
 
+/// A steer's input as the adapter built it, or a plain text's.
 fn input(text: &Value) -> Value {
+    if text.is_array() {
+        return text.clone();
+    }
     json!([{"type": "text", "text": text}])
 }
 

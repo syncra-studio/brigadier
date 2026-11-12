@@ -7,6 +7,7 @@ pub mod fold;
 pub mod fork;
 pub mod git;
 pub mod host;
+pub mod message;
 pub mod norm;
 pub mod projects;
 pub mod repos;
@@ -79,6 +80,10 @@ pub struct Spec {
     /// The command id of the input being built, for an agent whose reply names it [D222].
     #[serde(skip)]
     pub cid: Option<String>,
+    /// The images the input being built carries, each in its session's `attachments/`, sent in
+    /// the agent's own form [D2008].
+    #[serde(skip)]
+    pub images: Vec<PathBuf>,
     /// The entry in its CLI's record to resume at, after a rewind that cut there [D384].
     #[serde(skip)]
     pub resume_at: Option<String>,

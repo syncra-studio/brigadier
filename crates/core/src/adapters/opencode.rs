@@ -231,7 +231,7 @@ impl Adapter for OpenCode {
             json!({"model": model_ref(spec), "must": true}),
         ];
         lines.push(json!({"permissions": rules(spec), "must": true}));
-        lines.extend(text.map(|t| json!({"prompt": {"text": t}, "id": spec.cid})));
+        lines.extend(text.map(|t| json!({"prompt": prompt(spec, t), "id": spec.cid})));
         Launch {
             argv,
             env,
@@ -241,7 +241,10 @@ impl Adapter for OpenCode {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!("{}\n", json!({"prompt": {"text": text}, "id": spec.cid}))
+        format!(
+            "{}\n",
+            json!({"prompt": prompt(spec, text), "id": spec.cid})
+        )
     }
 
     /// No auto mode, so Auto isn't offered [D175, D187].
@@ -282,7 +285,11 @@ impl Adapter for OpenCode {
     fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         let r = &msg["request"];
         let mut line = match s(msg, &["kind"]) {
-            "steer" => json!({"prompt": {"text": msg["text"], "delivery": "steer"}}),
+            "steer" => {
+                let mut p = prompt(spec, s(msg, &["text"]));
+                p["delivery"] = "steer".into();
+                json!({"prompt": p})
+            }
             "interrupt" => json!({"interrupt": true}),
             "answer" if r["items"].is_array() => {
                 json!({"form": {"session": r["cli"]["session"], "id": r["id"], "answer": answers(r, msg)}})
@@ -441,4 +448,16 @@ impl Adapter for OpenCode {
         }
         Some((texts, tools))
     }
+}
+
+/// A message as OpenCode's prompt: its text, each image as a v2 attachment by its `file:` uri [D2008].
+fn prompt(spec: &Spec, text: &str) -> Value {
+    let files: Vec<Value> = (spec.images.iter())
+        .map(|p| json!({"uri": format!("file://{}", p.display()), "name": p.file_name().map(|n| n.to_string_lossy())}))
+        .collect();
+    let mut prompt = json!({"text": text});
+    if !files.is_empty() {
+        prompt["files"] = files.into();
+    }
+    prompt
 }

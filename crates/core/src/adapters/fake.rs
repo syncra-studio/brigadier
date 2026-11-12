@@ -61,6 +61,8 @@ impl Adapter for Fake {
                         name: "fake-large".into(),
                         // Retiring with no date, for the notice's demo [D487].
                         retiring: Some(json!({"at": null, "to": "fake"})),
+                        // Takes no images, for the held Send's demo [D2022 #14].
+                        images: Some(false),
                         ..level(&["low", "medium", "high", "xhigh"], "high")
                     },
                 ]
@@ -112,7 +114,7 @@ impl Adapter for Fake {
         Retune::Send(Delivery::Stdin(setup_line(next)))
     }
 
-    fn control(&self, _spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+    fn control(&self, spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         let line = match msg["kind"].as_str() {
             Some("answer") => {
                 // A plain message that answers a question reads as its one answer.
@@ -121,15 +123,15 @@ impl Adapter for Fake {
                     .map_or(msg["answers"].clone(), |r| json!([r]));
                 json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": answers}})
             }
-            Some("steer") => json!({"text": msg["text"], "steer": true}),
+            Some("steer") => json!({"text": msg["text"], "steer": true, "images": spec.images}),
             Some("interrupt") => json!({"interrupt": true}),
             _ => return Err("unknown control message".into()),
         };
         Ok(Delivery::Stdin(format!("{line}\n")))
     }
 
-    fn encode(&self, _spec: &Spec, text: &str) -> String {
-        format!("{}\n", json!({"text": text}))
+    fn encode(&self, spec: &Spec, text: &str) -> String {
+        format!("{}\n", json!({"text": text, "images": spec.images}))
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {

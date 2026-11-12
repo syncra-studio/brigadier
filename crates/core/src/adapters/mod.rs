@@ -293,6 +293,11 @@ pub trait Adapter: Sync {
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch;
     /// Bytes for a message to a child that is already running.
     fn encode(&self, spec: &Spec, text: &str) -> String;
+    /// The most an image may be for this agent, beyond the app's ceiling: its bytes and its
+    /// pixels a side; None where nothing is known [D487, D492].
+    fn image_limits(&self) -> (Option<u64>, Option<u32>) {
+        (None, None)
+    }
     fn parse(&self, line: &str) -> Vec<Event>;
     fn can(&self) -> Can {
         Can {
