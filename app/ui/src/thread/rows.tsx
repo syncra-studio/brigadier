@@ -18,7 +18,7 @@ import "./markdown.css";
 // The first row clears find's bar (find.tsx), as the old app's did.
 const GAPS: Record<Gap, string> = { first: "pt-thread-find-top", turn: "pt-6", part: "pt-4", step: "pt-1" };
 
-export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean };
+export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean; older?: boolean };
 
 /** A group's row and, opened, its steps: the thread's and a worker's in its panel. */
 export function GroupLine({ item, live, open, steps, onToggle }: Extract<Line, { type: "group" }> & { onToggle: (id: string) => void }) {
@@ -55,7 +55,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       {props.type === "setup" ? (
         <SetupRow keep={props.id} setup={props.setup} />
       ) : props.type === "marks" ? (
-        <AnswerMarks text={props.item.text} time={props.item.sentAt} fork={fork} />
+        <AnswerMarks text={props.item.text} time={props.item.sentAt} fork={fork} older={props.older} />
       ) : props.type === "work" ? (
         <WorkHeader turn={props.turn} work={props.work} open={props.open} onToggle={props.onToggle} />
       ) : props.type === "group" ? (
@@ -76,6 +76,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
           turn={props.turn}
           step={props.step}
           dated={props.dated}
+          older={props.older}
           actions={props.item.kind !== "message" || !props.item.final || props.actions === true}
           fork={fork}
           again={props.item.kind === "notice" && "why" in props.item && <FailedActions turn={props.item.turnId} why={props.item.why} />}

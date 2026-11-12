@@ -58,9 +58,9 @@ export function datedMessages(items: readonly Item[]): ReadonlySet<string> {
   return dated;
 }
 
-/** Whether a user's message sent at `at` after `previous` (the last message, if any) has its date above it. */
+/** Whether a user's message sent at `at` after `previous` (the last message, if any) has its date above it: a chat's first has none [D83]. */
 export function datedAfter(previous: { sentAt?: number } | undefined, at: number | undefined): boolean {
-  return !previous || (at !== undefined && previous.sentAt !== undefined && at - previous.sentAt > SEPARATOR_GAP_MS);
+  return previous !== undefined && at !== undefined && previous.sentAt !== undefined && at - previous.sentAt > SEPARATOR_GAP_MS;
 }
 
 /**
@@ -245,26 +245,30 @@ export function AssistantMessage({
   final,
   time,
   fork,
+  older,
   children,
 }: {
   text: string;
   final: boolean;
   time?: number;
   fork?: ReactNode;
+  /** Not the thread's latest answer: its actions only on hover. */
+  older?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="group/answer flex flex-col gap-1.5">
       <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
-      {final && <AnswerMarks text={text} time={time} fork={fork} />}
+      {final && <AnswerMarks text={text} time={time} fork={fork} older={older} />}
     </div>
   );
 }
 
 /** A finished answer's actions: copy, then fork where offered [D1069], the time only on hover or focus [D297]. */
-export function AnswerMarks({ text, time, fork }: { text: string; time?: number; fork?: ReactNode }) {
+export function AnswerMarks({ text, time, fork, older = false }: { text: string; time?: number; fork?: ReactNode; older?: boolean }) {
   return (
-    <div className="group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground">
+    // Only the latest answer keeps them in view; an older one's show on hover or focus [D82].
+    <div className={cx("group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground", older && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
       <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
       {fork}
       {time !== undefined && (

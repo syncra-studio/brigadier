@@ -177,6 +177,17 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     }
     return undefined;
   }, [all]);
+  // The answer whose actions stay in view: the last turn's, gone once a newer message is sent [D82].
+  const latest = useMemo(() => {
+    for (let at = all.length - 1; at >= 0; at--) {
+      const line = all[at]!;
+      if (line.type === "marks") return line.id;
+      if (line.type !== "item" || line.item.kind !== "message") continue;
+      if (line.item.role === "user") return undefined;
+      if (line.actions || (line.item.joined && !line.item.final)) return line.id;
+    }
+    return undefined;
+  }, [all]);
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const space = useMemo(() => store(0), []);
@@ -334,7 +345,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           itemSize={54}
           onScrollEnd={letGo}
         >
-          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} onToggle={toggle} />}
+          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest} onToggle={toggle} />}
         </Virtualizer>
         <div data-footer>
           <div className="mx-auto w-full max-w-reading px-6 pb-8">

@@ -51,7 +51,7 @@ const FAILED = {
  * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above. `again`:
  * a failed turn's actions, the app's (Retry and what its reason offers).
  */
-export function Body({ item, turn, step, dated = false, actions = true, fork, again }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; fork?: ReactNode; again?: ReactNode }) {
+export function Body({ item, turn, step, dated = false, actions = true, older, fork, again }: { item: Item; turn: Turn | undefined; step: boolean; dated?: boolean; actions?: boolean; older?: boolean; fork?: ReactNode; again?: ReactNode }) {
   switch (item.kind) {
     case "group":
       return null;
@@ -65,6 +65,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork, ag
           final={actions && (item.final === true || item.joined === true)}
           time={item.sentAt}
           fork={fork}
+          older={older}
         >
           <Markdown text={item.text} keep={item.id} at={item.sentAt} />
         </AssistantMessage>
