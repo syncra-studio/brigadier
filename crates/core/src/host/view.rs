@@ -330,22 +330,7 @@ fn checks_event(checks: &[Value]) -> Option<Value> {
 
 /// GitHub's `2026-11-11T13:49:58Z` as Unix ms; anything else is unknown.
 fn ms(at: &Value) -> Option<u64> {
-    let s = at.as_str()?.strip_suffix('Z')?;
-    let (date, time) = s.split_once('T')?;
-    let n = |p: &str| p.parse::<i64>().ok();
-    let mut d = date.split('-').map(n);
-    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
-    let mut t = time.split(['.', ':']).map(n);
-    let (h, min, sec) = (t.next()??, t.next()??, t.next()??);
-    // Days from 1970-01-01, Howard Hinnant's days_from_civil.
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
-    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
-    u64::try_from(((days * 24 + h) * 60 + min) * 60 + sec)
-        .ok()
-        .map(|s| s * 1000)
+    crate::adapters::iso_ms(at.as_str()?)
 }
 
 fn now_ms() -> u64 {

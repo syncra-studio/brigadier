@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, type Ref, useEffect, useRef, useState } from "react";
+import { Fragment, type MouseEvent, type ReactNode, type Ref, useEffect, useId, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -6,11 +6,12 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
-import { DotsHorizontal, Eye, EyeOff, Plus, Spinner } from "../icons";
+import { ChevronDown, ChevronRight, DotsHorizontal, Eye, EyeOff, Plus, Spinner } from "../icons";
 import type { useAgentSetup } from "../onboarding/agents";
 import type { Agent } from "../onboarding/api";
 import { type Account, type SwitchAgent, addAccount, closeSignIn, loadAccounts, removeAccount, renameAccount, signIn, signInRun, startOn } from "./api";
-import { ROW_TITLE, SetupLine, hasEmail, maskEmails, planName, useFailed } from "./parts";
+import { ROW_LINE, ROW_TITLE, SetupLine, hasEmail, maskEmails, planName, useFailed } from "./parts";
+import { LimitLine, TightestUsage, tightest } from "./usage";
 
 /** How often the accounts are checked again while a sign-in runs. */
 const RECHECK_MS = 2000;
@@ -44,6 +45,8 @@ export function AccountRows({
   const [starting, setStarting] = useState(false);
   // The rows showing their email: the page's own, so leaving it hides them again.
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
+  // The rows opened or closed here; the first starts open, the old app's [D7].
+  const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const list = accounts?.accounts?.list;
   // An agent that keeps its logins in one home adds one with its own sign-in, its line shown here.
   const oneHome = accounts !== undefined && !accounts.accounts;
@@ -105,9 +108,11 @@ export function AccountRows({
       {accounts === undefined && agent.path === undefined ? (
         <p className="px-4 py-3 text-sm text-quiet-foreground">Reading the accounts…</p>
       ) : (
-        rows.map((each) => (
+        rows.map((each, index) => (
           <AccountRow
             key={each.id || each.name}
+            open={toggled.get(each.id || each.name) ?? index === 0}
+            onToggle={() => setToggled((all) => new Map(all).set(each.id || each.name, !(all.get(each.id || each.name) ?? index === 0)))}
             name={list ? undefined : each.name || undefined}
             account={each}
             label={agent.label}
@@ -177,11 +182,14 @@ function LinkRow({ label, busy, disabled, onClick }: { label: string; busy: bool
 }
 
 /**
- * One account: its initial, who it is over how it stands; its usage once Rust reads it; then In use on the one new
- * sessions start on where the others have Use (or Sign in), and its ⋯ menu.
+ * One account, the old app's: a chevron, its initial, who it is over how it stands; closed, its tightest limit; then In
+ * use on the one new sessions start on where the others have Use (or Sign in), and its ⋯ menu. A press on the row opens
+ * it to every limit with when each resets; its controls don't.
  */
 function AccountRow({
   account,
+  open,
+  onToggle,
   name,
   label,
   online,
@@ -196,6 +204,8 @@ function AccountRow({
   onRemove,
 }: {
   account: Account;
+  open: boolean;
+  onToggle: () => void;
   /** A login of an agent that keeps several in one home, named by it. */
   name?: string;
   label: string;
@@ -254,12 +264,40 @@ function AccountRow({
   if ((own || account.own_login) && title !== OWN_LOGIN) line.push(OWN_LOGIN);
   const menu = Boolean(onRename) || !own;
   const limited = account.limited_at !== null && Date.now() - account.limited_at < LIMIT_SHOWN_MS;
+  const limitsId = useId();
+  // Only an account with limits read opens.
+  const limits = signedIn ? (c.usage ?? []) : [];
+  const opens = limits.length > 0;
+  const shown = opens && open;
+  const fullest = tightest(limits);
+  const usage = !c.installed || !signedIn ? null : !fullest ? <span className={ROW_LINE}>Usage not read yet</span> : !shown && <TightestUsage limit={fullest} />;
+  // A press on the row toggles it, but not one on its controls or in its menu, which React passes up from its layer.
+  const toggle = (event: MouseEvent<HTMLDivElement>) => {
+    if (!opens || !(event.target instanceof Element) || !event.currentTarget.contains(event.target)) return;
+    const control = event.target.closest("button, input, a");
+    if (control && control.getAttribute("data-slot") !== "account-toggle") return;
+    onToggle();
+  };
+  const Chevron = shown ? ChevronDown : ChevronRight;
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-4 px-4 py-3">
-        {/* The old row's chevron slot, empty: an account here never opens to its limits. */}
+    <div className={cx("flex flex-col transition-colors", opens && "hover:bg-fill")}>
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the button over it is the keyboard's and a screen reader's */}
+      <div onClick={toggle} className={cx("group/account relative flex items-center gap-4 px-4 py-3", opens && "cursor-pointer")}>
+        {/* What opens the row for the keyboard and a screen reader, beside its controls; the pointer goes through it. */}
+        {opens && (
+          <button
+            type="button"
+            data-slot="account-toggle"
+            aria-expanded={shown}
+            aria-controls={limitsId}
+            aria-label={`${title}: ${shown ? "hide" : "show"} its limits`}
+            className="pointer-events-none absolute inset-0 focus-visible:focus-ring"
+          />
+        )}
         <span className="flex shrink-0 items-center gap-2">
-          <span aria-hidden className="size-3.5" />
+          <span aria-hidden className="flex size-3.5 items-center justify-center">
+            {opens && <Chevron className="size-3.5 text-muted-foreground group-hover/account:text-foreground" />}
+          </span>
           <span aria-hidden className="flex size-8 items-center justify-center rounded-capsule bg-fill-hover text-label font-medium text-foreground">
             {(title.trim().charAt(0) || "?").toUpperCase()}
           </span>
@@ -292,7 +330,7 @@ function AccountRow({
           <ErrorLine error={error} />
         </div>
         <span className="flex w-37.5 shrink-0 items-center justify-end">
-          {limited && <Badge variant="warning">Hit its limit</Badge>}
+          {limited ? <Badge variant="warning">Hit its limit</Badge> : usage}
         </span>
         <div className="flex w-24 shrink-0 items-center justify-end gap-2.5">
           {!own && !signedIn && !account.sign_in?.running ? (
@@ -337,6 +375,13 @@ function AccountRow({
           )}
         </div>
       </div>
+      {shown && (
+        <div id={limitsId} className="flex flex-col gap-2.5 pr-16 pb-4 pl-21.5">
+          {limits.map((limit) => (
+            <LimitLine key={limit.name} limit={limit} now={Date.now()} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,25 +1,34 @@
 //! Its model list as `claude` itself answers `initialize` over stream-json, as the old app read it:
 //! each model under its real name ("Opus 5.5"), with its effort levels, the `default` alias
-//! folded into the model it runs, and older models of a family marked legacy.
+//! folded into the model it runs, and older models of a family marked legacy; and its usage limits
+//! as it answers `get_usage` in the same run, the old app's way [D28].
 
 use super::super::setup::run_fed;
-use super::super::{ModelInfo, base_env, home_path, mark_superseded};
+use super::super::{Check, Limit, ModelInfo, base_env, home_path, iso_ms, mark_superseded};
 use crate::Spec;
 use serde_json::Value;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
-/// Its models; where its list can't be read, its aliases by id.
-pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Vec<ModelInfo> {
-    listed(spec, exe, cwd).unwrap_or_else(|_| {
-        (["sonnet", "opus", "haiku"].map(|m| ModelInfo::plain(m, false))).into()
-    })
+/// Its models and usage; where its list can't be read, its aliases by id.
+pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
+    let (models, usage) = listed(spec, exe, cwd).unwrap_or_else(|_| {
+        let aliases = ["sonnet", "opus", "haiku"].map(|m| ModelInfo::plain(m, false));
+        (aliases.into(), None)
+    });
+    Check {
+        models,
+        usage,
+        ..Check::default()
+    }
 }
 
-/// A throwaway `claude` that answers `initialize`, then ends at its input's end: no settings, MCP
-/// servers or hooks loaded, and no session written.
-fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Vec<ModelInfo>, String> {
+type Listed = (Vec<ModelInfo>, Option<Vec<Limit>>);
+
+/// A throwaway `claude` that answers `initialize` and `get_usage`, then ends at its input's end: no
+/// settings, MCP servers or hooks loaded, and no session written.
+fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
     let args = [
         "-p",
         "--input-format",
@@ -43,19 +52,21 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Vec<ModelInfo>, String>
         .env_clear()
         .envs(base_env(spec, exe, &[]))
         .current_dir(cwd);
-    let ask =
-        r#"{"type":"control_request","request_id":"models","request":{"subtype":"initialize"}}"#;
-    let out = run_fed(
-        &mut command,
-        30,
-        &AtomicBool::new(false),
-        Some(&format!("{ask}\n")),
-    )?;
-    let answer = String::from_utf8_lossy(&out.stdout)
+    let ask = concat!(
+        r#"{"type":"control_request","request_id":"models","request":{"subtype":"initialize"}}"#,
+        "\n",
+        r#"{"type":"control_request","request_id":"usage","request":{"subtype":"get_usage","skip_behaviors":true}}"#,
+        "\n"
+    );
+    let out = run_fed(&mut command, 30, &AtomicBool::new(false), Some(ask))?;
+    let answers: Vec<Value> = String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .find(|v| v["type"] == "control_response" && v["response"]["request_id"] == "models")
-        .ok_or("Claude didn't list its models")?;
+        .filter(|v| v["type"] == "control_response" && v["response"]["subtype"] == "success")
+        .collect();
+    let answer = |id: &str| answers.iter().find(|v| v["response"]["request_id"] == id);
+    let usage = answer("usage").map(|v| usage(&v["response"]["response"]));
+    let answer = answer("models").ok_or("Claude didn't list its models")?;
     let listed = answer["response"]["response"]["models"].as_array().cloned();
     let settings: Value = std::fs::read(home_path(".claude/settings.json"))
         .ok()
@@ -79,7 +90,80 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Vec<ModelInfo>, String>
     }
     let mut models: Vec<ModelInfo> = models.into_iter().map(|(m, _)| m).collect();
     mark_superseded(&mut models);
-    Ok(models)
+    Ok((models, usage))
+}
+
+/// Its `get_usage` answer's limits, the old app's reading: its `limits` list where it gives one (the
+/// session, the week and a week scoped to one model), else the named windows `five_hour`,
+/// `seven_day` and `seven_day_<family>`; nothing where it says limits aren't available.
+fn usage(answer: &Value) -> Vec<Limit> {
+    let rates = &answer["rate_limits"];
+    if answer["rate_limits_available"] == false || rates.is_null() {
+        return vec![];
+    }
+    let found = match rates["limits"].as_array() {
+        Some(list) => (list.iter()).filter_map(listed_limit).collect(),
+        None => (rates.as_object().into_iter().flatten())
+            .filter_map(|(id, w)| window(id, w["utilization"].as_f64()?, &w["resets_at"]))
+            .collect(),
+    };
+    Limit::ordered(found)
+}
+
+/// One entry of the `limits` list, if it's a window work waits on.
+fn listed_limit(limit: &Value) -> Option<Limit> {
+    let (used, resets, scope) = (
+        limit["percent"].as_f64()?,
+        &limit["resets_at"],
+        &limit["scope"],
+    );
+    match limit["kind"].as_str()? {
+        "session" if scope.is_null() => window("five_hour", used, resets),
+        "weekly_all" if scope.is_null() => window("seven_day", used, resets),
+        "weekly_scoped" => {
+            let model = &scope["model"];
+            let name = model["display_name"].as_str().or(model["id"].as_str())?;
+            // The family word: "Fable" in "Fable", "Claude Fable 5.1" or "claude-fable-5-1".
+            let family = (name.split(|c: char| !c.is_ascii_alphanumeric())).find(|w| {
+                w.chars().any(|c| c.is_ascii_alphabetic()) && !w.eq_ignore_ascii_case("claude")
+            })?;
+            window(
+                &format!("seven_day_{}", family.to_ascii_lowercase()),
+                used,
+                resets,
+            )
+        }
+        _ => None,
+    }
+}
+
+/// A named window: the 5-hour session, the week, or a week that meters one model family
+/// (`seven_day_opus`); other entries (overage, extra usage) aren't windows work waits on.
+fn window(id: &str, used: f64, resets: &Value) -> Option<Limit> {
+    let family = id.strip_prefix("seven_day_").filter(|f| {
+        !f.is_empty()
+            && f.chars().all(|c| c.is_ascii_lowercase())
+            && !matches!(*f, "overage" | "oauth")
+    });
+    let name = match (id, family) {
+        ("five_hour", _) => "5-hour".to_string(),
+        ("seven_day", _) => "Weekly".to_string(),
+        (_, Some(f)) => format!("Weekly · {}{}", f[..1].to_ascii_uppercase(), &f[1..]),
+        _ => return None,
+    };
+    let minutes = if id == "five_hour" {
+        5 * 60
+    } else {
+        7 * 24 * 60
+    };
+    let resets = resets.as_str().and_then(iso_ms);
+    Some(Limit::new(
+        name,
+        used,
+        resets,
+        Some(minutes),
+        family.is_some(),
+    ))
 }
 
 /// A model and the one its alias resolves to.

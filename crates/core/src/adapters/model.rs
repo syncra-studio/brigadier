@@ -10,6 +10,73 @@ pub struct Check {
     pub who: Who,
     pub logins: Vec<String>,
     pub models: Vec<ModelInfo>,
+    /// Its usage limits as its CLI reads them [D28]; None where they weren't read.
+    pub usage: Option<Vec<Limit>>,
+}
+
+/// One usage limit: its name ("5-hour", "Weekly · Opus"), the whole percent used and when it
+/// resets (Unix ms), where said.
+#[derive(serde::Serialize)]
+pub struct Limit {
+    pub name: String,
+    pub used: u32,
+    pub resets: Option<u64>,
+    /// Its place: the shortest window first, one that meters a single model after the one for all.
+    #[serde(skip)]
+    pub order: (u64, bool),
+}
+
+impl Limit {
+    pub fn new(
+        name: String,
+        used: f64,
+        resets: Option<u64>,
+        minutes: Option<u64>,
+        scoped: bool,
+    ) -> Self {
+        let used = used.clamp(0.0, 100.0).round() as u32;
+        let order = (minutes.unwrap_or(u64::MAX), scoped);
+        Self {
+            name,
+            used,
+            resets,
+            order,
+        }
+    }
+
+    /// In their places, one of each name.
+    pub fn ordered(mut limits: Vec<Limit>) -> Vec<Limit> {
+        limits.sort_by_key(|l| l.order);
+        limits.dedup_by(|a, b| a.name == b.name);
+        limits
+    }
+}
+
+/// An RFC 3339 time ("2026-11-11T13:49:58Z", "…T13:49:58.120+02:00") as Unix ms.
+pub fn iso_ms(at: &str) -> Option<u64> {
+    let (date, rest) = at.split_once('T')?;
+    let (time, zone) = rest.split_at(rest.find(['Z', '+', '-']).unwrap_or(rest.len()));
+    let n = |p: &str| p.parse::<i64>().ok();
+    let mut d = date.split('-').map(n);
+    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let (hms, fraction) = time.split_once('.').unwrap_or((time, ""));
+    let mut t = hms.split(':').map(n);
+    let (h, min, sec) = (t.next()??, t.next()??, t.next().unwrap_or(Some(0))?);
+    let millis = n(&format!("{fraction:0<3}")[..3])?;
+    let offset = match zone {
+        "" | "Z" => 0,
+        _ => {
+            let (hh, mm) = zone[1..].split_once(':').unwrap_or((&zone[1..], "0"));
+            (n(hh)? * 60 + n(mm)?) * if zone.starts_with('-') { -1 } else { 1 }
+        }
+    };
+    // Days from 1970-01-01, Howard Hinnant's days_from_civil.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    u64::try_from((((days * 24 + h) * 60 + min - offset) * 60 + sec) * 1000 + millis).ok()
 }
 
 /// Who signed in, where its CLI says: email, plan ("max") and organization [D24].

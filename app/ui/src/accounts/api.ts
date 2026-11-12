@@ -17,6 +17,8 @@ export type Account = {
     org?: string | null;
     kept_apart?: boolean;
     models?: string[];
+    /** Its usage limits, shortest window first; null where they weren't read [D28]. */
+    usage?: Limit[] | null;
     error?: string;
   };
   /** An added account the computer's own login is signed in to as well: one row, saying so. */
@@ -25,6 +27,9 @@ export type Account = {
   /** Its sign-in run, read as the setup's own [D29]. */
   sign_in: Run | null;
 };
+
+/** One usage limit: its name ("5-hour", "Weekly · Opus"), the whole percent used, and when it resets (ms). */
+export type Limit = { name: string; used: number; resets: number | null };
 
 /** An agent with its switching settings; `accounts` is null for one that keeps one login. `use`: the account new sessions start on. */
 export type SwitchAgent = {

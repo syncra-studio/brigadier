@@ -13,7 +13,7 @@ mod shell;
 
 pub use classify::classify;
 pub use files::{change, counts, drop_lines, sha1, uuid};
-pub use model::{Check, ModelInfo, Who, mark_superseded, versioned};
+pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};

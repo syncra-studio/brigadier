@@ -18,6 +18,7 @@ import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
 import { type Account, type SwitchAgent, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
 import { AgentMark, CheckAgainButton, OVERVIEW_ROWS, PlanChip, ROW_TITLE, SetupLine, standing, useFailed } from "./parts";
+import { UsageMeter, tightest } from "./usage";
 
 /** The page's rows, for Settings search. */
 export const PROVIDERS_ROWS = {
@@ -35,6 +36,8 @@ export const PROVIDERS_ROWS = {
 /** What turning a switch on, or removing an account, asks first [D51]. */
 export type Ask = { kind: "auto"; agent: SwitchAgent } | { kind: "agents" } | { kind: "remove"; agent: SwitchAgent; account: Account };
 
+/** How often the accounts, and so their usage, are read again while Providers is open. */
+const USAGE_MS = 5 * 60_000;
 const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 /** An agent's page's route, under Providers. */
@@ -59,6 +62,9 @@ export function ProvidersPage({ detail }: { detail?: string }) {
     if (!online) return;
     void checkAll(true);
     void loadAccounts();
+    // Usage is read with the accounts: again every few minutes while the page is open.
+    const timer = window.setInterval(() => void loadAccounts(), USAGE_MS);
+    return () => clearInterval(timer);
   }, [online]);
 
   const checkAgain = () => void act("check", () => Promise.all([checkAll(), loadAccounts()]));
@@ -268,6 +274,8 @@ function AgentRow({
 }) {
   const { tone, line } = standing(agent, accounts);
   const on = agent.enabled !== false;
+  const inUse = accounts?.accounts?.list.find((each) => each.id === accounts.accounts?.use);
+  const busiest = inUse?.check.signed_in ? tightest(inUse.check.usage ?? []) : null;
   const open = (event: MouseEvent) => {
     // The row's switch toggles the agent; it doesn't open its page.
     if (event.target instanceof Element && event.target.closest('[data-slot="switch"]')) return;
@@ -290,8 +298,8 @@ function AgentRow({
         </span>
         <ErrorLine error={error} />
       </div>
-      {/* The old row's busiest-limit slot, empty: reading usage waits for Rust [D388]. */}
-      <div className="flex w-45 shrink-0 items-center justify-end" />
+      {/* The in-use account's busiest limit, the old row's. */}
+      <div className="flex w-45 shrink-0 items-center justify-end">{busiest && <UsageMeter limit={busiest} now={Date.now()} />}</div>
       <span aria-hidden className="w-2 shrink-0" />
       <Switch checked={on} disabled={!online} aria-label={`Use ${agent.label}`} onCheckedChange={onEnable} />
       <ChevronRight aria-hidden className="size-icon-md shrink-0 text-muted-foreground" />

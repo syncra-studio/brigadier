@@ -85,7 +85,7 @@ export function AgentPage({
         <SettingsSection title="Installation" setting="Installation">
           <Installation agent={agent} oneHome={accounts !== undefined && !accounts.accounts} online={online} setup={setup} failed={failed} act={act} />
         </SettingsSection>
-        <SettingsSection title="Accounts" setting="Accounts">
+        <SettingsSection title="Accounts" setting="Accounts" aside={accounts?.accounts ? "Usage refreshes every few minutes" : undefined}>
           <SettingsCard>
             {accounts?.accounts && (
               <SettingsRow label={OVERVIEW_ROWS.switchAccounts.label} description={OVERVIEW_ROWS.switchAccounts.description} error={failed[`${agent.name}:auto`]}>

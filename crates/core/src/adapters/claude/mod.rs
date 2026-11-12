@@ -94,11 +94,10 @@ impl Adapter for Claude {
             signed_in: Some(signed_in),
             how: how.into(),
             who: Who::read(&status, ["email", "subscriptionType", "orgName"]),
-            models: match signed_in {
+            ..match signed_in {
                 true => models::list(spec, exe, cwd),
-                false => vec![],
-            },
-            ..Default::default()
+                false => Check::default(),
+            }
         })
     }
 

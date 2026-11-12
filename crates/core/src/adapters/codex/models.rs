@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{Failed, ModelInfo, Who, base_env, mark_superseded, versioned};
+use super::super::{Check, Failed, Limit, ModelInfo, Who, base_env, mark_superseded, versioned};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -79,9 +79,9 @@ fn short_lived<T>(
     done
 }
 
-/// Its models, the default first, and who is signed in (`account/read`, which hands out no token);
-/// None when the probe failed. Bounded to `secs` in all.
-pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<(Vec<ModelInfo>, Who)> {
+/// Its models, the default first, who is signed in (`account/read`, which hands out no token) and
+/// its usage limits (`account/rateLimits/read`); None when the probe failed. Bounded to `secs` in all.
+pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
     let found = short_lived(spec, exe, cwd, secs, |call| {
         let (mut models, mut cursor) = (vec![], Value::Null);
         loop {
@@ -93,15 +93,61 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<(Vec<Model
             }
         }
         let account = call("account/read", json!({})).unwrap_or_default();
-        Some((models, account["account"].clone()))
+        let limits = call("account/rateLimits/read", Value::Null).ok();
+        Some((models, account["account"].clone(), limits))
     });
-    let (mut models, account) = found??;
+    let (mut models, account, limits) = found??;
     models.sort_by_key(|m| m["isDefault"] != true);
     let mut models: Vec<ModelInfo> = models.iter().map(info).collect();
     mark_legacy(&mut models);
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
     who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
-    Some((models, who))
+    let usage = limits.as_ref().map(usage);
+    Some(Check {
+        models,
+        who,
+        usage,
+        ..Check::default()
+    })
+}
+
+/// The bucket for all its models; others meter one.
+const MAIN: &str = "codex";
+
+/// Its rate limits, the old app's reading: each bucket's primary and secondary window, the main
+/// bucket's by name alone, another's with what it meters.
+fn usage(read: &Value) -> Vec<Limit> {
+    let main = &read["rateLimits"];
+    let buckets: Vec<(&str, &Value)> = match read["rateLimitsByLimitId"].as_object() {
+        Some(by_id) if !by_id.is_empty() => by_id.iter().map(|(id, b)| (id.as_str(), b)).collect(),
+        _ => vec![(main["limitId"].as_str().unwrap_or(MAIN), main)],
+    };
+    let mut found = vec![];
+    for (id, bucket) in buckets {
+        let what = (bucket["limitName"].as_str()).or(bucket["normalModelSlug"].as_str());
+        for slot in ["primary", "secondary"] {
+            let w = &bucket[slot];
+            let Some(used) = w["usedPercent"].as_f64() else {
+                continue;
+            };
+            let minutes = w["windowDurationMins"].as_u64();
+            let label = match minutes {
+                Some(300) => "5-hour".to_string(),
+                Some(10_080) => "Weekly".to_string(),
+                Some(m) if m % 1_440 == 0 => format!("{}-day", m / 1_440),
+                Some(m) if m % 60 == 0 => format!("{}-hour", m / 60),
+                Some(m) => format!("{m}-minute"),
+                None => slot.to_string(),
+            };
+            let name = match id == MAIN {
+                true => label,
+                false => format!("{label} · {}", what.unwrap_or(id)),
+            };
+            let resets = w["resetsAt"].as_u64().map(|s| s * 1000);
+            found.push(Limit::new(name, used, resets, minutes, id != MAIN));
+        }
+    }
+    Limit::ordered(found)
 }
 
 /// Marks legacy, beside what its list names an upgrade for, older namesakes and the models of an
