@@ -1,5 +1,6 @@
 import { type FC, useContext, useState } from "react";
 
+import { RailItem } from "../components/composer/rail";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ChevronRight, X } from "../icons";
@@ -108,11 +109,24 @@ export function stripWords(workers: readonly Worker[]): string {
     .join(" · ");
 }
 
-/** The strip, from the session's workers: those still at work or waiting, oldest first; nothing when none are. */
-export const WorkersStrip: FC<{ workers: readonly Worker[]; onStop: (id: string) => void; initiallyOpen?: boolean }> = ({ workers, onStop, initiallyOpen = false }) => {
+/**
+ * The strip, from the session's workers: those still at work or waiting, oldest first; nothing when none are. A card
+ * of the composer rail, as the old ComposerStatusSlot's.
+ */
+export const WorkersStrip: FC<{ workers: readonly Worker[]; onStop: (id: string) => void; initiallyOpen?: boolean }> = (props) => {
+  if (props.workers.every(finished)) return null;
+  return (
+    <RailItem label="Live work">
+      <div data-slot="composer-status-slot">
+        <Strip {...props} />
+      </div>
+    </RailItem>
+  );
+};
+
+const Strip: FC<{ workers: readonly Worker[]; onStop: (id: string) => void; initiallyOpen?: boolean }> = ({ workers, onStop, initiallyOpen = false }) => {
   const [open, setOpen] = useState(initiallyOpen);
   const live = workers.filter((worker) => !finished(worker)).toSorted((a, b) => a.startedAt - b.startedAt);
-  if (live.length === 0) return null;
   // One worker shows as itself: its name, what it does, its End; two or more fold into a count.
   if (live.length === 1) {
     return (
