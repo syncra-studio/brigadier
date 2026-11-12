@@ -211,6 +211,7 @@ export function StartingBubble({ id }: { id: string }) {
       // A session's first message: dated in the footer as its row will be, so the row takes its place without a shift.
       dated
       // Rust moves its files into the session as the start begins, before the worktree is made.
+      // shortcut: a start held back by a tab move, or refused before the move, shows broken thumbnails until Rust's row; upgrade when the start reply says the files moved.
       owner={id}
       parts={entry.parts ? (JSON.parse(entry.parts) as Draft).parts : undefined}
       unconfirmed={entry.unknown}
