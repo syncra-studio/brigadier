@@ -274,7 +274,8 @@ fn agents(
 /// Installed, signed in and usable models are separate [D45]. Only Rust probes and saves them.
 fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
     let mut out = card(data, a);
-    let exe = a.exe();
+    // One that doesn't really run is not installed: Install, never Sign in [D32].
+    let exe = a.exe().filter(|exe| setup::runs(exe, cwd));
     out["path"] = exe.as_ref().map(|p| p.display().to_string()).into();
     if let Some(exe) = exe {
         match a.check(&accounts::check_as(data, a, cwd), &exe, cwd) {

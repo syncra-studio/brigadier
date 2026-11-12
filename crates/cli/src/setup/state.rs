@@ -30,6 +30,11 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
             }
         }
     }
+    // A sign-in whose command wasn't found (127: a shim whose CLI is gone) is no run: the card shows what
+    // the check finds again, Install, not the shim's own line [D32].
+    if page && !running && exited["code"] == 127 {
+        return Value::Null;
+    }
     let text = String::from_utf8_lossy(&out);
     let device_code = agent.filter(|_| running).and_then(|a| a.device_code(&text));
     let shows = (running && agent.is_some_and(|a| a.code_page())) || device_code.is_some();

@@ -89,6 +89,15 @@ pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
     Ok(text.lines().next().unwrap_or("").trim().into())
 }
 
+/// Whether it really runs: a shim or wrapper whose target is gone fails its `--version` [D32]. One that
+/// can't answer in time still counts, for its own check to say why.
+pub fn runs(exe: &Path, cwd: &Path) -> bool {
+    match super::probe(exe, cwd, &[], &["--version"], 10) {
+        Ok(out) => out.status.success(),
+        Err(e) => e.starts_with("timed out"),
+    }
+}
+
 fn is_exe(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     p.metadata()
