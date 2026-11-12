@@ -235,7 +235,7 @@ function useTabPresence(tabs: readonly Tab[]) {
 }
 
 /**
- * The top of every chat, session and Home, the same bar for all of them [D360]: the Chat tab first, then the tabs it
+ * The top of every chat, session, and Home once it has a tab, the same bar for all of them [D360]: the Chat tab first, then the tabs it
  * opened, "+", and at the end the toolbar. Click shows, drag reorders, middle-click or Delete closes. It takes the
  * title bar's place, so the title, rename and ⋯ live on the Chat tab.
  */
@@ -246,6 +246,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   const archived = Boolean(row?.archived);
   useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
+  const bare = owner === HOME && presence.tabs.length === 0;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
@@ -321,6 +322,26 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     focus(order[next]!);
   };
 
+  const newTab = (
+    <TooltipIconButton look="toolbar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className={cx("app-no-drag", !bare && "ms-0.5")} onClick={() => openTab(owner, "new")}>
+      <Plus />
+    </TooltipIconButton>
+  );
+  const reconnecting = offline && (
+    <Badge variant="warning" role="status" className="shrink-0">
+      Reconnecting…
+    </Badge>
+  );
+  // Home with no tab of its own has no tab bar, as the old app's untabbed draft: "+" leads the toolbar at the end [D39].
+  if (bare)
+    return (
+      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-titlebar shrink-0 items-center justify-end gap-1 pe-1">
+        {reconnecting}
+        {newTab}
+        <Toolbar owner={owner} />
+      </header>
+    );
+
   return (
     <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
@@ -346,14 +367,8 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
             </DragDropProvider>
           </div>
         </div>
-        <TooltipIconButton look="toolbar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag ms-0.5" onClick={() => openTab(owner, "new")}>
-          <Plus />
-        </TooltipIconButton>
-        {offline && (
-          <Badge variant="warning" role="status" className="shrink-0">
-            Reconnecting…
-          </Badge>
-        )}
+        {newTab}
+        {reconnecting}
         <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
       </div>
       <span aria-hidden data-hidden={!full || undefined} className="mx-0.5 h-4 w-px shrink-0 bg-fill transition-opacity data-hidden:opacity-0 motion-reduce:transition-none" />
