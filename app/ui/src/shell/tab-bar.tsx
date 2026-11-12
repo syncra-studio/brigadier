@@ -246,7 +246,8 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   const archived = Boolean(row?.archived);
   useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
-  const bare = owner === HOME && presence.tabs.length === 0;
+  // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
+  const bare = owner === HOME && tabs.length === 0;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
