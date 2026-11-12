@@ -74,9 +74,8 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         "WebSearch" => ("web", field("query")),
         "Bash" => shell_step(&field("command")),
         "Agent" | "Task" => ("agent", field("description")),
-        "ToolSearch" | "ExitPlanMode" | "TaskOutput" | "BashOutput" | "TodoWrite" => {
-            ("", String::new())
-        }
+        "ToolSearch" | "ExitPlanMode" | "TaskOutput" | "BashOutput" | "TodoWrite"
+        | "SubagentHandback" => ("", String::new()),
         _ => ("other", input.to_string()),
     };
     // Every edit names its file from the start, so a running or failed one still shows. Whether a
