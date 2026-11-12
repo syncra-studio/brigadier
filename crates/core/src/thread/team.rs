@@ -39,6 +39,8 @@ impl Thread {
                 json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}),
             ),
             Some("still") => self.kept_row(json!({"kind": "team_still", "workers": ids})),
+            // A result its parent's own `wait` took, never sent: its sentence all the same [D97].
+            Some("result") => self.team_result(item["result"].as_str().unwrap_or("")),
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
                 self.kept_row(json!({"kind": "team_step", "type": p, "workers": ids}))

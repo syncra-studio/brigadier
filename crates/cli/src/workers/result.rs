@@ -337,6 +337,8 @@ pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<Stri
         .find(|(_, r)| r.wid == wid && r.state == "written" && turn.is_none_or(|t| r.turn == t))?;
     res.state = "taken".into();
     write_json(&path, &res).ok()?;
+    let note = json!({"event": "worker", "phase": "result", "result": said(&res)});
+    let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     Some(res.text)
 }
 
@@ -372,6 +374,14 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
             }
             SENDING.lock().unwrap().as_mut().map(|s| s.remove(&pid));
         });
+    }
+}
+
+/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
+fn said(r: &Res) -> String {
+    match r.merge.as_str() {
+        "" => format!("{}:{}", r.how, r.wid),
+        m => format!("{}:{}:{m}", r.how, r.wid),
     }
 }
 
@@ -463,10 +473,7 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
         }
         owner::call(data, pid, req)
     };
-    let mut origin = format!("result:{}:{}", r.how, r.wid);
-    if !r.merge.is_empty() {
-        origin += &format!(":{}", r.merge);
-    }
+    let origin = format!("result:{}", said(&r));
     super::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &r.text);
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.id) {
         r.state = "sent".into();

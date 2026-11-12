@@ -43,7 +43,7 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
       <h2 className="min-w-8 truncate text-label font-medium" title={worker.name}>
         {worker.name}
       </h2>
-      {/* Its model at the end; a click shows its details. Where the header is short it gives way first, the model before its state. */}
+      {/* Its model at the end; a click shows its details. Where the header is short the model gives way, never its state. */}
       {!onToggleDetails ? (
         <span className="ms-auto min-w-0 shrink-1000 truncate text-label text-muted-foreground">{worker.word}</span>
       ) : (
@@ -56,12 +56,12 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
               aria-pressed={details}
               data-slot="worker-header-model"
               onClick={onToggleDetails}
-              className="ms-auto flex min-w-0 shrink-1000 cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
+              className="ms-auto grid shrink-1000 cursor-pointer grid-cols-[minmax(0,auto)_auto] rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
             />
           }
         >
-          <span className="min-w-0 shrink-1000 truncate">{worker.model}</span>
-          <span className="min-w-0 truncate">{"\u00a0· "}{worker.word}</span>
+          <span className="min-w-0 truncate">{worker.model}</span>
+          <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
         </TooltipTrigger>
         <TooltipContent>
           Worker details · {worker.model} · {worker.word}
