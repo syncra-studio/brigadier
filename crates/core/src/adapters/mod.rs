@@ -36,6 +36,8 @@ pub enum Event {
     TurnStart,
     TurnEnd(bool),
     Text(String),
+    /// A piece of the reply as the agent writes it; its whole text follows as `Text` [D147].
+    TextDelta(String),
     Reasoning(String),
     ToolStart(Tool),
     ToolEnd(Done),

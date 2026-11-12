@@ -137,6 +137,14 @@ impl Thread {
         true
     }
 
+    /// A limit no switch took any more (a Stop, a new message): its row stays, as history.
+    pub(super) fn end_limit(&mut self) {
+        if let Some(at) = self.limit_row.take() {
+            self.items[at]["state"] = "over".into();
+            self.changed_items.insert(at);
+        }
+    }
+
     pub(super) fn limit_of(&self, turn: &str) -> Option<usize> {
         self.limit_row
             .filter(|&at| self.items[at]["turnId"] == turn)
@@ -195,6 +203,43 @@ impl Thread {
             stop: (None, false),
             quiet: t.quiet,
         });
+    }
+
+    /// The agent's reply: it grows in one row as it's written, and its whole text, or its turn's
+    /// end (kind ""), finishes that row, same id [D147].
+    pub(super) fn said(&mut self, item: &Value, kind: &str, ts: u64) {
+        if let Some(at) = self.streaming {
+            let row = &mut self.items[at];
+            match kind {
+                "text_delta" => {
+                    let text = row["text"].as_str().unwrap_or("").to_string();
+                    row["text"] = (text + s(item, &["text"])).into();
+                }
+                _ => {
+                    // A reply cut off before its whole text came keeps what was written.
+                    if kind == "text" {
+                        (row["text"], row["sentAt"]) = (item["text"].clone(), ts.into());
+                    }
+                    row["streaming"] = false.into();
+                    self.streaming = None;
+                }
+            }
+            self.changed_items.insert(at);
+            return;
+        }
+        if kind.is_empty() {
+            return;
+        }
+        self.break_group();
+        let streaming = kind == "text_delta";
+        let at = self.add(
+            json!({"kind": "message", "role": "assistant", "text": item["text"],
+            "streaming": streaming, "sentAt": ts}),
+        );
+        self.streaming = streaming.then_some(at);
+        if let Some(o) = self.open.as_mut() {
+            o.answer = Some(at as u64 + 1);
+        }
     }
 
     /// A row of a quiet turn is hidden, unless it asks the user or the user's own words join it.

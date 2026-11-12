@@ -111,6 +111,7 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             max: None,
             at: d["at"].as_u64(),
         }],
+        "session.text.delta" => vec![Event::TextDelta(id("delta"))],
         "session.text.ended" => vec![Event::Text(id("text"))],
         "session.reasoning.ended" if !id("text").is_empty() => vec![Event::Reasoning(id("text"))],
         "session.tool.called" | "session.tool.success" | "session.tool.failed" => {

@@ -83,7 +83,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           fork={fork}
           older={older}
         >
-          <Markdown text={item.text} keep={item.id} />
+          <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
         </AssistantMessage>
         </>
       );

@@ -152,7 +152,7 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
       </div>
     ) : (
       <div className="min-w-0 leading-relaxed wrap-anywhere text-foreground">
-        <Markdown text={item.text} keep={item.id} />
+        <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
       </div>
     );
   }

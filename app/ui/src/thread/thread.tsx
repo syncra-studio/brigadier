@@ -198,7 +198,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     return undefined;
   }, [all]);
   // Thinking at once while nothing of the running turn is live at its end: under its message on its way, under a reply
-  // it carries on from, or a turn the agent woke for with nothing of its own yet [D45].
+  // it carries on from (not one still being written [D147]), or a turn the agent woke for with nothing of its own yet [D45].
   const last = turnList?.at(-1);
   const tailTurn = tail && (tail.type === "item" || tail.type === "group" || tail.type === "marks" ? tail.item.turnId : tail.type === "work" ? tail.turn.id : undefined);
   const thinking =
@@ -206,7 +206,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     running &&
     ((top?.type === "item" && top.item === newest) ||
       (tail !== undefined && tail.type !== "setup" && tailTurn !== last?.id) ||
-      (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant"));
+      (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant" && !tail.item.streaming));
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const space = useMemo(() => store(0), []);

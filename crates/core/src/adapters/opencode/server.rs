@@ -251,7 +251,7 @@ fn listen(
     }
 }
 
-/// One event: the session's own (but its deltas), and the requests of any of its sessions.
+/// One event: the session's own (its reply's deltas only), and the requests of any of its sessions.
 fn event(server: &Server, state: &Shared, mut v: Value) {
     let mut st = state.lock().unwrap();
     let d = &v["data"];
@@ -356,6 +356,10 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                 | "session.execution.failed"
                 | "session.execution.interrupted" => {
                     return busy(&mut st, false, v);
+                }
+                // The reply as it's written, its piece alone: one line per piece adds up [D147].
+                "session.text.delta" => {
+                    return say(json!({"type": k, "data": {"delta": d["delta"]}}));
                 }
                 k if k.ends_with(".delta") || k.starts_with("session.tool.input.") => return,
                 _ => String::new(),

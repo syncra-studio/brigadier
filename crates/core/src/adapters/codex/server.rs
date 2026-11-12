@@ -391,6 +391,10 @@ fn notification(state: &Shared, v: &mut Value) {
             st.items.insert(id, p["item"].clone());
         }
         "item/completed" => drop(st.items.remove(p["item"]["id"].as_str().unwrap_or(""))),
+        // The reply as it's written, its piece alone: one line per piece adds up [D147].
+        "item/agentMessage/delta" => {
+            return say(json!({"method": method, "params": {"delta": p["delta"]}}));
+        }
         "thread/tokenUsage/updated"
         | "turn/plan/updated"
         | "error"

@@ -187,6 +187,7 @@ impl Fold {
         if matches!(
             kind,
             "text"
+                | "text_delta"
                 | "tool"
                 | "tool_done"
                 | "turn_start"
@@ -227,7 +228,7 @@ impl Fold {
                     t.retry = json!({"attempt": item["attempt"], "max": item["max"], "at": item["at"], "ts": ts});
                 }
             }
-            "checking" | "text" => {
+            "checking" | "text" | "text_delta" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.checking = item["on"] == true;
                     t.moved |= kind == "text" && !str_of("text").trim().is_empty();

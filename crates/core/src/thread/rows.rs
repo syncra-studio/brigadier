@@ -41,21 +41,12 @@ impl Thread {
         // The agent's next output ends a wait on the user [D77].
         if matches!(
             kind,
-            "text" | "reasoning" | "tool" | "tool_done" | "compaction" | "unknown"
+            "text" | "text_delta" | "reasoning" | "tool" | "tool_done" | "compaction" | "unknown"
         ) {
             self.end_wait(ts);
         }
         match kind {
-            "text" => {
-                self.break_group();
-                let at = self.add(
-                    json!({"kind": "message", "role": "assistant", "text": item["text"],
-                    "streaming": false, "sentAt": ts}),
-                );
-                if let Some(o) = self.open.as_mut() {
-                    o.answer = Some(at as u64 + 1);
-                }
-            }
+            "text" | "text_delta" => self.said(item, kind, ts),
             "reasoning" => {
                 let text = str_of("text");
                 self.add(json!({"kind": "reasoning", "heading": heading(&text), "text": text, "streaming": false}));

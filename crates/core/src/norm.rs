@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 23;
+pub const VERSION: u32 = 24;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -184,6 +184,7 @@ impl Norm {
                     json!({"kind": "turn_end", "ok": ok})
                 }
                 Event::Text(t) => json!({"kind": "text", "text": t}),
+                Event::TextDelta(t) => json!({"kind": "text_delta", "text": t}),
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
                     "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at}),

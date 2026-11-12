@@ -58,7 +58,7 @@ impl Startup {
             );
         } else if let Some(last) = self.launches.last_mut().filter(|l| l["state"] == "running") {
             match item["kind"].as_str() {
-                Some("resume_id" | "turn_start" | "text" | "tool" | "reasoning") => {
+                Some("resume_id" | "turn_start" | "text" | "text_delta" | "tool" | "reasoning") => {
                     last["state"] = "done".into();
                 }
                 Some("unknown") if item["raw"].is_string() => last["error"] = item["raw"].clone(),

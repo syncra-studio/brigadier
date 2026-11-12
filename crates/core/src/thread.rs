@@ -133,6 +133,8 @@ pub struct Thread {
     #[serde(skip)]
     setup_changed: bool,
     points: Vec<String>,
+    /// The reply row still being written, by index, until its whole text comes [D147].
+    streaming: Option<usize>,
 }
 
 /// Items that may close turns: only then is the status fold's list kept from before the push.
@@ -286,6 +288,7 @@ impl Thread {
     /// Ends the open turn. Every outcome the status fold knows maps to one of the view's [D64].
     fn close_turn(&mut self, outcome: &str, ts: u64) {
         self.end_wait(ts);
+        self.said(&Value::Null, "", ts);
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
         let Some(o) = self.open.take() else {
@@ -414,14 +417,6 @@ impl Thread {
         self.items.push(row);
         self.changed_items.insert(at);
         at
-    }
-
-    /// A limit no switch took any more (a Stop, a new message): its row stays, as history.
-    fn end_limit(&mut self) {
-        if let Some(at) = self.limit_row.take() {
-            self.items[at]["state"] = "over".into();
-            self.changed_items.insert(at);
-        }
     }
 
     fn end_wait(&mut self, ts: u64) {

@@ -147,6 +147,7 @@ impl Adapter for Claude {
                 "--input-format",
                 "stream-json",
                 "--verbose",
+                "--include-partial-messages",
             ]
             .map(String::from),
         );
@@ -313,6 +314,12 @@ impl Adapter for Claude {
                 vec![Event::Failed("blocked", s(&v, &["content"]).into())]
             }
             ("system", "permission_denied") => vec![Event::Denied],
+            // The reply as it's written; its whole text follows in its message [D147].
+            ("stream_event", _)
+                if parent.is_none() && v["event"]["delta"]["type"] == "text_delta" =>
+            {
+                vec![Event::TextDelta(s(&v, &["event", "delta", "text"]).into())]
+            }
             // A running subagent's heartbeat says nothing to show.
             ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
             // An API error the CLI answers for, as its SDK types it [D74].

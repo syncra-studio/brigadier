@@ -15,9 +15,10 @@ const plugins = [remarkGfm, remarkBreaks];
  * react-markdown draws each block. `chip` draws a `[@](chip:n)` link as the message's n-th chip, where the user
  * put it [D2107]. The chunks a streaming reply grows by fade in [D53].
  */
-export function Markdown({ text, keep, chip }: { text: string; keep: string; chip?: (n: number) => ReactNode }) {
+export function Markdown({ text, keep, chip, streaming }: { text: string; keep: string; chip?: (n: number) => ReactNode; streaming?: boolean }) {
   const chunks = useChunks(text);
   const tokens = marked.lexer(text);
+  const tail = streaming ? tokens.findLastIndex((token) => token.type !== "space") : -1;
   let start = 0;
   // A block alone can't see link definitions in the others (nested ones too), so a block gets the ones it names,
   // and a definition still streaming redraws only the blocks that use it.
@@ -37,10 +38,19 @@ export function Markdown({ text, keep, chip }: { text: string; keep: string; chi
         start += token.raw.length;
         if (token.type === "space" || token.type === "def") return null;
         const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
-        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${n}`} chip={chip} chunks={mine.length ? mine : NONE} />;
+        const raw = n === tail ? settle(token.raw) : token.raw;
+        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(raw)} keep={`${keep}:${n}`} chip={chip} chunks={mine.length ? mine : NONE} />;
       })}
     </div>
   );
+}
+
+/** A reply's last block while it's still written: a mark it opened and hasn't closed yet (code, bold, a link's address) is closed, so it never shows raw. */
+function settle(raw: string) {
+  const text = raw.replace(/(\*\*|`)\s*$/, "").trimEnd();
+  const odd = (mark: RegExp) => (text.match(mark)?.length ?? 0) % 2 === 1;
+  const closed = odd(/`/g) ? `${text}\`` : odd(/\*\*/g) ? `${text}**` : text;
+  return /\[[^\]]*\]\([^)]*$/.test(closed) ? `${closed})` : closed;
 }
 
 const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));

@@ -18,6 +18,8 @@ pub fn events(v: &Value) -> Vec<Event> {
         "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
         "turn/started" => vec![Event::TurnStart],
         "turn/completed" => completed(p),
+        // The reply as it's written; its whole text follows when its item completes [D147].
+        "item/agentMessage/delta" => vec![Event::TextDelta(s(p, &["delta"]).into())],
         method @ ("item/started" | "item/completed") => {
             let kind = method.replace('/', ".");
             let exec = json!({"type": kind, "item": exec_item(&p["item"])});
