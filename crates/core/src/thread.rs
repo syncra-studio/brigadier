@@ -51,6 +51,9 @@ struct Open {
     /// and whether its line is drawn.
     #[serde(default)]
     stop: (Option<String>, bool),
+    /// Its parent's turn woken by a worker's ask: its rows are hidden, the user never sees it [D119].
+    #[serde(default)]
+    quiet: bool,
 }
 
 impl Open {
@@ -404,6 +407,7 @@ impl Thread {
         if let Some(o) = self.open.as_mut().filter(|o| o.input && o.first.is_none()) {
             o.first = Some(n);
         }
+        self.quiet_row(&mut row);
         self.items.push(row);
         self.changed_items.insert(at);
         at

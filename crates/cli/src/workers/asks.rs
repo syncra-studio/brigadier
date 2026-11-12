@@ -85,7 +85,7 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
                 }
             }
             t + &format!(
-                "\nAnswer it from its brief, the user's words and the code: `brigadier send {wid} \"<your answer>\"`. Only if just the user can answer, ask them, then send their answer the same way."
+                "\nAnswer it from its brief, the user's words and the code: `brigadier send {wid} \"<your answer>\"`. Only if just the user can answer, ask them with your tool for asking the user (no reply of yours here is shown), then send their answer the same way."
             )
         }
         None => {

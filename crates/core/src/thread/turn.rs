@@ -181,7 +181,19 @@ impl Thread {
             kept: vec![],
             denied: 0,
             stop: (None, false),
+            quiet: t.origin.starts_with("result:asks:"),
         });
+    }
+
+    /// A row of a quiet turn is hidden, unless it asks the user or the user's own words join it.
+    pub(super) fn quiet_row(&mut self, row: &mut Value) {
+        if let Some(o) = self.open.as_mut().filter(|o| o.quiet) {
+            match row["kind"].as_str() {
+                Some("approval" | "question") => {}
+                Some("message") if row["origin"] == "user" => o.quiet = false,
+                _ => row["hidden"] = true.into(),
+            }
+        }
     }
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
