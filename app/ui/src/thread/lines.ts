@@ -135,8 +135,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     group = null;
     if (item.kind === "group") {
-      // A finished group of one step draws as that step; running subagents draw as their own rows, never under a header saying the same [D85].
-      const single = live ? item.steps.every((step) => step.kind === "agent") : item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
+      // Steps draw one by one until their turn folds, so none vanishes, merges or changes its words while it runs [D132];
+      // folded work groups them, and a group of one step draws as that step.
+      const single = live || !done || item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
       const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), live: undefined, steps: [] };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };

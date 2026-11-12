@@ -96,21 +96,26 @@ impl Thread {
             })
             .collect();
         for at in running {
-            let mut row = self.items[at].clone();
-            self.items[at]["hidden"] = true.into();
-            self.changed_items.insert(at);
-            for key in ["id", "n", "turnId"] {
-                row.as_object_mut().map(|o| o.remove(key));
-            }
-            let moved = self.step(row);
-            self.keys
-                .values_mut()
-                .filter(|v| **v == at)
-                .for_each(|v| *v = moved);
-            if let Some(g) = self.member.remove(&at) {
-                self.recount(g);
-            }
+            self.move_down(at);
         }
+    }
+
+    /// A step's row moves to the turn's end under a new id, its old row hidden: what finds it by
+    /// tool id finds the new one. Its own visibility comes along unhidden.
+    pub(super) fn move_down(&mut self, at: usize) {
+        let mut row = self.items[at].clone();
+        self.items[at]["hidden"] = true.into();
+        self.changed_items.insert(at);
+        for key in ["id", "n", "turnId", "hidden"] {
+            row.as_object_mut().map(|o| o.remove(key));
+        }
+        if let Some(g) = self.member.remove(&at) {
+            self.recount(g);
+        }
+        let moved = self.step(row);
+        (self.keys.values_mut().chain(self.children.values_mut()))
+            .filter(|v| **v == at)
+            .for_each(|v| *v = moved);
     }
 
     pub(super) fn interrupted_line(&mut self) {

@@ -157,9 +157,15 @@ impl Thread {
             row["turnId"].as_str().unwrap_or("").to_string(),
             tool.to_string(),
         );
-        let Some(&at) = self.keys.get(&key) else {
+        let Some(&tool) = self.keys.get(&key) else {
             return;
         };
+        // Allowed, a step started before its ask runs after it: it moves below, so the thread reads in order.
+        if !hidden && tool < at {
+            self.break_group();
+            return self.move_down(tool);
+        }
+        let at = tool;
         self.items[at]["hidden"] = hidden.into();
         self.changed_items.insert(at);
         if let Some(&g) = self.member.get(&at) {
