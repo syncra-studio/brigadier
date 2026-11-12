@@ -38,6 +38,10 @@ impl Thread {
                 json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}),
             ),
             Some("still") => self.team_row(json!({"kind": "team_still", "workers": ids})),
+            // The user's Pause and Resume [D3041].
+            Some(p @ ("paused" | "resumed")) => {
+                self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}))
+            }
             _ => {}
         }
     }

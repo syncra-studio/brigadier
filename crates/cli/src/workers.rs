@@ -7,9 +7,11 @@
 
 mod family;
 mod make;
+mod pause;
 mod result;
 pub use family::{delete, unlanded};
 pub use make::start;
+pub use pause::held;
 pub use result::{deliver, take};
 pub(crate) use result::{hop as result_hop, last_of_turn, settled};
 
@@ -68,6 +70,9 @@ pub(crate) struct Link {
     /// Its last task's end, as its result said: how, when, its commits, whether it landed.
     #[serde(default)]
     pub last: Value,
+    /// The user paused it: its queue holds, and it reports nothing until Resume [D3041].
+    #[serde(default)]
+    pub paused: bool,
 }
 
 fn records_dir(data: &Path, pid: &str) -> PathBuf {
@@ -170,6 +175,10 @@ pub fn busy(data: &Path, id: &str) -> bool {
     let Some(l) = link(data, id) else {
         return false;
     };
+    // A paused one isn't waited on, and (proposed) doesn't count toward Workers at once [D3042].
+    if l.paused {
+        return false;
+    }
     let r = record(data, &l.parent, id);
     // A start that failed or was stopped before its brief went has nothing left to wait for.
     if r.as_ref()
@@ -190,7 +199,7 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     let Some(r) = below(data, me).into_iter().find(|r| r.wid == id) else {
         return refuse("You can stop only workers you started.");
     };
-    if let Err(e) = halt(data, me, id) {
+    if let Err(e) = end(data, me, id) {
         return refuse(&e.to_string());
     }
     ended(data, me, &[id.to_string()], "agent");
@@ -218,10 +227,21 @@ fn halt(data: &Path, top: &str, wid: &str) -> io::Result<()> {
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));
     }
-    match core::session_dir(data, wid).join("session.json").exists() {
-        true => queue::stop(data, wid).map(drop),
-        false => Ok(()),
+    if core::session_dir(data, wid).join("session.json").exists() {
+        queue::stop(data, wid)?;
     }
+    Ok(())
+}
+
+/// End: `halt`, and a paused one is no longer paused but stopped; what it held stays held.
+fn end(data: &Path, top: &str, wid: &str) -> io::Result<()> {
+    halt(data, top, wid)?;
+    if let Some(mut l) = link(data, wid).filter(|l| l.paused) {
+        l.paused = false;
+        l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms()});
+        write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;
+    }
+    Ok(())
 }
 
 /// Which session below `top` (or `top` itself) started `wid`.
@@ -282,10 +302,18 @@ fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
 }
 
 /// `workers <id> [--json]`: its family below it with each one's outcomes; `workers <id> stop
-/// [<wid>…]`: the user's Stop them, every running one when none is named [D3009, D3011].
+/// [<wid>…]`: the user's Stop them, every running one when none is named [D3009, D3011];
+/// `workers <id> pause|resume <wid>`: the user's Pause and Resume [D3041].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     core::load(data, id)?;
+    if let Some(how @ ("pause" | "resume")) = args.get(2).map(String::as_str) {
+        let reply = pause::run(data, id, how, arg(args, 3)?);
+        return match reply["error"].as_str() {
+            Some(e) => Err(io::Error::other(e.to_string())),
+            None => Ok(reply),
+        };
+    }
     if args.get(2).is_some_and(|a| a == "stop") {
         let mine: HashSet<String> = below(data, id).into_iter().map(|r| r.wid).collect();
         let named: Vec<String> = args[3..].to_vec();
@@ -300,7 +328,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         std::thread::scope(|scope| {
             let stops: Vec<_> = ids
                 .iter()
-                .map(|w| scope.spawn(move || halt(data, id, w)))
+                .map(|w| scope.spawn(move || end(data, id, w)))
                 .collect();
             let results: Vec<_> = stops
                 .into_iter()
@@ -381,6 +409,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>) -> Value {
                 None => "Limit".into(),
             },
         ),
+        _ if l.paused => ("paused", "Paused".into()),
         "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking"
         | "uncertain" | "stalled" => ("working", "Working".into()),
         _ => match last["how"].as_str() {

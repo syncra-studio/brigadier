@@ -102,7 +102,8 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed.
 fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
-    let Some(l) = link(data, wid) else {
+    // A paused one reports nothing until Resume [D3041].
+    let Some(l) = link(data, wid).filter(|l| !l.paused) else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;

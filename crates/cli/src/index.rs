@@ -77,7 +77,7 @@ impl Marks {
             seen: ms("seen").unwrap_or(0),
             archived,
             lifecycle,
-            queue: crate::queue::row(dir),
+            queue: crate::workers::held(dir, crate::queue::row(dir)),
             pr: core::host::chip(dir, &prs),
             prs,
         }

@@ -309,6 +309,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             report: vec![r.cid.clone()],
             ran: ran.clone(),
             last: Value::Null,
+            paused: false,
         };
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
