@@ -34,7 +34,9 @@ export type PendingApproval = {
   /** A message's target session. */
   to?: string;
   /** What "Allow … for this session" covers: a command prefix, a folder, a host. */
-  grant?: { scope: "command" | "edits" | "network"; pattern: string } | null;
+  grant?: { scope: "command" | "edits" | "network" | "tool"; pattern: string } | null;
+  /** The subagent that asks, by its title. */
+  agent?: string;
 };
 
 export type ApprovalDecision = "allow" | "allowSession" | "deny";
@@ -141,6 +143,7 @@ export function describe(approval: PendingApproval): Shown {
 function grantWords({ scope, pattern }: NonNullable<PendingApproval["grant"]>): { scope: string; tip: string } {
   const kept = "Not saved across sessions.";
   if (scope === "edits") return { scope: "edits in this folder", tip: `Allow file changes inside ${pattern} in this chat. Edits outside it still ask. ${kept}` };
+  if (scope === "tool") return { scope: pattern, tip: `Allow ${pattern} in this chat. ${kept}` };
   if (scope === "network") return { scope: pattern, tip: `Allow connections to ${pattern} in this chat. ${kept}` };
   return { scope: pattern, tip: `Allow commands that start with ${pattern} in this chat. ${kept}` };
 }
@@ -251,6 +254,7 @@ export function ApprovalCard({
         <div className="flex min-w-0 items-center gap-2 text-code leading-5 text-card-kind svg:size-4.5 svg:shrink-0">
           {shown.icon}
           <span className="shrink-0">{shown.kind}</span>
+          {approval.agent && <span className="truncate">· {approval.agent}</span>}
           {step && step.total > 1 && (
             <StepCounter
               noun="request"

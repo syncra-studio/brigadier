@@ -217,8 +217,9 @@ fn approval(id: &str, r: &Value) -> Event {
     let content = suggested
         .as_ref()
         .map(|rule| s(rule, &["ruleContent"]).to_string());
-    let mut a =
-        json!({"id": id, "action": "other", "reason": (!reason.is_empty()).then_some(reason)});
+    // A subagent's ask names its step, for the thread to find it; the main agent's would hide its row.
+    let step = r["agent_id"].is_string().then(|| &r["tool_use_id"]);
+    let mut a = json!({"id": id, "action": "other", "reason": (!reason.is_empty()).then_some(reason), "tool": step});
     let mut grant = |scope: &str, pattern: &str, rule: Value| {
         a["grant"] = json!({"scope": scope, "pattern": pattern});
         a["cli"] = json!({"rule": rule});

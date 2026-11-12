@@ -71,7 +71,7 @@ export function ApprovalRow({
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? `${asking} · waiting` : `${asked} · ${WITHDRAWN}`} object={toParent ? subject : undefined} live={waiting} />
+        <Words verb={waiting ? `${asking} · waiting` : `${asked} · ${WITHDRAWN}`} object={subject} live={waiting} />
       </p>
     );
   }
@@ -90,7 +90,7 @@ export function ApprovalRow({
       {toParent ? (
         <Words verb={`${parent} ${decision === "approved" ? "allowed" : "denied"}:`} object={subject} />
       ) : (
-        <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} />
+        <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} object={subject} />
       )}
     </OpeningRow>
   );

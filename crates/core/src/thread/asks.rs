@@ -76,7 +76,16 @@ impl Thread {
         let r = &row["request"];
         let id = r["parent"].as_str().or(r["tool"].as_str())?;
         let turn = row["turnId"].as_str().unwrap_or("");
-        (self.row_of(turn, id)).filter(|&a| self.items[a]["kind"] == "childAgent")
+        // Or one of its own steps asks (Claude names the step, not the subagent).
+        let step = |c: usize| format!("{}:{id}", self.items[c]["id"].as_str().unwrap_or(""));
+        let in_log = |c: &usize| {
+            (self.items[*c]["log"].as_array().into_iter().flatten())
+                .any(|s| s["id"] == step(*c).as_str())
+        };
+        (self
+            .row_of(turn, id)
+            .or_else(|| self.children.values().copied().find(in_log)))
+        .filter(|&a| self.items[a]["kind"] == "childAgent")
     }
 
     pub(super) fn unwait_row(&mut self, at: usize) {
@@ -218,7 +227,14 @@ impl Thread {
         let of = |kind: &str| -> Vec<Value> {
             (self.pending.iter())
                 .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"] != "parent")
-                .map(|&at| self.items[at]["request"].clone())
+                .map(|&at| {
+                    let mut r = self.items[at]["request"].clone();
+                    // The card names the subagent that asks [w43 #16].
+                    if let Some(a) = self.agent_of(at) {
+                        r["agent"] = self.items[a]["title"].clone();
+                    }
+                    r
+                })
                 .collect()
         };
         json!({"approvals": of("approval"), "questions": of("question")})

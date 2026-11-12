@@ -191,7 +191,7 @@ fn approval(d: &Value) -> Event {
         }
         _ => {
             a["input"] = format!("{action} {}", resources.join(" ")).into();
-            ""
+            "tool"
         }
     };
     if !scope.is_empty() && !save.is_empty() {
@@ -200,6 +200,8 @@ fn approval(d: &Value) -> Event {
                 .map(|p| p.strip_suffix(" *").unwrap_or(p))
                 .collect::<Vec<_>>()
                 .join(", ")
+        } else if scope == "tool" {
+            format!("{action} {}", save.join(", "))
         } else {
             save.join(", ")
         };
