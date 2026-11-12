@@ -66,7 +66,7 @@ export type Turn = {
 };
 
 /** What a step of work did, provider-neutral. */
-export type StepKind = "read" | "edit" | "search" | "run" | "web" | "agent" | "other";
+export type StepKind = "read" | "edit" | "list" | "search" | "run" | "web" | "agent" | "other";
 
 /**
  * A finished turn's work: how long it took and the items folded under "Worked for …", by `n`, first and last.

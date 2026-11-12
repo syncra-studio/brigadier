@@ -2,7 +2,7 @@
 
 /// The step a shell command is and what it acts on, after the old app's rules [D48, D65]: a
 /// compound command runs; a plain GET of a public page is web; readers with a path read; listers
-/// and searchers search. Shell wrappers and leading `cd … &&` are taken off first.
+/// list, finders and searchers search. Shell wrappers and leading `cd … &&` are taken off first.
 pub fn shell_step(command: &str) -> (&'static str, String) {
     let command = unwrap_shell(command);
     // The thread's own `brigadier start|wait|queue|send|stop` is no row: its start, message or end has its own, as
@@ -56,7 +56,8 @@ pub fn shell_step(command: &str) -> (&'static str, String) {
             Some(p) => ("read", p),
             None => ("run", command),
         },
-        "ls" | "find" | "tree" | "fd" => ("search", path.unwrap_or(command)),
+        "ls" | "tree" => ("list", path.unwrap_or(command)),
+        "find" | "fd" => ("search", path.unwrap_or(command)),
         "rg" | "grep" | "ag" | "ack" => match pattern(&words[1..]) {
             Some(pattern) => ("search", pattern.to_string()),
             None => ("search", command),

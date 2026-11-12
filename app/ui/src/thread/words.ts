@@ -6,6 +6,7 @@ import type { StepKind, Turn, Work } from "./item";
 const STEPS: Record<StepKind, [string, string]> = {
   edit: ["edited a file", "edited {n} files"],
   read: ["read a file", "read {n} files"],
+  list: ["listed files", "listed files {n} times"],
   search: ["searched once", "searched {n} times"],
   run: ["ran a command", "ran {n} commands"],
   web: ["searched the web", "searched the web {n} times"],

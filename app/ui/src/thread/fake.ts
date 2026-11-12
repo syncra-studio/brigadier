@@ -153,6 +153,8 @@ function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
         return tool("shell", pick(fake, COMMANDS));
       case "read":
         return tool("read", pick(fake, READS));
+      case "list":
+        return tool("list", pick(fake, ["crates", "app/ui/src", "app/main"]));
       case "search":
         return tool("search", `"${pick(fake, WORDS)}" in ${pick(fake, ["crates", "app/ui/src", "app/main"])}`);
       case "web":

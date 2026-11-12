@@ -13,6 +13,7 @@ import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 export const VERBS: Record<StepKind, [string, string, string]> = {
   read: ["Reading", "Read", "read"],
   edit: ["Editing", "Edited", "edit"],
+  list: ["Listing files in", "Listed files in", "list files in"],
   search: ["Searching for", "Searched for", "search for"],
   run: ["Running", "Ran", "run"],
   web: ["Searching the web for", "Searched the web for", "search the web for"],

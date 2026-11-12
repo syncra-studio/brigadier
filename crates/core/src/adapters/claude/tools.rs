@@ -69,7 +69,7 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         "Edit" | "MultiEdit" | "Write" => ("edit", field("file_path")),
         "NotebookEdit" => ("edit", field("notebook_path")),
         "Grep" | "Glob" => ("search", field("pattern")),
-        "LS" => ("search", field("path")),
+        "LS" => ("list", field("path")),
         "WebFetch" => ("web", field("url")),
         "WebSearch" => ("web", field("query")),
         "Bash" => shell_step(&field("command")),

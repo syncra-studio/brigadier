@@ -280,7 +280,7 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         "read" => ("read", path.clone()),
         "edit" | "write" | "patch" | "multiedit" | "apply_patch" => ("edit", path.clone()),
         "grep" | "glob" => ("search", field(&["pattern"])),
-        "list" => ("search", path.clone()),
+        "list" => ("list", path.clone()),
         "bash" | "shell" => shell_step(&field(&["command"])),
         "webfetch" => ("web", field(&["url"])),
         "websearch" | "codesearch" => ("web", field(&["query"])),

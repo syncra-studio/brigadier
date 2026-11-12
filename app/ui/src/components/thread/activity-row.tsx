@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
-import { ChevronRightAlt, EditPencil, File, Globe, MagnifyingGlassSmSearch, RobotHead, Terminal, Tools } from "../../icons";
+import { ChevronRightAlt, EditPencil, File, Folder, Globe, MagnifyingGlassSmSearch, RobotHead, Terminal, Tools } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
@@ -29,6 +29,7 @@ export function Chevron({ always = false }: { always?: boolean }) {
 const ICONS: Record<StepKind, ComponentType<IconProps>> = {
   read: File,
   edit: EditPencil,
+  list: Folder,
   search: MagnifyingGlassSmSearch,
   run: Terminal,
   web: Globe,
