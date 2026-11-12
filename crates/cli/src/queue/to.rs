@@ -62,7 +62,8 @@ pub(super) fn give(
         return Ok(None);
     };
     let free = free(data, &wid);
-    if !(free || steer && crate::workers::link(data, &wid).is_some_and(|l| !l.paused)) {
+    let open = crate::workers::link(data, &wid).is_some_and(|l| !l.paused && !ended(&l));
+    if !(free || steer && open) {
         return Ok(None);
     }
     if free {
