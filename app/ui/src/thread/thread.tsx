@@ -197,6 +197,16 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     }
     return undefined;
   }, [all]);
+  // Thinking at once while nothing of the running turn is live at its end: under its message on its way, under a reply
+  // it carries on from, or a turn the agent woke for with nothing of its own yet [D45].
+  const last = turnList?.at(-1);
+  const tailTurn = tail && (tail.type === "item" || tail.type === "group" || tail.type === "marks" ? tail.item.turnId : tail.type === "work" ? tail.turn.id : undefined);
+  const thinking =
+    after === null &&
+    running &&
+    ((top?.type === "item" && top.item === newest) ||
+      (tail !== undefined && tail.type !== "setup" && tailTurn !== last?.id) ||
+      (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant"));
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const space = useMemo(() => store(0), []);
@@ -359,9 +369,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
         <div data-footer>
           <div className="mx-auto w-full max-w-reading px-6 pb-8">
             {after !== null && <Newer after={after} newer={source.newer} />}
-            {/* Thinking at once under a message on its way (SentBubbles) and under a running turn's message with nothing
-                under it yet, where its work header will be [D45]. */}
-            {after === null && running && top?.type === "item" && top.item === newest && <div className={tail?.type === "setup" ? "pt-4" : "pt-6"}><ThinkingLine /></div>}
+            {thinking && <div className={tail?.type === "setup" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant" && tailTurn === last?.id) ? "pt-4" : "pt-6"}><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
             {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
             <Spacer space={space} />
