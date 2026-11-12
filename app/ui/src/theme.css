@@ -474,6 +474,8 @@
       opacity: 0;
     }
   }
+  /* A reply's text fading in as it arrives, chunk by chunk. */
+  --animate-chunk-in: fade-in 0.7s cubic-bezier(0.37, 0.55, 0.86, 0.88);
   /* A progress bar growing. */
   --duration-bar: 500ms;
   --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

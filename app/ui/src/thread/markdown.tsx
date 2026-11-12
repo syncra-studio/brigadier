@@ -1,4 +1,4 @@
-import { Fragment, memo, type ReactNode, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useLayoutEffect, useMemo, useRef } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -14,10 +14,13 @@ const withBreaks = [remarkGfm, remarkBreaks];
  * A reply's markdown, one top-level block at a time, so while a reply streams only its last block parses
  * and draws again. marked only finds where blocks end (whole-reply parsing is what made rendering slow);
  * react-markdown draws each block. `breaks`: each line break is a break (the user's messages). `chip` draws a
- * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107].
+ * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107]. `at`: when the text arrived, so a
+ * reply drawn as it arrives fades in, as do the chunks a streaming one grows by [D53].
  */
-export function Markdown({ text, keep, breaks = false, chip }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode }) {
+export function Markdown({ text, keep, breaks = false, chip, at }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode; at?: number }) {
+  const chunks = useChunks(text, at);
   const tokens = marked.lexer(text);
+  let start = 0;
   // A block alone can't see link definitions in the others (nested ones too), so a block gets the ones it names,
   // and a definition still streaming redraws only the blocks that use it.
   const definitions = Object.entries(tokens.links).map(
@@ -31,21 +34,89 @@ export function Markdown({ text, keep, breaks = false, chip }: { text: string; k
   };
   return (
     <div className="markdown">
-      {tokens.map((token, at) =>
-        token.type === "space" || token.type === "def" ? null : (
-          <Block key={at} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${at}`} breaks={breaks} chip={chip} />
-        ),
-      )}
+      {tokens.map((token, n) => {
+        const from = start;
+        start += token.raw.length;
+        if (token.type === "space" || token.type === "def") return null;
+        const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
+        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${n}`} breaks={breaks} chip={chip} chunks={mine.length ? mine : NONE} />;
+      })}
     </div>
   );
 }
 
 const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
 
-const Block = memo(function Block({ text, keep, breaks, chip }: { text: string; keep: string; breaks: boolean; chip?: (n: number) => ReactNode }) {
+/** Text that arrived from offset `from` to `to` at `at` (ms since the epoch). */
+type Chunk = { from: number; to: number; at: number };
+const NONE: Chunk[] = [];
+// Past --animate-chunk-in's 0.7 s, so a chunk is never unwrapped mid-fade.
+const FADE_MS = 1000;
+
+/** The chunks still fading: the whole text if it arrived just now, then each piece it grows by. */
+function useChunks(text: string, at: number | undefined): Chunk[] {
+  const seen = useRef<{ length: number; chunks: Chunk[] } | null>(null);
+  const now = Date.now();
+  if (!seen.current || text.length < seen.current.length) {
+    seen.current = { length: text.length, chunks: at !== undefined && now - at < FADE_MS ? [{ from: 0, to: text.length, at }] : [] };
+  } else if (text.length > seen.current.length) {
+    seen.current.chunks.push({ from: seen.current.length, to: text.length, at: now });
+    seen.current.length = text.length;
+  }
+  seen.current.chunks = seen.current.chunks.filter((chunk) => now - chunk.at < FADE_MS);
+  return seen.current.chunks;
+}
+
+/** Wraps each chunk's text in a fading span. shortcut: offsets are the source's, counted back from a text's end, so an escape or entity can move a chunk's edge by a character. */
+const fadeChunks = (chunks: Chunk[]) => (tree: Node) => {
+  const walk = (node: Node) => {
+    node.children = node.children?.flatMap((child) => {
+      walk(child);
+      const value = child.value ?? "";
+      const end = child.position?.end.offset;
+      if (child.type !== "text" || end === undefined) return [child];
+      const base = end - value.length;
+      const out: Node[] = [];
+      let done = 0;
+      for (const chunk of chunks) {
+        const from = Math.max(chunk.from - base, done);
+        const to = Math.min(chunk.to - base, value.length);
+        if (from >= to) continue;
+        if (from > done) out.push({ type: "text", value: value.slice(done, from) });
+        out.push({ type: "element", tagName: "span", properties: { dataAt: chunk.at }, children: [{ type: "text", value: value.slice(from, to) }] });
+        done = to;
+      }
+      if (!out.length) return [child];
+      if (done < value.length) out.push({ type: "text", value: value.slice(done) });
+      return out;
+    });
+  };
+  walk(tree);
+};
+
+/** A chunk fading in; drawn again or reused mid-fade, it carries on from when its text arrived. */
+function Fade({ at, children }: { at: number; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const now = document.timeline.currentTime;
+    if (typeof now === "number") for (const fade of ref.current?.getAnimations() ?? []) fade.startTime = now - (Date.now() - at);
+  }, [at]);
+  return (
+    <span ref={ref} className="animate-chunk-in">
+      {children}
+    </span>
+  );
+}
+
+const Block = memo(function Block({ text, keep, breaks, chip, chunks }: { text: string; keep: string; breaks: boolean; chip?: (n: number) => ReactNode; chunks: Chunk[] }) {
   const components = useMemo(() => fences(keep, chip), [keep, chip]);
   return (
-    <ReactMarkdown remarkPlugins={breaks ? withBreaks : plugins} components={components} urlTransform={chip ? keepChips : defaultUrlTransform}>
+    <ReactMarkdown
+      remarkPlugins={breaks ? withBreaks : plugins}
+      rehypePlugins={chunks.length ? [[fadeChunks, chunks]] : undefined}
+      components={components}
+      urlTransform={chip ? keepChips : defaultUrlTransform}
+    >
       {text}
     </ReactMarkdown>
   );
@@ -55,13 +126,17 @@ type Node = {
   type: string;
   tagName?: string;
   value?: string;
-  properties?: { className?: unknown };
-  position?: { start: { offset?: number } };
+  properties?: { className?: unknown; dataAt?: number };
+  position?: { start: { offset?: number }; end: { offset?: number } };
   children?: Node[];
 };
 
 /** Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. */
 const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
+  span: ({ node, ...span }) => {
+    const at = (node as Node | undefined)?.properties?.dataAt;
+    return at === undefined ? <span {...span} /> : <Fade at={at}>{span.children}</Fade>;
+  },
   ...(chip && {
     a: ({ node: _, href, ...link }) => (href?.startsWith("chip:") ? chip(Number(href.slice(5))) : <a href={href} {...link} />),
     // A chip typed between backticks still shows as itself, as the old app lifted it out of the code.

@@ -58,7 +58,7 @@ export function Body({ item, turn, step, dated = false, actions = true, fork }: 
           time={item.sentAt}
           fork={fork}
         >
-          <Markdown text={item.text} keep={item.id} />
+          <Markdown text={item.text} keep={item.id} at={item.sentAt} />
         </AssistantMessage>
       );
     case "reasoning":
