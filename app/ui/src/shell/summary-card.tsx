@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { Popover } from "@base-ui/react/popover";
 
 import { cx } from "../components/cx";
-import { openSent } from "../components/reader";
 import { tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { AttachmentsCard, type CardFile, GitCard } from "../panel/card";
@@ -13,7 +12,7 @@ import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
 import { useHasPanel } from "./right-panel";
-import { CHAT, HOME, useTabs } from "./tab-store";
+import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 
 /*
  * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end. Where the pane
@@ -268,7 +267,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const card = has ? (
     <>
       <GitCard data={data} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onReview={() => openReview(owner)} />
-      <AttachmentsCard files={files} onOpen={(file, label) => openSent(file, file.url, label)} />
+      <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;
   return (

@@ -6,7 +6,8 @@ import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../com
 import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { openFile, openTab } from "../shell/tab-store";
+import { PASTE_LABEL } from "../shell/attachment-tab";
+import { openAttachment, openFile } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 
@@ -55,7 +56,7 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     if (kind === "chat") return void (location.hash = `#thread/${id}`);
     if (kind === "image") return viewImage([{ name: "Image", url: `/attachment/${home ? "home" : owner}/${id}` }], 0);
     // Editable in its own tab, as the old app's composer paste [D2098].
-    if (kind === "paste") return openTab(owner, "paste", id);
+    if (kind === "paste") return openAttachment(owner, id, PASTE_LABEL);
     if (home) return;
     if (kind === "file") return openFile(owner, id, { preview: false });
     if (kind === "folder") {

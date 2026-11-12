@@ -4,9 +4,11 @@ import { type Attachment, AttachmentsContext, AttachmentTiles } from "../compone
 import type { Chip, Draft } from "../components/composer/draft";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import type { Mentions } from "../components/composer/menus";
+import { viewImage } from "../components/image-viewer";
 import { ask } from "../daemon";
 import { Paperclip } from "../icons";
 import { daemonSource, openFolders } from "../projects/store";
+import { openAttachment } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 
@@ -143,7 +145,7 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
 
   const tilesRow = (
     <AttachmentsContext value={files.all}>
-      <AttachmentTiles ids={files.tiles} onRemove={remove} />
+      <AttachmentTiles ids={files.tiles} onRemove={remove} onOpen={(file) => (file.mime.startsWith("image/") ? viewImage([{ name: file.name, url: file.url! }], 0) : openAttachment(owner, file.id, file.name))} />
     </AttachmentsContext>
   );
   attachers.set(owner, attach);

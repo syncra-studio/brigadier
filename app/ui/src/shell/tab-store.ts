@@ -23,11 +23,11 @@ export const TAB_KINDS = {
   file: { name: "File", icon: Document },
   pr: { name: "Pull request", icon: PullRequestOpen },
   review: { name: "Review", icon: Compare },
-  paste: { name: "Pasted text", icon: FileDocument },
+  attachment: { name: "Attachment", icon: FileDocument },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file tab's path, a PR tab's number [D1014], a pasted text's attachment id [D2098]. A file tab also has the line last asked for, and whether it's
+ * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104]. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string };
@@ -140,7 +140,9 @@ const has = (now: Tabs, id: string) => id === CHAT || now.tabs.some((tab) => tab
 
 /** Kinds a session has one of, as Rust's `ONE` [D478, D1114]. */
 const ONE: readonly TabKind[] = ["review"];
-const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && tab.target === target));
+// An attachment is one tab by its id, whichever name it was opened by, as Rust has it.
+const keyOf = (kind: TabKind, target?: string) => (kind === "attachment" ? target?.split("/")[0] : target);
+const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && keyOf(kind, tab.target) === keyOf(kind, target)));
 
 export function openTab(owner: string, kind: TabKind, target?: string): void {
   const id = `t-${newId()}`;
@@ -295,3 +297,6 @@ export function rereadHome(): void {
 export function seedTabs(owner: string, shown: Tabs): void {
   slots.set(owner, { rev: Infinity, rust: shown, pending: [], shown });
 }
+
+/** A file that isn't an image opens in a tab, never the default app: `label` names it there [D2104]. */
+export const openAttachment = (owner: string, id: string, label: string) => openTab(owner, "attachment", `${id}/${label.replaceAll("/", " ")}`);

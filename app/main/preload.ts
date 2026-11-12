@@ -28,7 +28,6 @@ contextBridge.exposeInMainWorld("brigadier", {
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
   ignoreMenuKeys: (on: boolean) => ipcRenderer.send("ignore-menu-keys", on),
   openLink: (url: string) => ipcRenderer.send("open-link", url),
-  openAttachment: (at: string): Promise<boolean> => ipcRenderer.invoke("open-attachment", at),
   saveAttachment: (at: string, name: string): Promise<boolean> => ipcRenderer.invoke("save-attachment", at, name),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),

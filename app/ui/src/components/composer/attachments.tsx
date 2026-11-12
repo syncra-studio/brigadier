@@ -155,6 +155,7 @@ export function Tile({
   detail,
   invalid = false,
   remove,
+  onOpen,
 }: {
   slot: string;
   /** The whole title, shown on hover. */
@@ -165,7 +166,18 @@ export function Tile({
   /** A red border, for a tile that failed. */
   invalid?: boolean;
   remove: ReactNode;
+  /** One click opens it [D2104]. */
+  onOpen?: () => void;
 }) {
+  const body = (
+    <>
+      <span className="flex size-control-lg shrink-0 items-center justify-center rounded-icon-button bg-background text-muted-foreground">{icon}</span>
+      <span className="flex min-w-0 flex-col text-start">
+        <span className="truncate text-sm">{title}</span>
+        <span className="truncate text-xs text-muted-foreground">{detail}</span>
+      </span>
+    </>
+  );
   return (
     <div
       data-slot={slot}
@@ -175,18 +187,20 @@ export function Tile({
         invalid ? "border-invalid" : "border-border",
       )}
     >
-      <span className="flex size-control-lg shrink-0 items-center justify-center rounded-icon-button bg-background text-muted-foreground">{icon}</span>
-      <span className="flex min-w-0 flex-col text-start">
-        <span className="truncate text-sm">{title}</span>
-        <span className="truncate text-xs text-muted-foreground">{detail}</span>
-      </span>
+      {onOpen ? (
+        <button type="button" aria-label={`Open ${hint}`} onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm focus-visible:focus-ring">
+          {body}
+        </button>
+      ) : (
+        body
+      )}
       {remove}
     </div>
   );
 }
 
 /** A file's tile: its kind's icon (or a spinner, or the failure's sign), its name and a second line. */
-function FileTile({ attachment, remove }: { attachment: Attachment; remove: ReactNode }) {
+function FileTile({ attachment, remove, onOpen }: { attachment: Attachment; remove: ReactNode; onOpen?: () => void }) {
   const { name, mime, state } = attachment;
   const failed = state === "failed";
   const Icon = mime.startsWith("image/") ? FileImage : mime.startsWith("text/") || mime === "application/pdf" ? FileDocument : Paperclip;
@@ -207,20 +221,28 @@ function FileTile({ attachment, remove }: { attachment: Attachment; remove: Reac
       title={baseName(name)}
       detail={failed ? (attachment.error ?? "Couldn't attach this file") : state === "uploading" ? "Attaching…" : kindOf(name, mime)}
       remove={remove}
+      onOpen={state === "ready" ? onOpen : undefined}
     />
   );
 }
 
 /** An image's tile: a rounded thumbnail (pulsing until its bytes show), a spinner over it while stored. */
-function ImageTile({ attachment, remove }: { attachment: Attachment; remove: ReactNode }) {
+function ImageTile({ attachment, remove, onOpen }: { attachment: Attachment; remove: ReactNode; onOpen?: () => void }) {
   const { url, name } = attachment;
+  const thumb = (
+    <div className={cx("size-full overflow-hidden rounded-surface bg-muted", !url && "animate-pulse motion-reduce:animate-none")}>
+      {url && <img src={url} alt={name} draggable={false} className={cx("size-full object-cover", attachment.state === "uploading" && "opacity-disabled")} />}
+    </div>
+  );
   return (
     <div data-slot="attachment-image" title={name} className="group/tile relative size-attachment-thumb shrink-0">
-      <div className={cx("size-full overflow-hidden rounded-surface bg-muted", !url && "animate-pulse motion-reduce:animate-none")}>
-        {url && (
-          <img src={url} alt={name} draggable={false} className={cx("size-full object-cover", attachment.state === "uploading" && "opacity-disabled")} />
-        )}
-      </div>
+      {url && attachment.state === "ready" && onOpen ? (
+        <button type="button" aria-label={`Preview ${name}`} onClick={onOpen} className="size-full cursor-pointer rounded-surface focus-visible:focus-ring">
+          {thumb}
+        </button>
+      ) : (
+        thumb
+      )}
       <span aria-hidden className="pointer-events-none absolute inset-0 rounded-surface ring-1 ring-border ring-inset" />
       {attachment.state === "uploading" && (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -237,7 +259,7 @@ function ImageTile({ attachment, remove }: { attachment: Attachment; remove: Rea
  * its ✕. One that failed shows as a tile saying why, so pass an image or paste in the text that failed too
  * (its chip stays in the text). Ids with no attachment yet show nothing.
  */
-export function AttachmentTiles({ ids, onRemove }: { ids: readonly string[]; onRemove: (id: string) => void }) {
+export function AttachmentTiles({ ids, onRemove, onOpen }: { ids: readonly string[]; onRemove: (id: string) => void; onOpen?: (attachment: Attachment) => void }) {
   const all = useContext(AttachmentsContext);
   return (
     <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5 empty:hidden">
@@ -248,7 +270,7 @@ export function AttachmentTiles({ ids, onRemove }: { ids: readonly string[]; onR
         const remove = <TileRemove label={`Remove ${baseName(attachment.name)}`} onHover={image} onClick={() => onRemove(id)} />;
         return (
           <div key={id} data-slot="composer-attachment" data-state={attachment.state} className="motion-safe:animate-fade-in">
-            {image ? <ImageTile attachment={attachment} remove={remove} /> : <FileTile attachment={attachment} remove={remove} />}
+            {image ? <ImageTile attachment={attachment} remove={remove} onOpen={onOpen && (() => onOpen(attachment))} /> : <FileTile attachment={attachment} remove={remove} onOpen={onOpen && (() => onOpen(attachment))} />}
           </div>
         );
       })}

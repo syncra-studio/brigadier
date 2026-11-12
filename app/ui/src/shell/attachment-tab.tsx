@@ -1,0 +1,88 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { ErrorLine } from "../components/error-line";
+import { FileViewer } from "../files/viewer";
+import type { FileRead } from "../files/types";
+import { daemonRun } from "../session/composer";
+
+/** How long typing rests before an edit is kept, as the old app's. */
+const KEEP_AFTER_MS = 500;
+/** The composer's pasted text: the one label that opens editable while it's still the draft's. */
+export const PASTE_LABEL = "Pasted text";
+
+/**
+ * An attachment in its own tab, as the old app opened a pasted text or a text file in one, and now every file that
+ * isn't an image [D2098, D2104]: Rust reads it as the Files viewer reads a file and it shows there, read only; the
+ * composer's pasted text, still unsent, is a page to edit it on instead.
+ */
+export function AttachmentTab({ owner, id, label, active }: { owner: string; id: string; label: string; active: boolean }) {
+  const [read, setRead] = useState<FileRead>({ state: "loading" });
+  const [sent, setSent] = useState(true);
+  useEffect(() => {
+    let live = true;
+    void daemonRun(["attach", owner, "read", id]).then((reply) => {
+      if (!live) return;
+      if (!reply.ok) return setRead({ state: "failed", error: String(reply.error ?? "Couldn't read this file.") });
+      setSent(reply.sent !== false);
+      setRead(reply.file.gone ? { state: "gone", carried: false } : { state: "read", file: reply.file });
+    });
+    return () => {
+      live = false;
+    };
+  }, [owner, id]);
+  if (label === PASTE_LABEL && !sent && read.state === "read" && read.file.text !== null) return <PastePage owner={owner} id={id} text={read.file.text} active={active} />;
+  return <FileViewer path={label} read={read} active={active} />;
+}
+
+/**
+ * The composer's pasted text as the old app's PastedTextView: each edit kept by Rust under the same id once typing
+ * rests, and as soon as the tab is left or closed, so Send carries it. Sent or taken out, it says so; a save that
+ * fails keeps the text and tries again with the next edit [D2098].
+ */
+function PastePage({ owner, id, text, active }: { owner: string; id: string; text: string; active: boolean }) {
+  const [state, setState] = useState<"gone" | { error: string } | null>(null);
+  const pending = useRef<string | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const keep = useCallback(() => {
+    window.clearTimeout(timer.current);
+    const next = pending.current;
+    if (next === null) return;
+    pending.current = null;
+    void daemonRun(["attach", owner, "write", id, next]).then((reply) => {
+      if (reply.ok) return setState(null);
+      if (String(reply.error).includes("no longer")) return setState("gone");
+      // Not kept: it goes with the next edit, or as the tab is left.
+      pending.current ??= next;
+      setState({ error: String(reply.error ?? "Couldn't keep this edit.") });
+    });
+  }, [owner, id]);
+  // Send is on the Chat tab: leaving this one keeps the edit at once [D2098].
+  useEffect(() => {
+    if (!active) keep();
+  }, [active, keep]);
+  useEffect(() => keep, [keep]);
+  return (
+    <div data-slot="paste-tab" className="min-h-0 flex-1 overflow-y-auto px-5 pt-15 pb-32">
+      <div className="mx-auto flex w-full max-w-184 flex-col gap-3">
+        {state === "gone" ? (
+          <p className="text-sm text-muted-foreground">This pasted text is no longer in the message.</p>
+        ) : (
+          <>
+            {state && <ErrorLine size="sm" error={state.error} />}
+            <textarea
+              aria-label={PASTE_LABEL}
+              defaultValue={text}
+              spellCheck={false}
+              onChange={(event) => {
+                pending.current = event.target.value;
+                window.clearTimeout(timer.current);
+                timer.current = window.setTimeout(keep, KEEP_AFTER_MS);
+              }}
+              className="block min-h-48 w-full resize-none bg-transparent text-plan whitespace-pre-wrap text-foreground caret-foreground outline-none field-sizing-content"
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

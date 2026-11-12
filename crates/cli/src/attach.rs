@@ -1,4 +1,4 @@
-//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | write <aid> <text> | remove <aid> | list`
+//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022].
 
@@ -54,6 +54,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             fs::create_dir_all(file.parent().unwrap())?;
             core::write_atomic(&file, &bytes)?;
             Ok(json!({"ok": true, "id": id}))
+        }
+        // One opened in its tab, as the Files viewer reads a file, the draft's or a sent one [D2104].
+        "read" => {
+            let id = arg(args, 3)?;
+            check_id(id)?;
+            let sent_dir = (owner != HOME_DRAFT).then(|| sent(&core::session_dir(data, owner)));
+            let found = (file_in(&folder, id).map(|f| (f, false)))
+                .or_else(|| sent_dir.and_then(|d| file_in(&d, id)).map(|f| (f, true)));
+            let Some((file, is_sent)) = found else {
+                return Ok(json!({"ok": true, "file": {"gone": true}}));
+            };
+            let shown = core::git::read_shown(&file, id)?;
+            Ok(json!({"ok": true, "file": shown, "sent": is_sent}))
         }
         // An edit to a pasted text in its tab, kept under its id while it's still the draft's [D2098].
         "write" => {

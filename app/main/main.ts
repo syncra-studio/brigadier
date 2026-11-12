@@ -37,8 +37,7 @@ const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!
 app.setName(APP_NAME);
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 app.setPath("userData", path.join(dataDir, "chromium"));
-// fetch: the reader reads a sent text file by its app: address [D2098].
-protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true } }]);
 
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
 // older one, which may answer but refuse this app.
@@ -214,25 +213,6 @@ function openLink(url: string): void {
   if (/^https:/.test(url)) void shell.openExternal(url);
 }
 ipcMain.on("open-link", (_event, url: string) => openLink(url));
-// What the default app would run instead of showing, by extension: never handed to it, as the old app's launchTypes.json
-// (apps, installers, shortcuts, disk images, compiled scripts) plus its scripts, which the page's reader shows instead [D2098].
-const LAUNCHES = new Set(
-  `app command tool terminal workflow wflow action pkg mpkg dmg scpt scptd osascript osax prefpane saver qlgenerator kext
-  mobileconfig shortcut widget plugin bundle webloc inetloc fileloc jar pyc exe com msi msix scr pif vbe jse wsf wsh hta lnk
-  reg cpl url msp mst msixbundle appx appxbundle appinstaller appref-ms application xbap gadget msc inf scf chm hlp
-  settingcontent-ms library-ms search-ms searchconnector-ms website diagcab sct wsc ws vb psm1 psd1 ps1xml psc1 jnlp rdp xll
-  iso img vhd vhdx msu wsb vsix theme themepack deskthemepack shb shs appcontent-ms appimage desktop run deb rpm
-  sh bash zsh csh tcsh ksh fish py pyw rb pl php lua tcl js mjs cjs ps1 bat cmd vbs applescript`.split(/\s+/),
-);
-// A sent file opens in its default app, as the old app's file card, unless it would run something; only from the folders
-// the app: handler serves [D146]. False when it was refused.
-ipcMain.handle("open-attachment", (_event, at: string) => {
-  const file = attachmentFile(at);
-  if (!file) return true;
-  if (LAUNCHES.has(path.extname(file.replace(/[.\s]+$/, "")).slice(1).toLowerCase())) return false;
-  void shell.openPath(file);
-  return true;
-});
 // Saves a copy of a sent file where the user picks, starting in Downloads, as the old image viewer's Download [D2098].
 ipcMain.handle("save-attachment", async (event, at: string, name: string) => {
   const file = attachmentFile(at);

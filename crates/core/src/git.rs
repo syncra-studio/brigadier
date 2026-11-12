@@ -344,9 +344,13 @@ const FILE_MAX: u64 = 1024 * 1024;
 /// A checkout file as the viewer shows it [D1002]: `{size, text, truncated}`, text null for a
 /// binary file; `{gone: true}` once it's not there.
 pub fn read_file(checkout: &Checkout, rel: &str) -> io::Result<Value> {
+    read_shown(&inside(checkout, rel)?, rel)
+}
+
+/// Any file as the viewer shows it, `rel` its name in errors: a sent attachment too [D2104].
+pub fn read_shown(path: &Path, rel: &str) -> io::Result<Value> {
     use std::io::Read;
-    let path = inside(checkout, rel)?;
-    let file = match File::open(&path) {
+    let file = match File::open(path) {
         Ok(file) => file,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(json!({"gone": true})),
         Err(e) => return Err(e),

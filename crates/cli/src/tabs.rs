@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
-/// number; the Review diff [D1014, D1032]; the composer's pasted text by its attachment, editable, as
-/// the old app's tab of it [D2098].
-const KINDS: [&str; 5] = ["new", "terminal", "pr", "review", "paste"];
+/// number; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
+/// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104].
+const KINDS: [&str; 5] = ["new", "terminal", "pr", "review", "attachment"];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
@@ -117,7 +117,16 @@ impl Tabs {
         if !one {
             target.as_ref()?;
         }
-        let tab = (self.tabs.iter()).find(|t| t.kind == kind && (one || t.target == *target))?;
+        // An attachment is one tab by its id, whichever name it was opened by.
+        let key = |t: &Option<String>| match kind {
+            "attachment" => t
+                .as_deref()
+                .and_then(|t| t.split('/').next())
+                .map(String::from),
+            _ => t.clone(),
+        };
+        let tab = (self.tabs.iter())
+            .find(|t| t.kind == kind && (one || key(&t.target) == key(target)))?;
         Some(tab.id.clone())
     }
 
@@ -180,7 +189,7 @@ fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
     }
 }
 
-/// A file, PR and pasted text tab need their target, a Review tab may have one (its file), every other kind refuses one. A
+/// A file, PR and attachment tab need their target, a Review tab may have one (its file), every other kind refuses one. A
 /// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
 /// PR is one tab [D1032].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
@@ -194,8 +203,10 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
         ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
-        ("paste", Some(id)) => core::check_id(id).is_ok(),
-        ("file" | "pr" | "paste", None) => false,
+        ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
+            core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
+        }),
+        ("file" | "pr" | "attachment", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

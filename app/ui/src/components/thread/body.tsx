@@ -6,7 +6,8 @@ import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
-import { openSent } from "../reader";
+import { PASTE_LABEL } from "../../shell/attachment-tab";
+import { openAttachment } from "../../shell/tab-store";
 import { ApprovalRow, ChildAgentRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
 import { ShieldExclamation } from "../../icons";
@@ -20,7 +21,7 @@ function UserRow({ id, cid, text, time, dated, files }: { id: string; cid: strin
   const session = useContext(SessionOfThread)?.id;
   const at = (file: string) => `/attachment/${session}/${file}`;
   const sent = session && files.length > 0 && (
-    <SentAttachments files={files.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openSent(file, file.url)} />
+    <SentAttachments files={files.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openAttachment(session, file.id, file.pasted ? PASTE_LABEL : file.name)} />
   );
   const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={sent} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
