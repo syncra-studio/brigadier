@@ -132,7 +132,7 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
 }
 
 /** A file tab is named by its file, a PR tab by its number; a Review tab stays "Review", whichever file it shows. */
-const nameOf = (tab: Tab) => (tab.target === undefined || tab.kind === "review" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : baseName(tab.target));
+const nameOf = (tab: Tab) => (tab.target === undefined || tab.kind === "review" || tab.kind === "paste" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : baseName(tab.target));
 
 function TabIcon({ tab }: { tab: Tab }) {
   if (tab.kind === "file" && tab.target !== undefined) return <FileIcon name={tab.target} size="sm" />;

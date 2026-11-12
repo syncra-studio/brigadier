@@ -11,6 +11,7 @@ import { LivePrTab } from "../landing/live";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { keysOf } from "../shortcuts";
+import { PasteTab } from "./paste-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
 import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
@@ -117,6 +118,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               <LivePrTab key={tab.target} owner={owner} number={Number(tab.target)} />
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
+            ) : tab.kind === "paste" ? (
+              <PasteTab key={tab.target} owner={owner} id={tab.target ?? ""} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}

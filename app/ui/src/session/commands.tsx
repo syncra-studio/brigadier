@@ -4,10 +4,9 @@ import type { OpenKind } from "../components/composer/chip";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../components/composer/menus";
 import { viewImage } from "../components/image-viewer";
-import { openSent } from "../components/reader";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { openFile } from "../shell/tab-store";
+import { openFile, openTab } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 
@@ -51,11 +50,12 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     },
   };
 
-  /** One plain click on a chip: in a new tab, the chat as its session, an image in the viewer, a paste in the reader [D146, D151, D2022 #19]. */
+  /** One plain click on a chip: in a new tab, the chat as its session, an image in the viewer, a paste in its tab [D146, D151, D2022 #19]. */
   const onOpen = (kind: OpenKind, id: string) => {
     if (kind === "chat") return void (location.hash = `#thread/${id}`);
     if (kind === "image") return viewImage([{ name: "Image", url: `/attachment/${home ? "home" : owner}/${id}` }], 0);
-    if (kind === "paste") return openSent({ name: "Pasted text", mime: "text/plain", pasted: true }, `/attachment/${home ? "home" : owner}/${id}`);
+    // Editable in its own tab, as the old app's composer paste [D2098].
+    if (kind === "paste") return openTab(owner, "paste", id);
     if (home) return;
     if (kind === "file") return openFile(owner, id, { preview: false });
     if (kind === "folder") {

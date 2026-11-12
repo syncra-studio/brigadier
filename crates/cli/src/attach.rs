@@ -1,4 +1,4 @@
-//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | remove <aid> | list`
+//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | write <aid> <text> | remove <aid> | list`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022].
 
@@ -54,6 +54,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             fs::create_dir_all(file.parent().unwrap())?;
             core::write_atomic(&file, &bytes)?;
             Ok(json!({"ok": true, "id": id}))
+        }
+        // An edit to a pasted text in its tab, kept under its id while it's still the draft's [D2098].
+        "write" => {
+            let (id, text) = (arg(args, 3)?, arg(args, 4)?);
+            check_id(id)?;
+            let Some(file) = file_in(&folder, id) else {
+                return Ok(
+                    json!({"ok": false, "error": "This pasted text is no longer in the message."}),
+                );
+            };
+            if text.len() as u64 > MAX_BYTES {
+                return Ok(too_large());
+            }
+            core::write_atomic(&file, text.as_bytes())?;
+            Ok(json!({"ok": true}))
         }
         // Taken out of the message: its file goes [D127].
         "remove" => {

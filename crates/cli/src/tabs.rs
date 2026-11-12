@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
-/// number; the Review diff [D1014, D1032].
-const KINDS: [&str; 4] = ["new", "terminal", "pr", "review"];
+/// number; the Review diff [D1014, D1032]; the composer's pasted text by its attachment, editable, as
+/// the old app's tab of it [D2098].
+const KINDS: [&str; 5] = ["new", "terminal", "pr", "review", "paste"];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
@@ -179,7 +180,7 @@ fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
     }
 }
 
-/// A file and PR tab need their target, a Review tab may have one (its file), every other kind refuses one. A
+/// A file, PR and pasted text tab need their target, a Review tab may have one (its file), every other kind refuses one. A
 /// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
 /// PR is one tab [D1032].
 fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
@@ -193,7 +194,8 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
         ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
-        ("file" | "pr", None) => false,
+        ("paste", Some(id)) => core::check_id(id).is_ok(),
+        ("file" | "pr" | "paste", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

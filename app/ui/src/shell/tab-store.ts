@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, Globe } from "../icons";
+import { Compare, Dock, Document, FileDocument, Globe } from "../icons";
 import { PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
@@ -23,10 +23,11 @@ export const TAB_KINDS = {
   file: { name: "File", icon: Document },
   pr: { name: "Pull request", icon: PullRequestOpen },
   review: { name: "Review", icon: Compare },
+  paste: { name: "Pasted text", icon: FileDocument },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file tab's path, a PR tab's number [D1014]. A file tab also has the line last asked for, and whether it's
+ * `target`: a file tab's path, a PR tab's number [D1014], a pasted text's attachment id [D2098]. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string };
