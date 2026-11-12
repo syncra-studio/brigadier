@@ -47,6 +47,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         ) {
             a.locate(&run, list);
         }
+        // Before it's kept: the project's other checkouts read the list too.
+        relative(listed.as_mut(), &run.cwd);
         (backend, spec.project, listed, Some(run))
     };
     let at = kept(data, &backend, project.as_deref());
@@ -76,13 +78,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 json!(fixed.unwrap_or_default())
             }),
     };
-    // A file in the checkout opens in Files' viewer by its path there; one outside it keeps its whole path [D146].
-    let cwd = run.as_ref().map(|run| run.cwd.clone()).unwrap_or_default();
-    for each in (commands.as_array_mut().into_iter().flatten()).filter(|_| !cwd.is_empty()) {
-        let path = Path::new(each["path"].as_str().unwrap_or(""));
-        if let Ok(inside) = path.strip_prefix(&cwd) {
-            each["path"] = inside.to_string_lossy().into();
-        }
+    if let Some(run) = &run {
+        relative(Some(&mut commands), &run.cwd);
     }
     // `reveal <name>`: a listed file outside the checkout shows in Finder, as the old app's file links [D2098].
     if args.get(2).map(String::as_str) == Some("reveal") {
@@ -102,4 +99,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         };
     }
     Ok(json!({"ok": true, "commands": commands}))
+}
+
+/// A file in the checkout opens in Files' viewer by its path there; one outside it keeps its whole path [D146].
+fn relative(list: Option<&mut Value>, cwd: &str) {
+    for each in list.and_then(Value::as_array_mut).into_iter().flatten() {
+        let path = Path::new(each["path"].as_str().unwrap_or(""));
+        if let Ok(inside) = path.strip_prefix(cwd) {
+            each["path"] = inside.to_string_lossy().into();
+        }
+    }
 }
