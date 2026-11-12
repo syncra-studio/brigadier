@@ -419,6 +419,9 @@ fn request(state: &Shared, mut v: Value) {
     let st = &mut *state.lock().unwrap();
     let rid = v["id"].take();
     let p = &mut v["params"];
+    if (p["threadId"].as_str()).is_some_and(|t| t != st.thread) {
+        p["parent"] = p["threadId"].clone();
+    }
     match method.as_str() {
         "item/commandExecution/requestApproval" => {
             let inside = p["cwd"].as_str().is_some_and(|c| c.starts_with(&st.cwd));

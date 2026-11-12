@@ -54,13 +54,21 @@ pub fn events(v: &Value) -> Vec<Event> {
         "item/autoApprovalReview/completed" if p["review"]["status"] == "denied" => {
             vec![Event::Denied]
         }
-        "item/commandExecution/requestApproval" => vec![command(v)],
-        "item/fileChange/requestApproval" => vec![edit(v)],
-        "item/permissions/requestApproval" => vec![permissions(v)],
-        "mcpServer/elicitation/request" => vec![mcp(v)],
-        "item/tool/requestUserInput" => vec![question(v)],
+        "item/commandExecution/requestApproval" => vec![asked(p, command(v))],
+        "item/fileChange/requestApproval" => vec![asked(p, edit(v))],
+        "item/permissions/requestApproval" => vec![asked(p, permissions(v))],
+        "mcpServer/elicitation/request" => vec![asked(p, mcp(v))],
+        "item/tool/requestUserInput" => vec![asked(p, question(v))],
         _ => vec![],
     }
+}
+
+/// A subagent's request names its thread, its row's id, so the card names the subagent [w43 #16].
+fn asked(p: &Value, mut e: Event) -> Event {
+    if let (Event::Approval(r) | Event::Question(r), Some(t)) = (&mut e, p["parent"].as_str()) {
+        r["parent"] = t.into();
+    }
+    e
 }
 
 /// Its compact, which runs at once: all of its list it has before it lists its skills [D2098].
