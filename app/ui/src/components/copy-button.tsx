@@ -29,7 +29,8 @@ export function CopyButton({
   copiedTooltip?: string;
   copiedDuration?: number;
 }) {
-  const [copied, setCopied] = useState(false);
+  // null until first copied: the copy icon animates only coming back from the check, never as it first draws.
+  const [copied, setCopied] = useState<boolean | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
@@ -47,7 +48,7 @@ export function CopyButton({
         }, () => {});
       }}
     >
-      {copied ? <Check key="copied" className="animate-copied-in motion-reduce:animate-none" /> : <Copy key="copy" className="animate-copy-in motion-reduce:animate-none" />}
+      {copied ? <Check key="copied" className="animate-copied-in motion-reduce:animate-none" /> : <Copy key="copy" className={copied === false ? "animate-copy-in motion-reduce:animate-none" : undefined} />}
     </TooltipIconButton>
   );
 }
