@@ -230,3 +230,55 @@ pub(super) fn reason(why: Option<&str>) -> &'static str {
         _ => "usage-limit",
     }
 }
+
+impl Thread {
+    /// Setup sits under its launch's input, first in its turn [D70].
+    pub fn sync_setup(&mut self, setup: Value, alive: bool) {
+        let (mut setup, cid) = self.startup.sync(setup, alive);
+        // Its CLI's launch is logged just after the message: until then it's the newest turn's [D85].
+        let newest = || {
+            self.turns.last()?["id"]
+                .as_str()
+                .and_then(|t| self.first_rows.get(t))
+                .copied()
+        };
+        let at = (cid.and_then(|cid| self.first_rows.get(cid).copied()))
+            .or(self.setup_at)
+            .or_else(|| cid.is_none().then(newest).flatten())
+            .filter(|&at| at < self.items.len() && setup.is_object());
+        if setup.is_object() {
+            setup["after"] = at.map_or(Value::Null, |at| self.items[at]["id"].clone());
+        }
+        self.setup_changed |= setup != self.setup;
+        self.setup = setup;
+        if let Some(at) = at {
+            self.setup_work(at);
+        }
+    }
+
+    /// The turn a worktree was made for has a work block even with nothing else in it, so the
+    /// worktree's row folds into it [D85]: added once that turn is done.
+    fn setup_work(&mut self, at: usize) {
+        let row = &self.items[at];
+        let (n, turn) = (row["n"].as_u64().unwrap_or(0), row["turnId"].clone());
+        let Some(t) = self
+            .turns
+            .iter()
+            .find(|t| t["id"] == turn && t["status"] == "done")
+        else {
+            return;
+        };
+        if self.work.iter().any(|w| w["turnId"] == turn) {
+            return;
+        }
+        let at = |k: &str| t[k].as_u64().unwrap_or(0);
+        let ms = at("endedAt")
+            .saturating_sub(at("startedAt"))
+            .saturating_sub(at("waitedMs"));
+        // Nothing of the turn's own folds: the empty span after its input.
+        self.work.push(
+            json!({"turnId": turn, "ms": ms, "folded": [n + 1, n], "kept": [],
+            "denied": t["denied"]}),
+        );
+    }
+}
