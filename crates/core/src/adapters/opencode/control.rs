@@ -80,6 +80,23 @@ pub fn rules(spec: &Spec) -> Value {
     all.extend(free);
     if spec.level.as_deref() == Some("auto") {
         all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
+        // OpenCode checks only a command's folder (cd), not the paths it names: a command naming one
+        // outside the project asks; two absolute paths ask, as one may be outside.
+        // shortcut: a project path beside a ~ or .. one runs unasked; parse paths ourselves if that matters.
+        all.extend(["* /*", "* ~*", "* ..*"].map(|p| rule("shell", p, "ask")));
+        // The folder as given and as the shell prints it (macOS's /tmp is /private/tmp).
+        let real =
+            std::fs::canonicalize(&spec.cwd).map_or(String::new(), |p| p.display().to_string());
+        let inside = [spec.cwd.trim_end_matches('/'), &real]
+            .into_iter()
+            .filter(|c| !c.is_empty());
+        let inside = inside.flat_map(|c| [format!("* {c}"), format!("* {c}/*")]);
+        all.extend(
+            inside
+                .chain(["* /dev/null*".into()])
+                .map(|p| rule("shell", &p, "allow")),
+        );
+        all.push(rule("shell", "* /* /*", "ask"));
         all.extend(RISKY.split('|').map(|c| rule("shell", c, "ask")));
     }
     all.extend(secrets);
