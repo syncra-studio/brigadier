@@ -413,7 +413,8 @@ export class Follow {
   resized() {
     const el = this.el;
     if (!el) return;
-    const viewChanged = el.clientHeight !== this.height;
+    const was = this.height;
+    const viewChanged = el.clientHeight !== was;
     this.height = el.clientHeight;
     if (this.restore !== null) return this.bringBack();
     if (viewChanged) {
@@ -421,6 +422,10 @@ export class Follow {
       const gliding = this.placing !== null;
       this.trim(this.ceiling());
       if (gliding) this.glide();
+      // The view shrank under rows that were in it (an approval card, a taller composer): they stay in it.
+      const end = this.spacer()?.getBoundingClientRect().top;
+      const top = el.getBoundingClientRect().top;
+      if (!gliding && end !== undefined && end <= top + was && end > top + el.clientHeight) el.scrollTop += end - top - el.clientHeight;
     }
     this.grew();
     // Snapped at the end, the browser keeps it there; a snap that missed is put right here.
