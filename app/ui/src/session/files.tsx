@@ -1,10 +1,11 @@
-import { type DragEvent, type RefObject, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type DragEvent, type ReactNode, type RefObject, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { type Attachment, AttachmentsContext, AttachmentTiles } from "../components/composer/attachments";
 import type { Chip, Draft } from "../components/composer/draft";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import type { Mentions } from "../components/composer/menus";
 import { ask } from "../daemon";
+import { Paperclip } from "../icons";
 import { daemonSource, openFolders } from "../projects/store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
@@ -167,23 +168,47 @@ function insert(field: RefObject<ComposerFieldHandle | null>, chip: Chip): void 
 /** Each open composer's attach, so a drop on its thread reaches it. */
 const attachers = new Map<string, (id: string, file: File, inText: boolean) => void>();
 
-/** Files dropped on session `owner`'s thread attach to its composer; a folder there adds a project, as on the rest of the window [D2004, D2018]. */
-export function threadDrop(owner: string) {
+/**
+ * Files dropped on session `owner`'s thread attach to its composer; a folder there adds a project, as on the rest of the
+ * window [D2004, D2018]. While files are dragged over it, the old app's "Drop to attach" tint and pill.
+ */
+export function ThreadDrop({ owner, children }: { owner: string; children: ReactNode }) {
+  const [dragging, setDragging] = useState(false);
   const attach = (id: string, file: File, inText: boolean) => attachers.get(owner)?.(id, file, inText);
-  return {
-    onDragOver: (event: DragEvent) => {
-      if (!event.dataTransfer.types.includes("Files")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = "copy";
-    },
-    onDrop: (event: DragEvent) => {
-      if (!event.dataTransfer.types.includes("Files")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const folders: string[] = [];
-      dropped(event, (path) => folders.push(path), attach);
-      if (folders.length > 0) void openFolders(daemonSource, folders);
-    },
-  };
+  const files = (event: DragEvent) => event.dataTransfer.types.includes("Files");
+  return (
+    <div
+      className="relative min-h-0 flex-1"
+      data-drop="attach"
+      onDragOver={(event) => {
+        if (!files(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "copy";
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        setDragging(false);
+        if (!files(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const folders: string[] = [];
+        dropped(event, (path) => folders.push(path), attach);
+        if (folders.length > 0) void openFolders(daemonSource, folders);
+      }}
+    >
+      {children}
+      {dragging && (
+        <div aria-hidden data-slot="drop-overlay" className="pointer-events-none absolute inset-0 z-30 flex animate-fade-in items-center justify-center bg-link/8">
+          <div data-slot="drop-pill" className="flex items-center gap-1.5 rounded-capsule bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-sm">
+            <Paperclip className="size-icon-sm text-muted-foreground" />
+            Drop to attach
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
