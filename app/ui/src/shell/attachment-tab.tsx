@@ -18,7 +18,9 @@ export const PASTE_LABEL = "Pasted text";
 export function AttachmentTab({ owner, id, label, active }: { owner: string; id: string; label: string; active: boolean }) {
   const [read, setRead] = useState<FileRead>({ state: "loading" });
   const [sent, setSent] = useState(true);
+  // Read again each time it's shown: meanwhile it may have been sent, edited or reconnected.
   useEffect(() => {
+    if (!active) return;
     let live = true;
     void daemonRun(["attach", owner, "read", id]).then((reply) => {
       if (!live) return;
@@ -29,8 +31,9 @@ export function AttachmentTab({ owner, id, label, active }: { owner: string; id:
     return () => {
       live = false;
     };
-  }, [owner, id]);
-  if (label === PASTE_LABEL && !sent && read.state === "read" && read.file.text !== null) return <PastePage owner={owner} id={id} text={read.file.text} active={active} />;
+  }, [owner, id, active]);
+  // A cut preview is never edited: saved, it would drop the rest.
+  if (label === PASTE_LABEL && !sent && read.state === "read" && read.file.text !== null && !read.file.truncated) return <PastePage owner={owner} id={id} text={read.file.text} active={active} />;
   return <FileViewer path={label} read={read} active={active} />;
 }
 
@@ -42,19 +45,24 @@ export function AttachmentTab({ owner, id, label, active }: { owner: string; id:
 function PastePage({ owner, id, text, active }: { owner: string; id: string; text: string; active: boolean }) {
   const [state, setState] = useState<"gone" | { error: string } | null>(null);
   const pending = useRef<string | null>(null);
+  const latest = useRef(text);
+  // One write after another, so an older edit never lands over a newer one.
+  const writes = useRef(Promise.resolve());
   const timer = useRef<number | undefined>(undefined);
   const keep = useCallback(() => {
     window.clearTimeout(timer.current);
     const next = pending.current;
     if (next === null) return;
     pending.current = null;
-    void daemonRun(["attach", owner, "write", id, next]).then((reply) => {
-      if (reply.ok) return setState(null);
-      if (String(reply.error).includes("no longer")) return setState("gone");
-      // Not kept: it goes with the next edit, or as the tab is left.
-      pending.current ??= next;
-      setState({ error: String(reply.error ?? "Couldn't keep this edit.") });
-    });
+    writes.current = writes.current.then(() =>
+      daemonRun(["attach", owner, "write", id, next]).then((reply) => {
+        if (reply.ok) return setState(null);
+        if (String(reply.error).includes("no longer")) return setState("gone");
+        // Not kept: it goes with the next edit, or as the tab is left, unless a newer one went meanwhile.
+        if (latest.current === next) pending.current ??= next;
+        setState({ error: String(reply.error ?? "Couldn't keep this edit.") });
+      }),
+    );
   }, [owner, id]);
   // Send is on the Chat tab: leaving this one keeps the edit at once [D2098].
   useEffect(() => {
@@ -74,7 +82,7 @@ function PastePage({ owner, id, text, active }: { owner: string; id: string; tex
               defaultValue={text}
               spellCheck={false}
               onChange={(event) => {
-                pending.current = event.target.value;
+                pending.current = latest.current = event.target.value;
                 window.clearTimeout(timer.current);
                 timer.current = window.setTimeout(keep, KEEP_AFTER_MS);
               }}

@@ -60,11 +60,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let id = arg(args, 3)?;
             check_id(id)?;
             let sent_dir = (owner != HOME_DRAFT).then(|| sent(&core::session_dir(data, owner)));
-            let found = (file_in(&folder, id).map(|f| (f, false)))
-                .or_else(|| sent_dir.and_then(|d| file_in(&d, id)).map(|f| (f, true)));
-            let Some((file, is_sent)) = found else {
+            let found = (file_in(&folder, id).map(|f| (f, folder.clone(), false)))
+                .or_else(|| sent_dir.and_then(|d| file_in(&d, id).map(|f| (f, d, true))));
+            let Some((file, root, is_sent)) = found else {
                 return Ok(json!({"ok": true, "file": {"gone": true}}));
             };
+            // A link put in its place never reads outside the owner's folder [D2104].
+            if !fs::canonicalize(&file)?.starts_with(fs::canonicalize(&root)?) {
+                return Err(io::Error::other("This file isn't one of the message's."));
+            }
             let shown = core::git::read_shown(&file, id)?;
             Ok(json!({"ok": true, "file": shown, "sent": is_sent}))
         }
