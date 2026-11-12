@@ -6,7 +6,7 @@ import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { UserBubble } from "../components/thread/message";
 import { SetupRow } from "../components/thread/setup";
-import { WorkingLine } from "../components/thread/work";
+import { WorkHeader, WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
@@ -231,10 +231,16 @@ export function StartingSetup({ id }: { id: string }) {
   // Until Rust's first word on it, the worktree being made is the one asked for, as the card shows with the message.
   const setup = (mine && session.setup) || (entry.worktree && !entry.error && !entry.outcome ? { state: "running" as const, after: null, steps: [{ kind: "worktree" as const, state: "running" as const, branch: null, base: entry.worktree.base, error: null }] } : null);
   if (!setup) return null;
+  // Its turn's header is there from the start, as the thread draws it, so nothing moves when the turn comes [D85]; its clock starts with Rust's turn.
   return (
-    <div className="pt-6">
-      <SetupRow keep={`${id}:setup`} setup={setup} />
-    </div>
+    <>
+      <div className="pt-6">
+        <WorkHeader turn={{ id: entry.cid, status: "running", startedAt: Infinity, endedAt: null }} work={undefined} open={null} onToggle={() => {}} />
+      </div>
+      <div className="pt-4">
+        <SetupRow keep={`${id}:setup`} setup={setup} />
+      </div>
+    </>
   );
 }
 

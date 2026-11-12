@@ -14,7 +14,8 @@ function words(step: SetupStep): string {
   const { state } = step;
   switch (step.kind) {
     case "worktree":
-      return state === "running" ? `Creating ${step.branch ?? "the branch"} from ${step.base ?? "branch"}` : state === "done" ? `Created ${step.branch ?? "the branch"} from ${step.base ?? "branch"}` : "Couldn't create the worktree";
+      // Its name only once made: it's Rust's to pick, so the words never change while it's being made [D85].
+      return state === "running" ? `Creating the branch from ${step.base ?? "branch"}` : state === "done" ? `Created ${step.branch ?? "the branch"} from ${step.base ?? "branch"}` : "Couldn't create the worktree";
     case "setupScript":
       return state === "running" ? "Running the setup script" : state === "done" ? "Ran the setup script" : "The setup script failed";
     case "cli":

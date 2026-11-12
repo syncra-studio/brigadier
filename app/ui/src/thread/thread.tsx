@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import { Virtualizer, type CacheSnapshot, type VirtualizerHandle } from "virtua";
 
 import type { Session } from "./item";
-import { lineMaker, type Line } from "./lines";
+import { lineMaker, workKey, type Line } from "./lines";
 import { MessageRail } from "./rail";
 import { LineRow } from "./rows";
 import { Find } from "./find";
@@ -105,13 +105,17 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     // Under its input, first in that turn [D70]; until the input's row is in, the footer draws it.
     const at = setup?.after ? rows.findIndex((row) => row.id === setup.after) : -1;
     if (!setup || at < 0) return rows;
-    // Once its turn has work, it's that work's first item: folded away with it, and under its header opened [D77].
+    // It's its turn's work's first item: folded away with it, and under its header opened [D77].
     const next = rows[at + 1];
-    const head = next?.type === "work" ? next : null;
-    if (head?.open === false) return rows;
-    const line: Line = { type: "setup", id: `${session.id}:setup`, gap: head ? "part" : "turn", setup };
-    const to = head ? at + 2 : at + 1;
-    return [...rows.slice(0, to), line, ...rows.slice(to)];
+    if (next?.type === "work" && next.open === false) return rows;
+    const input = rows[at]!;
+    const turn = input.type === "item" ? input.turn : undefined;
+    const line: Line = { type: "setup", id: `${session.id}:setup`, gap: next?.type === "work" || turn ? "part" : "turn", setup };
+    if (next?.type === "work") return [...rows.slice(0, at + 2), line, ...rows.slice(at + 2)];
+    if (!turn) return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
+    // The header is there before the turn's first step, under the id that step's header has, so nothing moves when it comes [D85].
+    const head: Line = { type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null };
+    return [...rows.slice(0, at + 1), head, line, ...rows.slice(at + 1)];
   }, [threadRows, setup, session?.id]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
@@ -172,7 +176,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
   const tail = all.at(-1);
   // A finished setup under the newest message leaves it the turn's top, so Thinking shows under it.
-  const top = tail?.type === "setup" && tail.setup.state === "done" ? all.at(-2) : tail;
+  const top = tail?.type === "setup" && tail.setup.state === "done" ? all.at(all.at(-2)?.type === "work" ? -3 : -2) : tail;
   const phase: Phase = !running ? "idle" : tail?.type === "marks" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant") ? "answer" : "work";
   // The newest user message: the latest turn's top.
   const newest = useMemo(() => {
@@ -357,7 +361,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
             {after !== null && <Newer after={after} newer={source.newer} />}
             {/* Thinking at once under a message on its way (SentBubbles) and under a running turn's message with nothing
                 under it yet, where its work header will be [D45]. */}
-            {after === null && running && top?.type === "item" && top.item === newest && <div className="pt-6"><ThinkingLine /></div>}
+            {after === null && running && top?.type === "item" && top.item === newest && <div className={tail?.type === "setup" ? "pt-4" : "pt-6"}><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
             {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
             <Spacer space={space} />

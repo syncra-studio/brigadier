@@ -398,8 +398,16 @@ impl Thread {
     /// Setup sits under its launch's input, first in its turn [D70].
     pub fn sync_setup(&mut self, setup: Value, alive: bool) {
         let (mut setup, cid) = self.startup.sync(setup, alive);
+        // Its CLI's launch is logged just after the message: until then it's the newest turn's [D85].
+        let newest = || {
+            self.turns.last()?["id"]
+                .as_str()
+                .and_then(|t| self.first_rows.get(t))
+                .copied()
+        };
         let at = (cid.and_then(|cid| self.first_rows.get(cid).copied()))
             .or(self.setup_at)
+            .or_else(|| cid.is_none().then(newest).flatten())
             .filter(|&at| at < self.items.len() && setup.is_object());
         if setup.is_object() {
             setup["after"] = at.map_or(Value::Null, |at| self.items[at]["id"].clone());

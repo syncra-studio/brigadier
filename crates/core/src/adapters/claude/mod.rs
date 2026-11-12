@@ -343,8 +343,13 @@ impl Adapter for Claude {
                 let mut events = vec![Event::Usage(v["usage"].clone())];
                 if v["is_error"].as_bool() == Some(true) {
                     let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
+                    // Its errors as lines, without the CLI's own diagnostics, which no user can read [D85].
                     let text = match s(&v, &["result"]) {
-                        "" => v["errors"].to_string(),
+                        "" => (v["errors"].as_array().into_iter().flatten())
+                            .filter_map(Value::as_str)
+                            .filter(|e| !e.starts_with("[lede_diagnostic]"))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
                         text => text.into(),
                     };
                     events.push(if v["api_error_status"] == 529 {

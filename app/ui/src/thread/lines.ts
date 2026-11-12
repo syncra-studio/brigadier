@@ -27,6 +27,9 @@ export const workKey = (turnId: string) => `work:${turnId}`;
 /** A user message that starts a turn: a steer joins the running one [D183]. */
 const opens = (item: Item | undefined) => item?.kind === "message" && item.role === "user" && !item.steer;
 
+/** A turn's own end said under it: its failure or its Stop, never work, so they open no work header alone [D85]. */
+const ends = (item: Item) => (item.kind === "notice" && "reason" in item && item.reason === "failed") || (item.kind === "line" && item.reason === "stopped");
+
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
 
 type Walk = { items: readonly Item[]; out: Line[]; starts: number[]; counts: number[] };
@@ -104,7 +107,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
     // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
-    if (turn && opens(before) && before!.turnId === item.turnId && (item.kind !== "message" || turn.status !== "done" || done || turn.denied)) {
+    if (turn && opens(before) && before!.turnId === item.turnId && !ends(item) && (item.kind !== "message" || turn.status !== "done" || done || turn.denied)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && turn.status !== "running";
       const opened = foldable ? open.has(key) : null;
