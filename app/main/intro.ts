@@ -2,8 +2,8 @@
 // the page plays the rest (ui/src/onboarding/welcome.tsx). On macOS the first launch holds the window
 // clear until the page is ready, then stages it: no title-bar buttons, shadow or colour (only the page's
 // orb is seen), above a black window that fades in to dim the desktop. When the burst has filled the
-// window its chrome comes back; then the dim fades out. Hiding the window, a page load and the deadlines
-// all end it, and every end restores the window.
+// window its chrome comes back; then the dim fades out. Closing or minimizing the window, a page load and the
+// deadlines all end it, and every end restores the window.
 import { BrowserWindow, ipcMain, screen } from "electron";
 
 const HOLD_DEADLINE_MS = 15_000;
@@ -132,7 +132,9 @@ export function holdForIntro(shown: BrowserWindow, colour: string, staging: type
   shown.webContents.on("did-start-navigation", (details) => {
     if (details.isMainFrame && !details.isSameDocument) end(0, true);
   });
-  shown.on("hide", () => end(0, true));
+  // Not on "hide": Electron sends it when the window is merely occluded, as by a Space switch or a swipe [D16].
+  shown.on("close", () => end(0, true));
+  shown.on("minimize", () => end(0, true));
   shown.on("closed", () => end(0, false));
   // A hidden window's page doesn't paint, and the page waits for a paint: shown, but clear.
   shown.setOpacity(0);
