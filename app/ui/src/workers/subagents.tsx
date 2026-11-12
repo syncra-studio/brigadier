@@ -86,8 +86,7 @@ export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: (
           </TitlebarTips>
         }
       />
-      {/* Its answer is the report it handed back, line for line. */}
-      <WorkerThread worker={worker} items={items} turns={NO_TURNS} breaks />
+      <WorkerThread worker={worker} items={items} turns={NO_TURNS} />
     </section>
   );
 }

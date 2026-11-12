@@ -6,18 +6,16 @@ import { marked } from "marked";
 
 import { CodeBlock } from "./code";
 
-const plugins = [remarkGfm];
-// The user's own text: every line break kept, as they typed it.
-const withBreaks = [remarkGfm, remarkBreaks];
+// Every line break kept, as written: the user's text and the agents' answers alike [D140].
+const plugins = [remarkGfm, remarkBreaks];
 
 /**
  * A reply's markdown, one top-level block at a time, so while a reply streams only its last block parses
  * and draws again. marked only finds where blocks end (whole-reply parsing is what made rendering slow);
- * react-markdown draws each block. `breaks`: each line break is a break (the user's messages). `chip` draws a
- * `[@](chip:n)` link as the message's n-th chip, where the user put it [D2107]. The chunks a streaming
- * reply grows by fade in [D53].
+ * react-markdown draws each block. `chip` draws a `[@](chip:n)` link as the message's n-th chip, where the user
+ * put it [D2107]. The chunks a streaming reply grows by fade in [D53].
  */
-export function Markdown({ text, keep, breaks = false, chip }: { text: string; keep: string; breaks?: boolean; chip?: (n: number) => ReactNode }) {
+export function Markdown({ text, keep, chip }: { text: string; keep: string; chip?: (n: number) => ReactNode }) {
   const chunks = useChunks(text);
   const tokens = marked.lexer(text);
   let start = 0;
@@ -39,7 +37,7 @@ export function Markdown({ text, keep, breaks = false, chip }: { text: string; k
         start += token.raw.length;
         if (token.type === "space" || token.type === "def") return null;
         const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
-        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${n}`} breaks={breaks} chip={chip} chunks={mine.length ? mine : NONE} />;
+        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(token.raw)} keep={`${keep}:${n}`} chip={chip} chunks={mine.length ? mine : NONE} />;
       })}
     </div>
   );
@@ -108,11 +106,11 @@ function Fade({ at, children }: { at: number; children: ReactNode }) {
   );
 }
 
-const Block = memo(function Block({ text, keep, breaks, chip, chunks }: { text: string; keep: string; breaks: boolean; chip?: (n: number) => ReactNode; chunks: Chunk[] }) {
+const Block = memo(function Block({ text, keep, chip, chunks }: { text: string; keep: string; chip?: (n: number) => ReactNode; chunks: Chunk[] }) {
   const components = useMemo(() => fences(keep, chip), [keep, chip]);
   return (
     <ReactMarkdown
-      remarkPlugins={breaks ? withBreaks : plugins}
+      remarkPlugins={plugins}
       rehypePlugins={chunks.length ? [[fadeChunks, chunks]] : undefined}
       components={components}
       urlTransform={chip ? keepChips : defaultUrlTransform}

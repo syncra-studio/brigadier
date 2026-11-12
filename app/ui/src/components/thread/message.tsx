@@ -159,12 +159,12 @@ export function UserBubble({
               <AttachmentsContext value={chips.files}>
                 <ChipNumbers value={chips.numbers}>
                   <ChipContext value={chips.open}>
-                    <Markdown text={chips.markdown} keep={keep} breaks chip={chips.chip} />
+                    <Markdown text={chips.markdown} keep={keep} chip={chips.chip} />
                   </ChipContext>
                 </ChipNumbers>
               </AttachmentsContext>
             ) : (
-              <Markdown text={text} keep={keep} breaks />
+              <Markdown text={text} keep={keep} />
             )}
           </div>
           {(clipped || more) && (
