@@ -15,9 +15,9 @@ export const OLDER = 64;
 const INTENT_MS = 1000;
 /** The jump to the end: an ease-out cubic over this long. */
 const JUMP_MS = 260;
-/** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second). */
-const PLACE_MS = 100;
-const PLACE_RATE = 92.5;
+/** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second), as measured [D56]. */
+const PLACE_MS = 200;
+const PLACE_RATE = 46.25;
 /** A touch moves this far before it says which way. */
 const TOUCH_SLOP = 8;
 /** Rust's rows come in bursts that regroup a moment later: work is followed only if it still outgrows the view then. */
@@ -65,12 +65,10 @@ export class Follow {
   /** The distance at the last scroll seen, and the offset it was seen at. */
   private last = 0;
   private top = 0;
-  /** The latest turn's drawn height, from its user message to the space. */
-  private tail: number | null = null;
-  /** What a send reserved, the turn plus its space, which shrinking gives back up to (0: given up; -1: not measured). */
+  /** The rows' and footer's drawn height, all but the space. */
+  private content: number | null = null;
+  /** What a send reserved, the content plus its space, which shrinking gives back up to (0: given up; -1: not measured). */
   private reserve = 0;
-  /** The element the tail was last measured from. */
-  private anchored: Element | null = null;
   private placing: (() => void) | null = null;
   private settling: ReturnType<typeof setTimeout> | undefined;
   private jumping: (() => void) | null = null;
@@ -84,7 +82,7 @@ export class Follow {
 
   constructor(
     readonly space: Space,
-    private readonly hooks: { older(): void; changed(): void; anchor(): Element | null },
+    private readonly hooks: { older(): void; changed(): void },
   ) {}
 
   /** Opened: at the end, or where the session was left. */
@@ -165,7 +163,6 @@ export class Follow {
     this.stopJump();
     this.hold();
     this.decay = 0;
-    this.tail = null;
     this.reserve = -1;
     this.space.set(this.ceiling());
     this.glide();
@@ -272,7 +269,7 @@ export class Follow {
     const next = Math.max(0, Math.min(this.space.get(), Math.round(to)));
     if (next === this.space.get()) return false;
     this.space.set(next);
-    this.reserve = (this.tail ?? 0) + next;
+    this.reserve = (this.content ?? 0) + next;
     return true;
   }
   /** Space wholly under the view goes. */
@@ -441,28 +438,24 @@ export class Follow {
     // There, or as far up as it goes.
     if (Math.abs(this.distance() - want) <= AT_END || this.el!.scrollTop === 0) this.restore = null;
   }
-  /** The latest turn grew: followed, or taken from the space; the work that outgrows the view starts being followed. */
+  /** The rows grew: followed, or taken from the space; the work that outgrows the view starts being followed. */
   private grew() {
     const el = this.el;
-    const anchor = this.hooks.anchor();
     const spacer = this.spacer();
-    if (!el || !anchor || !spacer) return void (this.tail = null);
-    const tail = spacer.getBoundingClientRect().top - anchor.getBoundingClientRect().top;
-    // A row new as the anchor (a sent message's row taking over from its bubble in the footer) is placed before the
-    // list has measured it: it is judged from the next frame, against the last tail measured.
-    const swapped = anchor !== this.anchored && !anchor.hasAttribute("data-footer");
-    this.anchored = anchor;
-    if (swapped) return;
-    const grown = this.tail === null ? 0 : tail - this.tail;
-    this.tail = tail;
-    if (this.reserve < 0) this.reserve = tail + this.space.get();
+    const rows = el?.firstElementChild as HTMLElement | null | undefined;
+    const footer = spacer?.closest<HTMLElement>("[data-footer]");
+    if (!el || !spacer || !rows || !footer) return void (this.content = null);
+    const content = rows.offsetHeight + footer.offsetHeight - Number(spacer.getAttribute("height"));
+    const grown = this.content === null ? 0 : content - this.content;
+    this.content = content;
+    if (this.reserve < 0) this.reserve = content + this.space.get();
     // Judged before the growth is taken from it: the growth that uses the space up is the one that overflows.
     const spaced = this.space.get() > AT_END;
-    // Growth comes out of the space and shrinking gives it back up to what the send reserved (a fold, a stop, a row
-    // measured smaller than Virtua guessed), so the view a send placed never moves [D45].
-    this.space.set(Math.max(0, Math.min(this.space.get() - grown, this.reserve - tail)));
-    // Written now, not on the spacer's render, so a view the browser clamped as the turn shrank goes back unpainted.
-    if (grown < 0) spacer.setAttribute("height", String(this.space.get()));
+    // Growth comes out of the space and shrinking gives it back up to what the send reserved (a fold, a stop, a sent
+    // message's row taking its bubble's place before Virtua has measured it), so the view a send placed never moves.
+    // Written now, not on the spacer's render, so a view the browser clamped as rows shrank goes back unpainted [D45].
+    this.space.set(Math.max(0, Math.min(this.space.get() - grown, this.reserve - content)));
+    spacer.setAttribute("height", String(this.space.get()));
     if (grown < 0 && !this.intent && el.scrollTop < this.top) el.scrollTop = this.top;
     if (this.mode === "follow" || (this.mode === "workFollow" && this.phase === "work")) {
       if (this.distance() > (this.snapping() ? 1 : 0)) this.toEnd();

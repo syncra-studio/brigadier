@@ -9,7 +9,7 @@ import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
 import { store } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
-import { JumpSign, datedMessages } from "../components/thread/message";
+import { JumpSign, ThinkingLine, datedMessages } from "../components/thread/message";
 
 /**
  * Where the session comes from: null while it loads. After find went to an island far up (`after` set), `newer` asks
@@ -162,7 +162,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   // The latest turn's phase, from its last row: an assistant message under way is its answer, anything else its work.
   const tail = all.at(-1);
   const phase: Phase = !running ? "idle" : tail?.type === "marks" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant") ? "answer" : "work";
-  // The newest user message: the latest turn's top, which its growth is measured from.
+  // The newest user message: the latest turn's top.
   const newest = useMemo(() => {
     for (let at = all.length - 1; at >= 0; at--) {
       const line = all[at]!;
@@ -170,8 +170,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     }
     return undefined;
   }, [all]);
-  const newestRef = useRef(newest);
-  newestRef.current = newest;
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const space = useMemo(() => store(0), []);
@@ -179,12 +177,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     const made: Follow = new Follow(space, {
       older: () => sourceRef.current.older?.(),
       changed: () => setAway(made.shown()),
-      anchor: () => {
-        const user = newestRef.current;
-        // A message sent here and not in the rows yet has its bubble in the footer: the footer is the turn's top.
-        if (made.pending || !user) return made.el?.querySelector("[data-footer]") ?? null;
-        return made.el?.querySelector(`[data-item="${CSS.escape(user.id)}"]`) ?? null;
-      },
     });
     return made;
   }, [space]);
@@ -235,10 +227,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   useLayoutEffect(() => follow.setPhase(phase), [follow, phase]);
   // A footer shows before the session does: a start from Home has only its message there at first.
   const listed = rows.length > 0 || hasFooter;
-  // The newest user message stays drawn: the latest turn is measured from it, also once it has scrolled up out of
-  // Virtua's range, so the turn's folds and stops keep the screen still; not under an island, which never follows [D45].
-  const anchorAt = newest ? data.findIndex((line) => line.id === newest.id) : -1;
-  const anchorDrawn = useMemo(() => (after === null && anchorAt >= 0 ? [anchorAt] : undefined), [after, anchorAt]);
   // Read by Virtua once, as the list mounts: made as it appears, from the rows it mounts with (so not on `data`).
   const cache = useMemo(() => (listed ? cacheOf(id, data) : undefined), [listed, id]);
   useLayoutEffect(() => {
@@ -332,7 +320,6 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           ref={list}
           data={data}
           cache={cache}
-          keepMounted={anchorDrawn}
           shift={shift}
           bufferSize={3200}
           // A row not yet measured is guessed at the shortest a row is drawn (a one-line row with its gap), never at
@@ -345,6 +332,9 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
         <div data-footer>
           <div className="mx-auto w-full max-w-reading px-6 pb-8">
             {after !== null && <Newer after={after} newer={source.newer} />}
+            {/* Thinking at once under a message on its way (SentBubbles) and under a running turn's message with nothing
+                under it yet, where its work header will be [D45]. */}
+            {after === null && running && tail?.type === "item" && tail.item === newest && <div className="pt-6"><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
             {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-4" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
             <Spacer space={space} />

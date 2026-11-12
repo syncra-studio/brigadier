@@ -10,7 +10,7 @@ import { ToWorkerChip } from "../workers/to-chip";
 import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
-import { UserBubble, datedAfter } from "../components/thread/message";
+import { ThinkingLine, UserBubble, datedAfter } from "../components/thread/message";
 import { ask, type Row, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
 import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
@@ -126,6 +126,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
           />
         );
       })}
+      {!shown.at(-1)!.error && <ThinkingLine />}
     </div>
   );
 }
