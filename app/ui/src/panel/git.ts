@@ -191,7 +191,9 @@ export function useGitWatch(owner: string | null): void {
   useLayoutEffect(() => {
     if (key !== git.key) {
       re = 0;
-      const last = key ? kept.get(key) : undefined;
+      // A Local start works in its project's folder: that folder's last read draws until its own, so its card is whole from the first frame [D85].
+      const local = start?.project && start.args.includes("--local") ? kept.get(JSON.stringify({ project: start.project })) : undefined;
+      const last = key ? (kept.get(key) ?? local) : undefined;
       set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.

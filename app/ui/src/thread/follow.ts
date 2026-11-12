@@ -7,6 +7,8 @@
  * hand stops following and gives the space up as far as it went; coming back down to the end follows again.
  */
 
+import { inner } from "./inner";
+
 /** Within this of the end counts as at the end. */
 export const AT_END = 24;
 /** Older rows load this near the top. */
@@ -296,6 +298,12 @@ export class Follow {
       }
     }
     if (next === "idle") this.mode = "still";
+    this.clearIfFits();
+  }
+  /** The turn is over and all its rows fit from the top: the space would only make a scrollbar, and goes without moving anything. */
+  private clearIfFits() {
+    const el = this.el;
+    if (this.phase === "idle" && this.space.get() > 0 && this.placing === null && el?.scrollTop === 0 && this.content !== null && this.content <= el.clientHeight) this.clear();
   }
 
   // What the user does: which way they mean to scroll, and whether it stops following.
@@ -463,6 +471,7 @@ export class Follow {
     // message's row taking its bubble's place before Virtua has measured it), so the view a send placed never moves.
     // Written now, not on the spacer's render, so a view the browser clamped as rows shrank goes back unpainted [D45].
     this.space.set(Math.max(0, Math.min(this.space.get() - grown, this.reserve - content)));
+    this.clearIfFits();
     spacer.setAttribute("height", String(this.space.get()));
     if (grown < 0 && !this.intent && el.scrollTop < this.top) el.scrollTop = this.top;
     if (this.mode === "follow" || (this.mode === "workFollow" && this.phase === "work")) {
@@ -485,16 +494,4 @@ export class Follow {
       this.toEnd();
     }, SETTLE_MS);
   }
-}
-
-/** Between the event's target and the scroller, a box that still scrolls up, or keeps its scrolling to itself. */
-function inner(event: Event, el: HTMLElement): boolean {
-  for (const node of event.composedPath()) {
-    if (node === el) break;
-    if (!(node instanceof HTMLElement)) continue;
-    const style = getComputedStyle(node);
-    const scrolls = style.overflowY === "auto" || style.overflowY === "scroll";
-    if ((scrolls && node.scrollTop > 0) || ((scrolls || style.overflowY === "hidden") && (style.overscrollBehaviorY === "contain" || style.overscrollBehaviorY === "none"))) return true;
-  }
-  return false;
 }

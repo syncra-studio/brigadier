@@ -6,6 +6,7 @@ import { Popover } from "@base-ui/react/popover";
 import { cx } from "../components/cx";
 import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
+import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
 import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
 import { daemonRun } from "../session/composer";
@@ -125,14 +126,15 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
 
 /**
  * The thread's pane, laid out for the card by its own width; with too little room beside the reading column, the
- * column moves aside for it, as the old app's did. `card` null: no card, the pane as it was.
+ * column moves aside for it, as the old app's did. `card` null: no card; with `room`, its place is kept for a card on
+ * its way, which then eases in where it goes, so nothing else moves; else the pane as it was.
  */
-export function SummaryPane({ owner, card, children }: { owner: string; card: ReactNode | null; children: ReactNode }) {
+export function SummaryPane({ owner, card, room = card !== null, children }: { owner: string; card: ReactNode | null; room?: boolean; children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
   const state = useCard(owner);
   // The first layout lands before anything eases, so a thread opens already in place.
   const [settled, setSettled] = useState(false);
-  const has = card !== null;
+  const has = room;
 
   useLayoutEffect(() => {
     const element = pane.current;
@@ -236,12 +238,12 @@ export function SummaryPane({ owner, card, children }: { owner: string; card: Re
       {children}
       {/* Keyed by its session: what it holds carries across layouts, never to another session. */}
       {has && content && createPortal(card, holder, owner)}
-      {has && state.layout === "float" && (
+      {card !== null && state.layout === "float" && (
         <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })} surface={toFloat} />
       )}
       {has && state.layout !== null && (
         // Hidden where it floats (summary-floats), so the pane widening again eases it back in.
-        <SummaryCard shown={state.pinned} settled={settled} surface={toPinned} />
+        <SummaryCard shown={state.pinned && card !== null} settled={settled} surface={toPinned} />
       )}
     </div>
   );
@@ -252,7 +254,9 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const has = useHasPanel(owner) && owner !== HOME;
   const { data, ops } = useSource(owner);
   const { rows, projects } = useDaemon();
-  const projectId = rows?.find((row) => row.id === owner)?.project;
+  // A start's own project until Rust's row, so the card's title is there from its first frame.
+  const start = useStart(owner);
+  const projectId = rows?.find((row) => row.id === owner)?.project ?? start?.project;
   const project = projects?.find((each) => each.id === projectId)?.name ?? null;
   const updated = rows?.find((row) => row.id === owner)?.updated;
   const [files, setFiles] = useState<CardFile[]>([]);
@@ -282,7 +286,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
     </>
   ) : null;
   return (
-    <SummaryPane owner={owner} card={card}>
+    <SummaryPane owner={owner} card={card} room={has}>
       {children}
     </SummaryPane>
   );
