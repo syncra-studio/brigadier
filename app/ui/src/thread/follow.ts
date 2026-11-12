@@ -422,10 +422,13 @@ export class Follow {
       const gliding = this.placing !== null;
       this.trim(this.ceiling());
       if (gliding) this.glide();
-      // The view shrank under rows that were in it (an approval card, a taller composer): they stay in it.
-      const end = this.spacer()?.getBoundingClientRect().top;
+      // The view shrank under rows that were in it (an approval card, a taller composer): they stay in it, with the
+      // footer's padding under them, so it doesn't stop short of the end and show the jump button.
+      const spacer = this.spacer()?.getBoundingClientRect();
+      const pad = spacer ? Math.max(0, (el.querySelector("[data-end]")?.getBoundingClientRect().top ?? spacer.bottom) - spacer.bottom) : 0;
+      const end = spacer?.top;
       const top = el.getBoundingClientRect().top;
-      if (!gliding && end !== undefined && end <= top + was && end > top + el.clientHeight) el.scrollTop += end - top - el.clientHeight;
+      if (!gliding && end !== undefined && end <= top + was && end + pad > top + el.clientHeight) el.scrollTop += end + pad - top - el.clientHeight;
     }
     this.grew();
     // Snapped at the end, the browser keeps it there; a snap that missed is put right here.
