@@ -79,7 +79,7 @@ export function FeedbackView({
   const step = sending.phase === "working" ? sending.step : null;
   return (
     <>
-      <div className="flex gap-3.5 ps-6 pe-5 pt-6 pb-4.5">
+      <div className="flex min-w-0 gap-3.5 ps-6 pe-5 pt-6 pb-4.5">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <DialogTitle>{!done ? "Send feedback" : unsent ? "Not all of it was sent" : browser ? "Ready to post" : "Thanks, it’s sent"}</DialogTitle>
           <DialogDescription>{line}</DialogDescription>
@@ -88,7 +88,7 @@ export function FeedbackView({
           <X />
         </DialogClose>
       </div>
-      <div className="flex flex-col gap-3 px-6 pb-5.5">
+      <div className="flex min-w-0 flex-col gap-3 px-6 pb-5.5">
         {done ? (
           <Results results={done} />
         ) : (
@@ -131,7 +131,7 @@ export function FeedbackView({
         )}
         <ErrorLine error={sending.phase === "failed" ? `${sending.error} Your note is still here.` : null} />
       </div>
-      <div className="flex items-center gap-2 border-t border-divider ps-3.5 pe-6 py-4">
+      <div className="flex min-w-0 items-center gap-2 border-t border-divider ps-3.5 pe-6 py-4">
         {!done && !working && (
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openLink(NEW_ISSUE)}>
             Write it on GitHub yourself
