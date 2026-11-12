@@ -39,6 +39,9 @@ pub enum Event {
     Reasoning(String),
     ToolStart(Tool),
     ToolEnd(Done),
+    /// Background subagents, by their ids, whose own background work still runs: a run of theirs
+    /// that ends now isn't their end, as they run again when that work ends.
+    Awaiting(Vec<String>),
     Resume(String),
     /// A usage limit: the CLI's message, and when it resets (ms) if the CLI says; never guessed [D74].
     Limited(String, Option<u64>),

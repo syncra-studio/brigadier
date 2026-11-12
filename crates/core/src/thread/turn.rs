@@ -183,10 +183,19 @@ impl Thread {
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
         self.shown.insert(t.id.clone());
+        // A turn no one sent, right after the subagents of the one before ended, or while they still
+        // run: the agent woke for them [D106].
         let woke = self.woke.take();
-        // A turn no one sent, right after the subagents of the one before ended: the agent woke for them.
-        match woke.filter(|_| matches!(t.origin.as_str(), "agent" | "system") && t.switch.is_null())
-        {
+        let wakes = matches!(t.origin.as_str(), "agent" | "system") && t.switch.is_null();
+        let woke = woke.or_else(|| {
+            let last = self.held.values().map(|(o, _)| o.at).max()?;
+            let id = self.turns[last]["id"].as_str()?.to_string();
+            wakes
+                .then(|| self.held.remove(&id))
+                .flatten()
+                .map(|(o, _)| o)
+        });
+        match woke.filter(|_| wakes) {
             Some(o) => self.rejoin(o),
             None => self.new_turn(t, ts),
         }

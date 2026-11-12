@@ -24,6 +24,9 @@ pub struct Norm {
     /// Turns begun per resume id, and this turn's file edits so far: (tool id, its changes).
     turns: BTreeMap<String, u64>,
     edits: Vec<(String, Vec<Value>)>,
+    /// Background subagents waiting on their own work, as their agent last listed them.
+    #[serde(default)]
+    awaiting: Vec<String>,
 }
 
 impl Norm {
@@ -184,6 +187,16 @@ impl Norm {
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
                     "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at}),
+                Event::Awaiting(ids) => {
+                    self.awaiting = ids;
+                    continue;
+                }
+                // A subagent's run that ended while it waits on its own work: it runs again [D67].
+                Event::ToolEnd(d)
+                    if d.child.as_ref().is_some_and(|c| self.awaiting.contains(c)) =>
+                {
+                    continue;
+                }
                 Event::ToolEnd(d) => {
                     if d.parent.is_none() && !d.changes.is_empty() {
                         self.edits.push((d.id.clone(), d.changes.clone()));

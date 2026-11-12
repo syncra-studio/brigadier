@@ -274,6 +274,17 @@ impl Adapter for Claude {
             .collect(),
             ("system", "status") => control::level(&v).into_iter().collect(),
             ("system", "compact_boundary") => vec![Event::Compaction("done")],
+            // A background subagent still listed with work of its own [D67].
+            ("system", "background_tasks_changed") => {
+                let tasks = v["tasks"].as_array().cloned().unwrap_or_default();
+                let listed = |id: &Value| tasks.iter().any(|t| t["task_id"] == *id);
+                let parents = tasks.iter().map(|t| &t["parent_task_id"]);
+                let mut awaiting: Vec<String> = (parents.filter(|p| listed(p)))
+                    .filter_map(|p| p.as_str().map(String::from))
+                    .collect();
+                awaiting.dedup();
+                vec![Event::Awaiting(awaiting)]
+            }
             // A subagent's end, also one that ran in the background past its call's result [D78].
             ("system", "task_notification") if !s(&v, &["tool_use_id"]).is_empty() => {
                 // Its report, where it handed one back; a stopped one's summary is only its title.
