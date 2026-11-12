@@ -27,9 +27,7 @@ pub struct OpenCode;
 /// Its `--version` line ("1.19.5", "opencode v2.2.7") names a version before 2.
 fn before_2(version: &str) -> bool {
     let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
-    (number.split('.').next())
-        .and_then(|m| m.parse::<u32>().ok())
-        .is_some_and(|m| m < 2)
+    matches!(number.split('.').next(), Some("0" | "1"))
 }
 
 /// Providers that run on this Mac: OpenCode finds their servers by itself [D68].
