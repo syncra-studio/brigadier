@@ -68,8 +68,10 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
       // shrunk to the pane shows its top lines twice, while one grown redraws clean.
       await run(["setup", agent.name, action, "--cols", "500", "--rows", "10"]);
       await checkOne(agent.name);
+      return true;
     } catch (cause) {
       setFailed((all) => ({ ...all, [agent.name]: errorText(cause) }));
+      return false;
     } finally {
       setStarting(null);
     }

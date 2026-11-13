@@ -169,10 +169,13 @@ export function UpdatesRow() {
     };
   }, [online]);
   const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name]) ?? []);
-  const update = (item: UpdateItem) => {
+  const update = (item: UpdateItem): Promise<boolean> => {
     const agent = list?.find((each) => each.name === item.target);
-    if (agent) void setup.begin(agent, "update");
+    return agent ? setup.begin(agent, "update") : Promise.resolve(false);
   };
+  // What a click on the pill does: when all there is is one agent's update it runs itself, it starts at once;
+  // anything else (several, a download, a command to copy, a failure to read) opens the list [D199].
+  const direct = items.length === 1 && items[0].action.type === "run" && items[0].progress.type === "available" ? items[0] : null;
   const skip = (item: UpdateItem) => {
     const agent = list?.find((each) => each.name === item.target);
     // A failed run is closed; an available version is hidden until a newer one comes out.
@@ -199,11 +202,14 @@ export function UpdatesRow() {
     const timer = setTimeout(() => setOpen(false), ITEM_MS);
     return () => clearTimeout(timer);
   }, [empty, open]);
+  // Every row an "Update" button could run right now, for "Update all" [D199].
+  const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
     <BarItem show={!empty || open} axis={expanded ? "x" : "y"}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<TooltipIconButton look={expanded ? "chip" : "chip-tall"} side={expanded ? "top" : "right"} tooltip={rowLabel(shown)} />}
+          render={<TooltipIconButton look={expanded ? "chip" : "chip-tall"} side={expanded ? "top" : "right"} tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
           <span className={cx("flex items-center", !expanded && "flex-col")}>
@@ -215,6 +221,13 @@ export function UpdatesRow() {
           </span>
         </PopoverTrigger>
         <PopoverContent {...footPlacement(expanded)} padded={false} className="flex w-96 flex-col p-1.5">
+          <BarItem axis="y" show={shown.length > 1}>
+            <div className="flex justify-end px-1.5 pt-1 pb-1.5">
+              <Button size="sm" variant="secondary" disabled={runnable.length < 2} onClick={() => runnable.forEach((item) => void update(item))}>
+                Update all
+              </Button>
+            </div>
+          </BarItem>
           {shown.map((item) => (
             <BarItem key={item.target} axis="y" show={items.includes(item)}>
               <UpdateRow item={item} onUpdate={() => update(item)} onSkip={() => skip(item)} />
