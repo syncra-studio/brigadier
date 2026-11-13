@@ -287,10 +287,10 @@ impl Thread {
 
     /// Ends the open turn. Every outcome the status fold knows maps to one of the view's [D64].
     fn close_turn(&mut self, outcome: &str, ts: u64) {
-        self.end_wait(ts);
         self.said(&Value::Null, "", ts);
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
+        self.end_wait(ts);
         let Some(o) = self.open.take() else {
             return;
         };
@@ -419,7 +419,11 @@ impl Thread {
         at
     }
 
+    /// The turn's wait on the user ends once nothing waits on them any more [D128].
     fn end_wait(&mut self, ts: u64) {
+        if (self.pending.iter()).any(|&at| self.items[at]["to"] != "parent") {
+            return;
+        }
         let Some(o) = self.open.as_mut() else {
             return;
         };

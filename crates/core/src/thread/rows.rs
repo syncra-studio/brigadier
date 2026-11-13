@@ -168,9 +168,7 @@ impl Thread {
             }
             "resolved" => {
                 self.withdraw(&str_of("id"), item["decision"].as_str(), ts);
-                if self.pending.is_empty() {
-                    self.end_wait(ts);
-                }
+                self.end_wait(ts);
             }
             "delivered" if !self.acking.contains(&str_of("cid")) => self.delivered(&str_of("cid")),
             // An input the agent acks is applied by its reply, not by being written [D222].
