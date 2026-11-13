@@ -245,7 +245,9 @@ pub(super) fn settle(row: &mut Value, progress: &str) {
 
 /// A reply a stop cut mid-way and its carry-on, as one text. A carry-on that starts the cut line
 /// again (its first words, at a line's start) takes that line's place, any words before it gone;
-/// until its first words show which, it adds nothing.
+/// until its first words show which, it adds nothing. One that starts afresh (no CLI keeps the cut
+/// words, so a fresh conversation or a Resume never finishes them) follows the cut's last whole
+/// sentence, the unfinished words gone, never glued to them.
 pub(super) fn joined(cut: &str, next: &str) -> String {
     let (head, tail) = cut.rsplit_once('\n').unwrap_or(("", cut));
     let next = next.trim_start_matches(' ');
@@ -267,11 +269,43 @@ pub(super) fn joined(cut: &str, next: &str) -> String {
             return cut.into();
         }
     }
+    let first = next.chars().next();
+    if !first.is_some_and(|c| c.is_lowercase() || ".,;:!?)".contains(c)) {
+        let t = cut.trim_end();
+        let line = cut.len() - tail.len();
+        let keep = if cut.ends_with('\n') {
+            cut
+        } else if t.ends_with(['.', '!', '?', ':']) {
+            t
+        } else {
+            // A sentence's end, not a list's number (2. ).
+            (tail.match_indices(['.', '!', '?', ':']))
+                .rfind(|&(i, _)| {
+                    tail[i + 1..].starts_with(' ')
+                        && tail[..i].ends_with(|c: char| !c.is_ascii_digit())
+                })
+                .map_or(&cut[..line], |(i, _)| &cut[..line + i + 1])
+        };
+        // A list goes on as one list; anything else after the cut is a paragraph of its own.
+        let item = |l: &str| {
+            let l = l.trim_start();
+            let n = l.trim_start_matches(|c: char| c.is_ascii_digit());
+            ["- ", "* ", "+ "].iter().any(|m| l.starts_with(m))
+                || (n.len() < l.len() && (n.starts_with(". ") || n.starts_with(") ")))
+        };
+        let (keep, next) = (keep.trim_end(), next.trim_start());
+        let last = keep.rsplit('\n').next().unwrap_or("");
+        let gap = match keep {
+            "" => "",
+            _ if item(last) && item(next) => "\n",
+            _ => "\n\n",
+        };
+        return format!("{keep}{gap}{next}");
+    }
     // shortcut: a word cut in two gets a space inside it; no CLI says where its cut fell.
-    let gap = match (cut.chars().last(), next.chars().next()) {
+    let gap = match (cut.chars().last(), first) {
         (Some(c), _) if c.is_whitespace() => "",
-        (_, Some(c)) if c.is_whitespace() || ".,;:!?)".contains(c) => "",
-        (Some('.' | '!' | '?' | ':'), _) => "\n\n",
+        (_, Some(c)) if ".,;:!?)".contains(c) => "",
         _ => " ",
     };
     format!("{cut}{gap}{next}")
