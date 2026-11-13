@@ -209,6 +209,17 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         // project, so Remove again retries it [D35, D166].
         match core::trust::restore(data, id).and_then(|()| projects::remove(data, id)) {
             Ok(()) => {
+                // Each adapter's own empty per-project folders (Claude's memory, its project
+                // folder), by the main checkout's path, not any session's worktree [D212].
+                let spec = core::Spec {
+                    cwd: project.folder.clone(),
+                    ..Default::default()
+                };
+                for a in core::adapters::all() {
+                    for dir in a.shared(&spec) {
+                        let _ = fs::remove_dir(&dir);
+                    }
+                }
                 return Ok(json!({"ok": true, "repo": project.folder, "kept_branches": kept}));
             }
             Err(e) => left.push(e.to_string().into()),
