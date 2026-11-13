@@ -27,6 +27,7 @@ fn waiting(data: &Path, wid: &str, id: Option<&str>) -> Option<(String, Value)> 
 
 pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
     waiting(data, wid, Some(id)).is_some()
+        || crate::peers::question(data, wid).is_some_and(|mid| mid == id)
 }
 
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.
@@ -40,25 +41,50 @@ pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
     };
     // One at a time, the one `answer` settles, so the parent's reply is for the ask it read.
     for (id, r) in t.asks.iter().filter(|(_, r)| r["to"] == "parent").take(1) {
-        let path = path_of(data, &l.parent, wid, &id.replace(['/', '.'], "_"));
-        if path.exists() {
-            continue;
-        }
-        let res = Res {
-            id: format!("r{}", core::adapters::uuid()[..13].replace('-', "")),
-            wid: wid.into(),
-            turn: id.clone(),
-            how: "asks".into(),
-            text: said(&l.title, wid, r),
-            at: log::now_ms(),
-            state: "written".into(),
-            hop: crate::peers::hop_of(data, wid, &t.id),
-            merge: String::new(),
-        };
-        fs::create_dir_all(dir_of(data, &l.parent))?;
-        write_json(&path, &res)?;
-        open(data, &l.parent);
+        write(data, &l, wid, id, said(&l.title, wid, r), &t.id)?;
     }
+    Ok(())
+}
+
+/// Writes worker `wid`'s question `mid` (its `brigadier send` to its parent) for its parent, as its
+/// CLI's own questions are [D131].
+pub(crate) fn question(data: &Path, wid: &str, mid: &str, text: &str) -> io::Result<()> {
+    let Some(l) = link(data, wid) else {
+        return Ok(());
+    };
+    let turn = core::fold(&core::session_dir(data, wid), true)?.fold;
+    let turn = turn.turns.first().map_or(String::new(), |t| t.id.clone());
+    let r = json!({"items": [{"text": text}]});
+    write(data, &l, wid, mid, said(&l.title, wid, &r), &turn)
+}
+
+/// One ask's record in the parent's results, once.
+fn write(
+    data: &Path,
+    l: &super::Link,
+    wid: &str,
+    id: &str,
+    text: String,
+    turn: &str,
+) -> io::Result<()> {
+    let path = path_of(data, &l.parent, wid, &id.replace(['/', '.'], "_"));
+    if path.exists() {
+        return Ok(());
+    }
+    let res = Res {
+        id: format!("r{}", core::adapters::uuid()[..13].replace('-', "")),
+        wid: wid.into(),
+        turn: id.into(),
+        how: "asks".into(),
+        text,
+        at: log::now_ms(),
+        state: "written".into(),
+        hop: crate::peers::hop_of(data, wid, turn),
+        merge: String::new(),
+    };
+    fs::create_dir_all(dir_of(data, &l.parent))?;
+    write_json(&path, &res)?;
+    open(data, &l.parent);
     Ok(())
 }
 
@@ -90,17 +116,10 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
             )
         }
         None => {
-            let paths = (r["paths"].as_array().into_iter().flatten())
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(", ");
-            let what = [field("command"), field("host"), paths, field("input")]
-                .into_iter()
-                .find(|w| !w.is_empty())
-                .unwrap_or_default();
             let mut t = format!(
-                "Worker {title} ({wid}) asks for permission ({}):\n  {what}\n",
-                field("action")
+                "Worker {title} ({wid}) asks for permission ({}):\n  {}\n",
+                field("action"),
+                subject(r)
             );
             if !field("reason").is_empty() {
                 t += &format!("Why: {}\n", field("reason"));
@@ -110,13 +129,44 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
             )
         }
     };
-    text += "\nOnly you see this, never the user, and the worker waits for you. Say nothing of it in your thread: answer, then end your turn without a word.";
+    text += "\nOnly you see this, never the user, and the worker waits for you. Say nothing of it in your thread: answer, then go on as you were, without a word: wait on it again if you were waiting, else end your turn.";
     text
+}
+
+/// What an approval is for: its command, host, paths or input.
+fn subject(r: &Value) -> String {
+    let field = |k: &str| r[k].as_str().unwrap_or("").trim().to_string();
+    let paths = (r["paths"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    [field("command"), field("host"), paths, field("input")]
+        .into_iter()
+        .find(|w| !w.is_empty())
+        .unwrap_or_default()
+}
+
+/// What session `id` waits on its user for, as a `wait` on it says: only the user answers it [D126].
+pub fn for_user(data: &Path, id: &str) -> Option<String> {
+    let f = core::fold(&core::session_dir(data, id), true).ok()?.fold;
+    let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"] != "parent")?;
+    let what = match r["items"].is_array() {
+        true => "to answer its question".to_string(),
+        false => format!(
+            "to approve ({}): {}",
+            r["action"].as_str().unwrap_or(""),
+            subject(r)
+        ),
+    };
+    Some(format!(
+        "{id} waits for the user {what}\nOnly the user can answer it, in Brigadier: `brigadier send {id} --allow` can't. End your turn: its result comes to you when it's done."
+    ))
 }
 
 /// Whether worker `wid` of `me` waits on `me` for an answer.
 pub fn asks_parent(data: &Path, me: &str, wid: &str) -> bool {
-    link(data, wid).is_some_and(|l| l.parent == me) && waiting(data, wid, None).is_some()
+    link(data, wid).is_some_and(|l| l.parent == me)
+        && (waiting(data, wid, None).is_some() || crate::peers::question(data, wid).is_some())
 }
 
 /// `brigadier send <wid> --allow | --deny "<reason>" | "<answer>"` from its parent: answers the
@@ -133,7 +183,15 @@ pub fn answer(
         return refuse("You can answer only your own workers.");
     }
     let Some((id, r)) = waiting(data, wid, None) else {
-        return refuse(&format!("{wid} isn't waiting on you."));
+        return match crate::peers::question(data, wid) {
+            Some(mid) if !allow && deny.is_none() && !text.trim().is_empty() => {
+                crate::peers::answer(data, me, wid, &mid, text)
+            }
+            Some(_) => refuse(&format!(
+                "{wid} asks a question: answer it with `brigadier send {wid} \"<your answer>\"`."
+            )),
+            None => refuse(&for_user(data, wid).unwrap_or(format!("{wid} isn't waiting on you."))),
+        };
     };
     let question = r["items"].is_array();
     let reply = match (question, allow, deny) {

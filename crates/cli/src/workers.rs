@@ -10,11 +10,12 @@ mod family;
 mod make;
 mod pause;
 mod result;
-pub use asks::{answer, asks_parent};
+pub(crate) use asks::question;
+pub use asks::{answer, asks_parent, for_user};
 pub use family::{delete, unlanded};
 pub use make::start;
 pub use pause::held;
-pub use result::{deliver, take};
+pub use result::{deliver, take, take_ask};
 pub(crate) use result::{hop as result_hop, last_of_turn, settled};
 
 use crate::{arg, owner, queue, settings};

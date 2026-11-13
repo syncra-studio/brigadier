@@ -31,7 +31,7 @@ fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>) -> Str
         None => "Commit your work on your branch and don't merge it.".into(),
     };
     format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. {land} `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
+        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
 }
 

@@ -11,9 +11,22 @@ impl Thread {
         let phase = item["phase"].as_str().unwrap_or("");
         let mid = &item["mid"];
         let at = (!mid.is_null())
-            .then(|| (self.items.iter()).rposition(|r| r["kind"] == "peer" && r["mid"] == *mid))
+            .then(|| {
+                (self.items.iter()).rposition(|r| {
+                    r["mid"] == *mid && matches!(r["kind"].as_str(), Some("peer" | "question"))
+                })
+            })
             .flatten();
         let Some(at) = at else {
+            // A worker's question to its parent is its quiet step in the fold: "Asking ‹parent›",
+            // then "‹parent› answered" [D121, D122].
+            if phase == "sent" && item["asks"] == true {
+                self.add(
+                    json!({"kind": "question", "mid": mid, "question": item["text"],
+                    "options": [], "answer": null, "to": "parent"}),
+                );
+                return;
+            }
             // A message to its own worker reads as the old lead's row: "Messaged ‹worker›", its words folded under it.
             if phase == "sent" && item["worker"] == true {
                 let row = json!({"kind": "team_step", "type": "messaged", "byUser": false, "workers": [item["to"]], "text": item["text"]});
@@ -41,6 +54,7 @@ impl Thread {
                 (row["state"], row["why"]) = (phase.into(), item["why"].clone())
             }
             "replied" => row["waited"] = "replied".into(),
+            "answered" => row["answer"] = item["reply"].clone(),
             "waited" => row["waited"] = "timeout".into(),
             _ => return,
         }

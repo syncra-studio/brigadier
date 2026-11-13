@@ -5,6 +5,8 @@
 //! Logged without that proof, it's uncertain and never sent again by itself. An idle parent wakes;
 //! a busy one gets it after its turn. Turns the user starts in a worker report nothing.
 
+mod take;
+
 use super::{Link, Record, closing, git, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
@@ -18,6 +20,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
+pub use take::{take, take_ask};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -321,28 +324,6 @@ pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
         .into_iter()
         .find(|(_, r)| r.id == id)
         .map(|(_, r)| r.hop)
-}
-
-/// The parent's own `wait` on its worker takes the result it returns, so it isn't sent again; any
-/// other session's wait never does [D3034]. Its text, when there's one to take.
-/// `turn` names the exact report turn waited on (a `send --wait`); none takes its latest. Taken
-/// under the parent's queue lock, which a delivery holds while it sends [D3006, D3034].
-pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<String> {
-    let l = link(data, wid).filter(|l| l.parent == me)?;
-    let _ = write_ended(data, wid, false);
-    let _ = super::asks::asked(data, wid);
-    let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
-    let (path, mut res) = all(data, &l.parent).into_iter().rev().find(|(_, r)| {
-        r.wid == wid && r.state == "written" && turn.is_none_or(|t| r.turn == t) && fresh(data, r)
-    })?;
-    res.state = "taken".into();
-    write_json(&path, &res).ok()?;
-    if res.how == "asks" {
-        return Some(res.text);
-    }
-    let note = json!({"event": "worker", "phase": "result", "result": said(&res)});
-    let _ = owner::call(data, me, json!({"op": "note", "data": note}));
-    Some(res.text)
 }
 
 /// The daemon's pass: each parent with an open result, between turns, gets its oldest one, off

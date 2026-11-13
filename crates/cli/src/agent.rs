@@ -3,17 +3,18 @@
 //! approving `brigadier` is always safe: no command here runs a program, changes a session or
 //! prints a secret. Every wait has a timeout, and every reply is capped with a hint to read less.
 
+mod wait;
+
 use crate::{models, peers, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
 use serde_json::{Value, json};
 use std::path::Path;
-use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Proposed: the most any reply prints.
 const CAP: usize = 16 << 10;
 /// Proposed: `wait`'s default and longest timeout, in seconds.
-const WAIT: u64 = 60;
+pub(crate) const WAIT: u64 = 60;
 const WAIT_MAX: u64 = 600;
 
 const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
@@ -259,7 +260,7 @@ pub fn run(
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
         "wait" => workers::waited(data, me, id).and_then(|ids| {
             call.number("--timeout", WAIT, WAIT_MAX)
-                .map(|s| wait(data, me, &ids, s, rows, here))
+                .map(|s| wait::wait(data, me, &ids, s, rows, here))
         }),
         "stop" => Ok(workers::stop(data, me, id)),
         "send"
@@ -397,51 +398,6 @@ fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
         );
     }
     json!({"ok": true, "sessions": list, "more": more, "text": text})
-}
-
-/// Waits for the first of `ids` to stop working or need its user.
-fn wait(
-    data: &Path,
-    me: &str,
-    ids: &[String],
-    secs: u64,
-    rows: &dyn Fn() -> Vec<Value>,
-    here: &dyn Fn() -> bool,
-) -> Value {
-    let started = Instant::now();
-    let mut state = String::new();
-    loop {
-        let rows = rows();
-        for id in ids.iter().map(String::as_str) {
-            let Some(row) = rows.iter().find(|r| r["id"] == id) else {
-                return refuse(&format!("Session {id} is gone."));
-            };
-            state = str_of(row, "state").to_string();
-            let idle =
-                row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
-            if idle || state == "waiting_answer" || state == "asking" {
-                let last = crate::relay::archive(data, id, false)
-                    .into_iter()
-                    .rev()
-                    .find(|e| e.from == "agent");
-                let last = last.map(|e| e.text).unwrap_or_default();
-                // Its parent's own wait takes the worker's result, which then isn't sent again.
-                if let Some(result) = workers::take(data, me, id, None) {
-                    return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "result": result, "text": result});
-                }
-                let text = format!("{id} is {state}. Its last message:\n{}", last.trim_end());
-                return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "text": text});
-            }
-        }
-        if started.elapsed() >= Duration::from_secs(secs) || !here() {
-            let text = format!(
-                "Still working after {secs}s: {}. Wait again, or end your turn and check later.",
-                ids.join(", ")
-            );
-            return json!({"ok": true, "done": false, "state": state, "text": text});
-        }
-        thread::sleep(Duration::from_millis(500));
-    }
 }
 
 fn models(data: &Path, me: &str) -> Value {

@@ -10,9 +10,12 @@
 //! sent again by itself. A chain stops at 8 hops and a sender at 20 a minute; only the user's
 //! Send anyway lets that message through.
 
+mod reply;
+
 use crate::{control, owner, queue, settings, workers};
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::log;
+pub(crate) use reply::{answer, question};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,7 +24,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
-use std::time::{Duration, Instant};
 
 /// The most hops a chain between sessions takes; the 9th stops [D2034].
 const HOPS: u64 = 8;
@@ -39,11 +41,15 @@ struct Out {
     at: u64,
     #[serde(default)]
     wait: bool,
-    /// written | sent (in its queue or turn) | delivered | uncertain | dropped | stopped
+    /// written | sent (in its queue or turn) | delivered | uncertain | dropped | stopped; a worker's
+    /// question to its parent: asking (its send waits) | asked (it stopped waiting) | answered
     state: String,
     /// Why it stopped (hops | rate) or was dropped.
     #[serde(default)]
     why: Option<String>,
+    /// The parent's answer to its worker's question.
+    #[serde(default)]
+    reply: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -177,6 +183,7 @@ pub fn send(
         wait: wait.is_some(),
         state: if why.is_some() { "stopped" } else { "written" }.into(),
         why: why.map(String::from),
+        reply: None,
     };
     if let Err(e) = save(data, me, "out", &out.mid, &out) {
         return refuse(&e.to_string());
@@ -185,10 +192,12 @@ pub fn send(
     let phase = if why.is_some() { "stopped" } else { "sent" };
     // To its own worker: the old lead's "Messaged ‹worker›" row, not a peer's [D3010, D3044].
     let worker = workers::link(data, to).is_some_and(|l| l.parent == me);
+    // A worker's message to its own parent is a question for it, never in its user's queue [D131].
+    let asks = workers::link(data, me).is_some_and(|l| l.parent == to);
     note(
         data,
         me,
-        json!({"phase": phase, "mid": out.mid, "to": to, "text": text, "wait": out.wait, "why": why, "worker": worker}),
+        json!({"phase": phase, "mid": out.mid, "to": to, "text": text, "wait": out.wait, "why": why, "worker": worker, "asks": asks}),
     );
     crash_at("sent");
     open(data, me);
@@ -204,6 +213,9 @@ pub fn send(
             );
         }
         None => {}
+    }
+    if asks {
+        return reply::ask(data, me, &mut out, wait.unwrap_or(crate::agent::WAIT), here);
     }
     let how = match hand(data, me, &mut out) {
         Ok(how) => how,
@@ -221,45 +233,7 @@ pub fn send(
         );
         return json!({"ok": true, "mid": out.mid, "how": how, "text": text});
     };
-    waited(data, me, &out, secs, here)
-}
-
-/// `--wait`: until the receiver's turn that took the message ends, then its last message, or for
-/// one's own worker that turn's result, taken so it isn't sent again [D3006, D3034]. Proposed:
-/// the turn's last message is the reply. Always times out [D2034].
-fn waited(data: &Path, me: &str, out: &Out, secs: u64, here: &dyn Fn() -> bool) -> Value {
-    let started = Instant::now();
-    let to = out.to.as_str();
-    let dir = core::session_dir(data, to);
-    loop {
-        let rec: Option<In> = workers::read_json(&path(data, to, "in", &out.mid));
-        let Some(rec) = rec.filter(|_| dir.exists()) else {
-            return refuse(&format!("{to} is gone."));
-        };
-        if rec.state == "dropped" {
-            return refuse(&format!("{to}'s user took your message out of its queue."));
-        }
-        let turn = rec.turn.clone().unwrap_or_else(|| out.mid.clone());
-        let ended = core::fold(&dir, true).is_ok_and(|f| {
-            f.fold.cids.contains_key(&out.mid) && !f.fold.turns.iter().any(|t| t.id == turn)
-        });
-        if ended {
-            let mine = workers::take(data, me, to, Some(&turn));
-            let reply = mine.or_else(|| workers::last_of_turn(data, to, &turn));
-            let reply = reply.unwrap_or_default();
-            note(data, me, json!({"phase": "replied", "mid": out.mid}));
-            let text = format!("{to} answered:\n{}", reply.trim_end());
-            return json!({"ok": true, "mid": out.mid, "done": true, "reply": reply, "text": text});
-        }
-        if started.elapsed() >= Duration::from_secs(secs) || !here() {
-            note(data, me, json!({"phase": "waited", "mid": out.mid}));
-            let text = format!(
-                "No reply from {to} after {secs}s. Your message is with it. `brigadier wait {to}` to wait more, or end your turn."
-            );
-            return json!({"ok": true, "mid": out.mid, "done": false, "text": text});
-        }
-        thread::sleep(Duration::from_millis(500));
-    }
+    reply::waited(data, me, &out, secs, here)
 }
 
 /// Hands a message to its receiver: recorded and judged under its queue lock, a repeat dropped;
@@ -442,7 +416,8 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
     let now = log::now_ms();
     let mut open = false;
     for mut out in all::<Out>(data, from, "out") {
-        if DONE.contains(&out.state.as_str()) {
+        // A worker's question is its parent's to settle, by its answer.
+        if DONE.contains(&out.state.as_str()) || reply::ASKS.contains(&out.state.as_str()) {
             continue;
         }
         open = true;
