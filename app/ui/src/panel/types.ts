@@ -45,6 +45,8 @@ export type Pr = {
   url?: string;
   /** The failed checks' names, as the thread's row says them; null when the host's read couldn't say. */
   failedChecks?: string[] | null;
+  /** Its repository, `owner/name`, on one from a repository other than the session's own [D213]. */
+  repo?: string | null;
   branch?: string;
   base?: string;
   draft?: boolean;

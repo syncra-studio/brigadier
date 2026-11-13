@@ -43,7 +43,11 @@ export function PrLine({ pr, onClick }: { pr: Pr; onClick?: () => void }) {
   const { Icon, tint } = PR_LOOK[state];
   return (
     <Line onClick={onClick} icon={<span className={cx("flex", tint)}><Icon /></span>} end={<span className={tint}>{STATE_WORDS[state]}</span>}>
-      <span className="text-muted-foreground">#{pr.number}</span> {pr.title}
+      {/* One from another repository says which, short [D213]. */}
+      <span className="text-muted-foreground">
+        {pr.repo && `${pr.repo.slice(pr.repo.indexOf("/") + 1)} `}#{pr.number}
+      </span>{" "}
+      {pr.title}
     </Line>
   );
 }
