@@ -339,14 +339,18 @@ impl Thread {
                 self.add(json!({"kind": "line", "reason": "model", "why": "changed", "from": from, "to": model}));
             }
         }
-        // A rebirth shows as one divider, the message that carries it under it [D88, D112].
-        if matches!(t.switch["why"].as_str(), Some("rebirth" | "cut")) {
+        // A rebirth shows as one divider, the message that carries it under it; a cut another turn beat fails [D88, D112, D203].
+        let rebirth = matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"));
+        if let Some(at) = self.cutting.take_if(|_| !rebirth) {
+            self.items[at]["progress"] = "failed".into();
+            self.changed_items.insert(at);
+        }
+        if rebirth {
             self.end_limit();
-            // Sent again after a crash: its divider runs again, never a second one [D54].
-            let again = t
-                .retry_of
-                .as_ref()
-                .and(self.items.iter().rposition(|i| i["kind"] == "compaction"));
+            // Sent again after a crash, or drawn at its cut: its divider runs again, never a second one [D54, D203].
+            let again = (t.retry_of.as_ref())
+                .and(self.items.iter().rposition(|i| i["kind"] == "compaction"))
+                .or(self.cutting.take());
             if let Some(at) = again {
                 self.items[at]["progress"] = "running".into();
                 self.changed_items.insert(at);

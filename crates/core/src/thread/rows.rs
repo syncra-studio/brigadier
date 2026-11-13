@@ -26,6 +26,13 @@ impl Thread {
         };
         o.stop.1 = true;
         let Some(reason) = super::turn::stop_line(o.stop.0.as_deref()) else {
+            // A rebirth runs from where its cut turn ended, its divider live till the fresh
+            // conversation starts [D112, D203]; a model picked mid-turn is no rebirth [D124].
+            if !self.fold.switched {
+                self.break_group();
+                let row = json!({"kind": "compaction", "summary": null, "progress": "running"});
+                self.cutting = Some(self.add(row));
+            }
             return;
         };
         let ms = ts.saturating_sub(o.started);

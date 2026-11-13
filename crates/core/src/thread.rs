@@ -109,7 +109,8 @@ pub struct Thread {
     limit_row: Option<usize>,
     /// The switch row of another agent picked, until the message that goes to it [D76].
     pick_row: Option<usize>,
-    /// A rebirth's divider until its fresh conversation names itself [D88].
+    /// A rebirth's divider: from its cut turn's end till the input carrying it on [D203], then till its fresh conversation names itself [D88].
+    cutting: Option<usize>,
     reborn: Option<usize>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,
@@ -183,8 +184,7 @@ impl Thread {
                 .is_some_and(|t| t.question.is_some());
         // Another model or agent picked: its line the moment it's picked [D76].
         let pick = (kind == "note" && item["event"] == "setup").then(|| self.before_pick(item));
-        // A rebirth's divider: done once the fresh conversation names itself, failed if its turn
-        // ends first [D88, D112].
+        // A rebirth's divider: done once the fresh conversation names itself, failed if its turn ends first [D88, D112].
         if let Some(at) = self.reborn {
             let done = match kind {
                 "resume_id" => Some("done"),
