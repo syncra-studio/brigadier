@@ -353,10 +353,10 @@ impl Thread {
         if replaced && t.origin == "user" {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }
+        // A worker's result is its wake's input: the agent's work on it folds under it [D151].
         if let Some(rest) = t.origin.strip_prefix("result:") {
-            return self.team_result(rest, ts);
-        }
-        if t.cid.is_some() {
+            self.team_result(rest, ts);
+        } else if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
             let row = match t.origin.strip_prefix("peer:") {
                 Some(from) => Self::peer_item(from, &t.text, t.ts, &t.id.clone().into()),

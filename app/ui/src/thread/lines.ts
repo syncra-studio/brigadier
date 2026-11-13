@@ -30,6 +30,9 @@ const opens = (item: Item | undefined) => item?.kind === "message" && item.role 
 /** A turn's own end said under it: its failure or its Stop, never work, so they open no work header alone [D85]. */
 const ends = (item: Item) => (item.kind === "notice" && "reason" in item && item.reason === "failed") || (item.kind === "line" && item.reason === "stopped");
 
+/** A step or a reply: where the work of a turn with no input starts. */
+const works = (item: Item) => ["reasoning", "group", "tool", "fileChange", "childAgent", "approval", "question"].includes(item.kind) || (item.kind === "message" && item.role === "assistant");
+
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
 
 type Walk = { items: readonly Item[]; out: Line[]; starts: number[]; counts: number[] };
@@ -67,6 +70,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   let kept: number[] = [];
   let group: { span: [number, number]; open: boolean; single: boolean; line: GroupLine | null } | null = null;
   let before: Item | undefined;
+  // A turn its agent woke for on its own, with no input: its header goes over its first step or reply [D106, D118].
+  let woke: string | null = null;
   let marks: Extract<Line, { type: "marks" }> | null = null;
   const end = () => {
     const last = out.at(-1);
@@ -102,14 +107,17 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (opens(item)) {
       starts.push(at);
       counts.push(out.length);
-    }
+      woke = null;
+    } else if (item.turnId !== before?.turnId) woke = item.turnId;
+    const wakes = woke === item.turnId && works(item);
+    if (wakes) woke = null;
     const turn = turns.get(item.turnId);
     // A turn held open for its subagents draws as running: one block, never folded till it ends [D118].
     const live = turn?.status === "running" || turn?.held === true;
     const done = turn && work.get(turn.id);
     // A turn's work starts right after its input, unless the answer comes straight away: a note before its
     // first step is work too, so a turn that isn't done (running, stopped, failed) or one Rust gave work always has the header.
-    if (turn && opens(before) && before!.turnId === item.turnId && !ends(item) && (item.kind !== "message" || turn.status !== "done" || live || done || turn.denied)) {
+    if (turn && (wakes || (opens(before) && before!.turnId === item.turnId)) && !ends(item) && (item.kind !== "message" || turn.status !== "done" || live || done || turn.denied)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && !live;
       const opened = foldable ? open.has(key) : null;
