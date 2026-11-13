@@ -28,12 +28,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, true)?;
             let num = |i| arg(args, i)?.parse().map_err(io::Error::other);
             let (pid, start_us) = (num(3)? as i32, num(4)?);
-            // First through its agent's own channel, where its CLI has one: else the agent reads an
-            // unexplained kill and may wake to start it again [D117].
-            if let Some(task) = fold::task_of(&f.fold, start_us) {
-                let msg = json!({"kind": "stop_task", "task": task});
-                let req = json!({"cid": control::new_cid(), "control": msg});
-                let sent = control::deliver(data, id, req, false, |_| Ok(msg.clone()))?;
+            // Its agent hears first, through its CLI's own channel or its adapter's note: else it
+            // reads an unexplained kill and may wake to start it again [D117]. One with neither refuses.
+            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
+            // One already gone is stopped.
+            let Some(job) = left.iter().find(|j| j.pid == pid && j.start_us == start_us) else {
+                return Ok(json!({"ok": true}));
+            };
+            let task = fold::task_of(&f.fold, start_us);
+            let msg = json!({"kind": "stop_task", "task": task, "command": job.label});
+            let req = json!({"cid": control::new_cid(), "control": msg});
+            let sent = control::deliver(data, id, req, false, |_| Ok(msg.clone()))?;
+            if task.is_some() {
                 let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
                 while sent["ok"] == true && procs::same(pid, start_us).is_some_and(|p| !p.zombie) {
                     if std::time::Instant::now() > until {
