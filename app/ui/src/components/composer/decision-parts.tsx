@@ -29,7 +29,7 @@ export function CodeSpans({ text, exact = false }: { text: string; exact?: boole
 /** A field the user types in: its keys are its own, not the card's. */
 const FIELD = "input, textarea, select, [contenteditable]:not([contenteditable='false' i])";
 /** Open menus, dialogs and the field's own menus, which take Enter and Esc first (not the gallery's, held open). */
-const OVERLAYS = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
+export const OVERLAYS = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
 
 export const inField = (target: EventTarget | null) => target instanceof Element && target.closest(FIELD) !== null;
 

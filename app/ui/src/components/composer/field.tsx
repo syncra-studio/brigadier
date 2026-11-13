@@ -37,6 +37,7 @@ import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments"
 import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
+import { OVERLAYS } from "./decision-parts";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
 type Parts = Draft["parts"];
@@ -273,7 +274,7 @@ export function ComposerField({
       </div>
       <HistoryPlugin />
       {size === "line" && <OneLine />}
-      <Keys {...props} onChange={onChange} />
+      <Keys {...props} size={size} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
       {commands && <CommandChips commands={commands.commands} />}
@@ -313,6 +314,7 @@ function OneLine() {
 
 function Keys({
   ref,
+  size,
   autoFocus,
   prompts = [],
   onChange,
@@ -321,7 +323,7 @@ function Keys({
   onEscape,
   onPullQueued,
   onAttach,
-}: Omit<FieldProps, "initial" | "placeholder" | "label" | "size" | "mentions" | "commands" | "attachments" | "onOpen">) {
+}: Omit<FieldProps, "initial" | "placeholder" | "label" | "mentions" | "commands" | "attachments" | "onOpen">) {
   const [editor] = useLexicalComposerContext();
   // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
   const walk = useRef<{ back: number; shown: string } | null>(null);
@@ -379,6 +381,24 @@ function Keys({
     if (autoFocus && !active?.matches("input, textarea, select, [contenteditable=true], [role=dialog] *")) editor.focus();
     // Only as it mounts: `autoFocus` is read once.
   }, [editor]);
+
+  // Type-to-focus [D234]: a character or ⌘V with nothing editable focused and nothing open lands in the shown composer.
+  // Space stays the thread's scroll key.
+  useEffect(() => {
+    if (size !== "composer") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = editor.getRootElement();
+      const paste = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v";
+      const char = event.key.length === 1 && event.key !== " " && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (!(char || paste) || event.defaultPrevented || event.isComposing || !root?.checkVisibility() || root.closest("[inert]")) return;
+      if (document.activeElement?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])") || document.querySelector(OVERLAYS)) return;
+      // At the draft's end, wherever the caret was left; focus() alone keeps the old selection.
+      editor.update(() => $getRoot().selectEnd());
+      editor.focus();
+    };
+    addEventListener("keydown", onKeyDown, true);
+    return () => removeEventListener("keydown", onKeyDown, true);
+  }, [editor, size]);
 
   useEffect(
     () =>
