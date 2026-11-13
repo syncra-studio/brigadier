@@ -18,7 +18,7 @@ import { AgentChipTile } from "../landing/agent-chip";
 import { CommentChip } from "../review/comments";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
-import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
+import { answeringSource, SessionApprovals, SessionQuestions, useApprovalPlace } from "./decisions";
 import { SessionLevel } from "./level";
 import { SessionModel, takesImages } from "./model";
 import { SessionNotices } from "./notices";
@@ -148,7 +148,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
   // An approval takes the composer's place [D199, D317].
-  const approval = useApprovalWaiting(id, source);
+  const { approval, replying, reply } = useApprovalPlace(id, source, field);
   const [initial] = useState(() => draftOf(id));
   const [empty, setEmpty] = useState(() => isEmpty({ parts: initial?.parts ?? [], attachmentIds: [] }));
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
@@ -388,8 +388,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   };
   const resume = () => act({ kind: "resume", qid: "" }, ["resume"]);
   const resuming = live.some((op) => op.kind === "resume");
-  const move = (qid: string, to: number) =>
-    new Promise<void>((resolve, reject) => act({ kind: "move", qid, done: resolve }, ["move", qid, String(to)], reject));
+  const move = (qid: string, to: number) => new Promise<void>((resolve, reject) => act({ kind: "move", qid, done: resolve }, ["move", qid, String(to)], reject));
 
   return (
     <SharedComposer
@@ -411,11 +410,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onMove={move}
           />
           <SessionQuestions id={id} run={run} source={source} />
+          {replying && <SessionApprovals id={id} run={run} source={source} />}
         </>
       }
-      above={<SessionApprovals id={id} run={run} source={source} onStop={(busy || holding) && !offline ? stop : undefined} />}
-      // Kept while an approval has its place, so the draft and its caret stay; the card brings the Stop it covers.
-      hidden={Boolean(approval)}
+      above={!replying && <SessionApprovals id={id} run={run} source={source} onReply={reply} />}
+      // Kept while an approval has its place, so the draft and its caret stay.
+      hidden={approval && !replying}
       onDragOver={files.onDragOver}
       onDrop={files.onDrop}
       tiles={
