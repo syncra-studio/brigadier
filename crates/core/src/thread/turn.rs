@@ -351,9 +351,9 @@ impl Thread {
                 self.items[at]["progress"] = "running".into();
                 self.changed_items.insert(at);
             } else {
-                self.kept_row(
-                    json!({"kind": "compaction", "summary": null, "progress": "running"}),
-                );
+                // Where the cut fell: it folds with the steps around it, as any step does [D170].
+                self.break_group();
+                self.add(json!({"kind": "compaction", "summary": null, "progress": "running"}));
             }
             self.reborn = Some(again.unwrap_or(self.items.len() - 1));
             if t.origin == "system" {

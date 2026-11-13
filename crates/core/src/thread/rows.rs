@@ -285,9 +285,9 @@ impl Thread {
                         self.items[at]["progress"] = progress.into();
                         self.changed_items.insert(at);
                     }
-                    // Kept out of the work fold, as where it summarised matters later [D92].
+                    // Where it summarised: it folds with the steps around it, as a rebirth's does [D92, D170].
                     None => {
-                        self.kept_row(
+                        self.add(
                             json!({"kind": "compaction", "summary": null, "progress": progress}),
                         );
                         self.keys

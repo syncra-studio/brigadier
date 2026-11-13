@@ -103,7 +103,9 @@ impl Thread {
         self.final_answer(&o, false);
         let mid = |n: u64| {
             let row = &self.items[n as usize - 1];
-            o.kept.contains(&n) || row["hidden"] == true || row["kind"] == "reasoning"
+            o.kept.contains(&n)
+                || row["hidden"] == true
+                || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
         };
         if let Some(answer) = (o.answer).filter(|&a| (a + 1..=self.items.len() as u64).all(mid)) {
             o.kept.push(answer);
@@ -128,7 +130,9 @@ impl Thread {
         // finished by the carry-on's text in the same row: one reply [D124, D154].
         let mid = |n: u64| {
             let row = &self.items[n as usize - 1];
-            o.kept.contains(&n) || row["hidden"] == true || row["kind"] == "reasoning"
+            o.kept.contains(&n)
+                || row["hidden"] == true
+                || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
         };
         let cut = o.cut() || o.stop.0.as_deref() == Some("user");
         o.joins = (o.answer)
@@ -150,6 +154,10 @@ impl Thread {
                 self.changed_items.insert(at);
             }
         }
+        // Otherwise it marks where the Stop fell, folding with the steps around it [D170].
+        let items = &self.items;
+        o.kept
+            .retain(|&n| items[n as usize - 1]["reason"] != "stopped");
         // A Stop of the turn that carries it on draws its own line.
         o.stop = (None, false);
         let turn = &mut self.turns[o.at];
