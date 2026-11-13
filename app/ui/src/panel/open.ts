@@ -7,3 +7,6 @@ export const openReview = (owner: string, path?: string) => openTab(owner, "revi
 
 /** `owner`'s Pull requests tab on PR `number` [D1017, D1113]. */
 export const openPr = (owner: string, number: number) => openTab(owner, "pr", String(number));
+
+/** `owner`'s pull requests: the list when it has several, else its one PR [D205]. */
+export const openPrs = (owner: string, numbers: readonly number[]) => (numbers.length === 1 ? openPr(owner, numbers[0]) : openTab(owner, "pr", "list"));

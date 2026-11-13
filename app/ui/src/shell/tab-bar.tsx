@@ -136,7 +136,7 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
 }
 
 /** A file tab is named by its file, a PR tab by its number; a Review tab stays "Review", whichever file it shows. */
-const pathName = (tab: Tab) => (tab.target === undefined || tab.kind === "review" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? `#${tab.target}` : baseName(tab.target));
+const pathName = (tab: Tab) => (tab.target === undefined || tab.kind === "review" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : `#${tab.target}`) : baseName(tab.target));
 const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/")[1] ?? TAB_KINDS.attachment.name) : pathName(tab));
 
 function TabIcon({ tab }: { tab: Tab }) {

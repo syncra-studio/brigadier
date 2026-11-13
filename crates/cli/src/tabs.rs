@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
-/// number; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
+/// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104].
 const KINDS: [&str; 5] = ["new", "terminal", "pr", "review", "attachment"];
 const TERMINAL: &str = "terminal";
@@ -202,7 +202,10 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                     .split('/')
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
-        ("pr", Some(number)) => number.parse::<u64>().is_ok_and(|n| n.to_string() == number),
+        // `list`: the session's PRs when it has several [D205].
+        ("pr", Some(number)) => {
+            number == "list" || number.parse::<u64>().is_ok_and(|n| n.to_string() == number)
+        }
         ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
             core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
         }),

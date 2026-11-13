@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
 import { LivePrTab } from "../landing/live";
+import { PrList } from "../landing/pr-list";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { keysOf } from "../shortcuts";
@@ -117,7 +118,11 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             {tab.kind === "file" ? (
               <FileTab key={tab.target} tab={tab} active={tab.id === active} />
             ) : tab.kind === "pr" ? (
-              <LivePrTab key={tab.target} owner={owner} number={Number(tab.target)} />
+              tab.target === "list" ? (
+                <PrList owner={owner} />
+              ) : (
+                <LivePrTab key={tab.target} owner={owner} number={Number(tab.target)} />
+              )
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
             ) : tab.kind === "attachment" ? (
