@@ -45,6 +45,16 @@ export type Pr = {
   url?: string;
   /** The failed checks' names, as the thread's row says them; null when the host's read couldn't say. */
   failedChecks?: string[] | null;
+  branch?: string;
+  base?: string;
+  draft?: boolean;
+  /** Checks running and passed; null when the host's read couldn't say. */
+  running?: number | null;
+  passed?: number | null;
+  /** Approved; false while a review is required or changes are asked; null when none is needed. */
+  approved?: boolean | null;
+  /** When the host last saw it change. */
+  updatedAtMs?: number | null;
 };
 
 /**

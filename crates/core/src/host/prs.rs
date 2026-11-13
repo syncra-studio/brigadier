@@ -24,7 +24,7 @@ static BUSY: Mutex<BTreeMap<PathBuf, Arc<Mutex<()>>>> = Mutex::new(BTreeMap::new
 type Read = Result<(Vec<Value>, Option<String>), String>;
 
 /// What a PR read asks gh for.
-const FIELDS: &str = "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,isDraft,statusCheckRollup";
+const FIELDS: &str = "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,updatedAt,isDraft,statusCheckRollup";
 
 impl Pr {
     /// The session's PRs, read now and kept; None when the host couldn't list them.
@@ -385,6 +385,7 @@ fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
         "state": pr["state"].as_str().map(str::to_lowercase), "health": health,
         "head": pr["headRefOid"], "branch": pr["headRefName"], "mergeCommit": pr["mergeCommit"]["oid"], "base": pr["baseRefName"],
         "failed": failed, "running": running, "mergedAt": pr["mergedAt"], "draft": pr["isDraft"],
+        "updatedAtMs": pr["updatedAt"].as_str().and_then(crate::adapters::iso_ms),
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),
         "approved": match pr["reviewDecision"].as_str() {
