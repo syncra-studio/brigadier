@@ -76,6 +76,9 @@ fn past(dir: &Path) -> io::Result<Past> {
         answers: vec![],
         starts: vec![],
     };
+    // Answers as Brigadier gave them, on every agent (Codex logs no answer of its own), kept once
+    // the agent has them: written, or acked without an error. cid → (at, text, acked).
+    let mut given = std::collections::HashMap::<String, (String, String, bool)>::new();
     if let Some(first) = p.entries.first() {
         p.starts
             .push((first.at.clone(), "before this session was forked".into()));
@@ -89,10 +92,28 @@ fn past(dir: &Path) -> io::Result<Past> {
                 format!("after a {}", fresh["why"].as_str().unwrap_or("switch")),
             ));
         }
-        if item["kind"] == "answer"
-            && let Some(text) = item["text"].as_str().filter(|t| !t.trim().is_empty())
-        {
-            p.answers.push((at.clone(), text.to_string()));
+        let c = &item["control"];
+        let cid = |k: &str| item[k].as_str().unwrap_or("").to_string();
+        match item["kind"].as_str() {
+            Some("input") if c["kind"] == "answer" => {
+                let given_text = (c["answers"].as_array().into_iter().flatten())
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let text = c["reply"].as_str().map_or(given_text, String::from);
+                if !text.trim().is_empty() {
+                    given.insert(cid("cid"), (at.clone(), text, item["ack"] == true));
+                }
+            }
+            Some("delivered") if given.get(&cid("cid")).is_some_and(|g| !g.2) => {
+                let (at, text, _) = given.remove(&cid("cid")).unwrap_or_default();
+                p.answers.push((at, text));
+            }
+            Some("reply") if item["error"].is_null() && given.contains_key(&cid("id")) => {
+                let (at, text, _) = given.remove(&cid("id")).unwrap_or_default();
+                p.answers.push((at, text));
+            }
+            _ => {}
         }
         p.entries.extend(archive::entry(item, at));
     })?;
@@ -159,30 +180,32 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }
 
     // The user's answers, then their newest words, newest first; the rest as pointers.
-    let mut words: Vec<String> = (p.answers.iter().rev())
-        .map(|(at, t)| format!("- {id}#{at} (an answer to your question): {t}\n"))
-        .collect();
-    let mut pointers = vec![];
-    let (mut used, mut full) = (words.iter().map(String::len).sum::<usize>(), false);
+    let (mut words, mut pointers) = (vec![], vec![]);
+    let (mut used, mut full) = (0, false);
+    let answers =
+        (p.answers.iter().rev()).map(|(at, t)| (at, "an answer to your question".into(), t));
     let rest = p
         .entries
         .iter()
         .filter(said)
         .filter(|e| goal.is_none_or(|g| g.at != e.at));
-    for e in rest.collect::<Vec<_>>().into_iter().rev() {
+    let rest = rest.collect::<Vec<_>>().into_iter().rev().map(|e| {
         let who = match e.from {
             "worker" => format!("worker {}'s result", e.who),
             "peer" => format!("session {}", e.who),
             _ => "the user".into(),
         };
-        let whole = format!("- {id}#{} ({who}): {}\n", e.at, e.text.trim_end());
+        (&e.at, who, &e.text)
+    });
+    for (at, who, text) in answers.chain(rest) {
+        let whole = format!("- {id}#{at} ({who}): {}\n", text.trim_end());
         if !full && used + whole.len() <= WORDS {
             used += whole.len();
             words.push(whole);
         } else {
             full = true;
-            let start: Vec<&str> = e.text.split_whitespace().take(12).collect();
-            pointers.push(format!("- {id}#{} ({who}): {}…\n", e.at, start.join(" ")));
+            let start: Vec<&str> = text.split_whitespace().take(12).collect();
+            pointers.push(format!("- {id}#{at} ({who}): {}…\n", start.join(" ")));
         }
     }
     if !words.is_empty() {
