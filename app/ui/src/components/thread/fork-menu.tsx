@@ -62,7 +62,7 @@ function Place({ title, detail, onClick, disabled }: { title: string; detail: st
 
 /**
  * The fork icon after Copy under an answer, and its menu [D48, D1069, D1070, D1071]: the old ForkMenu's rows on our
- * kit's menu. The offer is read as it opens (`onOpen`); until then a spinner row, or why it couldn't be read. "Fork with
+ * kit's menu. The offer is read as the pointer reaches the button and as it opens (`onOpen`); until then a spinner row, or why it couldn't be read. "Fork with
  * another agent" opens the composer's own model picker by the button, on this session's model: what is picked there is
  * held, and the fork goes on it as the picker closes, another vendor's agent asked first; Escape forks nothing.
  */
@@ -93,6 +93,7 @@ export function ForkMenu({
   busy?: boolean;
   /** The picker's "Set up" for an agent not installed or signed in. */
   onSetUp?: (provider: string) => void;
+  /** Reads the offer and the agents: as the pointer reaches the button, so the menu opens whole, and as it opens. */
   onOpen?: () => void;
   onPick: (pick: ForkPick) => void;
 }) {
@@ -114,6 +115,7 @@ export function ForkMenu({
     <span ref={anchor} className="inline-flex">
       <DropdownMenu modal={false} onOpenChange={(open) => open && onOpen?.()}>
         <DropdownMenuTrigger
+          onPointerEnter={() => onOpen?.()}
           render={<TooltipIconButton tooltip={tooltip} size="icon-answer" disabled={busy} aria-busy={busy || undefined} />}
         >
           {busy ? <Spinner className="animate-spin" /> : <BranchAlt />}

@@ -116,7 +116,7 @@ export function ModelPicker({
   efforts?: boolean;
   /** Its own trigger in place of the composer's pill (a settings row's select). */
   trigger?: (props: HTMLAttributes<HTMLElement>) => ReactElement;
-  /** No trigger: it opens by `asked`, placed by this element (the fork menu's button). */
+  /** No trigger: it opens by `asked`, under this element (the fork menu's button), where its menu was [D177]. */
   anchor?: RefObject<Element | null>;
   /** As it closes; `cancelled` when by Escape. */
   onClose?: (cancelled: boolean) => void;
@@ -314,8 +314,8 @@ export function ModelPicker({
           </PopoverTrigger>
         )}
         <PopoverContent
-          side="top"
-          align="end"
+          side={anchor ? "bottom" : "top"}
+          align={anchor ? "start" : "end"}
           padded={false}
           aria-label="Model"
           // In a composer it sits above the card, as its other menus do, not over the field.

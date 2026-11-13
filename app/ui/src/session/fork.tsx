@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 
 import { SessionOfThread } from "../accounts/limit";
 import type { ModelGroup } from "../components/composer/model-picker";
@@ -13,7 +13,7 @@ import { SetUpAgentDialog } from "./set-up";
 
 /*
  * Fork, wired for a new worktree, the same folder [D1070] and a chat's own fork [D1063]: the menu reads Rust's one
- * check as it opens; a pick opens the new session at once, pending, and runs `fork` behind it (home/start.ts), the
+ * check as the pointer reaches it and as it opens, so it opens whole [D177]; a pick opens the new session at once, pending, and runs `fork` behind it (home/start.ts), the
  * menu's fingerprint going with it so Rust refuses if the answer changed meanwhile (proposed). Another agent [D1081]:
  * the composer's model picker, its list read as the menu opens; it goes where the one destination rule says (proposed).
  */
@@ -28,16 +28,31 @@ export function ForkAction({ at }: { at: string }) {
   const [agents, setAgents] = useState<ModelGroup[]>();
   const [agentsError, setAgentsError] = useState<string>();
   const [setUp, setSetUp] = useState<string | null>(null);
+  // One read at a time; what was read stays shown while it's read again, so the menu opens whole.
+  const reading = useRef(false);
   if (!session) return null;
   const open = () => {
-    setOffer(undefined);
-    setError(undefined);
-    setAgents(undefined);
-    setAgentsError(undefined);
-    run(["models", "--session", session.id]).then((reply) => setAgents(asGroups(reply.groups)), (cause) => setAgentsError(errorText(cause)));
-    ask({ op: "run", args: ["fork", session.id, "--check", at] }, (reply) =>
-      reply.ok ? setOffer(reply as unknown as ForkOffer) : setError(String(reply.message ?? reply.error ?? "Couldn't check this answer")),
-    );
+    if (reading.current) return;
+    reading.current = true;
+    let left = 2;
+    const done = () => {
+      left -= 1;
+      if (left === 0) reading.current = false;
+    };
+    run(["models", "--session", session.id])
+      .then(
+        (reply) => {
+          setAgents(asGroups(reply.groups));
+          setAgentsError(undefined);
+        },
+        (cause) => setAgentsError(errorText(cause)),
+      )
+      .finally(done);
+    ask({ op: "run", args: ["fork", session.id, "--check", at] }, (reply) => {
+      setOffer(reply.ok ? (reply as unknown as ForkOffer) : undefined);
+      setError(reply.ok ? undefined : String(reply.message ?? reply.error ?? "Couldn't check this answer"));
+      done();
+    });
   };
   const now = row as { model?: string | null; effort?: string | null; fast?: boolean } | undefined;
   return (
