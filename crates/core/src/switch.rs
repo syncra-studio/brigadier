@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 const CARRY_ON: &str = "[Your last turn stopped early: its account hit a usage limit. You now run on another account, in the same session. Carry on from where you stopped. Don't redo anything you already did.]";
 
 /// What the same agent is told when a model picked mid-turn stopped it [D124].
-pub const SWITCHED: &str = "[The user switched you to another model mid-turn, so your last turn was stopped. Carry on from where you stopped. Don't redo anything you already did.]";
+pub const SWITCHED: &str = "[The user switched you to another model mid-turn, so your last turn was stopped. Carry on from where you stopped: a reply cut off goes on from its last word, none of it repeated. Don't redo anything you already did.]";
 
 /// Where the session goes: a backend, its account ("" is the computer's login), and its model
 /// when it changes; `label` and `from` name both sides (the model apart) for the thread's row.

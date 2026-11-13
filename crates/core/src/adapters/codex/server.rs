@@ -52,6 +52,8 @@ struct State {
     said: HashMap<String, String>,
     /// The user stopped the thread: its subagents' ends don't wake it [D95].
     stopped: bool,
+    /// The reply being written, which Codex drops from its history if the turn is stopped.
+    writing: String,
 }
 
 type Shared = Arc<Mutex<State>>;
@@ -91,6 +93,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         running: HashSet::new(),
         said: HashMap::new(),
         stopped: false,
+        writing: String::new(),
     }));
     let st = state.clone();
     thread::spawn(move || {
@@ -375,6 +378,19 @@ fn notification(state: &Shared, v: &mut Value) {
         "turn/started" => st.turn = p["turn"]["id"].as_str().unwrap_or("").into(),
         "turn/completed" => {
             st.turn.clear();
+            // A stopped turn's words so far go back into its history, so the next turn carries
+            // on from them, as on other agents [D124].
+            let writing = std::mem::take(&mut st.writing);
+            if p["turn"]["status"] == "interrupted" && !writing.is_empty() {
+                let said = json!({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": writing}]});
+                let params = json!({"threadId": st.thread, "items": [said]});
+                ask(
+                    st,
+                    "thread/inject_items",
+                    params,
+                    Pending::Reply(String::new()),
+                );
+            }
             if limited(&p["turn"]) {
                 st.held = Some(v.take());
                 ask(st, "account/rateLimits/read", Value::Null, Pending::Limits);
@@ -390,9 +406,15 @@ fn notification(state: &Shared, v: &mut Value) {
             let id = p["item"]["id"].as_str().unwrap_or("").to_string();
             st.items.insert(id, p["item"].clone());
         }
-        "item/completed" => drop(st.items.remove(p["item"]["id"].as_str().unwrap_or(""))),
+        "item/completed" => {
+            st.items.remove(p["item"]["id"].as_str().unwrap_or(""));
+            if p["item"]["type"] == "agentMessage" {
+                st.writing.clear();
+            }
+        }
         // The reply as it's written, its piece alone: one line per piece adds up [D147].
         "item/agentMessage/delta" => {
+            st.writing += p["delta"].as_str().unwrap_or("");
             return say(json!({"method": method, "params": {"delta": p["delta"]}}));
         }
         "thread/tokenUsage/updated"
