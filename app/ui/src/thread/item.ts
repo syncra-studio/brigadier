@@ -119,8 +119,6 @@ export type Item = Base &
         streaming: boolean;
         /** True only on an ended turn's last assistant message. */
         final?: boolean;
-        /** True on the last assistant message before a user input joined its running turn. */
-        joined?: boolean;
         /** Who sent an input item: the user, the app on their behalf, or another session (`from`), never the user [D2034]. */
         origin?: "user" | "system" | "peer";
         from?: string;

@@ -227,9 +227,8 @@ export function UserBubble({
 }
 
 /**
- * The agent's message: `children` is the rendered reply. Under a turn's `final` answer, or one a follow-up
- * joined, its actions stay in view: copy, and the time only on hover or focus. Commentary between the turn's
- * steps has none.
+ * The agent's message: `children` is the rendered reply. Under a turn's `final` answer its actions stay in
+ * view: copy, and the time only on hover or focus. Commentary between the turn's steps, a steer's too, has none.
  */
 export function AssistantMessage({
   text,

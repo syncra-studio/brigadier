@@ -300,13 +300,6 @@ export function ThreadGallery() {
               <Body item={{ ...base("a0c"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
             </div>
           </Wide>
-          <Wide label="a turn: an answer a follow-up joined (copy, time on hover) · its final answer">
-            <div className="flex flex-col gap-4">
-              {item({ ...base("a0j"), kind: "message", role: "assistant", text: "Done: the list now draws only the block that changed.", streaming: false, joined: true, sentAt: NOW - 3 * 60_000 })}
-              {item({ ...base("a0k"), kind: "message", role: "assistant", text: "Checking the code blocks too, as you asked.", streaming: false })}
-              <Body item={{ ...base("a0l"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 }} turn={DONE} step={false} />
-            </div>
-          </Wide>
           <Wide label="at rest">{item({ ...base("a2b"), kind: "message", role: "assistant", text: REPLY, streaming: false, final: true, sentAt: NOW - 60_000 })}</Wide>
           <Wide label="long code, folded">{item({ ...base("a3"), kind: "message", role: "assistant", text: LONG_CODE, streaming: false, final: true })}</Wide>
         </Row>

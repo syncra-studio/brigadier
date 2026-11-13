@@ -193,7 +193,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       if (line.type === "marks") return line.id;
       if (line.type !== "item" || line.item.kind !== "message") continue;
       if (line.item.role === "user") return undefined;
-      if (line.actions || (line.item.joined && !line.item.final)) return line.id;
+      if (line.actions) return line.id;
     }
     return undefined;
   }, [all]);

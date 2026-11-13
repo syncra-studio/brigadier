@@ -227,36 +227,30 @@ impl Thread {
             self.control(item, ts);
         } else if kind == "input" {
             // A joined input (a steer) keeps the running turn and adds no queued turn: its bubble
-            // shows in that turn, after the answer it joined.
+            // shows in that turn, a step of it, never its end: the reply above keeps no actions [D171].
             let peer = item["origin"]
                 .as_str()
                 .and_then(|o| o.strip_prefix("peer:"));
             if (item["origin"] == "user" || peer.is_some())
+                && item["steer"] == true
                 && before.len() == self.fold.turns.len()
                 && before
                     .first()
                     .zip(self.fold.turns.first())
                     .is_some_and(|(before, after)| before.id == after.id)
             {
-                if let Some(answer) = self.open.as_ref().and_then(|o| o.answer) {
-                    let at = answer as usize - 1;
-                    self.items[at]["joined"] = true.into();
-                    self.changed_items.insert(at);
+                self.break_group();
+                let mut row = json!({"kind": "message", "role": "user", "text": item["text"],
+                    "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
+                    "files": item["parts"]["files"], "draft": item["parts"]});
+                if let Some(from) = peer {
+                    let text = item["text"].as_str().unwrap_or("");
+                    row = Self::peer_item(from, text, ts, &item["cid"]);
                 }
-                if item["steer"] == true {
-                    self.break_group();
-                    let mut row = json!({"kind": "message", "role": "user", "text": item["text"],
-                        "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
-                        "files": item["parts"]["files"], "draft": item["parts"]});
-                    if let Some(from) = peer {
-                        let text = item["text"].as_str().unwrap_or("");
-                        row = Self::peer_item(from, text, ts, &item["cid"]);
-                    }
-                    row["steer"] = true.into();
-                    // It folds with the work it steered: only the last reply stays under "Worked for" [D118].
-                    let at = self.add(row);
-                    self.below_steer(at);
-                }
+                row["steer"] = true.into();
+                // It folds with the work it steered: only the last reply stays under "Worked for" [D118].
+                let at = self.add(row);
+                self.below_steer(at);
             }
         } else {
             self.content(item, kind, ts);

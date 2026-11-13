@@ -77,10 +77,10 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       }
       return (
         <>
-        {(item.final || item.joined) && <Said backend={turn?.backend} />}
+        {item.final && <Said backend={turn?.backend} />}
         <AssistantMessage
           text={item.text}
-          final={actions && (item.final === true || item.joined === true)}
+          final={actions && item.final === true}
           time={item.sentAt}
           fork={fork}
           older={older}
