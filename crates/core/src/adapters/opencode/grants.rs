@@ -212,18 +212,21 @@ pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
 }
 
 /// A command's word, if it names a path, resolved against the project: `~` is home; a redirect's
-/// file (2>/dev/null) and an option's value (--out=/x) count; a variable's path never is inside.
+/// file (2>/dev/null) and an option's value (--out=/x) count; a word with a variable never is inside.
 fn named_inside(roots: &[PathBuf; 2], word: &str) -> bool {
     let w = word.trim_matches(['\'', '"']);
     let w = w
         .rfind(['<', '>'])
         .map_or(w, |i| w[i + 1..].trim_start_matches('&'));
     let w = w.rsplit_once('=').map_or(w, |(_, v)| v);
+    // `$HOME` names a path with no slash in it, so an expansion asks before anything else.
+    if w.contains(['$', '`']) {
+        return false;
+    }
     if !(w.contains('/') || w.starts_with('~') || w.starts_with("..")) {
         return true;
     }
     let path = match w.strip_prefix('~') {
-        _ if w.contains(['$', '`']) => return false,
         Some(rest) if rest.is_empty() || rest.starts_with('/') => {
             format!("{}{rest}", std::env::var("HOME").unwrap_or_default())
         }
