@@ -1,6 +1,7 @@
-//! `brigadier host <id> view|merge`: a session's PR through its git host [D1030]. `view <n>` reads
-//! PR n whole; `merge <n> <merge|squash|rebase> <head>` merges it only while its head is still
-//! `head` [D1077].
+//! `brigadier host <id> view|list|log|merge`: a session's PRs through its git host [D1030]. `view <n>`
+//! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
+//! session's PRs now (Check again); `log <link>` is a failed check's log tail; `merge <n>
+//! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077].
 
 use super::arg;
 use brigadier_core::host;
@@ -23,9 +24,28 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             "Landing stays with {owner} while it's there."
         )));
     }
+    // The last read, from the session's folder alone: no git, no host [D207].
+    if arg(args, 2)? == "view" && args.get(4).is_some_and(|a| a == "kept") {
+        let dir = brigadier_core::session_dir(data, id);
+        return Ok(json!({"ok": true, "pr": host::kept_view(&dir, number(args)?)}));
+    }
     let pr = host::pr(data, id)?;
     Ok(match arg(args, 2)? {
         "view" => json!({"ok": true, "pr": pr.view(number(args)?)?}),
+        "list" => match pr.list() {
+            Some(prs) => json!({"ok": true, "prs": prs}),
+            // The read failed: `prs.json` keeps the last PRs with why, and the reply says it too.
+            None => {
+                let kept = host::kept(&brigadier_core::session_dir(data, id));
+                return Err(io::Error::other(
+                    kept["error"]
+                        .as_str()
+                        .unwrap_or("Couldn't check the PRs.")
+                        .to_string(),
+                ));
+            }
+        },
+        "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
         "merge" => {
             let merged = pr.merge(number(args)?, arg(args, 4)?, arg(args, 5)?)?;
             // The list read that records the landing goes on after the answer, so Merging… ends

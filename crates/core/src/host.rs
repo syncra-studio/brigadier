@@ -16,6 +16,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+pub use view::{kept_view, tabbed};
 
 /// Proposed: gh gets this long for a look, and a create this long.
 const GH_SECS: u64 = 20;
@@ -204,6 +205,46 @@ fn gh(repo: &Repo) -> Option<Gh> {
         }
     }
     None
+}
+
+/// One GraphQL read on `repo` through `gh` [D207], `$owner` and `$name` set: its data, and why a part
+/// of it couldn't be read; or why none could, the account that read it forgotten so the next one
+/// finds one that can.
+fn graphql(
+    gh: &Gh,
+    repo: &Repo,
+    query: &str,
+    vars: &[(&str, &str)],
+) -> Result<(Value, Option<String>), String> {
+    let (owner, name) = repo.path.split_once('/').unwrap_or((&repo.path, ""));
+    let mut command = gh.command();
+    command.args(["api", "graphql", "--hostname", &repo.host]);
+    command.args([
+        "-f",
+        &format!("query={query}"),
+        "-f",
+        &format!("owner={owner}"),
+        "-f",
+        &format!("name={name}"),
+    ]);
+    for (key, value) in vars {
+        command.args(["-f", &format!("{key}={value}")]);
+    }
+    let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
+    // gh exits non-zero on any error, printing what was read all the same.
+    let body: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    let why = (body["errors"].as_array().into_iter().flatten())
+        .filter_map(|e| e["message"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if body["data"].is_object() {
+        return Ok((body["data"].clone(), (!why.is_empty()).then_some(why)));
+    }
+    forget(repo);
+    Err(match why.is_empty() {
+        true => failed(&out),
+        false => why,
+    })
 }
 
 /// `repo`'s reader failed a read: the next one probes again.

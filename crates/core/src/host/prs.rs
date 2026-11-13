@@ -1,11 +1,13 @@
-//! PR discovery and check aggregation through the unmodified host CLI [D1030, D1187], kept in
-//! the session's `prs.json` by every read: the watch's, `info`'s and a merge's [D1009, D1017].
+//! PR discovery and check aggregation through the unmodified host CLI [D1030, D1187], one GraphQL
+//! read for all the session's PRs [D207], kept in the session's `prs.json` by every read: the
+//! watch's, `info`'s and a merge's [D1009, D1017].
 //! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
 //! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
 //! Its PRs are every one the session touched [D175]: its branches' (kept once read, whichever branch
 //! it's on now), and those its own commands opened, merged or changed.
 
-use super::{GH_SECS, Gh, Kind, Pr, Repo, failed, forget, gh, setup};
+use super::{Gh, Kind, Pr, Repo, gh};
+use crate::adapters::iso_ms;
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -23,8 +25,10 @@ static BUSY: Mutex<BTreeMap<PathBuf, Arc<Mutex<()>>>> = Mutex::new(BTreeMap::new
 /// What a read gave: the PRs and, when one PR's checks couldn't be read, why; or why none could be.
 type Read = Result<(Vec<Value>, Option<String>), String>;
 
-/// What a PR read asks gh for.
-const FIELDS: &str = "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,updatedAt,isDraft,statusCheckRollup";
+/// What every PR read asks the host for: the list's row and the head commit's checks, read in one
+/// snapshot, so a PR's head and its checks always agree.
+// shortcut: a head's first 100 checks only, until a repository has more.
+pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
 
 impl Pr {
     /// The session's PRs, read now and kept; None when the host couldn't list them.
@@ -62,49 +66,39 @@ impl Pr {
         busy.entry(self.dir.clone()).or_default().clone()
     }
 
-    /// A PR pushed to mid-read (its head moved between the list and its checks) is read once more,
-    /// so a push, or a merge it refused, isn't kept as a read that couldn't check.
+    /// The branch's PRs and every other one the session touched [D175], in one GraphQL read [D207].
     fn read(&self, gh: &Gh) -> Read {
-        match self.read_once(gh) {
-            Ok((_, Some(_))) => self.read_once(gh),
-            read => read,
-        }
-    }
-
-    fn read_once(&self, gh: &Gh) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
         };
-        let slug = format!("--repo={}/{}", repo.host, repo.path);
-        let mut command = gh.command();
-        command.args([
-            "pr",
-            "list",
-            &slug,
-            &format!("--head={}", self.branch),
-            "--state=all",
-            "--limit=100",
-            FIELDS,
-        ]);
-        let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
-        if !out.status.success() {
-            forget(repo);
-            return Err(failed(&out));
-        }
-        let list: Vec<Value> = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+        // The session's other PRs [D175]: those kept from its other branches, read again until
+        // merged (then final), and those its own commands touched.
+        let old = kept(&self.dir);
+        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
+        let numbers: BTreeSet<u64> = (old.iter())
+            .filter(|p| p["branch"] != self.branch.as_str())
+            .filter_map(|p| p["number"].as_u64())
+            .chain(touched(&self.dir, repo))
+            .collect();
+        let merged = |n: u64| (old.iter()).find(|p| p["number"] == n && p["state"] == "merged");
+        let each: String = (numbers.iter())
+            .filter(|n| merged(**n).is_none())
+            .map(|n| format!(" p{n}: pullRequest(number: {n}) {{ ...F }}"))
+            .collect();
+        // A branch's 10 latest: each brings its checks, and GitHub refuses a read that big.
+        let query = format!(
+            "query($owner: String!, $name: String!, $branch: String!) {{ repository(owner: $owner, name: $name) {{ branch: pullRequests(headRefName: $branch, first: 10, states: [OPEN, MERGED, CLOSED], orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{ nodes {{ ...F }} }}{each} }} }} fragment F on PullRequest {{ {FIELDS} }}"
+        );
+        let (data, partial) = super::graphql(gh, repo, &query, &[("branch", &self.branch)])?;
+        let found = &data["repository"];
+        let list = found["branch"]["nodes"].as_array().ok_or_else(|| {
+            partial
+                .clone()
+                .unwrap_or_else(|| "The host didn't list this branch's PRs.".into())
+        })?;
         let mine: Vec<&Value> = (list.iter())
             .filter(|p| belongs(p, repo, &self.branch))
             .collect();
-        // A PR not kept yet shows now, its checks after: a first read shows after one list [D200].
-        let old = (kept(&self.dir)["prs"].as_array().cloned()).unwrap_or_default();
-        let unlisted = |o: &&Value| mine.iter().all(|p| p["number"] != o["number"]);
-        if (mine.iter()).any(|p| old.iter().all(|o| o["number"] != p["number"])) {
-            let rows = mine.iter().map(|p| row(p, None));
-            self.keep(Ok((
-                rows.chain(old.iter().filter(unlisted).cloned()).collect(),
-                None,
-            )));
-        }
         // The open one into the base, else any open one: the card's step reads it [D1287].
         let open = |p: &&&Value| p["state"] == "OPEN";
         let into = (mine.iter().filter(open)).find(|p| p["baseRefName"] == self.base);
@@ -114,55 +108,57 @@ impl Pr {
             &self.branch,
             open.and_then(|p| p["number"].as_u64()),
         );
-        let mut error = None;
         for p in (mine.iter()).filter(|p| p["state"] == "MERGED") {
             self.record_merge(p);
         }
-        let mut row_of = |p: &Value| {
-            let checks = (p["state"] == "OPEN")
-                .then(|| {
-                    checks(gh, repo, p)
-                        .map_err(|e| error.get_or_insert(e).clone())
-                        .ok()
-                })
-                .flatten();
-            row(p, checks.as_deref())
-        };
-        let mut rows: Vec<Value> = mine.iter().map(|p| row_of(p)).collect();
-        // The session's other PRs [D175], newest first: those kept from its other branches, read
-        // again until merged (then final), and those its own commands touched.
-        let old = kept(&self.dir);
-        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
-        let numbers: BTreeSet<u64> = (old.iter().filter_map(|p| p["number"].as_u64()))
-            .chain(touched(&self.dir, repo))
-            .filter(|n| mine.iter().all(|p| p["number"] != *n))
-            .collect();
+        let mut rows: Vec<Value> = mine.iter().map(|p| row(p)).collect();
         let mut missed = None;
         for n in numbers.into_iter().rev() {
+            if mine.iter().any(|p| p["number"] == n) {
+                continue;
+            }
             let was = old.iter().find(|p| p["number"] == n);
-            if let Some(was) = was.filter(|p| p["state"] == "merged") {
+            if let Some(was) = merged(n) {
                 rows.push((*was).clone());
                 continue;
             }
-            let mut command = gh.command();
-            command.args(["pr", "view", &n.to_string(), &slug, FIELDS]);
-            let read =
-                setup::run(&mut command, GH_SECS).and_then(|out| match out.status.success() {
-                    true => serde_json::from_slice::<Value>(&out.stdout).map_err(|e| e.to_string()),
-                    false => Err(failed(&out)),
-                });
-            match (read, was) {
-                (Ok(p), _) => rows.push(row_of(&p)),
+            match (&found[format!("p{n}")], was) {
+                (p, _) if p.is_object() => rows.push(row(p)),
                 // One read before keeps its last row with why; one never read (no PR here) waits.
-                (Err(e), Some(was)) => {
+                (_, Some(was)) => {
                     rows.push((*was).clone());
-                    missed.get_or_insert(e);
+                    missed.get_or_insert(
+                        partial
+                            .clone()
+                            .unwrap_or_else(|| format!("#{n} couldn't be read.")),
+                    );
                 }
-                (Err(_), None) => {}
+                (_, None) => {}
             }
         }
-        let error = error.or(missed);
-        Ok((rows, error))
+        Ok((rows, missed))
+    }
+
+    /// One PR's row, from a read of the PR alone (its tab's), kept in `prs.json` beside the others,
+    /// so the card and the list never show older facts than its tab.
+    pub(super) fn keep_row(&self, pr: &Value) {
+        let one = self.one();
+        let _held = one.lock().unwrap_or_else(|e| e.into_inner());
+        let mut next = kept(&self.dir);
+        let Some(rows) = next["prs"].as_array_mut() else {
+            return;
+        };
+        let mut fresh = row(pr);
+        fresh["viewedAtMs"] = now_ms().into();
+        match rows.iter_mut().find(|p| p["number"] == fresh["number"]) {
+            Some(was) => *was = fresh,
+            None => rows.push(fresh),
+        }
+        let path = self.dir.join("prs.json");
+        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+        if let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path)) {
+            eprintln!("brigadier: keeping {}: {e}", path.display());
+        }
     }
 
     /// Keeps a read in `prs.json` [D1009]: a PR whose checks couldn't be read keeps its last facts
@@ -335,45 +331,47 @@ pub(super) fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
             .is_some_and(|h| h.eq_ignore_ascii_case(&repo.path))
 }
 
-/// gh owns newest-run deduplication by name, workflow and event, including legacy contexts.
-pub(super) fn checks(gh: &Gh, repo: &Repo, pr: &Value) -> Result<Vec<Value>, String> {
-    // `gh pr checks` fails on a PR with none; the list's rollup, read with its head, says so.
-    if pr["statusCheckRollup"]
-        .as_array()
-        .is_some_and(Vec::is_empty)
-    {
-        return Ok(Vec::new());
-    }
-    let number = pr["number"]
-        .as_u64()
-        .ok_or("gh named no PR number.")?
-        .to_string();
-    let run = |args: &[&str]| -> Result<Value, String> {
-        let mut command = gh.command();
-        command.args(args);
-        let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
-        if !out.status.success() {
-            return Err(failed(&out));
-        }
-        serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
-    };
-    let slug = format!("--repo={}/{}", repo.host, repo.path);
-    let checks = run(&[
-        "pr",
-        "checks",
-        &number,
-        &slug,
-        "--json=name,bucket,workflow,event,startedAt,completedAt,link",
-    ])?;
-    // A new PR head between the list and checks can't borrow the previous head's check state.
-    let at = run(&["pr", "view", &number, &slug, "--json=headRefOid"])?;
-    if at["headRefOid"] != pr["headRefOid"] {
-        return Err(format!("#{number} moved while it was read."));
-    }
-    serde_json::from_value(checks).map_err(|e| e.to_string())
+/// A PR's checks from its head commit's rollup, bucketed and deduplicated as `gh pr checks` does:
+/// only the newest run of each name, workflow and event, a status context by its name.
+pub(super) fn checks_of(pr: &Value) -> Vec<Value> {
+    let nodes = &pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]["nodes"];
+    let mut all: Vec<Value> = (nodes.as_array().into_iter().flatten())
+        .map(|c| match c["__typename"].as_str() {
+            Some("CheckRun") => {
+                let state = match c["status"].as_str() {
+                    Some("COMPLETED") => &c["conclusion"],
+                    _ => &c["status"],
+                };
+                let run = &c["checkSuite"]["workflowRun"];
+                json!({"name": c["name"], "bucket": bucket(state), "workflow": run["workflow"]["name"],
+                    "event": run["event"], "startedAt": c["startedAt"], "completedAt": c["completedAt"],
+                    "link": c["detailsUrl"]})
+            }
+            _ => json!({"name": c["context"], "bucket": bucket(&c["state"]), "workflow": "", "event": "",
+                "startedAt": c["createdAt"], "completedAt": c["createdAt"], "link": c["targetUrl"]}),
+        })
+        .collect();
+    all.sort_by(|a, b| b["startedAt"].as_str().cmp(&a["startedAt"].as_str()));
+    let mut seen = BTreeSet::new();
+    all.retain(|c| seen.insert(format!("{}\0{}\0{}", c["name"], c["workflow"], c["event"])));
+    all
 }
 
-fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
+/// gh's bucket for a check's state or conclusion.
+fn bucket(state: &Value) -> &'static str {
+    match state.as_str().unwrap_or("") {
+        "SUCCESS" => "pass",
+        "SKIPPED" | "NEUTRAL" => "skipping",
+        "ERROR" | "FAILURE" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE" => "fail",
+        "CANCELLED" => "cancel",
+        _ => "pending",
+    }
+}
+
+/// A PR's row as `prs.json` keeps it; an open one's checks counted, a closed one's not asked.
+fn row(pr: &Value) -> Value {
+    let checks = (pr["state"] == "OPEN").then(|| checks_of(pr));
+    let checks = checks.as_deref();
     let count =
         |bucket: &str| checks.map(|checks| checks.iter().filter(|c| c["bucket"] == bucket).count());
     let (failed, running) = (count("fail"), count("pending"));
@@ -396,7 +394,7 @@ fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
         "state": pr["state"].as_str().map(str::to_lowercase), "health": health,
         "head": pr["headRefOid"], "branch": pr["headRefName"], "mergeCommit": pr["mergeCommit"]["oid"], "base": pr["baseRefName"],
         "failed": failed, "running": running, "mergedAt": pr["mergedAt"], "draft": pr["isDraft"],
-        "updatedAtMs": pr["updatedAt"].as_str().and_then(crate::adapters::iso_ms),
+        "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms),
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),
         "approved": match pr["reviewDecision"].as_str() {

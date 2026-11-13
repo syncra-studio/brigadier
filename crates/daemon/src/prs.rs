@@ -98,12 +98,23 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                 let (data, state, next, busy) =
                     (data.clone(), state.clone(), next.clone(), busy.clone());
                 thread::spawn(move || {
-                    let kept = match session_dir(&data, &id).join("archived").exists() {
-                        true => None,
-                        false => host::pr(&data, &id).ok().and_then(|pr| pr.watch()),
-                    };
                     // A window is open while the app is subscribed.
                     let window = !state.lock().unwrap().subs.is_empty();
+                    let dir = session_dir(&data, &id);
+                    let kept = match dir.join("archived").exists() {
+                        true => None,
+                        false => host::pr(&data, &id).ok().and_then(|pr| {
+                            let kept = pr.watch();
+                            // An open PR's tab is read at the same pace, so it opens on a fresh read [D207].
+                            for n in (kept.is_some() && window)
+                                .then(|| host::tabbed(&dir))
+                                .unwrap_or_default()
+                            {
+                                let _ = pr.view(n);
+                            }
+                            kept
+                        }),
+                    };
                     let at = Instant::now() + every(kept.as_ref(), window);
                     // Under DUE's lock, as the scheduler reads it: a turn noted meanwhile is never lost.
                     let _due = DUE.lock().unwrap();
