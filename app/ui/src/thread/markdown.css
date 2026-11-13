@@ -46,6 +46,10 @@
   & li {
     @apply mt-1 leading-relaxed;
   }
+  /* A child list sits as close to its item as the next item does, not a paragraph's gap away. */
+  & li > :is(ul, ol) {
+    @apply my-1;
+  }
   & blockquote {
     @apply border-s-2 border-quote-edge ps-4 text-muted-foreground;
   }
