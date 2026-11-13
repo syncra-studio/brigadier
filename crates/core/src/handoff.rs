@@ -37,6 +37,21 @@ fn tail(s: &str, max: usize) -> &str {
     &s[at..]
 }
 
+/// A numbered list item's line: `1.` or `1)` first.
+fn numbered(l: &str) -> bool {
+    let l = l.trim_start();
+    let n = l.bytes().take_while(u8::is_ascii_digit).count();
+    n > 0 && matches!(l.as_bytes().get(n), Some(b'.' | b')'))
+}
+
+/// A list item's line, numbered or bulleted.
+fn item(l: &str) -> bool {
+    numbered(l)
+        || ["- ", "* ", "• "]
+            .iter()
+            .any(|m| l.trim_start().starts_with(m))
+}
+
 /// Lines added while they fit `max`; a last line says how many didn't.
 fn fill(lines: impl IntoIterator<Item = String>, max: usize, more: &str) -> String {
     let (mut out, mut left) = (String::new(), 0);
@@ -235,13 +250,32 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             "peer" => format!("session {}", e.who),
             _ => "the user".into(),
         };
-        // A short answer reads with what it answered: your message just before it, its end.
+        // A short answer reads with what it answered: your message just before it, its numbered
+        // items for a numbered answer, the list it ends with, or else its end.
         let asked = (p.entries[..i].iter().rev())
             .find(|q| q.from == "agent")
             .filter(|_| e.from == "user" && e.text.split_whitespace().count() <= 5)
             .map_or(String::new(), |q| {
-                let end = tail(q.text.trim_end(), 300).replace('\n', " ");
-                format!(", answering your {id}#{}: …{end}", q.at)
+                let text = q.text.trim_end();
+                let items: Vec<&str> = if e.text.lines().any(numbered) {
+                    text.lines()
+                        .filter(|l| numbered(l) && !l.starts_with(char::is_whitespace))
+                        .collect()
+                } else {
+                    let run = text
+                        .lines()
+                        .rev()
+                        .take_while(|l| l.trim().is_empty() || item(l));
+                    let mut run: Vec<&str> = run.filter(|l| item(l)).collect();
+                    run.reverse();
+                    run
+                };
+                let items: Vec<String> = items.iter().map(|l| head(l.trim(), 300)).collect();
+                let end = match items.is_empty() {
+                    true => format!("…{}", tail(text, 300).replace('\n', " ")),
+                    false => head(&items.join(" "), 600),
+                };
+                format!(", answering your {id}#{}: {end}", q.at)
             });
         (&e.at, who, asked, &e.text)
     });
