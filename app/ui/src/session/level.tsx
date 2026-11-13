@@ -5,7 +5,6 @@ import { ErrorLine } from "../components/error-line";
 import type { Row } from "../daemon";
 import { errorText, run } from "../onboarding/api";
 import { newId } from "./store";
-import { BrigadeToggle } from "../sessions/brigade";
 
 /**
  * The permission pill a session and Home's draft both mount [D169, D170, D176]: the agent's own levels [D129, D175],
@@ -66,7 +65,6 @@ export function SessionLevel({ id, row }: { id: string; row: LevelRow | undefine
   return (
     <>
       <LevelPicker levels={row?.levels ?? []} level={pending?.level ?? row?.level ?? null} held={row?.held === true} onChange={pick} />
-      <BrigadeToggle id={id} row={row} />
       <ErrorLine error={error ?? row?.level_refused ?? null} className="min-w-0 truncate" />
     </>
   );

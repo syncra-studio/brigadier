@@ -16,6 +16,7 @@ import { daemonRun } from "../session/composer";
 import type { Draft } from "../components/composer/draft";
 import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
+import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
@@ -132,7 +133,14 @@ export function HomeDraft() {
         model={model}
         onModel={(choice) => setHomeDraft({ model: choice })}
         onSetUp={setSetUp}
-        level={agent && <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />}
+        level={
+          agent && (
+            <>
+              <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
+              <BrigadeToggle on={draft.brigade === true} onChange={(brigade) => setHomeDraft({ brigade })} />
+            </>
+          )
+        }
         modelError={listError}
         offline={!daemon}
         initial={draft.text}
@@ -142,7 +150,7 @@ export function HomeDraft() {
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />
       <SetUpAgentDialog
         name={setUp}

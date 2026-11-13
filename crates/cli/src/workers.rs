@@ -365,9 +365,6 @@ fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     core::load(data, id)?;
-    if args.get(2).is_some_and(|a| a == "brigade") {
-        return brigade::set(data, id, args.get(3));
-    }
     if let Some(how @ ("pause" | "resume")) = args.get(2).map(String::as_str) {
         let reply = pause::run(data, id, how, arg(args, 3)?);
         return match reply["error"].as_str() {

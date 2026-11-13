@@ -35,8 +35,7 @@ mod tabs;
 pub mod workers;
 pub use brigadier_core::title;
 
-use brigadier_core::fold;
-use brigadier_core::{self as core, Spec, adapters};
+use brigadier_core::{self as core, Spec, adapters, fold};
 use brigadier_frames::{log, procs, take_lock};
 use serde_json::{Value, json};
 use std::io::{self, Write};
@@ -44,7 +43,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -188,6 +187,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }),
                 effort: flag(args, "--effort").map(String::from),
                 fast: has(args, "--fast"),
+                brigade: has(args, "--brigade"),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()

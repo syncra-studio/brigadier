@@ -2,7 +2,8 @@
 //! workers of its own, made as workers are (`make`) but not naked. Its asks go to the boss, which
 //! answers from the user's words or passes them to the user (`to_user`); its result goes back
 //! once its own workers are done. Starts are capped between the user's messages, so a loop comes
-//! back to the user [D144].
+//! back to the user [D144]. A session is a Brigade from its first message, `start --brigade`, or
+//! never: nothing turns a started one on or off [D209].
 
 use super::{Link, busy, link, records, refuse, result};
 use crate::{owner, peers};
@@ -19,19 +20,6 @@ const WORKERS: usize = 12;
 /// A sub-session's question to its boss that goes to the user instead.
 const THIRD: usize = 3;
 const ASK_USER: &str = "Ask the user before starting more";
-
-/// `workers <id> brigade on|off`: the composer's Brigade pill, for a session the user started.
-pub fn set(data: &Path, id: &str, on: Option<&String>) -> io::Result<Value> {
-    let mut spec = core::load(data, id)?;
-    if link(data, id).is_some() {
-        return Err(io::Error::other(
-            "A worker or a Brigade's session can't be a Brigade.",
-        ));
-    }
-    spec.brigade = on.is_some_and(|o| o == "on");
-    core::create(data, &spec)?;
-    Ok(json!({"ok": true, "brigade": spec.brigade}))
-}
 
 /// A row's Brigade facts: a Brigade, or the Brigade a sub-session works in, its row under it.
 pub fn brigade_row(row: &mut Value, spec: Option<&core::Spec>) {

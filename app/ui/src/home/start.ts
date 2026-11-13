@@ -38,6 +38,8 @@ export type HomeDraft = {
   model: ModelChoice | null;
   /** The permission level picked here (1t's LevelPicker); unset: Rust's default for the project. */
   level?: PermissionLevel;
+  /** Brigade picked here, for the next session only: a session is one from its first message or never [D209]. */
+  brigade?: boolean;
   text?: Draft;
   /** Bumped to put the cursor in the field. */
   focus: number;
@@ -134,20 +136,21 @@ const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
   workIn === "local" ? ["--local"] : workIn === "existing" ? ["--local", "--cwd", worktree!] : base ? ["--base", base] : [];
 
 /** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
-export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string): void {
+export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
   const id = sessionId();
   const cid = newId();
   const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
+  if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
   const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ text: undefined, level: undefined, model, ...(project && { project }) });
+  setHomeDraft({ text: undefined, level: undefined, brigade: undefined, model, ...(project && { project }) });
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

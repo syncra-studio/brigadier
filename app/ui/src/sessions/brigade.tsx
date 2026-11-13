@@ -1,40 +1,22 @@
-import { useEffect, useState } from "react";
-
 import { ComposerPill, PillDivider } from "../components/composer/composer";
-import { showToast } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { type Row, useDaemon } from "../daemon";
+import { useDaemon } from "../daemon";
 import { Nodes, type IconProps } from "../icons";
-import { errorText, run } from "../onboarding/api";
 
 /** A Brigade's mark: one over several [D194]. */
 export const BrigadeGlyph = (props: IconProps) => <Nodes {...props} />;
 
 /**
- * The composer's Brigade pill, after the permission pill as the old app's FusionChip [D185]: while it's on, each
- * message tells the agent to lead the job as the boss of sessions of its own. It shows at once; Rust's row settles
- * it [D30]. A worker and a Brigade's own session have none.
+ * New chat's Brigade pill, after the permission pill as the old app's FusionChip [D185]: on, the session starts as a
+ * Brigade, its agent leading the job as the boss of sessions of its own. Only a new chat has it: a session is a
+ * Brigade from its first message or never, which Rust holds [D209].
  */
-export function BrigadeToggle({ id, row }: { id: string; row: Row | undefined }) {
-  const [want, setWant] = useState<boolean | null>(null);
-  const on = want ?? row?.brigade === true;
-  useEffect(() => {
-    if (want !== null && row?.brigade === want) setWant(null);
-  }, [row?.brigade, want]);
-  if (!row || row.worker || row.boss) return null;
-  const flip = () => {
-    const next = !on;
-    setWant(next);
-    run(["workers", id, "brigade", next ? "on" : "off"]).catch((cause: unknown) => {
-      setWant(null);
-      showToast(`Couldn't turn Brigade ${next ? "on" : "off"}: ${errorText(cause)}`, { tone: "error" });
-    });
-  };
+export function BrigadeToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   return (
     <>
       <PillDivider />
       <Tooltip>
-        <TooltipTrigger render={<ComposerPill aria-pressed={on} data-slot="brigade-pill" className="aria-pressed:bg-fill aria-pressed:text-foreground" onClick={flip} />}>
+        <TooltipTrigger render={<ComposerPill aria-pressed={on} data-slot="brigade-pill" className="aria-pressed:bg-fill aria-pressed:text-foreground" onClick={() => onChange(!on)} />}>
           <BrigadeGlyph />
           <span>Brigade</span>
         </TooltipTrigger>
