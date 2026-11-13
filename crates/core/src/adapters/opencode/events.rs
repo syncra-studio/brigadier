@@ -141,6 +141,26 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
                     .collect(),
             }
         }
+        // A command it sent to the background: its call ends, its shell runs on under its own id,
+        // as Claude's background task does, so its Background row reads as typed and Stop names it.
+        "session.tool.progress" if d["input"]["background"] == true => {
+            let shell = d["metadata"]["shellID"].as_str();
+            (shell.into_iter())
+                .map(|sh| {
+                    Event::ToolEnd(Done {
+                        id: id("id"),
+                        output: String::new(),
+                        ok: true,
+                        exit: None,
+                        cut: true,
+                        changes: vec![],
+                        child: Some(sh.into()),
+                        parent: None,
+                        at: v["created"].as_u64(),
+                    })
+                })
+                .collect()
+        }
         k if k.contains('.') => vec![],
         _ => return None,
     })
