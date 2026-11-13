@@ -31,7 +31,7 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
     (live && workers ? ` · ${workers} ${workers === 1 ? "worker" : "workers"} running` : "") +
     (turn.status === "running" && waitingSince != null
       ? " · waiting for you"
-      : turn.status === "done" && !turn.held && waitedMs !== undefined && waitedMs >= 1000
+      : !live && waitedMs !== undefined && waitedMs >= 1000
         ? ` · waited for ${duration(waitedMs)}`
         : "");
   if (open === null) {
