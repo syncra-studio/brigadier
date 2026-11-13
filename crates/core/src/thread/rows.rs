@@ -421,6 +421,8 @@ impl Thread {
                 g
             }
         };
+        // The turn's latest run: the UI draws it as its live line only, never its count [D230].
+        self.items[g]["run"] = true.into();
         let at = self.add(row);
         self.member.insert(at, g);
         self.items[g]["span"] = json!([g as u64 + 2, at as u64 + 1]);
@@ -443,9 +445,11 @@ impl Thread {
         self.changed_items.insert(g);
     }
 
+    /// Whatever shows after a run ends it: from then on it reads as its header [D230].
     pub(super) fn break_group(&mut self) {
-        if let Some(o) = self.open.as_mut() {
-            o.group = None;
+        if let Some(g) = self.open.as_mut().and_then(|o| o.group.take()) {
+            self.items[g]["run"] = false.into();
+            self.changed_items.insert(g);
         }
     }
 }

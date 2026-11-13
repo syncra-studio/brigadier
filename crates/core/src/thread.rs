@@ -288,6 +288,7 @@ impl Thread {
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
         self.end_wait(ts);
+        self.break_group();
         let Some(o) = self.open.take() else {
             return;
         };

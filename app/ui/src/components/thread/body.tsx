@@ -51,6 +51,8 @@ type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "
 
 /** A group's row and, opened, its steps: the thread's, a worker's in its panel, a skill's. Its running step is its row till it ends [D227]. */
 export function GroupLine({ item, turn, open, steps, live, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; onToggle: (id: string) => void }) {
+  // The turn's latest run is only what it does now: its header comes once something follows it [D230].
+  if (item.run) return live ? <Body item={live} turn={turn} step={false} /> : <ThinkingLine />;
   return (
     <>
       {live ? <Body item={live} turn={turn} step={false} /> : <GroupRow item={item} open={open} onToggle={onToggle} />}

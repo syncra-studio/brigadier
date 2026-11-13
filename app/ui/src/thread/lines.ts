@@ -13,7 +13,7 @@ export type Line =
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
-  /** A group row. `steps`: what it shows opened, in one capped box; `live`: its running step, drawn in its place [D227]. */
+  /** A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn in its place [D227]. */
   | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
@@ -138,8 +138,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     // Thinking is a row only while it lasts.
     if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
-      // A running step is its group's line until it ends, then joins the count: it never shows apart and moves [D173, D227].
-      if (live && group.line && running(item)) {
+      // A running step or thinking is its group's line until it ends: it never shows apart and moves [D173, D227, D230].
+      if (live && group.line && (running(item) || item.kind === "reasoning")) {
         group.line.live = item;
         continue;
       }

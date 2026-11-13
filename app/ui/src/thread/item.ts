@@ -140,7 +140,8 @@ export type Item = Base &
      * and last, which follow it. Its id is the turn id plus the group's index in the turn, so an update replaces it.
      */
     /** `server`: an MCP server's calls, counted apart [D176]. */
-    | { kind: "group"; steps: { kind: StepKind; n: number; server?: string | null }[]; span: [number, number] }
+    /** `run`: the running turn's latest run, nothing after it yet; it draws as its live line, never its count [D230]. */
+    | { kind: "group"; steps: { kind: StepKind; n: number; server?: string | null }[]; span: [number, number]; run?: boolean }
     | {
         kind: "reasoning";
         text: string;

@@ -251,6 +251,8 @@ impl Thread {
         let g = g.filter(|&g| (g + 1..self.items.len()).all(quiet));
         if let (Some(o), Some(g)) = (self.open.as_mut(), g) {
             o.group = Some(g);
+            self.items[g]["run"] = true.into();
+            self.changed_items.insert(g);
         }
     }
 

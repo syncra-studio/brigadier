@@ -4,15 +4,15 @@ import { useSyncExternalStore } from "react";
 import type { StepKind, Turn, Work } from "./item";
 
 const STEPS: Record<StepKind, [string, string]> = {
-  edit: ["edited a file", "edited {n} files"],
-  read: ["read a file", "read {n} files"],
-  list: ["listed files", "listed files {n} times"],
-  search: ["searched once", "searched {n} times"],
-  run: ["ran a command", "ran {n} commands"],
-  web: ["searched the web", "searched the web {n} times"],
-  agent: ["ran a subagent", "ran {n} subagents"],
-  skill: ["used a skill", "used {n} skills"],
-  other: ["used a tool", "used {n} tools"],
+  edit: ["edited a file", "edited files"],
+  read: ["read a file", "read files"],
+  list: ["listed files", "listed files"],
+  search: ["searched once", "searched"],
+  run: ["ran a command", "ran commands"],
+  web: ["searched the web", "searched the web"],
+  agent: ["ran a subagent", "ran subagents"],
+  skill: ["used a skill", "used skills"],
+  other: ["used a tool", "used tools"],
 };
 /** Kinds in the order a group names them; its icon is the first one it holds. */
 export const ORDER = Object.keys(STEPS) as StepKind[];
@@ -28,7 +28,7 @@ export function groupWords(steps: readonly { kind: StepKind; n: number; server?:
   const text = [...steps]
     .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
     .map(({ kind, n, server }) =>
-      server ? `used ${connectorName(server)}${n === 1 ? "" : ` ${n.toLocaleString()} times`}` : n === 1 ? STEPS[kind][0] : STEPS[kind][1].replace("{n}", n.toLocaleString()),
+      server ? `used ${connectorName(server)}` : STEPS[kind][n === 1 ? 0 : 1],
     )
     .join(", ");
   return text.charAt(0).toUpperCase() + text.slice(1);
