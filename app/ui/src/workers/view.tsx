@@ -44,9 +44,10 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
       <h2 className="min-w-8 truncate text-label font-medium" title={worker.name}>
         {worker.name}
       </h2>
-      {/* Its model at the end; a click shows its details. Where the header is short the model gives way, never its state. */}
+      {/* Its model and state at the end; a click shows its details. Where the header is short the model gives way
+          first, then the name, never the state: the model sizes as nothing (contain-inline-size) and takes the room left. */}
       {!onToggleDetails ? (
-        <span className="ms-auto min-w-0 shrink-1000 truncate text-label text-muted-foreground">{worker.word}</span>
+        <span className="ms-auto shrink-0 whitespace-nowrap text-label text-muted-foreground">{worker.word}</span>
       ) : (
       <Tooltip>
         <TooltipTrigger
@@ -57,12 +58,12 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
               aria-pressed={details}
               data-slot="worker-header-model"
               onClick={onToggleDetails}
-              className="ms-auto flex shrink-1000 cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
+              className="flex grow cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
             />
           }
         >
-          <span className="min-w-0 truncate">{worker.model}</span>
-          <span className="shrink-0 whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
+          <span className="grow truncate text-end contain-inline-size">{worker.model}</span>
+          <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
         </TooltipTrigger>
         <TooltipContent>
           Worker details · {worker.model} · {worker.word}
