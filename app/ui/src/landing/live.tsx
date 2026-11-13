@@ -113,6 +113,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   return (
     <PrTab
       owner={owner}
+      target={target}
       pr={shown}
       row={row}
       error={error}

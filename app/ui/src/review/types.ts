@@ -57,6 +57,9 @@ export type ReviewHunk = {
 /** A file's two sides whole, so every unchanged stretch opens in place (D48), and git's hunks over them. */
 export type FileContents = { before: string; after: string; hunks: readonly ReviewHunk[] };
 
+/** A host's patch of a file, as a PR's Files changed reads it [D231]; null where the host sent none (too large). */
+export type PatchContents = { patch: string | null };
+
 export type Review = {
   scope: ReviewScope;
   /** The branch Branch since base compares against. */

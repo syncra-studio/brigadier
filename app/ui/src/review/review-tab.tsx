@@ -12,7 +12,7 @@ import { useKept } from "../thread/kept";
 import { BriefStrip, noTurnWords } from "./brief";
 import type { LineRange } from "./diff-view";
 import { FileSection, type OpenIn } from "./file-section";
-import type { DiffComment, FileContents, Review, ReviewFile, ReviewScope } from "./types";
+import type { DiffComment, FileContents, PatchContents, Review, ReviewFile, ReviewScope } from "./types";
 
 /**
  * The Review tab (old ReviewTab), a main-area tab (D1032): a scope's diffs, each file under a sticky header, unified
@@ -21,11 +21,12 @@ import type { DiffComment, FileContents, Review, ReviewFile, ReviewScope } from 
 
 export type ReviewTabProps = {
   scope: ReviewScope;
-  onScope: (scope: ReviewScope) => void;
+  /** None where the scope is fixed (a PR's Files changed): no scope menu then. */
+  onScope?: (scope: ReviewScope) => void;
   /** The scope's file list with counts; null until it first arrives. */
   review: Review | null;
   /** Each file's contents as they arrive, after the list (D1036), or why one couldn't be read. */
-  contents: ReadonlyMap<string, FileContents | { error: string }>;
+  contents: ReadonlyMap<string, FileContents | PatchContents | { error: string }>;
   /** Why the list couldn't be read. The last list stays under it. */
   error: string | null;
   /** A read in flight: Refresh spins. */
@@ -35,7 +36,7 @@ export type ReviewTabProps = {
   onRefresh: () => void;
   /** Ask for a large file's contents, when it's opened (D1036). */
   onLoad: (path: string) => void;
-  onOpenIn: (path: string, where: OpenIn) => void;
+  onOpenIn?: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
   /** None where a comment couldn't reach the agent: no line picking then. */
   onComment?: (comment: DiffComment) => void;
@@ -45,6 +46,8 @@ export type ReviewTabProps = {
   onDraft?: (draft: { path: string; range: LineRange; text: string } | null) => void;
   /** The file it was opened on: shown open whatever else waits behind the one click. */
   target?: string;
+  /** Under the last file: what the list leaves out. */
+  more?: ReactNode;
 };
 
 const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] = [
@@ -87,21 +90,23 @@ export function ReviewTab(props: ReviewTabProps) {
   return (
     <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2">
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
-            {label}
-            <ChevronDown className="size-icon-xs" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope(value)}>
-              {SCOPES.map((entry) => (
-                <DropdownMenuRadioItem key={entry.value} value={entry.value}>
-                  {entry.label(review?.base ?? null)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {props.onScope && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
+              {label}
+              <ChevronDown className="size-icon-xs" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup value={scope} onValueChange={(value: ReviewScope) => props.onScope?.(value)}>
+                {SCOPES.map((entry) => (
+                  <DropdownMenuRadioItem key={entry.value} value={entry.value}>
+                    {entry.label(review?.base ?? null)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {!connected && <span className="px-1.5 text-xs text-muted-foreground">Reconnecting…</span>}
         <div className="flex-1" />
         <TooltipIconButton tooltip="Refresh" size="icon-sm" disabled={!connected} onClick={props.onRefresh}>
@@ -156,6 +161,7 @@ export function ReviewTab(props: ReviewTabProps) {
             />
           ))
         )}
+        {props.more}
       </div>
     </div>
   );

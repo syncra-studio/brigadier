@@ -17,7 +17,7 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-pub use view::{kept_view, tabbed};
+pub use view::{kept_files, kept_view, tabbed};
 
 /// Proposed: gh gets this long for a look, and a create this long.
 const GH_SECS: u64 = 20;

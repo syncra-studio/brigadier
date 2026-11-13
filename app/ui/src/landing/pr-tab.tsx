@@ -4,7 +4,6 @@ import { type ReactNode, useState } from "react";
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { cx } from "../components/cx";
-import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
@@ -13,6 +12,7 @@ import { ArrowUpRight, Check, CheckCircle, ChevronDown, Comment, Commit } from "
 import type { Pr } from "../panel/types";
 import { ReviewView } from "../review/view";
 import { Sparkles } from "./icons";
+import { PrFiles } from "./pr-files";
 import { CheckAgain, Checks, Commits, Conversation, MergeBox, type Sends, Side, StateBadge } from "./pr-parts";
 import type { MergeStyle, PullRequest } from "./pull-requests";
 
@@ -29,12 +29,13 @@ const Ref = ({ children }: { children: ReactNode }) => <span className="rounded-
 /**
  * A pull request in a main-area tab, GitHub's page [D204]: its title, state and "wants to merge", then Conversation
  * (the description, what happened, and the merge box at its end, beside Reviewers, Assignees and Labels), Commits,
- * Checks and Files changed, the Review tab's own diff of the session's branch. Every Send and Fix leaves a chip above
- * the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
+ * Checks and Files changed, the Review tab's own diff of the session's branch, or of any other PR as its host cut it
+ * [D231]. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
  * Check again; when a read fails, the last one stays with why [D207, D208, D1009].
  */
 export function PrTab({
   owner,
+  target,
   pr,
   row,
   error,
@@ -46,6 +47,8 @@ export function PrTab({
   onMerge,
 }: {
   owner: string;
+  /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
+  target: string;
   /** undefined until its first read lands. */
   pr: PullRequest | undefined;
   /** Its row as the watch keeps it: the header before the first read. */
@@ -62,7 +65,13 @@ export function PrTab({
   /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
   onMerge: (style: MergeStyle, head: string) => void;
 }) {
-  const again = <CheckAgain at={pr?.checkedAtMs ?? null} busy={checking} offline={sends.offline} onClick={onCheck} />;
+  // Check again reads Files changed again too, when it's open [D231].
+  const [tick, setTick] = useState(0);
+  const check = () => {
+    onCheck();
+    setTick((n) => n + 1);
+  };
+  const again = <CheckAgain at={pr?.checkedAtMs ?? null} busy={checking} offline={sends.offline} onClick={check} />;
   if (!pr) {
     return (
       <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">
@@ -176,21 +185,7 @@ export function PrTab({
           </div>
         </Tabs.Panel>
         <Tabs.Panel value="files" className="flex min-h-0 flex-1 flex-col">
-          {pr.onBranch ? (
-            <ReviewView owner={owner} kept="branch" />
-          ) : (
-            // shortcut: Files changed is the session's own branch's diff; another PR's opens on the host until a session needs it here.
-            <EmptyState
-              variant="centered"
-              title="Its branch isn't this session's"
-              detail={
-                <button type="button" className="cursor-pointer underline-offset-2 hover:underline" onClick={() => sends.onOpen("pr")}>
-                  See its files on {pr.host}
-                </button>
-              }
-              className="m-auto"
-            />
-          )}
+          {pr.onBranch ? <ReviewView owner={owner} kept="branch" /> : <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} />}
         </Tabs.Panel>
       </Tabs.Root>
     </div>

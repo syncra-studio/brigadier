@@ -11,7 +11,7 @@ import { CommentBox, CommentNote } from "./comments";
 import { type DiffLook, type DiffNote, DiffView, type LineRange } from "./diff-view";
 import { fileFact } from "./brief";
 import { Counts } from "./hunks";
-import type { DiffComment, FileContents, ReviewFile } from "./types";
+import type { DiffComment, FileContents, PatchContents, ReviewFile } from "./types";
 
 /** Where Open in sends a file: a file tab, its default app, or Finder. */
 export type OpenIn = "tab" | "app" | "finder";
@@ -20,7 +20,7 @@ export type OpenIn = "tab" | "app" | "finder";
 export type FileProps = {
   file: ReviewFile;
   /** Its contents once they've arrived, or why they couldn't be read. */
-  contents: FileContents | { error: string } | undefined;
+  contents: FileContents | PatchContents | { error: string } | undefined;
   look: DiffLook;
   collapsed: boolean;
   onToggle: () => void;
@@ -28,7 +28,8 @@ export type FileProps = {
   connected: boolean;
   /** Ask for its contents again, after a failed read. */
   onRetry: () => void;
-  onOpenIn: (path: string, where: OpenIn) => void;
+  /** None where the file isn't in a checkout here (a PR's): no Open in then. */
+  onOpenIn?: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
   /** None where a comment couldn't reach the agent: no line picking then. */
   onComment?: (comment: DiffComment) => void;
@@ -39,7 +40,7 @@ export type FileProps = {
 };
 
 /** A changed file's "Open in" menu (old OpenInMenu): a file tab, its default app, or Finder. */
-function OpenInMenu({ file, onOpenIn }: { file: ReviewFile; onOpenIn: FileProps["onOpenIn"] }) {
+function OpenInMenu({ file, onOpenIn }: { file: ReviewFile; onOpenIn: NonNullable<FileProps["onOpenIn"]> }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger render={<TooltipIconButton tooltip="Open in" size="icon-xs" disabled={file.status === "deleted"} />}>
@@ -78,7 +79,7 @@ export function FileSection(props: FileProps) {
         {file.flag && <span className="shrink-0 text-xs text-warning">{fileFact(file.flag)}</span>}
         <span className="flex items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
           <CopyButton text={file.path} tooltip="Copy path" size="icon-xs" />
-          <OpenInMenu file={file} onOpenIn={props.onOpenIn} />
+          {props.onOpenIn && <OpenInMenu file={file} onOpenIn={props.onOpenIn} />}
           <TooltipIconButton tooltip="Toggle file diff" size="icon-xs" aria-expanded={!collapsed} onClick={onToggle}>
             {collapsed ? <ChevronRight /> : <ChevronDown />}
           </TooltipIconButton>
@@ -129,6 +130,8 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
       />
     );
   }
+  // A PR's file, as its host cut it: no lines to comment on here [D231].
+  if (contents && "patch" in contents) return contents.patch ? <DiffView source={{ kind: "patch", patch: contents.patch }} look={look} /> : muted("Its diff is too large to show here");
   // The list came first; its contents follow (D1036).
   if (!sides) {
     return (

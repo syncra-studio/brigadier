@@ -18,18 +18,38 @@ const MERGE_SECS: u64 = 60;
 // shortcut: its last 100 commits, comments and timeline items and 50 reviews, until a PR has more.
 const PAGE: &str = "body createdAt author { login } additions deletions changedFiles mergeStateStatus labels(first: 20) { nodes { name } } assignees(first: 10) { nodes { login } } reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } } latestReviews(first: 20) { nodes { state author { login } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } comments(last: 100) { nodes { databaseId body createdAt url author { login __typename } } } reviews(last: 50) { nodes { databaseId state body submittedAt url author { login __typename } comments(first: 50) { nodes { databaseId path line originalLine body createdAt url author { login __typename } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, MERGED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login } } ... on ReviewRequestedEvent { id createdAt actor { login } requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } ... on MergedEvent { id createdAt actor { login } } ... on ClosedEvent { id createdAt actor { login } } ... on ReopenedEvent { id createdAt actor { login } } ... on ReadyForReviewEvent { id createdAt actor { login } } ... on ConvertToDraftEvent { id createdAt actor { login } } } }";
 
-/// `other`: another repository's `owner/name`, checked to be one (`slug`) [D213].
-fn kept_path(dir: &Path, other: Option<&str>, number: u64) -> PathBuf {
+/// `other`: another repository's `owner/name`, checked to be one (`slug`) [D213]. `what`: `json`
+/// for the page, `files.json` for its Files changed [D231].
+fn kept_path(dir: &Path, other: Option<&str>, number: u64, what: &str) -> PathBuf {
     other
         .map_or(dir.join("pr"), |r| dir.join("pr").join(r))
-        .join(format!("{number}.json"))
+        .join(format!("{number}.{what}"))
+}
+
+fn read_kept(path: PathBuf) -> Value {
+    (fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null)
+}
+
+fn keep(path: &Path, value: &Value) {
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    let wrote = fs::create_dir_all(path.parent().unwrap_or(path))
+        .and_then(|()| fs::write(&tmp, value.to_string()))
+        .and_then(|()| fs::rename(&tmp, path));
+    if let Err(e) = wrote {
+        eprintln!("brigadier: keeping {}: {e}", path.display());
+    }
 }
 
 /// PR `number`'s last read as its tab showed it, or null before any [D207].
 pub fn kept_view(dir: &Path, other: Option<&str>, number: u64) -> Value {
-    (fs::read(kept_path(dir, other, number)).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or(Value::Null)
+    read_kept(kept_path(dir, other, number, "json"))
+}
+
+/// PR `number`'s Files changed as last read, or null before any [D231].
+pub fn kept_files(dir: &Path, other: Option<&str>, number: u64) -> Value {
+    read_kept(kept_path(dir, other, number, "files.json"))
 }
 
 /// The open PRs whose tab the session has open (`tabs.json`): the watch reads their pages too [D207].
@@ -216,15 +236,44 @@ impl Pr {
             "labels": nodes(&pr["labels"]).iter().map(|l| l["name"].clone()).collect::<Vec<_>>(),
             "checks": checks, "comments": comments, "events": events,
         });
-        let path = kept_path(&self.dir, other, number);
-        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-        let wrote = fs::create_dir_all(path.parent().unwrap_or(&self.dir))
-            .and_then(|()| fs::write(&tmp, view.to_string()))
-            .and_then(|()| fs::rename(&tmp, &path));
-        if let Err(e) = wrote {
-            eprintln!("brigadier: keeping {}: {e}", path.display());
-        }
+        keep(&kept_path(&self.dir, other, number, "json"), &view);
         self.keep_row(pr);
+        Ok(view)
+    }
+
+    /// PR `number`'s changed files with GitHub's patch of each, as the Review tab draws them, in one
+    /// paged read and kept [D231]. Only a PR whose page was read (and so found the session's) is read.
+    /// GitHub lists up to 3000 files and leaves out a large file's patch: `total` says how many changed.
+    pub fn files(&self, other: Option<&str>, number: u64) -> io::Result<Value> {
+        let page = kept_view(&self.dir, other, number);
+        if page.is_null() {
+            return err(format!("#{number} isn't one of this session's PRs."));
+        }
+        let (repo, gh) = self.gh_repo(other)?;
+        let mut command = gh.command();
+        command.args([
+            "api",
+            "--hostname",
+            &repo.host,
+            "--paginate",
+            &format!("repos/{}/pulls/{number}/files?per_page=100", repo.path),
+        ]);
+        let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
+        if !out.status.success() {
+            return err(failed(&out));
+        }
+        // --paginate prints each page's array after the last.
+        let pages = serde_json::Deserializer::from_slice(&out.stdout).into_iter::<Vec<Value>>();
+        let mut files = Vec::new();
+        for page in pages {
+            files.extend(page?.iter().map(file));
+        }
+        let sum = |key: &str| files.iter().filter_map(|f| f[key].as_u64()).sum::<u64>();
+        let view = json!({"scope": "branch", "base": page["base"], "head": page["head"],
+            "insertions": sum("insertions"), "deletions": sum("deletions"),
+            "total": page["files"].as_u64().unwrap_or(files.len() as u64),
+            "checkedAtMs": now_ms(), "files": files});
+        keep(&kept_path(&self.dir, other, number, "files.json"), &view);
         Ok(view)
     }
 
@@ -308,6 +357,35 @@ fn check(c: &Value) -> Value {
     };
     json!({"id": id, "name": c["name"], "state": state, "durationMs": took,
         "logTail": null, "url": c["link"], "atMs": ms(&c["completedAt"]).or(ms(&c["startedAt"]))})
+}
+
+/// One of GitHub's PR files as a Review file, its patch under the file headers the diff draws by;
+/// null where GitHub sent none (a binary or too large file).
+fn file(f: &Value) -> Value {
+    let path = f["filename"].as_str().unwrap_or("");
+    let from = f["previous_filename"].as_str();
+    let status = match f["status"].as_str() {
+        Some("added") => "added",
+        Some("removed") => "deleted",
+        Some("renamed") => "renamed",
+        Some("copied") => "copied",
+        _ => "modified",
+    };
+    let (old, new) = match status {
+        "added" => ("/dev/null".to_string(), format!("b/{path}")),
+        "deleted" => (format!("a/{path}"), "/dev/null".to_string()),
+        _ => (format!("a/{}", from.unwrap_or(path)), format!("b/{path}")),
+    };
+    let patch = f["patch"]
+        .as_str()
+        .map(|p| format!("--- {old}\n+++ {new}\n{p}\n"));
+    let (insertions, deletions) = (
+        f["additions"].as_u64().unwrap_or(0),
+        f["deletions"].as_u64().unwrap_or(0),
+    );
+    json!({"path": path, "from": from, "status": status, "insertions": insertions,
+        "deletions": deletions, "binary": patch.is_none() && insertions + deletions == 0,
+        "staged": false, "large": false, "patch": patch})
 }
 
 /// The failed steps' last lines of an Actions job, from its link's job id; none for other checks.

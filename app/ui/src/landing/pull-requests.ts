@@ -1,3 +1,5 @@
+import type { PatchContents, Review, ReviewFile } from "../review/types";
+
 // A session's pull request as Rust's host module reads it (`host <id> view <n>`, one GraphQL read [D207]): structure
 // only, the UI writes the words [D65, D71, D1017].
 
@@ -94,3 +96,7 @@ export type PrSend =
 
 /** A send's key, for the "Added" state of the button that made it. */
 export const sendKey = (send: PrSend): string => (send.kind === "fix" ? "fix" : `${send.kind}:${send.id}`);
+
+/** A PR's Files changed as Rust reads it from the host (`host <id> files <n>`) and keeps it [D231]: each file with
+ * the host's patch, read at `head`; `total` is how many files changed, more than the list when the host cut it. */
+export type PrFiles = Omit<Review, "files"> & { head: string; total: number; checkedAtMs: number; files: (ReviewFile & PatchContents)[] };
