@@ -51,7 +51,8 @@ impl Drop for Conn {
     fn drop(&mut self) {
         match &mut self.way {
             Way::Pipe { child, .. } => {
-                let _ = child.kill();
+                // Its whole group: an `npx` or shell launcher leaves the server itself behind.
+                unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
                 let _ = child.wait();
             }
             Way::Http { headers, .. } => {
