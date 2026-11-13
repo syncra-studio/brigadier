@@ -1,18 +1,7 @@
 import type { PrEvent, PrState, PullRequest } from "./pull-requests";
 
-export type Tone = "good" | "failed" | "waiting" | "merged" | "quiet";
-
-export const TONES: Record<Tone, string> = {
-  good: "text-success",
-  failed: "text-destructive",
-  waiting: "text-pr-yellow",
-  merged: "text-pr-purple",
-  quiet: "text-muted-foreground",
-};
-
-/** A PR's state as GitHub says it, in its word and colour, wherever a PR shows [D202]: never Ready for one waiting on review. */
+/** A PR's state as GitHub says it, wherever a PR shows [D202]: never Ready for one waiting on review. */
 export const STATE_WORDS: Record<PrState, string> = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" };
-export const STATE_TONES: Record<PrState, Tone> = { open: "good", draft: "quiet", merged: "merged", closed: "failed" };
 
 const EVENT_WORDS: Record<PrEvent["kind"], string> = {
   opened: "opened",
@@ -25,6 +14,11 @@ const EVENT_WORDS: Record<PrEvent["kind"], string> = {
   commented: "commented",
   merged: "merged",
   closed: "closed",
+  force_pushed: "force-pushed",
+  review_requested: "requested a review from",
+  reopened: "reopened",
+  ready: "marked it ready for review",
+  draft: "marked it as a draft",
 };
 
 export const eventWords = (event: PrEvent): string => EVENT_WORDS[event.kind];
@@ -59,3 +53,6 @@ export function blockerWords(pr: PullRequest): string | null {
   ].filter(Boolean);
   return parts.length > 0 ? `Can't merge yet: ${parts.join(" and ")}.` : null;
 }
+
+/** A read younger than the watch's quickest pace isn't asked again on open or focus [D207]. */
+export const FRESH_MS = 30_000;

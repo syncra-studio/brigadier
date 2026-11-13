@@ -57,6 +57,8 @@ export type Pr = {
   approved?: boolean | null;
   /** When the host last saw it change. */
   updatedAtMs?: number | null;
+  /** When its tab's read last kept it (`pr/<n>.json`): the tab brings that read in again [D207]. */
+  viewedAtMs?: number;
 };
 
 /**

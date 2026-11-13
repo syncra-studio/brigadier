@@ -1,12 +1,14 @@
+import { useEffect, useState } from "react";
 import { EmptyState } from "../components/empty-state";
-import { useDaemon } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { Branch, CheckCircle } from "../icons";
 import { openPr } from "../panel/open";
 import { Note } from "../panel/source/rows";
 import type { Pr } from "../panel/types";
 import { useSecond } from "../thread/words";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, XCircle } from "./icons";
-import { ago } from "./pr-words";
+import { CheckAgain } from "./pr-parts";
+import { ago, FRESH_MS } from "./pr-words";
 
 function StateIcon({ pr }: { pr: Pr }) {
   if (pr.state === "merged") return <PullRequestMerged className="size-icon-md text-pr-purple" />;
@@ -36,21 +38,34 @@ function Standing({ pr }: { pr: Pr }) {
 
 /**
  * The session's pull requests, when it has several [D206]: GitHub's list across the tab, open ones first, each opening
- * its PR [D175]. Straight from the watch's last read, with its age and, when the last read failed, why [D1009].
+ * its PR [D175]. Straight from the watch's last read, with its age and, when the last read failed, why [D1009]; read
+ * again on open when older than the watch's quickest pace, and on Check again [D207, D208].
  */
 export function PrList({ owner }: { owner: string }) {
   const { daemon, rows } = useDaemon();
   const kept = rows?.find((row) => row.id === owner)?.prs;
   const now = useSecond(true);
+  const [busy, setBusy] = useState(false);
+  // A failed read needs nothing here: prs.json keeps the last PRs with why, which the Note shows.
+  const check = () => {
+    setBusy(true);
+    ask({ op: "run", args: ["host", owner, "list"] }, () => setBusy(false));
+  };
+  const loaded = rows !== undefined;
+  useEffect(() => {
+    if (daemon && loaded && Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
+  }, [daemon, owner, loaded]);
   const prs = (kept?.prs ?? []).toSorted((a, b) => Number(b.state === "open") - Number(a.state === "open"));
   const open = prs.filter((pr) => pr.state === "open").length;
   return (
     <div data-slot="pr-list" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
       <header className="flex items-baseline gap-3">
         <h2 className="min-w-0 flex-1 font-display text-base font-medium">Pull requests</h2>
-        <span className="text-xs text-muted-foreground">
-          {!daemon ? "Reconnecting…" : rows === undefined ? "Loading…" : kept?.okAt ? `Checked ${ago(kept.okAt, now)}` : "Not checked yet"}
-        </span>
+        {loaded || !daemon ? (
+          <CheckAgain at={kept?.okAt ?? null} busy={busy} offline={!daemon} onClick={check} />
+        ) : (
+          <span className="text-xs text-muted-foreground">Loading…</span>
+        )}
       </header>
       {kept?.error && <Note warn text={`Couldn't check · ${kept.error.split("\n")[0]}`} />}
       {rows !== undefined && prs.length === 0 ? (

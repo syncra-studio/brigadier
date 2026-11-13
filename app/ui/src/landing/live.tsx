@@ -7,6 +7,7 @@ import { gitDone, gitFailed } from "../panel/notice";
 import { openPr } from "../panel/open";
 import { type AgentChip, chipFor } from "./agent-chip";
 import { PrTab } from "./pr-tab";
+import { FRESH_MS } from "./pr-words";
 import { ChecksFailedRow } from "./thread-rows";
 import { type PrSend, type PullRequest, sendKey } from "./pull-requests";
 
@@ -25,63 +26,104 @@ function textFor(pr: PullRequest, send: PrSend, chip: AgentChip): string {
   return `On ${on}: ${chip.kind === "event" ? `${chip.what}${chip.detail ? ` (${chip.detail})` : ""}` : ""}.`;
 }
 
+/** Failed checks' log tails by check id, each read once while the app runs; those asked so far. */
+const logs = new Map<string, string | null>();
+const asked = new Set<string>();
+
 /**
- * The live Pull requests tab (2.48, 2.27's tab): Rust's read of PR `number`, read on open, on focus and on each of the
- * watch's reads, failed ones too [D1017, D1290]. Merge is pinned to the head its confirm showed [D1077]; a refusal is said above the composer
- * [D1264]. Each Send leaves a chip the user sends [D1027].
+ * The live Pull requests tab [D204, D207]: PR `number`'s last read, kept in the session's folder, painted at once, then
+ * read again only when it's older than the watch's pace, on focus likewise, and on Check again [D208]. The watch reads
+ * it while the tab is open, and its row says so, which brings the kept read in again. A failed check's log tail is its
+ * own read, after the page shows. Merge is pinned to the head its confirm showed [D1077]; a refusal is said above the
+ * composer [D1264]. Each Send leaves a chip the user sends [D1027].
  */
 export function LivePrTab({ owner, number }: { owner: string; number: number }) {
   const { daemon, rows } = useDaemon();
-  const kept = rows?.find((row) => row.id === owner)?.prs;
+  const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number);
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
+  const [checking, setChecking] = useState(false);
   const [merging, setMerging] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  const [, setLogged] = useState(0);
   const chips = useChips(owner);
+  const latest = useRef<PullRequest>(undefined);
+  latest.current = pr;
+  // A newer read never gives way to an older one.
+  const land = (next: PullRequest) => setPr((now) => (now && (now.checkedAtMs ?? 0) > (next.checkedAtMs ?? 0) ? now : next));
   // One read at a time: one asked while another is out runs once that answers, so an action's is never lost.
   const reading = useRef(false);
   const again = useRef(false);
   const read = () => {
     if (reading.current) return void (again.current = true);
     reading.current = true;
+    setChecking(true);
     ask({ op: "run", args: ["host", owner, "view", String(number)] }, (reply) => {
       reading.current = false;
       if (again.current) {
         again.current = false;
         return read();
       }
+      setChecking(false);
       if (reply.ok) {
-        setPr(reply.pr);
+        land(reply.pr);
         setError(undefined);
       } else if (reply.error !== "disconnected") {
         // A read that fails keeps the last one on screen with why [D1009].
         setError(String(reply.error));
-        setPr((last) => last && { ...last, problem: String(reply.error) });
       }
     });
   };
+  const stale = () => Date.now() - (latest.current?.checkedAtMs ?? 0) > FRESH_MS;
+  // The kept read at once, and again whenever the row says a newer one was kept; a stale one is read afresh.
   useEffect(() => {
     if (!daemon) return;
-    read();
-    addEventListener("focus", read);
-    return () => removeEventListener("focus", read);
-  }, [daemon, owner, number, JSON.stringify(kept)]);
+    ask({ op: "run", args: ["host", owner, "view", String(number), "kept"] }, (reply) => {
+      if (reply.ok && reply.pr) land(reply.pr);
+      latest.current = reply.ok && reply.pr && (!latest.current || reply.pr.checkedAtMs > (latest.current.checkedAtMs ?? 0)) ? reply.pr : latest.current;
+      if (stale()) read();
+    });
+  }, [daemon, owner, number, row?.viewedAtMs]);
+  useEffect(() => {
+    if (!daemon) return;
+    const focus = () => stale() && read();
+    addEventListener("focus", focus);
+    return () => removeEventListener("focus", focus);
+  }, [daemon, owner, number]);
+  // Each failed check's log tail, once the page shows: one read each, at once.
+  useEffect(() => {
+    if (!daemon || !pr) return;
+    for (const check of pr.checks) {
+      if (check.state !== "failed" || !check.url || asked.has(check.id)) continue;
+      asked.add(check.id);
+      ask({ op: "run", args: ["host", owner, "log", check.url] }, (reply) => {
+        if (!reply.ok) return void asked.delete(check.id);
+        logs.set(check.id, reply.log ?? null);
+        setLogged((n) => n + 1);
+      });
+    }
+  }, [daemon, pr]);
 
+  const shown = pr && { ...pr, checks: pr.checks.map((check) => (logs.has(check.id) ? { ...check, logTail: logs.get(check.id) ?? null } : check)) };
   const added = new Set(chips.flatMap((chip) => (chip.kind === "agent" && chip.pr === number ? [chip.key] : [])));
   return (
     <PrTab
-      pr={pr}
+      owner={owner}
+      pr={shown}
+      row={row}
       error={error}
+      checking={checking}
       merging={merging}
       refused={refused}
+      onCheck={read}
       sends={{
         now: Date.now(),
         offline: !daemon,
         added,
         onSend: (send) => {
-          if (!pr || added.has(sendKey(send))) return;
-          const chip = chipFor(pr, send);
-          addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: sendKey(send), pr: number, chip, text: textFor(pr, send, chip) });
+          if (!shown || added.has(sendKey(send))) return;
+          const chip = chipFor(shown, send);
+          addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: sendKey(send), pr: number, chip, text: textFor(shown, send, chip) });
         },
         onOpen: (what) => {
           const url = what === "pr" ? pr?.url : "check" in what ? pr?.checks.find((c) => c.id === what.check)?.url : pr?.comments.find((c) => c.id === what.comment)?.url;

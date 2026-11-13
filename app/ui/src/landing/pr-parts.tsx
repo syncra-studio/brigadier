@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
 
+import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
+import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { Timeline } from "../components/timeline";
-import { ArrowUpRight, Check, CheckCircle, ChevronRight, Comment, Warning } from "../icons";
+import { Section } from "../components/section";
+import { ArrowUpRight, Check, CheckCircle, ChevronRight, Comment, Commit, Dot, Reload } from "../icons";
+import { Markdown } from "../thread/markdown";
+import { useSecond } from "../thread/words";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles, XCircle } from "./icons";
-import { blockerWords, clock, duration, eventWords, TONES, type Tone } from "./pr-words";
-import { type PrCheck, type PrComment, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
+import { ago, duration, eventWords, STATE_WORDS } from "./pr-words";
+import { type PrCheck, type PrComment, type PrEvent, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
 
 /** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
 export type Sends = {
@@ -22,15 +26,6 @@ export type Sends = {
 
 const PR_ICONS = { open: PullRequestOpen, draft: PullRequestDraft, merged: PullRequestMerged, closed: PullRequestClosed };
 
-export function PrIcon({ state, tone }: { state: PrState; tone: Tone }) {
-  const Icon = PR_ICONS[state];
-  return (
-    <span className={cx("flex", TONES[tone])}>
-      <Icon className="size-icon-sm" />
-    </span>
-  );
-}
-
 /** A Send to agent button: it leaves a chip above the composer and sends nothing [D1019, D1027]; once it has, it reads Added. */
 export function SendButton({ send, label = "Send to agent", sends }: { send: PrSend; label?: string; sends: Sends }) {
   const added = sends.added.has(sendKey(send));
@@ -42,17 +37,39 @@ export function SendButton({ send, label = "Send to agent", sends }: { send: PrS
   );
 }
 
-export function Heading({ children, end }: { children: ReactNode; end?: ReactNode }) {
+/**
+ * When the host was last read, and Check again: it reads it now, the icon turning until it answers [D208]. It ticks on
+ * its own, so the page under it isn't drawn again each second.
+ */
+export function CheckAgain({ at, busy, offline, onClick }: { at: number | null; busy: boolean; offline: boolean; onClick: () => void }) {
+  const now = useSecond(at !== null);
   return (
-    <h3 className="flex items-center gap-2 px-2 text-xs font-semibold tracking-wide text-muted-foreground">
-      {children}
-      {end}
-    </h3>
+    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+      {offline ? "Reconnecting…" : at !== null ? `Checked ${ago(at, now)}` : busy ? "Checking…" : "Not checked yet"}
+      <TooltipIconButton tooltip="Check again" size="icon-sm" disabled={offline || busy} onClick={onClick}>
+        <Reload className={cx(busy && "animate-spin motion-reduce:animate-none")} />
+      </TooltipIconButton>
+    </span>
   );
 }
 
-export function Quiet({ children }: { children: ReactNode }) {
-  return <p className="px-2 py-1.5 text-sm text-muted-foreground">{children}</p>;
+const BADGES = {
+  open: { variant: "success", tint: "" },
+  draft: { variant: "secondary", tint: "text-muted-foreground" },
+  merged: { variant: "secondary", tint: "text-pr-purple" },
+  closed: { variant: "destructive", tint: "" },
+} as const;
+
+/** Open, Draft, Merged or Closed, GitHub's state label from the kit's badges. */
+export function StateBadge({ state }: { state: PrState }) {
+  const { variant, tint } = BADGES[state];
+  const Icon = PR_ICONS[state];
+  return (
+    <Badge variant={variant} className={cx("h-6 px-2.5 text-sm", tint)}>
+      <Icon />
+      {STATE_WORDS[state]}
+    </Badge>
+  );
 }
 
 const CHECK_WORDS = { failed: "Failed", passed: "Passed", running: "Running" };
@@ -89,122 +106,270 @@ export function LogTail({ text }: { text: string }) {
   );
 }
 
-export function CommentRow({ comment, sends }: { comment: PrComment; sends: Sends }) {
-  const where = comment.path && (comment.line === null ? comment.path : `${comment.path}:${comment.line}`);
+const ORDER = { failed: 0, running: 1, passed: 2 };
+/** Failing first, then running, then passed, each by name, as GitHub's checks. */
+export const ordered = (checks: readonly PrCheck[]) => checks.toSorted((a, b) => ORDER[a.state] - ORDER[b.state] || a.name.localeCompare(b.name));
+
+// —— The merge box at the end of Conversation: review, checks folded to their sum, conflicts, then Merge [D204].
+
+function BoxRow({ icon, title, detail, end, children }: { icon: ReactNode; title: string; detail?: ReactNode; end?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="flex items-start gap-2 px-2 py-1.5 text-sm">
-      <Comment aria-hidden className="mt-0.5 size-icon-sm shrink-0 text-muted-foreground" />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span>
-          <span className="text-foreground">{comment.author}</span>{" "}
-          {where && <span className="font-mono text-xs text-muted-foreground">{where}</span>}
+    <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-start gap-3">
+        <span className="flex pt-0.5">{icon}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">{title}</span>
+          {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
         </span>
-        <span className="whitespace-pre-wrap text-muted-foreground">{comment.body}</span>
-      </span>
-      <SendButton send={{ kind: "comment", id: comment.id }} sends={sends} />
+        {end}
+      </div>
+      {children}
     </div>
   );
 }
 
-/** Overview: failing checks first with the log's tail, the reviews, then why it can't merge yet [D1017]. */
-export function Overview({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  const failed = pr.checks.filter((check) => check.state === "failed");
-  const order = [...failed, ...pr.checks.filter((check) => check.state !== "failed")];
-  const blocked = blockerWords(pr);
+const GOOD = <CheckCircle className="size-icon-md text-success" />;
+const BAD = <XCircle className="size-icon-md text-destructive" />;
+const WAIT = <Clock className="size-icon-md text-pr-yellow" />;
+
+export function MergeBox({ pr, sends, merge }: { pr: PullRequest; sends: Sends; merge: ReactNode }) {
+  const count = (state: PrCheck["state"]) => pr.checks.filter((check) => check.state === state).length;
+  const [failed, running, passed] = [count("failed"), count("running"), count("passed")];
+  const changes = pr.reviewers.filter((r) => r.state === "changes");
+  const approved = pr.reviewers.filter((r) => r.state === "approved");
+  const sum = [failed && `${failed} failing`, running && `${running} pending`, passed && `${passed} successful`].filter(Boolean).join(", ");
+  const checks = ordered(pr.checks);
   return (
-    <>
-      <section className="flex flex-col gap-1">
-        <Heading>CHECKS</Heading>
-        {order.length === 0 ? (
-          <Quiet>No checks on this pull request</Quiet>
-        ) : (
-          <ul className="flex flex-col">
-            {order.map((check) => (
-              <CheckRow key={check.id} check={check} host={pr.host} sends={sends} log={check.id === failed[0]?.id} />
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="flex flex-col gap-1">
-        <Heading end={(pr.blockers?.changesBy.length ?? 0) > 0 && <span className="font-normal tracking-normal text-pr-yellow">changes requested</span>}>REVIEWS</Heading>
-        {pr.comments.length === 0 ? <Quiet>No comments yet</Quiet> : <CommentList comments={pr.comments} sends={sends} />}
-      </section>
-      {blocked && (
-        <section className="flex items-center gap-3 rounded-control bg-pr-blocker px-3 py-2.5 text-sm">
-          <Warning aria-hidden className="size-icon-sm shrink-0 text-destructive" />
-          <span className="min-w-0 flex-1">{blocked}</span>
-          <SendButton send={{ kind: "fix" }} label="Send all to agent" sends={sends} />
-        </section>
+    <section data-slot="merge-box" className="flex flex-col divide-y divide-border overflow-clip rounded-surface border border-border">
+      {changes.length > 0 ? (
+        <BoxRow icon={BAD} title="Changes requested" detail={`${changes.map((r) => r.login).join(", ")} asked for changes`} end={<SendButton send={{ kind: "fix" }} sends={sends} />} />
+      ) : approved.length > 0 ? (
+        <BoxRow icon={GOOD} title="Changes approved" detail={`${approved.map((r) => r.login).join(", ")} approved`} />
+      ) : (
+        pr.state === "open" && <BoxRow icon={WAIT} title="Review required" detail="At least one approving review is needed" />
       )}
-    </>
+      {pr.checks.length === 0 ? (
+        <BoxRow icon={<CheckCircle className="size-icon-md text-muted-foreground" />} title="No checks" detail="Nothing runs on this pull request" />
+      ) : (
+        <Collapsible>
+          <BoxRow
+            icon={failed ? BAD : running ? WAIT : GOOD}
+            title={failed ? "Some checks were not successful" : running ? "Some checks haven't completed yet" : "All checks have passed"}
+            detail={sum}
+            end={
+              <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 rounded-control px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring">
+                <span className="group-data-panel-open:hidden">Show all</span>
+                <span className="hidden group-data-panel-open:inline">Hide all</span>
+                <ChevronRight className="size-icon-xs transition-transform group-data-panel-open:rotate-90" />
+              </CollapsibleTrigger>
+            }
+          >
+            {/* Failing ones show even folded, with their log's tail: what the user acts on. */}
+            {failed > 0 && (
+              <ul className="-mx-2 flex flex-col">
+                {checks.filter((check) => check.state === "failed").map((check) => (
+                  <CheckRow key={check.id} check={check} host={pr.host} sends={sends} log />
+                ))}
+              </ul>
+            )}
+            <CollapsibleContent>
+              <ul className="-mx-2 flex max-h-80 flex-col overflow-y-auto">
+                {checks.filter((check) => check.state !== "failed").map((check) => (
+                  <CheckRow key={check.id} check={check} host={pr.host} sends={sends} />
+                ))}
+              </ul>
+            </CollapsibleContent>
+          </BoxRow>
+        </Collapsible>
+      )}
+      {pr.state === "open" &&
+        (pr.blockers?.conflicts ? (
+          <BoxRow icon={BAD} title="This branch has conflicts that must be resolved" detail={`It conflicts with ${pr.base}`} end={<SendButton send={{ kind: "fix" }} sends={sends} />} />
+        ) : pr.mergeState === "behind" ? (
+          <BoxRow icon={WAIT} title="This branch is out-of-date with the base branch" detail={`Merge the latest changes from ${pr.base} into it`} />
+        ) : (
+          <BoxRow icon={GOOD} title="No conflicts with base branch" detail="Merging can be performed automatically" />
+        ))}
+      {merge && <div className="flex items-center gap-3 bg-fill-subtle px-4 py-3">{merge}</div>}
+    </section>
   );
 }
 
-export function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  if (pr.checks.length === 0) return <Quiet>No checks on this pull request</Quiet>;
-  return (
-    <ul className="flex flex-col gap-1">
-      {pr.checks.map((check) => (
-        <CheckRow key={check.id} check={check} host={pr.host} sends={sends} log />
-      ))}
-    </ul>
-  );
+// —— Conversation: the description, then what happened, oldest first, as GitHub's.
+
+function Avatar({ login }: { login: string }) {
+  return <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground uppercase">{login[0]}</span>;
 }
 
-export function Comments({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  if (pr.comments.length === 0) return <Quiet>No comments yet</Quiet>;
+function CommentBox({ author, at, body, where, end }: { author: string; at: string; body: string; where?: string | null; end?: ReactNode }) {
   return (
-    <div className="flex flex-col">
-      <CommentList comments={pr.comments} sends={sends} />
+    <div className="flex gap-3">
+      <Avatar login={author} />
+      <div className="min-w-0 flex-1 overflow-clip rounded-surface border border-border">
+        <div className="flex min-h-control-md items-center gap-2 border-b border-border bg-fill-subtle px-3 py-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{author}</span>
+          <span className="shrink-0">commented {at}</span>
+          {where && <span className="min-w-0 truncate font-mono">{where}</span>}
+          <span className="flex-1" />
+          {end}
+        </div>
+        <div className="px-3 py-2 text-sm">
+          <Markdown text={body} keep={`pr-${author}-${at}`} />
+        </div>
+      </div>
     </div>
   );
 }
 
-/** People's comments in order, then the bots' folded under one row, so the human ones stand out [D1230]. */
-function CommentList({ comments, sends }: { comments: PrComment[]; sends: Sends }) {
-  const bots = comments.filter((comment) => comment.bot);
+function EventLine({ icon, at, children, end }: { icon: ReactNode; at: string; children: ReactNode; end?: ReactNode }) {
   return (
-    <>
-      {comments.map((comment) => !comment.bot && <CommentRow key={comment.id} comment={comment} sends={sends} />)}
+    <div className="flex min-h-control-sm items-center gap-3 ps-1 text-sm text-muted-foreground">
+      <span aria-hidden className="flex size-4 shrink-0 items-center justify-center svg:size-icon-sm">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {end}
+      <span className="shrink-0 text-xs">{at}</span>
+    </div>
+  );
+}
+
+const EVENT_ICONS: Partial<Record<PrEvent["kind"], ReactNode>> = {
+  approved: <CheckCircle className="text-success" />,
+  changes_requested: <XCircle className="text-destructive" />,
+  merged: <PullRequestMerged className="text-pr-purple" />,
+  closed: <PullRequestClosed className="text-destructive" />,
+};
+
+// Events the agent can act on: a request for changes.
+const SENDABLE = new Set<PrEvent["kind"]>(["changes_requested"]);
+
+export function Conversation({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const at = (ms: number | null) => (ms === null ? "" : ago(ms, sends.now));
+  const who = (login: string) => <span className="text-foreground">{login}</span>;
+  const items: { at: number; node: ReactNode }[] = [
+    ...pr.commits.map((commit) => ({
+      at: commit.atMs ?? 0,
+      node: (
+        <EventLine key={commit.sha} icon={<Commit />} at={at(commit.atMs)}>
+          {commit.author && who(commit.author)} pushed <span className="font-mono text-xs">{commit.sha.slice(0, 7)}</span> {commit.message}
+        </EventLine>
+      ),
+    })),
+    ...pr.events.map((event) => ({
+      at: event.atMs,
+      node: (
+        <EventLine key={event.id} icon={EVENT_ICONS[event.kind] ?? <Dot />} at={at(event.atMs)} end={SENDABLE.has(event.kind) && <SendButton send={{ kind: "event", id: event.id }} sends={sends} />}>
+          {who(event.actor)} {eventWords(event)} {event.detail && who(event.detail)}
+        </EventLine>
+      ),
+    })),
+    ...pr.comments
+      .filter((comment) => !comment.bot)
+      .map((comment) => ({ at: comment.atMs, node: <CommentRow key={comment.id} comment={comment} sends={sends} /> })),
+  ].sort((a, b) => a.at - b.at);
+  const bots = pr.comments.filter((comment) => comment.bot);
+  return (
+    <div className="flex flex-col gap-4">
+      <CommentBox author={pr.openedBy} at={at(pr.openedAtMs)} body={pr.body?.trim() || "_No description provided._"} />
+      {items.map((item) => item.node)}
+      {/* The bots' comments fold under one row, so people's stand out [D1230]. */}
       {bots.length > 0 && (
         <Collapsible>
-          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 rounded-control py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
-            <ChevronRight aria-hidden className="size-icon-xs transition-transform group-data-panel-open:rotate-90" />
-            {bots.length === 1 ? "1 comment from a bot" : `${bots.length} comments from bots`}
+          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-3 ps-1 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
+            <ChevronRight className="size-icon-sm transition-transform group-data-panel-open:rotate-90" />
+            {bots.length === 1 ? "1 comment from a bot" : `${bots.length} comments from bots`} ({[...new Set(bots.map((bot) => bot.author))].join(", ")})
           </CollapsibleTrigger>
-          <CollapsibleContent>
+          <CollapsibleContent className="flex flex-col gap-4 pt-4">
             {bots.map((comment) => (
               <CommentRow key={comment.id} comment={comment} sends={sends} />
             ))}
           </CollapsibleContent>
         </Collapsible>
       )}
-    </>
+    </div>
   );
 }
 
-// Events the agent can act on: a failure, a request for changes, a comment.
-const SENDABLE = new Set(["checks_failed", "changes_requested", "commented"]);
+function CommentRow({ comment, sends }: { comment: PrComment; sends: Sends }) {
+  const where = comment.path && (comment.line === null ? comment.path : `${comment.path}:${comment.line}`);
+  return <CommentBox author={comment.author} at={ago(comment.atMs, sends.now)} body={comment.body} where={where} end={<SendButton send={{ kind: "comment", id: comment.id }} sends={sends} />} />;
+}
 
-/** Who did what, newest first, the old pull request history [D48]; what needs work has Send to agent [D1017]. */
-export function History({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  if (pr.events.length === 0) return <Quiet>No pull request history yet</Quiet>;
+const REVIEW_MARKS: Record<string, ReactNode> = {
+  approved: <CheckCircle aria-label="Approved" className="size-icon-sm text-success" />,
+  changes: <XCircle aria-label="Changes requested" className="size-icon-sm text-destructive" />,
+  commented: <Comment aria-label="Commented" className="size-icon-sm text-muted-foreground" />,
+  requested: <Dot aria-label="Review requested" className="size-icon-sm text-pr-yellow" />,
+};
+
+/** GitHub's side column: Reviewers, Assignees and Labels. */
+export function Side({ pr }: { pr: PullRequest }) {
+  const none = <span className="text-sm text-muted-foreground">None yet</span>;
   return (
-    <Timeline
-      className="px-2"
-      events={pr.events.map((event, index) => ({
-        id: event.id,
-        when: index === 0 && pr.state === "open" ? "now" : "past",
-        time: clock(event.atMs),
-        title: `#${pr.number} · ${eventWords(event)}`,
-        detail: [event.actor, event.detail].filter(Boolean).join(" · "),
-        failed: event.kind === "checks_failed",
-        more: SENDABLE.has(event.kind) && (
-          <span className="pt-1">
-            <SendButton send={event.check ? { kind: "check", id: event.check } : { kind: "event", id: event.id }} sends={sends} />
+    <aside className="flex flex-col gap-5">
+      <Section title="Reviewers">
+        {pr.reviewers.length === 0
+          ? none
+          : pr.reviewers.map((r) => (
+              <span key={r.login} className="flex items-center gap-2 text-sm">
+                <Avatar login={r.login} />
+                <span className="min-w-0 flex-1 truncate">{r.login}</span>
+                {REVIEW_MARKS[r.state]}
+              </span>
+            ))}
+      </Section>
+      <Section title="Assignees">
+        {pr.assignees.length === 0
+          ? none
+          : pr.assignees.map((login) => (
+              <span key={login} className="flex items-center gap-2 text-sm">
+                <Avatar login={login} />
+                <span className="min-w-0 truncate">{login}</span>
+              </span>
+            ))}
+      </Section>
+      <Section title="Labels">
+        {pr.labels.length === 0 ? (
+          none
+        ) : (
+          <span className="flex flex-wrap gap-1">
+            {pr.labels.map((label) => (
+              <Badge key={label} variant="secondary">
+                {label}
+              </Badge>
+            ))}
           </span>
-        ),
-      }))}
-    />
+        )}
+      </Section>
+    </aside>
+  );
+}
+
+export function Commits({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  if (pr.commits.length === 0) return <EmptyState title="No commits yet" />;
+  return (
+    <ul className="flex flex-col divide-y divide-border overflow-clip rounded-surface border border-border">
+      {pr.commits.toReversed().map((commit) => (
+        <li key={commit.sha} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+          <span className="min-w-0 flex-1 truncate text-foreground">{commit.message}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {[commit.author, commit.atMs !== null && ago(commit.atMs, sends.now)].filter(Boolean).join(" · ")}
+          </span>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{commit.sha.slice(0, 7)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  if (pr.checks.length === 0) return <EmptyState title="No checks on this pull request" />;
+  return (
+    <ul className="flex flex-col">
+      {ordered(pr.checks).map((check) => (
+        <CheckRow key={check.id} check={check} host={pr.host} sends={sends} log />
+      ))}
+    </ul>
   );
 }

@@ -1,5 +1,5 @@
-// A session's pull request as Rust's host module reads it (`host <id> view <n>`, 2.48): structure only, the UI writes
-// the words [D65, D71, D1017]. The gallery feeds it fake data [D388].
+// A session's pull request as Rust's host module reads it (`host <id> view <n>`, one GraphQL read [D207]): structure
+// only, the UI writes the words [D65, D71, D1017].
 
 export type PrState = "open" | "draft" | "merged" | "closed";
 export type PrStatus = "merged" | "closed" | "checks_failed" | "draft" | "checks_running" | "changes_requested" | "conflicts" | "ready" | "review_needed";
@@ -33,7 +33,26 @@ export type PullRequest = {
   comments: PrComment[];
   /** Newest first. */
   events: PrEvent[];
+  /** Its description, as the author wrote it (markdown). */
+  body: string | null;
+  additions: number;
+  deletions: number;
+  files: number;
+  commitCount: number;
+  /** Its last commits, oldest first. */
+  commits: PrCommit[];
+  /** Who's asked to review, then who has, as GitHub's Reviewers. */
+  reviewers: PrReviewer[];
+  assignees: string[];
+  labels: string[];
+  /** GitHub's merge state, lower case: clean, blocked, behind, dirty, unstable, has_hooks, unknown. */
+  mergeState: string | null;
+  /** It's the session's own branch's: Files changed shows the Review tab's branch diff [D204]. */
+  onBranch: boolean;
 };
+
+export type PrCommit = { sha: string; message: string; author: string | null; atMs: number | null };
+export type PrReviewer = { login: string; state: "approved" | "changes" | "commented" | "requested" };
 
 export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null; url: string | null };
 
@@ -43,7 +62,22 @@ export type PrComment = { id: string; author: string; path: string | null; line:
 export type PrEvent = {
   id: string;
   atMs: number;
-  kind: "opened" | "pushed" | "checks_running" | "checks_failed" | "checks_passed" | "changes_requested" | "approved" | "commented" | "merged" | "closed";
+  kind:
+    | "opened"
+    | "pushed"
+    | "force_pushed"
+    | "review_requested"
+    | "checks_running"
+    | "checks_failed"
+    | "checks_passed"
+    | "changes_requested"
+    | "approved"
+    | "commented"
+    | "merged"
+    | "closed"
+    | "reopened"
+    | "ready"
+    | "draft";
   actor: string;
   /** Names the event carries: a failing check, a commit count. */
   detail: string | null;
