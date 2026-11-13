@@ -101,11 +101,16 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
 }
 
 /// Whether the user picked another agent, or another model of `backend`, than the running turn
-/// was given [D124].
+/// was given [D124], or a level its agent couldn't take mid-turn (`send::relevel`) [D166].
 fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
     let model = as_run(spec, f, backend, None).model;
+    let held = || crate::projects::held(&crate::data_of(spec), spec);
+    let level = || crate::adapters::get(backend).and_then(|a| crate::level(spec, a, held()).ok());
     f.picked.is_some()
-        || (f.given.as_ref()).is_some_and(|g| g["model"].as_str() != model.as_deref())
+        || (f.given.as_ref()).is_some_and(|g| {
+            g["model"].as_str() != model.as_deref()
+                || level().is_some_and(|l| g["level"].as_str() != l)
+        })
 }
 
 /// The fresh conversations in a row, this turn's the last, that a cut began and that did nothing
