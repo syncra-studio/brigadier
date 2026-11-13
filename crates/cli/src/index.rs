@@ -319,7 +319,11 @@ impl Index {
             let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
             row["rebirth"] = json!(due.or(lost.then_some("cut")));
             // The turn the loop guard stopped: its line offers Continue [D144].
-            let stalled = f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold));
+            let stalled = f
+                .fold
+                .last
+                .as_ref()
+                .filter(|_| core::rebirth::stalled(&f.fold));
             row["stalled"] = stalled.map_or(Value::Null, |l| l["id"].clone());
             // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].
             // A cut for a model picked mid-turn is no rebirth [D124].

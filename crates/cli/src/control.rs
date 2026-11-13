@@ -226,7 +226,9 @@ pub fn steer_as(
         match (running, can) {
             (false, _) => Err(refused("not_running", Value::Null)),
             (_, false) => Err(refused("unsupported", Value::Null)),
-            _ => Ok(json!({"kind": "steer", "text": msg.agent, "images": images, "commands": msg.commands})),
+            _ => Ok(
+                json!({"kind": "steer", "text": msg.agent, "images": images, "commands": msg.commands}),
+            ),
         }
     })
 }

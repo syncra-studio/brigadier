@@ -129,7 +129,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     for id in ids.iter().filter(|a| {
-        *a != "--all" && !(matches!(cmd, "draft" | "tabs" | "attach" | "commands") && *a == HOME_DRAFT)
+        *a != "--all"
+            && !(matches!(cmd, "draft" | "tabs" | "attach" | "commands") && *a == HOME_DRAFT)
     }) {
         core::check_id(id)?;
     }
@@ -165,7 +166,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let worktree = project.is_some() && !has(args, "--local");
             // A chat with no project works in a folder of its own, gone with the session [D35, D388].
-            let scratch = has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
+            let scratch =
+                has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
             let cwd = flag(args, "--cwd")
                 .map(String::from)
                 .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
@@ -310,7 +312,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(Value::Null)
         }
-        "stop" => queue::stop(data, arg(args, 1)?, "user").inspect(|_| workers::still(data, &args[1])),
+        "stop" => {
+            queue::stop(data, arg(args, 1)?, "user").inspect(|_| workers::still(data, &args[1]))
+        }
         "workers" => workers::run(data, args),
         "peers" => peers::run(data, args),
         "rewind" => rewind::run(data, args),

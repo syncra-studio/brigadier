@@ -200,7 +200,9 @@ impl Agent {
 
     /// A hand-off's `reborn:N:a+b`, while fewer than N fresh conversations acted it: `a b`.
     fn reborn(&self, text: &str) -> Option<String> {
-        let word = text.split_whitespace().find_map(|w| w.strip_prefix("reborn:"))?;
+        let word = text
+            .split_whitespace()
+            .find_map(|w| w.strip_prefix("reborn:"))?;
         let (n, directives) = word.split_once(':')?;
         let count = self.home.join("reborn");
         let done = fs::read_to_string(&count).map_or(0, |c| c.len());
@@ -208,7 +210,11 @@ impl Agent {
             return None;
         }
         append(&count, "");
-        Some(directives.trim_end_matches(|c: char| !c.is_alphanumeric()).replace('+', " "))
+        Some(
+            directives
+                .trim_end_matches(|c: char| !c.is_alphanumeric())
+                .replace('+', " "),
+        )
     }
 
     fn handle(&mut self, text: &str) {
@@ -230,7 +236,10 @@ impl Agent {
         .map_or(text, |(_, body)| body);
         // A hand-off is prose: only the message after its Next step acts [D88], or what the task's
         // `reborn:N:a+b` asks of its first N fresh conversations: `a b` again [D144].
-        let again = text.contains("\n## Next\n").then(|| self.reborn(text)).flatten();
+        let again = text
+            .contains("\n## Next\n")
+            .then(|| self.reborn(text))
+            .flatten();
         let body = match text.split_once("\n## Next\n") {
             _ if again.is_some() => again.as_deref().unwrap_or(""),
             Some((_, next)) => next.split_once('\n').map_or("", |n| n.1).trim(),
