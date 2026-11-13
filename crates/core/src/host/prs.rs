@@ -2,12 +2,14 @@
 //! the session's `prs.json` by every read: the watch's, `info`'s and a merge's [D1009, D1017].
 //! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
 //! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
+//! Its PRs are every one the session touched [D175]: its branches' (kept once read, whichever branch
+//! it's on now), and those its own commands opened, merged or changed.
 
-use super::{GH_SECS, Kind, Pr, Repo, failed, gh, setup, tool};
+use super::{GH_SECS, Gh, Kind, Pr, Repo, failed, gh, setup};
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -21,9 +23,12 @@ static BUSY: Mutex<BTreeMap<PathBuf, Arc<Mutex<()>>>> = Mutex::new(BTreeMap::new
 /// What a read gave: the PRs and, when one PR's checks couldn't be read, why; or why none could be.
 type Read = Result<(Vec<Value>, Option<String>), String>;
 
+/// What a PR read asks gh for.
+const FIELDS: &str = "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,isDraft,statusCheckRollup";
+
 impl Pr {
-    /// The branch's PRs, read now and kept; None when the host couldn't list them.
-    pub(super) fn prs(&self, gh: &str) -> Option<Value> {
+    /// The session's PRs, read now and kept; None when the host couldn't list them.
+    pub(super) fn prs(&self, gh: &Gh) -> Option<Value> {
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let read = self.read(gh);
@@ -37,7 +42,6 @@ impl Pr {
     pub fn watch(&self) -> Option<Value> {
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
-        self.current();
         // Only GitHub's PRs are read (through gh) until GitLab's (2.32) [D1030].
         let repo = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub)?;
         let key = format!("branch.{}.remote", self.branch);
@@ -49,7 +53,7 @@ impl Pr {
         .ok()?;
         Some(match gh(repo) {
             Some(gh) => self.keep(self.read(&gh)),
-            None => self.keep(Err("gh isn't installed or signed in here.".into())),
+            None => self.keep(Err(super::NO_GH.into())),
         })
     }
 
@@ -58,33 +62,30 @@ impl Pr {
         busy.entry(self.dir.clone()).or_default().clone()
     }
 
-    /// The kept PRs, if they're this branch's: another's (a rename or switch) are dropped.
-    fn current(&self) -> Value {
-        let kept = kept(&self.dir);
-        if kept.is_null() || kept["branch"] == self.branch.as_str() {
-            return kept;
-        }
-        let _ = fs::remove_file(self.dir.join("prs.json"));
-        Value::Null
-    }
-
     /// A PR pushed to mid-read (its head moved between the list and its checks) is read once more,
     /// so a push, or a merge it refused, isn't kept as a read that couldn't check.
-    fn read(&self, gh: &str) -> Read {
+    fn read(&self, gh: &Gh) -> Read {
         match self.read_once(gh) {
             Ok((_, Some(_))) => self.read_once(gh),
             read => read,
         }
     }
 
-    fn read_once(&self, gh: &str) -> Read {
+    fn read_once(&self, gh: &Gh) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
         };
-        let mut command = tool(gh);
-        command.args(["pr", "list", &format!("--repo={}/{}", repo.host, repo.path),
-            &format!("--head={}", self.branch), "--state=all", "--limit=100",
-            "--json=number,url,title,state,mergeable,reviewDecision,headRefName,headRefOid,headRepository,baseRefName,mergeCommit,mergedAt,isDraft,statusCheckRollup"]);
+        let slug = format!("--repo={}/{}", repo.host, repo.path);
+        let mut command = gh.command();
+        command.args([
+            "pr",
+            "list",
+            &slug,
+            &format!("--head={}", self.branch),
+            "--state=all",
+            "--limit=100",
+            FIELDS,
+        ]);
         let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
         if !out.status.success() {
             return Err(failed(&out));
@@ -103,21 +104,53 @@ impl Pr {
             open.and_then(|p| p["number"].as_u64()),
         );
         let mut error = None;
-        let rows = (mine.into_iter())
-            .map(|p| {
-                if p["state"] == "MERGED" {
-                    self.record_merge(p);
-                }
-                let checks = (p["state"] == "OPEN")
-                    .then(|| {
-                        checks(gh, repo, p)
-                            .map_err(|e| error.get_or_insert(e).clone())
-                            .ok()
-                    })
-                    .flatten();
-                row(p, checks.as_deref())
-            })
+        for p in (mine.iter()).filter(|p| p["state"] == "MERGED") {
+            self.record_merge(p);
+        }
+        let mut row_of = |p: &Value| {
+            let checks = (p["state"] == "OPEN")
+                .then(|| {
+                    checks(gh, repo, p)
+                        .map_err(|e| error.get_or_insert(e).clone())
+                        .ok()
+                })
+                .flatten();
+            row(p, checks.as_deref())
+        };
+        let mut rows: Vec<Value> = mine.iter().map(|p| row_of(p)).collect();
+        // The session's other PRs [D175], newest first: those kept from its other branches, read
+        // again until merged (then final), and those its own commands touched.
+        let old = kept(&self.dir);
+        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
+        let numbers: BTreeSet<u64> = (old.iter().filter_map(|p| p["number"].as_u64()))
+            .chain(touched(&self.dir, repo))
+            .filter(|n| mine.iter().all(|p| p["number"] != *n))
             .collect();
+        let mut missed = None;
+        for n in numbers.into_iter().rev() {
+            let was = old.iter().find(|p| p["number"] == n);
+            if let Some(was) = was.filter(|p| p["state"] == "merged") {
+                rows.push((*was).clone());
+                continue;
+            }
+            let mut command = gh.command();
+            command.args(["pr", "view", &n.to_string(), &slug, FIELDS]);
+            let read =
+                setup::run(&mut command, GH_SECS).and_then(|out| match out.status.success() {
+                    true => serde_json::from_slice::<Value>(&out.stdout).map_err(|e| e.to_string()),
+                    false => Err(failed(&out)),
+                });
+            match (read, was) {
+                (Ok(p), _) => rows.push(row_of(&p)),
+                // One read before keeps its last row with why; one never read (no PR here) waits.
+                (Err(e), Some(was)) => {
+                    rows.push((*was).clone());
+                    missed.get_or_insert(e);
+                }
+                (Err(_), None) => {}
+            }
+        }
+        let error = error.or(missed);
         Ok((rows, error))
     }
 
@@ -126,7 +159,7 @@ impl Pr {
     /// read. Written only when something in it changed.
     fn keep(&self, read: Read) -> Value {
         let path = self.dir.join("prs.json");
-        let old = self.current();
+        let old = kept(&self.dir);
         // The branch's local head, read even when the host can't be: new commits clear Merged.
         let head = git::read(
             &self.checkout.root,
@@ -207,6 +240,83 @@ impl Pr {
     }
 }
 
+/// What a host CLI's `pr` command does that makes its PR one the session touched [D175].
+const TOUCH: [&str; 8] = [
+    "create", "merge", "edit", "ready", "comment", "review", "close", "reopen",
+];
+
+/// The PRs on `repo` the session's own commands opened, merged or changed [D175]: a `pr <verb>`
+/// naming one by number or URL, and the URL a `pr create` printed. Read from the session's saved
+/// rows, so a command counts once its turn has ended.
+// shortcut: gh's command shape only (no glab `mr`, API calls or MCP tools), and a number only as
+// its first non-option argument, until a host or agent is seen doing it another way.
+fn touched(dir: &Path, repo: &Repo) -> Vec<u64> {
+    let Ok(rows) = fs::read(dir.join("thread").join("rows")) else {
+        return Vec::new();
+    };
+    let url = format!("{}/{}/pull/", repo.host, repo.path).to_ascii_lowercase();
+    let in_urls = |text: &str| -> Vec<u64> {
+        let text = text.to_ascii_lowercase();
+        (text.match_indices(&url))
+            .filter_map(|(at, _)| {
+                let rest = &text[at + url.len()..];
+                let end = rest
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(rest.len());
+                rest[..end].parse().ok()
+            })
+            .collect()
+    };
+    let ours = |r: &str| {
+        let (r, path) = (
+            r.trim_matches(['"', '\'']).to_ascii_lowercase(),
+            repo.path.to_ascii_lowercase(),
+        );
+        r == path || r.ends_with(&format!("/{path}"))
+    };
+    let has = |line: &[u8], what: &[u8]| line.windows(what.len()).any(|w| w == what);
+    let mut found = Vec::new();
+    for line in rows.split(|b| *b == b'\n') {
+        // Most rows aren't a command's, and most commands no PR's: those aren't parsed.
+        if !has(line, b"\"step\":\"run\"") || !has(line, b"pr ") {
+            continue;
+        }
+        let Ok(row) = serde_json::from_slice::<Value>(line) else {
+            continue;
+        };
+        let Some(input) = row["input"].as_str() else {
+            continue;
+        };
+        for part in input.split(['\n', ';', '&', '|']) {
+            let words: Vec<&str> = part.split_whitespace().collect();
+            let Some(at) = (words.windows(2)).position(|w| w[0] == "pr" && TOUCH.contains(&w[1]))
+            else {
+                continue;
+            };
+            let (mut rest, mut first, mut elsewhere) = (words[at + 2..].iter(), None, false);
+            while let Some(w) = rest.next() {
+                match *w {
+                    "-R" | "--repo" => elsewhere |= rest.next().is_some_and(|r| !ours(r)),
+                    w if w.starts_with("--repo=") => elsewhere |= !ours(&w["--repo=".len()..]),
+                    w if w.starts_with('-') => {}
+                    w => first = first.or(Some(w.trim_matches(['"', '\'']))),
+                }
+            }
+            if elsewhere {
+                continue;
+            }
+            if let Some(w) = first {
+                found.extend(w.trim_start_matches('#').parse::<u64>().ok());
+                found.extend(in_urls(w));
+            }
+            if words[at + 1] == "create" {
+                found.extend(in_urls(row["output"].as_str().unwrap_or("")));
+            }
+        }
+    }
+    found
+}
+
 pub(super) fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
     pr["headRefName"] == branch
         && pr["headRepository"]["nameWithOwner"]
@@ -215,7 +325,7 @@ pub(super) fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {
 }
 
 /// gh owns newest-run deduplication by name, workflow and event, including legacy contexts.
-pub(super) fn checks(gh: &str, repo: &Repo, pr: &Value) -> Result<Vec<Value>, String> {
+pub(super) fn checks(gh: &Gh, repo: &Repo, pr: &Value) -> Result<Vec<Value>, String> {
     // `gh pr checks` fails on a PR with none; the list's rollup, read with its head, says so.
     if pr["statusCheckRollup"]
         .as_array()
@@ -228,7 +338,7 @@ pub(super) fn checks(gh: &str, repo: &Repo, pr: &Value) -> Result<Vec<Value>, St
         .ok_or("gh named no PR number.")?
         .to_string();
     let run = |args: &[&str]| -> Result<Value, String> {
-        let mut command = tool(gh);
+        let mut command = gh.command();
         command.args(args);
         let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
         if !out.status.success() {
@@ -273,7 +383,7 @@ fn row(pr: &Value, checks: Option<&[Value]>) -> Value {
     };
     json!({"number": pr["number"], "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "health": health,
-        "head": pr["headRefOid"], "mergeCommit": pr["mergeCommit"]["oid"], "base": pr["baseRefName"],
+        "head": pr["headRefOid"], "branch": pr["headRefName"], "mergeCommit": pr["mergeCommit"]["oid"], "base": pr["baseRefName"],
         "failed": failed, "running": running, "mergedAt": pr["mergedAt"], "draft": pr["isDraft"],
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),

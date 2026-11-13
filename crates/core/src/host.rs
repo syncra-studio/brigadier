@@ -19,6 +19,8 @@ use std::sync::atomic::AtomicBool;
 
 /// Proposed: gh gets this long for a look, and a create this long.
 const GH_SECS: u64 = 20;
+/// Why a host read couldn't start.
+const NO_GH: &str = "gh isn't installed, or signed in to an account that can read this repository.";
 /// Proposed: the GitHub list's length.
 const GH_LIMIT: &str = "200";
 
@@ -82,27 +84,35 @@ impl Repo {
 // Forgejo reads as unknown and gets Push branch only, until a setting names its kind.
 pub fn repo(url: &str) -> Option<Repo> {
     let url = url.trim();
-    let (host, path) = match url.split_once("://") {
-        Some((_, rest)) => {
+    let (host, path, ssh) = match url.split_once("://") {
+        Some((scheme, rest)) => {
             let (authority, path) = rest.split_once('/')?;
             let host = authority.rsplit('@').next()?;
-            (host.split(':').next()?, path)
+            (host.split(':').next()?, path, scheme.contains("ssh"))
         }
         // user@host:path, git's scp-like form.
         None => {
             let (authority, path) = url.split_once(':')?;
-            (authority.rsplit('@').next()?, path)
+            (authority.rsplit('@').next()?, path, true)
         }
     };
-    let host = host.to_ascii_lowercase();
-    let kind = match host.as_str() {
-        "github.com" => Kind::GitHub,
-        "gitlab.com" => Kind::GitLab,
-        "bitbucket.org" => Kind::Bitbucket,
-        "gitea.com" => Kind::Gitea,
-        "codeberg.org" => Kind::Forgejo,
-        _ => return None,
+    let known = |host: &str| match host {
+        "github.com" => Some(Kind::GitHub),
+        "gitlab.com" => Some(Kind::GitLab),
+        "bitbucket.org" => Some(Kind::Bitbucket),
+        "gitea.com" => Some(Kind::Gitea),
+        "codeberg.org" => Some(Kind::Forgejo),
+        _ => None,
     };
+    let mut host = host.to_ascii_lowercase();
+    // An ssh host alias (`github.com-work`) is the host its ssh config names, as git's push finds it.
+    if ssh
+        && known(&host).is_none()
+        && let Some(real) = ssh_host(&host)
+    {
+        host = real;
+    }
+    let kind = known(&host)?;
     let path = path.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
     (path.contains('/') && !path.split('/').any(|p| p.is_empty() || p == "..")).then(|| Repo {
@@ -112,17 +122,102 @@ pub fn repo(url: &str) -> Option<Repo> {
     })
 }
 
-/// gh, when it's installed and its active account for `repo`'s server is signed in. Only GitHub
-/// has a CLI here yet; GitLab's glab is a later slice [D1030].
-fn gh(repo: &Repo) -> Option<String> {
+/// The host ssh connects to for `alias`, by its own config (`ssh -G`).
+fn ssh_host(alias: &str) -> Option<String> {
+    let mut command = tool("ssh");
+    command.args(["-G", "--", alias]);
+    let out = setup::run(&mut command, GH_SECS).ok()?;
+    let config = String::from_utf8_lossy(&out.stdout);
+    let real = config.lines().find_map(|l| l.strip_prefix("hostname "))?;
+    out.status
+        .success()
+        .then(|| real.trim().to_ascii_lowercase())
+}
+
+/// gh as one signed-in account: the active one, or another's token in each child's environment only.
+struct Gh {
+    path: String,
+    token: Option<String>,
+}
+
+impl Gh {
+    fn command(&self) -> std::process::Command {
+        let mut command = tool(&self.path);
+        if let Some(token) = &self.token {
+            command.env("GH_TOKEN", token);
+        }
+        command
+    }
+}
+
+/// Which account last read each repository (`host/path`; None is the active one), tried first.
+static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
+
+/// gh as an account that can read `repo`: the one that last did, the active one, else each other
+/// account signed in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
+/// later slice [D1030].
+fn gh(repo: &Repo) -> Option<Gh> {
     if repo.kind != Kind::GitHub {
         return None;
     }
-    let gh = setup::find("gh", &[])?.to_str()?.to_string();
-    let mut command = tool(&gh);
-    command.args(["auth", "status", "--active", "--hostname", &repo.host]);
+    let path = setup::find("gh", &[])?.to_str()?.to_string();
+    let key = format!("{}/{}", repo.host, repo.path);
+    let last = READER.lock().unwrap().get(&key).cloned();
+    let others = std::iter::once_with(|| others(&path, &repo.host)).flatten();
+    let mut tried = Vec::new();
+    for user in last.into_iter().chain([None]).chain(others.map(Some)) {
+        if tried.contains(&user) {
+            continue;
+        }
+        tried.push(user.clone());
+        let token = match &user {
+            Some(user) => match token(&path, &repo.host, user) {
+                Some(token) => Some(token),
+                None => continue,
+            },
+            None => None,
+        };
+        let gh = Gh {
+            path: path.clone(),
+            token,
+        };
+        let mut probe = gh.command();
+        probe.args([
+            "api",
+            "--hostname",
+            &repo.host,
+            "--silent",
+            &format!("repos/{}", repo.path),
+        ]);
+        if setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success()) {
+            READER.lock().unwrap().insert(key, user);
+            return Some(gh);
+        }
+    }
+    None
+}
+
+/// The accounts gh has signed in for `host` other than its active one.
+fn others(gh: &str, host: &str) -> Vec<String> {
+    let mut command = tool(gh);
+    command.args(["auth", "status", "--hostname", host, "--json", "hosts"]);
+    let Ok(out) = setup::run(&mut command, GH_SECS) else {
+        return Vec::new();
+    };
+    let status: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    (status["hosts"][host].as_array().into_iter().flatten())
+        .filter(|a| a["active"] != true && a["state"] == "success")
+        .filter_map(|a| a["login"].as_str().map(String::from))
+        .collect()
+}
+
+/// `user`'s token for `host`, kept by gh; never printed, logged or stored here.
+fn token(gh: &str, host: &str, user: &str) -> Option<String> {
+    let mut command = tool(gh);
+    command.args(["auth", "token", "--hostname", host, "--user", user]);
     let out = setup::run(&mut command, GH_SECS).ok()?;
-    out.status.success().then_some(gh)
+    let token = String::from_utf8(out.stdout).ok()?.trim().to_string();
+    (out.status.success() && !token.is_empty()).then_some(token)
 }
 
 /// What a session's Create PR works from: its checkout, branch, push remote, the base it lands
@@ -146,9 +241,8 @@ pub struct Pr {
 pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let checkout = git::checkout(data, &Target::Session(id))?;
     // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
-    let Some(base) = crate::share::base(data, &crate::load(data, id)?) else {
-        return err("This session has no base to open a PR into.");
-    };
+    // A Local session has none: its PRs are still read, and none of them lands it.
+    let base = crate::share::base(data, &crate::load(data, id)?).unwrap_or_default();
     let never = AtomicBool::new(false);
     let out = git::read(
         &checkout.root,

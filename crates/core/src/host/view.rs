@@ -2,7 +2,7 @@
 //! D1030]. Checks come from `prs::checks`, gh's newest-run view with its head recheck [D1192];
 //! comments and the timeline from the REST API, paginated, as `gh pr view` carries neither.
 
-use super::{GH_SECS, Pr, Repo, err, failed, gh, setup, tool};
+use super::{GH_SECS, Gh, Pr, Repo, err, failed, gh, setup};
 use serde_json::{Value, json};
 use std::io;
 
@@ -11,10 +11,10 @@ const TAIL_LINES: usize = 40;
 const MERGE_SECS: u64 = 60;
 
 impl Pr {
-    fn gh_repo(&self) -> io::Result<(&Repo, String)> {
+    fn gh_repo(&self) -> io::Result<(&Repo, Gh)> {
         match self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) {
             Some(found) => Ok(found),
-            None => err("gh isn't installed or signed in here."),
+            None => err(super::NO_GH),
         }
     }
 
@@ -33,12 +33,15 @@ impl Pr {
                 "--json=number,url,title,body,state,isDraft,author,createdAt,headRefName,headRefOid,headRepository,baseRefName,mergeable,reviewDecision,latestReviews,statusCheckRollup,mergeCommit",
             ],
         )?;
-        if !super::prs::belongs(&pr, repo, &self.branch) {
-            return err(format!("#{number} isn't this branch's PR."));
+        // The branch's PR, or another the session touched and keeps [D175].
+        let kept = super::kept(&self.dir);
+        let touched = (kept["prs"].as_array().into_iter().flatten()).any(|p| p["number"] == number);
+        if !super::prs::belongs(&pr, repo, &self.branch) && !touched {
+            return err(format!("#{number} isn't one of this session's PRs."));
         }
         // The rest needs only the PR's number and head, so gh is asked for each at once: one by
         // one they took about 15 s on GitHub.
-        let gh = gh.as_str();
+        let gh = &gh;
         let api = |path: String| move || paged(gh, &format!("repos/{}/{path}", repo.path));
         let (known, reviews, issue, summaries, timeline, styles) = std::thread::scope(|s| {
             let known = s.spawn(|| {
@@ -157,7 +160,7 @@ impl Pr {
             return err(format!("not a merge method: {method:?}"));
         }
         let (repo, gh) = self.gh_repo()?;
-        let mut command = tool(&gh);
+        let mut command = gh.command();
         command.env("GH_PROMPT_DISABLED", "1").args([
             "pr",
             "merge",
@@ -179,8 +182,8 @@ impl Pr {
     }
 }
 
-fn run_json(gh: &str, args: &[&str]) -> io::Result<Value> {
-    let mut command = tool(gh);
+fn run_json(gh: &Gh, args: &[&str]) -> io::Result<Value> {
+    let mut command = gh.command();
     command.args(args);
     let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
     if !out.status.success() {
@@ -190,8 +193,8 @@ fn run_json(gh: &str, args: &[&str]) -> io::Result<Value> {
 }
 
 /// Every page of a REST list, one item per line through gh's own `--jq`.
-fn paged(gh: &str, path: &str) -> io::Result<Vec<Value>> {
-    let mut command = tool(gh);
+fn paged(gh: &Gh, path: &str) -> io::Result<Vec<Value>> {
+    let mut command = gh.command();
     command.args(["api", "--paginate", "--jq=.[]", path]);
     let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
     if !out.status.success() {
@@ -203,7 +206,7 @@ fn paged(gh: &str, path: &str) -> io::Result<Vec<Value>> {
 }
 
 /// The merge methods the repository allows, the default first: GitHub's own order.
-fn styles(gh: &str, repo: &Repo) -> io::Result<Vec<&'static str>> {
+fn styles(gh: &Gh, repo: &Repo) -> io::Result<Vec<&'static str>> {
     let allowed = run_json(
         gh,
         &[
@@ -225,7 +228,7 @@ fn styles(gh: &str, repo: &Repo) -> io::Result<Vec<&'static str>> {
 }
 
 /// One check as the tab shows it; a failed Actions job's log tail comes with it.
-fn check(gh: &str, repo: &Repo, c: &Value) -> Value {
+fn check(gh: &Gh, repo: &Repo, c: &Value) -> Value {
     let state = match c["bucket"].as_str() {
         // A cancelled check didn't pass, so it can't let Merge on.
         Some("fail" | "cancel") => "failed",
@@ -253,9 +256,9 @@ fn check(gh: &str, repo: &Repo, c: &Value) -> Value {
 }
 
 /// The failed steps' last lines of an Actions job, from its link's job id; none for other checks.
-fn log_tail(gh: &str, repo: &Repo, link: &str) -> Option<String> {
+fn log_tail(gh: &Gh, repo: &Repo, link: &str) -> Option<String> {
     let job = link.split("/job/").nth(1)?.split(['/', '?']).next()?;
-    let mut command = tool(gh);
+    let mut command = gh.command();
     command.args([
         "run",
         "view",

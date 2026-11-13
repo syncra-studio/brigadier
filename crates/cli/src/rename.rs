@@ -70,13 +70,14 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                             }),
                             None => !worktrees::names::has_remotes(&checkout.root)?,
                         };
-                        let no_pr = if observed.is_none() {
-                            same
-                        } else {
-                            same && prs
-                                .as_ref()
-                                .and_then(Value::as_array)
-                                .is_some_and(Vec::is_empty)
+                        // The session's other PRs [D175] don't hold this branch's name.
+                        let no_pr = match &observed {
+                            None => same,
+                            Some(was) => {
+                                same && prs.as_ref().and_then(Value::as_array).is_some_and(|prs| {
+                                    prs.iter().all(|p| p["branch"] != was.branch.as_str())
+                                })
+                            }
                         };
                         if no_pr {
                             let prefix = spec
