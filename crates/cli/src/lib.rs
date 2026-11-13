@@ -138,10 +138,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "start" => {
             let id = arg(args, 1)?;
             if id.starts_with(core::SETUP) {
-                return Err(io::Error::other(format!(
-                    "{:?} is kept for setup runs",
-                    core::SETUP
-                )));
+                let kept = format!("{:?} is kept for setup runs", core::SETUP);
+                return Err(io::Error::other(kept));
             }
             let backend = flag(args, "--backend").unwrap_or("fake");
             if adapters::get(backend).is_none() {
@@ -285,9 +283,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             core::load(data, id)?;
             let dir = core::session_dir(data, id);
             match args[0].as_str() {
-                "rename" => {
-                    return rename::run(data, args);
-                }
+                "rename" => return rename::run(data, args),
                 _ if has(args, "--off") => remove(&dir.join("pinned"))?,
                 _ => core::write_atomic(&dir.join("pinned"), log::now_ms().to_string().as_bytes())?,
             }

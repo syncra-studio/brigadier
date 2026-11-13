@@ -307,7 +307,9 @@ impl Index {
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
-                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets, f.fold.calls.last())});
+                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets, f.fold.calls.last()),
+                             // The turn the loop guard stopped: its line offers Continue [D144].
+                             "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
             row["background"] = json!(live.left);
             // How full its context is, and a rebirth due now [D88, D108].
             row["context"] = json!(f.fold.context);
@@ -318,13 +320,6 @@ impl Index {
                     .is_some_and(|t| t.switch["why"] == "cut");
             let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
             row["rebirth"] = json!(due.or(lost.then_some("cut")));
-            // The turn the loop guard stopped: its line offers Continue [D144].
-            let stalled = f
-                .fold
-                .last
-                .as_ref()
-                .filter(|_| core::rebirth::stalled(&f.fold));
-            row["stalled"] = stalled.map_or(Value::Null, |l| l["id"].clone());
             // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].
             // A cut for a model picked mid-turn is no rebirth [D124].
             let cut = f.fold.cut.as_deref().filter(|_| !f.fold.switched);
