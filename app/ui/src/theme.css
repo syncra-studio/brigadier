@@ -43,11 +43,9 @@
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
-  /* Pull request words and their chips, the old app's PR colours. */
+  /* Pull request words, the old app's PR colours. */
   --color-pr-yellow: #fbc959;
   --color-pr-purple: #d080e2;
-  --color-pr-purple-wash: color-mix(in oklab, var(--color-pr-purple) 15%, transparent);
-  --color-destructive-chip: color-mix(in oklab, var(--color-destructive) 15%, transparent);
   /* Behind a PR's "Can't merge yet" line. */
   --color-pr-blocker: color-mix(in oklab, var(--color-muted) 40%, transparent);
   /* The old timeline's past dots and event titles. */

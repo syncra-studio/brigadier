@@ -8,9 +8,6 @@ const VARIANTS = {
   destructive: "border-transparent bg-destructive-fill text-foreground",
   warning: "border-transparent bg-warning-wash text-warning",
   success: "border-transparent bg-success-wash text-success",
-  // A pull request's chip on a sidebar row: failed checks, and merged.
-  "destructive-soft": "border-transparent bg-destructive-chip text-destructive",
-  "pr-merged": "border-transparent bg-pr-purple-wash text-pr-purple",
   outline: "border-border text-foreground",
 };
 

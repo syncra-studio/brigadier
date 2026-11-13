@@ -10,8 +10,7 @@ import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { BranchAlt, ChevronRight, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
-import { PrChip, prList } from "../landing/pr-chip";
-import { openPr } from "../panel/open";
+import { prList } from "../landing/pr-chip";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { RowMenuItems } from "./menu";
@@ -147,9 +146,6 @@ export function SessionRowItem({
                   if (fold && (event.target as Element).closest('[data-slot="row-fold"]')) return fold.toggle();
                   if (onClick) onClick(event);
                   else onOpen(row.id);
-                  // The chip opens the PR that needs you on top [D1013, D1018]; ⌘ and ⇧ pick rows instead.
-                  const pr = row.pr && (event.target as Element).closest('[data-slot="row-pr"]') && row.pr.prs.find((each) => each.mark === row.pr?.chip);
-                  if (pr && !event.metaKey && !event.shiftKey) openPr(row.id, pr.number);
                 }}
               />
             }
@@ -165,7 +161,6 @@ export function SessionRowItem({
             )}
             {forked && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
-            {row.pr && <PrChip pr={row.pr} />}
             <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
               <RowMark mark={mark} label={label} />
             </span>
