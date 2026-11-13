@@ -4,8 +4,9 @@ use super::super::{Delivery, s};
 use crate::Spec;
 use serde_json::{Value, json};
 
-/// A level as Codex's approval policy, reviewer and sandbox [D175, D187]. Auto is the same policy
-/// and sandbox as Ask with its auto reviewer, set per thread and turn, never in its config [D215].
+/// A level as Codex's approval policy, reviewer and sandbox [D175, D187], set per thread and turn,
+/// never in its config [D215]. Ask asks before every edit and command [D153]; Auto asks only to
+/// leave the sandbox, and its auto reviewer answers.
 fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str) {
     match spec.level.as_deref() {
         Some("full") => ("never", "user", "danger-full-access", "dangerFullAccess"),
@@ -15,7 +16,7 @@ fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str
             "workspace-write",
             "workspaceWrite",
         ),
-        _ => ("on-request", "user", "workspace-write", "workspaceWrite"),
+        _ => ("untrusted", "user", "workspace-write", "workspaceWrite"),
     }
 }
 
