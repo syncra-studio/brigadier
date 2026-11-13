@@ -62,12 +62,13 @@ fn git(cwd: &str, args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-/// What a session's past holds for its hand-off: its entries, its user's answers, and where each
-/// of its conversations began.
+/// What a session's past holds for its hand-off: its entries, its user's answers, where each of
+/// its conversations began, and whether the user stopped a turn since their last message.
 struct Past {
     entries: Vec<Entry>,
     answers: Vec<(String, String)>,
     starts: Vec<(String, String)>,
+    stopped: bool,
 }
 
 fn past(dir: &Path) -> io::Result<Past> {
@@ -75,6 +76,7 @@ fn past(dir: &Path) -> io::Result<Past> {
         entries: archive::inherited(dir),
         answers: vec![],
         starts: vec![],
+        stopped: false,
     };
     // Answers as Brigadier gave them, on every agent (Codex logs no answer of its own), kept once
     // the agent has them: written, or acked without an error. cid → (at, text, acked).
@@ -83,9 +85,9 @@ fn past(dir: &Path) -> io::Result<Past> {
         p.starts
             .push((first.at.clone(), "before this session was forked".into()));
     }
-    // Inside a stop Brigadier made (a rebirth, a picked model or level, the guard): a step it
-    // ended may read as refused in its CLI's words; nobody refused it.
-    let mut cutting = false;
+    // Inside a stop (Brigadier's own: a rebirth, a picked model or level, the guard; or the
+    // user's): a step it ended may read as refused in its CLI's words; nobody refused it.
+    let mut cutting = String::new();
     crate::rewind::read_active(dir, |item| {
         let at = archive::at(item);
         let fresh = &item["switch"];
@@ -97,8 +99,15 @@ fn past(dir: &Path) -> io::Result<Past> {
         }
         let c = &item["control"];
         if item["kind"] == "input" && (c.is_null() || c["kind"] == "interrupt") {
-            cutting = matches!(c["by"].as_str(), Some("rebirth" | "stall"));
+            cutting = c["by"].as_str().unwrap_or("").into();
+            if c.is_null() && item["origin"] == "user" {
+                p.stopped = false;
+            }
         }
+        if item["kind"] == "stopped" && item["by"] == "user" {
+            cutting = "user".into();
+        }
+        p.stopped |= cutting == "user";
         let cid = |k: &str| item[k].as_str().unwrap_or("").to_string();
         match item["kind"].as_str() {
             Some("input") if c["kind"] == "answer" => {
@@ -122,8 +131,12 @@ fn past(dir: &Path) -> io::Result<Past> {
             _ => {}
         }
         p.entries.extend(archive::entry(item, at).map(|mut e| {
-            if cutting && e.from == "error" && item["kind"] == "tool_done" {
-                e.from = "cut";
+            if e.from == "error" && item["kind"] == "tool_done" {
+                e.from = match cutting.as_str() {
+                    "rebirth" | "stall" => "cut",
+                    "user" => "stopped",
+                    _ => "error",
+                };
             }
             e
         }));
@@ -148,6 +161,7 @@ fn line(id: &str, e: &Entry) -> String {
         ),
         "agent" => format!("\n[{at} you]\n{}\n", e.text.trim_end()),
         "cut" => "- stopped mid-way by Brigadier, not refused: redo it if still needed\n".into(),
+        "stopped" => "- stopped by the user's Stop after any approval it had, not refused: it may have run, so check before redoing it\n".into(),
         "error" => format!(
             "- failed: {}\n",
             head(e.text.lines().next().unwrap_or(""), 200)
@@ -191,26 +205,48 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         );
     }
 
+    // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
+    let mut names: Vec<String> = (crate::adapters::all().iter())
+        .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
+        .filter(|k| k["kind"] == "skill")
+        .filter_map(|k| k["name"].as_str().map(String::from))
+        .collect();
+    names.sort();
+    names.dedup();
+    let skills: String = (names.iter()).filter_map(|name| {
+        let mut user = p.entries.iter().filter(|e| e.from == "user");
+        let e = user.find(|e| e.text.split_whitespace().any(|w| w.strip_prefix('/') == Some(name)))?;
+        Some(format!("- /{name}, from {id}#{}: load it before you go on, with your own skill tool or `brigadier skill {name}`\n", e.at))
+    }).collect();
+    if !skills.is_empty() {
+        out += &format!("\n## The session's skills\n{skills}");
+    }
+
     // The user's answers, then their newest words, newest first; the rest as pointers.
     let (mut words, mut pointers) = (vec![], vec![]);
     let (mut used, mut full) = (0, false);
-    let answers =
-        (p.answers.iter().rev()).map(|(at, t)| (at, "an answer to your question".into(), t));
-    let rest = p
-        .entries
-        .iter()
-        .filter(said)
-        .filter(|e| goal.is_none_or(|g| g.at != e.at));
-    let rest = rest.collect::<Vec<_>>().into_iter().rev().map(|e| {
+    let answers = (p.answers.iter().rev())
+        .map(|(at, t)| (at, "an answer to your question".into(), String::new(), t));
+    let rest = (p.entries.iter().enumerate())
+        .filter(|(_, e)| said(e) && goal.is_none_or(|g| g.at != e.at));
+    let rest = rest.collect::<Vec<_>>().into_iter().rev().map(|(i, e)| {
         let who = match e.from {
             "worker" => format!("worker {}'s result", e.who),
             "peer" => format!("session {}", e.who),
             _ => "the user".into(),
         };
-        (&e.at, who, &e.text)
+        // A short answer reads with what it answered: your message just before it, its end.
+        let asked = (p.entries[..i].iter().rev())
+            .find(|q| q.from == "agent")
+            .filter(|_| e.from == "user" && e.text.split_whitespace().count() <= 5)
+            .map_or(String::new(), |q| {
+                let end = tail(q.text.trim_end(), 300).replace('\n', " ");
+                format!(", answering your {id}#{}: …{end}", q.at)
+            });
+        (&e.at, who, asked, &e.text)
     });
-    for (at, who, text) in answers.chain(rest) {
-        let whole = format!("- {id}#{at} ({who}): {}\n", text.trim_end());
+    for (at, who, asked, text) in answers.chain(rest) {
+        let whole = format!("- {id}#{at} ({who}{asked}): {}\n", text.trim_end());
         if !full && used + whole.len() <= WORDS {
             used += whole.len();
             words.push(whole);
@@ -352,8 +388,8 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         _ => "The last message wasn't worked on yet. Do it now.".into(),
     };
     // A step the user's Stop cut reads as refused in its CLI's words; it wasn't [D170].
-    if last["outcome"] == "stopped" && last["reason"] == "user" {
-        out += "\n## Stopped\nThe user pressed Stop to end the last turn. A Stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
+    if p.stopped {
+        out += "\n## Stopped\nThe user pressed Stop on a turn since their last message. A Stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
     }
     out += &format!("\n## Next\n{step}\n");
     Ok(out)
