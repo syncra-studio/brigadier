@@ -49,7 +49,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
         "now": if kind == "working" { now } else { None }})
 }
 
-fn clock(ms: u64) -> String {
+pub(crate) fn clock(ms: u64) -> String {
     let secs = (ms / 1000) as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&secs, &mut tm) };

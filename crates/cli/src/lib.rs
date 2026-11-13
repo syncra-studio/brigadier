@@ -54,7 +54,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
-       brigadier read <id> [--follow] [--hash] [--tail N]
+       brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
@@ -320,7 +320,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => queue::recover(data, arg(args, 1)?, false),
-        "archive" | "restore" | "delete" | "jobs" => sessions::run(data, args),
+        "archive" | "restore" | "delete" | "jobs" | "audit" => sessions::run(data, args),
         // The short title a first message gives its session, for the app's row before Rust's [D186].
         "feedback" => feedback::run(data, args),
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),

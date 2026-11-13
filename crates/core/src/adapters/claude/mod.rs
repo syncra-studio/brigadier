@@ -362,7 +362,12 @@ impl Adapter for Claude {
                 .collect(),
             ("rate_limit_event", _) => control::rate_limit(&v["rate_limit_info"]),
             ("result", _) => {
-                let mut events = vec![Event::Usage(v["usage"].clone())];
+                // With its cost so far, as the CLI reports it [D221].
+                let mut usage = v["usage"].clone();
+                if let Some(u) = usage.as_object_mut() {
+                    u.insert("cost_usd".into(), v["total_cost_usd"].clone());
+                }
+                let mut events = vec![Event::Usage(usage)];
                 if v["is_error"].as_bool() == Some(true) {
                     let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
                     // Its errors as lines, without the CLI's own diagnostics ("[lede_diagnostic] …",

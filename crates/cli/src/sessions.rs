@@ -13,10 +13,13 @@ use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+mod audit;
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = core::load(data, id)?;
     match args[0].as_str() {
+        "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
         "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
         "archive" => crate::rewind::settled(data, &spec)

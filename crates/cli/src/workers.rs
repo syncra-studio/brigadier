@@ -11,7 +11,7 @@ mod family;
 mod make;
 mod pause;
 mod result;
-mod row;
+pub(crate) mod row;
 pub(crate) use asks::question;
 pub use asks::{answer, asks_parent, for_user};
 pub use brigade::{brigade_row, to_user, user_answer};
