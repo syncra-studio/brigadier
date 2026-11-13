@@ -246,7 +246,9 @@ export function ApprovalCard({
   };
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!inField(document.activeElement)) card.current?.focus({ preventScroll: true });
+    // In the composer's place it takes focus from the composer it hides, which would drop it to the page.
+    const active = document.activeElement;
+    if (!inField(active) || (onReply && active?.closest("[data-slot=composer-card]"))) card.current?.focus({ preventScroll: true });
   }, []);
   useCardKeys(!busy, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
 
@@ -423,6 +425,8 @@ export function ApprovalSlot({
   if (!approval) return null;
   const { id } = approval;
   const answer = (decision: ApprovalDecision, reason?: string) => {
+    // Where a click on the card got to, for a demo that sees one not reach the session (CDP replays the console).
+    console.info("approval answer", decision, session, id, sending.has(id) ? "already on its way" : "sending");
     if (sending.has(id)) return;
     setSending((ids) => new Set(ids).add(id));
     setErrors((map) => new Map([...map].filter(([key]) => key !== id)));
