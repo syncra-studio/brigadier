@@ -1137,15 +1137,17 @@
 }
 @utility fade-bottom {
   height: var(--spacing-fade-bottom);
-  &[data-raised] {
-    height: calc(var(--spacing) * 14 + var(--spacing-fade-bottom));
-  }
   background-image: linear-gradient(
     to top,
     var(--color-background) 0%,
     var(--color-background) calc(100% - var(--spacing-fade-bottom)),
     transparent 100%
   );
+  /* Raised (the thread's jump button): solid up to the button's top (spacing*14), a short fade above it. */
+  &[data-raised] {
+    height: calc(var(--spacing) * 14 + 8px);
+    background-image: linear-gradient(to top, var(--color-background) 0%, var(--color-background) calc(100% - 8px), transparent 100%);
+  }
 }
 
 /* Rows split as a card's own are: a hairline under each but the last, 16 in from the edges (flush
