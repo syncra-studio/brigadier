@@ -12,14 +12,18 @@ export type Picker = "branch" | "create" | "from" | null;
 /**
  * The branch's quick pick, D1021's, anchored under `anchor` [D1150, D1262]: in your own folder real switching with its
  * search, off while the agent works [D1265], its list read again each time it opens; a session's branch menu only
- * copies, its id, its path and its branch's name [D62, D72]. Without `ops` (the gallery) a pick only closes.
+ * copies: its id, its path, its project's path, and its branch's name [D62, D72, D232]. Without `ops` (the gallery) a
+ * pick only closes.
  */
 export function useBranchPicker({ data, ops, session = null, nowMs, anchor }: { data: SourceData; ops?: SourceOps; session?: string | null; nowMs: number; anchor: RefObject<Element | null> }) {
   const [picker, setPickerNow] = useState<Picker>(null);
   // What the quick pick lists; undefined while it's read.
   const [read, setRead] = useState<BranchRead | null | undefined>(undefined);
   const [from, setFrom] = useState<string | null>(null);
-  const folderPath = useDaemon().rows?.find((row) => row.id === session)?.folder ?? null;
+  const { rows, projects } = useDaemon();
+  const row = rows?.find((each) => each.id === session);
+  const folderPath = row?.folder ?? null;
+  const projectPath = projects?.find((each) => each.id === row?.project)?.folder ?? null;
   const branchOps = ops?.branch;
   const state = data.source;
   const folder = state?.checkout === "folder";
@@ -91,7 +95,8 @@ export function useBranchPicker({ data, ops, session = null, nowMs, anchor }: { 
     folder,
     copy: (id: string) => {
       if (id === "id" && session) copyWithToast(session, "session id");
-      else if (id === "path" && folderPath) copyWithToast(folderPath, "path");
+      else if (id === "path" && folderPath) copyWithToast(folderPath, "session path");
+      else if (id === "project" && projectPath) copyWithToast(projectPath, "project path");
       else if (id === "copy" && state?.branch) copyWithToast(state.branch, "branch name");
     },
     open: (next: Picker) => {

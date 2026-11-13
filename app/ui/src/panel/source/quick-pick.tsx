@@ -129,10 +129,11 @@ export function QuickPick({ place, placeholder, items, off = null, search = true
   );
 }
 
-/** A session's quick pick: copies only, as its branch is its own and never switches [D62]. */
+/** A session's quick pick: copies only, as its branch is its own and never switches [D62, D232]. */
 export const SESSION_ITEMS: PickItem[] = [
   { id: "id", icon: <Copy />, title: "Copy session id" },
   { id: "path", icon: <Copy />, title: "Copy session path" },
+  { id: "project", icon: <Copy />, title: "Copy project path" },
   { id: "copy", icon: <Copy />, title: "Copy branch name" },
 ];
 
