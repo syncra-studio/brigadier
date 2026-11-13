@@ -21,8 +21,9 @@ import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 import { TodoRow } from "./todo";
+import { BrigadeMessagePill } from "../../sessions/brigade";
 
-function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
+function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigade?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
   const session = useContext(SessionOfThread)?.id;
   const at = (file: string) => `/attachment/${session}/${file}`;
@@ -32,7 +33,7 @@ function UserRow({ id, cid, text, time, dated, files, draft }: { id: string; cid
   const sent = session && above.length > 0 && (
     <SentAttachments files={above.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openAttachment(session, file.id, file.pasted ? PASTE_LABEL : file.name)} />
   );
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={sent} owner={session} parts={draft?.parts} />;
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={brigade ? <>{sent}<BrigadeMessagePill /></> : sent} owner={session} parts={draft?.parts} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
@@ -70,7 +71,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           <>
             {/* Each side of a turn heads itself for a screen reader. */}
             <h2 className="sr-only">You said:</h2>
-            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} />
+            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} brigade={item.brigade} />
           </>
         );
       }

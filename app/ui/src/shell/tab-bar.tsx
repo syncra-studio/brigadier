@@ -13,6 +13,7 @@ import { baseName } from "../files/tree";
 import { setHomeDraft } from "../home/start";
 import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
+import { BossCrumb, BrigadeGlyph } from "../sessions/brigade";
 import { showToast } from "../components/toast";
 import { useMark } from "../session/turn";
 import { keysOf, matches } from "../shortcuts";
@@ -70,6 +71,7 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))} />}>
+        <BossCrumb boss={row.boss} />
         <button
           type="button"
           role="tab"
@@ -86,7 +88,7 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
           onDoubleClick={startRename}
           className={BUTTON}
         >
-          {archived ? <Archive className="size-icon-sm shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-sm shrink-0 rotate-180 text-warning" /> : <Chat className="size-icon-sm shrink-0" />}
+          {archived ? <Archive className="size-icon-sm shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-sm shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-sm shrink-0" /> : <Chat className="size-icon-sm shrink-0" />}
           <span className={TITLE}>{title}</span>
         </button>
         {!archived && (

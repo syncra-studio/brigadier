@@ -69,7 +69,8 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
 /** A session's own workers, oldest first; a worker of theirs is in its own parent's [G]. */
 export function useWorkers(parent: string): Worker[] {
   const rows = useDaemon().rows ?? [];
-  return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
+  // A Brigade's sessions are rows of their own in the sidebar, not its workers [D189].
+  return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent && !row.boss).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
 }
 
 /** Workers named by id, a gone one as "a worker". */
@@ -110,7 +111,10 @@ export const openWorker = (owner: string, worker: string) => show(owner, { open:
 
 /** A worker named anywhere opens it in its parent's Workers panel; null opens the list, `tab`'s. */
 export function Opens({ owner, tab, children }: { owner: string; tab?: string; children: ReactNode }) {
-  const open = (worker: string | null) => show(owner, { open: true, worker, tab });
+  const rows = useDaemon().rows;
+  // A Brigade's session opens as the session it is [D189].
+  const session = (id: string | null) => rows?.some((row) => row.id === id && row.boss);
+  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : show(owner, { open: true, worker, tab }));
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 

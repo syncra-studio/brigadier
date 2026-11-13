@@ -34,6 +34,10 @@ export type Row = {
   works?: boolean;
   /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
   background?: Job[];
+  /** A Brigade: its sub-sessions sit under it [D189]. */
+  brigade?: boolean;
+  /** The Brigade session that started this one [D189]. */
+  boss?: string | null;
   /** The session it was forked from, which its row sits under [D48]. */
   forkOf?: string | null;
   /** Where it works: its worktree, else its project's folder; null for a chat with no folder [D348, D2022]. */

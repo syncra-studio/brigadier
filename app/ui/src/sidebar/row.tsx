@@ -8,7 +8,8 @@ import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
-import { BranchAlt, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
+import { BrigadeGlyph } from "../sessions/brigade";
+import { BranchAlt, ChevronRight, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
 import { PrChip, prList } from "../landing/pr-chip";
 import { openPr } from "../panel/open";
 import { ArchiveRowAction } from "../sessions/archive";
@@ -66,6 +67,9 @@ export function ProjectBadge({ name, tone }: { name: string | null; tone: number
   );
 }
 
+/** Marks by how much they need the user, a folded Brigade's first [D189]. */
+const URGENT: Mark[] = ["needs", "amber", "working", "unread", "background", null];
+
 /** How long a pointer rests on a row before its card shows; on to the next row it shows at once. */
 export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
@@ -84,6 +88,8 @@ export function SessionRowItem({
   badged = false,
   nested = false,
   forked = false,
+  sub = false,
+  fold,
   offline = false,
   picked = false,
   menu,
@@ -100,6 +106,10 @@ export function SessionRowItem({
   nested?: boolean;
   /** A fork, under its source: the fork mark before its title, one step further in [D48]. */
   forked?: boolean;
+  /** A Brigade's sub-session, under its boss [D189]. */
+  sub?: boolean;
+  /** A Brigade with sessions: they fold under it, and folded it shows their most pressing mark. */
+  fold?: { open: boolean; toggle: () => void; marks: Mark[] };
   /** The daemon is gone: the mark is its last known one, dimmed. */
   offline?: boolean;
   onOpen: (id: string) => void;
@@ -111,7 +121,8 @@ export function SessionRowItem({
   /** A click with its keys, in place of opening it. */
   onClick?: (event: MouseEvent) => void;
 }) {
-  const mark = useMark(row, active);
+  const own = useMark(row, active);
+  const mark = fold && !fold.open ? [own, ...fold.marks].toSorted((a, b) => URGENT.indexOf(a) - URGENT.indexOf(b))[0]! : own;
   const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
@@ -128,8 +139,12 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", badged && "h-9")}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (sub ? "ps-15" : forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", !nested && sub && "ps-15", badged && "h-9")}
+                onKeyDown={(event) => {
+                  if (fold && (event.key === "ArrowRight") !== fold.open && ["ArrowRight", "ArrowLeft"].includes(event.key)) fold.toggle();
+                }}
                 onClick={(event) => {
+                  if (fold && (event.target as Element).closest('[data-slot="row-fold"]')) return fold.toggle();
                   if (onClick) onClick(event);
                   else onOpen(row.id);
                   // The chip opens the PR that needs you on top [D1013, D1018]; ⌘ and ⇧ pick rows instead.
@@ -139,7 +154,15 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && project && <ProjectBadge name={project.name} tone={tone} />}
+            {badged && project && !sub && <ProjectBadge name={project.name} tone={tone} />}
+            {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
+            {/* Hovered, the mark is the fold's chevron, as a project folder's [D196]; ← and → fold it too. */}
+            {fold && (
+              <span data-slot="row-fold" title={fold.open ? "Hide its sessions" : "Show its sessions"} className="-m-0.5 flex size-icon-lg shrink-0 items-center justify-center rounded-xs text-muted-foreground hover:bg-fill">
+                <BrigadeGlyph aria-label="Brigade" className="size-icon-md group-hover/row:hidden" />
+                <ChevronRight className={cx("hidden size-icon-sm group-hover/row:block", fold.open && "rotate-90")} />
+              </span>
+            )}
             {forked && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             {row.pr && <PrChip pr={row.pr} />}

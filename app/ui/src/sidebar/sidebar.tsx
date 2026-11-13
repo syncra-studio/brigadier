@@ -94,8 +94,8 @@ export function AppSidebar({
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  // A worker is its parent's, in its Workers tab, not a row of its own [D3012].
-  const sessions = useMemo(() => rows?.filter((row) => !(row as { worker?: unknown }).worker), [rows]);
+  // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a row [D189].
+  const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss)), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
   const kept = shown?.filter(show.keeps);
@@ -103,7 +103,7 @@ export function AppSidebar({
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
   const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
-  const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(byLastSend));
+  const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(byLastSend), (id) => isOpen(`brigade:${id}`));
   const forked = new Set(rest?.filter((each) => each.forkOf && rest.some((source) => source.id === each.forkOf)).map((each) => each.id));
   const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
@@ -158,6 +158,12 @@ export function AppSidebar({
     return () => removeEventListener("keydown", onKeyDown);
   });
 
+  // A Brigade folds its sessions under it; folded, its mark is the most pressing of theirs and its own [D189].
+  const foldOf = (each: SessionRow) => {
+    const subs = kept?.filter((sub) => sub.boss === each.id) ?? [];
+    const key = `brigade:${each.id}`;
+    return subs.length === 0 ? undefined : { open: isOpen(key), toggle: () => setOpen(key, !isOpen(key)), marks: subs.map((sub) => sub.mark) };
+  };
   const row = (each: SessionRow, layout: { badged?: boolean; nested?: boolean }) => (
     <SessionRowItem
       key={each.id}
@@ -171,6 +177,8 @@ export function AppSidebar({
       onClick={(event) => clickRow(event, each, order, active, onOpen)}
       onRename={setRenaming}
       forked={forked.has(each.id)}
+      sub={Boolean(each.boss && rest?.some((boss) => boss.id === each.boss))}
+      fold={foldOf(each)}
       {...layout}
     />
   );
@@ -395,9 +403,11 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
 }
 
 /** Each fork right under its source, the list's order otherwise [D48]. */
-function underSources(list: SessionRow[] | undefined): SessionRow[] | undefined {
+function underSources(list: SessionRow[] | undefined, open: (id: string) => boolean): SessionRow[] | undefined {
   if (!list) return list;
   const here = new Set(list.map((each) => each.id));
-  const under = (each: SessionRow): SessionRow[] => [each, ...list.filter((fork) => fork.forkOf === each.id).flatMap(under)];
-  return list.filter((each) => !(each.forkOf && here.has(each.forkOf))).flatMap(under);
+  // A Brigade's sub-sessions sit under it, oldest first, folding with it [D189].
+  const subs = (each: SessionRow) => (each.brigade && open(each.id) ? list.filter((sub) => sub.boss === each.id).toSorted((a, b) => a.sent - b.sent) : []);
+  const under = (each: SessionRow): SessionRow[] => [each, ...subs(each).flatMap(under), ...list.filter((fork) => fork.forkOf === each.id).flatMap(under)];
+  return list.filter((each) => !(each.forkOf && here.has(each.forkOf)) && !(each.boss && here.has(each.boss))).flatMap(under);
 }
