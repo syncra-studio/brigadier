@@ -188,6 +188,9 @@ impl Norm {
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
                     "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server}),
+                Event::Background(task, label) => {
+                    json!({"kind": "background", "task": task, "label": label})
+                }
                 Event::Awaiting(ids) => {
                     self.awaiting = ids;
                     continue;

@@ -44,6 +44,9 @@ pub enum Event {
     /// Background subagents, by their ids, whose own background work still runs: a run of theirs
     /// that ends now isn't their end, as they run again when that work ends.
     Awaiting(Vec<String>),
+    /// A command or watch its CLI runs in the background, by the id it gave it, and what the agent
+    /// said it does, else its command: its Background row's words [D187].
+    Background(String, String),
     Resume(String),
     /// A usage limit: the CLI's message, and when it resets (ms) if the CLI says; never guessed [D74].
     Limited(String, Option<u64>),

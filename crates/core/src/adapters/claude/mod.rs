@@ -284,6 +284,11 @@ impl Adapter for Claude {
                 awaiting.dedup();
                 vec![Event::Awaiting(awaiting)]
             }
+            // A Bash command run in the background or a Monitor watch, by its description [D187].
+            ("system", "task_started") if v["is_backgrounded"] == true => vec![Event::Background(
+                s(&v, &["task_id"]).into(),
+                s(&v, &["description"]).into(),
+            )],
             // A subagent's end, also one that ran in the background past its call's result [D78].
             ("system", "task_notification") if !s(&v, &["tool_use_id"]).is_empty() => {
                 // Its report, where it handed one back; a stopped one's summary is only its title.

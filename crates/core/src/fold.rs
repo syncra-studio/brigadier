@@ -317,6 +317,13 @@ impl Fold {
                 self.close(outcome, by, ts);
             }
             "mark" => self.mark(item),
+            // A command or watch sent to the background, by what the agent said it does [D187].
+            "background" => {
+                self.tasks.push((ts, str_of("task")));
+                if let Some(label) = item["label"].as_str().filter(|l| !l.is_empty()) {
+                    self.typed.insert(str_of("task"), label.into());
+                }
+            }
             "tool" => {
                 if let (Some("run"), Some(input)) = (item["step"].as_str(), item["input"].as_str())
                 {
@@ -339,8 +346,9 @@ impl Fold {
                 self.calls.retain(|c| c["id"] != item["id"]);
                 if let (true, Some(task)) = (item["cut"] == true, item["child"].as_str()) {
                     self.tasks.push((ts, task.into()));
+                    // What the agent said it does, when its CLI said so first, before the command.
                     if let Some(typed) = typed {
-                        self.typed.insert(task.into(), typed);
+                        self.typed.entry(task.into()).or_insert(typed);
                     }
                 }
                 if item["parent"].is_null() {

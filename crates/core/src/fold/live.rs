@@ -41,6 +41,8 @@ pub struct Job {
 
 /// A tool's process can start just before its step reaches the log, or after its turn's end does.
 const SLACK_MS: u64 = 1000;
+/// The CLI's own hooks run as its children around a tool and at a turn's end, and end within this.
+const SETTLE_MS: u64 = 2000;
 const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
 
 /// Each topmost process under the agent born in one of its ended turns' tool windows, still alive.
@@ -58,16 +60,24 @@ fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
     };
     // In the running turn, one its CLI said it sent to the background counts at once, not at its end.
     let running = (fold.turns.first()).map_or(0, |t| t.first_tool);
+    let now = log::now_ms();
     let born = |p: &procs::Proc| {
         !p.zombie
+            && now.saturating_sub(p.start_us / 1000) >= SETTLE_MS
             && ((fold.windows.iter()).any(|&(a, b)| {
                 (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000).contains(&p.start_us)
             }) || (running > 0
                 && p.start_us >= running.saturating_sub(SLACK_MS) * 1000
                 && task_of(fold, p.start_us).is_some()))
     };
-    (below.iter())
+    let mut tops: Vec<&procs::Proc> = (below.iter())
         .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)) && !own(p))
+        .collect();
+    // One row a task: its own process, born before a hook that ran beside it.
+    tops.sort_by_key(|p| p.start_us);
+    let mut tasks = BTreeSet::new();
+    tops.retain(|p| task_of(fold, p.start_us).is_none_or(|t| tasks.insert(t)));
+    (tops.into_iter())
         .map(|p| Job {
             pid: p.pid,
             start_us: p.start_us,
