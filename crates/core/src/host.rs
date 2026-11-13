@@ -8,6 +8,7 @@ use crate::load;
 use crate::repos::{failed, tool};
 
 mod prs;
+mod touched;
 mod view;
 pub use prs::{chip, kept, moved_on, opened};
 use serde_json::{Value, json};
@@ -78,6 +79,39 @@ impl Repo {
             Kind::Forgejo => "Forgejo",
         }
     }
+
+    /// Another repository on the same server, `owner/name` [D213].
+    fn at(&self, path: &str) -> Repo {
+        Repo {
+            path: path.to_string(),
+            ..self.clone()
+        }
+    }
+}
+
+/// A repository's `owner/name` as GitHub allows it, so it can go into a query or a path as is.
+fn slug(path: &str) -> bool {
+    let ok = |s: &str| {
+        !s.is_empty()
+            && !s.starts_with('.')
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    };
+    path.split_once('/').is_some_and(|(o, n)| ok(o) && ok(n))
+}
+
+/// A PR tab's target [D213]: `n` for the session's own repository's PR `n`, `owner/name#n` for
+/// another's on the same server.
+pub fn pr_ref(target: &str) -> Option<(Option<String>, u64)> {
+    let (repo, n) = match target.rsplit_once('#') {
+        Some((repo, n)) => (Some(repo), n),
+        None => (None, target),
+    };
+    if repo.is_some_and(|r| !slug(r)) {
+        return None;
+    }
+    let number: u64 = n.parse().ok()?;
+    (number.to_string() == n).then(|| (repo.map(String::from), number))
 }
 
 /// The host of a remote URL (https, ssh or scp-like), or None for a server it can't name.

@@ -122,7 +122,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               tab.target === "list" ? (
                 <PrList owner={owner} />
               ) : (
-                <LivePrTab key={tab.target} owner={owner} number={Number(tab.target)} />
+                <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
               )
             ) : tab.kind === "review" ? (
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />

@@ -83,10 +83,10 @@ export function PrList({ owner }: { owner: string }) {
           {prs.map((pr) => {
             const at = pr.state === "merged" ? "merged" : pr.state === "closed" ? "closed" : "updated";
             return (
-              <li key={pr.number} className="border-b border-border last:border-b-0">
+              <li key={`${pr.repo ?? ""}#${pr.number}`} className="border-b border-border last:border-b-0">
                 <button
                   type="button"
-                  onClick={() => openPr(owner, pr.number)}
+                  onClick={() => openPr(owner, pr)}
                   className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-start hover:bg-fill-subtle focus-visible:focus-ring"
                 >
                   <span className="flex pt-0.5">
@@ -98,7 +98,8 @@ export function PrList({ owner }: { owner: string }) {
                       <ChecksIcon pr={pr} />
                     </span>
                     <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-                      #{pr.number}
+                      {/* One from another repository says which, short, as on the card [D213]. */}
+                      {pr.repo && `${pr.repo.slice(pr.repo.indexOf("/") + 1)} `}#{pr.number}
                       {pr.branch && (
                         <>
                           {" · "}

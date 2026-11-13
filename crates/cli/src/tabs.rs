@@ -210,10 +210,8 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                     .split('/')
                     .all(|s| !s.is_empty() && s != "." && s != "..")
         }
-        // `list`: the session's PRs when it has several [D205].
-        ("pr", Some(number)) => {
-            number == "list" || number.parse::<u64>().is_ok_and(|n| n.to_string() == number)
-        }
+        // `list`: the session's PRs when it has several [D205]; `owner/name#n`, another repository's [D213].
+        ("pr", Some(target)) => target == "list" || core::host::pr_ref(target).is_some(),
         ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
             core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
         }),

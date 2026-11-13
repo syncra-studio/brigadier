@@ -37,9 +37,13 @@ const asked = new Set<string>();
  * own read, after the page shows. Merge is pinned to the head its confirm showed [D1077]; a refusal is said above the
  * composer [D1264]. Each Send leaves a chip the user sends [D1027].
  */
-export function LivePrTab({ owner, number }: { owner: string; number: number }) {
+export function LivePrTab({ owner, target }: { owner: string; target: string }) {
+  // `n`, or `owner/name#n` for another repository's PR [D213].
+  const hash = target.lastIndexOf("#");
+  const repo = hash < 0 ? null : target.slice(0, hash);
+  const number = Number(target.slice(hash + 1));
   const { daemon, rows } = useDaemon();
-  const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number);
+  const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
@@ -58,7 +62,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
     if (reading.current) return void (again.current = true);
     reading.current = true;
     setChecking(true);
-    ask({ op: "run", args: ["host", owner, "view", String(number)] }, (reply) => {
+    ask({ op: "run", args: ["host", owner, "view", target] }, (reply) => {
       reading.current = false;
       if (again.current) {
         again.current = false;
@@ -78,18 +82,18 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
   // The kept read at once, and again whenever the row says a newer one was kept; a stale one is read afresh.
   useEffect(() => {
     if (!daemon) return;
-    ask({ op: "run", args: ["host", owner, "view", String(number), "kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", owner, "view", target, "kept"] }, (reply) => {
       if (reply.ok && reply.pr) land(reply.pr);
       latest.current = reply.ok && reply.pr && (!latest.current || reply.pr.checkedAtMs > (latest.current.checkedAtMs ?? 0)) ? reply.pr : latest.current;
       if (stale()) read();
     });
-  }, [daemon, owner, number, row?.viewedAtMs]);
+  }, [daemon, owner, target, row?.viewedAtMs]);
   useEffect(() => {
     if (!daemon) return;
     const focus = () => stale() && read();
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
-  }, [daemon, owner, number]);
+  }, [daemon, owner, target]);
   // Each failed check's log tail, once the page shows: one read each, at once.
   useEffect(() => {
     if (!daemon || !pr) return;
@@ -133,7 +137,7 @@ export function LivePrTab({ owner, number }: { owner: string; number: number }) 
       onMerge={(style, head) => {
         setMerging(true);
         setRefused(null);
-        ask({ op: "run", args: ["host", owner, "merge", String(number), style, head] }, (reply) => {
+        ask({ op: "run", args: ["host", owner, "merge", target, style, head] }, (reply) => {
           setMerging(false);
           if (!reply.ok) {
             const why = reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error);
@@ -175,6 +179,6 @@ export function ChecksFailedRows({ owner, row }: { owner: string; row: Row | und
       const text = `Fix PR #${pr.number}${pr.url ? ` (${pr.url})` : ""}: its checks failed. Its failed checks: ${checks.join(", ") || "none named"}.`;
       addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: "fix", pr: pr.number, chip, text });
     };
-    return <ChecksFailedRow key={pr.number} number={pr.number} checks={checks} added={added} offline={offline} onSend={onSend} onOpen={() => openPr(owner, pr.number)} />;
+    return <ChecksFailedRow key={pr.number} number={pr.number} checks={checks} added={added} offline={offline} onSend={onSend} onOpen={() => openPr(owner, pr)} />;
   });
 }

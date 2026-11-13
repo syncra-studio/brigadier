@@ -16,6 +16,7 @@ import { SESSION_ITEMS } from "./source/quick-pick";
 import { Counts, Line, Note, PrLine } from "./source/rows";
 import { ago } from "../landing/pr-words";
 import { useBranchPicker } from "./branch-picker";
+import type { Pr } from "./types";
 
 /** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
 const folds = new Map<string, boolean>();
@@ -107,9 +108,9 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   project?: string | null;
   session?: string | null;
   ops?: SourceOps;
-  onPr?: (number: number) => void;
+  onPr?: (pr: Pr) => void;
   /** The section's own button: the list of them, or the one [D200, D205]. */
-  onPrs?: (numbers: number[]) => void;
+  onPrs?: (prs: Pr[]) => void;
   onReview?: () => void;
   /** The session's Workers section, after the PRs [D65]. */
   workers?: ReactNode;
@@ -207,7 +208,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
           count={prs.length}
           end={
             first && (
-              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.(prs.map((pr) => pr.number))}>
+              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.(prs)}>
                 <PullRequestOpen />
               </TooltipIconButton>
             )
@@ -215,7 +216,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         >
           <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>
             {prs.map((pr) => (
-              <PrLine key={pr.number} pr={pr} onClick={() => onPr?.(pr.number)} />
+              <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
             ))}
             {/* A watch read that failed: the last PRs stay above, with their age and why [D1009]. */}
             {kept?.error && <Note warn text={["Couldn't check", kept.okAt && ago(kept.okAt, nowMs), kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />}

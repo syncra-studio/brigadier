@@ -281,7 +281,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   // Not drawn until its data is in: no skeleton first.
   const card = has && summaryReady(shown) ? (
     <>
-      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(number) => openPr(owner, number)} onPrs={(numbers) => openPrs(owner, numbers)} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>} />
+      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={(prs) => openPrs(owner, prs)} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

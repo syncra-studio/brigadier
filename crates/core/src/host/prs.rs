@@ -4,8 +4,10 @@
 //! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
 //! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
 //! Its PRs are every one the session touched [D175]: its branches' (kept once read, whichever branch
-//! it's on now), and those its own commands opened, merged or changed.
+//! it's on now), and those its own commands looked at in detail, in any repository on its server
+//! [D213].
 
+use super::touched::touched;
 use super::{Gh, Kind, Pr, Repo, gh};
 use crate::adapters::iso_ms;
 use crate::{git, worktrees};
@@ -66,28 +68,49 @@ impl Pr {
         busy.entry(self.dir.clone()).or_default().clone()
     }
 
-    /// The branch's PRs and every other one the session touched [D175], in one GraphQL read [D207].
+    /// The branch's PRs and every other one the session touched [D175], in any repository on its
+    /// server [D213], in one GraphQL read [D207].
     fn read(&self, gh: &Gh) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
         };
-        // The session's other PRs [D175]: those kept from its other branches, read again until
-        // merged (then final), and those its own commands touched.
+        // The session's other PRs [D175]: those kept from its other branches and repositories, read
+        // again until merged (then final), and those its own commands looked at.
         let old = kept(&self.dir);
         let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
-        let numbers: BTreeSet<u64> = (old.iter())
-            .filter(|p| p["branch"] != self.branch.as_str())
-            .filter_map(|p| p["number"].as_u64())
-            .chain(touched(&self.dir, repo))
+        let numbers: BTreeSet<Key> = (old.iter())
+            .filter(|p| p["branch"] != self.branch.as_str() || !p["repo"].is_null())
+            .map(|p| key(p))
+            .chain(
+                touched(&self.dir, repo)
+                    .into_iter()
+                    .map(|(r, n)| (r.map(|r| r.to_ascii_lowercase()), n)),
+            )
             .collect();
-        let merged = |n: u64| (old.iter()).find(|p| p["number"] == n && p["state"] == "merged");
-        let each: String = (numbers.iter())
-            .filter(|n| merged(**n).is_none())
-            .map(|n| format!(" p{n}: pullRequest(number: {n}) {{ ...F }}"))
+        let merged = |k: &Key| (old.iter()).find(|p| key(p) == *k && p["state"] == "merged");
+        // Each repository's PRs under its own alias: the session's in its own block.
+        let (mut own, mut others) = (String::new(), BTreeMap::<&str, String>::new());
+        for (r, n) in numbers.iter().filter(|k| merged(k).is_none()) {
+            let ask = format!(" p{n}: pullRequest(number: {n}) {{ ...F }}");
+            match r {
+                None => own.push_str(&ask),
+                Some(r) => others.entry(r).or_default().push_str(&ask),
+            }
+        }
+        let alias: BTreeMap<&str, usize> =
+            others.keys().enumerate().map(|(i, r)| (*r, i)).collect();
+        // Each `owner/name` is checked to be one (`slug`), so it goes into the query as is.
+        let elsewhere: String = (others.iter().enumerate())
+            .filter_map(|(i, (r, asks))| {
+                let (owner, name) = r.split_once('/')?;
+                Some(format!(
+                    " r{i}: repository(owner: \"{owner}\", name: \"{name}\") {{{asks} }}"
+                ))
+            })
             .collect();
         // A branch's 10 latest: each brings its checks, and GitHub refuses a read that big.
         let query = format!(
-            "query($owner: String!, $name: String!, $branch: String!) {{ repository(owner: $owner, name: $name) {{ branch: pullRequests(headRefName: $branch, first: 10, states: [OPEN, MERGED, CLOSED], orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{ nodes {{ ...F }} }}{each} }} }} fragment F on PullRequest {{ {FIELDS} }}"
+            "query($owner: String!, $name: String!, $branch: String!) {{ repository(owner: $owner, name: $name) {{ branch: pullRequests(headRefName: $branch, first: 10, states: [OPEN, MERGED, CLOSED], orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{ nodes {{ ...F }} }}{own} }}{elsewhere} }} fragment F on PullRequest {{ {FIELDS} }}"
         );
         let (data, partial) = super::graphql(gh, repo, &query, &[("branch", &self.branch)])?;
         let found = &data["repository"];
@@ -113,25 +136,31 @@ impl Pr {
         }
         let mut rows: Vec<Value> = mine.iter().map(|p| row(p)).collect();
         let mut missed = None;
-        for n in numbers.into_iter().rev() {
-            if mine.iter().any(|p| p["number"] == n) {
+        for k in numbers.iter().rev() {
+            let (r, n) = k;
+            if r.is_none() && mine.iter().any(|p| p["number"] == *n) {
                 continue;
             }
-            let was = old.iter().find(|p| p["number"] == n);
-            if let Some(was) = merged(n) {
+            if let Some(was) = merged(k) {
                 rows.push((*was).clone());
                 continue;
             }
-            match (&found[format!("p{n}")], was) {
-                (p, _) if p.is_object() => rows.push(row(p)),
-                // One read before keeps its last row with why; one never read (no PR here) waits.
+            let was = old.iter().find(|p| key(p) == *k);
+            let got = match r {
+                None => &found[format!("p{n}")],
+                Some(r) => {
+                    &data[format!("r{}", alias.get(r.as_str()).copied().unwrap_or(usize::MAX))]
+                        [format!("p{n}")]
+                }
+            };
+            match (got, was) {
+                (p, _) if p.is_object() => rows.push(mark(row(p), repo)),
+                // One read before keeps its last row with why; one never read (no PR there) waits.
                 (_, Some(was)) => {
                     rows.push((*was).clone());
-                    missed.get_or_insert(
-                        partial
-                            .clone()
-                            .unwrap_or_else(|| format!("#{n} couldn't be read.")),
-                    );
+                    missed.get_or_insert(partial.clone().unwrap_or_else(|| {
+                        format!("{}#{n} couldn't be read.", r.as_deref().unwrap_or(""))
+                    }));
                 }
                 (_, None) => {}
             }
@@ -149,8 +178,11 @@ impl Pr {
             return;
         };
         let mut fresh = row(pr);
+        if let Some(repo) = &self.repo {
+            fresh = mark(fresh, repo);
+        }
         fresh["viewedAtMs"] = now_ms().into();
-        match rows.iter_mut().find(|p| p["number"] == fresh["number"]) {
+        match rows.iter_mut().find(|p| key(p) == key(&fresh)) {
             Some(was) => *was = fresh,
             None => rows.push(fresh),
         }
@@ -179,7 +211,7 @@ impl Pr {
             Ok((rows, error)) => {
                 let last = |row: &Value| {
                     (old["prs"].as_array().into_iter().flatten())
-                        .find(|o| o["number"] == row["number"] && o["head"] == row["head"])
+                        .find(|o| key(o) == key(row) && o["head"] == row["head"])
                         .filter(|o| !o["failed"].is_null())
                         .cloned()
                 };
@@ -247,81 +279,29 @@ impl Pr {
     }
 }
 
-/// What a host CLI's `pr` command does that makes its PR one the session touched [D175].
-const TOUCH: [&str; 8] = [
-    "create", "merge", "edit", "ready", "comment", "review", "close", "reopen",
-];
+/// A kept row's PR: its repository's `owner/name` (lower case) when it isn't the session's own,
+/// and its number.
+pub(super) type Key = (Option<String>, u64);
 
-/// The PRs on `repo` the session's own commands opened, merged or changed [D175]: a `pr <verb>`
-/// naming one by number or URL, and the URL a `pr create` printed. Read from the session's saved
-/// rows, so a command counts once its turn has ended.
-// shortcut: gh's command shape only (no glab `mr`, API calls or MCP tools), and a number only as
-// its first non-option argument, until a host or agent is seen doing it another way.
-fn touched(dir: &Path, repo: &Repo) -> Vec<u64> {
-    let Ok(rows) = fs::read(dir.join("thread").join("rows")) else {
-        return Vec::new();
-    };
-    let url = format!("{}/{}/pull/", repo.host, repo.path).to_ascii_lowercase();
-    let in_urls = |text: &str| -> Vec<u64> {
-        let text = text.to_ascii_lowercase();
-        (text.match_indices(&url))
-            .filter_map(|(at, _)| {
-                let rest = &text[at + url.len()..];
-                let end = rest
-                    .find(|c: char| !c.is_ascii_digit())
-                    .unwrap_or(rest.len());
-                rest[..end].parse().ok()
-            })
-            .collect()
-    };
-    let ours = |r: &str| {
-        let (r, path) = (
-            r.trim_matches(['"', '\'']).to_ascii_lowercase(),
-            repo.path.to_ascii_lowercase(),
-        );
-        r == path || r.ends_with(&format!("/{path}"))
-    };
-    let has = |line: &[u8], what: &[u8]| line.windows(what.len()).any(|w| w == what);
-    let mut found = Vec::new();
-    for line in rows.split(|b| *b == b'\n') {
-        // Most rows aren't a command's, and most commands no PR's: those aren't parsed.
-        if !has(line, b"\"step\":\"run\"") || !has(line, b"pr ") {
-            continue;
-        }
-        let Ok(row) = serde_json::from_slice::<Value>(line) else {
-            continue;
-        };
-        let Some(input) = row["input"].as_str() else {
-            continue;
-        };
-        for part in input.split(['\n', ';', '&', '|']) {
-            let words: Vec<&str> = part.split_whitespace().collect();
-            let Some(at) = (words.windows(2)).position(|w| w[0] == "pr" && TOUCH.contains(&w[1]))
-            else {
-                continue;
-            };
-            let (mut rest, mut first, mut elsewhere) = (words[at + 2..].iter(), None, false);
-            while let Some(w) = rest.next() {
-                match *w {
-                    "-R" | "--repo" => elsewhere |= rest.next().is_some_and(|r| !ours(r)),
-                    w if w.starts_with("--repo=") => elsewhere |= !ours(&w["--repo=".len()..]),
-                    w if w.starts_with('-') => {}
-                    w => first = first.or(Some(w.trim_matches(['"', '\'']))),
-                }
-            }
-            if elsewhere {
-                continue;
-            }
-            if let Some(w) = first {
-                found.extend(w.trim_start_matches('#').parse::<u64>().ok());
-                found.extend(in_urls(w));
-            }
-            if words[at + 1] == "create" {
-                found.extend(in_urls(row["output"].as_str().unwrap_or("")));
-            }
-        }
+fn key(row: &Value) -> Key {
+    (
+        row["repo"].as_str().map(str::to_ascii_lowercase),
+        row["number"].as_u64().unwrap_or(0),
+    )
+}
+
+/// A row from a repository other than the session's names it, `owner/name` from its URL [D213].
+fn mark(mut row: Value, repo: &Repo) -> Value {
+    let path = (row["url"].as_str())
+        .and_then(|u| u.split_once("://"))
+        .and_then(|(_, rest)| {
+            let mut parts = rest.split('/').skip(1);
+            Some(format!("{}/{}", parts.next()?, parts.next()?))
+        });
+    if let Some(path) = path.filter(|p| !p.eq_ignore_ascii_case(&repo.path)) {
+        row["repo"] = path.into();
     }
-    found
+    row
 }
 
 pub(super) fn belongs(pr: &Value, repo: &Repo, branch: &str) -> bool {

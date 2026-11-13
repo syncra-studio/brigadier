@@ -27,11 +27,15 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The last read, from the session's folder alone: no git, no host [D207].
     if arg(args, 2)? == "view" && args.get(4).is_some_and(|a| a == "kept") {
         let dir = brigadier_core::session_dir(data, id);
-        return Ok(json!({"ok": true, "pr": host::kept_view(&dir, number(args)?)}));
+        let (other, n) = number(args)?;
+        return Ok(json!({"ok": true, "pr": host::kept_view(&dir, other.as_deref(), n)}));
     }
     let pr = host::pr(data, id)?;
     Ok(match arg(args, 2)? {
-        "view" => json!({"ok": true, "pr": pr.view(number(args)?)?}),
+        "view" => {
+            let (other, n) = number(args)?;
+            json!({"ok": true, "pr": pr.view(other.as_deref(), n)?})
+        }
         "list" => match pr.list() {
             Some(prs) => json!({"ok": true, "prs": prs}),
             // The read failed: `prs.json` keeps the last PRs with why, and the reply says it too.
@@ -47,7 +51,8 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         },
         "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
         "merge" => {
-            let merged = pr.merge(number(args)?, arg(args, 4)?, arg(args, 5)?)?;
+            let (other, n) = number(args)?;
+            let merged = pr.merge(other.as_deref(), n, arg(args, 4)?, arg(args, 5)?)?;
             // The list read that records the landing goes on after the answer, so Merging… ends
             // with the merge; a shell's run that exits first leaves it to the watch.
             std::thread::spawn(move || pr.list());
@@ -57,6 +62,7 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     })
 }
 
-fn number(args: &[String]) -> io::Result<u64> {
-    (arg(args, 3)?.parse()).map_err(|_| io::Error::other("not a PR number"))
+/// `n`, or `owner/name#n` for another repository's PR [D213].
+fn number(args: &[String]) -> io::Result<(Option<String>, u64)> {
+    host::pr_ref(arg(args, 3)?).ok_or_else(|| io::Error::other("not a PR number"))
 }

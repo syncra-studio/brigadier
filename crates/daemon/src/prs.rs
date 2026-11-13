@@ -106,11 +106,10 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                         false => host::pr(&data, &id).ok().and_then(|pr| {
                             let kept = pr.watch();
                             // An open PR's tab is read at the same pace, so it opens on a fresh read [D207].
-                            for n in (kept.is_some() && window)
-                                .then(|| host::tabbed(&dir))
-                                .unwrap_or_default()
-                            {
-                                let _ = pr.view(n);
+                            if kept.is_some() && window {
+                                for (other, n) in host::tabbed(&dir) {
+                                    let _ = pr.view(other.as_deref(), n);
+                                }
                             }
                             kept
                         }),

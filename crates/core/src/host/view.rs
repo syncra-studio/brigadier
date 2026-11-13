@@ -1,7 +1,7 @@
 //! One PR as the Pull requests tab shows it, and its merge, through the user's own gh [D1017,
 //! D1030]: one GraphQL read for the whole page [D204, D207], its checks bucketed as `gh pr checks`
-//! does (`prs::checks_of`), kept in `pr/<n>.json` in the session's folder so the tab paints the last
-//! read at once. A failed check's log tail is its own read, when the tab asks (`log`).
+//! does (`prs::checks_of`), kept in `pr/<n>.json` in the session's folder (`pr/<owner>/<name>/<n>.json`
+//! for another repository's [D213]) so the tab paints the last read at once. A failed check's log tail is its own read, when the tab asks (`log`).
 
 use super::prs::{FIELDS, checks_of};
 use super::{GH_SECS, Gh, Pr, Repo, err, failed, gh, setup};
@@ -18,28 +18,31 @@ const MERGE_SECS: u64 = 60;
 // shortcut: its last 100 commits, comments and timeline items and 50 reviews, until a PR has more.
 const PAGE: &str = "body createdAt author { login } additions deletions changedFiles mergeStateStatus labels(first: 20) { nodes { name } } assignees(first: 10) { nodes { login } } reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } } latestReviews(first: 20) { nodes { state author { login } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } comments(last: 100) { nodes { databaseId body createdAt url author { login __typename } } } reviews(last: 50) { nodes { databaseId state body submittedAt url author { login __typename } comments(first: 50) { nodes { databaseId path line originalLine body createdAt url author { login __typename } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, MERGED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login } } ... on ReviewRequestedEvent { id createdAt actor { login } requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } ... on MergedEvent { id createdAt actor { login } } ... on ClosedEvent { id createdAt actor { login } } ... on ReopenedEvent { id createdAt actor { login } } ... on ReadyForReviewEvent { id createdAt actor { login } } ... on ConvertToDraftEvent { id createdAt actor { login } } } }";
 
-fn kept_path(dir: &Path, number: u64) -> PathBuf {
-    dir.join("pr").join(format!("{number}.json"))
+/// `other`: another repository's `owner/name`, checked to be one (`slug`) [D213].
+fn kept_path(dir: &Path, other: Option<&str>, number: u64) -> PathBuf {
+    other
+        .map_or(dir.join("pr"), |r| dir.join("pr").join(r))
+        .join(format!("{number}.json"))
 }
 
 /// PR `number`'s last read as its tab showed it, or null before any [D207].
-pub fn kept_view(dir: &Path, number: u64) -> Value {
-    (fs::read(kept_path(dir, number)).ok())
+pub fn kept_view(dir: &Path, other: Option<&str>, number: u64) -> Value {
+    (fs::read(kept_path(dir, other, number)).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or(Value::Null)
 }
 
 /// The open PRs whose tab the session has open (`tabs.json`): the watch reads their pages too [D207].
-pub fn tabbed(dir: &Path) -> Vec<u64> {
+pub fn tabbed(dir: &Path) -> Vec<(Option<String>, u64)> {
     let tabs: Value = (fs::read(dir.join("tabs.json")).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
     (tabs["tabs"].as_array().into_iter().flatten())
         .filter(|t| t["kind"] == "pr")
-        .filter_map(|t| t["target"].as_str()?.parse().ok())
-        .filter(|n| {
+        .filter_map(|t| super::pr_ref(t["target"].as_str()?))
+        .filter(|(other, n)| {
             !matches!(
-                kept_view(dir, *n)["state"].as_str(),
+                kept_view(dir, other.as_deref(), *n)["state"].as_str(),
                 Some("merged" | "closed")
             )
         })
@@ -47,8 +50,10 @@ pub fn tabbed(dir: &Path) -> Vec<u64> {
 }
 
 impl Pr {
-    fn gh_repo(&self) -> io::Result<(&Repo, Gh)> {
-        match self.repo.as_ref().and_then(|r| Some((r, gh(r)?))) {
+    /// The session's repository, or `other` on its server [D213], and gh as an account that reads it.
+    fn gh_repo(&self, other: Option<&str>) -> io::Result<(Repo, Gh)> {
+        let repo = (self.repo.as_ref()).map(|r| other.map_or_else(|| r.clone(), |o| r.at(o)));
+        match repo.and_then(|r| Some((gh(&r)?, r))).map(|(gh, r)| (r, gh)) {
             Some(found) => Ok(found),
             None => err(super::NO_GH),
         }
@@ -57,8 +62,9 @@ impl Pr {
     /// PR `number` whole in one read: its facts, checks, reviews, comments, commits and timeline,
     /// kept for its tab's next paint and its row in `prs.json` with it. `head` is the commit it was
     /// read at, which a merge is pinned to [D1077].
-    pub fn view(&self, number: u64) -> io::Result<Value> {
-        let (repo, gh) = self.gh_repo()?;
+    pub fn view(&self, other: Option<&str>, number: u64) -> io::Result<Value> {
+        let (repo, gh) = self.gh_repo(other)?;
+        let repo = &repo;
         let query = format!(
             "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
         );
@@ -70,8 +76,12 @@ impl Pr {
         }
         // The branch's PR, or another the session touched and keeps [D175].
         let kept = super::kept(&self.dir);
-        let touched = (kept["prs"].as_array().into_iter().flatten()).any(|p| p["number"] == number);
-        let mine = super::prs::belongs(pr, repo, &self.branch);
+        let touched = (kept["prs"].as_array().into_iter().flatten()).any(|p| {
+            p["number"] == number
+                && p["repo"].as_str().map(str::to_ascii_lowercase)
+                    == other.map(str::to_ascii_lowercase)
+        });
+        let mine = other.is_none() && super::prs::belongs(pr, repo, &self.branch);
         if !mine && !touched {
             return err(format!("#{number} isn't one of this session's PRs."));
         }
@@ -177,9 +187,11 @@ impl Pr {
         .map(|(_, style)| style)
         .collect();
         styles.sort_by_key(|s| Some(*s) != first.as_deref());
-        if matches!(state, "open" | "draft") {
+        // Another repository's PR is never the branch's open one.
+        let own = other.is_none();
+        if own && matches!(state, "open" | "draft") {
             super::note_open(&self.id, &self.branch, Some(number));
-        } else if super::open_pr(&self.id, &self.branch) == Some(number) {
+        } else if own && super::open_pr(&self.id, &self.branch) == Some(number) {
             super::note_open(&self.id, &self.branch, None);
         }
         let view = json!({
@@ -204,7 +216,7 @@ impl Pr {
             "labels": nodes(&pr["labels"]).iter().map(|l| l["name"].clone()).collect::<Vec<_>>(),
             "checks": checks, "comments": comments, "events": events,
         });
-        let path = kept_path(&self.dir, number);
+        let path = kept_path(&self.dir, other, number);
         let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
         let wrote = fs::create_dir_all(path.parent().unwrap_or(&self.dir))
             .and_then(|()| fs::write(&tmp, view.to_string()))
@@ -218,19 +230,29 @@ impl Pr {
 
     /// The failed steps' last lines of the Actions job at `link`, read when the tab shows its check.
     pub fn log(&self, link: &str) -> io::Result<Option<String>> {
-        let (repo, gh) = self.gh_repo()?;
-        Ok(log_tail(&gh, repo, link))
+        // The job's repository, from its link (`…/owner/name/actions/runs/…`): any PR's [D213].
+        let path: Vec<&str> = link.split("://").last().unwrap_or("").split('/').collect();
+        let other = (path.len() > 2).then(|| format!("{}/{}", path[1], path[2]));
+        let other = other.filter(|o| super::slug(o));
+        let (repo, gh) = self.gh_repo(other.as_deref())?;
+        Ok(log_tail(&gh, &repo, link))
     }
 
     /// Merges PR `number` on the host with `method`, only if its head is still `head`, the one its
     /// confirm showed [D1028, D1077]. True once the host says it's merged: with a merge queue,
     /// gh's success may only have queued it. The PR list read that records the landing is the
     /// caller's, after it answers (`list`).
-    pub fn merge(&self, number: u64, method: &str, head: &str) -> io::Result<bool> {
+    pub fn merge(
+        &self,
+        other: Option<&str>,
+        number: u64,
+        method: &str,
+        head: &str,
+    ) -> io::Result<bool> {
         if !matches!(method, "merge" | "squash" | "rebase") {
             return err(format!("not a merge method: {method:?}"));
         }
-        let (repo, gh) = self.gh_repo()?;
+        let (repo, gh) = self.gh_repo(other)?;
         let mut command = gh.command();
         command.env("GH_PROMPT_DISABLED", "1").args([
             "pr",

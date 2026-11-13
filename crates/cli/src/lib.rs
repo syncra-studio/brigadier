@@ -61,7 +61,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> files | folder <path> | find <query> | since
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> view <n> [kept] | host <id> list | host <id> log <link> | host <id> merge <n> <merge|squash|rebase> <head>
+       brigadier host <id> view <n|owner/name#n> [kept] | host <id> list | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
