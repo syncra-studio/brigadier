@@ -96,7 +96,7 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
     let (mut turn, mut cause, mut last_end) = (None::<Turn>, String::new(), 0);
     let (mut spawn, mut stop, mut used, mut cost) =
         (Value::Null, None::<String>, Value::Null, None);
-    let (mut prev, mut ctx) = ((0, 0), 0);
+    let (mut prev, mut ctx, mut host) = ((0, 0), 0, None);
     core::read(&spec.dir, |item| {
         let (ts, f) = (
             item["ts"].as_u64().unwrap_or(0),
@@ -121,8 +121,9 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
                     });
                 }
                 let c = &mut convs[cur];
-                if c.build.is_none() && spawn.is_object() {
-                    c.build = spawn["owner_build"].as_u64();
+                // The host's build spawned it: its notes stay in a rows-only copy [D220].
+                c.build = c.build.or(host);
+                if c.voice.is_none() && spawn.is_object() {
                     let argv = spawn["argv"].as_array().into_iter().flatten();
                     c.voice = Some(argv.filter_map(Value::as_str).any(|a| a.contains(voice)));
                 }
@@ -237,7 +238,7 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
             "stopped" => stop = Some(s("by").into()),
             "exited" => {
                 let how = match (item["signal"].as_i64(), item["code"].as_i64()) {
-                    (Some(sig), _) => format!("signal {sig}"),
+                    (Some(sig), _) => format!("killed by signal {sig}"),
                     (_, c) => format!("code {}", c.unwrap_or(-1)),
                 };
                 let when = if turn.is_some() {
@@ -245,7 +246,8 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
                 } else {
                     "between turns"
                 };
-                let after = stop.as_ref().map_or(", and no stop was asked".into(), |b| {
+                // A stop explains only the exit that follows it.
+                let after = stop.take().map_or(", no stop asked".into(), |b| {
                     format!(", after a stop by {b}")
                 });
                 ends.push(format!(
@@ -253,12 +255,13 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
                     clock(ts)
                 ));
             }
-            "note" if item["event"] == "owner_started" && f > 0 => {
-                let build = item["build"].as_u64().unwrap_or(0);
-                ends.push(match turn.take() {
+            "note" if item["event"] == "owner_started" => {
+                host = item["build"].as_u64();
+                let build = host.unwrap_or(0);
+                ends.extend((f > 0).then(|| match turn.take() {
                     Some(_) => format!("{} #{f} the session's host started again, on build {build}, with a turn running: its last record was {} #{}, and no exit was logged", clock(ts), clock(prev.0), prev.1),
                     None => format!("{} #{f} the session's host moved to build {build}", clock(ts)),
-                });
+                }));
             }
             "tool"
                 if s("input").contains("brigadier read")
@@ -319,90 +322,126 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
     ])
 }
 
-/// The recall prompt, then what the record before it says the answer should cover: the PRs and
-/// tickets it names, and the agent's own promises and waits.
+/// Each ref the record names (`#2712`, `repo#n`, a PR link, a ticket key): its mentions, and
+/// whether a step acted on it.
+type Refs = BTreeMap<String, (Vec<String>, bool)>;
+
+/// A Jira-style ticket key: FREELOGO-1680.
+fn ticket(word: &str) -> bool {
+    word.split_once('-').is_some_and(|(key, n)| {
+        key.len() >= 2
+            && key.starts_with(|c: char| c.is_ascii_uppercase())
+            && (key.bytes()).all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+            && n.bytes().all(|b| b.is_ascii_digit())
+            && !n.is_empty()
+            && !["UTF", "SHA", "ISO"].contains(&key)
+    })
+}
+
+/// The recall prompt, then what the record before the latest one (or all of it) says the answer
+/// should cover: the PRs and tickets it names, and the agent's own promises and waits.
 fn checklist(spec: &Spec) -> io::Result<Sections> {
-    let (mut prs, mut tickets) = (
-        BTreeMap::<String, Vec<String>>::new(),
-        BTreeMap::<String, Vec<String>>::new(),
-    );
-    let (mut promised, mut asked) = (Vec::<String>::new(), false);
+    // One style: the session's own repo's PRs bare (#2712), another repo's with its name.
+    let origin = crate::workers::git(&spec.cwd, &["remote", "get-url", "origin"]);
+    let origin = origin.unwrap_or_default();
+    let here = (origin.trim_end_matches(".git").rsplit(['/', ':']).next()).unwrap_or("");
+    let pr = |repo: &str, n: &str| match repo.rsplit('/').next().unwrap_or("") {
+        r if r == here => format!("#{n}"),
+        r => format!("{r}#{n}"),
+    };
+    let (mut prs, mut tickets, mut promised) = (Refs::new(), Refs::new(), Vec::<String>::new());
+    let mut kept = None;
+    let number = |n: &str| n.len() >= 2 && n.bytes().all(|b| b.is_ascii_digit());
     core::read(&spec.dir, |item| {
+        let s = |k: &str| item[k].as_str().unwrap_or("");
+        let words = |t: &str| -> Vec<String> {
+            t.split(|c: char| c.is_whitespace() || "()[]<>,;:`*\"'".contains(c))
+                .map(|w| w.trim_end_matches(['.', '?', '!']).to_string())
+                .collect()
+        };
+        // Acted on: a `gh pr` verb on a PR, a ticket's transition or comment.
+        if item["kind"] == "tool" {
+            let name = s("name").to_lowercase();
+            if name.contains("transition") || name.contains("comment") {
+                for t in words(s("input")).into_iter().filter(|w| ticket(w)) {
+                    tickets.entry(t).or_default().1 = true;
+                }
+            }
+            for cmd in s("input").split("gh pr ").skip(1) {
+                let mut args = cmd.split_whitespace();
+                let (verb, n) = (args.next().unwrap_or(""), args.next().unwrap_or(""));
+                let acts = "merge review ready comment edit close reopen";
+                if acts.split(' ').any(|a| a == verb) && number(n) {
+                    let mut args = cmd.split_whitespace();
+                    let repo = args.find(|a| matches!(*a, "-R" | "--repo"));
+                    let repo = repo.and(args.next()).unwrap_or(here);
+                    prs.entry(pr(repo, n)).or_default().1 = true;
+                }
+            }
+            return;
+        }
         let entry = archive::entry(item, archive::at(item));
-        let Some(e) = entry.filter(|e| !asked && matches!(e.from, "user" | "agent")) else {
+        let Some(e) = entry.filter(|e| matches!(e.from, "user" | "agent")) else {
             return;
         };
-        asked = e.from == "user" && e.text.starts_with(&RECALL[..40]);
+        if e.from == "user" && e.text.starts_with(&RECALL[..40]) {
+            kept = Some((prs.clone(), tickets.clone(), promised.clone()));
+            return;
+        }
         let at = format!("#{}", e.at);
-        for word in e
-            .text
-            .split(|c: char| c.is_whitespace() || "()[]<>,;:`*\"'".contains(c))
-        {
-            let word = word.trim_end_matches(['.', '?', '!']);
-            let pr = match word.split_once("/pull/") {
-                Some((repo, n)) => format!(
-                    "{}#{}",
-                    repo.rsplit('/').next().unwrap_or(""),
-                    n.split('/').next().unwrap_or("")
-                ),
-                None => word.to_string(),
+        for word in words(&e.text) {
+            let (repo, n) = match word.split_once("/pull/") {
+                Some((repo, n)) => (repo, n.split('/').next().unwrap_or("")),
+                None => word.split_once('#').unwrap_or(("", "")),
             };
-            let number = |n: &str| n.len() >= 2 && n.bytes().all(|b| b.is_ascii_digit());
-            if pr
-                .split_once('#')
-                .is_some_and(|(r, n)| r != spec.id && number(n))
-            {
-                prs.entry(pr).or_default().push(at.clone());
+            if repo != spec.id && number(n) {
+                prs.entry(pr(repo, n)).or_default().0.push(at.clone());
             }
-            let ticket = word.split_once('-').is_some_and(|(key, n)| {
-                key.len() >= 2
-                    && key.starts_with(|c: char| c.is_ascii_uppercase())
-                    && key
-                        .bytes()
-                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-                    && n.bytes().all(|b| b.is_ascii_digit())
-                    && !n.is_empty()
-                    && !["UTF", "SHA", "ISO"].contains(&key)
-            });
-            if ticket {
-                tickets
-                    .entry(word.to_string())
-                    .or_default()
-                    .push(at.clone());
+            if ticket(&word) {
+                tickets.entry(word).or_default().0.push(at.clone());
             }
         }
-        for sentence in e
-            .text
-            .split_inclusive(['.', '?', '!', '\n'])
-            .map(str::trim)
-            .filter(|_| e.from == "agent")
-        {
+        let sentences = e.text.split_inclusive(['.', '?', '!', '\n']).map(str::trim);
+        for sentence in sentences.filter(|_| e.from == "agent") {
             let plain = sentence.to_lowercase().replace('’', "'");
-            let says = ["i'll ", "i will ", "waiting on you"]
-                .iter()
-                .any(|w| plain.contains(w));
+            let says = (["i'll ", "i will ", "waiting on you"].iter()).any(|w| plain.contains(w));
             if says && !promised.iter().any(|p| p.ends_with(sentence)) {
                 promised.push(format!("{} {at} {sentence}", clock(e.ts)));
             }
         }
     })?;
-    // A bare #n also named with its repo is the same PR.
-    let named: Vec<String> = prs
-        .keys()
-        .filter_map(|p| p.find('#').filter(|&i| i > 0).map(|i| p[i..].to_string()))
-        .collect();
-    prs.retain(|p, _| !named.contains(p));
-    let refs = |m: BTreeMap<String, Vec<String>>| -> Vec<String> {
-        m.into_iter()
-            .map(|(k, at)| {
-                format!(
-                    "{k}: {} mentions, first {}, last {}",
-                    at.len(),
-                    at[0],
-                    at[at.len() - 1]
-                )
+    let (mut prs, tickets, promised) = kept.unwrap_or((prs, tickets, promised));
+    // A bare #n also named with just one other repo is that repo's PR.
+    let bare: Vec<String> = prs.keys().filter(|k| k.starts_with('#')).cloned().collect();
+    for k in bare {
+        let mut others = prs.keys().filter(|o| o.len() > k.len() && o.ends_with(&k));
+        if let (Some(o), None) = (others.next().cloned(), others.next()) {
+            let (at, acted) = prs.remove(&k).unwrap_or_default();
+            let into = prs.entry(o).or_default();
+            into.0.extend(at);
+            into.0.sort_by_key(|a| a[1..].parse::<u64>().unwrap_or(0));
+            into.1 |= acted;
+        }
+    }
+    // Named twice or more, or acted on, first; the rest folded on one line.
+    let refs = |m: Refs| -> Vec<String> {
+        let (top, once): (Vec<_>, Vec<_>) =
+            (m.into_iter()).partition(|(_, (at, acted))| *acted || at.len() > 1);
+        let mut lines: Vec<String> = (top.into_iter())
+            .map(|(k, (at, acted))| {
+                let span = (at.first().zip(at.last()))
+                    .map_or(String::new(), |(a, b)| format!(", first {a}, last {b}"));
+                let acted = if acted { ", acted on" } else { "" };
+                format!("{k}: {} mentions{span}{acted}", at.len())
             })
-            .collect()
+            .collect();
+        let once: Vec<String> = (once.iter())
+            .map(|(k, (at, _))| format!("{k} {}", at[0]))
+            .collect();
+        if !once.is_empty() {
+            lines.push(format!("mentioned once: {}", once.join(", ")));
+        }
+        lines
     };
     Ok(vec![
         ("The recall prompt".into(), vec![RECALL.into()]),
