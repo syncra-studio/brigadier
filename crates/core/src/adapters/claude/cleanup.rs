@@ -103,9 +103,10 @@ pub(super) fn project_dir(spec: &Spec) -> PathBuf {
     home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
 }
 
+/// Resolved through its nearest existing parent: delete removes a worktree before its files.
 fn project_slug(cwd: &Path) -> String {
-    let real = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
-    real.display()
+    crate::git::watch::resolved(cwd)
+        .display()
         .to_string()
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })

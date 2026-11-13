@@ -351,7 +351,7 @@ impl Filter {
 
 /// A path as events name it, links resolved (`/private/tmp`, not `/tmp`), also when its last parts
 /// aren't there yet.
-fn resolved(path: &Path) -> PathBuf {
+pub(crate) fn resolved(path: &Path) -> PathBuf {
     for existing in path.ancestors() {
         if let (Ok(base), Ok(rest)) = (existing.canonicalize(), path.strip_prefix(existing)) {
             return match rest.as_os_str().is_empty() {
