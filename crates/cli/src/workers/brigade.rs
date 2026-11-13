@@ -75,7 +75,7 @@ pub(super) fn capped(data: &Path, me: &str, spec: &core::Spec, session: bool) ->
 /// What a sub-session gets after its brief, in place of a worker's line [D189].
 pub(super) fn line(boss: &str, bid: &str, land: &str) -> String {
     format!(
-        "You're a session in the Brigade {boss} ({bid}): you lead this part of its job, with workers of your own, and own only the files your brief gives you. Your boss holds the decisions. Send it each decision you propose and each question with `brigadier send {bid} \"…\"` and wait there; never ask the user. An answer may be the user's own, passed through your boss. When your part is done and its workers are finished, your last message goes back to your boss by itself: end with what you did, what you decided and what's open. {land} `brigadier read {bid} --user` has the user's own words."
+        "You're a session in the Brigade {boss} ({bid}): you lead this part of its job, with workers of your own, and own only the files your brief gives you. Your boss holds the decisions. Send it only a decision you propose or a question, with `brigadier send {bid} \"…\"`, and wait there; never send it progress or results, and never ask the user. An answer may be the user's own, passed through your boss. When your part is done and its workers are finished, your last message goes back to your boss by itself: end with what you did, what you decided and what's open. {land} `brigadier read {bid} --user` has the user's own words."
     )
 }
 
