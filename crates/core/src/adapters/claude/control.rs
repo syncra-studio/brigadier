@@ -113,10 +113,10 @@ pub fn own(env: &mut Vec<(String, String)>) {
     }
 }
 
-pub fn standing() -> [String; 6] {
+pub fn standing(spec: &Spec) -> [String; 6] {
     [
         "--append-system-prompt".into(),
-        crate::agent::standing(),
+        crate::agent::standing(spec),
         "--settings".into(),
         r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
         "--disallowedTools".into(),

@@ -25,7 +25,7 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     let (policy, reviewer, sandbox, _) = level(spec);
     // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
     let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox,
-        "developerInstructions": crate::agent::standing()});
+        "developerInstructions": crate::agent::standing(spec)});
     if let Some(model) = &spec.model {
         open["model"] = model.as_str().into();
     }

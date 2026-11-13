@@ -173,8 +173,8 @@ impl Adapter for Claude {
             argv.push("--allowedTools".into());
             argv.extend(rules);
         }
-        // The commit style, the `brigadier` line, and its own messages between sessions off.
-        argv.extend(control::standing());
+        // The standing text [D181], and its own messages between sessions off.
+        argv.extend(control::standing(spec));
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
             // shortcut: this flag isn't in the CLI reference, only Anthropic's open-source SDK; replace it if the CLI documents another.

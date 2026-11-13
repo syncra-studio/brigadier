@@ -32,7 +32,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.
-For a helper on your own agent, use your own subagents: they share your context and cost less.";
+A separate job (a build, a live run, a change across files, research) goes to a worker with `start`; your own subagents are for read-only look-ups.";
 
 /// Each command's help, its value flags and its plain flags.
 fn spec(
@@ -92,7 +92,7 @@ Without --agent, --model and --effort it runs on yours; `brigadier models` lists
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
-For a helper on your own agent, use your own subagents instead: they share your context and cost less.",
+Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups.",
             &["--agent", "--model", "--effort", "--title"],
             &[],
         ),

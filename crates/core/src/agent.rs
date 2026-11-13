@@ -23,9 +23,22 @@ pub const PEER_HEAD: &str = "[From session ";
 /// The line every session loads, its byte cap checked by `scripts/limits` [D2025].
 pub const LINE: &str = include_str!("agent-line.txt");
 
-/// The standing text an adapter passes at launch: the commit style, then the line.
-pub fn standing() -> String {
-    format!("{} {}", crate::writer::STYLE, LINE.trim())
+/// A session's lead rule: a separate job goes to a worker. A worker gets none, so it starts no
+/// workers of its own [D181].
+const LEAD: &str = "You lead this session: the user talks to you. Questions, look-ups, plans, edits you make without running anything, and anything that needs this conversation or your signed-in tools (MCP) you do yourself. A job that changes code and runs checks goes to a Brigadier worker with `brigadier start`, even a small one: a fix with its tests, a change across files, a build, a live run, or research of many steps. A worker gets only its brief, in its own worktree, so write the brief for someone new; its result comes to you. Your own subagents are for read-only look-ups.";
+
+/// How every session and worker answers [D181].
+const VOICE: &str = "How you answer: put the outcome first, the result, the answer or the decision, then only what the reader needs to act on it. Write short paragraphs of plain, whole sentences. Use a list only for three or more parallel items, and keep it flat. A long answer may have short headings; no line starts with bold text. Sum up routine checks in one line, and say what you could not check. Keep every number, path, name, command and error text exact. While you work, write a line only when you find something or change course.";
+
+/// The standing text an adapter passes at launch: the commit style, the line, a session's lead
+/// rule, then the voice.
+pub fn standing(spec: &Spec) -> String {
+    let lead = if spec.naked {
+        String::new()
+    } else {
+        format!("{LEAD}\n\n")
+    };
+    format!("{} {}\n\n{lead}{VOICE}", crate::writer::STYLE, LINE.trim())
 }
 
 /// The grant for this launch (proposed lifecycle): one token per owner generation, the host that
