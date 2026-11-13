@@ -96,9 +96,17 @@ impl Thread {
     }
 
     /// A Brigadier cut, held open for its carry-on: one block, its answer an update in it [D108,
-    /// D124].
-    pub(super) fn hold_cut(&mut self, o: Open) {
+    /// D124]. A reply it cut mid-way, only its divider (or thinking, never drawn) after it, stays
+    /// out of the fold with the carry-on that finishes it: one reply under "Worked for" [D118].
+    pub(super) fn hold_cut(&mut self, mut o: Open) {
         self.final_answer(&o, false);
+        let mid = |n: u64| {
+            let row = &self.items[n as usize - 1];
+            o.kept.contains(&n) || row["hidden"] == true || row["kind"] == "reasoning"
+        };
+        if let Some(answer) = (o.answer).filter(|&a| (a + 1..=self.items.len() as u64).all(mid)) {
+            o.kept.push(answer);
+        }
         self.turns[o.at]["held"] = true.into();
         self.turns[o.at]["helpers"] = 0.into();
         self.held.insert(o.id.clone(), (o, Value::Null));
