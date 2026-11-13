@@ -146,7 +146,8 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
-  setHomeDraft({ text: undefined, model, ...(project && { project }) });
+  // The next new session starts on the project's default level again, as the old app's did.
+  setHomeDraft({ text: undefined, level: undefined, model, ...(project && { project }) });
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
