@@ -2,14 +2,12 @@ import { useState } from "react";
 
 import { useThread } from "../../daemon";
 import { errorText, run } from "../../onboarding/api";
-import type { Item, Turn, Work } from "../../thread/item";
+import type { Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
 import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
 import { showToast } from "../toast";
 import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
-import { FILE_VERBS, fileName } from "./file-change";
-import { doingWords } from "./tool";
 import { finished } from "../../workers/chip";
 import { useWorkers } from "../../workers/live";
 
@@ -82,33 +80,16 @@ function StillWaiting() {
   );
 }
 
-/** A running step's words ("Reading blocks.ts"); nothing once it isn't running. */
-function doing(item: Item | undefined): string | undefined {
-  if (item?.kind === "tool" && item.progress === "running") {
-    return doingWords(item.step ?? "other", item.name, item.input);
-  }
-  if (item?.kind === "fileChange" && item.progress === "running" && item.changes[0]) {
-    return `${FILE_VERBS[item.changes[0].change][0]} ${fileName(item.changes[0].path)}`;
-  }
-  if (item?.kind === "childAgent" && item.progress === "running") return "Running a subagent";
-  return undefined;
-}
-
 /**
- * Steps that came one after another, as one row: "Edited 3 files, ran 2 commands ›", with the first kind's
- * icon. While its turn runs and a step of it is running, that step's words ("Reading blocks.ts"), shimmering.
+ * Steps that came one after another, as one row: "Edited 3 files, ran 2 commands ›", with the first kind's icon.
+ * Its count only goes up while the turn runs: a running step shows on its own line below until it ends [D173].
  */
-export function GroupRow({ item, live, open, onToggle }: { item: Group; live: Item | undefined; open: boolean; onToggle: (id: string) => void }) {
-  const running = doing(live);
-  // Live, the icon is the running step's; otherwise the first kind the group names.
-  const kind =
-    (running && live?.kind === "tool" ? (live.step ?? "other") : running && live?.kind === "fileChange" ? "edit" : running ? "agent" : undefined) ??
-    ORDER.find((k) => item.steps.some((step) => step.kind === k)) ??
-    "other";
+export function GroupRow({ item, open, onToggle }: { item: Group; open: boolean; onToggle: (id: string) => void }) {
+  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
       <StepIcon kind={kind} />
-      <Words verb={running ?? groupWords(item.steps)} live={running !== undefined} />
+      <Words verb={groupWords(item.steps)} />
       <Chevron />
     </button>
   );

@@ -86,6 +86,7 @@ fn tool(item: &Value) -> Tool {
         step,
         input,
         changes: changes(item),
+        server: item["server"].as_str().map(String::from),
         ..Default::default()
     }
 }

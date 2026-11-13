@@ -196,6 +196,11 @@ fn cli(v: &Value) -> Value {
     json!({"rid": v["rid"], "method": v["method"], "thread": p["threadId"], "turn": p["turnId"], "cwd": p["cwd"]})
 }
 
+/// The step it asks for, for the thread to find it [D173].
+fn step(a: &mut Value, v: &Value) {
+    a["tool"] = v["params"]["itemId"].clone();
+}
+
 fn command(v: &Value) -> Event {
     let p = &v["params"];
     let net = &p["networkApprovalContext"];
@@ -205,6 +210,7 @@ fn command(v: &Value) -> Event {
     if p["insideSession"] != true {
         a["cwd"] = p["cwd"].clone();
     }
+    step(&mut a, v);
     if p["canGrant"] == true {
         a["grant"] = match host {
             Some(host) => json!({"scope": "network", "pattern": host}),
@@ -226,6 +232,7 @@ fn edit(v: &Value) -> Event {
     if let Some(root) = root {
         a["grant"] = json!({"scope": "edits", "pattern": root});
     }
+    step(&mut a, v);
     Event::Approval(a)
 }
 

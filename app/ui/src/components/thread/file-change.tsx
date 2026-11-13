@@ -4,7 +4,9 @@ import type { FileChange, Progress } from "../../thread/item";
 import { CodeBlock } from "../../thread/code";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
+import type { PendingApproval } from "../composer/approval";
 import { OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
+import { Allowed } from "./tool";
 
 export const FILE_VERBS: Record<FileChange["change"], [string, string, string]> = {
   added: ["Creating", "Created", "create"],
@@ -22,7 +24,7 @@ export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
  * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a red dot for a
  * deleted file. A finished one opens to its diff; one without a diff opens the file in the Review tab. A declined change reads "Rejected".
  */
-export function FileChangeRow({ keep, change, progress }: { keep: string; change: FileChange; progress: Progress }) {
+export function FileChangeRow({ keep, change, progress, approval }: { keep: string; change: FileChange; progress: Progress; approval?: PendingApproval }) {
   const { added, removed } = change;
   const session = useReviewSession();
   const running = progress === "running" || progress === "pending";
@@ -64,7 +66,16 @@ export function FileChangeRow({ keep, change, progress }: { keep: string; change
     );
   }
   return (
-    <OpeningRow keep={keep} trail={trail} detail={<DiffCard keep={keep} change={change} diff={change.diff} />}>
+    <OpeningRow
+      keep={keep}
+      trail={trail}
+      detail={
+        <>
+          {approval && <Allowed approval={approval} />}
+          <DiffCard keep={keep} change={change} diff={change.diff} />
+        </>
+      }
+    >
       {head}
     </OpeningRow>
   );

@@ -103,6 +103,8 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           progress={item.progress}
           exitCode={item.exitCode}
           took={step && ms !== null && ms >= 1000 ? `in ${duration(ms)}` : undefined}
+          server={item.server}
+          approval={item.approval}
         />
       );
     }
@@ -110,7 +112,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       return (
         <div className="flex flex-col gap-1">
           {item.changes.map((change, at) => (
-            <FileChangeRow key={at} keep={`${item.id}:${at}`} change={change} progress={item.progress} />
+            <FileChangeRow key={at} keep={`${item.id}:${at}`} change={change} progress={item.progress} approval={at === 0 ? item.approval : undefined} />
           ))}
         </div>
       );

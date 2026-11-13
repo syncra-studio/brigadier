@@ -129,6 +129,8 @@ pub struct Tool {
     pub changes: Vec<Value>,
     /// When the CLI says it started (ms); None means the frame's time.
     pub at: Option<u64>,
+    /// The MCP server an MCP tool comes from, as configured (`atlassian`): its calls count together [D176].
+    pub server: Option<String>,
 }
 
 /// A tool call as it ends; `cut`: a command sent to the background or interrupted [D74].

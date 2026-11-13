@@ -16,11 +16,19 @@ const STEPS: Record<StepKind, [string, string]> = {
 /** Kinds in the order a group names them; its icon is the first one it holds. */
 export const ORDER = Object.keys(STEPS) as StepKind[];
 
-/** "Edited 3 files, ran 2 commands": a group's counts, in a fixed kind order, only the first part capitalised. */
-export function groupWords(steps: readonly { kind: StepKind; n: number }[]): string {
+/** An MCP server as the user knows it, as the old app's: "atlassian" is "Atlassian". */
+export function connectorName(server: string): string {
+  const words = server.replace(/[_-]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "an integration";
+}
+
+/** "Edited 3 files, ran 2 commands, used Atlassian 2 times": a group's counts, in a fixed kind order, only the first part capitalised. */
+export function groupWords(steps: readonly { kind: StepKind; n: number; server?: string | null }[]): string {
   const text = [...steps]
     .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
-    .map(({ kind, n }) => (n === 1 ? STEPS[kind][0] : STEPS[kind][1].replace("{n}", n.toLocaleString())))
+    .map(({ kind, n, server }) =>
+      server ? `used ${connectorName(server)}${n === 1 ? "" : ` ${n.toLocaleString()} times`}` : n === 1 ? STEPS[kind][0] : STEPS[kind][1].replace("{n}", n.toLocaleString()),
+    )
     .join(", ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

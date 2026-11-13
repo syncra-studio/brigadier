@@ -187,7 +187,7 @@ impl Norm {
                 Event::TextDelta(t) => json!({"kind": "text_delta", "text": t}),
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
-                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at}),
+                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server}),
                 Event::Awaiting(ids) => {
                     self.awaiting = ids;
                     continue;

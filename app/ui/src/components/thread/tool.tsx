@@ -3,6 +3,8 @@ import { type ReactNode, useMemo } from "react";
 import { Check, Stop } from "../../icons";
 import type { Progress, StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
+import { connectorName } from "../../thread/words";
+import type { PendingApproval } from "../composer/approval";
 import { Button } from "../button";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
@@ -21,11 +23,29 @@ export const VERBS: Record<StepKind, [string, string, string]> = {
   other: ["Using", "Used", "use"],
 };
 
-/** What a step acted on: a command, a path, a query; another tool's own name. */
-export const toolObject = (kind: StepKind, name: string, input: string) => (kind === "other" ? name : input || name);
+/** What a step acted on: a command, a path, a query; another tool's own name, an MCP tool's server ("Atlassian"). */
+export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>
+  kind === "other" ? (server ? connectorName(server) : name) : input || name;
+
+/** An MCP tool's name as words, as the old app's: "searchJiraIssues" is "search jira issues". */
+const actionWords = (name: string) =>
+  name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .toLowerCase()
+    .trim();
 
 /** A running step's words: "Reading blocks.ts", "Running pnpm build". */
 export const doingWords = (kind: StepKind, name: string, input: string) => `${VERBS[kind][0]} ${toolObject(kind, name, input)}`;
+
+/** Inside the step it allowed: "Allowed by you", and the agent's reason when it gave one [D173]. */
+export function Allowed({ approval }: { approval: PendingApproval }) {
+  return (
+    <p className="pt-1 text-sm whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+      Allowed by you{approval.reason && <span className="text-row-foreground"> · {approval.reason}</span>}
+    </p>
+  );
+}
 
 /** Lines of output drawn until the user asks for all of them: a huge log stays cheap. */
 const TAIL_LINES = 400;
@@ -45,6 +65,8 @@ export function ToolRow({
   progress,
   exitCode,
   took,
+  server,
+  approval,
 }: {
   keep: string;
   kind?: StepKind;
@@ -55,13 +77,18 @@ export function ToolRow({
   exitCode: number | null;
   /** How long it took, once done ("in 41s"), or how long it has run. */
   took?: string;
+  /** An MCP tool's server: "Atlassian: search jira issues" running, "Used Atlassian" done [D176]. */
+  server?: string | null;
+  approval?: PendingApproval;
 }) {
   const command = kind === "run";
-  const object = toolObject(kind, name, input);
+  const object = toolObject(kind, name, input, server);
   const running = progress === "running" || progress === "pending";
   const [doing, done, waiting] = VERBS[kind];
   const words =
-    progress === "pending" ? (
+    progress === "running" && server ? (
+      <Words verb={`${object}:`} object={actionWords(name)} live />
+    ) : progress === "pending" ? (
       <Words verb={`Waiting to ${waiting}`} object={object} />
     ) : progress === "cancelled" ? (
       <Words verb="Stopped" object={command ? object : `${doing.toLowerCase()} ${object}`} />
@@ -81,11 +108,14 @@ export function ToolRow({
     <OpeningRow
       keep={keep}
       detail={
-        command ? (
-          <ShellBox keep={keep} command={object} output={output} progress={progress} exitCode={exitCode} />
-        ) : (
-          <ToolDetail name={name} input={input} output={output} failed={progress === "failed"} />
-        )
+        <>
+          {approval && <Allowed approval={approval} />}
+          {command ? (
+            <ShellBox keep={keep} command={object} output={output} progress={progress} exitCode={exitCode} />
+          ) : (
+            <ToolDetail name={server ? `${object}: ${actionWords(name)}` : name} what={server ? actionWords(name) : "Input"} input={input} output={output} failed={progress === "failed"} />
+          )}
+        </>
       }
     >
       {head}
@@ -170,11 +200,12 @@ export function ToolBox({ title, children }: { title?: string; children: ReactNo
   );
 }
 
-function ToolDetail({ name, input, output, failed }: { name: string; input: string; output: string; failed: boolean }) {
+/** `what`: its input's title, an MCP tool's own words ("search jira issues") as the old app's. */
+function ToolDetail({ name, what, input, output, failed }: { name: string; what: string; input: string; output: string; failed: boolean }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 pt-1">
       {failed && <ErrorLine size="sm" error={`${name} failed.`} />}
-      {input && <ToolBox title="Input">{input}</ToolBox>}
+      {input && <ToolBox title={what}>{input}</ToolBox>}
       {output ? <ToolBox title="Output">{output}</ToolBox> : !failed && <p className="text-sm text-muted-foreground">Tool returned no content</p>}
     </div>
   );

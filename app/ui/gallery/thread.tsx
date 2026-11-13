@@ -152,12 +152,7 @@ export function Toggled({ children }: { children: (open: boolean, onToggle: () =
 const item = (it: Item, turn: Turn = DONE, step = false) => <Body item={it} turn={turn} step={step} />;
 
 const GROUP: Group = { ...base("g1"), kind: "group", steps: [{ kind: "read", n: 4 }, { kind: "edit", n: 3 }, { kind: "run", n: 2 }], span: [0, 0] };
-const LIVE_STEPS: Item[] = [
-  tool("live-1", "read", "read", "src/thread/blocks.ts", "running"),
-  tool("live-2", "search", "rg", "“useKept” in src", "running"),
-  tool("live-3", "run", "shell", "pnpm typecheck", "running"),
-  { ...base("live-4"), kind: "fileChange", progress: "running", changes: [file("src/thread/rows.tsx", "modified", null, null)] },
-];
+const MCP_GROUP: Group = { ...base("g2"), kind: "group", steps: [{ kind: "run", n: 3 }, { kind: "other", n: 2, server: "atlassian" }], span: [0, 0] };
 
 export function ThreadGallery() {
   const tick = useTick();
@@ -187,10 +182,10 @@ export function ThreadGallery() {
         </Row>
         <Row name="Group">
           <State label="done">
-            <Toggled>{(open, onToggle) => <GroupRow item={GROUP} live={undefined} open={open} onToggle={onToggle} />}</Toggled>
+            <Toggled>{(open, onToggle) => <GroupRow item={GROUP} open={open} onToggle={onToggle} />}</Toggled>
           </State>
-          <State label="live">
-            <Toggled>{(open, onToggle) => <GroupRow item={GROUP} live={LIVE_STEPS[tick % LIVE_STEPS.length]} open={open} onToggle={onToggle} />}</Toggled>
+          <State label="MCP server">
+            <Toggled>{(open, onToggle) => <GroupRow item={MCP_GROUP} open={open} onToggle={onToggle} />}</Toggled>
           </State>
         </Row>
         <Row name="Working line">

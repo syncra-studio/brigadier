@@ -13,8 +13,8 @@ export type Line =
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
-  /** A group row. `live`: its newest step while the turn runs, for the running step's words; `steps`: what it shows opened, in one capped box. */
-  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; live: Item | undefined; steps: StepLine[] }
+  /** A group row. `steps`: what it shows opened, in one capped box. */
+  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[] }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
 
@@ -34,6 +34,8 @@ const ends = (item: Item) => (item.kind === "notice" && "reason" in item && item
 const works = (item: Item) => ["reasoning", "group", "tool", "fileChange", "childAgent", "approval", "question"].includes(item.kind) || (item.kind === "message" && item.role === "assistant");
 
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
+
+const running = (item: Item) => "progress" in item && (item.progress === "running" || item.progress === "pending");
 
 type Walk = { items: readonly Item[]; out: Line[]; starts: number[]; counts: number[] };
 
@@ -136,7 +138,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     // Thinking is a row only while it lasts.
     if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
-      if (group.line && live) group.line.live = item;
+      // A running step shows on its own line below its group until it ends, then joins the count [D173].
+      if (live && group.line && running(item)) {
+        push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
+        continue;
+      }
       if (!group.open) continue;
       const step: StepLine = { type: "item", id: item.id, gap: group.line ? "step" : gap(item, false), item, turn, step: !group.single };
       if (group.line) group.line.steps.push(step);
@@ -145,10 +151,10 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     group = null;
     if (item.kind === "group") {
-      // Steps draw one by one until their turn folds, so none vanishes, merges or changes its words while it runs [D132];
-      // folded work groups them, and a group of one step draws as that step.
-      const single = live || !done || item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
-      const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), live: undefined, steps: [] };
+      // Live and folded group alike, as the old app's; Rust counts only ended steps, so a live count only goes up [D173].
+      // Folded, a group of one step draws as that step.
+      const single = !live && (!done || item.steps.reduce((sum, step) => sum + step.n, 0) === 1);
+      const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [] };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };
       continue;

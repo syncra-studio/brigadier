@@ -84,14 +84,17 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         "edit" => vec![change(&what, "modified", None, None, None)],
         _ => vec![],
     };
+    // An MCP tool by its server and own name: `mcp__atlassian__getJiraIssue`, a claude.ai connector's `mcp__claude_ai_Gmail__…`.
+    let mcp = name.strip_prefix("mcp__").and_then(|n| n.split_once("__"));
     vec![Event::ToolStart(Tool {
         id: id.into(),
-        name: name.into(),
+        name: mcp.map_or(name, |(_, tool)| tool).into(),
         step,
         input: what,
         parent,
         changes,
         at: None,
+        server: mcp.map(|(server, _)| server.trim_start_matches("claude_ai_").into()),
     })]
 }
 

@@ -87,9 +87,11 @@ impl Thread {
                     }
                     _ => {
                         json!({"kind": "tool", "name": item["name"], "input": item["input"], "output": "",
-                        "progress": "running", "exitCode": null, "step": step, "startedAt": at, "endedAt": null})
+                        "progress": "running", "exitCode": null, "step": step, "startedAt": at, "endedAt": null,
+                        "server": item["server"]})
                     }
                 };
+                let row = self.asked_first(&turn, &str_of("id"), row);
                 let at = self.step(row);
                 self.keys.insert(key(str_of("id")), at);
                 if step == "agent" {
@@ -148,10 +150,7 @@ impl Thread {
                     _ => {}
                 }
                 row["progress"] = progress.into();
-                self.changed_items.insert(at);
-                if let Some(&g) = self.member.get(&at) {
-                    self.recount(g);
-                }
+                self.step_changed(at);
             }
             "question" => {
                 self.break_group();
@@ -423,17 +422,20 @@ impl Thread {
         at
     }
 
-    /// A group's counts per kind, in the order the kinds came. Edits count distinct files [D48].
+    /// A group's counts per kind, in the order the kinds came: ended steps only, so it only counts
+    /// up while its turn runs [D173]. Edits count distinct files [D48]; an MCP server's calls count apart [D176].
     pub(super) fn recount(&mut self, g: usize) {
         let last = self.items[g]["span"][1].as_u64().unwrap_or(0) as usize;
-        let mut steps: Vec<(String, u64)> = vec![];
+        let mut steps: Vec<(String, Value, u64)> = vec![];
         let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
         for at in g + 1..last.min(self.items.len()) {
             if self.member.get(&at) != Some(&g) {
                 continue;
             }
             let row = &self.items[at];
-            if row["hidden"] == true {
+            if row["hidden"] == true
+                || matches!(row["progress"].as_str(), Some("running" | "pending"))
+            {
                 continue;
             }
             let kind = match row["kind"].as_str().unwrap_or("") {
@@ -441,9 +443,10 @@ impl Thread {
                 "childAgent" => "agent",
                 _ => row["step"].as_str().unwrap_or("other"),
             };
-            match steps.iter_mut().find(|(k, _)| k == kind) {
-                Some((_, n)) => *n += 1,
-                None => steps.push((kind.into(), 1)),
+            let server = &row["server"];
+            match steps.iter_mut().find(|(k, s, _)| k == kind && s == server) {
+                Some((_, _, n)) => *n += 1,
+                None => steps.push((kind.into(), server.clone(), 1)),
             }
             if kind == "edit" {
                 let changes = row["changes"].as_array().cloned().unwrap_or_default();
@@ -457,13 +460,13 @@ impl Thread {
         }
         let steps: Vec<Value> = steps
             .into_iter()
-            .map(|(kind, n)| {
+            .map(|(kind, server, n)| {
                 let n = if kind == "edit" {
                     files.len() as u64 + unnamed
                 } else {
                     n
                 };
-                json!({"kind": kind, "n": n})
+                json!({"kind": kind, "n": n, "server": server})
             })
             .collect();
         if steps.is_empty() || self.items[g]["hidden"] == true {

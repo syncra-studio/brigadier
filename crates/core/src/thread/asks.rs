@@ -190,13 +190,62 @@ impl Thread {
         if let Some(ts) = allowed.filter(|&t| t > 0 && self.items[tool]["kind"] == "childAgent") {
             self.items[tool]["startedAt"] = ts.into();
         }
-        // Allowed, a step started before its ask runs after it: it moves below, so the thread reads in order.
-        if allowed.is_some() && tool < at {
+        // The user's allowing goes inside the step it allowed; a parent's keeps its row [D122, D173],
+        // and its step, started before the ask, moves below it once allowed, so the thread reads in order.
+        let inside = self.items[at]["to"] != "parent" && self.items[tool]["kind"] != "childAgent";
+        if let (Some(_), true) = (allowed, inside) {
+            self.items[tool]["approval"] = self.items[at]["request"].clone();
+            self.items[at]["hidden"] = true.into();
+            self.changed_items.insert(at);
+            self.resume_group();
+        } else if allowed.is_some() && tool < at {
             self.break_group();
             return self.move_down(tool);
         }
-        let at = tool;
-        self.items[at]["hidden"] = allowed.is_none().into();
+        self.items[tool]["hidden"] = allowed.is_none().into();
+        self.step_changed(tool);
+    }
+
+    /// A step that starts after the ask that allowed it, as Codex's do, takes it in [D173].
+    pub(super) fn asked_first(&mut self, turn: &str, id: &str, mut row: Value) -> Value {
+        let from = self.open.as_ref().map_or(self.items.len(), |o| o.from);
+        let ask = (self.items.range(from..self.items.len())).rposition(|r| {
+            r["kind"] == "approval" && r["turnId"] == turn && r["request"]["tool"] == id
+        });
+        let ask = ask.map(|a| from + a).filter(|&a| {
+            let r = &self.items[a];
+            r["decision"] == "approved" && r["to"] != "parent" && r["hidden"] != true
+        });
+        if let Some(a) = ask {
+            row["approval"] = self.items[a]["request"].clone();
+            self.items[a]["hidden"] = true.into();
+            self.changed_items.insert(a);
+            self.resume_group();
+        }
+        row
+    }
+
+    /// The turn's last group takes steps again when nothing shows after it, as when the ask that
+    /// broke it went inside its step: no two groups side by side for one run of steps.
+    fn resume_group(&mut self) {
+        let Some(o) = self.open.as_ref().filter(|o| o.group.is_none()) else {
+            return;
+        };
+        let g = (self.items.range(o.from..self.items.len()))
+            .rposition(|r| r["kind"] == "group")
+            .map(|g| o.from + g);
+        let quiet = |i: usize| {
+            let r = &self.items[i];
+            r["hidden"] == true || r["kind"] == "reasoning" || self.member.get(&i) == g.as_ref()
+        };
+        let g = g.filter(|&g| (g + 1..self.items.len()).all(quiet));
+        if let (Some(o), Some(g)) = (self.open.as_mut(), g) {
+            o.group = Some(g);
+        }
+    }
+
+    /// A step's row changed: its group counts it again.
+    pub(super) fn step_changed(&mut self, at: usize) {
         self.changed_items.insert(at);
         if let Some(&g) = self.member.get(&at) {
             self.recount(g);

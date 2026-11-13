@@ -139,7 +139,8 @@ export type Item = Base &
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first
      * and last, which follow it. Its id is the turn id plus the group's index in the turn, so an update replaces it.
      */
-    | { kind: "group"; steps: { kind: StepKind; n: number }[]; span: [number, number] }
+    /** `server`: an MCP server's calls, counted apart [D176]. */
+    | { kind: "group"; steps: { kind: StepKind; n: number; server?: string | null }[]; span: [number, number] }
     | {
         kind: "reasoning";
         text: string;
@@ -160,8 +161,12 @@ export type Item = Base &
         startedAt?: number;
         /** Null while it runs or when not reported. */
         endedAt?: number | null;
+        /** The MCP server it comes from, as configured ("atlassian") [D176]. */
+        server?: string | null;
+        /** What the user allowed it, when it asked [D173]. */
+        approval?: PendingApproval;
       }
-    | { kind: "fileChange"; changes: FileChange[]; progress: Progress }
+    | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" }
     | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent" }
     | {

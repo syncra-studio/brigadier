@@ -315,7 +315,7 @@ impl Thread {
                 && !(lives_on && kind == "childAgent")
             {
                 self.items[at]["progress"] = status.into();
-                self.changed_items.insert(at);
+                self.step_changed(at);
                 self.children.retain(|_, &mut c| c != at);
             }
         }
