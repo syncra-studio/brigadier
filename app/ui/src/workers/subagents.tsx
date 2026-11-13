@@ -37,13 +37,13 @@ export function asSubagent(item: Agent): Worker {
 const NONE: readonly Item[] = [];
 
 /**
- * The open thread's subagent rows, when it's `owner`'s.
+ * The open thread's shown subagent rows (not a moved one's old row), when it's `owner`'s.
  * shortcut: only the rows the view holds (the newest 2000 and any paged in); have Rust send the session's list if older ones must count.
  */
 export function useAgents(owner: string): Agent[] {
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
   const items = session?.id === owner ? session.items : NONE;
-  return useMemo(() => items.filter((item): item is Agent => item.kind === "childAgent"), [items]);
+  return useMemo(() => items.filter((item): item is Agent => item.kind === "childAgent" && !item.hidden), [items]);
 }
 
 /** Its row in the thread: "Find the parser started working", its name opening it in the side panel. */
