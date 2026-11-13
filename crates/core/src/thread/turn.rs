@@ -407,7 +407,7 @@ impl Thread {
                 Some(from) => Self::peer_item(from, &t.text, t.ts, &t.id.clone().into()),
                 None => {
                     json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
-                    "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts})
+                    "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts, "brigade": t.brigade})
                 }
             };
             self.add(row);

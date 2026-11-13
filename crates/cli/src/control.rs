@@ -105,6 +105,10 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         None => None,
     };
+    // A question a Brigade's session sent its boss, passed to the user: back to its wait [D189].
+    if let Some(mid) = request.strip_prefix("peer-") {
+        return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
+    }
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
     answered(data, id, request, control)
 }

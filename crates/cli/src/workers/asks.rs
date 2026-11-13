@@ -17,7 +17,7 @@ use std::io;
 use std::path::Path;
 
 /// The worker's request with this id, while it waits on its parent.
-fn waiting(data: &Path, wid: &str, id: Option<&str>) -> Option<(String, Value)> {
+pub(super) fn waiting(data: &Path, wid: &str, id: Option<&str>) -> Option<(String, Value)> {
     let f = core::fold(&core::session_dir(data, wid), true).ok()?.fold;
     let t = f.turns.first()?;
     (t.asks.iter())
@@ -49,7 +49,7 @@ pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
 /// Writes worker `wid`'s question `mid` (its `brigadier send` to its parent) for its parent, as its
 /// CLI's own questions are [D131].
 pub(crate) fn question(data: &Path, wid: &str, mid: &str, text: &str) -> io::Result<()> {
-    let Some(l) = link(data, wid) else {
+    let Some(l) = link(data, wid).filter(|l| !super::brigade::third(data, wid, l)) else {
         return Ok(());
     };
     let turn = core::fold(&core::session_dir(data, wid), true)?.fold;

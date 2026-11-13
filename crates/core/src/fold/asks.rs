@@ -37,6 +37,27 @@ impl Fold {
         }
     }
 
+    /// A sub-session's ask its boss passed to the user [D189]: its own request now waits on the
+    /// user, or the question it sent its boss (`peer-<mid>`) is the user's to answer, till answered.
+    pub(super) fn passed_to_user(&mut self, item: &Value) {
+        let mid = item["mid"].as_str().map(|m| format!("peer-{m}"));
+        match (item["phase"].as_str(), mid) {
+            (Some("to_user"), Some(id)) => {
+                if let Some(t) = self.turns.first_mut() {
+                    t.question = item["text"].as_str().map(String::from);
+                    t.asks.insert(id, item["request"].clone());
+                }
+            }
+            (Some("to_user"), None) => {
+                let id = item["id"].as_str().unwrap_or("");
+                let r = self.turns.first_mut().and_then(|t| t.asks.get_mut(id));
+                r.and_then(Value::as_object_mut).map(|r| r.remove("to"));
+            }
+            (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
+            _ => {}
+        }
+    }
+
     /// Whether a request goes to the parent agent rather than the user: a worker's question, and
     /// its approval on Auto or Full access; on Ask its approvals stay the user's [D126, D131].
     pub fn for_parent(&self, item: &Value) -> bool {

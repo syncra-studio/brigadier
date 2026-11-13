@@ -213,7 +213,10 @@ pub enum Retune {
 pub fn setup(spec: &Spec) -> Value {
     let mut setup = json!({"model": spec.model, "effort": spec.effort, "level": spec.level});
     // Only where on, so a setup without them reads as before; a worker's asks go to its parent [D131].
-    let on = [("fast", spec.fast), ("worker", spec.naked)];
+    let on = [
+        ("fast", spec.fast),
+        ("worker", spec.naked || spec.boss.is_some()),
+    ];
     (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
     setup
 }

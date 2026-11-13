@@ -17,6 +17,9 @@ pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
 /// The same, to any session's host, by its id.
 pub type CallIn<'a> = &'a dyn Fn(&str, Value) -> io::Result<Value>;
 
+/// What a Brigade's every message from its user starts with, for its agent only [D185].
+const BRIGADE: &str = "[Brigade: you are this job's boss. Run `brigadier help brigade` and follow it before anything else.]";
+
 /// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
 pub type Running = Option<u64>;
 
@@ -35,7 +38,9 @@ pub fn send(
     retry_of: Option<&str>,
 ) -> Value {
     // The agent reads the message as composed; the record keeps what the user wrote [D109, D127].
-    let text = msg.agent.as_str();
+    // A Brigade's own message points its agent at the recipe first, as Fusion's did [D185].
+    let led = (spec.brigade && origin == "user").then(|| format!("{BRIGADE}\n\n{}", msg.agent));
+    let text = led.as_deref().unwrap_or(msg.agent.as_str());
     // The user's next turn, or their Resume, goes to the agent they picked; a message into a
     // running turn stays with it, the pick waiting for the next [D90, D76].
     let picking = matches!(origin, "user" | "system")
@@ -145,6 +150,9 @@ pub fn send(
     let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup});
     if !msg.parts.is_null() {
         base["parts"] = msg.parts.clone();
+    }
+    if led.is_some() {
+        base["brigade"] = true.into();
     }
     if held {
         base["setup"]["held"] = true.into();

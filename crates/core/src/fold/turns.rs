@@ -19,6 +19,9 @@ pub struct Turn {
     /// The composer's draft it was sent as, chips and files; Null for plain text [D109, D127].
     #[serde(default)]
     pub parts: Value,
+    /// Sent with Brigade on: its bubble wears the pill [D185].
+    #[serde(default)]
+    pub brigade: bool,
     pub retry_of: Option<String>,
     /// Why it failed, by the adapter's cause ("context": its window filled) [D98].
     #[serde(default, skip_serializing_if = "Option::is_none")]

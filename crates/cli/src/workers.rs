@@ -6,17 +6,21 @@
 //! The parent's agent merges a worker's branch with plain git; Brigadier has no merge [D3003].
 
 mod asks;
+mod brigade;
 mod family;
 mod make;
 mod pause;
 mod result;
+mod row;
 pub(crate) use asks::question;
 pub use asks::{answer, asks_parent, for_user};
+pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub use make::start;
 pub use pause::held;
 pub use result::{deliver, take, take_ask};
 pub(crate) use result::{hop as result_hop, last_of_turn, settled};
+pub use row::row;
 
 use crate::{arg, owner, queue, settings};
 use brigadier_core::{self as core};
@@ -56,6 +60,9 @@ pub(crate) struct Record {
     pub project: Option<String>,
     /// The parent's branch it starts from; none for a chat with no project.
     pub base: Option<String>,
+    /// A Brigade's sub-session, not a worker [D189].
+    #[serde(default)]
+    pub session: bool,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.
@@ -76,6 +83,9 @@ pub(crate) struct Link {
     /// The user paused it: its queue holds, and it reports nothing until Resume [D3041].
     #[serde(default)]
     pub paused: bool,
+    /// A Brigade's sub-session: a full lead, its own workers a family of their own [D189].
+    #[serde(default)]
+    pub session: bool,
 }
 
 fn records_dir(data: &Path, pid: &str) -> PathBuf {
@@ -123,7 +133,8 @@ pub(crate) fn below(data: &Path, id: &str) -> Vec<Record> {
 
 /// The session the user started that `id` works under, and how deep `id` is (theirs is 0).
 pub(crate) fn place(data: &Path, id: &str) -> (String, u64) {
-    link(data, id).map_or_else(|| (id.to_string(), 0), |l| (l.root, l.depth))
+    let l = link(data, id).filter(|l| !l.session);
+    l.map_or_else(|| (id.to_string(), 0), |l| (l.root, l.depth))
 }
 
 /// Held while a family's count is read and a start reserved, so parallel starts can't pass the
@@ -194,6 +205,7 @@ pub fn busy(data: &Path, id: &str) -> bool {
         return !made;
     };
     !made
+        || (l.session && brigade::leading(data, id))
         || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
 }
 
@@ -353,6 +365,9 @@ fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     core::load(data, id)?;
+    if args.get(2).is_some_and(|a| a == "brigade") {
+        return brigade::set(data, id, args.get(3));
+    }
     if let Some(how @ ("pause" | "resume")) = args.get(2).map(String::as_str) {
         let reply = pause::run(data, id, how, arg(args, 3)?);
         return match reply["error"].as_str() {
@@ -440,55 +455,4 @@ fn merged(data: &Path, wid: &str) {
         l.last["landed"] = true.into();
         let _ = write_json(&dir.join("worker.json"), &l);
     }
-}
-
-/// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
-/// a word as the old `workerState`, and its receipt. Null for a session that isn't a worker.
-pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) -> Value {
-    let Some(l) = read_json::<Link>(&dir.join("worker.json")) else {
-        return Value::Null;
-    };
-    let last = &l.last;
-    let (kind, word) = match state {
-        "waiting_answer" | "sign_in" => ("needsYou", "Needs you".to_string()),
-        "limited" | "out_of_credits" => (
-            "limit",
-            match resets {
-                Some(at) => format!("Limit until {}", clock(at)),
-                None => "Limit".into(),
-            },
-        ),
-        _ if l.paused => ("paused", "Paused".into()),
-        "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking"
-        | "uncertain" | "stalled" | "asking" => ("working", "Working".into()),
-        _ => match last["how"].as_str() {
-            Some("failed") => ("failed", "Failed".into()),
-            Some("context") => ("failed", "Context full".into()),
-            Some("stopped") => ("stopped", "Stopped".into()),
-            Some(_) if last["merged"] == true => match core::worktrees::base(dir) {
-                Some(base) => ("merged", format!("Merged into {base}")),
-                None => ("merged", "Merged".into()),
-            },
-            Some(_) if last["landed"] == false => ("doneNotMerged", "Done · not merged".into()),
-            Some(_) => ("done", "Done".into()),
-            None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),
-            None if state == "new" => ("working", "Starting".into()),
-            // Its turn ended, its outcome not yet written: still finishing, never back to Starting.
-            None => ("working", "Working".into()),
-        },
-    };
-    let ran = &l.ran;
-    let model = [&ran["agent"], &ran["model"], &ran["effort"]];
-    let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
-    json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
-        "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
-        "receipt": format!("Ran on {}", model.join(" · ")), "added": last["added"], "removed": last["removed"],
-        "now": if kind == "working" { now } else { None }})
-}
-
-fn clock(ms: u64) -> String {
-    let secs = (ms / 1000) as libc::time_t;
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe { libc::localtime_r(&secs, &mut tm) };
-    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
 }

@@ -23,13 +23,16 @@ static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
-fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>) -> String {
+fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, session: bool) -> String {
     let land = match merge {
         Some((to, branch, base)) => format!(
             "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
         ),
         None => "Commit your work on your branch and don't merge it.".into(),
     };
+    if session {
+        return super::brigade::line(parent, pid, &land);
+    }
     format!(
         "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
@@ -95,6 +98,7 @@ pub fn start(
     brief: &str,
     flags: &dyn Fn(&str) -> Option<String>,
     running: &dyn Fn(&str) -> bool,
+    session: bool,
 ) -> Value {
     let (root, depth) = place(data, me);
     if depth >= DEEPEST {
@@ -108,6 +112,9 @@ pub fn start(
     let Ok(parent) = core::load(data, me) else {
         return refuse("Your session can't be read.");
     };
+    if let Some(no) = super::brigade::capped(data, me, &parent, session) {
+        return no;
+    }
     let f = match core::fold(&parent.dir, true) {
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
@@ -163,6 +170,8 @@ pub fn start(
         }
         let limit = setting(data, "workers", 6);
         let busy = (below(data, &root).iter())
+            // A Brigade's sub-sessions head families of their own [D189].
+            .filter(|r| r.root == root)
             // Its own log, not only the row, which lags just after a launch.
             .filter(|r| {
                 r.state == "starting"
@@ -203,6 +212,7 @@ pub fn start(
             account,
             project,
             base: base.clone(),
+            session,
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)
@@ -220,8 +230,9 @@ pub fn start(
         Some(b) => format!("in its own worktree off {b}"),
         None => "in a folder of its own".into(),
     };
+    let what = if session { "session" } else { "worker" };
     let mut text = format!(
-        "Started worker {} ({}) on {}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
+        "Started {what} {} ({}) on {}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
         r.title,
         r.wid,
         ran.join(" · "),
@@ -300,7 +311,8 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 effort: r.effort.clone(),
                 created: log::now_ms(),
                 starts_on: r.account.clone(),
-                naked: true,
+                naked: !r.session,
+                boss: r.session.then(|| pid.to_string()),
                 ..Default::default()
             },
         )?,
@@ -319,6 +331,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             ran: ran.clone(),
             last: Value::Null,
             paused: false,
+            session: r.session,
         };
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
@@ -348,7 +361,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     let text = format!(
         "{}\n\n{}",
         r.brief.trim_end(),
-        fixed_line(&core::share::title(&parent), pid, merge)
+        fixed_line(&core::share::title(&parent), pid, merge, r.session)
     );
     if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
         return Err(io::Error::other("It was stopped before it started."));

@@ -441,6 +441,7 @@ impl Fold {
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
+                Some("peer") => self.passed_to_user(item),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);
                     self.turns

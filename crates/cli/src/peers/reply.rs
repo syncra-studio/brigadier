@@ -58,12 +58,27 @@ pub(super) fn ask(
 
 /// The id of the open question worker `wid` asks its parent.
 pub(crate) fn question(data: &Path, wid: &str) -> Option<String> {
+    open_question(data, wid).map(|(mid, _)| mid)
+}
+
+/// The open question worker `wid` asks its parent: its id and words.
+pub(crate) fn open_question(data: &Path, wid: &str) -> Option<(String, String)> {
     let parent = workers::link(data, wid)?.parent;
     let mut open: Vec<Out> = (all::<Out>(data, wid, "out").into_iter())
         .filter(|o| o.to == parent && matches!(o.state.as_str(), "asking" | "asked"))
         .collect();
     open.sort_by_key(|o| o.at);
-    open.pop().map(|o| o.mid)
+    open.pop().map(|o| (o.mid, o.text))
+}
+
+/// How many questions worker `wid` has asked its parent, the open one too.
+pub(crate) fn asked(data: &Path, wid: &str) -> usize {
+    let parent = workers::link(data, wid)
+        .map(|l| l.parent)
+        .unwrap_or_default();
+    (all::<Out>(data, wid, "out").iter())
+        .filter(|o| o.to == parent && ASKS.contains(&o.state.as_str()))
+        .count()
 }
 
 /// The parent's answer to its worker's question `mid`: back to the send that waits, or, with none

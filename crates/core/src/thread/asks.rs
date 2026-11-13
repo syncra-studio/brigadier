@@ -18,6 +18,16 @@ impl Thread {
             self.items[at]["to"] = "parent".into();
             return;
         }
+        self.user_waits(at, ts);
+    }
+
+    /// The request at row `at` waits on the user: a question stays out of the fold, and its turn
+    /// waits from `ts`. Also a sub-session's ask its boss passed to the user [D189].
+    pub(super) fn user_waits(&mut self, at: usize, ts: u64) {
+        if let Some(r) = self.items[at].as_object_mut() {
+            r.remove("to");
+        }
+        self.changed_items.insert(at);
         let question = self.items[at]["kind"] == "question";
         if let Some(o) = self.open.as_mut() {
             if question {

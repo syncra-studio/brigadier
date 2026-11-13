@@ -106,6 +106,7 @@ impl Fold {
             backend: str_of("backend"),
             text: str_of("text"),
             parts: item["parts"].clone(),
+            brigade: item["brigade"] == true,
             retry_of,
             model: item["setup"]["model"].as_str().map(String::from),
             switch: item["switch"].clone(),

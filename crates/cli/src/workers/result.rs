@@ -108,7 +108,8 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed.
 pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
-    let Some(l) = link(data, wid) else {
+    let Some(l) = link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
+    else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
@@ -191,7 +192,8 @@ fn write(
         "context" => "stopped: its context is full",
         _ => "failed",
     };
-    let mut text = format!("Worker {} ({wid}) {word}.\n", l.title);
+    let what = if l.session { "Session" } else { "Worker" };
+    let mut text = format!("{what} {} ({wid}) {word}.\n", l.title);
     if let Some(e) = error {
         text += &format!("It didn't start: {e}\n");
     }
@@ -267,7 +269,12 @@ fn write(
         .collect();
     text += &format!("Ran on {}.\n", ran.join(" · "));
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
-    if let Some(mut last) = last_of_turn(data, wid, turn) {
+    // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
+    let said = (core::fold(&dir, true).ok())
+        .and_then(|f| f.fold.last)
+        .filter(|_| l.session);
+    let said = said.as_ref().and_then(|l| l["id"].as_str()).unwrap_or(turn);
+    if let Some(mut last) = last_of_turn(data, wid, said) {
         if last.len() > LAST {
             let mut at = LAST;
             while !last.is_char_boundary(at) {

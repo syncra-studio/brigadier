@@ -17,6 +17,15 @@ impl Thread {
                 })
             })
             .flatten();
+        // A sub-session's own request its boss passed to the user [D189].
+        if phase == "to_user" && mid.is_null() {
+            let id = item["id"].as_str().unwrap_or("");
+            let at = (self.pending.iter()).find(|&&at| self.items[at]["request"]["id"] == id);
+            return at
+                .copied()
+                .into_iter()
+                .for_each(|at| self.user_waits(at, item["ts"].as_u64().unwrap_or(0)));
+        }
         let Some(at) = at else {
             // A worker's question to its parent is its quiet step in the fold: "Asking ‹parent›",
             // then "‹parent› answered" [D121, D122].
@@ -45,6 +54,20 @@ impl Thread {
             }
             return;
         };
+        // Its boss passed this question to the user: the user's card now, answered there [D189].
+        if phase == "to_user" {
+            self.items[at]["request"] = item["request"].clone();
+            self.pending.push(at);
+            self.pending_changed = true;
+            return self.user_waits(at, item["ts"].as_u64().unwrap_or(0));
+        }
+        if phase == "answered"
+            && self
+                .unwait(&format!("peer-{}", mid.as_str().unwrap_or("")))
+                .is_some()
+        {
+            self.end_wait(item["ts"].as_u64().unwrap_or(0));
+        }
         let row = &mut self.items[at];
         match phase {
             // Sent anyway, by the user, after it stopped.

@@ -71,9 +71,9 @@ up after S seconds (60 by default, at most 600). Without --wait, its answer come
 A back-and-forth between sessions stops after 8 hops, and a session after 20 messages a minute; only
 the user can let a stopped message through. Batch what you have to say into one message.
 Your worker's permission prompt or question waits on you alone: --allow or --deny answers the
-prompt, and a message answers the question.",
+prompt, and a message answers the question. A Brigade's --to-user passes its session's on to the user.",
             &["--timeout", "--deny"],
-            &["--wait", "--allow"],
+            &["--wait", "--allow", "--to-user"],
         ),
         "wait" => (
             "brigadier wait [<id>] [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message; with no id, the first of your workers to. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
@@ -92,9 +92,10 @@ Without --agent, --model and --effort it runs on yours; `brigadier models` lists
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
-Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups.",
+Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups.
+A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
             &["--agent", "--model", "--effort", "--title"],
-            &[],
+            &["--session"],
         ),
         "stop" => (
             "brigadier stop <id> [--json]\n\nStops a worker you started. Other sessions are the user's: you can't stop them.",
@@ -206,6 +207,7 @@ pub fn run(
     };
     if call.has("--help") || call.cmd == "help" {
         let text = match call.id {
+            Some("brigade") => include_str!("agent/brigade.txt"),
             Some(c) => match spec(c) {
                 Some((h, ..)) => h,
                 None => return refuse(&format!("No command `{c}`. `brigadier help` lists yours.")),
@@ -218,7 +220,8 @@ pub fn run(
     if call.cmd == "start" {
         let flag = |name: &str| call.value(name).map(String::from);
         let running = |id: &str| rows().iter().any(|r| r["id"] == id && r["running"] == true);
-        let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
+        let session = call.has("--session");
+        let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running, session);
         return finish(&call, reply);
     }
     let value = |name: &str| call.value(name).map(String::from);
@@ -263,6 +266,7 @@ pub fn run(
                 .map(|s| wait::wait(data, me, &ids, s, rows, here))
         }),
         "stop" => Ok(workers::stop(data, me, id)),
+        "send" if call.has("--to-user") => Ok(workers::to_user(data, me, id)),
         "send"
             if call.has("--allow")
                 || call.value("--deny").is_some()
