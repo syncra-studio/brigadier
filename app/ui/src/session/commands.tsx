@@ -19,18 +19,23 @@ type Listed = { name: string; description?: string; kind: SlashCommand["kind"]; 
  * A composer's `/` menu, its + menu and what a chip opens, for `owner` (a session's id, or Home's draft): the agent's
  * own commands from Rust, kept per agent and project, plus `extra` (Brigadier's /new); an instant one runs at once
  * through the agent's own call [D164, D315, D2009, D2011]. Asked again when `fresh` changes (a turn starts or ends).
+ * Home's `backend`: undefined until its project and model are known, the menu loading meanwhile; null, no agent to ask [D178].
  */
-export function useComposerCommands({ owner, run, field, backend, project, extra = [], fresh, onFiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string; project?: string | null; extra?: SlashCommand[]; fresh?: unknown; onFiles: (files: File[]) => void }) {
-  const [listed, setListed] = useState<SlashCommand[] | null>(null);
+export function useComposerCommands({ owner, run, field, backend, project, extra = [], fresh, onFiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string | null; project?: string | null; extra?: SlashCommand[]; fresh?: unknown; onFiles: (files: File[]) => void }) {
+  // Kept with what it was asked for: another agent's or project's list reads as loading, never as this one's [D178].
+  const [kept, setKept] = useState<{ key: string; list: SlashCommand[] } | null>(null);
   const [chats, setChats] = useState<Mention[]>([]);
   const home = owner === HOME_DRAFT;
+  const key = `${owner} ${backend} ${project}`;
+  const listed = kept?.key === key ? kept.list : null;
   useEffect(() => {
-    if (home && !backend) return setListed([]);
+    if (home && backend === undefined) return;
+    if (home && !backend) return setKept({ key, list: [] });
     let live = true;
     void run(["commands", owner, ...(home ? ["--backend", backend!, ...(project ? ["--project", project] : [])] : [])]).then((reply) => {
       if (!live) return;
       const list: Listed[] = reply.ok ? (reply.commands ?? []) : [];
-      setListed(list.map((each) => ({ id: `${each.kind}:${each.name}`, kind: each.kind, label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })));
+      setKept({ key, list: list.map((each) => ({ id: `${each.kind}:${each.name}`, kind: each.kind, label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) });
     });
     ask({ op: "mention", owner, q: "", ...(project ? { project } : {}) }, (reply) => {
       if (live && reply.ok) setChats(reply.groups.flatMap((group: { items: Mention[] }) => group.items.filter((item) => item.type === "chat")));

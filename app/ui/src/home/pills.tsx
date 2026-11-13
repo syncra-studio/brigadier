@@ -11,7 +11,7 @@ import { BranchAlt, Check, ChevronDown, ChevronRight, Desktop, Folder, Magnifyin
  * the project (a search, the projects by name with ✓, Add project, no project) and where the session works.
  */
 
-export type DraftProject = { id: string; name: string };
+export type DraftProject = { id: string; name: string; trusted?: boolean | null };
 /** Where a new session works: its own worktree (the default), the project's own folder, or another worktree of it [D160, D388]. */
 export type WorkIn = "worktree" | "local" | "existing";
 

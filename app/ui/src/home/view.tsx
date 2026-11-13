@@ -93,7 +93,8 @@ export function HomeView(props: HomeProps) {
   const typed = useRef(props.initial?.parts ?? []);
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
   const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
-  const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
+  // Asked once the project and model are known, and again once the project is trusted, whose folder it then reads [D178].
+  const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: !projects ? undefined : noModel ? null : props.model?.provider, project: project?.id, fresh: project?.trusted, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   const send = (parts: Draft["parts"]) => {
     const tiles = files.tiles();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
