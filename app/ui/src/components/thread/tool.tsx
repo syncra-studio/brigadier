@@ -1,7 +1,7 @@
 import { type ReactNode, useMemo } from "react";
 
 import { Check, Stop } from "../../icons";
-import type { Progress, StepKind } from "../../thread/item";
+import type { Item, Progress, StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
 import { connectorName } from "../../thread/words";
 import type { PendingApproval } from "../composer/approval";
@@ -9,7 +9,7 @@ import { Button } from "../button";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
-import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
+import { DETAIL, OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 
 /** A step's verb while it runs, once done and while it waits to start ("Reading", "Read", "read"), by kind. */
 export const VERBS: Record<StepKind, [string, string, string]> = {
@@ -20,12 +20,16 @@ export const VERBS: Record<StepKind, [string, string, string]> = {
   run: ["Running", "Ran", "run"],
   web: ["Searching the web for", "Searched the web for", "search the web for"],
   agent: ["Running a subagent:", "Ran a subagent:", "run a subagent:"],
+  skill: ["Using", "Used", "use"],
   other: ["Using", "Used", "use"],
 };
 
 /** What a step acted on: a command, a path, a query; another tool's own name, an MCP tool's server ("Atlassian"). */
 export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>
-  kind === "other" ? (server ? connectorName(server) : name) : input || name;
+  kind === "skill" ? skillObject(name, input) : kind === "other" ? (server ? connectorName(server) : name) : input || name;
+
+/** A skill by its name and what it was given: "code-review on" a PR, a bare number read as a PR's or issue's [D211]. */
+const skillObject = (name: string, input: string) => `${name || "a skill"}${input ? ` on ${/^\d+$/.test(input) ? `#${input}` : input}` : ""}`;
 
 /** An MCP tool's name as words, as the old app's: "searchJiraIssues" is "search jira issues". */
 const actionWords = (name: string) =>
@@ -67,6 +71,7 @@ export function ToolRow({
   took,
   server,
   approval,
+  log,
 }: {
   keep: string;
   kind?: StepKind;
@@ -80,8 +85,17 @@ export function ToolRow({
   /** An MCP tool's server: "Atlassian: search jira issues" running, "Used Atlassian" done [D176]. */
   server?: string | null;
   approval?: PendingApproval;
+  /** A skill's own steps, drawn under it as they come [D211]. */
+  log?: Item[];
 }) {
   const command = kind === "run";
+  const skill = kind === "skill";
+  const steps = log?.map(
+    (step) =>
+      step.kind === "tool" && (
+        <ToolRow key={step.id} keep={step.id} kind={step.step} name={step.name} input={step.input} output={step.output} progress={step.progress} exitCode={step.exitCode} server={step.server} />
+      ),
+  );
   const object = toolObject(kind, name, input, server);
   const running = progress === "running" || progress === "pending";
   const [doing, done, waiting] = VERBS[kind];
@@ -102,15 +116,29 @@ export function ToolRow({
       {took && <span className="shrink-0 tabular-nums">{took}</span>}
     </>
   );
-  // A running step opens only when it's a command: its output shows as it comes.
-  if (running && !command) return <div className={ROW}>{head}</div>;
+  // A running step opens only when it's a command: its output shows as it comes. A running skill's steps show under it.
+  if (running && !command) {
+    if (!steps?.length) return <div className={ROW}>{head}</div>;
+    return (
+      <div className="flex min-w-0 flex-col">
+        <div className={ROW}>{head}</div>
+        <div className={cx(DETAIL, "ps-5.5")}>{steps}</div>
+      </div>
+    );
+  }
+  if (skill && !steps?.length && !output) return <div className={ROW}>{head}</div>;
   return (
     <OpeningRow
       keep={keep}
       detail={
         <>
           {approval && <Allowed approval={approval} />}
-          {command ? (
+          {skill ? (
+            <>
+              {steps?.length ? <div className={cx(DETAIL, "ps-5.5")}>{steps}</div> : null}
+              {output && <ToolBox title="Output">{output}</ToolBox>}
+            </>
+          ) : command ? (
             <ShellBox keep={keep} command={object} output={output} progress={progress} exitCode={exitCode} />
           ) : (
             <ToolDetail name={server ? `${object}: ${actionWords(name)}` : name} what={server ? actionWords(name) : "Input"} input={input} output={output} failed={progress === "failed"} />

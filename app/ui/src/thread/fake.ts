@@ -170,6 +170,8 @@ function steps(fake: Fake, kind: StepKind, count: number): Draft[] {
         };
       case "other":
         return tool("issues.search", pick(fake, WORDS));
+      case "skill":
+        return tool("code-review", String(between(fake, 100, 3000)));
       case "edit":
         return { kind: "fileChange", changes: [diff(fake)], progress: "done" };
     }

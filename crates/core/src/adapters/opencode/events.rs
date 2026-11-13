@@ -315,6 +315,9 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         "webfetch" => ("web", field(&["url"])),
         "websearch" | "codesearch" => ("web", field(&["query"])),
         "task" | "subagent" => ("agent", field(&["description"])),
+        // Its row waits for the skill's name, which its pending call doesn't have yet [D211].
+        "skill" if field(&["name"]).is_empty() => return vec![],
+        "skill" => ("skill", String::new()),
         _ => ("other", input.to_string()),
     };
     let changes: Vec<Value> = match meta["files"].as_array() {
@@ -349,7 +352,10 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
     };
     let mut events = vec![Event::ToolStart(Tool {
         id: id.clone(),
-        name: name.into(),
+        name: match step {
+            "skill" => field(&["name"]),
+            _ => name.into(),
+        },
         step,
         input: what,
         at: state["time"]["start"].as_u64(),

@@ -11,6 +11,7 @@ const STEPS: Record<StepKind, [string, string]> = {
   run: ["ran a command", "ran {n} commands"],
   web: ["searched the web", "searched the web {n} times"],
   agent: ["ran a subagent", "ran {n} subagents"],
+  skill: ["used a skill", "used {n} skills"],
   other: ["used a tool", "used {n} tools"],
 };
 /** Kinds in the order a group names them; its icon is the first one it holds. */

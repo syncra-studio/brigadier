@@ -74,6 +74,8 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         "WebSearch" => ("web", field("query")),
         "Bash" => shell_step(&field("command")),
         "Agent" | "Task" => ("agent", field("description")),
+        // Named by the skill, its argument what it acts on [D211].
+        "Skill" => ("skill", field("args")),
         "ToolSearch" | "ExitPlanMode" | "TaskOutput" | "BashOutput" | "TodoWrite"
         | "SubagentHandback" => ("", String::new()),
         _ => ("other", input.to_string()),
@@ -88,7 +90,11 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
     let mcp = name.strip_prefix("mcp__").and_then(|n| n.split_once("__"));
     vec![Event::ToolStart(Tool {
         id: id.into(),
-        name: mcp.map_or(name, |(_, tool)| tool).into(),
+        name: match step {
+            "skill" => s(input, &["skill"]),
+            _ => mcp.map_or(name, |(_, tool)| tool),
+        }
+        .into(),
         step,
         input: what,
         parent,
@@ -184,6 +190,8 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event>
         Some(_) if result["handbackReport"]["text"].is_string() => {
             s(result, &["handbackReport", "text"]).into()
         }
+        // A skill run forked as a subagent hands back its answer as `result` [D211].
+        Some(_) if result["result"].is_string() => s(result, &["result"]).into(),
         Some(_) => {
             let answer = text(&result["content"]);
             let tag = "</tools-used-before-summary>";

@@ -106,6 +106,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           took={step && ms !== null && ms >= 1000 ? `in ${duration(ms)}` : undefined}
           server={item.server}
           approval={item.approval}
+          log={item.log}
         />
       );
     }

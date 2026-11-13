@@ -68,7 +68,7 @@ export type Turn = {
 };
 
 /** What a step of work did, provider-neutral. */
-export type StepKind = "read" | "edit" | "list" | "search" | "run" | "web" | "agent" | "other";
+export type StepKind = "read" | "edit" | "list" | "search" | "run" | "web" | "agent" | "skill" | "other";
 
 /**
  * A finished turn's work: how long it took and the items folded under "Worked for …", by `n`, first and last.
@@ -167,6 +167,8 @@ export type Item = Base &
         server?: string | null;
         /** What the user allowed it, when it asked [D173]. */
         approval?: PendingApproval;
+        /** A skill's own steps as it runs them, as a subagent's `log` [D211]. */
+        log?: Item[];
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" }
