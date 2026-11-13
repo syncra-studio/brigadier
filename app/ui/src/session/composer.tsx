@@ -413,8 +413,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           <SessionQuestions id={id} run={run} source={source} />
         </>
       }
-      above={<SessionApprovals id={id} run={run} source={source} />}
-      // Kept while an approval has its place, so the draft and its caret stay.
+      above={<SessionApprovals id={id} run={run} source={source} onStop={(busy || holding) && !offline ? stop : undefined} />}
+      // Kept while an approval has its place, so the draft and its caret stay; the card brings the Stop it covers.
       hidden={Boolean(approval)}
       onDragOver={files.onDragOver}
       onDrop={files.onDrop}

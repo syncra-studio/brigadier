@@ -2,9 +2,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
-import { Commit, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
+import { Commit, Dock, Globe, Key, PencilSquare, Sparkle, Stop } from "../../icons";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
+import { TooltipIconButton } from "../icon-button";
 import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
@@ -200,7 +201,8 @@ function Morph({ from, to, morphed }: { from: ReactNode; to: ReactNode; morphed:
  * what the agent should do instead (D192). With words in it the card turns to refusing (D182): Deny and the session
  * grant make way, Allow becomes Send, which denies with the words and never allows. Esc clears the words and
  * brings the card back (D183); only with the field empty does it deny.
- * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card.
+ * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card. With `onStop`, Stop in its
+ * corner stops the turn, the composer's Stop it covers.
  */
 export function ApprovalCard({
   approval,
@@ -211,6 +213,7 @@ export function ApprovalCard({
   onReason,
   step,
   dismiss,
+  onStop,
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -223,6 +226,8 @@ export function ApprovalCard({
   step?: ApprovalStep;
   /** Nothing waits on it any more: Dismiss beside its error puts it away. */
   dismiss?: () => void;
+  /** Stops the turn that asks. */
+  onStop?: () => void;
 }) {
   const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
@@ -265,6 +270,11 @@ export function ApprovalCard({
               onStep={(by) => step.onStep(step.index + by)}
               className="ms-auto"
             />
+          )}
+          {onStop && (
+            <TooltipIconButton tooltip="Stop" size="icon-sm" className={cx("-my-1 shrink-0 text-toolbar-foreground", !(step && step.total > 1) && "ms-auto")} onClick={onStop}>
+              <Stop />
+            </TooltipIconButton>
           )}
         </div>
         <div role="alert" aria-atomic="true">
@@ -382,6 +392,7 @@ export function ApprovalSlot({
   denyReason = true,
   session = "",
   dismiss,
+  onStop,
 }: {
   approvals: readonly PendingApproval[];
   /** `reason`: what to do instead, typed with a deny. */
@@ -392,6 +403,8 @@ export function ApprovalSlot({
   session?: string;
   /** A refused card nothing waits on any more: its Dismiss. */
   dismiss?: (id: string) => (() => void) | undefined;
+  /** Stops the turn they wait in. */
+  onStop?: () => void;
 }) {
   // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
   const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
@@ -425,6 +438,7 @@ export function ApprovalSlot({
         reason={reasons.get(cardKey(session, id))}
         onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
         dismiss={dismiss?.(id)}
+        onStop={onStop}
         step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
       />
     </div>
