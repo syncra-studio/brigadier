@@ -1143,10 +1143,18 @@
     var(--color-background) calc(100% - var(--spacing-fade-bottom)),
     transparent 100%
   );
-  /* Raised (the thread's jump button): solid up to the button's top (spacing*14), a short fade above it. */
+  /* Raised (the thread's jump button, which floats over it): no solid band, the text dissolves along a smoothstep. */
   &[data-raised] {
-    height: calc(var(--spacing) * 14 + 8px);
-    background-image: linear-gradient(to top, var(--color-background) 0%, var(--color-background) calc(100% - 8px), transparent 100%);
+    height: 64px;
+    background-image: linear-gradient(
+      to top,
+      var(--color-background) 0%,
+      color-mix(in oklab, var(--color-background) 90%, transparent) 20%,
+      color-mix(in oklab, var(--color-background) 65%, transparent) 40%,
+      color-mix(in oklab, var(--color-background) 35%, transparent) 60%,
+      color-mix(in oklab, var(--color-background) 10%, transparent) 80%,
+      transparent 100%
+    );
   }
 }
 
