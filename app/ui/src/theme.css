@@ -1492,9 +1492,9 @@
   --edge-size-top: var(--spacing-group-fade);
   --edge-size-bottom: var(--spacing-group-fade);
 }
-/* The thread's edges fade [D462]: 1rem at the top; at the bottom from 16px above the composer to 22px past it. */
+/* The thread's top edge fades [D462], 1rem; its bottom is a ScrollFade over the composer [D216]. */
 @utility thread-edge-mask {
-  mask-image: linear-gradient(to bottom, transparent 0, black 1rem, black calc(100% - var(--spacing) * 4), transparent calc(100% + var(--spacing) * 1.5));
+  mask-image: linear-gradient(to bottom, transparent 0, black 1rem);
 }
 /* While following at the very end with no space below, the browser keeps the view there as rows grow.
    The thread places its view itself, so the browser's own scroll anchoring is off. */

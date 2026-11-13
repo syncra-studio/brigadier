@@ -11,6 +11,7 @@ import { store, useAgentLabel } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
 import { JumpSign, ThinkingLine, datedMessages } from "../components/thread/message";
+import { ScrollFade } from "../components/scroll-fade";
 
 /**
  * Where the session comes from: null while it loads. After find went to an island far up (`after` set), `newer` asks
@@ -381,20 +382,25 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       <p role="status" className="sr-only">{running ? `${agent} is working` : ran.current ? `${agent} finished` : ""}</p>
       <MessageRail rows={data} items={items ?? []} list={list} scroller={scroller} box={box} away={leaveEnd} />
       <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
-      {/* Kept in place and faded in and out (the old app's look). */}
-      <button
-        type="button"
-        aria-label="Jump to the latest"
-        aria-hidden={!jumps || undefined}
-        tabIndex={jumps ? undefined : -1}
-        onClick={jumps ? () => (after === null ? follow.jump(running) : ((toLatest.current = true), source.latest?.())) : undefined}
-        className={cx(
-          "group/jump absolute bottom-6 left-1/2 z-20 flex size-control-md -translate-x-1/2 cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground transition-opacity focus-visible:focus-ring motion-reduce:transition-none",
-          !jumps && "pointer-events-none opacity-0",
-        )}
-      >
-        <JumpSign running={running} />
-      </button>
+      {/* Over the composer, the old app's: solid up to the jump button's top while it shows, then the text fades out. */}
+      <ScrollFade edge="bottom" raised={jumps} />
+      {/* Kept in place and faded in and out (the old app's look). Centred on the reading column, which the pinned card
+          moves aside, never on the pane. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 mx-auto flex w-full max-w-reading justify-center">
+        <button
+          type="button"
+          aria-label="Jump to the latest"
+          aria-hidden={!jumps || undefined}
+          tabIndex={jumps ? undefined : -1}
+          onClick={jumps ? () => (after === null ? follow.jump(running) : ((toLatest.current = true), source.latest?.())) : undefined}
+          className={cx(
+            "group/jump flex size-control-md cursor-pointer items-center justify-center rounded-capsule border border-border bg-background bg-clip-padding text-foreground transition-opacity focus-visible:focus-ring motion-reduce:transition-none",
+            jumps ? "pointer-events-auto" : "opacity-0",
+          )}
+        >
+          <JumpSign running={running} />
+        </button>
+      </div>
     </div>
   );
 }
