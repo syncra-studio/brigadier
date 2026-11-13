@@ -188,7 +188,7 @@ pub(super) fn granted(grants: &[Value], ask: &Value) -> bool {
 }
 
 /// Whether a shell ask only the Auto path rules made names nothing outside the project: each path,
-/// resolved against it, stays inside [D130]. A risky command's own later rule still asks.
+/// resolved against it, stays inside [D130, D152]. A risky command's own later rule still asks.
 pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
     let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
     let text = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
@@ -206,8 +206,12 @@ pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
         && !resources.is_empty()
         && resources.iter().all(|r| {
             let r = r.as_str().unwrap_or("");
-            last(r).is_some_and(|x| super::control::PATHS.contains(&text(x, "resource").as_str()))
-                && r.split_whitespace().all(|w| named_inside(&roots, w))
+            // A part of the command the rules already allow (`; lsof …`) doesn't hold it back.
+            last(r).is_some_and(|x| {
+                text(x, "effect") == "allow"
+                    || super::control::PATHS.contains(&text(x, "resource").as_str())
+                        && r.split_whitespace().all(|w| named_inside(&roots, w))
+            })
         })
 }
 
