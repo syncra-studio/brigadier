@@ -80,6 +80,7 @@ export function words(item: Item): string {
     : item.kind === "question" ? [item.question, item.answer]
     : item.kind === "childAgent" ? [item.title, item.answer]
     : item.kind === "fileChange" ? item.changes.map((change) => change.path)
+    : item.kind === "todo" ? item.steps.map((step) => step.text)
     : [];
   out = lower(fields.filter(Boolean).join("\n"));
   wordsBy.set(item, out);

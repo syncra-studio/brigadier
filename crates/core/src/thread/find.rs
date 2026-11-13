@@ -115,6 +115,9 @@ fn words(item: &Value) -> Vec<std::borrow::Cow<'_, str>> {
         Some("tool") => vec![text("name"), text("input")],
         Some("question") => vec![text("question"), text("answer")],
         Some("childAgent") => vec![text("title"), text("answer")],
+        Some("todo") => item["steps"]
+            .as_array()
+            .map_or(vec![], |s| s.iter().map(|s| s["text"].as_str()).collect()),
         Some("fileChange") => item["changes"]
             .as_array()
             .map_or(vec![], |c| c.iter().map(|c| c["path"].as_str()).collect()),

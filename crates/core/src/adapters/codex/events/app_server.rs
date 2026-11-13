@@ -41,7 +41,11 @@ pub fn events(v: &Value) -> Vec<Event> {
             let steps = p["plan"].as_array().into_iter().flatten();
             vec![Event::Plan(
                 steps
-                    .map(|x| json!({"text": x["step"], "status": x["status"]}))
+                    // Its `inProgress` in the other CLIs' spelling.
+                    .map(|x| match x["status"].as_str() {
+                        Some("inProgress") => json!({"text": x["step"], "status": "in_progress"}),
+                        _ => json!({"text": x["step"], "status": x["status"]}),
+                    })
                     .collect(),
             )]
         }

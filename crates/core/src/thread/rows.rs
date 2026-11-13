@@ -295,6 +295,7 @@ impl Thread {
                     }
                 }
             }
+            "plan" => self.todo(item, &turn),
             "unknown" | "unknown_frame" => {
                 self.break_group();
                 let raw = match item["raw"].as_str() {

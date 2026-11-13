@@ -23,6 +23,22 @@ impl Thread {
         }
     }
 
+    /// The agent's to-do list: one row a turn, where it was first written, each update in its
+    /// place; out of the work fold, as the record of what was planned [D180].
+    pub(super) fn todo(&mut self, item: &Value, turn: &str) {
+        let id = format!("{turn}:todo");
+        if let Some(at) = self.named.get(&id).copied() {
+            self.items[at]["steps"] = item["steps"].clone();
+            self.changed_items.insert(at);
+            return;
+        }
+        self.break_group();
+        let at = self.add_as(json!({"kind": "todo", "steps": item["steps"]}), Some(id));
+        if let Some(o) = self.open.as_mut() {
+            o.kept.push(at as u64 + 1);
+        }
+    }
+
     /// A `worker` note: `started` joins the start row just before it, so one turn's starts read
     /// as one sentence; `ended` and `still` name every worker they're about.
     pub(super) fn team(&mut self, item: &Value, ts: u64) {
