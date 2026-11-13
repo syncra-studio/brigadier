@@ -43,7 +43,8 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
         "input" if item["control"].is_object() => return None,
         "input" => match s("origin").split(':').collect::<Vec<_>>()[..] {
             ["user"] => ("user", String::new(), s("text").into(), vec![]),
-            ["result", _, worker] => ("worker", worker.into(), s("text").into(), vec![]),
+            // A merge suffix may follow: result:finished:<id>:merged=main.
+            ["result", _, worker, ..] => ("worker", worker.into(), s("text").into(), vec![]),
             ["peer", from] => ("peer", from.into(), s("text").into(), vec![]),
             _ => return None,
         },
