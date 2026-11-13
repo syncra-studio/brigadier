@@ -29,7 +29,7 @@ pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
     waiting(data, wid, Some(id)).is_some()
 }
 
-/// Writes each request worker `wid` waits on its parent for that has none yet.
+/// Writes the first request worker `wid` waits on its parent for, if it has none yet.
 pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
     let Some(l) = link(data, wid) else {
         return Ok(());
@@ -38,7 +38,8 @@ pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
     let Some(t) = f.turns.first() else {
         return Ok(());
     };
-    for (id, r) in t.asks.iter().filter(|(_, r)| r["to"] == "parent") {
+    // One at a time, the one `answer` settles, so the parent's reply is for the ask it read.
+    for (id, r) in t.asks.iter().filter(|(_, r)| r["to"] == "parent").take(1) {
         let path = path_of(data, &l.parent, wid, &id.replace(['/', '.'], "_"));
         if path.exists() {
             continue;
