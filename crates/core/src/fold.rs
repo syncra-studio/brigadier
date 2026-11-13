@@ -48,7 +48,8 @@ pub struct Fold {
     pub last: Option<Value>,
     pub last_out: u64,
     pub child: Option<Child>,
-    pub groups: Vec<(i32, u64)>,
+    /// Each spawned group, with the session folder its record names ("" before D220).
+    pub groups: Vec<(i32, u64, String)>,
     /// The live child's ended turns, from first tool to end (ms): what was born in one and still
     /// runs under it was left running [D105].
     #[serde(default)]
@@ -262,7 +263,7 @@ impl Fold {
                     backend: str_of("backend"),
                     exited: false,
                 });
-                self.groups.push((pid, start_us));
+                self.groups.push((pid, start_us, str_of("dir")));
                 self.windows.clear();
                 self.tasks.clear();
                 self.typed.clear();

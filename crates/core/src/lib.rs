@@ -322,11 +322,14 @@ pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
 }
 
 /// Kills what is left of process groups this session recorded, checked by start time. Only for
-/// when no owner holds them any more.
-pub fn sweep(f: &Fold) -> usize {
+/// when no owner holds them any more. Only groups recorded under `dir` itself: a copied log names
+/// another folder's, maybe live, and an old record names none [D220].
+pub fn sweep(f: &Fold, dir: &Path) -> usize {
+    let here = fs::canonicalize(dir).unwrap_or_else(|_| dir.into());
     fold::live_groups(f, &procs::all())
         .iter()
-        .map(|&(g, s)| procs::signal_group(g, s, libc::SIGKILL))
+        .filter(|g| here.to_str() == Some(g.2.as_str()))
+        .map(|&&(g, s, _)| procs::signal_group(g, s, libc::SIGKILL))
         .sum()
 }
 

@@ -72,12 +72,14 @@ impl Runner {
         let (mut cids, mut groups) = (HashMap::new(), vec![]);
         let mut reader = Reader::open(&path, 0, 0)?;
         let want = |k| matches!(k, log::INTENT | log::DELIVERED | log::SPAWNED);
+        let here = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.into());
         while let Some(frame) = reader.next_with(want)? {
             let v: Value = serde_json::from_slice(&frame.data).unwrap_or(Value::Null);
             match frame.kind {
                 log::INTENT => drop(v["cid"].as_str().map(|c| cids.insert(c.to_string(), false))),
                 log::DELIVERED => drop(v["cid"].as_str().map(|c| cids.insert(c.to_string(), true))),
-                log::SPAWNED => {
+                // Only groups spawned for this folder: a copied log names another's live ones [D220].
+                log::SPAWNED if v["dir"].as_str() == here.to_str() => {
                     groups.push((
                         v["pgid"].as_i64().unwrap_or(0) as i32,
                         v["start_us"].as_u64().unwrap_or(0),

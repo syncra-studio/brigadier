@@ -259,7 +259,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
     if let Err(e) = record(dir, &cut).and_then(|()| hand_on(spec, &mut cut)) {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
-    let swept = kill_left(f);
+    let swept = kill_left(f, dir);
     // Preserve transcripts too when a checkpoint fails: delete must remain retryable [D35].
     let kept_branches = match worktrees::delete(dir, drop_branch) {
         Ok(branch) => branch.into_iter().collect::<Vec<_>>(),

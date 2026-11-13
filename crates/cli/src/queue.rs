@@ -343,7 +343,7 @@ pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
             // No owner: nothing can be running under us, but leftovers recorded in the log still go.
             Err(e) => {
                 let f = core::fold(&dir, true)?;
-                Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold)}))
+                Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold, &dir)}))
             }
         }
     })();

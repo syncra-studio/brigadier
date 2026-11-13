@@ -69,7 +69,7 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             reply
         }
         "interrupted" => {
-            let swept = sweep(f);
+            let swept = sweep(f, &spec.dir);
             let last = f
                 .turns
                 .first()

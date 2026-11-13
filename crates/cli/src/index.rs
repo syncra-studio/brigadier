@@ -253,7 +253,7 @@ impl Index {
                 if now - since >= SWEEP_AFTER_MS
                     && let Ok(Some(_lock)) = take_lock(&dir.join("owner.lock"))
                 {
-                    core::sweep(&f.fold);
+                    core::sweep(&f.fold, &dir);
                     e.orphaned_since = None;
                 }
             } else {
