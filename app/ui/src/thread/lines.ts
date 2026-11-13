@@ -155,6 +155,12 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     // A send-as-new line follows the reply, so the reply's actions stay directly under it [D204].
     if (item.kind === "started" || item.kind === "forked") end();
+    // A stopped turn's actions stay on its last reply, never under the Stop's divider; with no reply drawn, none [D171].
+    if (marks && item.kind === "line" && item.reason === "stopped") {
+      const reply = out.findLast((line) => line.type === "item" && line.item === marks!.item);
+      if (reply?.type === "item") reply.actions = true;
+      marks = null;
+    }
     if (item.kind === "message" && item.role === "assistant" && item.final) {
       marks = { type: "marks", id: `${item.id}:marks`, gap: "step", item, turn };
     }
