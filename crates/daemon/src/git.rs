@@ -92,6 +92,15 @@ fn deliver(seen: &Mutex<Seen>, read: io::Result<Status>) -> bool {
         seen.last.as_ref().and_then(|old| status.delta(old))
     };
     seen.failed = false;
+    // A push (its upstream set, or fewer commits ahead of it) or another branch: its PRs are read now [D200].
+    if let Some(old) = &seen.last
+        && (old.head["branch"] != status.head["branch"]
+            || old.head["upstream"] != status.head["upstream"]
+            || status.head["ahead"].as_u64() < old.head["ahead"].as_u64())
+    {
+        let names: Vec<&str> = seen.subs.iter().map(|sub| sub.name.as_str()).collect();
+        super::prs::shown(&names);
+    }
     seen.n += delta.is_some() as u64;
     let (n, snapshot) = (seen.n, status.json());
     seen.subs.retain_mut(|sub| {
@@ -132,6 +141,10 @@ pub(super) fn subscribe(
             return;
         }
     };
+    // Its card is opening: the PRs it keeps show now, read again after [D200].
+    if let Target::Session(id) = target {
+        super::prs::shown(&[id]);
+    }
     let checkout = git::checkout(data, &target);
     let mut all = WATCHED.lock().unwrap();
     if gitting.load(Ordering::SeqCst) != mine {
@@ -231,13 +244,12 @@ pub(super) fn refresh(conn: u64) {
         let _ = focus.send(());
     }
     for w in WATCHED.lock().unwrap().values() {
-        if w.seen
-            .lock()
-            .unwrap()
-            .subs
-            .iter()
-            .any(|sub| sub.conn == conn)
-        {
+        let name = (w.seen.lock().unwrap().subs.iter())
+            .find(|sub| sub.conn == conn)
+            .map(|sub| sub.name.clone());
+        if let Some(name) = name {
+            // Its PRs too [D200].
+            super::prs::shown(&[&name]);
             w.watch.poke();
         }
     }

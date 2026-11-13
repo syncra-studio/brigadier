@@ -2,14 +2,15 @@
 //! the host's own CLI on a schedule, as VS Code's PR extension polls: every 30 s while
 //! checks run, 2 min with a PR open or none yet, 5 min otherwise or with no window open (proposed, D1047).
 //! Each read keeps `prs.json` in the session's folder, whose change the index publishes on the
-//! session's row. It never wakes the agent [D1027].
+//! session's row. It never wakes the agent [D1027]. A session made due (a turn, its card opened,
+//! its branch pushed) is read at once, before the rest [D200].
 
 use super::Shared;
 use brigadier_core::{host, ids, session_dir};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -22,11 +23,36 @@ const AT_ONCE: usize = 4;
 
 /// Sessions whose turn began or ended, read on the watch's next tick: a turn may commit or open a PR.
 static DUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Sessions whose card opened (or whose branch was pushed), read before any other.
+static SHOWN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Set when a session became due or a read ended: the schedule runs again now, not at its tick.
+static POKED: Mutex<bool> = Mutex::new(false);
+static WAKE: Condvar = Condvar::new();
 
+fn poke() {
+    *POKED.lock().unwrap() = true;
+    WAKE.notify_one();
+}
+
+/// These sessions' PRs are read now: a turn began or ended.
 pub(super) fn turned(ids: &[&str]) {
+    if ids.is_empty() {
+        return;
+    }
     DUE.lock()
         .unwrap()
         .extend(ids.iter().map(|id| id.to_string()));
+    poke();
+}
+
+/// These sessions' PRs are read now, first: their card opened, the window took focus, or their
+/// branch was pushed [D200].
+pub(super) fn shown(ids: &[&str]) {
+    SHOWN
+        .lock()
+        .unwrap()
+        .extend(ids.iter().map(|id| id.to_string()));
+    turned(ids);
 }
 
 pub(super) fn watch(data: PathBuf, state: Shared) {
@@ -37,13 +63,21 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
         let next: Arc<Mutex<HashMap<String, Next>>> = Arc::default();
         let busy: Arc<Mutex<HashSet<String>>> = Arc::default();
         loop {
-            let ids = ids(&data);
+            let mut ids = ids(&data);
             next.lock().unwrap().retain(|id, _| ids.contains(id));
             // One being read now may have started before the turn: it stays due for after.
-            DUE.lock().unwrap().retain(|id| {
+            let mut due = DUE.lock().unwrap();
+            // Those shown go first, then those made due: one just opened never waits behind the rest.
+            let shown = SHOWN.lock().unwrap().clone();
+            ids.sort_by_key(|id| (!shown.contains(id), !due.contains(id)));
+            let first = due.clone();
+            due.retain(|id| {
                 next.lock().unwrap().remove(id);
                 busy.lock().unwrap().contains(id)
             });
+            drop(due);
+            // Made due but every slot is taken: it stays first for when one frees.
+            let mut waiting = Vec::new();
             for id in ids {
                 let now_at = kept_at(&data, &id);
                 let due = !next
@@ -53,10 +87,14 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                     .is_some_and(|(at, left)| *at > Instant::now() && *left == now_at)
                     || host::moved_on(&data, &id);
                 let mut reading = busy.lock().unwrap();
+                if due && reading.len() >= AT_ONCE && first.contains(&id) {
+                    waiting.push(id.clone());
+                }
                 if !due || reading.len() >= AT_ONCE || !reading.insert(id.clone()) {
                     continue;
                 }
                 drop(reading);
+                SHOWN.lock().unwrap().retain(|shown| *shown != id);
                 let (data, state, next, busy) =
                     (data.clone(), state.clone(), next.clone(), busy.clone());
                 thread::spawn(move || {
@@ -73,9 +111,15 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                         .unwrap()
                         .insert(id.clone(), (at, kept_at(&data, &id)));
                     busy.lock().unwrap().remove(&id);
+                    poke();
                 });
             }
-            thread::sleep(TICK);
+            DUE.lock().unwrap().extend(waiting);
+            let poked = POKED.lock().unwrap();
+            let (mut poked, _) = WAKE
+                .wait_timeout_while(poked, TICK, |poked| !*poked)
+                .unwrap();
+            *poked = false;
         }
     });
 }

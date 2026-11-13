@@ -1,6 +1,6 @@
 //! One checkout's watch, taken from the old app's workspace watch [D48, D71]. It reads the status at
-//! its start, then again after the checkout's files, its index, its HEAD, its branch or that
-//! branch's upstream change, on a poke (window focus, a turn's start or end), and every so often in
+//! its start, then again after the checkout's files, its index, its HEAD, its config, its branch or
+//! that branch's upstream change, on a poke (window focus, a turn's start or end), and every so often in
 //! case macOS dropped an event. A burst of changes is read once. What happens only in an ignored
 //! folder (a build's output) or in git's own objects doesn't count. A session's base moving (main
 //! committed to in the project's own folder) is read too: its commit is part of the read, so the
@@ -284,7 +284,13 @@ impl Filter {
         if now == self.found_for {
             return Ok(false);
         }
-        let mut names = vec!["index".to_string(), "HEAD".into(), "packed-refs".into()];
+        // `config` too: a first push (`-u`) sets the branch's upstream there, and its PRs are read then [D200].
+        let mut names = vec![
+            "index".to_string(),
+            "HEAD".into(),
+            "packed-refs".into(),
+            "config".into(),
+        ];
         if let Some((branch, _)) = now.as_ref().filter(|(b, _)| !b.is_empty()) {
             names.push(format!("refs/heads/{branch}"));
             // HEAD's branch's upstream: `refs/heads/<b>@{upstream}` isn't a name git takes.

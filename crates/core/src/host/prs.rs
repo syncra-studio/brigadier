@@ -5,7 +5,7 @@
 //! Its PRs are every one the session touched [D175]: its branches' (kept once read, whichever branch
 //! it's on now), and those its own commands opened, merged or changed.
 
-use super::{GH_SECS, Gh, Kind, Pr, Repo, failed, gh, setup};
+use super::{GH_SECS, Gh, Kind, Pr, Repo, failed, forget, gh, setup};
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -88,12 +88,27 @@ impl Pr {
         ]);
         let out = setup::run(&mut command, GH_SECS).map_err(|e| e.to_string())?;
         if !out.status.success() {
+            forget(repo);
             return Err(failed(&out));
         }
         let list: Vec<Value> = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
         let mine: Vec<&Value> = (list.iter())
             .filter(|p| belongs(p, repo, &self.branch))
             .collect();
+        // A PR not kept yet shows now, its checks after: a first read shows after one list [D200].
+        let old = kept(&self.dir);
+        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
+        let new = |p: &&Value| old.iter().all(|o| o["number"] != p["number"]);
+        if mine.iter().any(new) {
+            let rows = (mine.iter().map(|p| row(p, None)))
+                .chain(
+                    (old.iter()
+                        .filter(|o| mine.iter().all(|p| p["number"] != o["number"])))
+                    .map(|o| (*o).clone()),
+                )
+                .collect();
+            self.keep(Ok((rows, None)));
+        }
         // The open one into the base, else any open one: the card's step reads it [D1287].
         let open = |p: &&&Value| p["state"] == "OPEN";
         let into = (mine.iter().filter(open)).find(|p| p["baseRefName"] == self.base);

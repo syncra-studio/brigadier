@@ -153,8 +153,9 @@ impl Gh {
 /// Which account last read each repository (`host/path`; None is the active one), tried first.
 static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
 
-/// gh as an account that can read `repo`: the one that last did, the active one, else each other
-/// account signed in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
+/// gh as an account that can read `repo`: the one that last did (unprobed, a gh call saved on
+/// every read [D200]; a read it fails forgets it), the active one, else each other account signed
+/// in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
 /// later slice [D1030].
 fn gh(repo: &Repo) -> Option<Gh> {
     if repo.kind != Kind::GitHub {
@@ -165,7 +166,12 @@ fn gh(repo: &Repo) -> Option<Gh> {
     let last = READER.lock().unwrap().get(&key).cloned();
     let others = std::iter::once_with(|| others(&path, &repo.host)).flatten();
     let mut tried = Vec::new();
-    for user in last.into_iter().chain([None]).chain(others.map(Some)) {
+    for user in last
+        .clone()
+        .into_iter()
+        .chain([None])
+        .chain(others.map(Some))
+    {
         if tried.contains(&user) {
             continue;
         }
@@ -181,6 +187,9 @@ fn gh(repo: &Repo) -> Option<Gh> {
             path: path.clone(),
             token,
         };
+        if last.as_ref() == Some(&user) {
+            return Some(gh);
+        }
         let mut probe = gh.command();
         probe.args([
             "api",
@@ -195,6 +204,14 @@ fn gh(repo: &Repo) -> Option<Gh> {
         }
     }
     None
+}
+
+/// `repo`'s reader failed a read: the next one probes again.
+fn forget(repo: &Repo) {
+    READER
+        .lock()
+        .unwrap()
+        .remove(&format!("{}/{}", repo.host, repo.path));
 }
 
 /// The accounts gh has signed in for `host` other than its active one.

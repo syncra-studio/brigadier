@@ -283,7 +283,11 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         .filter_map(|row| row["id"].as_str())
         .collect();
     git::turned(data, &turned);
-    prs::turned(&turned);
+    // A row first seen now is read as the watch's first anyway: marking it would read it twice.
+    let seen: Vec<&str> = (turned.iter().copied())
+        .filter(|id| s.rows.contains_key(*id))
+        .collect();
+    prs::turned(&seen);
     let delta =
         !rows.is_empty() || !gone.is_empty() || !projects.is_empty() || !projects_gone.is_empty();
     for row in &rows {
