@@ -97,6 +97,7 @@ impl Fold {
             Some("interrupt") => {
                 if let Some(t) = self.turns.first_mut() {
                     t.stopping = true;
+                    t.stop_by = c["by"].clone();
                 }
                 true
             }

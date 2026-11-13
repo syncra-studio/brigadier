@@ -340,6 +340,10 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),
         _ => "The last message wasn't worked on yet. Do it now.".into(),
     };
+    // A step the user's Stop cut reads as refused in its CLI's words; it wasn't [D170].
+    if last["outcome"] == "stopped" && last["reason"] == "user" {
+        out += "\n## Stopped\nThe user pressed Stop to end the last turn. A Stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
+    }
     out += &format!("\n## Next\n{step}\n");
     Ok(out)
 }

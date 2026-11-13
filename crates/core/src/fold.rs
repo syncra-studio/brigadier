@@ -306,14 +306,15 @@ impl Fold {
             }
             "turn_end" => {
                 let ok = item["ok"].as_bool().unwrap_or(true);
-                let stopped = self.turns.first().is_some_and(|t| t.stopping);
+                let stopped = self.turns.first().filter(|t| t.stopping);
                 let outcome = match () {
-                    _ if stopped => "stopped",
+                    _ if stopped.is_some() => "stopped",
                     _ if ok => "done",
                     _ => "failed",
                 };
+                let by = stopped.map(|t| t.stop_by.clone()).unwrap_or_default();
                 self.calls.clear();
-                self.close(outcome, Value::Null, ts);
+                self.close(outcome, by, ts);
             }
             "mark" => self.mark(item),
             "tool" => {

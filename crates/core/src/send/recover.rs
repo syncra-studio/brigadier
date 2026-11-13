@@ -141,7 +141,8 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
                 &cid,
                 origin,
                 &msg,
-                backend.filter(|_| !picked),
+                // Past its threshold, the Resume is the next input that goes on in a fresh conversation [D108].
+                backend.filter(|_| !picked && !crate::rebirth::full(spec, f)),
                 resend.then_some(old),
             );
             reply["recovered"] = said.into();

@@ -46,6 +46,9 @@ pub struct Turn {
     /// The user asked it to stop: however its turn ends, it was stopped.
     #[serde(default)]
     pub stopping: bool,
+    /// Who stopped it (user, rebirth, stall): its end's reason, as a process stop's is.
+    #[serde(default)]
+    pub stop_by: Value,
     /// Logged, then its owner died before delivering it.
     pub orphaned: bool,
     /// Its input starts a child that no `spawned` record has named yet.
