@@ -157,9 +157,10 @@ impl Adapter for Codex {
         false
     }
 
-    /// Started at its first code-mode call, inside a turn.
+    /// Started at its first code-mode call, inside a turn; `node_repl`, the ChatGPT app's MCP server
+    /// in Codex's config, again for each subagent's thread.
     fn helpers(&self) -> &[&str] {
-        &["codex-code-mode-host"]
+        &["codex-code-mode-host", "node_repl"]
     }
 
     /// Each line to the helper is one request to its server, applied only once its reply names it.
