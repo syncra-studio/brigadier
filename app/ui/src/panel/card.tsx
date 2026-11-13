@@ -1,13 +1,14 @@
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 
 import { FileTypeIcon } from "../components/composer/attachments";
 import { ComposerPill } from "../components/composer/composer";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
-import { Branch, ChevronDown, ChevronRight } from "../icons";
+import { Branch, ChevronDown } from "../icons";
+import { PullRequestOpen } from "../landing/icons";
 import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
@@ -16,17 +17,63 @@ import { Counts, Line, Note, PrLine } from "./source/rows";
 import { ago } from "../landing/pr-words";
 import { useBranchPicker } from "./branch-picker";
 
-/** One of the card's parts, a hairline under it as the old card's [D1075, D1198]; `end` ends its title row. */
-export function CardSection({ title, end, children }: { title?: ReactNode; end?: ReactNode; children: ReactNode }) {
+/** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
+const folds = new Map<string, boolean>();
+
+/**
+ * One of the card's parts, a hairline under it as the old card's [D1075, D1198]; `end` ends its title row. With `fold`
+ * (its key), its title folds it as the old card's SummarySection [D200]: the chevron after it shows on hover while
+ * open and stays, turned, while folded, with `count` after the title; a `count` that grows opens it again.
+ */
+export function CardSection({ title, end, fold, count, children }: { title?: ReactNode; end?: ReactNode; fold?: string; count?: number; children?: ReactNode }) {
+  const body = useId();
+  const [kept, setKept] = useState(() => (fold ? folds.get(fold) : undefined));
+  const [was, setWas] = useState(count ?? 0);
+  if (count !== undefined && count !== was) {
+    setWas(count);
+    if (count > was) setKept(false);
+  }
+  const folded = Boolean(fold && children && kept);
+  const toggle = () => {
+    if (fold) folds.set(fold, !folded);
+    setKept(!folded);
+  };
   return (
-    <section className="relative flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:origin-bottom after:scale-y-50 after:bg-divider last:pb-0 last:after:hidden">
+    <section
+      data-folded={folded || undefined}
+      className={cx("relative flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:origin-bottom after:scale-y-50 after:bg-divider last:pb-0 last:after:hidden", folded && "pb-0.5")}
+    >
       {(title || end) && (
         <header className="flex h-7 min-w-0 items-center gap-2 ps-5 pe-3.5 text-label text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">{title}</span>
-          {end}
+          {fold && children ? (
+            <button
+              type="button"
+              aria-expanded={!folded}
+              aria-controls={body}
+              onClick={toggle}
+              className="group/fold -ms-1 inline-flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-control py-0.5 ps-1 pe-1 text-start transition-colors hover:text-foreground focus-visible:focus-ring"
+            >
+              <span className="min-w-0 truncate">{title}</span>
+              {folded && count !== undefined && count > 0 && <span className="min-w-0 shrink truncate tabular-nums">· {count}</span>}
+              <ChevronDown
+                aria-hidden
+                className={cx(
+                  "size-icon-xs shrink-0 transition motion-reduce:transition-none",
+                  folded ? "-rotate-90" : "opacity-0 group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100",
+                )}
+              />
+            </button>
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+          )}
+          {end && <div className="flex shrink-0 items-center gap-0.5">{end}</div>}
         </header>
       )}
-      <div className="flex min-w-0 flex-col gap-0.5 px-5">{children}</div>
+      {children && (
+        <div id={body} hidden={folded} className="flex min-w-0 flex-col gap-0.5 px-5">
+          {children}
+        </div>
+      )}
     </section>
   );
 }
@@ -49,17 +96,20 @@ export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing ||
 /**
  * The summary card's git part, as the old card's [D64]: the project as a quiet title; the branch row, the composer's
  * picker pill opening a session's copies menu or a folder's quick pick [D62, D72], with the +/− counts opening Review at its end (no uncommitted count, D1209) [D1273]; one note
- * line; a hairline, then the branch's pull requests in the old card's icons, words and colours, the title and each row
- * opening the Pull requests tab [D1017, D1116], then the Workers section [D65]. Disconnected, "Offline · 14:32" takes
+ * line; a hairline, then the session's pull requests in GitHub's state words and colours, folding as the old card's
+ * Background section, its button and each row opening the Pull requests tab [D1017, D1116, D200, D202], then the
+ * Workers section [D65]. Disconnected, "Offline · 14:32" takes
  * the counts' place and the rest dims [D30, D1206]. Without `ops` (the gallery) it moves nothing.
  */
-export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onReview, workers }: {
+export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onPrs, onReview, workers }: {
   data: SourceData;
   nowMs: number;
   project?: string | null;
   session?: string | null;
   ops?: SourceOps;
   onPr?: (number: number) => void;
+  /** The section's own button: the list of them, or the one [D200, D205]. */
+  onPrs?: (numbers: number[]) => void;
   onReview?: () => void;
   /** The session's Workers section, after the PRs [D65]. */
   workers?: ReactNode;
@@ -150,15 +200,17 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         {note && <Note text={note.text} warn={note.warn} />}
       </CardSection>
       {(first || kept?.error) && (
+        // As the old card's Background section [D200]: its title folds it, its own button opens the Pull requests tab.
         <CardSection
-          title={
-            <Tooltip>
-              <TooltipTrigger render={<button type="button" onClick={() => first && onPr?.(first.number)} className="inline-flex cursor-pointer items-center gap-0.5 rounded-control hover:text-foreground focus-visible:focus-ring" />}>
-                Pull requests
-                <ChevronRight className="size-icon-xs" />
-              </TooltipTrigger>
-              <TooltipContent>Opens the PR tab</TooltipContent>
-            </Tooltip>
+          title="Pull requests"
+          fold="pull-requests"
+          count={prs.length}
+          end={
+            first && (
+              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.(prs.map((pr) => pr.number))}>
+                <PullRequestOpen />
+              </TooltipIconButton>
+            )
           }
         >
           <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>

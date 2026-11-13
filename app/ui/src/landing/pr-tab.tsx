@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ArrowUpRight, Check, ChevronDown } from "../icons";
 import { Sparkles } from "./icons";
 import { Checks, Comments, History, Overview, PrIcon, type Sends } from "./pr-parts";
-import { ago, prLook, TONES } from "./pr-words";
+import { ago, STATE_TONES, STATE_WORDS, TONES } from "./pr-words";
 import type { MergeStyle, PullRequest } from "./pull-requests";
 
 export type PrView = "overview" | "checks" | "comments" | "timeline";
@@ -54,7 +54,6 @@ export function PrTab({
       </div>
     );
   }
-  const look = prLook(pr);
   const failed = pr.checks.filter((check) => check.state === "failed").length;
   const fix = pr.state === "open" && pr.blockers !== null && (pr.blockers.failedChecks > 0 || pr.blockers.changesBy.length > 0);
   const fixAdded = sends.added.has("fix");
@@ -66,7 +65,7 @@ export function PrTab({
         <header className="flex flex-col gap-2">
           {/* As tall as its buttons, so the header holds still when they go (merged, closed). */}
           <div className="flex min-h-control-sm items-center gap-2">
-            <PrIcon state={pr.state} tone={look.tone} />
+            <PrIcon state={pr.state} tone={STATE_TONES[pr.state]} />
             <h2 className="min-w-0 flex-1 truncate font-display text-base font-medium">
               <span className="text-muted-foreground">#{pr.number}</span> {pr.title}
             </h2>
@@ -82,7 +81,7 @@ export function PrTab({
             </TooltipIconButton>
           </div>
           <p className="text-sm text-muted-foreground">
-            <span className={pr.problem ? "text-muted-foreground" : TONES[look.tone]}>{look.word}</span>
+            <span className={pr.problem ? "text-muted-foreground" : TONES[STATE_TONES[pr.state]]}>{STATE_WORDS[pr.state]}</span>
             {pr.problem && pr.checkedAtMs !== null && ` · ${ago(pr.checkedAtMs, sends.now)}`} · <span className="text-foreground">{pr.branch}</span> into{" "}
             <span className="text-foreground">{pr.base}</span> · opened by {pr.openedBy} {ago(pr.openedAtMs, sends.now)}
             {sends.offline ? " · Reconnecting…" : !pr.problem && pr.checkedAtMs !== null && ` · checked ${ago(pr.checkedAtMs, sends.now)}`}

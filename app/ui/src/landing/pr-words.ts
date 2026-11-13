@@ -1,23 +1,6 @@
-import type { PrEvent, PrState, PrStatus, PullRequest } from "./pull-requests";
+import type { PrEvent, PrState, PullRequest } from "./pull-requests";
 
-/** A pull request's word and its colour family, the old app's pullRequestWords [D48]. */
-export type PrLook = { word: string; tone: Tone };
 export type Tone = "good" | "failed" | "waiting" | "merged" | "quiet";
-
-const LOOKS: Record<PrStatus, PrLook> = {
-  merged: { word: "Merged", tone: "merged" },
-  closed: { word: "Closed", tone: "quiet" },
-  checks_failed: { word: "Checks failed", tone: "failed" },
-  draft: { word: "Draft", tone: "quiet" },
-  checks_running: { word: "Checks running", tone: "waiting" },
-  changes_requested: { word: "Changes requested", tone: "waiting" },
-  conflicts: { word: "Conflicts with its base", tone: "waiting" },
-  ready: { word: "Ready", tone: "good" },
-  review_needed: { word: "Review needed", tone: "waiting" },
-};
-
-/** The status Rust sends, in words. */
-export const prLook = (pr: PullRequest): PrLook => LOOKS[pr.status];
 
 export const TONES: Record<Tone, string> = {
   good: "text-success",
@@ -27,7 +10,9 @@ export const TONES: Record<Tone, string> = {
   quiet: "text-muted-foreground",
 };
 
+/** A PR's state as GitHub says it, in its word and colour, wherever a PR shows [D202]: never Ready for one waiting on review. */
 export const STATE_WORDS: Record<PrState, string> = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" };
+export const STATE_TONES: Record<PrState, Tone> = { open: "good", draft: "quiet", merged: "merged", closed: "failed" };
 
 const EVENT_WORDS: Record<PrEvent["kind"], string> = {
   opened: "opened",

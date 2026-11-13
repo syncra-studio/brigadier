@@ -310,7 +310,7 @@ impl Index {
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets, f.fold.calls.last()),
                              // The turn the loop guard stopped: its line offers Continue [D144].
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
-            row["background"] = json!(live.left);
+            fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
             // How full its context is, and a rebirth due now [D88, D108].
             row["context"] = json!(f.fold.context);

@@ -23,6 +23,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             .and_then(|()| core::git::recover::settled(data, id))
             .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
         "restore" => session::restore(data, &spec)?,
+        // `jobs <id> history`: everything that ran in the background, newest first [D200].
+        "jobs" if arg(args, 2)? == "history" => {
+            let f = core::fold(&spec.dir, true)?;
+            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
+            return Ok(json!({"ok": true, "history": fold::history(&spec.dir, &left)}));
+        }
         // `jobs <id> stop <pid> <start_us>`: one process tree its turns left running [D105].
         "jobs" => {
             let f = core::fold(&spec.dir, true)?;
@@ -48,6 +54,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
+            fold::note_stop(&spec.dir, pid, start_us);
             fold::stop_job(&f.fold, data, pid, start_us);
             return Ok(json!({"ok": true}));
         }

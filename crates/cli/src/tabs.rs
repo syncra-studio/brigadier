@@ -15,15 +15,23 @@ use std::path::{Path, PathBuf};
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
-/// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104].
-const KINDS: [&str; 5] = ["new", "terminal", "pr", "review", "attachment"];
+/// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
+/// card's Background history [D200].
+const KINDS: [&str; 6] = [
+    "new",
+    "terminal",
+    "pr",
+    "review",
+    "attachment",
+    "background",
+];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
 /// A checkout file, opened by `file` only, as it needs a line and a preview too [D1002, D1032].
 const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
 /// Kinds a session has one of: opening one again brings it to the front, on its new target [D478, D1114].
-const ONE: [&str; 1] = ["review"];
+const ONE: [&str; 2] = ["review", "background"];
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {

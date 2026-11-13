@@ -3,7 +3,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Compare, Dock, Document, FileDocument, Globe } from "../icons";
-import { PullRequestOpen } from "../landing/icons";
+import { Clock, PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
 
@@ -24,6 +24,7 @@ export const TAB_KINDS = {
   pr: { name: "Pull request", icon: PullRequestOpen },
   review: { name: "Review", icon: Compare },
   attachment: { name: "Attachment", icon: FileDocument },
+  background: { name: "Background history", icon: Clock },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**

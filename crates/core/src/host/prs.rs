@@ -96,18 +96,14 @@ impl Pr {
             .filter(|p| belongs(p, repo, &self.branch))
             .collect();
         // A PR not kept yet shows now, its checks after: a first read shows after one list [D200].
-        let old = kept(&self.dir);
-        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
-        let new = |p: &&Value| old.iter().all(|o| o["number"] != p["number"]);
-        if mine.iter().any(new) {
-            let rows = (mine.iter().map(|p| row(p, None)))
-                .chain(
-                    (old.iter()
-                        .filter(|o| mine.iter().all(|p| p["number"] != o["number"])))
-                    .map(|o| (*o).clone()),
-                )
-                .collect();
-            self.keep(Ok((rows, None)));
+        let old = (kept(&self.dir)["prs"].as_array().cloned()).unwrap_or_default();
+        let unlisted = |o: &&Value| mine.iter().all(|p| p["number"] != o["number"]);
+        if (mine.iter()).any(|p| old.iter().all(|o| o["number"] != p["number"])) {
+            let rows = mine.iter().map(|p| row(p, None));
+            self.keep(Ok((
+                rows.chain(old.iter().filter(unlisted).cloned()).collect(),
+                None,
+            )));
         }
         // The open one into the base, else any open one: the card's step reads it [D1287].
         let open = |p: &&&Value| p["state"] == "OPEN";

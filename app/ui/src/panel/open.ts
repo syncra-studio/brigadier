@@ -10,3 +10,5 @@ export const openPr = (owner: string, number: number) => openTab(owner, "pr", St
 
 /** `owner`'s pull requests: the list when it has several, else its one PR [D205]. */
 export const openPrs = (owner: string, numbers: readonly number[]) => (numbers.length === 1 ? openPr(owner, numbers[0]) : openTab(owner, "pr", "list"));
+/** `owner`'s Background history: everything that ran in its background [D200]. */
+export const openBackgroundHistory = (owner: string) => openTab(owner, "background");

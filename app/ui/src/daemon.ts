@@ -34,6 +34,8 @@ export type Row = {
   works?: boolean;
   /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
   background?: Job[];
+  /** Something has run in its background: the card keeps its Background history button [D200]. */
+  background_ran?: boolean;
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
   /** The Brigade session that started this one [D189]. */

@@ -3,9 +3,9 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "../../components/cx";
 import { InfoTip } from "../../components/thread/tip";
 import { Warning } from "../../icons";
-import { PullRequestMerged, PullRequestOpen } from "../../landing/icons";
+import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "../../landing/icons";
+import { STATE_WORDS } from "../../landing/pr-words";
 import type { Pr } from "../types";
-import { prWords, type Tone } from "../words";
 
 /**
  * One row of the card, the old card's 28px row [D1198, D1206]: an icon, the title and what ends it. `onClick`
@@ -31,13 +31,18 @@ export function Line({ icon, end, onClick, className, children }: { icon?: React
   );
 }
 
-/** A PR's icon, word and colour: prWords' words, the old card's colours (yellow running, purple merged) [D1198]. */
-const PR_TINT: Record<Tone, string> = { quiet: "text-pr-yellow", good: "text-success", warn: "text-pr-yellow", bad: "text-destructive" };
+/** A PR's state as GitHub says it, in its icon, word and colour: Open, Draft, Merged, Closed [D202]. */
+const PR_LOOK = {
+  open: { Icon: PullRequestOpen, tint: "text-success" },
+  draft: { Icon: PullRequestDraft, tint: "text-muted-foreground" },
+  merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
+  closed: { Icon: PullRequestClosed, tint: "text-destructive" },
+};
 export function PrLine({ pr, onClick }: { pr: Pr; onClick?: () => void }) {
-  const { word, tone } = prWords(pr);
-  const tint = pr.state === "merged" ? "text-pr-purple" : pr.state === "open" && pr.health === "unknown" ? "text-muted-foreground" : PR_TINT[tone];
+  const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
+  const { Icon, tint } = PR_LOOK[state];
   return (
-    <Line onClick={onClick} icon={<span className={cx("flex", tint)}>{pr.state === "merged" ? <PullRequestMerged /> : <PullRequestOpen />}</span>} end={<span className={tint}>{word}</span>}>
+    <Line onClick={onClick} icon={<span className={cx("flex", tint)}><Icon /></span>} end={<span className={tint}>{STATE_WORDS[state]}</span>}>
       <span className="text-muted-foreground">#{pr.number}</span> {pr.title}
     </Line>
   );

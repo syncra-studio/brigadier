@@ -9,6 +9,7 @@ import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons
 import { FileViewer } from "../files/viewer";
 import { LivePrTab } from "../landing/live";
 import { PrList } from "../landing/pr-list";
+import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
 import { ReviewView } from "../review/view";
 import { keysOf } from "../shortcuts";
@@ -127,6 +128,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
             ) : tab.kind === "attachment" ? (
               <AttachmentTab key={tab.target?.split("/")[0]} owner={owner} id={tab.target?.split("/")[0] ?? ""} label={tab.target?.split("/")[1] ?? ""} active={tab.id === active} />
+            ) : tab.kind === "background" ? (
+              <BackgroundHistory owner={owner} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
           </div>
         ))}

@@ -11,7 +11,9 @@ mod rewind;
 pub mod runs;
 mod status;
 mod turns;
-pub use live::{Job, Live, live, live_groups, stop_job, task_of};
+pub use live::{
+    Job, Live, background_row, history, live, live_groups, note_stop, stop_job, task_of,
+};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

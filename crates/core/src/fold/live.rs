@@ -210,3 +210,107 @@ fn free_bytes(path: &std::path::Path) -> u64 {
     let s = unsafe { s.assume_init() };
     s.f_bavail as u64 * s.f_frsize
 }
+
+/// The session's background history (`background`, JSON lines) [D200]: each job's start as it's
+/// first seen, its end once it's gone, and the user's Stop. A start seen again (another reader, a
+/// restart) or a second end changes nothing when read.
+const HISTORY: &str = "background";
+
+/// A session row's Background [D105, D200]: what's left running, and whether anything has run (its
+/// card keeps the history's button), noting the jobs that started or ended since the last look.
+pub fn background_row(row: &mut serde_json::Value, dir: &Path, left: &[Job]) {
+    row["background_ran"] = note_jobs(dir, left).into();
+    row["background"] = serde_json::json!(left);
+}
+
+/// What each session's jobs were at the last look, by its folder.
+static NOTED: std::sync::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<Job>>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Keeps what changed since the last look at a session's jobs: those new started, those gone ended.
+/// Says whether anything has run in its background, so its card keeps the history's button.
+fn note_jobs(dir: &Path, now: &[Job]) -> bool {
+    let mut noted = NOTED.lock().unwrap_or_else(|e| e.into_inner());
+    let was = noted.entry(dir.to_path_buf()).or_default();
+    if was.as_slice() != now {
+        let at = log::now_ms();
+        let lines: Vec<String> = (now.iter().filter(|j| !was.contains(j)))
+            .map(|j| serde_json::json!({"pid": j.pid, "start_us": j.start_us, "label": j.label}))
+            .chain(
+                (was.iter().filter(|j| {
+                    now.iter()
+                        .all(|n| (n.pid, n.start_us) != (j.pid, j.start_us))
+                }))
+                .map(|j| serde_json::json!({"pid": j.pid, "start_us": j.start_us, "end": at})),
+            )
+            .map(|line| format!("{line}\n"))
+            .collect();
+        note(dir, &lines.concat());
+        *was = now.to_vec();
+    }
+    !now.is_empty() || dir.join(HISTORY).exists()
+}
+
+/// The user stopped this job from the card.
+pub fn note_stop(dir: &Path, pid: i32, start_us: u64) {
+    let line = serde_json::json!({"pid": pid, "start_us": start_us, "stopped": "user"});
+    note(dir, &format!("{line}\n"));
+}
+
+fn note(dir: &Path, lines: &str) {
+    use std::io::Write;
+    if lines.is_empty() {
+        return;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join(HISTORY));
+    if let Err(e) = file.and_then(|mut f| f.write_all(lines.as_bytes())) {
+        eprintln!("brigadier: keeping background history: {e}");
+    }
+}
+
+/// Everything that ran in the background, newest first, each `{label, startedAt, endedAt,
+/// status}`: running (in `left`), stopped (by the user), ended, or unknown (gone unseen).
+pub fn history(dir: &Path, left: &[Job]) -> Vec<serde_json::Value> {
+    let text = std::fs::read_to_string(dir.join(HISTORY)).unwrap_or_default();
+    let mut runs: Vec<serde_json::Value> = Vec::new();
+    for line in text.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let at = runs
+            .iter()
+            .position(|r| r["pid"] == v["pid"] && r["start_us"] == v["start_us"]);
+        match (at, v.get("label")) {
+            (None, Some(_)) => runs.push(v),
+            // Its CLI's words for it can come after the process: the latest names it.
+            (Some(i), Some(label)) => runs[i]["label"] = label.clone(),
+            (Some(i), _) if v["stopped"] == "user" => runs[i]["stopped"] = true.into(),
+            (Some(i), _) if runs[i]["end"].is_null() && !v["end"].is_null() => {
+                runs[i]["end"] = v["end"].clone()
+            }
+            _ => {}
+        }
+    }
+    let running = |r: &serde_json::Value| {
+        left.iter()
+            .any(|j| r["pid"] == j.pid && r["start_us"] == j.start_us)
+    };
+    let mut out: Vec<serde_json::Value> = (runs.iter())
+        .map(|r| {
+            let status = match () {
+                _ if running(r) => "running",
+                _ if r["stopped"] == true => "stopped",
+                _ if !r["end"].is_null() => "ended",
+                _ => "unknown",
+            };
+            let ended = (status != "running").then(|| r["end"].clone());
+            serde_json::json!({"label": r["label"], "startedAt": r["start_us"].as_u64().map(|us| us / 1000),
+                "endedAt": ended, "status": status})
+        })
+        .collect();
+    out.reverse();
+    out
+}
