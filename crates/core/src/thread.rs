@@ -87,8 +87,8 @@ pub struct Thread {
     /// last of them ends [D67, D114].
     #[serde(default)]
     held: HashMap<String, (Open, Value)>,
-    /// The last turn the user stopped, for the Continue that carries its block on [D154].
-    stopped: Option<Open>,
+    /// The turn that just ended, for a Continue or the agent's own wake to carry on [D154, D179].
+    ended: Option<Open>,
     /// Workers not yet ended, by id, with the turn that started them: they hold it as subagents do [D151].
     #[serde(default)]
     workers: HashMap<String, String>,

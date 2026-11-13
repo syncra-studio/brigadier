@@ -293,17 +293,24 @@ impl Thread {
         let wakes = (matches!(t.origin.as_str(), "agent" | "system")
             || t.origin.starts_with("result:"))
             && (t.switch.is_null() || (cut && t.origin == "system"));
-        // Continue after the user's Stop carries the stopped block on, the pause a wait: one clock, one fold [D154].
-        let resumed = (self.stopped.take())
-            .filter(|o| {
-                o.at + 1 == self.turns.len()
-                    && t.origin == "system"
-                    && t.text == crate::send::RESUME
+        // Continue after the user's Stop carries the stopped block on, the pause a wait: one clock, one
+        // fold [D154]. So does the agent waking on its own, for a command it left running that
+        // ended after its block folded: no new block without the user's words [D117, D179].
+        let resume = t.origin == "system" && t.text == crate::send::RESUME;
+        let resumed = (self.ended.take())
+            .filter(|o| o.at + 1 == self.turns.len())
+            .filter(|o| match resume {
+                true => {
+                    self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user")
+                }
+                false => t.origin == "agent" && !self.held.contains_key(&o.id),
             })
             .map(|mut o| {
-                let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(ts);
-                o.waited += ts.saturating_sub(ended);
-                self.turns[o.at]["waitedMs"] = o.waited.into();
+                if resume {
+                    let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(ts);
+                    o.waited += ts.saturating_sub(ended);
+                    self.turns[o.at]["waitedMs"] = o.waited.into();
+                }
                 o
             });
         let resuming = resumed.is_some();

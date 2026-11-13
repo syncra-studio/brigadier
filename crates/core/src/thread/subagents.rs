@@ -13,10 +13,7 @@ impl Thread {
         if self.turns[o.at]["status"] != "done" {
             self.workers.retain(|_, t| *t != o.id);
         }
-        // The user's Stop: kept for the Continue that carries this block on [D154].
-        if self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user") {
-            self.stopped = Some(o.clone());
-        }
+        self.ended = Some(o.clone());
         let helpers = self.helpers(&o.id);
         if helpers > 0 || self.working(&o.id) {
             self.turns[o.at]["helpers"] = helpers.into();
