@@ -83,6 +83,9 @@ fn past(dir: &Path) -> io::Result<Past> {
         p.starts
             .push((first.at.clone(), "before this session was forked".into()));
     }
+    // Inside a stop Brigadier made (a rebirth, a picked model or level, the guard): a step it
+    // ended may read as refused in its CLI's words; nobody refused it.
+    let mut cutting = false;
     crate::rewind::read_active(dir, |item| {
         let at = archive::at(item);
         let fresh = &item["switch"];
@@ -93,6 +96,9 @@ fn past(dir: &Path) -> io::Result<Past> {
             ));
         }
         let c = &item["control"];
+        if item["kind"] == "input" && (c.is_null() || c["kind"] == "interrupt") {
+            cutting = matches!(c["by"].as_str(), Some("rebirth" | "stall"));
+        }
         let cid = |k: &str| item[k].as_str().unwrap_or("").to_string();
         match item["kind"].as_str() {
             Some("input") if c["kind"] == "answer" => {
@@ -115,7 +121,12 @@ fn past(dir: &Path) -> io::Result<Past> {
             }
             _ => {}
         }
-        p.entries.extend(archive::entry(item, at));
+        p.entries.extend(archive::entry(item, at).map(|mut e| {
+            if cutting && e.from == "error" && item["kind"] == "tool_done" {
+                e.from = "cut";
+            }
+            e
+        }));
     })?;
     Ok(p)
 }
@@ -136,6 +147,7 @@ fn line(id: &str, e: &Entry) -> String {
             e.text.trim_end()
         ),
         "agent" => format!("\n[{at} you]\n{}\n", e.text.trim_end()),
+        "cut" => "- stopped mid-way by Brigadier, not refused: redo it if still needed\n".into(),
         "error" => format!(
             "- failed: {}\n",
             head(e.text.lines().next().unwrap_or(""), 200)
@@ -332,9 +344,8 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     let step = match why {
         "cut" | "switched" => {
             let tool = p.entries.iter().rev().find(|e| e.from == "tool" && !e.who.is_empty());
-            let at = tool.map_or(String::new(), |t| format!(", right after {} ({id}#{}) ended", t.who, t.at));
-            // It's only ever cut with no step running: what began, ended, a failure listed as one.
-            format!("Your last turn was stopped mid-way between steps{at}. Every step it began had ended; any that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step; don't redo what's done.")
+            let at = tool.map_or(String::new(), |t| format!(", its last step {} ({id}#{})", t.who, t.at));
+            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step; don't redo what's done.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),
