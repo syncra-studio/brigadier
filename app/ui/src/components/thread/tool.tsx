@@ -72,6 +72,7 @@ export function ToolRow({
   server,
   approval,
   log,
+  description,
 }: {
   keep: string;
   kind?: StepKind;
@@ -87,27 +88,32 @@ export function ToolRow({
   approval?: PendingApproval;
   /** A skill's own steps, drawn under it as they come [D211]. */
   log?: Item[];
+  /** What the agent said a command does: its row reads by it, its command shows opened [D214]. */
+  description?: string;
 }) {
   const command = kind === "run";
   const skill = kind === "skill";
   const steps = log?.map(
     (step) =>
       step.kind === "tool" && (
-        <ToolRow key={step.id} keep={step.id} kind={step.step} name={step.name} input={step.input} output={step.output} progress={step.progress} exitCode={step.exitCode} server={step.server} />
+        <ToolRow key={step.id} keep={step.id} kind={step.step} name={step.name} input={step.input} output={step.output} progress={step.progress} exitCode={step.exitCode} server={step.server} description={step.description} />
       ),
   );
   const object = toolObject(kind, name, input, server);
+  const said = command && description ? description : null;
+  const shown = said ?? object;
+  const colon = said ? ":" : "";
   const running = progress === "running" || progress === "pending";
   const [doing, done, waiting] = VERBS[kind];
   const words =
     progress === "running" && server ? (
       <Words verb={`${object}:`} object={actionWords(name)} live />
     ) : progress === "pending" ? (
-      <Words verb={`Waiting to ${waiting}`} object={object} />
+      <Words verb={`Waiting to ${waiting}${colon}`} object={shown} />
     ) : progress === "cancelled" ? (
-      <Words verb="Stopped" object={command ? object : `${doing.toLowerCase()} ${object}`} />
+      <Words verb={`Stopped${colon}`} object={command ? shown : `${doing.toLowerCase()} ${object}`} />
     ) : (
-      <Words verb={running ? doing : done} object={progress === "failed" && !command ? `${object} — failed` : object} live={progress === "running"} />
+      <Words verb={`${running ? doing : done}${colon}`} object={progress === "failed" && !command ? `${object} — failed` : shown} live={progress === "running"} />
     );
   const head = (
     <>

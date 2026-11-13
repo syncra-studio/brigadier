@@ -195,7 +195,7 @@ impl Thread {
             Some(s) => s["input"] = item["input"].clone(),
             None => log.push(json!({"id": id, "turnId": turn, "kind": "tool", "name": item["name"],
                 "input": item["input"], "output": "", "progress": "running", "exitCode": null,
-                "step": item["step"], "server": item["server"], "startedAt": item["at"].as_u64().unwrap_or(ts), "endedAt": null})),
+                "step": item["step"], "server": item["server"], "description": item["description"], "startedAt": item["at"].as_u64().unwrap_or(ts), "endedAt": null})),
         }
         self.changed_items.insert(at);
         self.heard(at, ts);

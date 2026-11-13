@@ -359,6 +359,7 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         step,
         input: what,
         at: state["time"]["start"].as_u64(),
+        description: field(&["description"]),
         ..Default::default()
     })];
     if finished {

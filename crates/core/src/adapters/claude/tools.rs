@@ -101,6 +101,7 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         changes,
         at: None,
         server: mcp.map(|(server, _)| server.trim_start_matches("claude_ai_").into()),
+        description: field("description"),
     })]
 }
 

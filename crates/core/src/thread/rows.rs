@@ -95,7 +95,7 @@ impl Thread {
                     _ => {
                         json!({"kind": "tool", "name": item["name"], "input": item["input"], "output": "",
                         "progress": "running", "exitCode": null, "step": step, "startedAt": at, "endedAt": null,
-                        "server": item["server"]})
+                        "server": item["server"], "description": item["description"]})
                     }
                 };
                 let row = self.asked_first(&turn, &str_of("id"), row);

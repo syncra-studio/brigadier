@@ -167,6 +167,8 @@ export type Item = Base &
         approval?: PendingApproval;
         /** A skill's own steps as it runs them, as a subagent's `log` [D211]. */
         log?: Item[];
+        /** What the agent said it does, when it said; empty otherwise [D214]. */
+        description?: string;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" }

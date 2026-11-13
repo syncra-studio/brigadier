@@ -107,6 +107,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           server={item.server}
           approval={item.approval}
           log={item.log}
+          description={item.description}
         />
       );
     }

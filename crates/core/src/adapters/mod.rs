@@ -134,6 +134,8 @@ pub struct Tool {
     pub at: Option<u64>,
     /// The MCP server an MCP tool comes from, as configured (`atlassian`): its calls count together [D176].
     pub server: Option<String>,
+    /// What the agent said a command does, its row's words when given [D214].
+    pub description: String,
 }
 
 /// A tool call as it ends; `cut`: a command sent to the background or interrupted [D74].
