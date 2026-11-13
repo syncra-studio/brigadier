@@ -34,7 +34,7 @@ export type PendingApproval = {
   body?: string;
   /** A message's target session. */
   to?: string;
-  /** What "Allow … for this session" covers: a command prefix, a folder, a host. */
+  /** What "Allow for this session" covers: a command prefix, a folder, a host. */
   grant?: { scope: "command" | "edits" | "network" | "tool"; pattern: string } | null;
   /** The subagent that asks, by its title. */
   agent?: string;
@@ -140,13 +140,13 @@ export function describe(approval: PendingApproval): Shown {
   }
 }
 
-/** The "Allow … for this session" button's words and its tip, from what the grant covers (D177). */
-function grantWords({ scope, pattern }: NonNullable<PendingApproval["grant"]>): { scope: string; tip: string } {
+/** The "Allow for this session" button's tip, from what the grant covers (D177); its words never change [D167]. */
+function grantTip({ scope, pattern }: NonNullable<PendingApproval["grant"]>): string {
   const kept = "Not saved across sessions.";
-  if (scope === "edits") return { scope: "edits in this folder", tip: `Allow file changes inside ${pattern} in this chat. Edits outside it still ask. ${kept}` };
-  if (scope === "tool") return { scope: pattern, tip: `Allow ${pattern} in this chat. ${kept}` };
-  if (scope === "network") return { scope: pattern, tip: `Allow connections to ${pattern} in this chat. ${kept}` };
-  return { scope: pattern, tip: `Allow commands that start with ${pattern} in this chat. ${kept}` };
+  if (scope === "edits") return `Allow file changes inside ${pattern} in this chat. Edits outside it still ask. ${kept}`;
+  if (scope === "tool") return `Allow ${pattern} in this chat. ${kept}`;
+  if (scope === "network") return `Allow connections to ${pattern} in this chat. ${kept}`;
+  return `Allow commands that start with ${pattern} in this chat. ${kept}`;
 }
 
 // Deny reasons typed, by session and approval id, outside any card: paging away and back keeps them. Read as each
@@ -252,7 +252,7 @@ export function ApprovalCard({
   }, []);
   useCardKeys(!busy, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
 
-  const grant = approval.grant ? grantWords(approval.grant) : null;
+  const grant = approval.grant ? grantTip(approval.grant) : null;
   const allow = shown.allow ?? "Allow once";
   return (
     <ActionCard ref={card} tabIndex={0} aria-label="Approval" data-action="approval">
@@ -329,26 +329,21 @@ export function ApprovalCard({
           </div>
         )}
         {grant && (
-          <div data-gone={refusing || undefined} inert={refusing} className={cx(MAKES_WAY, "max-w-full")}>
+          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="button"
-                  aria-label={`Allow ${grant.scope} for this session`}
-                  className={actionButton("outline", "max-w-full min-w-0 @max-card-narrow/approval-card:justify-center")}
+                  className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")}
                   disabled={busy}
                   onClick={() => answer("allowSession")}
                 />
               }
             >
-              <span className="flex min-w-0 items-center">
-                <span className="shrink-0">Allow&nbsp;</span>
-                <span className="truncate">{grant.scope}</span>
-                <span className="shrink-0">&nbsp;for this session</span>
-              </span>
+              Allow for this session
             </TooltipTrigger>
-            <TooltipContent>{grant.tip}</TooltipContent>
+            <TooltipContent>{grant}</TooltipContent>
           </Tooltip>
           </div>
         )}
