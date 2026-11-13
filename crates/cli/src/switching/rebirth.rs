@@ -73,9 +73,11 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     };
     // One per turn it carries on: a repeat or a racing pass finds its id logged [D54].
     let cid = format!("rb-{}", last["id"].as_str().unwrap_or(""));
-    // A worker's cut turn would have reported to its parent: the fresh one does instead.
+    // A worker's cut turn would have reported to its parent: the fresh one does instead, so a
+    // second cut can't leave the first reading as finished.
     let turn = last["id"].as_str().unwrap_or("");
     if let Some(mut l) = workers::link(data, id).filter(|l| l.report.iter().any(|r| r == turn)) {
+        l.report.retain(|r| r != turn);
         l.report.push(cid.clone());
         workers::write_json(&spec.dir.join("worker.json"), &l)?;
     }
