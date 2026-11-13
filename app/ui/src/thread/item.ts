@@ -167,6 +167,8 @@ export type Item = Base &
         approval?: PendingApproval;
         /** A skill's own steps as it runs them, as a subagent's `log` [D211]. */
         log?: Item[];
+        /** Its `log`'s ended steps counted as a group's, which Rust makes [D227]. */
+        logSteps?: Extract<Item, { kind: "group" }>["steps"];
         /** What the agent said it does, when it said; empty otherwise [D214]. */
         description?: string;
       }

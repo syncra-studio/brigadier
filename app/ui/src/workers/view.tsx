@@ -12,7 +12,7 @@ import { SetupRow } from "../components/thread/setup";
 import type { Item, Setup, Turn, Work } from "../thread/item";
 import { type Line, lineMaker } from "../thread/lines";
 import { Markdown } from "../thread/markdown";
-import { GroupLine } from "../thread/rows";
+import { GroupLine } from "../components/thread/body";
 import { px } from "../shell/right-panel";
 import { duration, useSecond } from "../thread/words";
 import { finished, type Worker } from "./chip";

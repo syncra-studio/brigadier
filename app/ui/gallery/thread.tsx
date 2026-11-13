@@ -2,7 +2,7 @@
 // answer streams, the work header counts, the group's running step changes, the shell output grows.
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { Body } from "../src/components/thread/body";
+import { Body, GroupLine } from "../src/components/thread/body";
 import { JumpSign, UserBubble } from "../src/components/thread/message";
 import { GroupRow, WorkHeader, WorkingLine } from "../src/components/thread/work";
 import type { FileChange, Item, Progress, StepKind, Turn } from "../src/thread/item";
@@ -152,6 +152,12 @@ export function Toggled({ children }: { children: (open: boolean, onToggle: () =
 const item = (it: Item, turn: Turn = DONE, step = false) => <Body item={it} turn={turn} step={step} />;
 
 const GROUP: Group = { ...base("g1"), kind: "group", steps: [{ kind: "read", n: 4 }, { kind: "edit", n: 3 }, { kind: "run", n: 2 }], span: [0, 0] };
+// The running step a live group draws in its line's place, a new one each second [D227].
+const LIVE_STEPS: Item[] = [
+  tool("live-1", "read", "read", "src/thread/blocks.ts", "running"),
+  tool("live-2", "run", "shell", "pnpm typecheck", "running", { description: "Check the types" }),
+  tool("live-3", "skill", "code-review", "high 2747", "running", { log: [tool("live-3a", "run", "shell", "git diff --stat", "done"), tool("live-3b", "run", "shell", "gh pr view 2747", "running", { description: "Get the PR" })], logSteps: [{ kind: "run", n: 1 }] }),
+];
 const MCP_GROUP: Group = { ...base("g2"), kind: "group", steps: [{ kind: "run", n: 3 }, { kind: "other", n: 2, server: "atlassian" }], span: [0, 0] };
 
 export function ThreadGallery() {
@@ -183,6 +189,9 @@ export function ThreadGallery() {
         <Row name="Group">
           <State label="done">
             <Toggled>{(open, onToggle) => <GroupRow item={GROUP} open={open} onToggle={onToggle} />}</Toggled>
+          </State>
+          <State label="live: its running step in its place">
+            <Toggled>{(open, onToggle) => <GroupLine item={GROUP} turn={RUNNING} open={open} steps={[]} live={LIVE_STEPS[tick % LIVE_STEPS.length]} onToggle={onToggle} />}</Toggled>
           </State>
           <State label="MCP server">
             <Toggled>{(open, onToggle) => <GroupRow item={MCP_GROUP} open={open} onToggle={onToggle} />}</Toggled>

@@ -1,7 +1,7 @@
 import { type ReactNode, useMemo } from "react";
 
 import { Check, Stop } from "../../icons";
-import type { Item, Progress, StepKind } from "../../thread/item";
+import type { Progress, StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
 import { connectorName } from "../../thread/words";
 import type { PendingApproval } from "../composer/approval";
@@ -28,8 +28,17 @@ export const VERBS: Record<StepKind, [string, string, string]> = {
 export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>
   kind === "skill" ? skillObject(name, input) : kind === "other" ? (server ? connectorName(server) : name) : input || name;
 
-/** A skill by its name and what it was given: "code-review on" a PR, a bare number read as a PR's or issue's [D211]. */
-const skillObject = (name: string, input: string) => `${name || "a skill"}${input ? ` on ${/^\d+$/.test(input) ? `#${input}` : input}` : ""}`;
+/** A skill by its name and what it was given: "code-review on" a PR by its number or repo and number, read from short arguments [D211, D227]. */
+const skillObject = (name: string, input: string) => `${name || "a skill"}${input ? ` on ${target(input)}` : ""}`;
+
+/** Short arguments naming a PR or issue by link or number read as it alone, a level or flag beside it left out; any others as given. */
+function target(input: string) {
+  const words = input.trim().split(/\s+/);
+  if (words.length > 3) return input;
+  const link = words.map((word) => /([\w.-]+)\/(?:pull|issues)\/(\d+)/.exec(word)).find(Boolean);
+  const number = words.find((word) => /^#?\d+$/.test(word));
+  return link ? `${link[1]}#${link[2]}` : number ? `#${number.replace("#", "")}` : input;
+}
 
 /** An MCP tool's name as words, as the old app's: "searchJiraIssues" is "search jira issues". */
 const actionWords = (name: string) =>
@@ -71,7 +80,7 @@ export function ToolRow({
   took,
   server,
   approval,
-  log,
+  steps,
   description,
 }: {
   keep: string;
@@ -86,19 +95,13 @@ export function ToolRow({
   /** An MCP tool's server: "Atlassian: search jira issues" running, "Used Atlassian" done [D176]. */
   server?: string | null;
   approval?: PendingApproval;
-  /** A skill's own steps, drawn under it as they come [D211]. */
-  log?: Item[];
+  /** A skill's own steps, drawn under it as they come, grouped [D211, D227]. */
+  steps?: ReactNode;
   /** What the agent said a command does: its row reads by it, its command shows opened [D214]. */
   description?: string;
 }) {
   const command = kind === "run";
   const skill = kind === "skill";
-  const steps = log?.map(
-    (step) =>
-      step.kind === "tool" && (
-        <ToolRow key={step.id} keep={step.id} kind={step.step} name={step.name} input={step.input} output={step.output} progress={step.progress} exitCode={step.exitCode} server={step.server} description={step.description} />
-      ),
-  );
   const object = toolObject(kind, name, input, server);
   const said = command && description ? description : null;
   const shown = said ?? object;
@@ -124,7 +127,7 @@ export function ToolRow({
   );
   // A running step opens only when it's a command: its output shows as it comes. A running skill's steps show under it.
   if (running && !command) {
-    if (!steps?.length) return <div className={ROW}>{head}</div>;
+    if (!steps) return <div className={ROW}>{head}</div>;
     return (
       <div className="flex min-w-0 flex-col">
         <div className={ROW}>{head}</div>
@@ -132,7 +135,7 @@ export function ToolRow({
       </div>
     );
   }
-  if (skill && !steps?.length && !output) return <div className={ROW}>{head}</div>;
+  if (skill && !steps && !output) return <div className={ROW}>{head}</div>;
   return (
     <OpeningRow
       keep={keep}
@@ -141,7 +144,7 @@ export function ToolRow({
           {approval && <Allowed approval={approval} />}
           {skill ? (
             <>
-              {steps?.length ? <div className={cx(DETAIL, "ps-5.5")}>{steps}</div> : null}
+              {steps && <div className={cx(DETAIL, "ps-5.5")}>{steps}</div>}
               {output && <ToolBox title="Output">{output}</ToolBox>}
             </>
           ) : command ? (

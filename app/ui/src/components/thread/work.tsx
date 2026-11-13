@@ -82,7 +82,7 @@ function StillWaiting() {
 
 /**
  * Steps that came one after another, as one row: "Edited 3 files, ran 2 commands ›", with the first kind's icon.
- * Its count only goes up while the turn runs: a running step shows on its own line below until it ends [D173].
+ * Its count only goes up while the turn runs; a running step draws in its place until it ends (GroupLine) [D173, D227].
  */
 export function GroupRow({ item, open, onToggle }: { item: Group; open: boolean; onToggle: (id: string) => void }) {
   const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";

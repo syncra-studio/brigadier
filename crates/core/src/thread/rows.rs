@@ -2,7 +2,6 @@
 
 use super::Thread;
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
 
 impl Thread {
     /// A tool's row by id: in this turn, or a subagent still running from an earlier one.
@@ -429,53 +428,14 @@ impl Thread {
         at
     }
 
-    /// A group's counts per kind, in the order the kinds came: ended steps only, so it only counts
-    /// up while its turn runs [D173]. Edits count distinct files [D48]; an MCP server's calls count apart [D176].
+    /// A group's counts per kind, made again from its member rows.
     pub(super) fn recount(&mut self, g: usize) {
         let last = self.items[g]["span"][1].as_u64().unwrap_or(0) as usize;
-        let mut steps: Vec<(String, Value, u64)> = vec![];
-        let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
-        for at in g + 1..last.min(self.items.len()) {
-            if self.member.get(&at) != Some(&g) {
-                continue;
-            }
-            let row = &self.items[at];
-            if row["hidden"] == true
-                || matches!(row["progress"].as_str(), Some("running" | "pending"))
-            {
-                continue;
-            }
-            let kind = match row["kind"].as_str().unwrap_or("") {
-                "fileChange" => "edit",
-                "childAgent" => "agent",
-                _ => row["step"].as_str().unwrap_or("other"),
-            };
-            let server = &row["server"];
-            match steps.iter_mut().find(|(k, s, _)| k == kind && s == server) {
-                Some((_, _, n)) => *n += 1,
-                None => steps.push((kind.into(), server.clone(), 1)),
-            }
-            if kind == "edit" {
-                let changes = row["changes"].as_array().cloned().unwrap_or_default();
-                files.extend(
-                    changes
-                        .iter()
-                        .filter_map(|c| c["path"].as_str().map(String::from)),
-                );
-                unnamed += changes.is_empty() as u64;
-            }
-        }
-        let steps: Vec<Value> = steps
-            .into_iter()
-            .map(|(kind, server, n)| {
-                let n = if kind == "edit" {
-                    files.len() as u64 + unnamed
-                } else {
-                    n
-                };
-                json!({"kind": kind, "n": n, "server": server})
-            })
-            .collect();
+        let steps = super::subagents::counts(
+            (g + 1..last.min(self.items.len()))
+                .filter(|at| self.member.get(at) == Some(&g))
+                .map(|at| &self.items[at]),
+        );
         if steps.is_empty() || self.items[g]["hidden"] == true {
             self.items[g]["hidden"] = steps.is_empty().into();
         }

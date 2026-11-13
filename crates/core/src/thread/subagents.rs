@@ -4,6 +4,7 @@
 
 use super::{Open, Thread};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 impl Thread {
     /// A turn's end: its work folds now, or, while subagents it started run on, it stays one open
@@ -213,6 +214,7 @@ impl Thread {
             s["progress"] = if item["ok"] == true { "done" } else { "failed" }.into();
             s["exitCode"] = item["exit"].clone();
             s["endedAt"] = item["at"].as_u64().unwrap_or(ts).into();
+            count(row);
             self.changed_items.insert(at);
         }
         self.heard(at, ts);
@@ -236,11 +238,60 @@ fn log(row: &mut Value) -> &mut Vec<Value> {
     row["log"].as_array_mut().unwrap()
 }
 
+/// Steps' counts per kind, in the order the kinds came: ended steps only, so a live count only goes
+/// up [D173]. Edits count distinct files [D48]; an MCP server's calls count apart [D176].
+pub(super) fn counts<'a>(rows: impl Iterator<Item = &'a Value>) -> Vec<Value> {
+    let mut steps: Vec<(String, Value, u64)> = vec![];
+    let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
+    for row in rows {
+        if row["hidden"] == true || matches!(row["progress"].as_str(), Some("running" | "pending"))
+        {
+            continue;
+        }
+        let kind = match row["kind"].as_str().unwrap_or("") {
+            "fileChange" => "edit",
+            "childAgent" => "agent",
+            _ => row["step"].as_str().unwrap_or("other"),
+        };
+        let server = &row["server"];
+        match steps.iter_mut().find(|(k, s, _)| k == kind && s == server) {
+            Some((_, _, n)) => *n += 1,
+            None => steps.push((kind.into(), server.clone(), 1)),
+        }
+        if kind == "edit" {
+            let changes = row["changes"].as_array().cloned().unwrap_or_default();
+            files.extend(
+                changes
+                    .iter()
+                    .filter_map(|c| c["path"].as_str().map(String::from)),
+            );
+            unnamed += changes.is_empty() as u64;
+        }
+    }
+    steps
+        .into_iter()
+        .map(|(kind, server, n)| {
+            let n = if kind == "edit" {
+                files.len() as u64 + unnamed
+            } else {
+                n
+            };
+            json!({"kind": kind, "n": n, "server": server})
+        })
+        .collect()
+}
+
 /// Its steps still running when the subagent itself ends end with it, so none spins on.
 pub(super) fn settle(row: &mut Value, progress: &str) {
     for s in log(row).iter_mut().filter(|s| s["progress"] == "running") {
         s["progress"] = progress.into();
     }
+    count(row);
+}
+
+/// Its ended steps counted as a group's, for a skill's row to group them as the thread does [D227].
+fn count(row: &mut Value) {
+    row["logSteps"] = counts(log(row).iter()).into();
 }
 
 /// A reply a stop cut mid-way and its carry-on, as one text. A carry-on that starts the cut line

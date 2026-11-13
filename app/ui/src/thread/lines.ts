@@ -13,8 +13,8 @@ export type Line =
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
-  /** A group row. `steps`: what it shows opened, in one capped box. */
-  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[] }
+  /** A group row. `steps`: what it shows opened, in one capped box; `live`: its running step, drawn in its place [D227]. */
+  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
 
@@ -35,7 +35,7 @@ const works = (item: Item) => ["reasoning", "group", "tool", "fileChange", "chil
 
 const within = (n: number | undefined, [first, last]: [number, number]) => n !== undefined && n >= first && n <= last;
 
-const running = (item: Item) => "progress" in item && (item.progress === "running" || item.progress === "pending");
+export const running = (item: Item) => "progress" in item && (item.progress === "running" || item.progress === "pending");
 
 type Walk = { items: readonly Item[]; out: Line[]; starts: number[]; counts: number[] };
 
@@ -138,9 +138,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     // Thinking is a row only while it lasts.
     if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
-      // A running step shows on its own line below its group until it ends, then joins the count [D173].
+      // A running step is its group's line until it ends, then joins the count: it never shows apart and moves [D173, D227].
       if (live && group.line && running(item)) {
-        push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
+        group.line.live = item;
         continue;
       }
       if (!group.open) continue;

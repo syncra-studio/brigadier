@@ -3,6 +3,8 @@ import { type ReactNode, useContext } from "react";
 import { SessionOfThread } from "../../accounts/limit";
 import { PeerBubble } from "../../peers/live";
 import type { Item, SentFile, Turn } from "../../thread/item";
+import { useKept } from "../../thread/kept";
+import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { duration } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
@@ -20,6 +22,7 @@ import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
+import { GroupRow } from "./work";
 import { TodoRow } from "./todo";
 import { BrigadeMessagePill } from "../../sessions/brigade";
 
@@ -42,6 +45,37 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
   ) : (
     bubble
   );
+}
+
+type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
+
+/** A group's row and, opened, its steps: the thread's, a worker's in its panel, a skill's. Its running step is its row till it ends [D227]. */
+export function GroupLine({ item, turn, open, steps, live, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; onToggle: (id: string) => void }) {
+  return (
+    <>
+      {live ? <Body item={live} turn={turn} step={false} /> : <GroupRow item={item} open={open} onToggle={onToggle} />}
+      {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
+      {open && steps.length > 0 && (
+        <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
+          {/* Each step marked, for find to go to a match in it. */}
+          {steps.map((step) => (
+            <div key={step.id} data-step={step.id}>
+              <Body item={step.item} turn={step.turn} step={step.step} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A skill's own steps under its row as one group, as the thread groups steps: "Ran 16 commands", its running step in its place [D227]. */
+function SkillSteps({ id, log, counts, turn }: { id: string; log: Item[]; counts: Group["steps"]; turn: Turn | undefined }) {
+  const key = `${id}:steps`;
+  const [open, setOpen] = useKept(key);
+  const group: Group = { id: key, turnId: turn?.id ?? "", kind: "group", steps: counts, span: [0, 0] };
+  const ended = log.filter((step) => !running(step)).map((step) => ({ id: step.id, item: step, turn, step: true }));
+  return <GroupLine item={group} turn={turn} open={open} steps={ended} live={log.findLast(running)} onToggle={() => setOpen(!open)} />;
 }
 
 function Said({ backend }: { backend: string | undefined }) {
@@ -106,7 +140,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           took={step && ms !== null && ms >= 1000 ? `in ${duration(ms)}` : undefined}
           server={item.server}
           approval={item.approval}
-          log={item.log}
+          steps={item.log?.length ? <SkillSteps id={item.id} log={item.log} counts={item.logSteps ?? []} turn={turn} /> : undefined}
           description={item.description}
         />
       );
