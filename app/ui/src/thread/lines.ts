@@ -117,7 +117,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       push({ type: "work", id: key, gap: "turn", turn, work: foldable ? done : undefined, open: opened });
       fold = foldable && !opened ? done.folded : null;
       kept = done?.kept ?? [];
-    } else if (fold && !within(item.n, fold)) fold = null;
+    }
+    // Its first row too: an empty span (a worktree's turn with only its reply) folds nothing [D85, D118].
+    if (fold && !within(item.n, fold)) fold = null;
     before = item;
     // Brigadier's own words to the agent (a Resume, a carry-on) are no row, as the old app's: only the work they start shows.
     if (item.kind === "message" && item.role === "user" && item.origin === "system") continue;
