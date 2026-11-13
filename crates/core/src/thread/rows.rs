@@ -189,11 +189,12 @@ impl Thread {
             // A process gone ends its background subagents with it, and no wake can come for them.
             "exited" => {
                 self.end_children("failed", ts);
-                self.settle_held();
+                self.settle_held(false);
             }
             "stopped" => {
                 self.end_children("cancelled", ts);
-                self.settle_held();
+                // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
+                self.settle_held(item["by"] != "handoff");
                 if let Some(by @ ("user" | "pause" | "rebirth" | "stall")) = item["by"].as_str() {
                     if let Some(o) = self.open.as_mut() {
                         o.stop.0.get_or_insert(by.into());

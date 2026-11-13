@@ -275,7 +275,7 @@ impl Thread {
         match last.filter(|_| wakes).and_then(|id| self.held.remove(&id)) {
             Some((o, _)) => self.rejoin(o),
             None => {
-                self.settle_held();
+                self.settle_held(true);
                 self.new_turn(t, ts)
             }
         }

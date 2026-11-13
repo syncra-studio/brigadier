@@ -344,9 +344,7 @@ impl Thread {
             }
         }
         if cut {
-            self.turns[o.at]["held"] = true.into();
-            self.turns[o.at]["helpers"] = 0.into();
-            self.held.insert(o.id.clone(), (o, Value::Null));
+            self.hold_cut(o);
         } else {
             self.end_work(o, work, ts);
         }
@@ -359,7 +357,7 @@ impl Thread {
         self.interrupted_line();
         self.close_turn("interrupted", ts);
         self.end_children("failed", ts);
-        self.settle_held();
+        self.settle_held(true);
     }
 
     /// True while a turn or a subagent still runs.

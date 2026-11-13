@@ -62,15 +62,18 @@ impl Thread {
         self.turns[at]["endedAt"] = ts.into();
         self.changed_turns.insert(at);
         if left == 0 && !self.working(turn) && self.open.is_some() {
-            self.settle_held();
+            self.settle_held(false);
         }
     }
 
     /// Every held turn whose subagents all ended, and whose wake didn't come, folds now: its time
-    /// up to its last subagent's end, its last answer final.
-    pub(super) fn settle_held(&mut self) {
+    /// up to its last subagent's end, its last answer final. A Brigadier cut waits for its carry-on
+    /// past its process's end, until `cuts` says another turn came instead [D108, D124].
+    pub(super) fn settle_held(&mut self, cuts: bool) {
         let done: Vec<String> = (self.held.iter())
-            .filter(|(id, (o, _))| self.turns[o.at]["helpers"] == 0 && !self.working(id))
+            .filter(|(id, (o, _))| {
+                (cuts || !o.cut()) && self.turns[o.at]["helpers"] == 0 && !self.working(id)
+            })
             .map(|(id, _)| id.clone())
             .collect();
         for id in done {
@@ -90,6 +93,15 @@ impl Thread {
                 );
             }
         }
+    }
+
+    /// A Brigadier cut, held open for its carry-on: one block, its answer an update in it [D108,
+    /// D124].
+    pub(super) fn hold_cut(&mut self, o: Open) {
+        self.final_answer(&o, false);
+        self.turns[o.at]["held"] = true.into();
+        self.turns[o.at]["helpers"] = 0.into();
+        self.held.insert(o.id.clone(), (o, Value::Null));
     }
 
     fn final_answer(&mut self, o: &Open, last: bool) {

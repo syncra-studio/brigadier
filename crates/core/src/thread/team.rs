@@ -57,7 +57,7 @@ impl Thread {
                 (ids.as_array().into_iter().flatten())
                     .filter_map(Value::as_str)
                     .for_each(|id| _ = self.workers.remove(id));
-                self.settle_held();
+                self.settle_held(false);
                 self.team_row(json!({"kind": "team_still", "workers": ids}));
             }
             // A result its parent's own `wait` took, never sent: its sentence all the same [D97].
