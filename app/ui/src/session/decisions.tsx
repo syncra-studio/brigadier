@@ -3,9 +3,10 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
 import { forgetQuestions, type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
-import { threadSource } from "../daemon";
+import { ask, threadSource, useDaemon } from "../daemon";
 import type { Item, Session } from "../thread/item";
 import type { Source } from "../thread/thread";
+import { useWorkers } from "../workers/live";
 import type { Runner } from "./composer";
 
 /*
@@ -111,13 +112,44 @@ function send(run: Runner, session: string, answer: Answer): Promise<void> {
   });
 }
 
-/** What waits on the user in this session: Rust's lists without the answers on their way, plus refused stale ones. */
+/** A worker's approval on its parent's card: the worker answers it. */
+type WorkerApproval = PendingApproval & { session: string };
+
+/**
+ * The approvals its workers wait on the user for (at Ask) [D126]: on the parent's own card, each naming its worker, as
+ * the old app's. Rust's snapshot of each, asked again as its row changes.
+ */
+function useWorkerApprovals(owner: string): WorkerApproval[] {
+  const asking = useWorkers(owner).filter((worker) => worker.kind === "needsYou");
+  const rows = useDaemon().rows;
+  const key = asking.map((worker) => `${worker.id}:${rows?.find((row) => row.id === worker.id)?.updated}`).join(" ");
+  const [found, setFound] = useState<ReadonlyMap<string, WorkerApproval[]>>(new Map());
+  useEffect(() => {
+    let live = true;
+    setFound((was) => new Map([...was].filter(([wid]) => asking.some((worker) => worker.id === wid))));
+    for (const worker of asking)
+      ask({ op: "peek", session: worker.id }, (reply) => {
+        const approvals: PendingApproval[] = reply.ok ? (reply.session.approvals ?? []) : [];
+        if (live) setFound((was) => new Map(was).set(worker.id, approvals.map((each) => ({ ...each, agent: worker.name, session: worker.id }))));
+      });
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  return [...found.values()].flat();
+}
+
+/** What waits on the user in this session: Rust's lists without the answers on their way, plus refused stale ones, and its workers' approvals. */
 function useWaiting(id: string, source: Source) {
   const shown = useSyncExternalStore(source.subscribe, source.get);
   const mine = useSyncExternalStore(subscribe, () => answering.get(id));
   const session = shown?.id === id ? shown : null;
   // Rust's own rows (the overlaid ones always show the answer): an entry goes once its row has moved on.
   const raw = threadSource.get();
+  const workers = useWorkerApprovals(id).filter((each) => {
+    const answer = answering.get(each.session)?.get(each.id);
+    return !answer || answer.error !== undefined;
+  });
   useEffect(() => {
     if (raw?.id !== id) return;
     for (const item of raw.items) {
@@ -130,14 +162,14 @@ function useWaiting(id: string, source: Source) {
       if (done) setAnswer(id, request!, undefined);
     }
     // The cards' kept text goes with requests that no longer wait, so nothing outlives its request.
-    const keep = new Set([...(raw.approvals ?? []), ...(raw.questions ?? [])].map((each) => each.id).concat([...(mine?.keys() ?? [])]));
+    const keep = new Set([...(raw.approvals ?? []), ...(raw.questions ?? []), ...workers].map((each) => each.id).concat([...(mine?.keys() ?? [])]));
     forgetReasons(id, keep);
     forgetQuestions(id, keep);
   });
   const listed = (list: { id: string }[] | undefined, each: Answer) => list?.some((one) => one.id === each.request.id) === true;
   // Refused, and nothing waits on it any more (the turn ended, it was answered elsewhere): stale.
   const stale = [...(mine?.values() ?? [])].filter((each) => each.error !== undefined && !listed("items" in each.request ? session?.questions : session?.approvals, each));
-  const approvals = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request]))];
+  const approvals: (PendingApproval | WorkerApproval)[] = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request])), ...workers];
   const questions = [...(session?.questions ?? []), ...stale.flatMap((each) => ("items" in each.request ? [each.request] : []))];
   return {
     approvals,
@@ -161,7 +193,7 @@ export function SessionApprovals({ id, run, source }: { id: string; run: Runner;
       dismiss={dismiss}
       onAnswer={(request, decision, reason) => {
         const found = approvals.find((each) => each.id === request);
-        return found ? send(run, id, { request: found, decision, reason, state: "sending" }) : Promise.resolve();
+        return found ? send(run, "session" in found ? found.session : id, { request: found, decision, reason, state: "sending" }) : Promise.resolve();
       }}
     />
   );
