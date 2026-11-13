@@ -13,6 +13,10 @@ impl Thread {
         if self.turns[o.at]["status"] != "done" {
             self.workers.retain(|_, t| *t != o.id);
         }
+        // The user's Stop: kept for the Continue that carries this block on [D154].
+        if self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user") {
+            self.stopped = Some(o.clone());
+        }
         let helpers = self.helpers(&o.id);
         if helpers > 0 || self.working(&o.id) {
             self.turns[o.at]["helpers"] = helpers.into();
@@ -123,6 +127,32 @@ impl Thread {
     /// subagents held: one block, counting from that turn's start, folding above the new answer;
     /// the earlier answer becomes part of its work [D106].
     pub(super) fn rejoin(&mut self, mut o: Open) {
+        // A reply a Stop or a cut left mid-way, nothing after it but lines and thinking, is
+        // finished by the carry-on's text in the same row: one reply [D124, D154].
+        let mid = |n: u64| {
+            let row = &self.items[n as usize - 1];
+            o.kept.contains(&n) || row["hidden"] == true || row["kind"] == "reasoning"
+        };
+        let cut = o.cut() || o.stop.0.as_deref() == Some("user");
+        o.joins = (o.answer)
+            .filter(|&a| cut && (a + 1..=self.items.len() as u64).all(mid))
+            .map(|a| {
+                (
+                    a,
+                    self.items[a as usize - 1]["text"]
+                        .as_str()
+                        .unwrap_or("")
+                        .into(),
+                    String::new(),
+                )
+            });
+        // Its "You stopped" line would sit under the one reply, its pause a wait in its header.
+        for at in o.joins.as_ref().map_or(self.items.len(), |j| j.0 as usize)..self.items.len() {
+            if self.items[at]["reason"] == "stopped" {
+                self.items[at]["hidden"] = true.into();
+                self.changed_items.insert(at);
+            }
+        }
         // A Stop of the turn that carries it on draws its own line.
         o.stop = (None, false);
         let turn = &mut self.turns[o.at];
@@ -206,4 +236,38 @@ pub(super) fn settle(row: &mut Value, progress: &str) {
     for s in log(row).iter_mut().filter(|s| s["progress"] == "running") {
         s["progress"] = progress.into();
     }
+}
+
+/// A reply a stop cut mid-way and its carry-on, as one text. A carry-on that starts the cut line
+/// again (its first words, at a line's start) takes that line's place, any words before it gone;
+/// until its first words show which, it adds nothing.
+pub(super) fn joined(cut: &str, next: &str) -> String {
+    let (head, tail) = cut.rsplit_once('\n').unwrap_or(("", cut));
+    let next = next.trim_start_matches(' ');
+    let key = tail
+        .split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !key.is_empty() {
+        let again = (next.match_indices(&key).map(|(i, _)| i))
+            .find(|&i| i == 0 || next[..i].ends_with('\n'));
+        if let Some(i) = again {
+            return [head, &next[i..]]
+                .join("\n")
+                .trim_start_matches('\n')
+                .into();
+        }
+        if key.starts_with(next.trim_end()) {
+            return cut.into();
+        }
+    }
+    // shortcut: a word cut in two gets a space inside it; no CLI says where its cut fell.
+    let gap = match (cut.chars().last(), next.chars().next()) {
+        (Some(c), _) if c.is_whitespace() => "",
+        (_, Some(c)) if c.is_whitespace() || ".,;:!?)".contains(c) => "",
+        (Some('.' | '!' | '?' | ':'), _) => "\n\n",
+        _ => " ",
+    };
+    format!("{cut}{gap}{next}")
 }

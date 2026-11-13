@@ -54,6 +54,8 @@ struct Open {
     /// Its parent's turn woken by a worker's ask: its rows are hidden, the user never sees it [D119].
     #[serde(default)]
     quiet: bool,
+    /// The reply its stop cut mid-way, by `n`, with its text as cut, and the carry-on's text so far.
+    joins: Option<(u64, String, String)>,
 }
 
 impl Open {
@@ -85,6 +87,8 @@ pub struct Thread {
     /// last of them ends [D67, D114].
     #[serde(default)]
     held: HashMap<String, (Open, Value)>,
+    /// The last turn the user stopped, for the Continue that carries its block on [D154].
+    stopped: Option<Open>,
     /// Workers not yet ended, by id, with the turn that started them: they hold it as subagents do [D151].
     #[serde(default)]
     workers: HashMap<String, String>,
@@ -106,7 +110,6 @@ pub struct Thread {
     /// The switch row of another agent picked, until the message that goes to it [D76].
     pick_row: Option<usize>,
     /// A rebirth's divider until its fresh conversation names itself [D88].
-    #[serde(default)]
     reborn: Option<usize>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,

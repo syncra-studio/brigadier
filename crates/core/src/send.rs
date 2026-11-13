@@ -1,6 +1,7 @@
 //! Sending a message to a session's agent, and the one recovery for a turn that didn't finish.
 
 mod recover;
+pub(crate) use recover::RESUME;
 pub use recover::recover;
 
 use crate::adapters::{Delivery, Retune};

@@ -202,23 +202,44 @@ impl Thread {
             denied: 0,
             stop: (None, false),
             quiet: t.quiet,
+            joins: None,
         });
     }
 
     /// The agent's reply: it grows in one row as it's written, and its whole text, or its turn's
     /// end (kind ""), finishes that row, same id [D147].
     pub(super) fn said(&mut self, item: &Value, kind: &str, ts: u64) {
+        // The carry-on's text goes on in the reply its turn's stop cut mid-way: that row streams again [D124, D154].
+        let joins = self.open.as_ref().and_then(|o| o.joins.as_ref());
+        if let Some((n, ..)) = joins.filter(|_| !kind.is_empty() && self.streaming.is_none()) {
+            self.streaming = Some(*n as usize - 1);
+            self.items[*n as usize - 1]["streaming"] = (kind == "text_delta").into();
+        }
         if let Some(at) = self.streaming {
+            let joins = (self.open.as_mut())
+                .and_then(|o| o.joins.as_mut())
+                .filter(|(n, ..)| *n as usize == at + 1);
             let row = &mut self.items[at];
-            match kind {
-                "text_delta" => {
+            match (kind, joins) {
+                ("text_delta", Some((_, cut, so_far))) => {
+                    so_far.push_str(s(item, &["text"]));
+                    row["text"] = super::subagents::joined(cut, so_far).into();
+                }
+                ("text_delta", None) => {
                     let text = row["text"].as_str().unwrap_or("").to_string();
                     row["text"] = (text + s(item, &["text"])).into();
                 }
-                _ => {
+                (_, joins) => {
                     // A reply cut off before its whole text came keeps what was written.
                     if kind == "text" {
-                        (row["text"], row["sentAt"]) = (item["text"].clone(), ts.into());
+                        let text = s(item, &["text"]);
+                        let text = joins.map_or(text.into(), |(_, cut, _)| {
+                            super::subagents::joined(cut, text)
+                        });
+                        (row["text"], row["sentAt"]) = (text.into(), ts.into());
+                        if let Some(o) = self.open.as_mut() {
+                            o.joins = None;
+                        }
                     }
                     row["streaming"] = false.into();
                     self.streaming = None;
@@ -272,8 +293,25 @@ impl Thread {
         let wakes = (matches!(t.origin.as_str(), "agent" | "system")
             || t.origin.starts_with("result:"))
             && (t.switch.is_null() || (cut && t.origin == "system"));
-        match last.filter(|_| wakes).and_then(|id| self.held.remove(&id)) {
-            Some((o, _)) => self.rejoin(o),
+        // Continue after the user's Stop carries the stopped block on, the pause a wait: one clock, one fold [D154].
+        let resumed = (self.stopped.take())
+            .filter(|o| {
+                o.at + 1 == self.turns.len()
+                    && t.origin == "system"
+                    && t.text == crate::send::RESUME
+            })
+            .map(|mut o| {
+                let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(ts);
+                o.waited += ts.saturating_sub(ended);
+                self.turns[o.at]["waitedMs"] = o.waited.into();
+                o
+            });
+        let resuming = resumed.is_some();
+        let held = last
+            .filter(|_| wakes && !resuming)
+            .and_then(|id| self.held.remove(&id));
+        match resumed.or(held.map(|(o, _)| o)) {
+            Some(o) => self.rejoin(o),
             None => {
                 self.settle_held(true);
                 self.new_turn(t, ts)
@@ -344,8 +382,8 @@ impl Thread {
                 self.add(json!({"kind": "line", "reason": "limit-reset", "at": at}));
             }
         }
-        // Brigadier's words carrying on a cut turn are no row: its steps flow on in that block [D124].
-        if cut && wakes && t.origin == "system" {
+        // Brigadier's words carrying on a cut or stopped turn are no row: its steps flow on in that block [D124, D154].
+        if (cut && wakes || resuming) && t.origin == "system" {
             return;
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].

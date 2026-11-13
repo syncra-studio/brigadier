@@ -45,6 +45,10 @@ impl Thread {
         ) {
             self.end_wait(ts);
         }
+        // A step after the cut: the carry-on's text is a reply of its own.
+        if let (Some(o), "tool" | "compaction") = (self.open.as_mut(), kind) {
+            o.joins = None;
+        }
         match kind {
             "text" | "text_delta" => self.said(item, kind, ts),
             "reasoning" => {

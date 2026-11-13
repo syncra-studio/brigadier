@@ -9,7 +9,7 @@ use brigadier_frames::log;
 use serde_json::{Value, json};
 
 /// What Resume says after the user's Stop, the old app's line [D2022].
-const RESUME: &str = "[The user stopped you, then asked you to resume. Continue their request from where you left off.]";
+pub(crate) const RESUME: &str = "[The user stopped you, then asked you to resume. Continue their request from where you left off.]";
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
 /// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
