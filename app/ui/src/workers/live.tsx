@@ -118,10 +118,17 @@ export function Opens({ owner, tab, children }: { owner: string; tab?: string; c
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
-/** A worker the user @-mentioned, in their sent message: its chip, as the old app's Mentions' TaskByNumber. */
-export function SentWorker({ owner, id }: { owner: string; id: string }) {
+/**
+ * A worker @-mentioned, in the composer, a sent message or an answer: its pill, as the old app's Mentions'
+ * TaskByNumber; a Brigade's session opens as the session it is [D189].
+ */
+export function MentionedWorker({ id, onOpen }: { id: string; onOpen?: (kind: "chat" | "worker", id: string) => void }) {
   const row = (useDaemon().rows ?? []).find((each) => each.id === id);
-  return <Opens owner={owner}><WorkerChip worker={row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : null} /></Opens>;
+  return (
+    <WorkersPanel.Provider value={{ open: () => onOpen?.(row?.boss ? "chat" : "worker", id) }}>
+      <WorkerChip worker={row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : null} />
+    </WorkersPanel.Provider>
+  );
 }
 
 /** The parent's thread rows Rust builds from its notes and results [D3009, D3010]. */
