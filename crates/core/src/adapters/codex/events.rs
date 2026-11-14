@@ -1,6 +1,6 @@
 //! What Codex prints, as events: app-server lines and `exec --json` output [D48, D65].
 
-use super::super::{Done, Event, Tool, change, classify, counts, s, shell_step};
+use super::super::{Done, Event, Tool, change, classify, counts, s, shell_step, temporary};
 use serde_json::Value;
 
 mod app_server;
@@ -33,7 +33,12 @@ pub fn parse(line: &str) -> Vec<Event> {
             events.push(Event::TurnEnd(false));
             events
         }
-        "error" => vec![refused(s(&v, &["message"])).unwrap_or(Event::Unknown(line.into()))],
+        // Mid-turn, a passing failure is one it retries by itself: only `turn.failed` ends it.
+        "error" => vec![
+            refused(s(&v, &["message"]))
+                .filter(|e| !matches!(e, Event::Failed(why, _) if temporary(why)))
+                .unwrap_or(Event::Unknown(line.into())),
+        ],
         // A tool may be reported only once it ended, so its end repeats its start.
         "item.started" | "item.completed"
             if matches!(kind, "collab_tool_call" | "collab_agent_tool_call") =>

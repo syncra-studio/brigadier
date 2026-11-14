@@ -11,7 +11,7 @@ mod rewind;
 pub mod setup;
 mod shell;
 
-pub use classify::classify;
+pub use classify::{classify, temporary};
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, under, uuid};
 pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
@@ -95,7 +95,7 @@ pub enum Event {
     Rerouted(Option<String>, String),
     /// A failed turn's error, with its cause where the CLI says it as structure [D487]: "capacity",
     /// "model" (not available), "blocked" (a reply withheld), "ended" (the conversation can't go
-    /// on), "review" (its own reviewer ended the turn); "" for any other.
+    /// on), "review" (its own reviewer ended the turn), "timeout", "connection"; "" for any other.
     Failed(&'static str, String),
     /// The CLI holds its reply for extra safety checks (true), or let it go (false) [D487].
     Checking(bool),

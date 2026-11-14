@@ -214,9 +214,12 @@ impl Agent {
                     .unwrap_or_default();
                 emit(json!({"t": "limits", "windows": windows}));
             }
-            why @ ("overload" | "nomodel" | "blocked" | "unsafe" | "review" | "fail") => {
+            why @ ("overload" | "timeout" | "bad" | "nomodel" | "blocked" | "unsafe" | "review"
+            | "fail") => {
                 let (why, message) = match why {
                     "overload" => ("capacity", "The model is overloaded (529)."),
+                    "timeout" => ("timeout", "The request timed out."),
+                    "bad" => ("", "Invalid request (400): messages must not be empty."),
                     "nomodel" => ("model", "Model fake-large not found."),
                     "blocked" => ("blocked", "The reply was withheld by a content filter."),
                     "unsafe" => ("ended", "This conversation was ended by a safety check."),

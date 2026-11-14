@@ -143,8 +143,17 @@ fn completed(p: &Value) -> Vec<Event> {
 
 /// What its error info says a failed turn hit, as Brigadier's causes [D487].
 fn cause(turn: &Value) -> &'static str {
-    match s(turn, &["error", "codexErrorInfo"]) {
+    let info = &turn["error"]["codexErrorInfo"];
+    // A kind with details comes as an object of one key.
+    let kind = info
+        .as_str()
+        .or_else(|| info.as_object()?.keys().next().map(String::as_str));
+    match kind.unwrap_or("") {
         "serverOverloaded" => "capacity",
+        "httpConnectionFailed"
+        | "responseStreamConnectionFailed"
+        | "responseStreamDisconnected"
+        | "responseTooManyFailedAttempts" => "connection",
         "modelNotFound" => "model",
         "cyberPolicy" => "blocked",
         "misalignmentPolicyViolation" => "ended",

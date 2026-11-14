@@ -275,11 +275,12 @@ fn write(
     text += &format!("Ran on {}.\n", ran.join(" · "));
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
     // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
-    let said = (core::fold(&dir, true).ok())
-        .and_then(|f| f.fold.last)
-        .filter(|_| l.session);
-    let said = said.as_ref().and_then(|l| l["id"].as_str()).unwrap_or(turn);
-    if let Some(mut last) = last_of_turn(data, wid, said) {
+    let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
+    let said = (ended.as_ref().filter(|_| l.session)).and_then(|l| l["id"].as_str());
+    // A failure that passes by itself: the parent may try it again [D340].
+    let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
+    let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
+    if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
         if last.len() > LAST {
             let mut at = LAST;
             while !last.is_char_boundary(at) {
@@ -313,7 +314,7 @@ fn write(
             "commits": commits, "added": added, "removed": removed});
         write_json(&link_path, &l)?;
         if spec.is_some() {
-            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at});
+            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why});
             let _ = owner::call(data, wid, json!({"op": "note", "data": end}));
         }
     }

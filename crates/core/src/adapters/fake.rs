@@ -251,6 +251,8 @@ impl Adapter for Fake {
                     "blocked" => "blocked",
                     "ended" => "ended",
                     "review" => "review",
+                    "timeout" => "timeout",
+                    "connection" => "connection",
                     _ => "",
                 },
                 s(&v, &["message"]).into(),
