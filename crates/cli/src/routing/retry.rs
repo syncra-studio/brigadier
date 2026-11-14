@@ -15,8 +15,8 @@ pub(crate) struct Retry {
     pub note: Value,
     /// Laid over its pick's `ran`, for the receipt: `retry`, `failed`, and the row it stays on.
     ran: Value,
-    /// Past the ladder: why it holds for the user.
-    ask: Option<String>,
+    /// Past the ladder: why it holds for the user; its card's pick reserves only on Retry on.
+    pub ask: Option<String>,
 }
 
 impl Retry {

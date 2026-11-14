@@ -131,7 +131,8 @@ pub fn start(
                 break id;
             }
         };
-        let mut p = routing::resolve(data, me, &parent, &f, &picked, &wid)?;
+        let shown = retry.as_ref().is_some_and(|r| r.ask.is_some());
+        let mut p = routing::resolve(data, me, &parent, &f, &picked, if shown { "" } else { &wid })?;
         if let Some(rt) = &retry {
             rt.apply(&mut p);
         }

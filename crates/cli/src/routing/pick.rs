@@ -62,7 +62,8 @@ fn prune(data: &Path, held: &mut Value) {
 /// pick reserved for `wid`. Room: shortest window under 90% and weekly under 98%, or unknown, and
 /// no limit lately. Each live reservation counts +10 points on its account's shortest window
 /// until its worker ends, a newer sample comes or an hour passes (proposed, Codex review 3).
-/// Its quota at the start, or the soonest reset of those without room.
+/// Its quota at the start, or the soonest reset of those without room. `wid` "": placed only to
+/// be shown, nothing reserved (a card the user may never press, D352).
 pub(super) fn place(
     data: &Path,
     a: &dyn adapters::Adapter,
@@ -143,7 +144,7 @@ pub(super) fn place(
     let first = room.first().ok_or(soonest)?;
     let kept = room.iter().find(|r| r.0 == base && r.1.1 <= first.1.1 + 5);
     let (id, _, quota) = kept.unwrap_or(first).clone();
-    if auto {
+    if auto && !wid.is_empty() {
         let key = format!("{name}/{id}");
         if !held[&key].is_array() {
             held[&key] = json!([]);
