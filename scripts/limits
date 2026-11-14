@@ -3,7 +3,6 @@
 set -u
 cd "$(git rev-parse --show-toplevel)"
 
-OWNER_EMAIL="golban.stephen@gmail.com"
 THEME="app/ui/src/theme.css"
 AGENTS_MAX_BYTES=2050
 # The line every session loads [D2025].
@@ -76,11 +75,6 @@ found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)
   fail "commit with an attribution line"
   echo "$found"
 }
-found="$(git log --format='%h %ae' | grep -vF " $OWNER_EMAIL")" && {
-  fail "commit by an author other than the owner"
-  echo "$found"
-}
-
 found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
   fail ".md file not on the allowed list"
   echo "$found"

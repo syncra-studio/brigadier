@@ -19,7 +19,7 @@
 
 ## Git
 
-- No agent attribution anywhere: no co-author or generated-with lines. Commit only under the owner's git identity.
+- No agent attribution anywhere: no co-author or generated-with lines.
 
 ## No litter
 
