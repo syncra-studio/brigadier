@@ -152,7 +152,7 @@ export function SessionRowItem({
           >
             {badged && project && !sub && <ProjectBadge name={project.name} tone={tone} />}
             {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
-            {/* Hovered, the mark is the fold's chevron, as a project folder's [D196]; ← and → fold it too. */}
+            {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
             {fold && (
               <span data-slot="row-fold" title={fold.open ? "Hide its sessions" : "Show its sessions"} className="-m-0.5 flex size-icon-lg shrink-0 items-center justify-center rounded-xs text-muted-foreground hover:bg-fill">
                 <BrigadeGlyph aria-label="Brigade" className="size-icon-md group-hover/row:hidden" />

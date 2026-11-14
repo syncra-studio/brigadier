@@ -46,7 +46,7 @@ export function takePlace(id: string): string | undefined {
   return cid;
 }
 
-/** The open threads, so a send that fails gives its space up (cleared on a send's error). */
+/** The open threads, so a send that fails gives its space up (the space is cleared on a send's error). */
 const live = new Set<Follow>();
 export function sendFailed(cid: string) {
   for (const each of live) if (each.pending === cid) each.unplace();
