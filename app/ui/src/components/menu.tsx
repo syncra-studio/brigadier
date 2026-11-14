@@ -119,18 +119,21 @@ export function DropdownMenuRadioItem({
   className,
   children,
   indicator,
+  inset,
   closeOnClick = true,
   ...props
 }: Omit<Menu.RadioItem.Props, "className"> & {
   className?: string;
+  inset?: boolean;
   /** What marks the chosen item (a dot by default). */
   indicator?: ReactNode;
 }) {
   return (
     <Menu.RadioItem
       data-slot="dropdown-menu-radio-item"
+      data-inset={inset || undefined}
       closeOnClick={closeOnClick}
-      className={cx(itemBase, "pe-8", className)}
+      className={cx(itemBase, "pe-8 data-inset:pe-2", className)}
       {...props}
     >
       <Menu.RadioItemIndicator className={MARK}>{indicator ?? <Dot className="size-icon-md" />}</Menu.RadioItemIndicator>
