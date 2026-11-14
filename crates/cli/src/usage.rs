@@ -37,7 +37,8 @@ fn key(agent: &str, account: &str) -> String {
     format!("{agent}/{account}")
 }
 
-/// Each account's entry: `{signed_in, email, windows}`, the first two as its last check said.
+/// Each account's entry: `{signed_in, usable, email, windows}`, the first three as its last check
+/// said.
 fn load(data: &Path) -> Value {
     fs::read(data.join("usage.json"))
         .ok()
@@ -63,20 +64,20 @@ pub(crate) fn of(data: &Path, agent: &str, account: &str) -> Vec<Window> {
     found
 }
 
-/// Whether an account's last check found it signed in; None before any check.
-pub(crate) fn signed_in(data: &Path, agent: &str, account: &str) -> Option<bool> {
-    load(data)[key(agent, account)]["signed_in"].as_bool()
+/// Whether an account's last check found work can run on it (`accounts::usable`); None before.
+pub(crate) fn usable(data: &Path, agent: &str, account: &str) -> Option<bool> {
+    load(data)[key(agent, account)]["usable"].as_bool()
 }
 
 /// Keeps a sample read at `at`: each window replaces the one of its name unless that one is newer;
-/// `who` (signed in, email) where a check said it. One writer at a time, across processes.
+/// `who` (signed in, email, usable) where a check said it. One writer at a time, across processes.
 fn record(
     data: &Path,
     agent: &str,
     account: &str,
     limits: Option<&[Limit]>,
     at: u64,
-    who: Option<(Option<bool>, Option<&str>)>,
+    who: Option<(Option<bool>, Option<&str>, bool)>,
 ) -> io::Result<()> {
     fs::create_dir_all(data)?;
     let lock = File::options()
@@ -87,9 +88,10 @@ fn record(
     lock.lock()?;
     let mut v = load(data);
     let entry = &mut v[key(agent, account)];
-    if let Some((signed_in, email)) = who {
+    if let Some((signed_in, email, usable)) = who {
         entry["signed_in"] = signed_in.into();
         entry["email"] = email.into();
+        entry["usable"] = usable.into();
     }
     if let Some(limits) = limits {
         let mut kept = windows(entry);
@@ -114,7 +116,9 @@ fn record(
 
 /// Keeps what a check on one account read: who, and its limits where it read them.
 pub(crate) fn checked(data: &Path, agent: &str, account: &str, c: &Check) {
-    let who = Some((c.signed_in, c.who.email.as_deref()));
+    let usable = c.signed_in == Some(true)
+        && core::adapters::get(agent).is_some_and(|a| accounts::kept_apart(a, account, &c.how));
+    let who = Some((c.signed_in, c.who.email.as_deref(), usable));
     if let Err(e) = record(data, agent, account, c.usage.as_deref(), now_ms(), who) {
         eprintln!("brigadier: usage of {agent}/{account} not kept: {e}");
     }

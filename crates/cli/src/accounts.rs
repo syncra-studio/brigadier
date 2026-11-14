@@ -82,7 +82,7 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
 }
 
 /// Signed in with a kind its home keeps apart: an account work can run on.
-fn usable(c: &Value) -> bool {
+pub(crate) fn usable(c: &Value) -> bool {
     c["signed_in"] == true && c["kept_apart"] == true
 }
 
@@ -138,18 +138,22 @@ pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value 
     match a.check(&spec, &exe, Path::new(cwd)) {
         Ok(c) => {
             usage::checked(data, a.name(), id, &c);
-            let kinds = a.accounts().map_or(&[][..], |x| x.kinds);
             // Only the windows known now: an unknown one draws as not read yet.
             let known: Vec<_> = (usage::of(data, a.name(), id).into_iter())
                 .filter(|w| w.used.is_some())
                 .collect();
             json!({"installed": true, "signed_in": c.signed_in, "how": c.how,
                 "email": c.who.email, "plan": c.who.plan, "org": c.who.org, "usage": usage::limits(&known),
-                "kept_apart": id.is_empty() || kinds.contains(&c.how.as_str()),
+                "kept_apart": kept_apart(a, id, &c.how),
                 "models": c.models.iter().map(|m| m.id.clone()).collect::<Vec<_>>()})
         }
         Err(e) => json!({"installed": true, "error": e.trim()}),
     }
+}
+
+/// Whether an account's login kind is one its own home keeps apart; the computer's login always is.
+pub(crate) fn kept_apart(a: &dyn Adapter, id: &str, how: &str) -> bool {
+    id.is_empty() || a.accounts().is_some_and(|x| x.kinds.contains(&how))
 }
 
 pub(crate) fn sign_in_id(agent: &str, id: &str) -> String {

@@ -7,7 +7,7 @@ use super::*;
 /// agent's starting account; "" is the computer's login.
 pub(super) fn account_for(data: &Path, parent: &Spec, f: &Fold, agent: &str) -> String {
     match agent == models::next_agent(parent, f) {
-        true => f.accounts.get(agent).cloned().or(parent.starts_on.clone()),
+        true => f.accounts.get(agent).cloned(),
         false => {
             let spec = Spec {
                 backend: agent.into(),
@@ -83,10 +83,8 @@ pub(super) fn place(
             .filter(|id| id != skip)
             // Its last check's word, so a pick makes no sample newer than the reservations.
             .filter(|id| {
-                usage::signed_in(data, name, id).unwrap_or_else(|| {
-                    let c = accounts::check(a, data, id, cwd);
-                    c["signed_in"] == true && c["kept_apart"] == true
-                })
+                usage::usable(data, name, id)
+                    .unwrap_or_else(|| accounts::usable(&accounts::check(a, data, id, cwd)))
             })
             .collect(),
         false => (base != skip)
@@ -119,14 +117,15 @@ pub(super) fn place(
             soonest = Some(soonest.map_or(until, |s| s.min(until)));
             continue;
         }
+        // Every window it runs under: the shortest at 90, each longer at 98, reservations
+        // counted on the shortest only [D343].
         let short = ws.iter().min_by_key(|w| w.minutes.unwrap_or(u64::MAX));
-        let long = ws.iter().max_by_key(|w| w.minutes.unwrap_or(0));
-        let used = |w: Option<&usage::Window>| w.and_then(|w| w.used).map(|u| u + 10 * n);
-        let full = [(short, 90), (long, 98)]
-            .into_iter()
-            .find(|(w, most)| used(*w).is_some_and(|u| u >= *most));
-        if let Some((w, _)) = full {
-            let at = w.and_then(|w| w.resets);
+        let shortest = |w: &usage::Window| short.is_some_and(|s| s.minutes == w.minutes);
+        let used = |w: &usage::Window| w.used.map(|u| u + if shortest(w) { 10 * n } else { 0 });
+        let most = |w: &usage::Window| if shortest(w) { 90 } else { 98 };
+        let full = ws.iter().find(|w| used(w).is_some_and(|u| u >= most(w)));
+        if let Some(w) = full {
+            let at = w.resets;
             soonest = at.map_or(soonest, |at| Some(soonest.map_or(at, |s| s.min(at))));
             continue;
         }
@@ -136,7 +135,7 @@ pub(super) fn place(
         );
         let rank = (
             short.and_then(|w| w.resets).unwrap_or(u64::MAX),
-            used(short).unwrap_or(10 * n),
+            short.and_then(used).unwrap_or(10 * n),
         );
         room.push((id, rank, quota));
     }
@@ -145,6 +144,16 @@ pub(super) fn place(
     let kept = room.iter().find(|r| r.0 == base && r.1.1 <= first.1.1 + 5);
     let (id, _, quota) = kept.unwrap_or(first).clone();
     if auto && !wid.is_empty() {
+        // One per worker: an answer tried again, or a move, replaces its last.
+        for list in held
+            .as_object_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            if let Some(l) = list.as_array_mut() {
+                l.retain(|r| r["wid"] != wid);
+            }
+        }
         let key = format!("{name}/{id}");
         if !held[&key].is_array() {
             held[&key] = json!([]);
@@ -453,10 +462,11 @@ pub(crate) fn next(
                         title(row.unwrap_or(""))
                     ),
                 };
+                // Said outright, so another model never keeps the last one's effort.
+                let effort = runs_at.or(m["default_effort"].as_str().map(String::from));
                 let ran = json!({"agent": a, "model": id, "account": account, "row": row, "name": name,
-                    "effort": runs_at.clone().or(m["default_effort"].as_str().map(String::from)),
-                    "label": kept["label"], "quota": kept["quota"], "capped": capped, "note": note});
-                return Ok(Some(((adapter, account, Some(id.into()), runs_at), ran)));
+                    "effort": effort, "label": kept["label"], "quota": kept["quota"], "capped": capped, "note": note});
+                return Ok(Some(((adapter, account, Some(id.into()), effort), ran)));
             }
             Err(r) => {
                 if !same && out.last().is_none_or(|x| x != id) {
