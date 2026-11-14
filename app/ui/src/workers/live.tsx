@@ -284,7 +284,7 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
     >
       <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
         {/* A floating card as Files' [new-design]. */}
-        <div ref={content} className="right-panel-width flex h-full flex-col ps-1 pt-1.5">
+        <div ref={content} className="right-panel-width flex h-full flex-col ps-1 pt-px">
           <div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset resize-lit:inset-shadow-resize-start rtl:resize-lit:inset-shadow-resize-end">
           <Opens owner={owner}>
             {!opened && !agent && <PanelTabs active={tab} tabs={tabs} finishedWords={finishedWords(workers)} onSelect={(next) => show(owner, { ...shown, tab: next })} onClose={close} />}

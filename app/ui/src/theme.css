@@ -1261,7 +1261,8 @@
   --history-start: calc(var(--spacing-traffic-lights) + var(--spacing));
   --history-shift: 0%;
   --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2 - var(--sidebar-shown));
-  --sidebar-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
+  /* 1px under the tab bar, as the right panel's and the summary card's tops [D41]. */
+  --sidebar-top: calc(var(--spacing-tab-bar) + var(--spacing) * 0.25);
   /* The thread's column starts under the tab bar's first pill, from the page's start (reading-start) [D40]: collapsed
      the History pill, open the tabs; the page starts 4px past the panel. Resolved here, so it follows the no-lights
      --history-start below too. */
