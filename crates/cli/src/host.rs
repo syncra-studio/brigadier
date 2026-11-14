@@ -3,7 +3,8 @@
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
 //! PRs, every query in one read, `--kept` their last reads [D258]; `log <link>` is a failed check's log tail; `merge <n>
-//! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077].
+//! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077]; `comment
+//! <n> <body>` posts a comment on it [D260].
 
 use super::arg;
 use brigadier_core::host;
@@ -41,7 +42,8 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries)?}));
     }
     // The last read, from the session's folder alone: no git, no host [D207].
-    if args.get(4).is_some_and(|a| a == "kept") {
+    // (A comment's words are never this, even when they read "kept".)
+    if matches!(arg(args, 2)?, "view" | "files") && args.get(4).is_some_and(|a| a == "kept") {
         let dir = brigadier_core::session_dir(data, id);
         let (other, n) = number(args)?;
         return Ok(match arg(args, 2)? {
@@ -74,6 +76,10 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         },
         "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
+        "comment" => {
+            let (other, n) = number(args)?;
+            json!({"ok": true, "comment": pr.comment(other.as_deref(), n, arg(args, 4)?)?})
+        }
         "merge" => {
             let (other, n) = number(args)?;
             let merged = pr.merge(other.as_deref(), n, arg(args, 4)?, arg(args, 5)?)?;

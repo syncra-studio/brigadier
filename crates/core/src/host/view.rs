@@ -4,6 +4,7 @@
 //! for another repository's [D213]) so the tab paints the last read at once. A failed check's log tail is its own read, when the tab asks (`log`).
 
 use super::prs::{FIELDS, checks_of};
+use super::timeline::{bot, hidden, nodes, state_of, timeline};
 use super::{GH_SECS, Gh, Pr, Repo, err, failed, gh, setup};
 use serde_json::{Value, json};
 use std::fs;
@@ -14,9 +15,10 @@ use std::path::{Path, PathBuf};
 const TAIL_LINES: usize = 40;
 const MERGE_SECS: u64 = 60;
 
-/// What the page reads beside the list's fields.
-// shortcut: its last 100 commits, comments and timeline items and 50 reviews, until a PR has more.
-const PAGE: &str = "body createdAt author { login } additions deletions changedFiles mergeStateStatus labels(first: 20) { nodes { name } } assignees(first: 10) { nodes { login } } reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } } latestReviews(first: 20) { nodes { state author { login } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } comments(last: 100) { nodes { databaseId body createdAt url author { login __typename } } } reviews(last: 50) { nodes { databaseId state body submittedAt url author { login __typename } comments(first: 50) { nodes { databaseId path line originalLine body createdAt url author { login __typename } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, MERGED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login } } ... on ReviewRequestedEvent { id createdAt actor { login } requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } ... on MergedEvent { id createdAt actor { login } } ... on ClosedEvent { id createdAt actor { login } } ... on ReopenedEvent { id createdAt actor { login } } ... on ReadyForReviewEvent { id createdAt actor { login } } ... on ConvertToDraftEvent { id createdAt actor { login } } } }";
+/// What the page reads beside the list's fields: GitHub's Conversation, its review threads and the
+/// timeline events it draws [D260]; its comments as `talk`, apart from the fields' count of them.
+// shortcut: its last 100 commits, comments and timeline items, 50 reviews and 50 threads, until a PR has more.
+const PAGE: &str = "body createdAt author { login } additions deletions changedFiles mergeStateStatus reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } } latestReviews(first: 20) { nodes { state author { login } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } talk: comments(last: 100) { nodes { databaseId body createdAt url isMinimized minimizedReason author { login __typename } } } reviews(last: 50) { nodes { databaseId state body submittedAt url isMinimized minimizedReason author { login __typename } } } reviewThreads(last: 50) { nodes { id isResolved isOutdated comments(first: 50) { nodes { databaseId path line originalLine body createdAt url author { login __typename } pullRequestReview { databaseId } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, REVIEW_DISMISSED_EVENT, DEPLOYED_EVENT, CROSS_REFERENCED_EVENT, MERGED_EVENT, HEAD_REF_DELETED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login __typename } } ... on ReviewRequestedEvent { id createdAt actor { login __typename } requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } ... on ReviewDismissedEvent { id createdAt actor { login __typename } previousReviewState review { databaseId author { login } } pullRequestCommit { commit { oid } } } ... on DeployedEvent { id createdAt actor { login __typename } deployment { environment latestStatus { environmentUrl logUrl } } } ... on CrossReferencedEvent { id createdAt actor { login __typename } source { ... on PullRequest { number title url state isDraft } ... on Issue { number title url state } } } ... on MergedEvent { id createdAt actor { login __typename } commit { oid } mergeRefName } ... on HeadRefDeletedEvent { id createdAt actor { login __typename } headRefName } ... on ClosedEvent { id createdAt actor { login __typename } } ... on ReopenedEvent { id createdAt actor { login __typename } } ... on ReadyForReviewEvent { id createdAt actor { login __typename } } ... on ConvertToDraftEvent { id createdAt actor { login __typename } } } }";
 
 /// `other`: another repository's `owner/name`, checked to be one (`slug`) [D213]. `what`: `json`
 /// for the page, `files.json` for its Files changed [D231].
@@ -86,7 +88,7 @@ impl Pr {
         let (repo, gh) = self.gh_repo(other)?;
         let repo = &repo;
         let query = format!(
-            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
+            "query($owner: String!, $name: String!) {{ viewer {{ login }} repository(owner: $owner, name: $name) {{ mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
         );
         let (data, partial) = super::graphql(&gh, repo, &query, &[]).map_err(io::Error::other)?;
         let found = &data["repository"];
@@ -107,16 +109,15 @@ impl Pr {
         }
         let checks: Vec<Value> = checks_of(pr).iter().map(check).collect();
         let login = |a: &Value| a["login"].clone();
-        let bot = |a: &Value| a["__typename"] == "Bot";
-        let nodes = |v: &Value| v["nodes"].as_array().cloned().unwrap_or_default();
         // A sent review's own words, apart from its line comments; one with none says nothing here.
         // Each kind is numbered apart, so line comments carry an `r` and reviews a `v`.
         let reviews = nodes(&pr["reviews"]);
         let said = (reviews.iter()).filter(|r| {
             r["state"] != "PENDING" && r["body"].as_str().is_some_and(|b| !b.trim().is_empty())
         });
-        let lines = (reviews.iter()).flat_map(|r| nodes(&r["comments"]));
-        let mut comments: Vec<Value> = (nodes(&pr["comments"]).iter().map(|c| ("", c.clone())))
+        let threads = nodes(&pr["reviewThreads"]);
+        let lines = (threads.iter()).flat_map(|t| nodes(&t["comments"]));
+        let mut comments: Vec<Value> = (nodes(&pr["talk"]).iter().map(|c| ("", c.clone())))
             .chain(lines.map(|c| ("r", c)))
             .chain(said.map(|c| ("v", c.clone())))
             .map(|(tag, c)| {
@@ -124,8 +125,10 @@ impl Pr {
                     "path": c["path"], "line": c["line"].as_u64().or(c["originalLine"].as_u64()),
                     "body": c["body"], "atMs": ms(&c["createdAt"]).or(ms(&c["submittedAt"])),
                     "url": c["url"],
-                    // GitHub's own mark for an app's account, so bots fold in the tab [D1230].
-                    "bot": bot(&c["author"])})
+                    // GitHub's own mark for an app's account: its Bot label.
+                    "bot": bot(&c["author"]),
+                    // Hidden as GitHub hides it ("outdated", "resolved"…), shown on a click.
+                    "minimized": hidden(&c)})
             })
             .collect();
         comments.sort_by_key(|c| c["atMs"].as_u64());
@@ -170,12 +173,7 @@ impl Pr {
             );
         }
         events.sort_by_key(|e| std::cmp::Reverse(e["atMs"].as_u64()));
-        let state = match (pr["state"].as_str(), pr["isDraft"] == true) {
-            (Some("MERGED"), _) => "merged",
-            (Some("CLOSED"), _) => "closed",
-            (_, true) => "draft",
-            _ => "open",
-        };
+        let state = state_of(pr);
         let count = |s: &str| checks.iter().filter(|c| c["state"] == s).count();
         let (failed, running) = (count("failed"), count("running"));
         let changes_by: Vec<Value> = (reviewers.iter())
@@ -232,9 +230,10 @@ impl Pr {
             "checkedAtMs": now_ms(), "problem": partial,
             "additions": pr["additions"], "deletions": pr["deletions"], "files": pr["changedFiles"],
             "commitCount": pr["history"]["totalCount"], "commits": commits,
-            "reviewers": reviewers, "assignees": nodes(&pr["assignees"]).iter().map(login).collect::<Vec<_>>(),
-            "labels": nodes(&pr["labels"]).iter().map(|l| l["name"].clone()).collect::<Vec<_>>(),
-            "checks": checks, "comments": comments, "events": events,
+            "reviewers": reviewers, "checks": checks, "comments": comments, "events": events,
+            "timeline": timeline(pr, &commits, &reviews, &threads),
+            // Who the user's gh reads as: the Add a comment box's avatar.
+            "viewer": data["viewer"]["login"],
         });
         keep(&kept_path(&self.dir, other, number, "json"), &view);
         self.keep_row(pr);
@@ -275,6 +274,39 @@ impl Pr {
             "checkedAtMs": now_ms(), "files": files});
         keep(&kept_path(&self.dir, other, number, "files.json"), &view);
         Ok(view)
+    }
+
+    /// Posts `body` on PR `number` as a comment, through the user's own gh, as the Conversation's
+    /// Add a comment box asks [D260]: the comment as the page shows it, by its id. Only a PR whose
+    /// page was read (and so found the session's) is commented on.
+    pub fn comment(&self, other: Option<&str>, number: u64, body: &str) -> io::Result<Value> {
+        if kept_view(&self.dir, other, number).is_null() {
+            return err(format!("#{number} isn't one of this session's PRs."));
+        }
+        if body.trim().is_empty() {
+            return err("A comment needs some words.");
+        }
+        let (repo, gh) = self.gh_repo(other)?;
+        let path = format!("repos/{}/issues/{number}/comments", repo.path);
+        let body = format!("body={body}");
+        let c = run_json(
+            &gh,
+            &[
+                "api",
+                "--hostname",
+                &repo.host,
+                "--method",
+                "POST",
+                &path,
+                "-f",
+                &body,
+            ],
+        )?;
+        Ok(
+            json!({"id": c["id"].to_string(), "author": c["user"]["login"], "path": null,
+            "line": null, "body": c["body"], "atMs": ms(&c["created_at"]), "url": c["html_url"],
+            "bot": false, "minimized": null}),
+        )
     }
 
     /// The failed steps' last lines of the Actions job at `link`, read when the tab shows its check.
@@ -435,7 +467,7 @@ fn event(e: &Value) -> Option<Value> {
 }
 
 /// GitHub's `2026-11-11T13:49:58Z` as Unix ms; anything else is unknown.
-fn ms(at: &Value) -> Option<u64> {
+pub(super) fn ms(at: &Value) -> Option<u64> {
     crate::adapters::iso_ms(at.as_str()?)
 }
 

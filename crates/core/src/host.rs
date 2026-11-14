@@ -9,6 +9,7 @@ use crate::repos::{failed, tool};
 
 mod prs;
 mod search;
+mod timeline;
 mod touched;
 mod view;
 pub use prs::{chip, kept, moved_on, opened};

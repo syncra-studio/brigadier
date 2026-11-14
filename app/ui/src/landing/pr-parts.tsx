@@ -6,13 +6,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { Section } from "../components/section";
-import { ArrowUpRight, Check, CheckCircle, ChevronRight, Comment, Commit, Dot, Reload } from "../icons";
-import { Markdown } from "../thread/markdown";
+import { ArrowUpRight, Check, CheckCircle, ChevronRight, Reload } from "../icons";
 import { useSecond } from "../thread/words";
 import { Clock, PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles, XCircle } from "./icons";
-import { ago, duration, eventWords, STATE_WORDS } from "./pr-words";
-import { type PrCheck, type PrComment, type PrEvent, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
+import { ago, duration, STATE_WORDS } from "./pr-words";
+import { type PrCheck, type PrSend, type PrState, type PullRequest, sendKey } from "./pull-requests";
 
 /** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
 export type Sends = {
@@ -21,7 +19,7 @@ export type Sends = {
   /** Sends already waiting as chips, by `sendKey`: their buttons read Added. */
   added: ReadonlySet<string>;
   onSend: (send: PrSend) => void;
-  onOpen: (url: "pr" | { check: string } | { comment: string }) => void;
+  onOpen: (url: "pr" | { check: string } | { comment: string } | { url: string }) => void;
 };
 
 const PR_ICONS = { open: PullRequestOpen, draft: PullRequestDraft, merged: PullRequestMerged, closed: PullRequestClosed };
@@ -192,157 +190,6 @@ export function MergeBox({ pr, sends, merge }: { pr: PullRequest; sends: Sends; 
         ))}
       {merge && <div className="flex items-center gap-3 bg-fill-subtle px-4 py-3">{merge}</div>}
     </section>
-  );
-}
-
-// —— Conversation: the description, then what happened, oldest first, as GitHub's.
-
-function Avatar({ login }: { login: string }) {
-  return <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground uppercase">{login[0]}</span>;
-}
-
-function CommentBox({ author, at, body, where, end }: { author: string; at: string; body: string; where?: string | null; end?: ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <Avatar login={author} />
-      <div className="min-w-0 flex-1 overflow-clip rounded-surface border border-border">
-        <div className="flex min-h-control-md items-center gap-2 border-b border-border bg-fill-subtle px-3 py-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{author}</span>
-          <span className="shrink-0">commented {at}</span>
-          {where && <span className="min-w-0 truncate font-mono">{where}</span>}
-          <span className="flex-1" />
-          {end}
-        </div>
-        <div className="px-3 py-2 text-sm">
-          <Markdown text={body} keep={`pr-${author}-${at}`} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EventLine({ icon, at, children, end }: { icon: ReactNode; at: string; children: ReactNode; end?: ReactNode }) {
-  return (
-    <div className="flex min-h-control-sm items-center gap-3 ps-1 text-sm text-muted-foreground">
-      <span aria-hidden className="flex size-4 shrink-0 items-center justify-center svg:size-icon-sm">
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {end}
-      <span className="shrink-0 text-xs">{at}</span>
-    </div>
-  );
-}
-
-const EVENT_ICONS: Partial<Record<PrEvent["kind"], ReactNode>> = {
-  approved: <CheckCircle className="text-success" />,
-  changes_requested: <XCircle className="text-destructive" />,
-  merged: <PullRequestMerged className="text-pr-purple" />,
-  closed: <PullRequestClosed className="text-destructive" />,
-};
-
-// Events the agent can act on: a request for changes.
-const SENDABLE = new Set<PrEvent["kind"]>(["changes_requested"]);
-
-export function Conversation({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  const at = (ms: number | null) => (ms === null ? "" : ago(ms, sends.now));
-  const who = (login: string) => <span className="text-foreground">{login}</span>;
-  const items: { at: number; node: ReactNode }[] = [
-    ...pr.commits.map((commit) => ({
-      at: commit.atMs ?? 0,
-      node: (
-        <EventLine key={commit.sha} icon={<Commit />} at={at(commit.atMs)}>
-          {commit.author && who(commit.author)} pushed <span className="font-mono text-xs">{commit.sha.slice(0, 7)}</span> {commit.message}
-        </EventLine>
-      ),
-    })),
-    ...pr.events.map((event) => ({
-      at: event.atMs,
-      node: (
-        <EventLine key={event.id} icon={EVENT_ICONS[event.kind] ?? <Dot />} at={at(event.atMs)} end={SENDABLE.has(event.kind) && <SendButton send={{ kind: "event", id: event.id }} sends={sends} />}>
-          {who(event.actor)} {eventWords(event)} {event.detail && who(event.detail)}
-        </EventLine>
-      ),
-    })),
-    ...pr.comments
-      .filter((comment) => !comment.bot)
-      .map((comment) => ({ at: comment.atMs, node: <CommentRow key={comment.id} comment={comment} sends={sends} /> })),
-  ].sort((a, b) => a.at - b.at);
-  const bots = pr.comments.filter((comment) => comment.bot);
-  return (
-    <div className="flex flex-col gap-4">
-      <CommentBox author={pr.openedBy} at={at(pr.openedAtMs)} body={pr.body?.trim() || "_No description provided._"} />
-      {items.map((item) => item.node)}
-      {/* The bots' comments fold under one row, so people's stand out [D1230]. */}
-      {bots.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger className="group flex cursor-pointer items-center gap-3 ps-1 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
-            <ChevronRight className="size-icon-sm transition-transform group-data-panel-open:rotate-90" />
-            {bots.length === 1 ? "1 comment from a bot" : `${bots.length} comments from bots`} ({[...new Set(bots.map((bot) => bot.author))].join(", ")})
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-4 pt-4">
-            {bots.map((comment) => (
-              <CommentRow key={comment.id} comment={comment} sends={sends} />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </div>
-  );
-}
-
-function CommentRow({ comment, sends }: { comment: PrComment; sends: Sends }) {
-  const where = comment.path && (comment.line === null ? comment.path : `${comment.path}:${comment.line}`);
-  return <CommentBox author={comment.author} at={ago(comment.atMs, sends.now)} body={comment.body} where={where} end={<SendButton send={{ kind: "comment", id: comment.id }} sends={sends} />} />;
-}
-
-const REVIEW_MARKS: Record<string, ReactNode> = {
-  approved: <CheckCircle aria-label="Approved" className="size-icon-sm text-success" />,
-  changes: <XCircle aria-label="Changes requested" className="size-icon-sm text-destructive" />,
-  commented: <Comment aria-label="Commented" className="size-icon-sm text-muted-foreground" />,
-  requested: <Dot aria-label="Review requested" className="size-icon-sm text-pr-yellow" />,
-};
-
-/** GitHub's side column: Reviewers, Assignees and Labels. */
-export function Side({ pr }: { pr: PullRequest }) {
-  const none = <span className="text-sm text-muted-foreground">None yet</span>;
-  return (
-    <aside className="flex flex-col gap-5">
-      <Section title="Reviewers">
-        {pr.reviewers.length === 0
-          ? none
-          : pr.reviewers.map((r) => (
-              <span key={r.login} className="flex items-center gap-2 text-sm">
-                <Avatar login={r.login} />
-                <span className="min-w-0 flex-1 truncate">{r.login}</span>
-                {REVIEW_MARKS[r.state]}
-              </span>
-            ))}
-      </Section>
-      <Section title="Assignees">
-        {pr.assignees.length === 0
-          ? none
-          : pr.assignees.map((login) => (
-              <span key={login} className="flex items-center gap-2 text-sm">
-                <Avatar login={login} />
-                <span className="min-w-0 truncate">{login}</span>
-              </span>
-            ))}
-      </Section>
-      <Section title="Labels">
-        {pr.labels.length === 0 ? (
-          none
-        ) : (
-          <span className="flex flex-wrap gap-1">
-            {pr.labels.map((label) => (
-              <Badge key={label} variant="secondary">
-                {label}
-              </Badge>
-            ))}
-          </span>
-        )}
-      </Section>
-    </aside>
   );
 }
 

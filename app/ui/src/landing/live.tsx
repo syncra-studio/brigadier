@@ -5,6 +5,7 @@ import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
 import { gitDone, gitFailed } from "../panel/notice";
 import { type AgentChip, chipFor } from "./agent-chip";
+import type { Posted } from "./pr-conversation";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
 import { type PrSend, type PullRequest, sendKey } from "./pull-requests";
@@ -47,6 +48,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const [checking, setChecking] = useState(false);
   const [merging, setMerging] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  const [posted, setPosted] = useState<Posted[]>([]);
   const [, setLogged] = useState(0);
   const chips = useChips(owner);
   const latest = useRef<PullRequest>(undefined);
@@ -92,6 +94,10 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
   }, [daemon, owner, target]);
+  // A posted comment gives way to the read that has it, reconciled by its id [D260].
+  useEffect(() => {
+    if (pr) setPosted((all) => all.filter((post) => post.id === null || !pr.comments.some((c) => c.id === post.id)));
+  }, [pr]);
   // Each failed check's log tail, once the page shows: one read each, at once.
   useEffect(() => {
     if (!daemon || !pr) return;
@@ -129,10 +135,34 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
           addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: sendKey(send), pr: number, chip, text: textFor(shown, send, chip) });
         },
         onOpen: (what) => {
-          const url = what === "pr" ? pr?.url : "check" in what ? pr?.checks.find((c) => c.id === what.check)?.url : pr?.comments.find((c) => c.id === what.comment)?.url;
+          const url =
+            what === "pr"
+              ? pr?.url
+              : "url" in what
+                ? what.url
+                : "check" in what
+                  ? pr?.checks.find((c) => c.id === what.check)?.url
+                  : pr?.comments.find((c) => c.id === what.comment)?.url;
           if (url) window.brigadier?.openLink(url);
         },
       }}
+      posted={posted}
+      // Shown at once, then kept by the id the host gave it until a read has it; a refusal takes it off and says why.
+      onComment={(body) =>
+        new Promise((done) => {
+          const key = crypto.randomUUID();
+          setPosted((all) => [...all, { key, body, id: null }]);
+          ask({ op: "run", args: ["host", owner, "comment", target, body] }, (reply) => {
+            if (!reply.ok) {
+              setPosted((all) => all.filter((post) => post.key !== key));
+              return done(reply.error === "disconnected" ? "Brigadier isn't connected." : `Couldn't comment: ${String(reply.error).split("\n")[0]}`);
+            }
+            setPosted((all) => all.map((post) => (post.key === key ? { ...post, id: String(reply.comment.id) } : post)));
+            done(null);
+            read();
+          });
+        })
+      }
       onMerge={(style, head) => {
         setMerging(true);
         setRefused(null);

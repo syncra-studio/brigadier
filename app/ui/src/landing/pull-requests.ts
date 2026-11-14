@@ -45,8 +45,11 @@ export type PullRequest = {
   commits: PrCommit[];
   /** Who's asked to review, then who has, as GitHub's Reviewers. */
   reviewers: PrReviewer[];
-  assignees: string[];
-  labels: string[];
+  /** The Conversation under the description, oldest first, as Rust groups it from GitHub's [D260]; absent in a read
+   * kept before it, until the next. */
+  timeline?: PrItem[];
+  /** Who the user's gh reads as, for the Add a comment box. */
+  viewer?: string | null;
   /** GitHub's merge state, lower case: clean, blocked, behind, dirty, unstable, has_hooks, unknown. */
   mergeState: string | null;
   /** It's the session's own branch's: Files changed shows the Review tab's branch diff [D204]. */
@@ -58,8 +61,37 @@ export type PrReviewer = { login: string; state: "approved" | "changes" | "comme
 
 export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null; url: string | null };
 
-/** `bot`: written by an app's account, as the host marks it: folded so people's comments stand out [D1230]. */
-export type PrComment = { id: string; author: string; path: string | null; line: number | null; body: string; atMs: number; url: string | null; bot?: boolean };
+/** `bot`: written by an app's account, as the host marks it. `minimized`: hidden as GitHub hides it, and why ("outdated"). */
+export type PrComment = {
+  id: string;
+  author: string;
+  path: string | null;
+  line: number | null;
+  body: string;
+  atMs: number;
+  url: string | null;
+  bot?: boolean;
+  minimized?: string | null;
+};
+
+/** A review's line thread: its comments by id, folded as GitHub folds a resolved or outdated one. */
+export type PrThread = { id: string; path: string | null; resolved: boolean; outdated: boolean; comments: string[] };
+
+type Item<K extends string, T = object> = { kind: K; id: string; atMs: number | null; actor: string | null; bot?: boolean } & T;
+
+/** One entry of a PR's Conversation, as Rust reads GitHub's timeline [D260]. A comment's and a review's words are in
+ * `comments`, by their id. */
+export type PrItem =
+  | Item<"commits", { commits: PrCommit[] }>
+  | Item<"comment">
+  | Item<"review", { state: "approved" | "changes" | "commented" | "dismissed"; was: "approved" | "changes" | null; said: boolean; threads: PrThread[]; minimized?: string | null }>
+  | Item<"requested", { who: (string | null)[] }>
+  | Item<"dismissed", { who: string | null; sha: string | null }>
+  | Item<"deployed", { env: string | null; url: string | null }>
+  | Item<"mentioned", { number: number | null; title: string | null; url: string | null; state: PrState }>
+  | Item<"merged", { sha: string | null; base: string | null }>
+  | Item<"deleted", { branch: string | null }>
+  | Item<"closed" | "reopened" | "ready" | "draft" | "force_pushed">;
 
 export type PrEvent = {
   id: string;

@@ -13,7 +13,8 @@ import type { Pr } from "../panel/types";
 import { ReviewView } from "../review/view";
 import { Sparkles } from "./icons";
 import { PrFiles } from "./pr-files";
-import { CheckAgain, Checks, Commits, Conversation, MergeBox, type Sends, Side, StateBadge } from "./pr-parts";
+import { AddComment, Conversation, DoneBox, type Posted } from "./pr-conversation";
+import { CheckAgain, Checks, Commits, MergeBox, type Sends, StateBadge } from "./pr-parts";
 import type { MergeStyle, PullRequest } from "./pull-requests";
 
 const TAB = cx(
@@ -28,7 +29,7 @@ const Ref = ({ children }: { children: ReactNode }) => <span className="rounded-
 
 /**
  * A pull request in a main-area tab, GitHub's page [D204]: its title, state and "wants to merge", then Conversation
- * (the description, what happened, and the merge box at its end, beside Reviewers, Assignees and Labels), Commits,
+ * (the description, GitHub's timeline, the merge box or where it ended, and Add a comment; no side column [D260]), Commits,
  * Checks and Files changed, the Review tab's own diff of the session's branch, or of any other PR as its host cut it
  * [D231]. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
  * Check again; when a read fails, the last one stays with why [D207, D208, D1009].
@@ -45,6 +46,8 @@ export function PrTab({
   sends,
   onCheck,
   onMerge,
+  posted = [],
+  onComment,
 }: {
   owner: string;
   /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
@@ -64,6 +67,10 @@ export function PrTab({
   onCheck: () => void;
   /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
   onMerge: (style: MergeStyle, head: string) => void;
+  /** The user's comments from Add a comment still on their way, on screen at once [D260]. */
+  posted?: readonly Posted[];
+  /** Posts a comment; answers why the host refused it, or null. */
+  onComment: (body: string) => Promise<string | null>;
 }) {
   // Check again reads Files changed again too, when it's open [D231].
   const [tick, setTick] = useState(0);
@@ -99,7 +106,6 @@ export function PrTab({
   const canMerge = pr.merge.allowed && !sends.offline && !pr.problem && !error;
   const open = pr.state === "open" || pr.state === "draft";
   const hint = pr.state === "draft" ? "A draft can't be merged until it's marked ready for review" : canMerge ? `It lands on ${pr.base}` : "Merging is blocked until what's above is resolved";
-  const people = pr.comments.filter((comment) => !comment.bot).length;
   return (
     <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
       <Tabs.Root defaultValue="conversation" className="flex min-h-0 flex-1 flex-col">
@@ -133,7 +139,7 @@ export function PrTab({
           <Tabs.List className="flex gap-1 border-b border-border pb-2">
             <Tabs.Tab value="conversation" className={TAB}>
               <Comment />
-              Conversation <span className={COUNT}>{people}</span>
+              Conversation <span className={COUNT}>{pr.comments.length}</span>
             </Tabs.Tab>
             <Tabs.Tab value="commits" className={TAB}>
               <Commit />
@@ -151,27 +157,26 @@ export function PrTab({
           </Tabs.List>
         </div>
         <Tabs.Panel value="conversation" className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cx(COLUMN, "flex gap-8 py-5")}>
-            <div className="flex min-w-0 flex-1 flex-col gap-5">
-              <Conversation pr={pr} sends={sends} />
-              {pr.state !== "closed" && (
+          {/* GitHub's Conversation without its side column [D260]. */}
+          <div className={cx(COLUMN, "flex flex-col gap-5 py-5")}>
+            <Conversation pr={pr} posted={posted} sends={sends} />
+            {open ? (
+              <div className="ms-9">
                 <MergeBox
                   pr={pr}
                   sends={sends}
                   merge={
-                    open && (
-                      <>
-                        <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
-                        <span className="text-xs text-muted-foreground">{hint}</span>
-                      </>
-                    )
+                    <>
+                      <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
+                      <span className="text-xs text-muted-foreground">{hint}</span>
+                    </>
                   }
                 />
-              )}
-            </div>
-            <div className="w-52 shrink-0">
-              <Side pr={pr} />
-            </div>
+              </div>
+            ) : (
+              <DoneBox pr={pr} />
+            )}
+            <AddComment viewer={pr.viewer} offline={sends.offline} onPost={onComment} />
           </div>
         </Tabs.Panel>
         <Tabs.Panel value="commits" className="min-h-0 flex-1 overflow-y-auto">
