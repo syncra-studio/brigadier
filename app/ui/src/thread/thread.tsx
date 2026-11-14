@@ -346,9 +346,10 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     <div ref={box} className="relative h-full text-sm antialiased">
       {/* Its edges fade out, it keeps its scrolling to itself, and it snaps to the end while following there.
           The footer and the space are in its own flow under Virtua's rows, so a change to the space counts at once and
-          nothing the browser clamps reaches the screen [D45]. */}
+          nothing the browser clamps reaches the screen [D45]. Its gutter is at its end only, so its rows start where the
+          composer's column does [D40]. */}
       <div
-        className="scroll-gutter-both thread-edge-mask end-snap block size-full overflow-y-auto overscroll-y-contain contain-strict"
+        className="scroll-gutter thread-edge-mask end-snap block size-full overflow-y-auto overscroll-y-contain contain-strict"
         onScroll={() => {
           scrolled.current++;
           follow.scroll();

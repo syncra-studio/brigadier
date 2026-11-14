@@ -342,11 +342,6 @@
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
-  /* The pinned summary card moving the reading column aside (the old app's --spacing-summary-shift and
-     --container-thread-beside-summary): half the card's 18.75rem and its 0.75rem inset, and the column narrowed to
-     leave the card's 20.25rem stack its gutter. */
-  --spacing-summary-shift: calc((var(--spacing) * 70 + var(--spacing)) / 2);
-  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 71));
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
@@ -883,8 +878,8 @@
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
 /* The thread's pane as its own width lays the summary card out, set the moment it's measured (summary-card.tsx, the
-   old app's data-summary): the card pinned with the column moved aside for it, or the card in a pane that floats it. */
-@custom-variant summary-shift (&[data-pinned][data-summary="shift"]);
+   old app's data-summary): the card pinned with the column ending before it, or the card in a pane that floats it. */
+@custom-variant summary-beside (&[data-pinned][data-summary="beside"]);
 @custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 /* The toolbar pill's button while it is the only one there. */
@@ -1267,12 +1262,17 @@
   --history-shift: 0%;
   --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2 - var(--sidebar-shown));
   --sidebar-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
+  /* The thread's column starts under the tab bar's first pill, from the page's start (reading-start) [D40]: collapsed
+     the History pill, open the tabs; the page starts 4px past the panel. Resolved here, so it follows the no-lights
+     --history-start below too. */
+  --reading-start: calc(var(--history-start) - var(--sidebar-shown) - var(--spacing));
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
     --history-start: calc(var(--sidebar-open-width) - var(--spacing) * 2.5);
     --history-shift: -100%;
     --tab-bar-start: calc(var(--spacing) * 2);
     --sidebar-top: calc(var(--spacing) * 2);
+    --reading-start: var(--tab-bar-start);
   }
   &[data-state="collapsed"][data-collapse="hidden"] {
     --sidebar-shown: 0px;
@@ -1365,6 +1365,17 @@
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+}
+
+/* The thread's reading column at its page's start [D40]: the composer card (its column's 16px in) under the tab bar's
+   first pill, the rows 8px further in as before; the room left goes to its end. */
+@utility reading-start {
+  margin-inline-start: calc(var(--reading-start) - var(--spacing) * 4);
+}
+/* Beside the pinned summary card (summary-card.tsx, the pane a container): the column ends where the card's room
+   starts (its w-71). */
+@utility reading-beside-summary {
+  max-width: min(var(--container-reading), calc(100cqw - var(--spacing) * 71 - (var(--reading-start) - var(--spacing) * 4)));
 }
 
 /* The tab bar's start: 8px, or past the History pill where it sits in the bar. It moves with the sidebar. */
