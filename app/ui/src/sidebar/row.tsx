@@ -108,8 +108,8 @@ export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
 
 /**
- * A session on one line: with `badged` (the one list) its project's badge first, then its title and one
- * mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
+ * A session on one line: with `badged` (the one list) its project's badge first, or without one the chat
+ * badge View's menu shows, then its title and one mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
  * words and the project. The row you are looking at (`active`) draws its thread's mark (`useMark`).
  * Its actions are in a ⋯ menu over its end on hover, with Archive beside it, and on a right-click [D185].
  */
@@ -184,7 +184,7 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && project && !sub && <ProjectBadge id={project.id} name={project.name} tone={tone} />}
+            {badged && !sub && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />)}
             {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
             {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
             {fold && (
