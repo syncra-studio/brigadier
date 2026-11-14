@@ -318,8 +318,10 @@
   --container-trust: 26.25rem;
   --container-project-dialog: 35rem;
   --container-feedback: 37.5rem;
-  /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
+  /* A decision card narrower than this drops its buttons' key chips (the old app's 28rem). */
   --container-card-narrow: 28rem;
+  /* An approval card narrower than this gives its "what to do instead" field a row of its own above the buttons. */
+  --container-card-one-row: 38rem;
   --container-toast: 32rem;
   /* The ⌘K search palette's card (the old app's). */
   --container-palette: 40rem;

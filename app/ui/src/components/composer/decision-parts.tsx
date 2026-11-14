@@ -200,12 +200,15 @@ export function actionButton(variant: "primary" | "outline", className?: string)
   );
 }
 
-/** A card's buttons, pushed to the end; `leading` (a deny reason) at the start. Narrow, they stack full width. */
+/**
+ * A card's buttons, together on one line at the end, never wrapping (D167); `leading` (a deny reason) before them,
+ * or on its own row above them when the card is narrow.
+ */
 export function ActionCardActions({ leading, children }: { leading?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-4 pt-2 pb-4 @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
+    <div className="flex flex-wrap items-center gap-2 px-4 pt-2 pb-4">
       {leading}
-      <div className="ms-auto flex shrink-0 items-center justify-end gap-2 @max-card-narrow/approval-card:ms-0 @max-card-narrow/approval-card:w-full @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
+      <div className="ms-auto flex shrink-0 items-center justify-end gap-2">
         {children}
       </div>
     </div>

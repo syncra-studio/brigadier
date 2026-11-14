@@ -157,10 +157,8 @@ export const forgetReasons = (session: string, keep: ReadonlySet<string>) => for
 /** Where a card stands among the approvals waiting: "1 of 3", with ‹ › to step between them. */
 export type ApprovalStep = { index: number; total: number; onStep: (index: number) => void };
 
-// A button making way for a typed reason: its width eases to nothing, or its height where the buttons stack, and
-// the row's gap goes with it.
-const MAKES_WAY =
-  "makes-way grid @min-card-narrow/approval-card:data-gone:w-0 @min-card-narrow/approval-card:data-gone:-ms-2 @max-card-narrow/approval-card:data-gone:h-0 @max-card-narrow/approval-card:data-gone:-mt-2";
+// A button making way for a typed reason: its width eases to nothing, and the row's gap goes with it.
+const MAKES_WAY = "makes-way grid data-gone:w-0 data-gone:-ms-2";
 
 const ENTER_KEY = (
   <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
@@ -281,7 +279,7 @@ export function ApprovalCard({
         leading={
           asksReason && (
             <ActionFreeText
-              className="-ms-2 min-w-40 flex-1"
+              className="-ms-2 min-w-40 flex-1 @max-card-one-row/approval-card:basis-full"
               field={
                 <div className="min-w-0 flex-1">
                   <ComposerField
@@ -308,7 +306,7 @@ export function ApprovalCard({
       >
         {!shown.noDeny && (
           <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
-            <button type="button" className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")} disabled={busy} onClick={deny}>
+            <button type="button" className={actionButton("outline")} disabled={busy} onClick={deny}>
               {shown.deny ?? "Deny"}
               <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
                 Esc
@@ -323,7 +321,7 @@ export function ApprovalCard({
               render={
                 <button
                   type="button"
-                  className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")}
+                  className={actionButton("outline")}
                   disabled={busy}
                   onClick={() => answer("allowSession")}
                 />
@@ -337,7 +335,7 @@ export function ApprovalCard({
         )}
         <button
           type="button"
-          className={actionButton("primary", "max-w-full @max-card-narrow/approval-card:justify-center")}
+          className={actionButton("primary", "max-w-full")}
           disabled={busy}
           onClick={primary}
         >
