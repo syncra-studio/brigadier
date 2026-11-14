@@ -1,8 +1,8 @@
 //! `brigadier host <id> view|list|log|merge`: a session's PRs through its git host [D1030]. `view <n>`
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
-//! read [D231]; `search <query>` is the tab's other views, GitHub's search of the repository's PRs,
-//! `search <query> kept` its last read [D258]; `log <link>` is a failed check's log tail; `merge <n>
+//! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
+//! PRs, every query in one read, `--kept` their last reads [D258]; `log <link>` is a failed check's log tail; `merge <n>
 //! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077].
 
 use super::arg;
@@ -26,12 +26,23 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             "Landing stays with {owner} while it's there."
         )));
     }
+    // Several queries at once, the side views' as the tab opens: one read, or their last [D207, D258].
+    if arg(args, 2)? == "search" {
+        let queries: Vec<&str> = args[3..]
+            .iter()
+            .map(String::as_str)
+            .filter(|a| *a != "--kept")
+            .collect();
+        if args.iter().any(|a| a == "--kept") {
+            let dir = brigadier_core::session_dir(data, id);
+            let found: Vec<_> = queries.iter().map(|q| host::kept_search(&dir, q)).collect();
+            return Ok(json!({"ok": true, "found": found}));
+        }
+        return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries)?}));
+    }
     // The last read, from the session's folder alone: no git, no host [D207].
     if args.get(4).is_some_and(|a| a == "kept") {
         let dir = brigadier_core::session_dir(data, id);
-        if arg(args, 2)? == "search" {
-            return Ok(json!({"ok": true, "found": host::kept_search(&dir, arg(args, 3)?)}));
-        }
         let (other, n) = number(args)?;
         return Ok(match arg(args, 2)? {
             "view" => json!({"ok": true, "pr": host::kept_view(&dir, other.as_deref(), n)}),
@@ -62,7 +73,6 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
                 ));
             }
         },
-        "search" => json!({"ok": true, "found": pr.search(arg(args, 3)?)?}),
         "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
         "merge" => {
             let (other, n) = number(args)?;

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 /// Proposed: a view's page is GitHub's 25.
 const PAGE: u32 = 25;
-/// Proposed: the last reads of this many queries are kept.
+/// Proposed: the last reads of this many queries are kept, the side views' among them.
 const KEPT: usize = 20;
 
 /// A row's fields: the list's, with its checks counted by state rather than read one by one.
@@ -36,73 +36,74 @@ pub fn kept_search(dir: &Path, query: &str) -> Value {
 }
 
 impl Pr {
-    /// The session repository's PRs that `query` (GitHub's search words) finds, newest first unless
-    /// it sorts, with how many are open and closed; kept with why when the read failed.
-    pub fn search(&self, query: &str) -> io::Result<Value> {
+    /// The session repository's PRs that each query (GitHub's search words) finds, newest first
+    /// unless it sorts, with how many are open and closed, all in one read [D207]; each kept, with
+    /// why when the read failed.
+    pub fn search(&self, queries: &[&str]) -> io::Result<Vec<Value>> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be searched.");
         };
         let Some(gh) = gh(repo) else {
             return err(NO_GH);
         };
-        let words: Vec<&str> = query.split_whitespace().collect();
-        let sorted = words.iter().any(|w| w.starts_with("sort:"));
-        // The counts ask the same, open and then closed.
-        let stateless: Vec<&str> = (words.iter().copied())
-            .filter(|w| {
-                !w.starts_with("state:") && !matches!(*w, "is:open" | "is:closed" | "is:merged")
-            })
-            .collect();
         let scope = format!("repo:{} is:pr", repo.path);
-        let q = format!(
-            "{scope} {query}{}",
-            if sorted { "" } else { " sort:created-desc" }
-        );
-        let base = format!("{scope} {}", stateless.join(" "));
+        // Each query's list and its open and closed counts under its own aliases.
+        let (mut vars, mut declared, mut asks) = (Vec::new(), Vec::new(), String::new());
+        for (i, query) in queries.iter().enumerate() {
+            let words: Vec<&str> = query.split_whitespace().collect();
+            let sorted = words.iter().any(|w| w.starts_with("sort:"));
+            // The counts ask the same, open and then closed.
+            let stateless: Vec<&str> = (words.iter().copied())
+                .filter(|w| {
+                    !w.starts_with("state:") && !matches!(*w, "is:open" | "is:closed" | "is:merged")
+                })
+                .collect();
+            let base = format!("{scope} {}", stateless.join(" "));
+            let sort = if sorted { "" } else { " sort:created-desc" };
+            vars.push((format!("q{i}"), format!("{scope} {query}{sort}")));
+            vars.push((format!("o{i}"), format!("{base} state:open")));
+            vars.push((format!("c{i}"), format!("{base} state:closed")));
+            declared.push(format!("$q{i}: String!, $o{i}: String!, $c{i}: String!"));
+            asks.push_str(&format!(" l{i}: search(query: $q{i}, type: ISSUE, first: {PAGE}) {{ nodes {{ ...R }} }} o{i}: search(query: $o{i}, type: ISSUE, first: 0) {{ issueCount }} c{i}: search(query: $c{i}, type: ISSUE, first: 0) {{ issueCount }}"));
+        }
         let ask = format!(
-            "query($q: String!, $open: String!, $closed: String!) {{ list: search(query: $q, type: ISSUE, first: {PAGE}) {{ nodes {{ ... on PullRequest {{ {ROW} }} }} }} open: search(query: $open, type: ISSUE, first: 0) {{ issueCount }} closed: search(query: $closed, type: ISSUE, first: 0) {{ issueCount }} }}"
+            "query({}) {{{asks} }} fragment R on PullRequest {{ {ROW} }}",
+            declared.join(", ")
         );
-        let read = graphql(
-            &gh,
-            repo,
-            &ask,
-            &[
-                ("q", &q),
-                ("open", &format!("{base} state:open")),
-                ("closed", &format!("{base} state:closed")),
-            ],
-        );
+        let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let read = graphql(&gh, repo, &ask, &pairs);
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
-        let was = kept_search(&self.dir, query);
-        let next = match read {
-            Ok((data, partial)) => {
-                let prs: Vec<Value> = (data["list"]["nodes"].as_array().into_iter().flatten())
-                    .filter(|p| p["number"].is_u64())
-                    .map(|p| mark(row(p), repo))
-                    .collect();
-                json!({"query": query, "okAt": now_ms(), "error": partial, "prs": prs,
-                    "open": data["open"]["issueCount"], "closed": data["closed"]["issueCount"]})
-            }
-            Err(why) if was.is_null() => {
-                json!({"query": query, "okAt": null, "error": why, "prs": [], "open": null, "closed": null})
-            }
-            Err(why) => {
-                let mut next = was;
-                next["error"] = why.into();
-                next
-            }
-        };
-        let mut all = read_kept(path(&self.dir));
-        let mut queries: Vec<Value> = (all["queries"].as_array().into_iter().flatten())
-            .filter(|q| q["query"] != query)
-            .take(KEPT - 1)
-            .cloned()
+        let found: Vec<Value> = (queries.iter().enumerate())
+            .map(|(i, query)| {
+                let was = kept_search(&self.dir, query);
+                match &read {
+                    Ok((data, partial)) => {
+                        let prs: Vec<Value> = (data[format!("l{i}")]["nodes"].as_array().into_iter().flatten())
+                            .filter(|p| p["number"].is_u64())
+                            .map(|p| mark(row(p), repo))
+                            .collect();
+                        json!({"query": query, "okAt": now_ms(), "error": partial, "prs": prs,
+                            "open": data[format!("o{i}")]["issueCount"], "closed": data[format!("c{i}")]["issueCount"]})
+                    }
+                    Err(why) if was.is_null() => {
+                        json!({"query": query, "okAt": null, "error": why, "prs": [], "open": null, "closed": null})
+                    }
+                    Err(why) => {
+                        let mut next = was;
+                        next["error"] = why.clone().into();
+                        next
+                    }
+                }
+            })
             .collect();
-        queries.insert(0, next.clone());
-        all = json!({"queries": queries});
-        keep(&path(&self.dir), &all);
-        Ok(next)
+        let all = read_kept(path(&self.dir));
+        let older = (all["queries"].as_array().into_iter().flatten())
+            .filter(|q| !queries.iter().any(|n| q["query"] == *n))
+            .cloned();
+        let kept: Vec<Value> = found.iter().cloned().chain(older).take(KEPT).collect();
+        keep(&path(&self.dir), &json!({"queries": kept}));
+        Ok(found)
     }
 }
 

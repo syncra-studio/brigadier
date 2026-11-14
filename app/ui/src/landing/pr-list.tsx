@@ -1,4 +1,4 @@
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import {
@@ -155,43 +155,51 @@ export function PrList({ owner }: { owner: string }) {
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [closed, setClosed] = useState(false);
-  const [found, setFound] = useState<Found | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Every query's last read the tab holds, the side views' brought in as it opens: a switch paints at once [D207].
+  const [reads, setReads] = useState<Partial<Record<string, Found>>>({});
+  const [reading, setReading] = useState<string[]>([]);
+  const [listing, setListing] = useState(false);
   const session = view === "session";
-  // The query last asked: a reply to an older one is dropped.
-  const asked = useRef("");
+  const found = reads[query] ?? null;
+  const busy = session ? listing : reading.includes(query);
 
-  const read = (q: string) => {
-    setBusy(true);
-    ask({ op: "run", args: ["host", owner, "search", q] }, (reply) => {
-      if (asked.current !== q) return;
-      setBusy(false);
-      setFound((was) => reply.found ?? { query: q, okAt: null, prs: [], open: null, closed: null, ...was, error: reply.error ?? "Couldn't search." });
+  const put = (list: Found[]) => setReads((was) => ({ ...was, ...Object.fromEntries(list.map((f) => [f.query, f])) }));
+  // One read for all of them [D207]; a failed one keeps each last read with why.
+  const read = (queries: string[]) => {
+    setReading((was) => [...was, ...queries]);
+    ask({ op: "run", args: ["host", owner, "search", ...queries] }, (reply) => {
+      setReading((was) => was.filter((q) => !queries.includes(q)));
+      const why = reply.error ?? "Couldn't search.";
+      setReads((was) => ({
+        ...was,
+        ...Object.fromEntries(queries.map((q, i) => [q, reply.found?.[i] ?? { query: q, okAt: null, prs: [], open: null, closed: null, ...(was[q] as Found | undefined), error: why }])),
+      }));
     });
   };
+  // Their last reads at once, then one read of those older than the watch's quickest pace.
+  const bring = (queries: string[]) =>
+    ask({ op: "run", args: ["host", owner, "search", ...queries, "--kept"] }, (reply) => {
+      const last: (Found | null)[] = reply.found ?? [];
+      put(last.filter((f): f is Found => !!f));
+      const stale = queries.filter((_, i) => Date.now() - (last[i]?.okAt ?? 0) > FRESH_MS);
+      if (stale.length > 0) read(stale);
+    });
   const check = () => {
-    if (!session) return read(query);
-    setBusy(true);
-    ask({ op: "run", args: ["host", owner, "list"] }, () => setBusy(false));
+    if (!session) return read([query]);
+    setListing(true);
+    ask({ op: "run", args: ["host", owner, "list"] }, () => setListing(false));
   };
   const search = (q: string, to = "") => {
     setView(to);
     setText(q);
     setQuery(q);
-    setFound(null);
-    asked.current = q;
-    // The last read paints at once; a read older than the watch's pace is asked again [D207].
-    ask({ op: "run", args: ["host", owner, "search", q, "kept"] }, (reply) => {
-      const last: Found | null = reply.found ?? null;
-      if (asked.current !== q) return;
-      if (last) setFound((was) => was ?? last);
-      if (!last || Date.now() - (last.okAt ?? 0) > FRESH_MS) read(q);
-    });
+    const last = reads[q];
+    if (!last) bring([q]);
+    else if (Date.now() - (last.okAt ?? 0) > FRESH_MS && !reading.includes(q)) read([q]);
   };
   const pick = (id: string) => {
     const to = VIEWS.find((v) => v.id === id)!;
     if (to.id !== "session") return search(to.query, to.id);
-    asked.current = "";
     setView("session");
     setText("");
     setQuery("");
@@ -199,7 +207,9 @@ export function PrList({ owner }: { owner: string }) {
 
   const loaded = rows !== undefined;
   useEffect(() => {
-    if (daemon && loaded && Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
+    if (!daemon || !loaded) return;
+    if (Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
+    bring(VIEWS.slice(1).map((v) => v.query));
   }, [daemon, owner, loaded]);
 
   // Rust keeps the session's open first, then by recency [D256].
