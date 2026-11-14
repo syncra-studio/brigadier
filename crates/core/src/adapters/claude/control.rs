@@ -113,10 +113,12 @@ pub fn own(env: &mut Vec<(String, String)>) {
     }
 }
 
+/// TodoWrite is deferred; `ENABLE_TOOL_SEARCH=false` loads it but costs 16-31k tokens [D250].
 pub fn standing(spec: &Spec) -> [String; 6] {
+    let load = "\n\nYour to-do tool, TodoWrite, is deferred: load it with ToolSearch `select:TodoWrite` before its first use.";
     [
         "--append-system-prompt".into(),
-        crate::agent::standing(spec),
+        crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
         "--settings".into(),
         r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
         "--disallowedTools".into(),
