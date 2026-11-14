@@ -65,7 +65,8 @@ export function useCardToggle(owner: string) {
 }
 
 // The card itself, pinned or floating.
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-summary";
+// The new design's floating card: #222224, 18px corners, the glass edge.
+const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
@@ -76,7 +77,7 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-label="Context"
         aria-hidden={!shown || undefined}
         className={cx(
-          "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
+          "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
           // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's).
           shown ? "summary-floats:invisible summary-floats:translate-x-full summary-floats:scale-80 summary-floats:opacity-0" : "invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",

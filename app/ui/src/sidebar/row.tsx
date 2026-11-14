@@ -60,7 +60,7 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
 /** A row's badge: its project's initials, in that project's colour. `tone` is the project's place in Rust's list. */
 export function ProjectBadge({ name, tone }: { name: string | null; tone: number | undefined }) {
   return (
-    <span aria-hidden data-tone={tone} className={cx("flex size-icon-md shrink-0 items-center justify-center rounded-xs text-badge font-semibold", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
+    <span aria-hidden data-tone={tone} className={cx("flex h-icon-md min-w-icon-md shrink-0 items-center justify-center rounded-xs px-0.75 text-badge font-bold tracking-wide", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
     </span>
   );
@@ -173,8 +173,8 @@ export function SessionRowItem({
               sideOffset={() => spacingPx() * 4}
               className="z-popup"
             >
-              <BaseTooltip.Popup className="pointer-events-none flex w-66 flex-col rounded-surface border border-popover-edge bg-popover backdrop-blur-popover px-3 py-2.5 text-start text-sm text-foreground shadow-tooltip popup-motion">
-                <p className="mb-1 line-clamp-3 font-medium wrap-anywhere">{title}</p>
+              <BaseTooltip.Popup className="pointer-events-none flex w-65 flex-col gap-2.5 rounded-surface border border-popover-edge bg-popover px-3.5 py-3 text-start text-sm text-foreground shadow-overlay backdrop-blur-popover popup-motion">
+                <p className="line-clamp-3 font-semibold wrap-anywhere">{title}</p>
                 {words && (
                   <div className={cx(CARD_LINE, row.mark && "-ms-0.5")}>
                     <RowMark mark={row.mark} label={label} />
@@ -184,8 +184,8 @@ export function SessionRowItem({
                 {row.pr && <div className={CARD_LINE}>{prList(row.pr)}</div>}
                 {project && (
                   <>
-                    <div className="my-1.5 border-t border-divider" />
-                    <div className={CARD_LINE}>
+                    <div className="border-t border-border" />
+                    <div className={cx(CARD_LINE, "text-sm")}>
                       <ProjectBadge name={project.name} tone={tone} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>

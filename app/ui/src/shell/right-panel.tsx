@@ -97,7 +97,7 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
       data-beside={beside || undefined}
-      className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
+      className="right-panel-width-source relative flex h-full min-h-0 shrink-0"
     >
       <div
         inert={!open}
@@ -105,8 +105,9 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
         onTransitionEnd={(event) => event.target === event.currentTarget && !open && setShown(false)}
         className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}
       >
-        <div className="right-panel-width flex h-full min-h-0 flex-col">
-          <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col">
+        {/* A floating card 4px off the thread and 6px under the tab bar [new-design]. */}
+        <div className="right-panel-width flex h-full min-h-0 flex-col ps-1 pt-1.5">
+          <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset">
             {shown && <Files key={owner} owner={owner} />}
           </div>
         </div>

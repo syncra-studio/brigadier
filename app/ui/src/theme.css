@@ -315,8 +315,8 @@
   /* The pinned summary card moving the reading column aside (the old app's --spacing-summary-shift and
      --container-thread-beside-summary): half the card's 18.75rem and its 0.75rem inset, and the column narrowed to
      leave the card's 20.25rem stack its gutter. */
-  --spacing-summary-shift: calc((var(--spacing) * 75 + var(--spacing) * 3) / 2);
-  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 81));
+  --spacing-summary-shift: calc((var(--spacing) * 70 + var(--spacing)) / 2);
+  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 71));
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
@@ -1127,10 +1127,10 @@
 
 /* A project's badge: its place in the list turned by the golden angle, so neighbours land far apart.
    shortcut: hues stay at least 32° apart up to 8 projects and about 20° by 13, pick from a fixed set if people run more. */
+/* A project's initials badge: the new design's one green, --success on --success-fill, for every project. */
 @utility project-tone {
-  --tone-hue: calc(20 + attr(data-tone type(<number>), 0) * 137.508);
-  background-color: oklch(0.36 0.08 var(--tone-hue));
-  color: oklch(0.88 0.1 var(--tone-hue));
+  background-color: var(--color-success-wash);
+  color: var(--color-success);
 }
 
 /* Something on a bar or in a list that is only sometimes there: it grows along data-axis while data-open. */
