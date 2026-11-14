@@ -13,12 +13,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 /// One parent branch's history, read once for all its workers: each commit's first parent, the
-/// commits git's own revert line names, and the repo's branch heads.
+/// commits git's own revert line names, the repo's branch heads, and each commit a merge brought
+/// in, by that merge (so `git revert -m 1 <merge>` reverts it).
 #[derive(Default)]
 struct Branch {
     heads: HashMap<String, String>,
     first: HashMap<String, String>,
     reverted: HashSet<String>,
+    merged_by: HashMap<String, String>,
 }
 
 // shortcut: reads the branch's whole history once per call; bound it by date if a huge repo
@@ -45,6 +47,9 @@ fn branch(repo: &str, base: &str) -> Branch {
         let mut shas = line.split(' ');
         if let Some(sha) = shas.next() {
             b.first.insert(sha.into(), shas.next().unwrap_or("").into());
+            for into in shas {
+                b.merged_by.insert(into.into(), sha.into());
+            }
         }
     }
     let log = git(
@@ -86,7 +91,8 @@ fn landed(
     }
     let mut at = head;
     while at != l.base_commit && !at.is_empty() {
-        if b.reverted.contains(&at) {
+        let merge = b.merged_by.get(&at);
+        if b.reverted.contains(&at) || merge.is_some_and(|m| b.reverted.contains(m)) {
             return (false, true);
         }
         at = b.first.get(&at).cloned().unwrap_or_default();
