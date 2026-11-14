@@ -66,8 +66,12 @@ impl Adapter for Fake {
                     default_effort: Some(default.into()),
                     ..ModelInfo::plain("fake", true)
                 };
+                // Its default and its top model; no small one, as a CLI that names none [D2075].
                 vec![
-                    level(&["low", "medium", "high"], "medium"),
+                    ModelInfo {
+                        default: true,
+                        ..level(&["low", "medium", "high"], "medium")
+                    },
                     ModelInfo {
                         id: "fake-large".into(),
                         name: "fake-large".into(),
@@ -75,6 +79,7 @@ impl Adapter for Fake {
                         retiring: Some(json!({"at": null, "to": "fake"})),
                         // Takes no images, for the held Send's demo [D2022 #14].
                         images: Some(false),
+                        top: true,
                         ..level(&["low", "medium", "high", "xhigh"], "high")
                     },
                 ]

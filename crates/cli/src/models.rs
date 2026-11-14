@@ -94,7 +94,8 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
             json!({"id": m["id"], "name": m.get("name").unwrap_or(&m["id"]), "local": m["local"],
                 "efforts": m.get("efforts").cloned().unwrap_or_else(|| json!([])),
                 "default_effort": m["default_effort"], "retiring": m["retiring"], "images": m["images"],
-                "fast": m["fast"], "legacy": m["legacy"] == true})
+                "fast": m["fast"], "legacy": m["legacy"] == true,
+                "top": m["top"] == true, "default": m["default"] == true, "small": m["small"] == true})
         })
         .collect();
     let (levels, level) = levels(&check["name"], held, chosen);

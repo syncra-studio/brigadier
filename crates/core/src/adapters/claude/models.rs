@@ -77,11 +77,22 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
     let mut models: Vec<(ModelInfo, String)> = (listed.iter().flatten())
         .filter_map(|m| info(m, &settings))
         .collect();
-    // The `default` alias is a second row for a model already listed: the model's own row stays.
-    if let Some(at) = models.iter().position(|(m, _)| m.id == "default")
-        && (models.iter()).any(|(m, r)| m.id != "default" && *r == models[at].1)
-    {
-        models.remove(at);
+    // The `default` alias names the model run unpicked: a second row for a model already listed,
+    // whose own row stays and takes the mark.
+    if let Some(at) = models.iter().position(|(m, _)| m.id == "default") {
+        let own = (models.iter()).position(|(m, r)| m.id != "default" && *r == models[at].1);
+        models[own.unwrap_or(at)].0.default = true;
+        if own.is_some() {
+            models.remove(at);
+        }
+    }
+    // Its `opus` and `haiku` aliases, where its list names them: its top and small models.
+    let alias = |m: &ModelInfo, a: &str| m.id.split('[').next() == Some(a);
+    if let Some((m, _)) = models.iter_mut().find(|(m, _)| alias(m, "opus")) {
+        m.top = true;
+    }
+    if let Some((m, _)) = models.iter_mut().find(|(m, _)| alias(m, "haiku")) {
+        m.small = true;
     }
     let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));
     // Two rows under one name: the long-context one says so.

@@ -129,6 +129,11 @@ pub struct ModelInfo {
     pub legacy: bool,
     /// Its context window in tokens, where its CLI's list says [D113].
     pub window: Option<u64>,
+    /// Its CLI's top model, the one it runs unpicked, and its small one, each only where its
+    /// own list says so [D2075].
+    pub top: bool,
+    pub default: bool,
+    pub small: bool,
 }
 
 impl ModelInfo {
