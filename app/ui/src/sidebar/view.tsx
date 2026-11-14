@@ -61,7 +61,7 @@ export function ViewMenu({ projects, show }: { projects: Project[]; show: ShowFi
       {!show.all && <span className="me-1 text-xs whitespace-nowrap text-marker-foreground">{shown === 1 ? "1 project" : `${shown} projects`}</span>}
       <DropdownMenu>
         <Tooltip>
-          <TooltipTrigger render={<DropdownMenuTrigger render={<RowAction header aria-label="View" data-filtered={!show.all || undefined} className="aria-expanded:bg-fill data-filtered:bg-fill data-filtered:text-foreground" />} />}>
+          <TooltipTrigger render={<DropdownMenuTrigger render={<RowAction header round aria-label="View" data-filtered={!show.all || undefined} className="aria-expanded:bg-fill data-filtered:bg-fill data-filtered:text-foreground" />} />}>
             <ListFilter />
           </TooltipTrigger>
           <TooltipContent side="bottom">View</TooltipContent>
