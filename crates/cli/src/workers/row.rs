@@ -1,15 +1,20 @@
 //! A worker's row facts [D3010, D3012, D3018].
 
 use super::{Link, read_json};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, fold::Fold};
 use serde_json::{Value, json};
 use std::path::Path;
 
 /// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
 /// a word as the old `workerState`, and its receipt. Null for a session that isn't a worker.
-pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) -> Value {
+pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
     let Some(l) = read_json::<Link>(&dir.join("worker.json")) else {
         return Value::Null;
+    };
+    // Held, waiting for its row's reset: its limit, though no turn hit one yet [D2028, D3029].
+    let (state, resets) = match f.hold.as_ref().filter(|h| h["phase"] == "waiting") {
+        Some(h) => ("limited", h["resets"].as_u64()),
+        None => (state, f.resets),
     };
     let last = &l.last;
     let (kind, word) = match state {
@@ -47,7 +52,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
         "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))), "added": last["added"], "removed": last["removed"],
-        "now": if kind == "working" { now } else { None }})
+        "now": if kind == "working" { f.calls.last() } else { None }})
 }
 
 pub(crate) fn clock(ms: u64) -> String {
