@@ -32,7 +32,7 @@ export function ComposerCard({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="composer-card"
       onMouseDown={focusField}
-      className={cx("relative flex w-full cursor-text flex-col gap-1 rounded-composer bg-composer p-2 shadow-hairline", className)}
+      className={cx("relative flex w-full cursor-text flex-col gap-1 rounded-composer bg-composer p-2 shadow-composer", className)}
       {...props}
     />
   );

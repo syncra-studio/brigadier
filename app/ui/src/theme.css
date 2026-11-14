@@ -453,8 +453,9 @@
   --radius-composer: 1.375rem;
   /* An image attachment's thumbnail. */
 
-  /* The composer card's 1px edge (the new design's --border stroke). */
-  --shadow-hairline: inset 0 0 0 1px var(--color-border);
+  --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
+  /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
+  --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The pinned summary card's edge and lift (the old app's --shadow-summary). */
   --shadow-summary: 0 0 0 0.5px oklch(1 0 0 / 16%), 0 3px 7.5px oklch(0 0 0 / 4%), 0 0 20px oklch(0 0 0 / 5%);
