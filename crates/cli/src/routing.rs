@@ -15,9 +15,11 @@ use std::path::Path;
 
 mod hold;
 mod pick;
+mod retry;
 
 pub(crate) use hold::{ask, moved};
 pub(crate) use pick::{next, receipt, resolve};
+pub(crate) use retry::plan as retry;
 
 pub(crate) const ROWS: [&str; 3] = ["best", "standard", "quick"];
 const FILE: &str = "routing.json";
@@ -350,6 +352,40 @@ fn effort_of(
         )),
         _ => Ok((want.map(String::from), None)),
     }
+}
+
+/// Why a start ran on what it did, in a line, for its reply and start outcome [D2037]: the
+/// same-row or user's note, a rule's cap, the retry's step, else what was asked (proposed).
+pub(crate) fn why(asked: &Value, ran: &Value, retry: &Value) -> String {
+    let step = match retry["step"].as_str() {
+        Some("effort") => Some("a retry: the same model one effort up"),
+        Some("row") => Some("a retry: one row up"),
+        Some("same") => Some("a retry on the same pick, as its last end was temporary"),
+        _ => None,
+    };
+    let named = match asked["model"].is_string() {
+        true => "the model asked for",
+        false => "your row's first model",
+    };
+    (ran["note"].as_str().or(ran["capped"].as_str()).or(step))
+        .unwrap_or(named)
+        .to_string()
+}
+
+/// What was asked, in words, where it isn't what ran: "Asked for Standard · fake-large" [D2037].
+pub(crate) fn asked(asked: &Value, ran: &Value) -> Option<String> {
+    let keys = ["row", "agent", "model", "effort"];
+    let differs = keys
+        .iter()
+        .any(|k| asked[k].is_string() && asked[k] != ran[k]);
+    let words: Vec<String> = (keys.iter())
+        .filter_map(|k| {
+            asked[k]
+                .as_str()
+                .map(|v| if *k == "row" { title(v) } else { v.into() })
+        })
+        .collect();
+    differs.then(|| format!("Asked for {}", words.join(" · ")))
 }
 
 /// Whether worker `id` is held for the user's call: only the user answers it.

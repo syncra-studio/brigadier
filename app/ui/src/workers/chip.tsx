@@ -30,6 +30,8 @@ export type Worker = {
   brief?: string;
   /** What routing picked for it [D3018]. */
   receipt?: string;
+  /** What its parent asked for, where that isn't what ran [D2037]. */
+  asked?: string;
 };
 
 const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["paused", "failed", "stopped", "merged", "doneNotMerged", "done"]);

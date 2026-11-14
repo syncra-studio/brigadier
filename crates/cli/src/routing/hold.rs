@@ -19,7 +19,23 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     let until = hold["resets"].as_u64().unwrap_or(log::now_ms() + SKIP_MS);
     let when = clock(until);
     let lower = &hold["lower"];
+    let why = str_of(hold, "why");
     let mut options = vec![];
+    // Past a retry's ladder: retry on the row's first, or stop here [D2037] (proposed words).
+    if hold["retry"] == true {
+        let (row, model) = (title(str_of(lower, "row")), str_of(lower, "model"));
+        let options = json!([
+            {"label": format!("Retry on {} · {model}", str_of(lower, "agent")),
+                "description": format!("The first in your {row} row")},
+            {"label": "Stop here", "description": "It doesn't run again"}]);
+        let item = json!({"text": format!("{why}. How should it go on?"), "options": options,
+            "recommended": null, "multiSelect": false});
+        let request = json!({"id": id, "title": "Out of retries", "items": [item], "held": true});
+        let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "retry": true,
+            "lower": lower, "row": hold["row"], "request": request});
+        owner::call(data, wid, json!({"op": "note", "data": note}))?;
+        return workers::told_held(data, wid, &id, why);
+    }
     if lower.is_object() {
         let (row, model) = (title(str_of(lower, "row")), str_of(lower, "model"));
         options.push(
@@ -30,7 +46,6 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     options.push(
         json!({"label": format!("Wait until {when}"), "description": "Then it starts as picked"}),
     );
-    let why = str_of(hold, "why");
     let item = json!({"text": format!("{why} until {when}. How should it go on?"), "options": options,
         "recommended": null, "multiSelect": false});
     // `held`: its card offers only these answers, no words of the user's and no Skip.
@@ -58,6 +73,17 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
     if !offered.is_some_and(|o| o.iter().any(|o| o["label"] == choice)) {
         return Ok(json!({"ok": false, "error": "invalid",
             "message": "A held worker takes only one of its card's answers."}));
+    }
+    if hold["retry"] == true {
+        let note = json!({"event": "hold", "phase": "answered", "id": request, "choice": choice});
+        owner::call(data, wid, json!({"op": "note", "data": note}))?;
+        if choice.starts_with("Retry on ") {
+            return go(data, wid, Some(&hold["lower"]));
+        }
+        let pid = workers::link(data, wid)
+            .map(|l| l.parent)
+            .unwrap_or_default();
+        return crate::workers::run(data, &["workers", &pid, "stop", wid].map(String::from));
     }
     let lower = choice.starts_with("Use ") && hold["lower"].is_object();
     let phase = if lower { "answered" } else { "waiting" };
@@ -111,7 +137,8 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
             let effort = e["effort"].as_str().map(String::from);
             ran = json!({"agent": backend, "model": e["model"], "effort": effort.clone().or(m["default_effort"].as_str().map(String::from)),
                 "account": account, "row": e["row"], "name": m.get("name").unwrap_or(&e["model"]),
-                "label": kept["label"], "quota": kept["quota"], "note": "the user chose this row"});
+                "label": kept["label"], "quota": kept["quota"], "note": "the user chose this row",
+                "retry": l.ran["retry"], "failed": l.ran["failed"]});
             (e["model"].as_str().map(String::from), effort, account)
         }
         None => (

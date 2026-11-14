@@ -172,18 +172,20 @@ pub(crate) struct Pick {
 
 /// The first entry of the row below `row` the user allows: the hold's "Use …" [D2028].
 pub(super) fn lower(data: &Path, groups: &[Value], t: &Value, row: Option<&str>) -> Value {
-    let rules = t["rules"].as_array().cloned().unwrap_or_default();
-    let Some(next) = row
+    let next = row
         .and_then(|r| ROWS.iter().position(|x| *x == r))
-        .and_then(|i| ROWS.get(i + 1))
-    else {
-        return Value::Null;
-    };
-    let list = t["rows"][*next].as_array().cloned().unwrap_or_default();
+        .and_then(|i| ROWS.get(i + 1));
+    next.map_or(Value::Null, |r| first(data, groups, t, r))
+}
+
+/// The first entry of `row` the user allows, with its row.
+pub(super) fn first(data: &Path, groups: &[Value], t: &Value, row: &str) -> Value {
+    let rules = t["rules"].as_array().cloned().unwrap_or_default();
+    let list = t["rows"][row].as_array().cloned().unwrap_or_default();
     (list.into_iter())
         .find(|e| allowed(data, groups, &rules, str_of(e, "agent"), str_of(e, "model")).is_ok())
         .map_or(Value::Null, |mut e| {
-            e["row"] = (*next).into();
+            e["row"] = row.into();
             e
         })
 }
@@ -316,12 +318,18 @@ pub(crate) fn receipt(ran: &Value) -> Option<String> {
     ran.get("label")?;
     let row = ran["row"].as_str().map(title);
     let model = ran["name"].as_str().or(ran["model"].as_str())?;
-    let mut text = match row {
-        Some(r) => format!("{r} → {model}"),
-        None => model.to_string(),
+    // A retry's: "Retry 1 of 2 → Quick: fake · high (tests failed)" [D2037] (proposed).
+    let mut text = match (ran["retry"].as_str(), row) {
+        (Some(t), Some(r)) => format!("{t} → {r}: {model}"),
+        (None, Some(r)) => format!("{r} → {model}"),
+        (Some(t), None) => format!("{t} → {model}"),
+        (None, None) => model.to_string(),
     };
     if let Some(e) = ran["effort"].as_str() {
         text += &format!(" · {e}");
+    }
+    if let Some(f) = ran["failed"].as_str() {
+        text += &format!(" ({f})");
     }
     let q = &ran["quota"];
     let passed = q["resets"].as_u64().is_some_and(|at| at <= log::now_ms());

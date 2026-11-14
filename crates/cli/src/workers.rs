@@ -72,6 +72,9 @@ pub(crate) struct Record {
     /// Its row out of quota: the user's call it waits for before it starts [D2028, D342].
     #[serde(default)]
     pub hold: Value,
+    /// A retry's `retry_of`, `chain`, `step` and `note`, for its start outcome [D2037].
+    #[serde(default)]
+    pub retry: Value,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.
@@ -86,6 +89,9 @@ pub(crate) struct Link {
     /// The turns whose end goes back to the parent, by their stable id: today its brief's [D3006].
     pub report: Vec<String>,
     pub ran: Value,
+    /// What its parent's agent asked for: row, agent, model, effort, as given [D2037].
+    #[serde(default)]
+    pub asked: Value,
     /// Its last task's end, as its result said: how, when, its commits, whether it landed.
     #[serde(default)]
     pub last: Value,

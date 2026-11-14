@@ -51,7 +51,8 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
     let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
-        "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))), "added": last["added"], "removed": last["removed"],
+        "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))),
+        "asked": crate::routing::asked(&l.asked, ran), "added": last["added"], "removed": last["removed"],
         "now": if kind == "working" { f.calls.last() } else { None }})
 }
 

@@ -82,6 +82,7 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
         ),
         "start" => (
             "brigadier start \"<brief>\" [--row best|standard|quick] [--agent A] [--model M] [--effort E] [--title T] [--json]
+brigadier start --retry <id> \"<what failed>\" [--title T] [--json]
 
 Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
 It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
@@ -92,12 +93,15 @@ It runs on the first model of the user's routing row with an account that has ro
 is named: best for hard problems, plans and reviews; standard for most work; quick for look-ups and
 small edits. --model runs that model where the user allows it, never replaced; --agent keeps to one
 agent. `brigadier models` lists the models and rows. A row out of quota holds the worker for the user.
+--retry starts a fresh worker on your failed worker's first brief and what failed: the same model
+one effort up, then a row up, at most two steps, then the user decides; after a temporary failure
+it runs on the same pick again.
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
 Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
 A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
-            &["--row", "--agent", "--model", "--effort", "--title"],
+            &["--row", "--agent", "--model", "--effort", "--title", "--retry"],
             &["--session"],
         ),
         "stop" => (

@@ -58,6 +58,16 @@ pub fn start(
             "You're a worker at depth {depth}, the deepest allowed, so you can't start workers. Do it yourself, or use your own subagents."
         ));
     }
+    // A retry's brief is its chain's first and a note; `brief` says what failed [D2037, D342].
+    let retry = match flags("--retry") {
+        Some(id) => match routing::retry(data, me, &id, brief, flags) {
+            Ok(r) => Some(r),
+            Err(e) => return e,
+        },
+        None => None,
+    };
+    let brief = retry.as_ref().map_or(brief, |r| r.brief.as_str());
+    let picked = |k: &str| retry.as_ref().map_or_else(|| flags(k), |r| r.flag(k));
     if brief.trim().is_empty() {
         return refuse("`brigadier start` needs a brief: what to do, in quotes.");
     }
@@ -84,7 +94,8 @@ pub fn start(
         && git(&parent.cwd, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
     // Proposed: `--title` names it; else its brief does [D3029].
     let named = flags("--title").filter(|t| !t.trim().is_empty());
-    let title = named.unwrap_or_else(|| title::from(brief));
+    let title =
+        (named.or(retry.as_ref().map(|r| r.title.clone()))).unwrap_or_else(|| title::from(brief));
     let asked = json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort"),
         "row": flags("--row")});
     let reserved = (|| -> Result<Record, Value> {
@@ -120,7 +131,10 @@ pub fn start(
                 break id;
             }
         };
-        let p = routing::resolve(data, me, &parent, &f, flags, &wid)?;
+        let mut p = routing::resolve(data, me, &parent, &f, &picked, &wid)?;
+        if let Some(rt) = &retry {
+            rt.apply(&mut p);
+        }
         let Some(a) = adapters::get(&p.agent) else {
             return Err(refuse(&format!("{:?} isn't an agent.", p.agent)));
         };
@@ -151,6 +165,7 @@ pub fn start(
             session,
             pick: p.ran,
             hold: p.hold,
+            retry: retry.as_ref().map_or(Value::Null, |r| r.note.clone()),
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)
@@ -165,7 +180,9 @@ pub fn start(
     let (backend, model, effort) = (&r.backend, &r.model, &r.effort);
     let mut ran = r.pick.clone();
     (ran["agent"], ran["model"]) = (json!(backend), json!(model));
-    let ran = routing::receipt(&ran).unwrap_or_else(|| {
+    ran["account"] = json!(r.account);
+    let why = routing::why(&r.asked, &ran, &r.retry);
+    let receipt = routing::receipt(&ran).unwrap_or_else(|| {
         let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
         ran.into_iter().flatten().collect::<Vec<_>>().join(" · ")
     });
@@ -175,12 +192,19 @@ pub fn start(
     };
     let what = if session { "session" } else { "worker" };
     let mut text = match r.hold["why"].as_str() {
+        Some(why) if r.hold["retry"] == true => format!(
+            "Held {what} {} ({}): {why}, so the user decides on its card whether it retries on {} · {} or stops here. Go on with your work; its result comes to you if it runs.",
+            r.title,
+            r.wid,
+            backend,
+            model.as_deref().unwrap_or("")
+        ),
         Some(why) => format!(
             "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a lower row or waits. Go on with your work; its result comes to you when it runs.",
             r.title, r.wid
         ),
         None => format!(
-            "Started {what} {} ({}) on {ran}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
+            "Started {what} {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
             r.title, r.wid, r.wid
         ),
     };
@@ -189,7 +213,8 @@ pub fn start(
             " Your uncommitted edits aren't in its worktree; commit them first if it needs them.";
     }
     json!({"ok": true, "id": r.wid, "title": r.title, "agent": backend, "model": model, "effort": effort,
-        "account": r.account, "receipt": ran, "held": r.hold["why"], "base": base, "uncommitted": dirty, "text": text})
+        "account": r.account, "receipt": receipt, "asked": r.asked, "ran": ran, "why": why, "retry": r.retry,
+        "held": r.hold["why"], "base": base, "uncommitted": dirty, "text": text})
 }
 
 /// Makes a reserved worker off the caller's thread, once at a time in this daemon.
@@ -285,6 +310,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             at: r.at,
             report: vec![r.cid.clone()],
             ran: ran.clone(),
+            asked: r.asked.clone(),
             last: Value::Null,
             paused: false,
             session: r.session,
@@ -313,8 +339,12 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.cid) {
         return Ok(());
     }
-    let outcome = json!({"event": "outcome", "phase": "start", "asked": r.asked, "ran": ran,
-        "parent": pid, "depth": r.depth});
+    // A retry's chain and step go in its start note, so the next retry counts from the log [D2037].
+    let mut outcome = json!({"event": "outcome", "phase": "start", "asked": r.asked, "ran": ran,
+        "why": crate::routing::why(&r.asked, &ran, &r.retry), "parent": pid, "depth": r.depth});
+    for (k, v) in r.retry.as_object().into_iter().flatten() {
+        outcome[k] = v.clone();
+    }
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
     let merge =
         (branch.as_deref().zip(r.base.as_deref())).map(|(b, base)| (parent.cwd.as_str(), b, base));

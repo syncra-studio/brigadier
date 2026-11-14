@@ -41,6 +41,7 @@ export type WorkerRow = {
   ended?: number | null;
   model: string;
   receipt: string;
+  asked?: string | null;
   added?: number | null;
   removed?: number | null;
   /** Its newest call at work, while it works [D143]. */
@@ -69,6 +70,7 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   model: row.worker.model,
   brief: row.worker.brief,
   receipt: row.worker.receipt,
+  asked: row.worker.asked ?? undefined,
   added: row.worker.added ?? undefined,
   removed: row.worker.removed ?? undefined,
   now: row.worker.now ? nowOf(row.worker.now) : undefined,
