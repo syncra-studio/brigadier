@@ -105,6 +105,20 @@ pub(super) fn project_dir(spec: &Spec) -> PathBuf {
     home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
 }
 
+/// Its transcript: the CLI keeps writing to the one in the folder it started in, also after a
+/// note's side chat moves into its session [D287], so it's looked for in each folder it ran in.
+pub(super) fn transcript(spec: &Spec, resume: &str) -> PathBuf {
+    let name = format!("{resume}.jsonl");
+    (temp_roots(spec).into_iter())
+        .map(|(_, cwd)| {
+            home_path(".claude/projects")
+                .join(project_slug(&cwd))
+                .join(&name)
+        })
+        .find(|path| path.exists())
+        .unwrap_or_else(|| project_dir(spec).join(name))
+}
+
 /// Resolved through its nearest existing parent: delete removes a worktree before its files.
 fn project_slug(cwd: &Path) -> String {
     crate::git::watch::resolved(cwd)

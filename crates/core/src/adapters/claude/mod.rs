@@ -430,8 +430,7 @@ impl Adapter for Claude {
                 ..Rewound::default()
             });
         };
-        let path = project_dir(spec).join(format!("{resume}.jsonl"));
-        match std::fs::read_to_string(path) {
+        match std::fs::read_to_string(cleanup::transcript(spec, resume)) {
             Ok(text) if text.contains(entry) => Ok(Rewound {
                 pin: Some(entry.into()),
                 ..Rewound::default()
@@ -470,8 +469,7 @@ impl Adapter for Claude {
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
-        let text =
-            std::fs::read_to_string(project_dir(spec).join(format!("{resume}.jsonl"))).ok()?;
+        let text = std::fs::read_to_string(cleanup::transcript(spec, resume)).ok()?;
         let (mut texts, mut tools) = (0, 0);
         for v in text
             .lines()
