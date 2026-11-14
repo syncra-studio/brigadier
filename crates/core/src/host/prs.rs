@@ -31,7 +31,7 @@ type Read = Result<(Vec<Value>, Option<String>), String>;
 /// What every PR read asks the host for: the list's row and the head commit's checks, read in one
 /// snapshot, so a PR's head and its checks always agree.
 // shortcut: a head's first 100 checks only, until a repository has more.
-pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision createdAt author { login } comments { totalCount } headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
+pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision createdAt author { login } commented: comments { totalCount } headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
 
 impl Pr {
     /// The session's PRs, read now and kept; None when the host couldn't list them.
@@ -383,7 +383,7 @@ fn row(pr: &Value) -> Value {
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),
         "author": pr["author"]["login"], "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),
-        "comments": pr["comments"]["totalCount"], "review": pr["reviewDecision"].as_str().map(str::to_lowercase),
+        "comments": pr["commented"]["totalCount"], "review": pr["reviewDecision"].as_str().map(str::to_lowercase),
         "checks": checks.map(|c| {
             let not = |of: &[&str]| c.iter().filter(|c| of.contains(&c["bucket"].as_str().unwrap_or(""))).count();
             tally(c.len(), c.len() - not(&["pass", "skipping"]), not(&["fail", "cancel"]))
