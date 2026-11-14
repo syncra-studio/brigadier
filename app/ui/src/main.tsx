@@ -221,7 +221,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
             <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${offline ? "opacity-disabled" : ""}`}>
               {/* A load error leaves the thread's place empty: its notice and Retry are on the composer's rail. */}
               {/* Fresh for each session [D490], keyed apart from the composer beside it: React loses one of two siblings sharing a key, and its rows stay on screen. */}
-              <DrawBoundary key={`thread:${id}`} summary="This conversation couldn’t be shown" className="mx-auto min-h-0 w-full max-w-reading flex-1 px-6 pt-8">
+              <DrawBoundary key={`thread:${id}`} summary="This conversation couldn’t be shown" className="mx-auto min-h-0 w-full max-w-reading flex-1 px-5 pt-8">
               <ThreadDrop owner={id}>
                 {/* Archived, its page takes the thread's place; new sessions keep their pending message [D487, D458]. */}
                 {row?.archived ? (

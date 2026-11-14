@@ -40,7 +40,7 @@ function Loading() {
     return () => clearTimeout(timer);
   }, []);
   return (
-    <div role="status" className="mx-auto w-full max-w-reading px-6 pt-thread-find-top">
+    <div role="status" className="mx-auto w-full max-w-reading px-5 pt-thread-find-top">
       <span className="sr-only">Loading conversation</span>
       {late && <Placeholder />}
     </div>
@@ -369,7 +369,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest} onToggle={toggle} />}
         </Virtualizer>
         <div data-footer>
-          <div className="mx-auto w-full max-w-reading px-6 pb-8">
+          <div className="mx-auto w-full max-w-reading px-5 pb-8">
             {after !== null && <Newer after={after} newer={source.newer} />}
             {thinking && <div className={tail?.type === "setup" || (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant" && tailTurn === last?.id) ? "pt-4" : "pt-6"}><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
