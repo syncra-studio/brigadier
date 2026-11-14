@@ -1,20 +1,19 @@
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 
 import { FileTypeIcon } from "../components/composer/attachments";
 import { ComposerPill } from "../components/composer/composer";
-import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
-import { Branch, ChevronDown, Copy } from "../icons";
+import { Branch, ChevronDown } from "../icons";
 import { PullRequestOpen } from "../landing/icons";
 import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
 import { Counts, Line, Note, PrLine } from "./source/rows";
 import { ago } from "../landing/pr-words";
+import { useBranchPicker } from "./branch-picker";
 import type { Pr } from "./types";
 
 /** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
@@ -95,7 +94,7 @@ export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing ||
 
 /**
  * The summary card's git part, as the old card's [D64]: the project as a quiet title; the branch row, the composer's
- * picker pill opening its copies menu, never a switcher [D62, D72, D232], with the +/− counts opening Review at its end (no uncommitted count, D1209) [D1273]; one note
+ * picker pill opening the quick pick in the project's own folder, a worktree's branch plain text [D72, D242], with the +/− counts opening Review at its end (no uncommitted count, D1209) [D1273]; one note
  * line; a hairline, then the session's pull requests in GitHub's state words and colours, folding as the old card's
  * Background section, its button and each row opening the Pull requests tab [D1017, D1116, D200, D202], then the
  * Workers section [D65]. Disconnected, "Offline · 14:32" takes
@@ -117,10 +116,11 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const { source } = data;
   const offline = data.offline ?? false;
   // The watch's kept PRs [D1009], the session row's where the gallery has none.
-  const { rows, projects } = useDaemon();
-  const row = rows?.find((each) => each.id === session);
-  const kept = data.kept ?? row?.prs ?? undefined;
+  const rows = useDaemon().rows;
+  const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
   const prs = data.prs ?? kept?.prs ?? [];
+  const branchRow = useRef<HTMLDivElement>(null);
+  const { picker, folder, open, pickers } = useBranchPicker({ data, ops, nowMs, anchor: branchRow });
 
   if (data.truth?.missing) {
     return (
@@ -146,45 +146,35 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const added = listed.reduce((sum, file) => sum + file.added, 0);
   const removed = listed.reduce((sum, file) => sum + file.removed, 0);
   const detached = data.truth?.detached;
-  const name = source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
+  const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
   const shared = data.share?.with;
   const note = noteOf(data);
   const first = prs.find((pr) => pr.state === "open") ?? prs[0];
   // Its start lines up with the title's; offline it can't open [D30].
   const pill = { "aria-label": `Branch: ${name}`, disabled: offline, className: "-ms-2 max-w-full" };
-  // A session's branch is its own, in its worktree or the project's folder alike: its menu only copies [D62, D232].
-  const copies: [string, string | null | undefined][] = [
-    ["session id", session],
-    ["session path", row?.folder],
-    ["project path", projects?.find((each) => each.id === row?.project)?.folder],
-    ["branch name", source.branch],
-  ];
+  const label = (
+    <span className="flex min-w-0 items-center gap-1">
+      <Branch />
+      <span className="truncate text-foreground">{name}</span>
+      {/* Both cut, so the share always shows [D1082]. */}
+      {shared && <span className="truncate">· shared with {shared}</span>}
+      {folder && <ChevronDown className="size-icon-xs" />}
+    </span>
+  );
   return (
     <>
       <CardSection title={project}>
         {/* A watch that failed after its first read: the last read stays under it [D30]. */}
         {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
-        <div className="flex min-w-0 items-center gap-2">
-          {/* The composer's pickers' pill and menu [D72]. */}
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={<ComposerPill {...pill} />}>
-              <span className="flex min-w-0 items-center gap-1">
-                <Branch />
-                <span className="truncate text-foreground">{name}</span>
-                {/* Both cut, so the share always shows [D1082]. */}
-                {shared && <span className="truncate">· shared with {shared}</span>}
-                <ChevronDown className="size-icon-xs" />
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="start">
-              {copies.map(([what, value]) => (
-                <DropdownMenuItem key={what} onClick={() => value && copyWithToast(value, what)}>
-                  <Copy />
-                  Copy {what}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div ref={branchRow} className="flex min-w-0 items-center gap-2">
+          {/* The composer's pickers' pill [D72]; a worktree's branch has no menu, its copies in the tab's ⋯ [D242]. */}
+          {folder ? (
+            <ComposerPill {...pill} aria-expanded={picker === "branch"} onClick={() => open("branch")}>
+              {label}
+            </ComposerPill>
+          ) : (
+            <span className="inline-flex h-control-sm min-w-0 items-center text-sm text-muted-foreground svg:size-icon-md svg:shrink-0">{label}</span>
+          )}
           <span className="flex-1" />
           {offline ? (
             <Offline readAtMs={data.readAtMs ?? null} />
@@ -222,6 +212,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         </CardSection>
       )}
       {workers}
+      {pickers}
     </>
   );
 }

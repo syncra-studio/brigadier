@@ -1,13 +1,16 @@
-// Every picker, one live copy each: project, Work in and branch as Home has them, the model and the permission. The
-// agents are Rust's, with their marks from their adapters.
-import { useEffect, useState } from "react";
+// Every picker, one live copy each: project, Work in and branch as Home has them, the model, the permission and the
+// panel's branch quick pick. The agents are Rust's, with their marks from their adapters.
+import { useEffect, useRef, useState } from "react";
 
+import { Button } from "../src/components/button";
 import { CheckboxRow } from "../src/components/checkbox-row";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { BranchPicker, type RepoState } from "../src/home/branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "../src/home/pills";
 import { showToast } from "../src/components/toast";
+import { useBranchPicker } from "../src/panel/branch-picker";
+import { BRANCHES, CLEAN } from "../src/panel/fake";
 import { asGroups } from "../src/session/model";
 import { Section } from "./parts";
 
@@ -92,6 +95,25 @@ export function BranchToggles({ loading, failed, onLoading, onFailed }: { loadin
   );
 }
 
+/** The panel's branch quick pick under the card's branch row, in the user's own folder [D242]. A pick only closes here. */
+function PanelBranch() {
+  const anchor = useRef<HTMLDivElement>(null);
+  const [working, setWorking] = useState(false);
+  const source = { ...CLEAN, checkout: "folder" as const, branch: "main" };
+  const { open, pickers } = useBranchPicker({ data: { source, branches: BRANCHES, agentWorking: working }, nowMs: Date.now(), anchor });
+  return (
+    <div className="flex flex-col items-start gap-3">
+      <div ref={anchor}>
+        <Button size="sm" variant="outline" onClick={() => open("branch")}>
+          {source.branch}
+        </Button>
+      </div>
+      {pickers}
+      <CheckboxRow label="The agent is working" checked={working} onCheckedChange={setWorking} />
+    </div>
+  );
+}
+
 export function PickersGallery() {
   const [permission, setPermission] = useState<PermissionLevel>("ask");
   const [untrusted, setUntrusted] = useState(false);
@@ -117,6 +139,9 @@ export function PickersGallery() {
           <PermissionPicker value={untrusted ? "ask" : permission} untrusted={untrusted} onChange={setPermission} />
           <CheckboxRow label="Folder not trusted" checked={untrusted} onCheckedChange={setUntrusted} />
         </div>
+      </Section>
+      <Section title="Branch quick pick">
+        <PanelBranch />
       </Section>
     </>
   );

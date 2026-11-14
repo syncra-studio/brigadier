@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { copyWithToast } from "../components/copy-button";
+import { useDaemon } from "../daemon";
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -14,6 +15,7 @@ import {
   DropdownMenuSubTrigger,
 } from "../components/menu";
 import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
+import { useGit } from "../panel/git";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { showToast } from "../components/toast";
 import { keysOf } from "../shortcuts";
@@ -24,6 +26,17 @@ import type { SessionRow } from "./words";
 /** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
 export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () => void }) {
   const pinned = Boolean(row.pinned);
+  const projects = useDaemon().projects;
+  const git = useGit();
+  // The branch is the git watch's, which follows the shown session: its tab's menu always has it [D243].
+  const branch = git.target && "session" in git.target && git.target.session === row.id ? (git.source?.branch ?? git.truth?.branch) : null;
+  // Every session's four copies, each when it has the value [D232, D243].
+  const copies: [string, string | null | undefined][] = [
+    ["session ID", row.id],
+    ["session path", row.folder],
+    ["project path", projects?.find((each) => each.id === row.project)?.folder],
+    ["branch name", branch],
+  ];
   return (
     <>
       <DropdownMenuItem onClick={() => pin(row, !pinned)}>
@@ -43,8 +56,7 @@ export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () 
           Copy
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
-          {row.folder && <DropdownMenuItem onClick={() => copyWithToast(row.folder!, "path")}>Copy path</DropdownMenuItem>}
-          <DropdownMenuItem onClick={() => copyWithToast(row.id, "session id")}>Copy session id</DropdownMenuItem>
+          {copies.map(([what, value]) => value && <DropdownMenuItem key={what} onClick={() => copyWithToast(value, what)}>Copy {what}</DropdownMenuItem>)}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <DropdownMenuSeparator />
