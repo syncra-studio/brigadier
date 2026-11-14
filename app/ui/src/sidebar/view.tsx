@@ -4,12 +4,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/menu";
 import { RowAction } from "../components/row-action";
+import { Segment, SegmentedRoot } from "../components/segmented";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ListFilter } from "../icons";
 import { openAddProject } from "../projects/store";
@@ -18,6 +17,11 @@ import { useStored } from "./sidebar";
 import type { Project, SessionRow } from "./words";
 
 export type Grouping = "none" | "project";
+
+const LAYOUTS: [Grouping, string][] = [
+  ["none", "Inbox"],
+  ["project", "Projects"],
+];
 
 /** What the View control leaves out of the list, kept as this window's view. */
 export type ShowFilter = {
@@ -51,8 +55,9 @@ export function useShowFilter(storeKey: string, projects: Project[]): ShowFilter
 
 /**
  * The View button in the search field and its menu [new-design]: Inbox, one list across projects, or Projects,
- * grouped; then Show, each project with its badge, then chats without one, a tick each, staying open while
- * ticked; then Add project. Beside the button, how many projects show while anything is left out.
+ * grouped, two segments across its top, the chosen one filled; then Show, each project with its badge, then
+ * chats without one, a tick each, staying open while ticked; then Add project. Beside the button, how many
+ * projects show while anything is left out.
  */
 export function ViewMenu({ grouping, onGrouping, projects, show }: { grouping: Grouping; onGrouping: (next: Grouping) => void; projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
@@ -71,14 +76,13 @@ export function ViewMenu({ grouping, onGrouping, projects, show }: { grouping: G
           <TooltipContent side="bottom">View</TooltipContent>
         </Tooltip>
         <DropdownMenuContent side="bottom" align="end" className="w-60">
-          <DropdownMenuRadioGroup value={grouping} onValueChange={(next) => onGrouping(next as Grouping)}>
-            <DropdownMenuRadioItem inset closeOnClick={false} value="none">
-              Inbox
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem inset closeOnClick={false} value="project">
-              Projects
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
+          <SegmentedRoot aria-label="Layout" value={[grouping]} onValueChange={([next]) => next && onGrouping(next as Grouping)} className="flex h-7.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset">
+            {LAYOUTS.map(([value, label]) => (
+              <Segment key={value} value={value} className="min-w-0 flex-1 cursor-pointer rounded-capsule text-sm text-toolbar-foreground hover:bg-fill focus-visible:focus-ring data-pressed:bg-selection data-pressed:text-foreground data-pressed:shadow-session-tab">
+                {label}
+              </Segment>
+            ))}
+          </SegmentedRoot>
           <DropdownMenuSeparator />
           <DropdownMenuLabel inset variant="heading">
             Show
