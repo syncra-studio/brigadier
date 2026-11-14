@@ -2,7 +2,7 @@ import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
 import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
@@ -318,6 +318,16 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     focus(order[next]!);
   };
 
+  // The wheel scrolls the strip from anywhere on the pill: the chat tab and the pill's edge move it as the tabs do,
+  // and a mouse wheel's up and down move it along; a sideways swipe over the strip it already scrolls itself.
+  const onWheel = (event: ReactWheelEvent) => {
+    const list = strip.current;
+    if (!list) return;
+    const sideways = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+    if (sideways && list.contains(event.target as Node)) return;
+    list.scrollLeft += sideways ? event.deltaX : event.deltaY;
+  };
+
   const newTab = (
     <TooltipIconButton look="round" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
       <Plus />
@@ -342,8 +352,9 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-tab-bar shrink-0 items-center gap-2 pt-3.5 pe-1 win:pt-0 win:pe-caption">
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
       <div className="session-tab-room flex min-w-0 flex-1 items-center gap-2 self-stretch">
-        {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge. */}
-        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys}>
+        {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge.
+            The whole pill is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
+        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
           {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
           <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto empty:hidden">
             {/* Held inside the strip, which is a tab high: it moves along the row only. */}
