@@ -16,7 +16,6 @@ import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
-import { GlobalSearch } from "./palette/palette";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
@@ -42,6 +41,7 @@ import { listenToSettingsKeys, SettingsNav, SettingsView, settingsPageOf } from 
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
 import { SidebarFoot } from "./sidebar/foot";
+import { listenToSearchKey } from "./sidebar/search";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
 import "./theme.css";
@@ -274,6 +274,8 @@ function retryWords(reason: unknown): string {
 listenToMenu();
 // ⌘, opens Settings, ⌘/ its Keyboard shortcuts [D2013, D2022].
 listenToSettingsKeys();
+// ⌘K searches in the sidebar [D37].
+listenToSearchKey();
 // The Review diff's engine loads at idle, so the first diff opened draws at once (the old app's warmCode).
 void import("./review/diff-view").then((view) => view.warmReview());
 
@@ -298,7 +300,6 @@ createRoot(document.getElementById("root")!).render(
           <App />
         </DrawBoundary>
         <AddProjectHost />
-        <GlobalSearch />
         <Toaster className="top-titlebar pt-2" />
         <ImageViewerHost />
       </>

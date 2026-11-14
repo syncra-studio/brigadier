@@ -10,7 +10,6 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
@@ -19,6 +18,7 @@ import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, PinnedFlyout, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
+import { askSearch, SearchField, SearchResults, SearchRoot, useSidebarSearch } from "./search";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, ProjectBadge, SessionRowItem } from "./row";
 import { type Grouping, useShowFilter, ViewMenu } from "./view";
@@ -98,6 +98,8 @@ export function AppSidebar({
   const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
+  // Typing searches in the list's place; Archived and the pill wait until the field is cleared [D37].
+  const search = useSidebarSearch(rows, projects, offline, onOpen);
   const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
@@ -209,6 +211,7 @@ export function AppSidebar({
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
     >
+      <SearchRoot search={search}>
         {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
           {/* No traffic lights (Windows, macOS full screen): the name heads the row the History pill ends. */}
@@ -222,17 +225,17 @@ export function AppSidebar({
             <ComposeEditSquare />
             New chat
           </NavRow>
-          <div className="flex h-7.5 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1">
-            <button type="button" aria-label="Search" title={`Search ${keysOf("search")[0]}`} onClick={openSearch} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 self-stretch text-label text-placeholder outline-none focus-visible:focus-ring">
-              <MagnifyingGlassSmSearch className="size-icon-sm shrink-0" />
-              Search
-            </button>
+          <div className="flex h-7.5 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1 field-focus:focus-ring">
+            <MagnifyingGlassSmSearch className="size-icon-sm shrink-0 text-placeholder" />
+            <SearchField search={search} label={`Search ${keysOf("search")[0]}`} />
             <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} show={show} />
           </div>
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={list} className={LIST}>
-            {rest === undefined ? (
+            {search.query ? (
+              <SearchResults search={search} projects={projects} />
+            ) : rest === undefined ? (
               <Loading />
             ) : (
               <>
@@ -281,10 +284,11 @@ export function AppSidebar({
               </>
             )}
           </div>
-          <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
+          {!search.query && <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />}
         </div>
+      </SearchRoot>
       <ArchiveAsk />
-      <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
+      {!search.query && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
     </SidebarPanel>
   );
@@ -377,7 +381,7 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
         <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
           <ComposeEditSquare />
         </TooltipIconButton>
-        <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
+        <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={askSearch}>
           <MagnifyingGlassSmSearch />
         </TooltipIconButton>
       </div>

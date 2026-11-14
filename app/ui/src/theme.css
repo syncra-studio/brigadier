@@ -365,8 +365,6 @@
   /* A decision card narrower than this stacks its buttons full width (the old app's 28rem). */
   --container-card-narrow: 28rem;
   --container-toast: 32rem;
-  /* The ⌘K search palette's card (the old app's). */
-  --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
   --spacing-nav-header: 3.25rem;
@@ -882,6 +880,8 @@
 @custom-variant summary-beside (&[data-pinned][data-summary="beside"]);
 @custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
+/* A field's box while its input has focus (the sidebar's search). */
+@custom-variant field-focus (&:has(input:focus-visible));
 /* The toolbar pill's button while it is the only one there. */
 @custom-variant lone-toggle (& > :only-child > button);
 /* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
