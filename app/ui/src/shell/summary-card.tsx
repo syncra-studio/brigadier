@@ -97,12 +97,12 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
  * Escape closes it, so `open` is all it follows.
  */
 function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
-  // The pane's whole width, so the card follows the pane's end as the pane narrows.
+  // The pane's whole width, so the card follows the pane's end as the pane narrows; clear of Windows' fixed toggles as the pinned one.
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const popup = useRef<HTMLDivElement>(null);
   return (
     <>
-      <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0" />
+      <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0 toggles-clear:end-toggles-clear" />
       {/* Focus is on the card, so its own Escape closes it; a click elsewhere leaves it shown. */}
       <Popover.Root open={open} onOpenChange={(next, details) => !next && details.reason === "escape-key" && onClose()}>
         <Popover.Portal>
@@ -114,7 +114,8 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               // opened before it floated keeps it.
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
-              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
+              // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel; below, room for its shadow.
+              className="pointer-events-none flex max-h-available w-71 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
