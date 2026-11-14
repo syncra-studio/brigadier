@@ -10,7 +10,7 @@ import { NoteWithChat } from "../note/chat";
 import { NoteEditor, focusNoteStart } from "../note/editor";
 import { EmojiButton, headOf, NoteTopBar, splitHead } from "../note/top-bar";
 import "../note/page.css";
-import { HOME, closeTab, openTab } from "./tab-store";
+import { closeTab, openTab } from "./tab-store";
 
 /** What a note with nothing written yet is called, by its tab and the New tab. */
 export const UNTITLED_NOTE = "Untitled note";
@@ -143,7 +143,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
     useTheirs();
   };
   return (
-    <NoteWithChat owner={owner === HOME ? null : owner} note={note} offline={offline} onChat={(chat) => setRead((was) => (was && "revision" in was ? { ...was, chat } : was))}>
+    <NoteWithChat owner={owner} note={note} offline={offline} onChat={(chat) => setRead((was) => (was && "revision" in was ? { ...was, chat } : was))}>
       <div data-slot="note-tab" className="note-tab">
         <NoteTopBar
           owner={owner}

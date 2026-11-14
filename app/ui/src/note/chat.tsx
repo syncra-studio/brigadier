@@ -1,10 +1,15 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { SessionOfThread } from "../accounts/limit";
+import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ErrorLine } from "../components/error-line";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { ask, useDaemon } from "../daemon";
-import { MinimizeRight } from "../icons/note";
+import { useHomeDraft, useHomeProject } from "../home/start";
+import { History, MinimizeRight } from "../icons/note";
+import { ago } from "../panel/words";
+import { HOME } from "../shell/tab-store";
 import { Chat } from "../icons/thread";
 import { ChatCompose } from "../icons/tab";
 import { X } from "../icons";
@@ -25,9 +30,9 @@ const views = new Map<string, { view: View; share: number }>();
 /**
  * A note with its own chat, as the old app's page tab: the note, and while the chat is open a resizable split with
  * the chat in the half at the end. Folded, the chat is a strip at the tab's edge; hidden, a round button brings it
- * back [D281]. A note on Home, before its session is made, has no chat yet.
+ * back [D281]. A note on Home has one too, on the new chat's picked agent, and it comes into the session with it [D287].
  */
-export function NoteWithChat({ owner, note, offline, onChat, children }: { owner: string | null; note: string; offline: boolean; onChat: (id: string) => void; children: ReactNode }) {
+export function NoteWithChat({ owner, note, offline, onChat, children }: { owner: string; note: string; offline: boolean; onChat: (id: string) => void; children: ReactNode }) {
   const key = `${owner}/${note}`;
   const [{ view, share }, setState] = useState(() => views.get(key) ?? { view: "hidden" as View, share: SHARE });
   const set = (next: Partial<{ view: View; share: number }>) =>
@@ -36,30 +41,37 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
       views.set(key, now);
       return now;
     });
-  // The chat's id, made by Rust on first open; `fresh` asks for a new one in its place.
+  // The chat's id, made by Rust on first open.
   const [chat, setChat] = useState<{ id: string } | { error: string } | null>(null);
-  const open = (fresh = false) => {
-    if (!owner) return;
+  // Home's chat runs on what the new chat has picked [D287].
+  const { model } = useHomeDraft();
+  const project = useHomeProject();
+  const pick = owner !== HOME ? [] : model ? ["--backend", model.provider, "--model", model.model, ...(model.effort ? ["--effort", model.effort] : []), ...(project ? ["--project", project.id] : [])] : null;
+  // `how`: a new chat, or an earlier one of the session's reopened here [D288].
+  const open = (how?: "--new" | { reopen: string }) => {
     set({ view: "split" });
-    if (chat && "id" in chat && !fresh) return;
+    if (chat && "id" in chat && !how) return;
+    if (!pick) return setChat({ error: "Pick a model for the new chat first." });
     setChat(null);
-    void daemonRun(["note", owner, "chat", note, newId(), ...(fresh ? ["--new"] : [])]).then((reply) => {
+    const args = typeof how === "object" ? [how.reopen, "--open"] : [newId(), ...(how ? [how] : [])];
+    void daemonRun(["note", owner, "chat", note, ...args, ...pick]).then((reply) => {
       setChat(reply.ok ? { id: reply.chat } : { error: failure(reply) });
       if (reply.ok) onChat(reply.chat);
     });
   };
   // Reopened, the chat it had comes back as it was.
   useEffect(() => {
-    if (view !== "hidden" && owner && chat === null) open();
+    if (view !== "hidden" && chat === null) open();
     // Only as the tab first shows.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const row = useRef<HTMLDivElement>(null);
   const id = chat && "id" in chat ? chat.id : null;
   return (
     <div ref={row} data-slot="note-with-chat" className="relative flex min-h-0 min-w-0 flex-1">
-      <div data-slot="note-content" data-share={view === "split" ? 1 - share : 1} className="note-share relative flex min-h-0 min-w-0 flex-col">
+      {/* Only split does it take a share; otherwise it leaves the strip its room. */}
+      <div data-slot="note-content" data-share={1 - share} className={cx(view === "split" ? "note-share" : "flex-1", "relative flex min-h-0 min-w-0 flex-col")}>
         {children}
-        {owner && view === "hidden" && (
+        {view === "hidden" && (
           <div className="absolute end-4 bottom-4 z-20">
             <ChatButton id={id} onClick={() => open()} />
           </div>
@@ -71,7 +83,8 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
           <div data-slot="note-chat" className="flex min-h-0 min-w-0 flex-1 flex-col border-s border-border">
             <div data-slot="note-chat-header" className="flex h-titlebar shrink-0 items-center gap-1 px-2">
               <ChatTitle id={id} />
-              <TooltipIconButton tooltip="New chat" onClick={() => open(true)}>
+              <ChatHistory owner={owner} id={id} onOpen={(reopen) => open({ reopen })} />
+              <TooltipIconButton tooltip="New chat" onClick={() => open("--new")}>
                 <ChatCompose />
               </TooltipIconButton>
               <TooltipIconButton tooltip="Minimize" onClick={() => set({ view: "minimized" })}>
@@ -91,6 +104,36 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
 }
 
 const useChatRow = (id: string | null) => useDaemon().rows?.find((row) => row.id === id);
+
+/** The session's earlier side chats, newest first, each reopened here; shown only when there are some [D288]. */
+function ChatHistory({ owner, id, onOpen }: { owner: string; id: string | null; onOpen: (chat: string) => void }) {
+  const rows = useDaemon().rows;
+  const [kept, setKept] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    void daemonRun(["note", owner, "chats"]).then((reply) => live && reply.ok && setKept(reply.chats));
+    return () => {
+      live = false;
+    };
+  }, [owner, id]);
+  const earlier = (rows ?? []).filter((row) => row.id !== id && kept.includes(row.id)).toSorted((a, b) => b.updated - a.updated);
+  if (earlier.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<TooltipIconButton tooltip="History" />}>
+        <History />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="note-menu w-64">
+        {earlier.map((row) => (
+          <DropdownMenuItem key={row.id} className="note-menu-item" onClick={() => onOpen(row.id)}>
+            <span className="min-w-0 flex-1 truncate">{row.title || "Chat"}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{ago(row.updated, Date.now())}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function ChatTitle({ id }: { id: string | null }) {
   return <span className="min-w-0 flex-1 truncate ps-1 text-sm font-medium text-foreground">{useChatRow(id)?.title || "Chat"}</span>;

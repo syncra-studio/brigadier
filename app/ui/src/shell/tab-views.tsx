@@ -5,6 +5,7 @@ import { EmptyState } from "../components/empty-state";
 import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, PlayCircle, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
@@ -36,6 +37,18 @@ const TOP = "flex min-h-4.5 w-full items-center justify-between gap-2"; // a key
 const ICON = "size-icon-md shrink-0 text-muted-foreground";
 const LABEL = "w-full min-w-0 truncate";
 
+/** A tile's card. Every tile is always drawn; one that can't be used here says why on hover, the tip hung on its card, as
+ *  a disabled button hears no pointer. */
+function Card({ why, children }: { why: string | null; children: ReactNode }) {
+  if (!why) return <div className={CARD}>{children}</div>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<div className={CARD} />}>{children}</TooltipTrigger>
+      <TooltipContent>{why}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The old app's New tab, with no browser yet: what's picked replaces it; Side chat and Find file aren't built yet [D361, D388, D240, D244]. */
 function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; archived: boolean; active: boolean }) {
   // What's picked opens in this tab's place, as Terminal does, though Rust's replace takes no target [D240].
@@ -45,27 +58,26 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
   };
   // The card's last known PRs, so it opens what the card's PR button opens [D200, D240].
   const prs = useDaemon().rows?.find((row) => row.id === owner)?.prs?.prs ?? [];
-  // Before the first message they read the picked project's repository; a chat with no project has none, so no tile [D279].
+  // Before the first message they read the picked project's repository; a chat with no project has none [D279].
   const home = useHomeProject();
-  const repo = owner !== HOME || home !== null;
-  const repoTile = (Icon: typeof PullRequestOpen, label: string, open: () => void) =>
-    repo && (
-      <div className={CARD}>
-        <button type="button" onClick={open} className={TOOL}>
-          <span className={TOP}>
-            <Icon className={ICON} />
-          </span>
-          <span className={LABEL}>{label}</span>
-        </button>
-      </div>
-    );
+  const noRepo = owner === HOME && home === null;
+  const shut = archived ? "This session is archived." : null;
+  const repoTile = (Icon: typeof PullRequestOpen, label: string, what: string, open: () => void) => (
+    <Card why={noRepo ? `Choose a project to see its ${what}.` : null}>
+      <button type="button" disabled={noRepo} onClick={open} className={TOOL}>
+        <span className={TOP}>
+          <Icon className={ICON} />
+        </span>
+        <span className={LABEL}>{label}</span>
+      </button>
+    </Card>
+  );
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
         <h2 className="font-medium">Tools</h2>
-        {/* A chat with no project has only Terminal and New note, centred at a fifth of the row each [D284]. */}
-        <div className={cx("grid grid-cols-2 gap-2", repo ? "@new-tab:grid-cols-5" : "@new-tab:grid-cols-10")}>
-          <div className={cx(CARD, !repo && "@new-tab:col-span-2 @new-tab:first:col-start-4")}>
+        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-5">
+          <Card why={shut}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
               <span className={TOP}>
                 <Dock className={ICON} />
@@ -73,44 +85,42 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               </span>
               <span className={LABEL}>Terminal</span>
             </button>
-          </div>
-          <div className={cx(CARD, !repo && "@new-tab:col-span-2 @new-tab:first:col-start-4")}>
+          </Card>
+          <Card why={shut}>
             <button type="button" disabled={archived} onClick={() => replaceWith(() => openTab(owner, "note", newId()))} className={TOOL}>
               <span className={TOP}>
                 <Document className={ICON} />
               </span>
               <span className={LABEL}>New note</span>
             </button>
-          </div>
-          {repoTile(PullRequestOpen, "Pull requests", () => replaceWith(() => openPrs(owner, prs)))}
+          </Card>
+          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceWith(() => openPrs(owner, prs)))}
           {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
-          {repoTile(PlayCircle, "Actions", () => replaceWith(() => openTab(owner, "actions")))}
-          {repo && (
-            <div className={CARD}>
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
-                  <span className={TOP}>
-                    <Grid className={ICON} />
-                    <ChevronDown className={ICON} />
-                  </span>
-                  <span className={LABEL}>More tools…</span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
-                  <DropdownMenuItem disabled>
-                    <ChatCompose />
-                    Side chat
-                    <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <Search />
-                    Find file
-                    <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
+          {repoTile(PlayCircle, "Actions", "workflow runs", () => replaceWith(() => openTab(owner, "actions")))}
+          <div className={CARD}>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
+                <span className={TOP}>
+                  <Grid className={ICON} />
+                  <ChevronDown className={ICON} />
+                </span>
+                <span className={LABEL}>More tools…</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
+                <DropdownMenuItem disabled>
+                  <ChatCompose />
+                  Side chat
+                  <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled>
+                  <Search />
+                  Find file
+                  <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         <NoteList owner={owner} active={active} onOpen={(note) => replaceWith(() => openTab(owner, "note", note))} />
       </div>

@@ -437,33 +437,27 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         now.rev = was.rev + 1;
         write(&path, &now)?;
     }
-    let notes = |tabs: &Tabs| -> Vec<String> {
-        (tabs.tabs.iter().filter(|t| t.kind == "note"))
-            .filter_map(|t| t.target.clone())
-            .collect()
-    };
-    let open = notes(&now);
+    // A note closed before the first message goes with its tab, its side chats too: there's no
+    // session to list it [D280, D287]. A session's keeps its side chats for History [D288].
     if home {
-        // A note closed before the first message goes with its tab: there's no session to list it [D280].
-        for entry in fs::read_dir(note::home(data))
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
+        let open = |note: &str| {
+            (now.tabs.iter()).any(|t| t.kind == "note" && t.target.as_deref() == Some(note))
+        };
+        let dir = note::home(data);
+        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let path = entry.path();
-            if !path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .is_some_and(|n| open.iter().any(|o| o == n))
-            {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if open(stem) {
+                continue;
+            }
+            // A chat's record goes once its chats have, so one that failed is tried again.
+            if path.extension().is_some_and(|e| e == "chat") {
+                let _ = note::drop_chat(data, &dir, stem);
+            } else {
                 let _ = fs::remove_file(path);
             }
-        }
-    } else {
-        // A note's side chat goes with the last tab showing the note, as the old app's tab chat [D281].
-        let dir = core::session_dir(data, id).join("notes");
-        for gone in notes(&was).iter().filter(|n| !open.contains(n)) {
-            note::drop_chat(data, &dir, gone)?;
         }
     }
     Ok(state(&now))
@@ -491,6 +485,7 @@ pub fn carry(data: &Path, to: &str) -> io::Result<()> {
     let notes = note::home(data);
     if notes.is_dir() {
         fs::rename(&notes, core::session_dir(data, to).join("notes"))?;
+        note::carried(data, &core::load(data, to)?)?;
     }
     home.active = CHAT.into();
     home.rev += 1;

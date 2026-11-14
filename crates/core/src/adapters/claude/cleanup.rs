@@ -54,28 +54,30 @@ pub fn scratch(spec: &Spec) -> Vec<PathBuf> {
 /// `<id>.jsonl.superseded-…`), and per session in its home: checkpoints, environment, task list,
 /// debug log; and its temp folders.
 pub fn external(spec: &Spec, resume: &str) -> Vec<PathBuf> {
-    let dir = project_dir(spec);
     let mut paths = recorded(spec, resume).unwrap_or_default();
-    paths.extend([
-        dir.join(format!("{resume}.jsonl")),
-        dir.join(resume),
-        cli_home(spec, ".claude", "debug").join(format!("{resume}.txt")),
-    ]);
+    paths.push(cli_home(spec, ".claude", "debug").join(format!("{resume}.txt")));
     for rest in ["file-history", "session-env", "tasks"] {
         paths.push(cli_home(spec, ".claude", rest).join(resume));
     }
-    paths.extend(
-        fs::read_dir(&dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with(&format!("{resume}."))
-            })
-            .map(|e| e.path()),
-    );
+    // Each folder it ran in: a note's side chat moves with its note into the session [D287].
+    let dirs: BTreeSet<PathBuf> = (temp_roots(spec).into_iter())
+        .map(|(_, cwd)| home_path(".claude/projects").join(project_slug(&cwd)))
+        .collect();
+    for dir in dirs {
+        paths.extend([dir.join(format!("{resume}.jsonl")), dir.join(resume)]);
+        paths.extend(
+            fs::read_dir(&dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with(&format!("{resume}."))
+                })
+                .map(|e| e.path()),
+        );
+    }
     paths.extend(scratch(spec).into_iter().map(|p| p.join(resume)));
     paths.sort();
     paths.dedup();
