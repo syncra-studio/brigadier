@@ -33,7 +33,8 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     let why = str_of(hold, "why");
     let item = json!({"text": format!("{why} until {when}. How should it go on?"), "options": options,
         "recommended": null, "multiSelect": false});
-    let request = json!({"id": id, "title": "Out of quota", "items": [item]});
+    // `held`: its card offers only these answers, no words of the user's and no Skip.
+    let request = json!({"id": id, "title": "Out of quota", "items": [item], "held": true});
     let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "resets": until,
         "lower": lower, "row": hold["row"], "request": request});
     owner::call(data, wid, json!({"op": "note", "data": note}))?;
@@ -53,6 +54,11 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
             json!({"ok": false, "error": "not_waiting", "message": "This isn't waiting on you."}),
         );
     };
+    let offered = hold["request"]["items"][0]["options"].as_array();
+    if !offered.is_some_and(|o| o.iter().any(|o| o["label"] == choice)) {
+        return Ok(json!({"ok": false, "error": "invalid",
+            "message": "A held worker takes only one of its card's answers."}));
+    }
     let lower = choice.starts_with("Use ") && hold["lower"].is_object();
     let phase = if lower { "answered" } else { "waiting" };
     let note = json!({"event": "hold", "phase": phase, "id": request, "choice": choice,

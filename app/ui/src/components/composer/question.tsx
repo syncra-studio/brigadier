@@ -22,6 +22,8 @@ export type PendingQuestion = {
   /** A few words over the question (a round's title). */
   title?: string | null;
   items: QuestionItem[];
+  /** A worker's routing hold: only its own answers, no words of the user's and no Skip [D2028, D342]. */
+  held?: boolean;
 };
 
 /** How long a picked answer shows its dot before it goes: time for a double-click's second click to call it off. */
@@ -128,6 +130,7 @@ export function QuestionCard({
       title={<CodeSpans text={item.text} />}
       kind={question.title && <CodeSpans text={question.title} />}
       item={item}
+      held={question.held === true}
       kept={lit[at] ?? (picked >= 0 ? picked : null)}
       marked={item.multiSelect ? (marks ?? []) : undefined}
       initialText={drafts[at] ?? (ownWords ? given : "")}
@@ -173,6 +176,7 @@ function QuestionPage({
   title,
   kind,
   item,
+  held,
   kept,
   marked: keptMarks,
   initialText,
@@ -194,6 +198,7 @@ function QuestionPage({
   title: ReactNode;
   kind?: ReactNode;
   item: QuestionItem;
+  held: boolean;
   kept: number | null;
   /** Multi-select: the answers marked so far. */
   marked?: readonly number[];
@@ -320,7 +325,7 @@ function QuestionPage({
   return (
     <ActionCard ref={card} container="request" tabIndex={0} aria-label="Question" data-action="question" onKeyDown={onKeyDown}>
       <div {...row(0)}>
-        <ActionCardQuestion onDismiss={() => idle && onClose()} dismissLabel="Skip" kind={kind} aside={pager}>
+        <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel="Skip" kind={kind} aside={pager}>
           {title}
         </ActionCardQuestion>
       </div>
@@ -349,42 +354,44 @@ function QuestionPage({
             ))}
           </div>
         )}
-        <ActionFreeText
-          marker={pickable}
-          highlighted={pickable && highlight === -1}
-          {...row(options.length + 1)}
-          field={
-            <div className="min-w-0 flex-1" onFocus={() => setHighlight(-1)}>
-              {/* shortcut: plain words only (no @ or / menus, no pasted files); pass the composer's through and answer a Draft once Rust takes one. */}
-              <ComposerField
-                ref={field}
-                size="card"
-                label="Your answer"
-                placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
-                initial={{ parts: initialText ? [initialText] : [], attachmentIds: [] }}
-                onChange={(parts) => {
-                  const value = plainText(parts);
-                  setTyped(value);
-                  onTyped(value);
-                  if (value) setHighlight(-1);
-                }}
-                onSubmit={() => text && submit()}
-                onEscape={() => card.current?.focus()}
-                // ↑ in the empty field goes back up to the answers.
-                onPullQueued={() => {
-                  if (!pickable) return false;
-                  setHighlight(options.length - 1);
-                  card.current?.focus();
-                  return true;
-                }}
-              />
-            </div>
-          }
-        >
-          <button type="button" className={actionButton(ready ? "primary" : "outline", "font-medium")} disabled={busy} onClick={submit}>
-            {!ready ? "Skip" : last ? "Submit" : "Next"}
-          </button>
-        </ActionFreeText>
+        {!held && (
+          <ActionFreeText
+            marker={pickable}
+            highlighted={pickable && highlight === -1}
+            {...row(options.length + 1)}
+            field={
+              <div className="min-w-0 flex-1" onFocus={() => setHighlight(-1)}>
+                {/* shortcut: plain words only (no @ or / menus, no pasted files); pass the composer's through and answer a Draft once Rust takes one. */}
+                <ComposerField
+                  ref={field}
+                  size="card"
+                  label="Your answer"
+                  placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
+                  initial={{ parts: initialText ? [initialText] : [], attachmentIds: [] }}
+                  onChange={(parts) => {
+                    const value = plainText(parts);
+                    setTyped(value);
+                    onTyped(value);
+                    if (value) setHighlight(-1);
+                  }}
+                  onSubmit={() => text && submit()}
+                  onEscape={() => card.current?.focus()}
+                  // ↑ in the empty field goes back up to the answers.
+                  onPullQueued={() => {
+                    if (!pickable) return false;
+                    setHighlight(options.length - 1);
+                    card.current?.focus();
+                    return true;
+                  }}
+                />
+              </div>
+            }
+          >
+            <button type="button" className={actionButton(ready ? "primary" : "outline", "font-medium")} disabled={busy} onClick={submit}>
+              {!ready ? "Skip" : last ? "Submit" : "Next"}
+            </button>
+          </ActionFreeText>
+        )}
       </div>
       <ErrorLine error={error} className="px-4 pb-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
       {footer}

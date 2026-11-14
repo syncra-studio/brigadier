@@ -243,7 +243,8 @@ export function ActionCardQuestion({
   children: ReactNode;
   kind?: ReactNode;
   aside?: ReactNode;
-  onDismiss: () => void;
+  /** Absent: no ✕. */
+  onDismiss?: () => void;
   dismissLabel?: string;
 }) {
   return (
@@ -257,9 +258,11 @@ export function ActionCardQuestion({
         <ActionCardTitle>{children}</ActionCardTitle>
       </div>
       {aside}
-      <TooltipIconButton tooltip={dismissLabel} size="icon-sm" className="-mt-0.5 shrink-0 text-toolbar-foreground" onClick={onDismiss}>
-        <X />
-      </TooltipIconButton>
+      {onDismiss && (
+        <TooltipIconButton tooltip={dismissLabel} size="icon-sm" className="-mt-0.5 shrink-0 text-toolbar-foreground" onClick={onDismiss}>
+          <X />
+        </TooltipIconButton>
+      )}
     </div>
   );
 }

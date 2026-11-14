@@ -1,6 +1,7 @@
 import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
+import { type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { Body } from "../components/thread/body";
 import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
@@ -337,11 +338,11 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
   const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
-  const [{ items, turns, setup }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null }>({ items: [], turns: [] });
+  const [{ items, turns, setup, questions }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null; questions?: PendingQuestion[] }>({ items: [], turns: [] });
   const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
-    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup }));
+    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup, questions: reply.session.questions }));
     return () => {
       live = false;
     };
@@ -349,6 +350,7 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
   const rest = useMemo(() => items.filter((item) => item !== brief), [items, brief]);
+  const hold = questions?.find((question) => question.held);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
@@ -365,6 +367,12 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
         }
       />
       <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
+      {/* Its hold is the user's call, answered here where "Needs you" leads [D2028, D342]; its other asks are its parent's [D119, D131]. */}
+      {!details && hold && (
+        <div className="mx-2 mb-2 shrink-0 rounded-overlay border border-border bg-rail-glass">
+          <QuestionCard key={hold.id} session={worker.id} question={hold} onDismiss={() => {}} onAnswer={(answers) => run(["answer", worker.id, hold.id, "--answers", JSON.stringify(answers)]).then(() => {})} />
+        </div>
+      )}
     </section>
   );
 }
