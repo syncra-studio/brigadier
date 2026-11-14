@@ -37,6 +37,7 @@ import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments"
 import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
+import { MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
@@ -248,7 +249,7 @@ export function ComposerField({
     <LexicalComposer
       initialConfig={{
         namespace: NAMESPACE,
-        nodes: [ChipNode],
+        nodes: [ChipNode, UrlNode],
         editorState: () => $write(initial.parts, false),
         onError: (error) => console.error("[composer]", error),
       }}
@@ -273,7 +274,7 @@ export function ComposerField({
         />
       </div>
       <HistoryPlugin />
-      {size === "line" && <OneLine />}
+      {size === "line" ? <OneLine /> : <MarkdownKeys />}
       <Keys {...props} size={size} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
