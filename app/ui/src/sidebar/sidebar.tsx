@@ -211,12 +211,12 @@ export function AppSidebar({
     >
         {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
-          {/* Windows has no traffic lights: the name heads the row the History pill ends. */}
-          <div className="h-7.5 win:hidden" />
-          <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap win:pe-history">
+          {/* No traffic lights (Windows, macOS full screen): the name heads the row the History pill ends. */}
+          <div className="h-7.5 no-lights:hidden" />
+          <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap no-lights:pe-history">
             <BrigadierMark className="size-icon-md shrink-0" />
-            {/* Cut at the content's edge, the h1 clipping at its padding, which on Windows is the pill's room; there a gap before it. */}
-            <span className="min-w-0 truncate win:me-2">Brigadier</span>
+            {/* Cut at the content's edge, the h1 clipping at its padding, which without traffic lights is the pill's room; there a gap before it. */}
+            <span className="min-w-0 truncate no-lights:me-2">Brigadier</span>
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
             <ComposeEditSquare />

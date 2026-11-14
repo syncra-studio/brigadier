@@ -894,6 +894,8 @@
 @custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
 
 @custom-variant win (:where([data-platform="win32"]) &);
+/* No traffic lights: Windows, or macOS full screen [D38]. */
+@custom-variant no-lights (:where([data-fullscreen], [data-platform="win32"]) &);
 /* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
 @custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]:not(:has(~ .right-panel-width-source[data-state="expanded"]))) &);
 /* On Windows, with no right panel open: what the fixed Context/Files toggles would cover. */
