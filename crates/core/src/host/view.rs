@@ -73,7 +73,7 @@ pub fn tabbed(dir: &Path) -> Vec<(Option<String>, u64)> {
 
 impl Pr {
     /// The session's repository, or `other` on its server [D213], and gh as an account that reads it.
-    fn gh_repo(&self, other: Option<&str>) -> io::Result<(Repo, Gh)> {
+    pub(super) fn gh_repo(&self, other: Option<&str>) -> io::Result<(Repo, Gh)> {
         let repo = (self.repo.as_ref()).map(|r| other.map_or_else(|| r.clone(), |o| r.at(o)));
         match repo.and_then(|r| Some((gh(&r)?, r))).map(|(gh, r)| (r, gh)) {
             Some(found) => Ok(found),

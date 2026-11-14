@@ -10,7 +10,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Skeleton } from "../components/skeleton";
 import { ArrowUpRight, Check, CheckCircle, ChevronDown, Comment, Commit } from "../icons";
 import type { Pr } from "../panel/types";
-import { ReviewView } from "../review/view";
 import { Sparkles } from "./icons";
 import { PrFiles } from "./pr-files";
 import { AddComment, Conversation, DoneBox, type Posted } from "./pr-conversation";
@@ -30,8 +29,7 @@ const Ref = ({ children }: { children: ReactNode }) => <span className="rounded-
 /**
  * A pull request in a main-area tab, GitHub's page [D204]: its title, state and "wants to merge", then Conversation
  * (the description, GitHub's timeline, the merge box or where it ended, and Add a comment; no side column [D260]), Commits,
- * Checks and Files changed, the Review tab's own diff of the session's branch, or of any other PR as its host cut it
- * [D231]. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
+ * Checks and Files changed, the PR's diff as its host has it, any PR's, with Submit review [D231, D262]. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
  * Check again; when a read fails, the last one stays with why [D207, D208, D1009].
  */
 export function PrTab({
@@ -190,7 +188,7 @@ export function PrTab({
           </div>
         </Tabs.Panel>
         <Tabs.Panel value="files" className="flex min-h-0 flex-1 flex-col">
-          {pr.onBranch ? <ReviewView owner={owner} kept="branch" /> : <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} />}
+          <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} onReviewed={check} />
         </Tabs.Panel>
       </Tabs.Root>
     </div>

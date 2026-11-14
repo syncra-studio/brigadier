@@ -44,6 +44,23 @@ export async function warmDiffs(): Promise<void> {
 const ON_TAB = `pre { --diffs-bg: var(--color-background) !important; background-color: var(--color-background) !important; }
 :is([data-line-annotation], [data-gutter-buffer=annotation])[data-selected-line] { --diffs-computed-selected-line-bg: var(--diffs-computed-diff-line-bg) !important; }`;
 
+/**
+ * GitHub's two number columns: a removed line's number in the first, an added one's in the second, an unchanged
+ * line's old number (copied onto its cell by `oldNumbers`) beside its new one. Margins, not pseudo-elements, move a
+ * changed line's: their ::before is the engine's change bar.
+ */
+const COLUMNS = `[data-column-number] > [data-line-number-content], [data-column-number][data-alt]::before { display: inline-block; min-width: 5ch; text-align: end; }
+[data-column-number][data-alt]::before { content: attr(data-alt); margin-inline-end: 1ch; }
+[data-column-number][data-line-type="change-addition"] > [data-line-number-content] { margin-inline-start: 6ch; }
+[data-column-number][data-line-type="change-deletion"] > [data-line-number-content] { margin-inline-end: 6ch; }`;
+
+/** Each unchanged line's old number onto its number cell, which shows the new one, for COLUMNS to show. */
+function oldNumbers(node: HTMLElement) {
+  const root = node.shadowRoot ?? node;
+  const cells = new Map([...root.querySelectorAll<HTMLElement>("[data-column-number]")].map((cell) => [cell.dataset.lineIndex, cell]));
+  for (const line of root.querySelectorAll<HTMLElement>("[data-alt-line]")) cells.get(line.dataset.lineIndex)?.setAttribute("data-alt", line.dataset.altLine ?? "");
+}
+
 export default function PierreDiff<T>({
   source,
   look,
@@ -53,6 +70,7 @@ export default function PierreDiff<T>({
   onSelect,
   selected,
 }: DiffViewProps<T>) {
+  const sides = source.kind === "patch" ? source.sides : undefined;
   const options = useMemo<FileDiffOptions<T, undefined>>(
     () => ({
       theme: "pierre-dark",
@@ -65,11 +83,18 @@ export default function PierreDiff<T>({
       lineDiffType: look.words ? "word" : "none",
       hunkSeparators: look.numbered ? "line-info" : "simple",
       expandUnchanged: false,
-      unsafeCSS: ON_TAB,
+      unsafeCSS: look.columns ? ON_TAB + COLUMNS : ON_TAB,
+      ...(look.columns && { onPostRender: oldNumbers }),
       ...(onGutterClick && { enableGutterUtility: true, onGutterUtilityClick: (range: SelectedLineRange) => onGutterClick(range) }),
       ...(onSelect && { enableLineSelection: true, onLineSelectionEnd: (range: SelectedLineRange | null) => range && onSelect(range) }),
+      ...(sides && {
+        loadDiffFiles: async (diff) => {
+          const { before, after } = await sides();
+          return { oldFile: { name: diff.prevName ?? diff.name, contents: before }, newFile: { name: diff.name, contents: after } };
+        },
+      }),
     }),
-    [look.numbered, look.split, look.wrap, look.words, onGutterClick, onSelect],
+    [look.numbered, look.split, look.wrap, look.words, look.columns, onGutterClick, onSelect, sides],
   );
   const shared = {
     options,

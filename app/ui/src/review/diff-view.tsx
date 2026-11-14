@@ -7,8 +7,12 @@ import { cx } from "../components/cx";
  * plain in the same type, so nothing jumps.
  */
 
-/** A file's change: one patch, or (whole files loaded) both of its sides. */
-export type DiffSource = { kind: "patch"; patch: string } | { kind: "sides"; path: string; before: string; after: string };
+/** Both sides of a file whole. */
+export type Sides = { before: string; after: string };
+
+/** A file's change: one patch, or (whole files loaded) both of its sides. A patch's `sides`, when it has them, are read
+ * when the unchanged lines it leaves out are first opened. */
+export type DiffSource = { kind: "patch"; patch: string; sides?: () => Promise<Sides> } | { kind: "sides"; path: string; before: string; after: string };
 
 export type DiffLook = {
   /** Line numbers, and unchanged stretches folded with a count that opens in place. */
@@ -17,6 +21,8 @@ export type DiffLook = {
   wrap: boolean;
   /** The words a replaced line changed, marked. */
   words: boolean;
+  /** GitHub's two number columns, the old line's and the new one's, in place of one (unified only) [D262]. */
+  columns?: boolean;
 };
 
 /** Something shown under a line: `side` "additions" is the new file's, "deletions" the old one's. */

@@ -1,7 +1,7 @@
 //! OpenCode's own commands and skills for the session's folder, as its V2 API lists them, printed
 //! as one line for the adapter; its compact, which runs at once, first [D164, D2009, D2011].
 
-use super::super::{Delivery, home_path};
+use super::super::{Delivery, encode, home_path};
 use super::http::Server;
 use super::server::say;
 use serde_json::{Value, json};
@@ -49,18 +49,6 @@ pub(super) fn list(server: &Server, dir: &str) {
         .chain(skills)
         .collect();
     say(json!({"type": "brigadier.commands", "data": all}));
-}
-
-/// A query value, percent-encoded but for URL-safe characters.
-fn encode(text: &str) -> String {
-    text.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 /// Its compact, as `POST /api/session/{id}/compact` [D2011].

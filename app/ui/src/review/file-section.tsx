@@ -4,11 +4,12 @@ import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Folders, Spinner }
 import { FileIcon } from "../icons/file-types";
 import { Button } from "../components/button";
 import { CopyButton } from "../components/copy-button";
+import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { CommentBox, CommentNote } from "./comments";
-import { type DiffLook, type DiffNote, DiffView, type LineRange } from "./diff-view";
+import { type DiffLook, type DiffNote, DiffView, type LineRange, type Sides } from "./diff-view";
 import { fileFact } from "./brief";
 import { Counts } from "./hunks";
 import type { DiffComment, FileContents, PatchContents, ReviewFile } from "./types";
@@ -37,6 +38,10 @@ export type FileProps = {
   /** The comment being written on this file, kept through a restart (D1195), and where its changes go. */
   draft?: { range: LineRange; text: string } | null;
   onDraft?: (draft: { range: LineRange; text: string } | null) => void;
+  /** A host's patch's file whole, read when its unchanged lines are first opened [D262]. */
+  onSides?: () => Promise<Sides>;
+  /** GitHub's file card (a PR's Files changed) [D262]: bordered, the fold chevron first and always shown. */
+  card?: boolean;
 };
 
 /** A changed file's "Open in" menu (old OpenInMenu): a file tab, its default app, or Finder. */
@@ -66,11 +71,17 @@ function OpenInMenu({ file, onOpenIn }: { file: ReviewFile; onOpenIn: NonNullabl
 
 /** One file's diff under its sticky header: icon, path, counts, and on hover copy, Open in and fold. */
 export function FileSection(props: FileProps) {
-  const { file, collapsed, onToggle } = props;
+  const { file, collapsed, onToggle, card } = props;
+  const fold = (
+    <TooltipIconButton tooltip="Toggle file diff" size="icon-xs" aria-expanded={!collapsed} onClick={onToggle}>
+      {collapsed ? <ChevronRight /> : <ChevronDown />}
+    </TooltipIconButton>
+  );
   return (
-    <section data-slot="review-file" data-path={file.path}>
-      <header className="group/file sticky top-0 z-10 flex h-control-lg items-center gap-2 border-b border-border bg-background px-3 text-sm">
-        <FileIcon name={file.path} />
+    // overflow-clip, not hidden: the header stays sticky in the list's scroll.
+    <section data-slot="review-file" data-path={file.path} className={card ? "overflow-clip rounded-surface border border-border" : undefined}>
+      <header className={cx("group/file sticky top-0 z-10 flex h-control-lg items-center gap-2 border-b border-border px-3 text-sm", card ? "bg-card" : "bg-background", card && collapsed && "border-b-0")}>
+        {card ? fold : <FileIcon name={file.path} />}
         {/* The file list opens a file's diff: its name is the click (D1188). */}
         <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="min-w-0 cursor-pointer truncate rounded-control text-left text-foreground focus-visible:focus-ring" title={file.path}>
           {file.from ? `${file.from} → ${file.path}` : file.path}
@@ -80,9 +91,7 @@ export function FileSection(props: FileProps) {
         <span className="flex items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
           <CopyButton text={file.path} tooltip="Copy path" size="icon-xs" />
           {props.onOpenIn && <OpenInMenu file={file} onOpenIn={props.onOpenIn} />}
-          <TooltipIconButton tooltip="Toggle file diff" size="icon-xs" aria-expanded={!collapsed} onClick={onToggle}>
-            {collapsed ? <ChevronRight /> : <ChevronDown />}
-          </TooltipIconButton>
+          {!card && fold}
         </span>
       </header>
       {!collapsed && <FileBody {...props} />}
@@ -95,7 +104,7 @@ const muted = (text: ReactNode) => <p className="px-3 py-2 text-sm text-muted-fo
 /** What sits under a line: a waiting comment, or the box being written. */
 type Note = { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange };
 
-function FileBody({ file, contents, look, connected, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft }: FileProps) {
+function FileBody({ file, contents, look, connected, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft, onSides }: FileProps) {
   const [draft, setRange] = useState<LineRange | null>(kept?.range ?? null);
   const setDraft = (range: LineRange | null) => {
     setRange(range);
@@ -108,13 +117,16 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
   // A pick across both sides keeps its end's line: a comment's numbers are one side's.
   const pick = useCallback((range: LineRange) => setDraft(range.endSide && range.endSide !== range.side ? { start: range.end, end: range.end, side: range.endSide } : range), [onDraft]);
   const sides = contents && "hunks" in contents ? contents : null;
+  const patch = contents && "patch" in contents ? contents.patch : null;
+  // Kept while its patch is: the engine reads it once, when a fold is first opened.
+  const whole = useMemo(() => onSides && (() => onSides()), [patch]);
   const notes = useMemo(() => {
-    if (!sides) return [];
+    if (!sides && !patch) return [];
     const all: DiffNote<Note>[] = [];
     for (const comment of comments) all.push({ side: comment.side, lineNumber: comment.end, metadata: { kind: "comment", comment } });
     if (draft) all.push({ side: draft.endSide ?? draft.side ?? "additions", lineNumber: draft.end, metadata: { kind: "box", range: draft } });
     return all;
-  }, [sides, comments, draft]);
+  }, [sides, patch, comments, draft]);
   if (file.binary) return muted("Binary file not shown");
   if (contents && "error" in contents) {
     return (
@@ -130,10 +142,9 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
       />
     );
   }
-  // A PR's file, as its host cut it: no lines to comment on here [D231].
-  if (contents && "patch" in contents) return contents.patch ? <DiffView source={{ kind: "patch", patch: contents.patch }} look={look} /> : muted("Its diff is too large to show here");
   // The list came first; its contents follow (D1036).
-  if (!sides) {
+  if (!sides && !patch) {
+    if (contents && "patch" in contents) return muted("Its diff is too large to show here");
     return (
       <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
         <Spinner className="size-icon-sm motion-safe:animate-spin" />
@@ -141,8 +152,9 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
       </p>
     );
   }
-  if (sides.before === sides.after) return muted("No content changes");
-  const sideLines = (side: "additions" | "deletions") => (side === "additions" ? sides.after : sides.before).split("\n");
+  if (sides && sides.before === sides.after) return muted("No content changes");
+  // A host's patch has no whole file to quote: its comments go with a review, not as chips [D262].
+  const sideLines = (side: "additions" | "deletions") => (sides ? (side === "additions" ? sides.after : sides.before).split("\n") : []);
   const render = ({ metadata }: DiffNote<Note>) =>
     metadata.kind === "comment" ? (
       <CommentNote comment={metadata.comment} onRemove={() => onRemoveComment(metadata.comment.id)} />
@@ -164,7 +176,7 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
     );
   return (
     <DiffView<Note>
-      source={{ kind: "sides", path: file.path, before: sides.before, after: sides.after }}
+      source={sides ? { kind: "sides", path: file.path, before: sides.before, after: sides.after } : { kind: "patch", patch: patch ?? "", sides: whole }}
       look={look}
       annotations={notes}
       renderAnnotation={render}

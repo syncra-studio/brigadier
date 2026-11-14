@@ -209,3 +209,15 @@ pub fn under(events: &mut Vec<Event>, parent: &str) {
         _ => false,
     });
 }
+
+/// A URL query value or path, percent-encoded but for URL-safe characters and `/`.
+pub fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}

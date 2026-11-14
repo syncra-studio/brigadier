@@ -4,7 +4,8 @@
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
 //! PRs, every query in one read, `--kept` their last reads [D258]; `log <link>` is a failed check's log tail; `merge <n>
 //! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077]; `comment
-//! <n> <body>` posts a comment on it [D260].
+//! <n> <body>` posts a comment on it [D260]; `sides <n>
+//! <path>` is a file's two sides whole, `review <n> <json>` submits a review [D262].
 
 use super::arg;
 use brigadier_core::host;
@@ -75,6 +76,16 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
                 ));
             }
         },
+        "sides" => {
+            let (other, n) = number(args)?;
+            json!({"ok": true, "sides": pr.sides(other.as_deref(), n, arg(args, 4)?)?})
+        }
+        "review" => {
+            let (other, n) = number(args)?;
+            let review: Value = serde_json::from_str(arg(args, 4)?)?;
+            pr.review(other.as_deref(), n, &review)?;
+            json!({"ok": true})
+        }
         "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
         "comment" => {
             let (other, n) = number(args)?;

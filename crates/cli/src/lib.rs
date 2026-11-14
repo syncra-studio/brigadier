@@ -61,7 +61,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id> files | folder <path> | find <query> | since
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head> | host <id> comment <n|owner/name#n> <body>
+       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head> | host <id> comment <n|owner/name#n> <body> | host <id> sides <n|owner/name#n> <path> | host <id> review <n|owner/name#n> <json>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]

@@ -8,6 +8,7 @@ use crate::load;
 use crate::repos::{failed, tool};
 
 mod prs;
+mod review;
 mod search;
 mod timeline;
 mod touched;
