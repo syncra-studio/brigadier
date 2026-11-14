@@ -1,5 +1,4 @@
 import { ErrorLine } from "../../components/error-line";
-import type { FileFlag, LastRun } from "../../review/types";
 import type { Freshness, Truth } from "../git";
 import type { Branch, KeptPrs, Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
@@ -13,8 +12,6 @@ export type SourceData = {
   /** The daemon is out of reach: what was last read shows, read-only. */
   offline?: boolean;
   branches?: Branch[] | null;
-  /** Another session works in this folder too and lands its work, by name [D1070, D1082]. Null until Rust's first read. */
-  share?: { with: string | null } | null;
   /** The session's agent is working: the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
   /** When the watch last read the checkout: "Offline · 14:32" [D1205, D1206]. */
@@ -25,12 +22,6 @@ export type SourceData = {
   restoreError?: string | null;
   /** The base against its own upstream and its fetch age [D1187, D1193]. */
   freshness?: Freshness | null;
-  /** The session's last test or build run, from the uncommitted review's brief, Review's own (2.38) [D1199]; null with none yet. */
-  run?: LastRun | null;
-  /** Risky files' flags by path, from Rust's brief (2.38) [D1188, D1213]. */
-  flags?: Record<string, FileFlag>;
-  /** In your own folder, the paths the fold's edit steps confirm the agent changed (2.38); null in a worktree or until read [D1192, D1213]. */
-  agentPaths?: string[] | null;
   /** The branch's pull requests (2.13); none without a host [D1030]. */
   prs?: Pr[];
   /** The watch's last read, kept: a gallery's stand-in for the session row's [D1009]. */

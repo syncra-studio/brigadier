@@ -20,7 +20,6 @@ use plan::plan_for;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use shared::Lives;
-pub use shared::turn_paths;
 use snap::Record;
 pub use snap::{Shot, Store};
 use std::collections::BTreeSet;

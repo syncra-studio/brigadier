@@ -149,7 +149,6 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const removed = listed.reduce((sum, file) => sum + file.removed, 0);
   const detached = data.truth?.detached;
   const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
-  const shared = data.share?.with;
   const note = noteOf(data);
   const first = prs.find((pr) => pr.state === "open") ?? prs[0];
   // Its start lines up with the title's; offline it can't open [D30].
@@ -158,8 +157,6 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
     <span className="flex min-w-0 items-center gap-1">
       <Branch />
       <span className="truncate text-foreground">{name}</span>
-      {/* Both cut, so the share always shows [D1082]. */}
-      {shared && <span className="truncate">· shared with {shared}</span>}
       {folder && <ChevronDown className="size-icon-xs" />}
     </span>
   );

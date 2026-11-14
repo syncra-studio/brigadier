@@ -114,25 +114,12 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     let word = |i: usize| arg(args, at + i);
     let from = |i: usize| args.get(at + i).map(String::as_str).filter(|w| *w != "-");
     let done = json!({"ok": true});
-    let me = match target {
-        Target::Session(id) => Some(id),
-        Target::Project(_) => None,
-    };
     Ok(match word(0)? {
         "review" if word(1)? == "branch" => {
             let (base, since) = since(data, &target, &checkout, &stop)?;
             let mut review = diff::list(&checkout, Scope::Branch(&since), &stop)?;
             (review["base"], review["since"]) = (base.into(), since.into());
             json!({"ok": true, "review": review})
-        }
-        // Who else works in this session's folder, for Source [D1082].
-        "share" => {
-            let spec =
-                brigadier_core::load(data, me.ok_or_else(|| io::Error::other(super::USAGE))?)?;
-            let all = std::cell::OnceCell::new();
-            brigadier_core::share::state(data, &spec, &|o| {
-                super::sessions::working(data, &o.id, all.get_or_init(brigadier_frames::procs::all))
-            })?
         }
         "review" => {
             json!({"ok": true, "review": diff::list(&checkout, Scope::parse(word(1)?)?, &stop)?})

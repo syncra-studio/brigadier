@@ -2,13 +2,9 @@
 //! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], and who lands its work
 //! [D1082].
 
-use crate::rewind::turn_paths;
-use crate::{Spec, fork, git, ids, load, worktrees};
-use serde_json::{Value, json};
+use crate::{Spec, fork, ids, load, worktrees};
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
 
 /// A folder as the same place: canonical while it exists, as recorded while it's freed.
 pub fn key(folder: &Path) -> PathBuf {
@@ -86,34 +82,4 @@ pub fn lands(data: &Path, id: &str) -> Option<String> {
     let others = others(data, &spec);
     let owner = owner(&spec, &others);
     (owner.id != spec.id).then(|| title(owner))
-}
-
-/// What Source shows of the sharing, by session id; the UI writes the words [D65, D1082]:
-/// `with`, the owner where it's another; `busy`, another session working there now; `lands`;
-/// `includes`, another session whose turns since the last commit changed files still uncommitted
-/// (proposed: its turns that ended on today's HEAD).
-pub fn state(data: &Path, spec: &Spec, busy: &dyn Fn(&Spec) -> bool) -> io::Result<Value> {
-    let others = others(data, spec);
-    let owner = owner(spec, &others);
-    let working = others.iter().find(|o| busy(o)).map(|o| o.id.clone());
-    let mut includes = None;
-    if !others.is_empty()
-        && let Ok(checkout) = git::checkout(data, &git::Target::Session(&spec.id))
-    {
-        let status = git::status(&checkout, &AtomicBool::new(false))?.json();
-        let head = status["head"]["head"].as_str().map(String::from);
-        let dirty: Vec<&str> = (status["files"].as_array().into_iter().flatten())
-            .filter_map(|f| f["path"].as_str())
-            .collect();
-        includes = (others.iter())
-            .find(|o| {
-                turn_paths(o, head.as_deref())
-                    .iter()
-                    .any(|p| dirty.contains(&p.as_str()))
-            })
-            .map(|o| o.id.clone());
-    }
-    Ok(json!({"ok": true, "shared": !others.is_empty(),
-        "with": (owner.id != spec.id).then(|| owner.id.clone()),
-        "busy": working, "lands": owner.id == spec.id, "includes": includes}))
 }

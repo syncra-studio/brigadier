@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { useDaemon } from "../../daemon";
 import { HOME } from "../../shell/tab-store";
 import { isWorking as working, restoreCheckout, retryGit, type Target, useGit } from "../git";
-import { useShare } from "../share";
 import { name, named, readBranches, useBranchOp } from "./branch-ops";
 import type { BranchOps, SourceData, SourceOps } from "./data";
 
@@ -29,8 +28,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   useEffect(() => {
     if (git.target && op.naming && op.naming === branch) named(git.target);
   }, [git.target, op.naming, branch]);
-  const share = useShare(owner === HOME ? null : owner, git.version);
-  const title = (id: string | null) => (id === null ? null : (rows?.find((row) => row.id === id)?.title ?? "Another session"));
   return {
     data: {
       source: git.source,
@@ -44,10 +41,6 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
       restoring: git.restoring,
       restoreError: git.restoreError,
       freshness: git.truth?.base ?? null,
-      run: git.brief?.run,
-      flags: git.brief?.flags,
-      agentPaths: git.brief?.agent ?? null,
-      share: share && { with: title(share.with) },
     },
     ops: {
       retry: retryGit,

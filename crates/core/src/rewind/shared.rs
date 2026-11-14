@@ -1,11 +1,10 @@
 //! A folder other sessions share [D1070]: whether their turns keep a restore from putting files
-//! back [D1078, D1089], and what their turns changed, for Source [D1082].
+//! back [D1078, D1089].
 
 use super::snap::Store;
 use crate::fold::{Boundary, Fold, Live};
 use crate::{Spec, session};
 use brigadier_frames::log::now_ms;
-use std::collections::BTreeSet;
 use std::path::Path;
 
 /// Reads a session's host and its background work [D172].
@@ -69,20 +68,4 @@ pub(super) fn sharer(
         }
     }
     None
-}
-
-/// The paths `spec`'s turns that ended on commit `head` changed, from the newest back: what it
-/// added since that commit, for the card's note [D1082] (proposed).
-pub fn turn_paths(spec: &Spec, head: Option<&str>) -> BTreeSet<String> {
-    let mut paths = BTreeSet::new();
-    let Some(store) = Store::of(spec).filter(|_| head.is_some()) else {
-        return paths;
-    };
-    for r in store.records().iter().rev() {
-        let Some(end) = r.end.as_ref().filter(|e| e.head.as_deref() == head) else {
-            break;
-        };
-        paths.extend(store.diff(&r.before, end).unwrap_or_default());
-    }
-    paths
 }
