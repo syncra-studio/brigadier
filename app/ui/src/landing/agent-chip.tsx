@@ -13,7 +13,8 @@ export type AgentChip =
   | { id: string; kind: "fix"; pr: number; reasons: string }
   | { id: string; kind: "check"; pr: number; name: string }
   | { id: string; kind: "comment"; pr: number; author: string; where: string | null; body: string }
-  | { id: string; kind: "event"; pr: number; what: string; detail: string };
+  | { id: string; kind: "event"; pr: number; what: string; detail: string }
+  | { id: string; kind: "run"; run: string; failed: string };
 
 /** What a PR tab's Send leaves: the chip's words come from the PR's data. */
 export function chipFor(pr: PullRequest, send: PrSend): AgentChip {
@@ -42,6 +43,8 @@ function face(chip: AgentChip) {
       return { icon: <Comment />, title: chip.body, detail: `#${chip.pr} · ${chip.author}${chip.where ? ` on ${chip.where}` : ""}` };
     case "event":
       return { icon: <Clock />, title: `#${chip.pr} · ${chip.what}`, detail: chip.detail };
+    case "run":
+      return { icon: <XCircle className="text-destructive" />, title: `Fix ${chip.run}`, detail: chip.failed };
   }
 }
 

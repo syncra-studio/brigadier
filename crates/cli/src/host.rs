@@ -2,7 +2,8 @@
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
-//! PRs, every query in one read, `--kept` their last reads [D258]; `log <link>` is a failed check's log tail; `merge <n>
+//! PRs, every query in one read, `--kept` their last reads [D258]; `runs <query>... [--kept]`,
+//! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264]; `log <link>` is a failed check's log tail; `merge <n>
 //! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077]; `comment
 //! <n> <body>` posts a comment on it [D260]; `sides <n>
 //! <path>` is a file's two sides whole, `review <n> <json>` submits a review [D262].
@@ -41,6 +42,9 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             return Ok(json!({"ok": true, "found": found}));
         }
         return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries)?}));
+    }
+    if let Some(done) = actions(data, id, args)? {
+        return Ok(done);
     }
     // The last read, from the session's folder alone: no git, no host [D207].
     // (A comment's words are never this, even when they read "kept".)
@@ -106,4 +110,43 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// `n`, or `owner/name#n` for another repository's PR [D213].
 fn number(args: &[String]) -> io::Result<(Option<String>, u64)> {
     host::pr_ref(arg(args, 3)?).ok_or_else(|| io::Error::other("not a PR number"))
+}
+
+/// The Actions tab's [D264]: runs by GitHub's search words (`--kept`: their last reads), a run's
+/// page (`kept`: its last read), a finished job's log, and a re-run; None for any other.
+fn actions(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
+    let dir = || brigadier_core::session_dir(data, id);
+    let run = || {
+        arg(args, 3)?
+            .parse::<u64>()
+            .map_err(|_| io::Error::other("not a run id"))
+    };
+    let mut done = match arg(args, 2)? {
+        "runs" => {
+            let queries: Vec<&str> = (args[3..].iter().map(String::as_str))
+                .filter(|a| *a != "--kept")
+                .collect();
+            match args.iter().any(|a| a == "--kept") {
+                true => host::kept_runs(&dir(), &queries),
+                false => host::pr(data, id)?.runs(&queries)?,
+            }
+        }
+        "run" if args.get(4).is_some_and(|a| a == "kept") => {
+            json!({"run": host::kept_run(&dir(), run()?)})
+        }
+        "run" => json!({"run": host::pr(data, id)?.run(run()?)?}),
+        "job-log" => json!({"log": host::pr(data, id)?.job_log(run()?)?}),
+        "rerun" => {
+            let failed = match arg(args, 4)? {
+                "all" => false,
+                "failed" => true,
+                _ => return Err(io::Error::other(super::USAGE)),
+            };
+            host::pr(data, id)?.rerun(run()?, failed)?;
+            json!({})
+        }
+        _ => return Ok(None),
+    };
+    done["ok"] = true.into();
+    Ok(Some(done))
 }

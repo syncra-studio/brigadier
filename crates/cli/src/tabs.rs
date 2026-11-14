@@ -16,8 +16,8 @@ const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
-/// card's Background history [D200]; a note, by its id [D244].
-const KINDS: [&str; 7] = [
+/// card's Background history [D200]; a note, by its id [D244]; the session repository's Actions [D264].
+const KINDS: [&str; 8] = [
     "new",
     "terminal",
     "pr",
@@ -25,6 +25,7 @@ const KINDS: [&str; 7] = [
     "attachment",
     "background",
     "note",
+    "actions",
 ];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
@@ -32,7 +33,7 @@ const NEW: &str = "new";
 const FILE: &str = "file";
 const CLOSED_KEPT: usize = 20;
 /// Kinds a session has one of: opening one again brings it to the front, on its new target [D478, D1114].
-const ONE: [&str; 2] = ["review", "background"];
+const ONE: [&str; 3] = ["review", "background", "actions"];
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Tab {

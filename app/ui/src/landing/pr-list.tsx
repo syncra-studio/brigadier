@@ -117,7 +117,7 @@ function Row({ owner, pr, now }: { owner: string; pr: Pr; now: number }) {
 }
 
 /** One of the bar's menus: its pill, then its choices; a pick puts its word in the query. */
-function Filter({ label, value, choices, onPick }: { label: string; value?: string; choices: { value: string; label: string }[]; onPick: (word: string) => void }) {
+export function Filter({ label, value, choices, onPick }: { label: string; value?: string; choices: { value: string; label: string }[]; onPick: (word: string) => void }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger

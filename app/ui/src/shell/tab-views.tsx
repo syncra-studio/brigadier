@@ -7,8 +7,9 @@ import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
+import { ChatCompose, ChevronDown, Dock, Document, Grid, PlayCircle, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
+import { Actions } from "../landing/actions";
 import { PullRequestOpen } from "../landing/icons";
 import { LivePrTab } from "../landing/live";
 import { PrList } from "../landing/pr-list";
@@ -43,19 +44,30 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
   };
   // The card's last known PRs, so it opens what the card's PR button opens [D200, D240].
   const prs = useDaemon().rows?.find((row) => row.id === owner)?.prs?.prs ?? [];
-  const pullRequests = (
-    <button type="button" disabled={owner === HOME} onClick={() => replaceWith(() => openPrs(owner, prs))} className={TOOL}>
-      <span className={TOP}>
-        <PullRequestOpen className={ICON} />
-      </span>
-      <span className={LABEL}>Pull requests</span>
-    </button>
-  );
+  // A session's own: before there is one (Home), the tile says why it's off. A disabled button hears no pointer, so its tip hangs on what holds it.
+  const sessionTile = (Icon: typeof PullRequestOpen, label: string, open: () => void) => {
+    const tile = (
+      <button type="button" disabled={owner === HOME} onClick={open} className={TOOL}>
+        <span className={TOP}>
+          <Icon className={ICON} />
+        </span>
+        <span className={LABEL}>{label}</span>
+      </button>
+    );
+    return owner !== HOME ? (
+      tile
+    ) : (
+      <Tooltip>
+        <TooltipTrigger render={<span className="flex w-full" />}>{tile}</TooltipTrigger>
+        <TooltipContent>Start the session to see its {label.toLowerCase()}</TooltipContent>
+      </Tooltip>
+    );
+  };
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
         <h2 className="font-medium">Tools</h2>
-        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-5">
           <div className={CARD}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
               <span className={TOP}>
@@ -73,17 +85,9 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               <span className={LABEL}>New note</span>
             </button>
           </div>
-          <div className={CARD}>
-            {owner === HOME ? (
-              <Tooltip>
-                {/* A disabled button hears no pointer, so its tip hangs on what holds it. */}
-                <TooltipTrigger render={<span className="flex w-full" />}>{pullRequests}</TooltipTrigger>
-                <TooltipContent>Start the session to see its pull requests</TooltipContent>
-              </Tooltip>
-            ) : (
-              pullRequests
-            )}
-          </div>
+          <div className={CARD}>{sessionTile(PullRequestOpen, "Pull requests", () => replaceWith(() => openPrs(owner, prs)))}</div>
+          {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
+          <div className={CARD}>{sessionTile(PlayCircle, "Actions", () => replaceWith(() => openTab(owner, "actions")))}</div>
           <div className={CARD}>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
@@ -181,6 +185,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               <AttachmentTab key={tab.target?.split("/")[0]} owner={owner} id={tab.target?.split("/")[0] ?? ""} label={tab.target?.split("/")[1] ?? ""} active={tab.id === active} />
             ) : tab.kind === "background" ? (
               <BackgroundHistory owner={owner} />
+            ) : tab.kind === "actions" ? (
+              <Actions owner={owner} />
             ) : tab.kind === "note" ? (
               <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} active={tab.id === active} />
             ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
