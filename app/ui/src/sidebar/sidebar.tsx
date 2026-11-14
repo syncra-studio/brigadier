@@ -8,7 +8,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
@@ -20,7 +20,7 @@ import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, PinnedFlyout, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
-import { CARD_DELAY_MS, SessionRowItem } from "./row";
+import { CARD_DELAY_MS, ProjectBadge, SessionRowItem } from "./row";
 import { useShowFilter, ViewMenu } from "./view";
 import type { Project, SessionRow } from "./words";
 
@@ -244,7 +244,7 @@ export function AppSidebar({
                 >
                   <NavList>
                     {byName.map((project) => (
-                      <ProjectRow key={project.id} project={project} open={isOpen(project.id)} onOpenChange={(open) => setOpen(project.id, open)}>
+                      <ProjectRow key={project.id} project={project} tone={projects.indexOf(project)} open={isOpen(project.id)} onOpenChange={(open) => setOpen(project.id, open)}>
                         {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
                       </ProjectRow>
                     ))}
@@ -283,11 +283,14 @@ function Loading() {
 /** A project and its sessions, folding away under it; "No sessions yet" with none. Hovered, its menu and New session [D171, D212]. */
 function ProjectRow({
   project,
+  tone,
   open,
   onOpenChange,
   children,
 }: {
   project: Project;
+  /** Its place in Rust's list, for its badge. */
+  tone: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode[];
@@ -301,7 +304,8 @@ function ProjectRow({
       <div className="group/row relative">
         <Tooltip>
           <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-expanded={open} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => onOpenChange(!open)} />}>
-            {open ? <FolderOpen /> : <Folder />}
+            {/* Its badge, as View's menu shows it [new-design]; folded or not reads from the row's aria-expanded. */}
+            <ProjectBadge name={project.name} tone={tone} />
             <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
           </TooltipTrigger>
           {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
