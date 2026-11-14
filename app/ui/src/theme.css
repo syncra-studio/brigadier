@@ -296,6 +296,11 @@
   --spacing-tab-bar: 3.5rem;
   /* The History pill: Back and Forward (32 each), its rule (9), the sidebar toggle (28), 3px in from each end. */
   --spacing-history: 6.6875rem;
+  /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
+     overlay's env values; with none, as under the dev flag, the board's 138px), and what clears the Context/Files
+     toggles fixed under them (70px wide, 16px in, 8px apart). */
+  --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
+  --spacing-toggles-clear: 5.625rem;
   /* A tab's width in the bar, and the rule between two tabs in back. */
   --spacing-session-tab-min: 5.625rem;
   --spacing-session-tab-max: 15rem;
@@ -865,6 +870,10 @@
 @custom-variant summary-shift (&[data-pinned][data-summary="shift"]);
 @custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
+/* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
+@custom-variant win (:where([data-platform="win32"]) &);
+/* On Windows, with no right panel open: what the fixed Context/Files toggles would cover. */
+@custom-variant toggles-clear (:where([data-platform="win32"] main:not(:has(> .right-panel-width-source[data-state="expanded"]))) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
 
@@ -1250,7 +1259,7 @@
     --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2);
   }
 }
-:root[data-fullscreen] [data-collapse="hidden"][data-state="collapsed"] {
+:root:is([data-fullscreen], [data-platform="win32"]) [data-collapse="hidden"][data-state="collapsed"] {
   --history-start: calc(var(--spacing) * 3);
   --tab-bar-start: calc(var(--spacing-history) + var(--spacing) * 4);
 }

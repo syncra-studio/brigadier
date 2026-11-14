@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { ArrowLeft, ArrowRight, Sidebar, SidebarFloatingLeft } from "../icons";
+import { ArrowLeft, ArrowRight, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
 import { settingsPageOf, settingsUp } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
@@ -89,7 +89,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     };
   });
   return (
-    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 items-center rounded-capsule bg-control px-0.75 ring-1 ring-glass-stroke ring-inset">
+    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 win:top-3.25 items-center rounded-capsule bg-control px-0.75 ring-1 ring-glass-stroke ring-inset">
       <TitlebarTips>
         <TooltipIconButton look="pill" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />
@@ -107,6 +107,21 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
           </>
         )}
       </TitlebarTips>
+    </div>
+  );
+}
+
+/**
+ * Dev only: the Windows layout drawn on a Mac (BRIGADIER_FAKE_PLATFORM=win32) gets stand-ins for the caption buttons
+ * Windows draws over its titlebar overlay, the board's three 46×56 at the window's end.
+ */
+export function FakeCaption() {
+  if (window.brigadier?.platform !== "win32" || !/Mac/.test(navigator.platform)) return null;
+  return (
+    <div aria-hidden className="pointer-events-none fixed end-0 top-0 z-50 flex h-tab-bar text-foreground">
+      {[<Minus key="min" />, <span key="max" className="size-3 rounded-xs ring-1 ring-current" />, <X key="close" />].map((glyph) => (
+        <span key={glyph.key} className="flex w-11.5 items-center justify-center svg:size-icon-sm">{glyph}</span>
+      ))}
     </div>
   );
 }

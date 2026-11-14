@@ -35,7 +35,7 @@ import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
 import { HOME } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
-import { TitlebarNav } from "./shell/titlebar";
+import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
 import { useNotices } from "./settings/notices";
 import { listenToSettingsKeys, SettingsNav, SettingsView, settingsPageOf } from "./settings/shell";
@@ -149,6 +149,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
         )}
         <div className="flex min-w-0 flex-1 flex-col pe-surface-inset pb-surface-inset">{children}</div>
         <TitlebarNav hash={hash} rows={rows} />
+        <FakeCaption />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
@@ -281,6 +282,9 @@ const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../galle
 // `pnpm thread` builds the thread demo in place of the app.
 const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
 const Screen = Gallery ?? ThreadDemo;
+
+// The platform the window is drawn for, which the `win:` styles read [new-design].
+if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
 
 createRoot(document.getElementById("root")!).render(
   <TooltipProvider>

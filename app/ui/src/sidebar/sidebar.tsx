@@ -211,8 +211,9 @@ export function AppSidebar({
     >
       <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
         {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
-        <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
-          <div className="h-7.5" />
+        <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
+          {/* Windows has no traffic lights: the name heads the row the History pill ends. */}
+          <div className="h-7.5 win:hidden" />
           <h1 className="flex h-7.5 items-center gap-2 ps-1.5 text-nav-title font-semibold">
             <BrigadierMark className="size-5 shrink-0" />
             Brigadier
@@ -374,7 +375,7 @@ function ProjectRow({
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 pt-11.25">
+    <div className="flex flex-col items-center gap-3 pt-11.25 win:pt-1.25">
       <div data-sidebar-peek-trigger className="flex h-7.5 w-9 items-center justify-center text-foreground">
         <BrigadierMark className="size-6" />
       </div>

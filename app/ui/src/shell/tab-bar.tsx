@@ -330,7 +330,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   // Home with no tab of its own has no tab bar, as the old app's untabbed draft: "+" leads the toolbar at the end [D39].
   if (bare)
     return (
-      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-tab-bar shrink-0 items-center justify-end gap-2 pt-3.5 pe-1">
+      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-tab-bar shrink-0 items-center justify-end gap-2 pt-3.5 pe-1 win:pt-0 win:pe-caption">
         {reconnecting}
         {newTab}
         <Toolbar owner={owner} />
@@ -338,7 +338,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     );
 
   return (
-    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-tab-bar shrink-0 items-center gap-2 pt-3.5 pe-1">
+    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-tab-bar shrink-0 items-center gap-2 pt-3.5 pe-1 win:pt-0 win:pe-caption">
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
       <div className="session-tab-room flex min-w-0 flex-1 items-center gap-2 self-stretch">
         {/* The tabs in one glass pill [new-design]. */}
