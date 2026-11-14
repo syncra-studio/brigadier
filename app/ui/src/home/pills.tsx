@@ -2,9 +2,9 @@ import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useId
 
 import { ComposerPill } from "../components/composer/composer";
 import { cx } from "../components/cx";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, itemClasses, MenuRow } from "../components/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, itemClasses, MenuRow } from "../components/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
-import { BranchAlt, Check, ChevronDown, ChevronRight, Desktop, Folder, MagnifyingGlassSmSearch, Plus, SpeedometerLatencySpeed, X } from "../icons";
+import { BranchAlt, Check, Desktop, Folder, MagnifyingGlassSmSearch, Plus, X } from "../icons";
 
 /*
  * The draft's utility bar pills [D160, D161, D388], as the old app's: ghost pills in bright text that open upward,
@@ -188,22 +188,7 @@ const PLACES: Record<WorkIn, { label: string; Icon: typeof Folder }> = {
   existing: { label: "Existing worktree", Icon: Folder },
 };
 
-/** "Usage remaining ›", expanded in place. shortcut: no agent reports usage windows yet, so it says so; list them here when one does. */
-function UsageRemaining() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <DropdownMenuItem closeOnClick={false} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <SpeedometerLatencySpeed />
-        <span className="flex-1">Usage remaining</span>
-        {open ? <ChevronDown /> : <ChevronRight />}
-      </DropdownMenuItem>
-      {open && <p className="px-2 pb-1 ps-8 text-sm text-muted-foreground">Not reported yet</p>}
-    </>
-  );
-}
-
-/** The "Work in" menu: a new worktree (the default), the project's own checkout or another worktree, each with the old tooltip, and the usage left. */
+/** The "Work in" menu: a new worktree (the default), the project's own checkout or another worktree, each with the old tooltip. */
 export function WorkInPicker({ value, onChange, repo }: { value: WorkIn; onChange: (next: WorkIn) => void; repo: string }) {
   const tips: Record<WorkIn, string> = {
     worktree: `Create a copy of ${repo} to work in parallel.`,
@@ -230,9 +215,6 @@ export function WorkInPicker({ value, onChange, repo }: { value: WorkIn; onChang
             );
           })}
         </DropdownMenuRadioGroup>
-        <div className="mt-1 border-t border-divider pt-1">
-          <UsageRemaining />
-        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
