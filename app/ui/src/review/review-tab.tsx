@@ -89,7 +89,7 @@ export function ReviewTab(props: ReviewTabProps) {
 
   return (
     <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2">
+      <div className="flex h-control-lg shrink-0 items-center gap-1 border-b border-border px-2 toggles-clear:pe-toggles-clear">
         {props.onScope && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">

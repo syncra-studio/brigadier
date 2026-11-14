@@ -91,7 +91,7 @@ export function FileViewer({
 /** A file's header: its icon, its name bold and its folder grey, then `children`, Copy path and Reveal in Finder. */
 function CodeFileHeader({ path, gone, onReveal, children }: { path: string; gone: boolean; onReveal?: () => void; children?: ReactNode }) {
   return (
-    <header data-slot="code-file-header" className="flex h-control-lg shrink-0 items-center gap-2 border-b border-border px-4">
+    <header data-slot="code-file-header" className="flex h-control-lg shrink-0 items-center gap-2 border-b border-border px-4 toggles-clear:pe-toggles-clear">
       <FileIcon name={path} />
       <h2 className="min-w-0 flex-1 truncate text-sm" title={path}>
         <span className="font-medium">{baseName(path)}</span>
