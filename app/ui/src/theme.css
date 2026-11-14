@@ -1395,6 +1395,14 @@
 /* The tabs share the bar's room, then scroll once they reach their least width. */
 @utility session-tab-list {
   --session-tab-count: attr(data-count type(<number>), 1);
+  /* Chat keeps its full width [new-design]; the others share the room less "+" (its size, margin and gaps), Chat and the gaps between them. */
+  --session-tab-others: max(var(--session-tab-count) - 1, 1);
+  --session-tab-share: calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 3 - var(--spacing-session-tab-max) - (var(--session-tab-others) - 1) * var(--spacing) / 2) / var(--session-tab-others));
+  /* A tab behind: its share of what the one in front leaves, or of all of it while Chat is in front. */
+  --session-tab-behind: calc((var(--session-tab-share) * var(--session-tab-others) - var(--spacing-session-tab-max)) / max(var(--session-tab-others) - 1, 1));
+  &:has(> [data-tab-id="chat"] [aria-selected="true"]) {
+    --session-tab-behind: var(--session-tab-share);
+  }
   flex: 0 1 auto;
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::after {
@@ -1406,17 +1414,20 @@
   font-size: var(--text-label);
   line-height: var(--text-label--line-height);
   font-weight: 430;
-  /* The room less "+" (its size, its margin and the gaps either side of it) and the gaps between the tabs. */
-  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  flex: 0 0 clamp(var(--spacing-session-tab-min), var(--session-tab-share), var(--spacing-session-tab-max));
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
   &:is([aria-selected="true"], :has([aria-selected="true"])) {
-    flex-basis: clamp(var(--spacing-session-tab-active), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+    flex-basis: clamp(var(--spacing-session-tab-active), var(--session-tab-share), var(--spacing-session-tab-max));
   }
   &:not([aria-selected="true"], :has([aria-selected="true"])) {
-    flex-basis: clamp(var(--spacing-session-tab-icon), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--spacing-session-tab-max)) / max(var(--session-tab-count) - 1, 1)), var(--spacing-session-tab-max));
+    flex-basis: clamp(var(--spacing-session-tab-icon), var(--session-tab-behind), var(--spacing-session-tab-max));
+  }
+  /* Chat never shrinks, in front or behind [new-design]. */
+  &[data-tab-id="chat"] {
+    flex-basis: var(--spacing-session-tab-max);
   }
   &[data-fresh] {
     @starting-style {
