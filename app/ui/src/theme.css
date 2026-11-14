@@ -311,6 +311,7 @@
   /* Crowded [new-design]: the active tab keeps 13rem, the others give way to their icon alone. */
   --spacing-session-tab-active: 13rem;
   --spacing-session-tab-icon: 2.375rem;
+  --container-tab-icon: 3rem;
   --spacing-session-tab-rule: 1px;
   --spacing-session-tab-rule-height: 0.75rem;
   --container-new-tab: 28rem;

@@ -30,13 +30,14 @@ import { Toolbar } from "./toolbar";
 /** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
 const CLOSING_MS = 200;
 
-const TAB = "session-tab app-no-drag group/tab relative flex h-6.5 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
+const TAB = "session-tab @container/tab app-no-drag group/tab relative flex h-6.5 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
 const LOOK = (active: boolean) => (active ? "bg-selection shadow-session-tab text-foreground ring-1 ring-glass-stroke ring-inset" : "text-toolbar-foreground hover:bg-fill");
-const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring";
-const TITLE = "session-tab-title min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
+// Squeezed to its icon (the crowded bar), a tab shows the icon alone, centred [new-design].
+const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring @max-tab-icon/tab:-ms-1.5 @max-tab-icon/tab:justify-center";
+const TITLE = "session-tab-title @max-tab-icon/tab:hidden min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
 // A press is a click until it moves: a drag that started on the press would take the click.
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
-const CLOSE = (active: boolean) => cx("flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
+const CLOSE = (active: boolean) => cx("flex @max-tab-icon/tab:hidden size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
