@@ -113,15 +113,14 @@ pub(crate) fn hop_of(data: &Path, id: &str, turn: &str) -> u64 {
     joined.map(|i| i.hop).max().unwrap_or(0).max(result)
 }
 
+/// What a waited-on receiver is told: what it sends back is the answer [D305, D333].
+const WAITS: &str = " It is waiting for your answer: what you send it is what it gets.";
+
 /// What the receiving agent reads first: who sent it, and that it isn't the user [D2034]
 /// (proposed words). The receiver's thread shows the message without it.
 fn envelope(data: &Path, from: &str, out: &Out) -> String {
     let title = core::load(data, from).map_or("a session".into(), |s| core::share::title(&s));
-    let waits = if out.wait {
-        " It is waiting for your reply."
-    } else {
-        ""
-    };
+    let waits = if out.wait { WAITS } else { "" };
     // The receiver's branch: its work stays there, not the sender's [D305].
     let branch = (core::load(data, &out.to).ok())
         .and_then(|s| workers::git(&s.cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"]))
@@ -226,6 +225,7 @@ pub fn send(
                 "Stopped: you sent 20 messages in the last minute. It waits for the user, who can send it anyway. Put the rest in one message.",
             );
         }
+        None if let Some(answered) = reply::answered(data, me, &mut out) => return answered,
         None => {}
     }
     if asks {
