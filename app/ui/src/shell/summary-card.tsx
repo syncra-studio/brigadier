@@ -64,8 +64,8 @@ const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
-    // Over the thread's top fade (z-10); clear of the thread's scrollbar (theme.css's 2.5) at the pane's end (D42).
-    <div className="pointer-events-none absolute inset-y-0 end-2.5 z-20 flex max-w-full flex-col toggles-clear:end-toggles-clear">
+    // Over the thread's top fade (z-10).
+    <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col toggles-clear:end-toggles-clear">
       <aside
         aria-label="Context"
         aria-hidden={!shown || undefined}
@@ -90,12 +90,12 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
  * Escape closes it, so `open` is all it follows.
  */
 function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
-  // The pane's whole width, so the card follows the pane's end as the pane narrows; clear of the scrollbar and Windows' fixed toggles as the pinned one.
+  // The pane's whole width, so the card follows the pane's end as the pane narrows; clear of Windows' fixed toggles as the pinned one.
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const popup = useRef<HTMLDivElement>(null);
   return (
     <>
-      <div ref={setAnchor} className="pointer-events-none absolute start-0 end-2.5 top-0 h-0 toggles-clear:end-toggles-clear" />
+      <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0 toggles-clear:end-toggles-clear" />
       {/* Focus is on the card, so its own Escape closes it; a click elsewhere leaves it shown. */}
       <Popover.Root open={open} onOpenChange={(next, details) => !next && details.reason === "escape-key" && onClose()}>
         <Popover.Portal>
