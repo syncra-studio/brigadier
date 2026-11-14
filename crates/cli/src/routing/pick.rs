@@ -110,9 +110,10 @@ pub(super) fn place(
                     .is_none_or(|m| m.iter().any(|x| x == model))
             })
             .collect();
-        // A limit lately keeps it out where this model's own usage isn't known (proposed): one
-        // model's window at its limit leaves another with room on the same account.
-        let known = ws.iter().any(|w| w.used.is_some());
+        // A limit lately keeps it out until its time unless a sample newer than the mark says
+        // otherwise: one model's window at its limit leaves another with room on the account.
+        let marked = v["limited_at"][&key].as_u64().unwrap_or(0);
+        let known = ws.iter().any(|w| w.used.is_some() && w.at > marked);
         if let Some(until) = v["limited"][&key].as_u64().filter(|u| now < *u && !known) {
             soonest = Some(soonest.map_or(until, |s| s.min(until)));
             continue;

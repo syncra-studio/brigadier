@@ -33,7 +33,7 @@ pub(crate) fn load(data: &Path) -> Value {
     let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
     let map = |k: &str| v[k].as_object().cloned().unwrap_or_default();
     json!({"accounts": list("accounts"), "auto": list("auto"), "agents": v["agents"] == true,
-        "limited": map("limited"), "use": map("use"), "names": map("names")})
+        "limited": map("limited"), "limited_at": map("limited_at"), "use": map("use"), "names": map("names")})
 }
 
 pub(crate) fn save(data: &Path, v: &Value) -> io::Result<()> {

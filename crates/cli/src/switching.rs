@@ -153,6 +153,7 @@ fn attempt(
         if why == "limited" {
             let until = f.resets.unwrap_or(log::now_ms() + SKIP_MS);
             v["limited"][format!("{b}/{cur}")] = until.into();
+            v["limited_at"][format!("{b}/{cur}")] = log::now_ms().into();
             save(data, &v)?;
         }
         v
@@ -306,7 +307,7 @@ fn pick_agent(
 /// setting or account change asks again about a session still at its limit [D51].
 pub fn switch_settings(data: &Path) -> Value {
     let mut v = load(data);
-    v["limited"] = Value::Null;
+    (v["limited"], v["limited_at"]) = (Value::Null, Value::Null);
     v
 }
 
