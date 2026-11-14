@@ -304,6 +304,9 @@
   /* A tab's width in the bar, and the rule between two tabs in back. */
   --spacing-session-tab-min: 5.625rem;
   --spacing-session-tab-max: 15rem;
+  /* Crowded [new-design]: the active tab keeps 13rem, the others give way to their icon alone. */
+  --spacing-session-tab-active: 13rem;
+  --spacing-session-tab-icon: 2.375rem;
   --spacing-session-tab-rule: 1px;
   --spacing-session-tab-rule-height: 0.75rem;
   --container-new-tab: 28rem;
@@ -1421,6 +1424,12 @@
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
+  &:is([aria-selected="true"], :has([aria-selected="true"])) {
+    flex-basis: clamp(var(--spacing-session-tab-active), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  }
+  &:not([aria-selected="true"], :has([aria-selected="true"])) {
+    flex-basis: clamp(var(--spacing-session-tab-icon), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--spacing-session-tab-max)) / max(var(--session-tab-count) - 1, 1)), var(--spacing-session-tab-max));
+  }
   &[data-fresh] {
     @starting-style {
       flex-basis: 0;
