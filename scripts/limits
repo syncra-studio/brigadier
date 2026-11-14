@@ -65,8 +65,9 @@ check "inline style value" \
   '(^|[^a-zA-Z0-9_-])style=|\.style([^a-zA-Z0-9_]|$)|<style|\.setProperty\(|\.cssText' \
   "${not_theme[@]}"
 
-agents_bytes="$(wc -c <AGENTS.md)"
-[ "$agents_bytes" -gt "$AGENTS_MAX_BYTES" ] && fail "AGENTS.md is $agents_bytes bytes, the limit is $AGENTS_MAX_BYTES"
+# What every agent loads at start: AGENTS.md and the two files it imports.
+agents_bytes="$(cat AGENTS.md CONTRIBUTING.md ARCHITECTURE.md | wc -c)"
+[ "$agents_bytes" -gt "$AGENTS_MAX_BYTES" ] && fail "AGENTS.md with its imports is $agents_bytes bytes, the limit is $AGENTS_MAX_BYTES"
 
 line_bytes="$(wc -c <"$AGENT_LINE")"
 [ "$line_bytes" -gt "$AGENT_LINE_MAX_BYTES" ] && fail "$AGENT_LINE is $line_bytes bytes, the limit is $AGENT_LINE_MAX_BYTES"
@@ -80,7 +81,7 @@ found="$(git log --format='%h %ae' | grep -vF " $OWNER_EMAIL")" && {
   echo "$found"
 }
 
-found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|AGENTS\.md|CLAUDE\.md|docs/PLAN\.md|THIRD_PARTY_NOTICES\.md')" && {
+found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
   fail ".md file not on the allowed list"
   echo "$found"
 }
