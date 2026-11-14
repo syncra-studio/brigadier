@@ -174,8 +174,9 @@ impl Pr {
     }
 
     /// One PR's row, from a read of the PR alone (its tab's), kept in `prs.json` beside the others,
-    /// so the card and the list never show older facts than its tab.
-    pub(super) fn keep_row(&self, pr: &Value) {
+    /// so the card and the list never show older facts than its tab. Only the branch's own is added:
+    /// another the tab lists opens without joining the card [D283].
+    pub(super) fn keep_row(&self, pr: &Value, mine: bool) {
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let mut next = kept(&self.dir);
@@ -189,7 +190,8 @@ impl Pr {
         fresh["viewedAtMs"] = now_ms().into();
         match rows.iter_mut().find(|p| key(p) == key(&fresh)) {
             Some(was) => *was = fresh,
-            None => rows.push(fresh),
+            None if mine => rows.push(fresh),
+            None => return,
         }
         let path = self.dir.join("prs.json");
         let tmp = path.with_extension(format!("{}.tmp", std::process::id()));

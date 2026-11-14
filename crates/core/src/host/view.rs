@@ -96,17 +96,8 @@ impl Pr {
         if !pr.is_object() {
             return err(partial.unwrap_or_else(|| format!("#{number} couldn't be read.")));
         }
-        // The branch's PR, or another the session touched and keeps [D175].
-        let kept = super::kept(&self.dir);
-        let touched = (kept["prs"].as_array().into_iter().flatten()).any(|p| {
-            p["number"] == number
-                && p["repo"].as_str().map(str::to_ascii_lowercase)
-                    == other.map(str::to_ascii_lowercase)
-        });
+        // Any PR the tab lists opens; only the card keeps to the session's [D283, D175].
         let mine = other.is_none() && super::prs::belongs(pr, repo, &self.branch);
-        if !mine && !touched && !self.project {
-            return err(format!("#{number} isn't one of this session's PRs."));
-        }
         let checks: Vec<Value> = checks_of(pr).iter().map(check).collect();
         let login = |a: &Value| a["login"].clone();
         // A sent review's own words, apart from its line comments; one with none says nothing here.
@@ -205,11 +196,10 @@ impl Pr {
         .map(|(_, style)| style)
         .collect();
         styles.sort_by_key(|s| Some(*s) != first.as_deref());
-        // Another repository's PR is never the branch's open one.
-        let own = other.is_none();
-        if own && matches!(state, "open" | "draft") {
+        // Only the branch's own PR is its open one.
+        if mine && matches!(state, "open" | "draft") {
             super::note_open(&self.id, &self.branch, Some(number));
-        } else if own && super::open_pr(&self.id, &self.branch) == Some(number) {
+        } else if mine && super::open_pr(&self.id, &self.branch) == Some(number) {
             super::note_open(&self.id, &self.branch, None);
         }
         let view = json!({
@@ -236,7 +226,7 @@ impl Pr {
             "viewer": data["viewer"]["login"],
         });
         keep(&kept_path(&self.dir, other, number, "json"), &view);
-        self.keep_row(pr);
+        self.keep_row(pr, mine);
         Ok(view)
     }
 

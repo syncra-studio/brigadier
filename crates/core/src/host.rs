@@ -343,8 +343,6 @@ pub struct Pr {
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
     dir: std::path::PathBuf,
-    /// A project's, before a session there starts: any PR of its repository opens [D279].
-    project: bool,
 }
 
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
@@ -403,7 +401,6 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
             false => crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
         },
         dir: dir(data, id),
-        project,
     })
 }
 
