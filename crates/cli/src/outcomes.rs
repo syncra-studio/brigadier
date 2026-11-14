@@ -107,7 +107,9 @@ pub(crate) fn results(data: &Path) -> Value {
         let notes = workers::outcomes(data, &wid);
         let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
         for n in &notes {
-            if let Some(of) = n["retry_of"].as_str().filter(|_| n["phase"] == "start") {
+            // A rerun after a temporary end isn't a failed check [D340, D353].
+            let start = n["phase"] == "start" && n["step"] != "same";
+            if let Some(of) = n["retry_of"].as_str().filter(|_| start) {
                 *retried.entry(of.into()).or_default() += 1;
             }
             if n["phase"] == "review" && n["ran"] == true {
