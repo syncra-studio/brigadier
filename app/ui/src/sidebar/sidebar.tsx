@@ -204,7 +204,8 @@ export function AppSidebar({
           <div className="h-7.5 win:hidden" />
           <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap win:pe-history">
             <BrigadierMark className="size-icon-md shrink-0" />
-            Brigadier
+            {/* Cut at the content's edge: the h1 clips at its padding, which on Windows is the pill's room. */}
+            <span className="min-w-0 truncate">Brigadier</span>
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
             <ComposeEditSquare />
