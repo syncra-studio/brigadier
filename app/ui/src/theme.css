@@ -371,8 +371,8 @@
   --spacing-sidebar-open-min: 13.125rem;
   --spacing-sidebar-max: 29.25rem;
   --spacing-sidebar-thread-min: 20rem;
-  /* Collapsed to a strip of icons, each where it sits in the expanded panel. */
-  --spacing-sidebar-strip: 4.5rem;
+  /* Collapsed to a strip of icons: the old app's 48px strip, as the rail card inside the panel's 4px insets. */
+  --spacing-sidebar-strip: calc(var(--spacing) * 10 + var(--spacing-icon-md));
   /* The panel's grab area. */
   --spacing-resize-handle: 1rem;
   /* A window narrower than this folds the sidebar by itself. */
@@ -1242,25 +1242,28 @@
   /* How wide the panel shows beside the content: what the title bar keeps clear of. */
   --sidebar-shown: var(--spacing-sidebar-strip);
   /* Where the History pill sits, from the window's start, and the tab bar's start padding clearing it [new-design]:
-     in the strip, first in the tab bar; closed, after the traffic lights; open, at the sidebar card's top end. */
-  --history-start: calc(var(--spacing-sidebar-strip) + var(--spacing) * 3);
+     collapsed, after the traffic lights on the window's top row; open, at the sidebar card's top end. Collapsed, the
+     rail card starts under that row, level with the right panel's card; open, the lights sit in the card's own. */
+  --history-start: calc(var(--spacing-traffic-lights) + var(--spacing));
   --history-shift: 0%;
-  --tab-bar-start: calc(var(--spacing-history) + var(--spacing) * 4);
+  --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2 - var(--sidebar-shown));
+  --sidebar-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
     --history-start: calc(var(--sidebar-open-width) - var(--spacing) * 2.5);
     --history-shift: -100%;
     --tab-bar-start: calc(var(--spacing) * 2);
+    --sidebar-top: calc(var(--spacing) * 2);
   }
   &[data-state="collapsed"][data-collapse="hidden"] {
     --sidebar-shown: 0px;
-    --history-start: calc(var(--spacing-traffic-lights) + var(--spacing));
-    --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2);
   }
 }
-:root:is([data-fullscreen], [data-platform="win32"]) [data-collapse="hidden"][data-state="collapsed"] {
-  --history-start: calc(var(--spacing) * 3);
+/* No traffic lights: the pill leads the tab bar, and the rail card runs from the top. */
+:root:is([data-fullscreen], [data-platform="win32"]) [data-state="collapsed"] {
+  --history-start: calc(var(--sidebar-shown) + var(--spacing) * 3);
   --tab-bar-start: calc(var(--spacing-history) + var(--spacing) * 4);
+  --sidebar-top: calc(var(--spacing) * 2);
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
@@ -1474,7 +1477,7 @@
 
 /* The sidebar's column easing between its widths on a spring; still while it is dragged. */
 @utility sidebar-motion {
-  transition-property: width;
+  transition-property: width, padding-top;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
   &[data-resizing] {

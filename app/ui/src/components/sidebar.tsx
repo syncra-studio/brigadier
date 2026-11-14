@@ -162,9 +162,9 @@ export function SidebarPanel({
         data-resizing={resizing || undefined}
         className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
       >
-        <div data-resizing={resizing || undefined} className={cx("sidebar-motion flex h-full flex-col px-1 pt-2 pb-1", open ? "sidebar-panel-width" : "w-sidebar-strip")}>
+        <div data-resizing={resizing || undefined} className={cx("sidebar-motion relative flex h-full flex-col px-1 pt-(--sidebar-top) pb-1", open ? "sidebar-panel-width" : "w-sidebar-strip")}>
+          <div aria-hidden className="app-drag absolute inset-x-0 top-0 h-tab-bar" />
           <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground ring-1 ring-glass-stroke ring-inset", className)} {...props}>
-            <div aria-hidden className="app-drag absolute inset-x-0 top-0 h-tab-bar" />
             <div className="relative min-h-0 flex-1">
               <div
                 inert={!open}

@@ -375,7 +375,7 @@ function ProjectRow({
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   const { setOpen } = useSidebar();
   return (
-    <div className="flex flex-col items-center gap-3 pt-11.25 win:pt-1.25">
+    <div className="flex flex-col items-center gap-3 pt-2.75 win:pt-1.25">
       <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
         <BrigadierMark className="size-5 group-hover/mark:hidden group-focus-visible/mark:hidden" />
         <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
