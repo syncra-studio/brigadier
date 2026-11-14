@@ -70,7 +70,7 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-label="Context"
         aria-hidden={!shown || undefined}
         className={cx(
-          "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-px",
+          "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
           // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's).
           shown ? "summary-floats:invisible summary-floats:translate-x-full summary-floats:scale-80 summary-floats:opacity-0" : "invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",
@@ -108,7 +108,7 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
               // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel; below, room for its shadow.
-              className="pointer-events-none flex max-h-available w-71 max-w-available flex-col overflow-y-auto ps-1 pt-px pb-3 outline-none menu-motion"
+              className="pointer-events-none flex max-h-available w-71 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
