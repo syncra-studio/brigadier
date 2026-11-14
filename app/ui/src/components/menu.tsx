@@ -88,21 +88,23 @@ export function DropdownMenuItem({
   );
 }
 
-// The mark at a checkbox or radio row's end.
-const MARK = "pointer-events-none absolute end-2 flex items-center justify-center";
+// The mark at a checkbox or radio row's end; an inset row's, in its inset at the start.
+const MARK = "pointer-events-none absolute end-2 flex items-center justify-center in-data-inset:start-2 in-data-inset:end-auto";
 
 // Picking a checkbox or radio row closes its menu, as the old app's menus did.
 export function DropdownMenuCheckboxItem({
   className,
   children,
+  inset,
   closeOnClick = true,
   ...props
-}: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string }) {
+}: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string; inset?: boolean }) {
   return (
     <Menu.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
+      data-inset={inset || undefined}
       closeOnClick={closeOnClick}
-      className={cx(itemBase, "pe-8", className)}
+      className={cx(itemBase, "pe-8 data-inset:pe-2", className)}
       {...props}
     >
       <Menu.CheckboxItemIndicator className={MARK}>

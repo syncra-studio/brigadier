@@ -28,7 +28,7 @@ SOFTWARE.
 
 ## Lucide
 
-The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), under the ISC License:
+The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), and `ListFilter` is Lucide's own list-filter, both under the ISC License:
 
 ```
 ISC License

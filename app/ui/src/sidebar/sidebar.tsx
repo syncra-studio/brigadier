@@ -21,14 +21,13 @@ import { ArchivedFlyout, ChatsFlyout, NoProjects, PinnedFlyout, ProjectsFlyout }
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, SessionRowItem } from "./row";
-import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
+import { useShowFilter, ViewMenu } from "./view";
 import type { Project, SessionRow } from "./words";
 
 /*
- * The app's sidebar [D173, D174]: New chat, then the sessions in one of two layouts, picked in View.
- * Group by None is one list across projects, each row with its project's badge. Group by Project lists
- * the projects by name, each folding its own sessions. Rows go by the user's last send, newest first,
- * so a row never moves while it works. Layout and folds are this window's view, kept in localStorage.
+ * The app's sidebar [D173, D174]: New chat, then the sessions: Pinned, the projects by name, each folding its
+ * own sessions, then Chats in no project; View leaves projects out [new-design]. Rows go by the user's last send,
+ * newest first, so a row never moves while it works. Folds are this window's view, kept in localStorage.
  */
 
 
@@ -79,7 +78,6 @@ export function AppSidebar({
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
-  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "project");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -106,17 +104,11 @@ export function AppSidebar({
   const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   // Each section's rows top to bottom, keyed by what folds them: the order ⌥⌘A goes in and the pill counts.
-  const sections: [string[], SessionRow[]][] =
-    grouping === "none"
-      ? [
-          [["pinned"], pinned],
-          [["open"], rest ?? []],
-        ]
-      : [
-          [["pinned"], pinned],
-          ...byName.map((project): [string[], SessionRow[]] => [["projects", project.id], rest?.filter((each) => each.project === project.id) ?? []]),
-          [["none"], homeless],
-        ];
+  const sections: [string[], SessionRow[]][] = [
+    [["pinned"], pinned],
+    ...byName.map((project): [string[], SessionRow[]] => [["projects", project.id], rest?.filter((each) => each.project === project.id) ?? []]),
+    [["none"], homeless],
+  ];
   const order = sections.flatMap(([, each]) => each);
   // The open session's keys work even with its project left out by View.
   const activeRow = shown?.find((each) => each.id === active);
@@ -180,12 +172,10 @@ export function AppSidebar({
       {...layout}
     />
   );
-  const view = <ViewTrigger projects={projects} show={show} />;
   const listed = { active, offline, onOpen };
-  // Add project shows a project already added here: grouped by project, unfolded, in view [D165].
+  // Add project shows a project already added here: unfolded, in view [D165].
   useEffect(() => {
-    setShowProject((id, group) => {
-      if (group) setGrouping("project");
+    setShowProject((id) => {
       show.setHiddenProjects([...show.hiddenProjects].filter((each) => each !== id));
       setFolded(folded.filter((key) => key !== "projects" && key !== id));
       requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
@@ -208,7 +198,6 @@ export function AppSidebar({
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
     >
-      <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
         {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
           {/* Windows has no traffic lights: the name heads the row the History pill ends. */}
@@ -226,7 +215,7 @@ export function AppSidebar({
               <MagnifyingGlassSmSearch className="size-icon-sm shrink-0" />
               Search
             </button>
-            {view}
+            <ViewMenu projects={projects} show={show} />
           </div>
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -240,50 +229,30 @@ export function AppSidebar({
                     <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
                   </NavSection>
                 )}
-                {/* One section for both layouts: the View button in its header stays mounted, so an open menu keeps its place. */}
                 <NavSection
-                  title={grouping === "none" ? "Open" : "Projects"}
-                  open={isOpen(grouping === "none" ? "open" : "projects")}
-                  onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
+                  title="Projects"
+                  open={isOpen("projects")}
+                  onOpenChange={(open) => setOpen("projects", open)}
                   actions={
-                    grouping === "project" && (
-                      <Tooltip>
-                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
-                          <Plus />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Add project</TooltipContent>
-                      </Tooltip>
-                    )
+                    <Tooltip>
+                      <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                        <Plus />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Add project</TooltipContent>
+                    </Tooltip>
                   }
                 >
-                  {grouping === "none" ? (
-                    <NavList className="gap-1">
-                      {rest.map((each) => row(each, { badged: true }))}
-                      {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
-                    </NavList>
-                  ) : (
-                    <NavList>
-                      {byName.map((project) => (
-                        <ProjectRow
-                          key={project.id}
-                          project={project}
-                          open={isOpen(project.id)}
-                          onOpenChange={(open) => setOpen(project.id, open)}
-                        >
-                          {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                        </ProjectRow>
-                      ))}
-                      {projects.length === 0 && (
-                        <EmptyState
-                          as="li"
-                          title={<NoProjects onAdd={() => openAddProject()} />}
-                        />
-                      )}
-                    </NavList>
-                  )}
+                  <NavList>
+                    {byName.map((project) => (
+                      <ProjectRow key={project.id} project={project} open={isOpen(project.id)} onOpenChange={(open) => setOpen(project.id, open)}>
+                        {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                      </ProjectRow>
+                    ))}
+                    {projects.length === 0 && <EmptyState as="li" title={<NoProjects onAdd={() => openAddProject()} />} />}
+                  </NavList>
                 </NavSection>
                 {/* Sessions with no project (made before projects were records) [D224]. */}
-                {grouping === "project" && homeless.length > 0 && (
+                {homeless.length > 0 && (
                   <NavSection title="Chats" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
                     <NavList>{homeless.map((each) => row(each, {}))}</NavList>
                   </NavSection>
@@ -293,7 +262,6 @@ export function AppSidebar({
           </div>
           <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
         </div>
-      </ViewMenu>
       <ArchiveAsk />
       <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
