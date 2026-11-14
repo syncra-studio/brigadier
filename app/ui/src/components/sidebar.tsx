@@ -178,14 +178,14 @@ export function SidebarPanel({
               <div
                 inert={open || hidden}
                 className={cx(
-                  "rail-icons absolute inset-0 flex flex-col transition-opacity motion-reduce:transition-none",
+                  "absolute inset-0 flex flex-col transition-opacity motion-reduce:transition-none",
                   open || hidden ? "opacity-0" : "opacity-100",
                 )}
               >
                 {strip}
               </div>
             </div>
-            <div className={cx(!open && "rail-icons")}>{foot}</div>
+            {foot}
           </div>
         </div>
       </div>

@@ -1352,16 +1352,6 @@
   }
 }
 
-/* The strip rail's icons rest at label-2, white only hovered or picked [new-design]. */
-@utility rail-icons {
-  --color-strip-foreground: var(--color-muted-foreground);
-  --strip-button-width: 2.25rem;
-}
-/* A strip or foot icon's least width: 32px in the open foot, 36px in the rail [new-design]. */
-@utility strip-button {
-  min-width: var(--strip-button-width, calc(var(--spacing) * 8));
-}
-
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
 @utility strip-rule {
   height: 1px;

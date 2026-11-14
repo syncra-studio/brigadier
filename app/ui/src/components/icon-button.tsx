@@ -12,7 +12,7 @@ const TOOLBAR = cx(
 
 // A sidebar strip or foot icon: a row tall, filled while hovered, pressed or while its menu is open.
 const STRIP = cx(
-  "strip-button relative flex gap-1.5 text-strip-foreground transition-all motion-safe:active:scale-press",
+  "relative flex min-w-8 gap-1.5 text-strip-foreground transition-all motion-safe:active:scale-press",
   "hover:bg-fill hover:text-foreground aria-expanded:bg-fill aria-expanded:text-foreground",
   "aria-pressed:bg-fill aria-pressed:text-foreground",
 );
