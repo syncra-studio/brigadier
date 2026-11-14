@@ -5,19 +5,22 @@ import { EmptyState } from "../components/empty-state";
 import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { useDaemon } from "../daemon";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
+import { PullRequestOpen } from "../landing/icons";
 import { LivePrTab } from "../landing/live";
 import { PrList } from "../landing/pr-list";
 import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
+import { openPrs } from "../panel/open";
 import { ReviewView } from "../review/view";
 import { keysOf } from "../shortcuts";
 import { WorkersPanelSlot } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
-import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+import { CHAT, closeTab, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key or chevron along the top, its name under them. */
@@ -26,15 +29,19 @@ const TOP = "flex min-h-4.5 w-full items-center justify-between gap-2"; // a key
 const ICON = "size-icon-md shrink-0 text-muted-foreground";
 const LABEL = "w-full min-w-0 truncate";
 
-/** The old app's New tab, with no browser or pages yet: what's picked replaces it. Only Terminal goes anywhere so far [D361, D388]. */
+/** The old app's New tab, with no browser or pages yet: what's picked replaces it. Terminal and Pull requests go somewhere so far [D361, D388, D240]. */
 function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: boolean }) {
-  const sideChat = (
-    <button type="button" aria-label="Side chat" disabled className={TOOL}>
+  // The card's last known PRs, so it opens what the card's PR button opens, in this tab's place [D200, D240].
+  const prs = useDaemon().rows?.find((row) => row.id === owner)?.prs?.prs ?? [];
+  const pullRequests = (
+    <button type="button" disabled={owner === HOME} onClick={() => {
+        openPrs(owner, prs);
+        closeTab(owner, tab.id);
+      }} className={TOOL}>
       <span className={TOP}>
-        <ChatCompose className={ICON} />
-        <Kbd>⌥⌘S</Kbd>
+        <PullRequestOpen className={ICON} />
       </span>
-      <span className={LABEL}>Side chat</span>
+      <span className={LABEL}>Pull requests</span>
     </button>
   );
   return (
@@ -63,11 +70,11 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
             {owner === HOME ? (
               <Tooltip>
                 {/* A disabled button hears no pointer, so its tip hangs on what holds it. */}
-                <TooltipTrigger render={<span className="flex w-full" />}>{sideChat}</TooltipTrigger>
-                <TooltipContent>Start the session to use Side chat</TooltipContent>
+                <TooltipTrigger render={<span className="flex w-full" />}>{pullRequests}</TooltipTrigger>
+                <TooltipContent>Start the session to see its pull requests</TooltipContent>
               </Tooltip>
             ) : (
-              sideChat
+              pullRequests
             )}
           </div>
           <div className={CARD}>
@@ -80,6 +87,12 @@ function NewTab({ owner, tab, archived }: { owner: string; tab: Tab; archived: b
                 <span className={LABEL}>More tools…</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
+                <DropdownMenuItem disabled>
+                  <ChatCompose />
+                  Side chat
+                  <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
+                </DropdownMenuItem>
                 <DropdownMenuItem disabled>
                   <Search />
                   Find file
