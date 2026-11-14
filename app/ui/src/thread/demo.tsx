@@ -88,7 +88,7 @@ export function Demo() {
         <Thread key={shown?.key} source={source} ref={thread} footer={running && store ? <Working store={store} /> : null} />
       </div>
       {/* Stands in for the composer, keeping its height and gap to the window's bottom. */}
-      <div className="mx-auto w-full max-w-reading shrink-0 px-5 pb-3">
+      <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-3">
         <textarea
           aria-label="Message"
           placeholder="Type here while it streams"

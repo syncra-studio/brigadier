@@ -29,7 +29,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
   const gone = rewind?.gone("item" in props ? props.item.n : undefined, "turn" in props ? props.turn?.id : undefined);
   const fork = "turn" in props && props.turn && <ForkAction at={props.turn.id} />;
   return (
-    <div className={`mx-auto w-full max-w-reading px-5 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
+    <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
       {/* A row that throws while it's drawn leaves the rest of the thread standing (D490). */}
       <DrawBoundary summary={props.type === "item" && props.item.kind === "message" ? "This message couldn’t be shown" : "This part couldn’t be shown"}>
       {props.type === "setup" ? (
