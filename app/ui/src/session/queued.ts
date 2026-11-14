@@ -7,12 +7,13 @@ export type RustQueued = { id: string; text: string; parts?: Draft; error?: stri
 
 /**
  * Rust's queue as the card's rows: another session's message without the envelope's first line, with who sent it
- * [D3014]; one for a worker with its name, "To ‹name›" [D3050].
+ * [D3014]; one for a worker with its name, "To ‹name›" [D3050], and whether it ended [D96].
  */
 export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): QueuedMessage[] {
   const title = (id: string) => rows.find((r) => r.id === id)?.title ?? null;
   return items.map((each) => {
-    const to = each.to ? { to: { name: title(each.to) } } : {};
+    // Rust's error on one for a worker: that worker has ended [D96].
+    const to = each.to ? { to: { name: title(each.to), ended: each.error !== undefined } } : {};
     const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
     if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued", ...to };
     const at = each.text.indexOf("]\n\n");

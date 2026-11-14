@@ -302,6 +302,7 @@ function Live() {
                 }}
                 onRemove={(id) => setQueue((list) => list.filter((each) => each.id !== id))}
                 onEdit={pull}
+                onToSession={(id) => setQueue((list) => list.map((each) => (each.id === id ? { ...each, to: undefined } : each)))}
                 onMove={(id, to) =>
                   setQueue((list) => {
                     const rest = list.filter((each) => each.id !== id);

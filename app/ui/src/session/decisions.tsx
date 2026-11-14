@@ -142,12 +142,14 @@ function useWorkerApprovals(owner: string): WorkerApproval[] {
 /** What waits on the user in this session: Rust's lists without the answers on their way, plus refused stale ones, and its workers' approvals. */
 function useWaiting(id: string, source: Source) {
   const shown = useSyncExternalStore(source.subscribe, source.get);
-  const mine = useSyncExternalStore(subscribe, () => answering.get(id));
+  // All sessions' answers: a worker's, on this card, is under the worker's id.
+  const all = useSyncExternalStore(subscribe, () => answering);
+  const mine = all.get(id);
   const session = shown?.id === id ? shown : null;
   // Rust's own rows (the overlaid ones always show the answer): an entry goes once its row has moved on.
   const raw = threadSource.get();
   const workers = useWorkerApprovals(id).filter((each) => {
-    const answer = answering.get(each.session)?.get(each.id);
+    const answer = all.get(each.session)?.get(each.id);
     return !answer || answer.error !== undefined;
   });
   useEffect(() => {

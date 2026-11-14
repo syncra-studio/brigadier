@@ -381,7 +381,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     editing.current = null;
     act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
   };
-  const firstError = row?.queue?.items.find((each) => each.error)?.error;
+  const stuck = row?.queue?.items.find((each) => each.error);
   const stop = () => {
     setStopError(null);
     void run(["stop", id]).then((reply) => !reply.ok && setStopError(failure(reply)));
@@ -402,11 +402,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             resuming={resuming || offline}
             steer={canSteer && running}
             canEdit={empty}
-            error={error ?? (firstError ? `Not sent: ${firstError}. Edit or delete it to go on.` : null)}
+            error={error ?? (stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null)}
             onResume={resume}
             onSteer={steerQueued}
             onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}
             onEdit={edit}
+            onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
           <SessionQuestions id={id} run={run} source={source} />

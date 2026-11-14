@@ -3,7 +3,7 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
-import { ArrowCurvedRight, ChevronUpDown, DotsHorizontal, EditPencil, Info, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { ArrowCurvedRight, ArrowUp, ChevronUpDown, DotsHorizontal, EditPencil, Info, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
@@ -26,8 +26,9 @@ export type QueuedMessage = {
   state: "local" | "queued" | "deciding" | "delivered";
   /** Another session's message: who sent it (null once that session is gone). It's never the user's to edit. */
   peer?: { title: string | null };
-  /** The user's message for one of the session's workers, held until its turn is over: that worker's name. */
-  to?: { name: string | null };
+  /** The user's message for one of the session's workers, held until its turn is over: that worker's name; `ended`:
+   * it can't go to that worker any more [D96]. */
+  to?: { name: string | null; ended?: boolean };
 };
 
 type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
@@ -79,6 +80,7 @@ export function QueueCard({
   onSteer,
   onRemove,
   onEdit,
+  onToSession,
   onMove,
 }: {
   items: readonly QueuedMessage[];
@@ -97,6 +99,8 @@ export function QueueCard({
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit: (id: string) => void;
+  /** A message for a worker that ended goes to the session instead [D96]. */
+  onToSession: (id: string) => void;
   /** Moves it to `to` in the new order; settles when Rust has it. */
   onMove: (id: string, to: number) => Promise<unknown> | void;
 }) {
@@ -145,6 +149,7 @@ export function QueueCard({
               onSteer={onSteer}
               onRemove={onRemove}
               onEdit={onEdit}
+              onToSession={onToSession}
               onMove={move}
             />
           ))}
@@ -221,6 +226,7 @@ function QueueRow({
   onSteer,
   onRemove,
   onEdit,
+  onToSession,
   onMove,
 }: {
   item: QueuedMessage;
@@ -233,6 +239,7 @@ function QueueRow({
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit: (id: string) => void;
+  onToSession: (id: string) => void;
   onMove: (id: string, to: number) => void;
 }) {
   const local = item.state === "local";
@@ -297,8 +304,8 @@ function QueueRow({
       ) : (
         item.to && <ToWorker name={item.to.name} />
       )}
-      {/* One for a worker steers into that worker's turn. */}
-      {(steer || item.to) && (
+      {/* One for a worker steers into that worker's turn, while it has one. */}
+      {(steer || item.to) && !item.to?.ended && (
         <TooltipIconButton
           tooltip="Submit without interrupting the model"
           side="top"
@@ -323,6 +330,12 @@ function QueueRow({
             <EditPencil />
             Edit message
           </DropdownMenuItem>
+          {item.to?.ended && (
+            <DropdownMenuItem onClick={() => onToSession(item.id)}>
+              <ArrowUp />
+              Send to the session instead
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>
