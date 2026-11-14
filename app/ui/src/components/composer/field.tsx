@@ -135,7 +135,7 @@ function pasteChips(editor: LexicalEditor, event: ClipboardEvent | InputEvent | 
 }
 
 /** Plain text this long, pasted, goes in as a "Pasted text" chip instead of as text. */
-const PASTE_CHIP_CHARS = 2000;
+const PASTE_CHIP_CHARS = 800;
 
 /**
  * A paste of files or of long text: an image goes in at the caret as a chip, any other file beside the text

@@ -128,7 +128,7 @@ export function InlineAttachment({
     <span
       data-slot={paste ? "inline-paste" : "inline-image"}
       title={failed ? attachment.error : label}
-      className={cx("inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border bg-muted p-0.5 align-middle text-label text-foreground", failed ? "border-destructive" : "border-border")}
+      className={cx("inline-flex max-w-full cursor-pointer items-center gap-0.5 rounded-control border bg-muted p-0.5 align-top text-label text-foreground", failed ? "border-destructive" : "border-border")}
     >
       {onOpen ? (
         // A button where it opens, so Tab reaches it and Enter or Space opens it.
