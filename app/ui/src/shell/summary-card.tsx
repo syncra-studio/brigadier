@@ -27,8 +27,11 @@ import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 
 type Layout = "beside" | "shift" | "float";
 
-// The old theme's --spacing-summary-gutter-from and --spacing-summary-beside-from, in rem.
-const GUTTER_FROM = 50.25;
+// In rem. Below GUTTER_FROM the card floats over the thread rather than push it [D51]: the column it pushes keeps
+// 37.5rem (600px) beside the card's room (--container-reading-beside-summary's 71 spacings: the w-70 card and its 4px
+// inset) and the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's
+// --spacing-summary-beside-from.
+const GUTTER_FROM = 17.75 + 1.25 + 37.5;
 const BESIDE_FROM = 25;
 
 function layoutOf(width: number): Layout {
@@ -40,19 +43,23 @@ function layoutOf(width: number): Layout {
 }
 
 /**
- * The pane's width once the side panels easing beside it (sidebar-motion) reach theirs: a fold lays the card out for
- * where it ends from its first frame, so the column and the card move with the fold, not jump midway [D45, D49].
+ * The side panels easing beside the pane (sidebar-motion): how much room they'll still give it (`left`) and when their
+ * easing began. A fold lays the card out for where it ends from its start, and what that moves starts with the panel,
+ * so the column and the card move with it as one, never jump midway or trail it [D45, D49, D51].
  */
-function settledWidth(pane: Element, width: number) {
+function fold(pane: Element) {
   let left = 0;
+  let start: CSSNumberish | null = null;
   for (const panel of document.querySelectorAll(".sidebar-motion")) {
     // A panel's own inner card eases inside it, clipped: only the outermost one takes the pane's room.
     if (panel.contains(pane) || panel.parentElement?.closest(".sidebar-motion")) continue;
     const easing = panel.getAnimations().find((each) => each instanceof CSSTransition && each.transitionProperty === "width");
     const to = easing?.effect instanceof KeyframeEffect ? easing.effect.getKeyframes().at(-1)?.width : undefined;
-    if (typeof to === "string") left += panel.getBoundingClientRect().width - Number.parseFloat(to);
+    if (typeof to !== "string") continue;
+    left += panel.getBoundingClientRect().width - Number.parseFloat(to);
+    start = easing?.startTime ?? start;
   }
-  return width + left;
+  return { left, start };
 }
 
 /** Per owner: `pinned`, the user's show or hide, which holds at every width; `floating`, shown over the thread where it floats. */
@@ -167,9 +174,15 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       const resized = innerWidth !== windowWidth;
       windowWidth = innerWidth;
       const before = cardOf(owner);
-      const layout = layoutOf(settledWidth(element, width));
+      const sliding = fold(element);
+      const layout = layoutOf(width + sliding.left);
+      const changed = element.dataset.summary !== layout;
       // On the element at once, for CSS: the column's move and the card's hiding land in this frame, not the next.
       element.dataset.summary = layout;
+      // Seen a frame or two into a fold: the easings that starts (just made, not begun) run from the panel's start.
+      if (changed && sliding.start !== null) {
+        for (const each of element.getAnimations({ subtree: true })) if (each instanceof CSSTransition && each.startTime === null) each.startTime = sliding.start;
+      }
       // A shown card stays shown as the window narrows, floating; a side panel narrowing the pane is moving on to
       // it, so the card waits behind the Context button rather than cover the thread.
       if (layout === "float") {
