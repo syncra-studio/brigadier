@@ -205,8 +205,13 @@ impl Thread {
                 // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
                 self.settle_held(item["by"] != "handoff");
                 if let Some(by @ ("user" | "pause" | "rebirth" | "stall")) = item["by"].as_str() {
-                    if let Some(o) = self.open.as_mut() {
-                        o.stop.0.get_or_insert(by.into());
+                    match self.open.as_mut() {
+                        Some(o) => _ = o.stop.0.get_or_insert(by.into()),
+                        // A worker paused between turns stops only its background jobs: its line, untimed.
+                        None if by == "pause" => {
+                            self.kept_row(json!({"kind": "line", "reason": "paused", "ms": null}));
+                        }
+                        None => {}
                     }
                     self.user_stopped(ts);
                 }

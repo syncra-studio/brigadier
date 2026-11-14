@@ -2,7 +2,7 @@ import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef
 
 import { TooltipIconButton } from "../components/icon-button";
 import { Body } from "../components/thread/body";
-import { doingWords } from "../components/thread/tool";
+import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
 import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
@@ -43,12 +43,19 @@ export type WorkerRow = {
   added?: number | null;
   removed?: number | null;
   /** Its newest call at work, while it works [D143]. */
-  now?: { step: StepKind; name: string; input: string } | null;
+  now?: { step: StepKind; name: string; input: string; description?: string | null } | null;
 };
 
-/** The old strip's words for a call: a command with shell bits reads "Running a command" (its D195). */
-const nowOf = ({ step, name, input }: { step: StepKind; name: string; input: string }) =>
-  step === "run" && /[;&|<>`$(]/.test(input) ? "Running a command" : doingWords(step, name, input);
+/**
+ * The old strip's words for a call: a command reads by what the agent said it does, as its thread row [D214]; one
+ * with no description and shell bits, "Running a command" (its D195).
+ */
+const nowOf = ({ step, name, input, description }: NonNullable<WorkerRow["now"]>) =>
+  step === "run" && description
+    ? `${VERBS.run[0]}: ${description}`
+    : step === "run" && /[;&|<>`$(]/.test(input)
+      ? "Running a command"
+      : doingWords(step, name, input);
 
 const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   id: row.id,

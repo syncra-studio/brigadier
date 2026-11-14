@@ -257,7 +257,7 @@ export type Item = Base &
     /** `op`: the app's pick it came from, to take its pending line's place [D76]; `live` till the new model draws a row [D241]. */
     | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string; op?: string; live?: boolean }
     | { kind: "line"; reason: "stopped"; ms: number | null }
-    | { kind: "line"; reason: "paused"; ms: number }
+    | { kind: "line"; reason: "paused"; ms: number | null }
     | { kind: "line"; reason: "interrupted" }
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }

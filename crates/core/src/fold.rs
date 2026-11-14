@@ -62,8 +62,8 @@ pub struct Fold {
     /// sent to the background, so its Background row reads `python3 …`, not the process's name.
     #[serde(default)]
     pub typed: BTreeMap<String, String>,
-    /// The agent's own calls at work, oldest first, as `{id, step, name, input}`: a worker's
-    /// newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
+    /// The agent's own calls at work, oldest first, as `{id, step, name, input, description}`: a
+    /// worker's newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
     #[serde(default)]
     pub calls: Vec<Value>,
     /// The live child's subagents still running, by step id: a turn that answered stays held open
@@ -337,7 +337,7 @@ impl Fold {
                 }
                 if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
                 {
-                    self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"]}));
+                    self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"], "description": item["description"]}));
                 }
                 self.run_started(item, ts);
                 if let Some(t) = self.turns.first_mut() {

@@ -62,7 +62,7 @@ export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line
       return <ThreadLine icon={Stop}>{item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</ThreadLine>;
     // A worker's Pause, in its own thread: Resume carries it on [D90].
     case "paused":
-      return <ThreadLine icon={PauseCircle}>You paused after {duration(item.ms)}</ThreadLine>;
+      return <ThreadLine icon={PauseCircle}>{item.ms === null ? "You paused" : `You paused after ${duration(item.ms)}`}</ThreadLine>;
     // The run's host or agent was gone before the turn ended; Resume carries it on (D92).
     case "interrupted":
       return <ThreadLine icon={Stop}>Interrupted · the run stopped before it finished</ThreadLine>;

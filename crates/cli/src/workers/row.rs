@@ -22,8 +22,9 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
             },
         ),
         _ if l.paused => ("paused", "Paused".into()),
-        "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking"
-        | "uncertain" | "stalled" | "asking" => ("working", "Working".into()),
+        // A turn that ended with background jobs left has ended: its result says how [D324].
+        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "uncertain"
+        | "stalled" | "asking" => ("working", "Working".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),
