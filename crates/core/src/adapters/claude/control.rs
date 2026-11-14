@@ -79,9 +79,8 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 
 /// The commit style the message writer follows, so the agent's own commits match [D1029], and
 /// the `brigadier` line [D2025]. Its own messages between sessions off, so every one goes through
-/// Brigadier and shows in the thread [D2035]: none come in, and it can't list the others.
-/// Proposed: `SendMessage` stays, as its subagents need it (D3016), so it could still reach a
-/// session outside Brigadier by name [O3001].
+/// Brigadier and shows in the thread [D2035]: none come in, and it can't list or message the
+/// others. A subagent's final result comes back without `SendMessage` [D311].
 /// A worker's launch: no MCP servers, skills or user settings, only the project's, and its own
 /// memory off (code.claude.com/docs/en/env-vars) [D89].
 pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
@@ -122,7 +121,7 @@ pub fn standing(spec: &Spec) -> [String; 6] {
         "--settings".into(),
         r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
         "--disallowedTools".into(),
-        "ListAgents".into(),
+        "ListAgents,SendMessage".into(),
     ]
 }
 

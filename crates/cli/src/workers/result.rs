@@ -39,8 +39,8 @@ pub(super) struct Res {
     pub how: String,
     pub text: String,
     pub at: u64,
-    /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, not sent,
-    /// proposed) | taken (by the parent's own `wait`) | dropped (its family is being deleted)
+    /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, till a turn
+    /// of the parent's ends) | taken (by the parent's own `wait`) | dropped (its family is deleted)
     pub state: String,
     /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
     #[serde(default)]
@@ -293,8 +293,7 @@ fn write(
         how: how.into(),
         text,
         at: log::now_ms(),
-        // Proposed: a stopped task's result is kept, never sent: its parent or the user stopped
-        // it on purpose, and it would wake a parent the user just stopped [O3000].
+        // A stopped task's result never wakes the parent: it goes with its next turn [D314].
         state: if how == "stopped" { "held" } else { "written" }.into(),
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
@@ -359,8 +358,9 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
             }
         }
         let (data, pid, state) = (data.to_path_buf(), pid.clone(), row["state"].clone());
+        let finished = row["finished"].as_u64().unwrap_or(0);
         thread::spawn(move || {
-            if let Err(e) = settle(&data, &pid, state.as_str().unwrap_or("")) {
+            if let Err(e) = settle(&data, &pid, state.as_str().unwrap_or(""), finished) {
                 eprintln!("brigadierd: worker result for {pid}: {e}");
             }
             SENDING.lock().unwrap().as_mut().map(|s| s.remove(&pid));
@@ -404,8 +404,20 @@ pub(crate) fn settled(f: &fold::Fold, id: &str, state: &str) -> Option<&'static 
 
 /// Moves a parent's results on: a sent one settles by the parent's log, then the oldest written
 /// one is sent. A parent with none left open leaves the set.
-fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
-    let results = all(data, pid);
+fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> {
+    let mut results = all(data, pid);
+    // A stopped worker's result goes once a turn of the parent's ends after it [D314].
+    let due = |r: &Res| r.state == "held" && r.at < finished;
+    for (path, r) in results.iter_mut().filter(|(_, r)| due(r)) {
+        r.state = "written".into();
+        write_json(path, r)?;
+    }
+    // Only held ones: kept open, not folded, while the parent idles.
+    let any = |s: &str| results.iter().any(|(_, r)| r.state == s);
+    let held = any("held");
+    if held && !any("written") && !any("sent") {
+        return Ok(());
+    }
     let dir = core::session_dir(data, pid);
     if closing(data, pid) {
         for (path, mut r) in results.into_iter().filter(|(_, r)| r.state == "written") {
@@ -434,7 +446,7 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
         .into_iter()
         .find(|(_, r)| r.state == "written");
     let Some((path, mut r)) = next else {
-        if !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
+        if !held && !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
             OPEN.lock().unwrap().as_mut().map(|o| o.remove(pid));
         }
         return Ok(());

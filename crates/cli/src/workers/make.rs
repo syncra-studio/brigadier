@@ -140,10 +140,11 @@ pub fn start(
         accounts::starting(data, spec).starts_on
     }
     .filter(|a| !a.is_empty());
-    // Ask and Auto carry over; Full access doesn't, as a session made from another [D205, O3000].
+    // The parent's level carries over, Full access too, as the old app's; a held project's is Ask
+    // [D187, D313]. A Brigade sub-session's the same, as D196 sets nothing else.
     let held = models::held(data, parent.project.as_deref());
     let level = (parent.level.as_deref())
-        .filter(|l| *l != "full" && a.can().levels.contains(l))
+        .filter(|l| (!held || *l == "ask") && a.can().levels.contains(l))
         .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
         .map(String::from);
     let project = parent
