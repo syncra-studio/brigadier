@@ -1,5 +1,6 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $isElementNode, $isLineBreakNode, $isTextNode, TextNode } from "lexical";
+import { $isListNode } from "@lexical/list";
+import { $getRoot, $isElementNode, $isLineBreakNode, $isTextNode, type ElementNode, TextNode } from "lexical";
 import { useEffect } from "react";
 
 import { ChipNode } from "./chip";
@@ -14,6 +15,11 @@ function tick(text: string, at: number, inCode: number): { inCode: number; lengt
   return { inCode: inCode === 0 ? length : inCode === length ? 0 : inCode, length };
 }
 
+/** The field's lines in order: its paragraphs and its list items, nested ones too. */
+function $lines(parent: ElementNode): ElementNode[] {
+  return parent.getChildren().flatMap((node) => (!$isElementNode(node) ? [] : $isListNode(node) || $isListNode(node.getFirstChild()) ? $lines(node) : [node]));
+}
+
 /**
  * Where `target` starts in the text: inside a ``` block or on its fence line, inside a `code` span, right after
  * a space or a line's start. Null if it isn't in the text.
@@ -21,8 +27,7 @@ function tick(text: string, at: number, inCode: number): { inCode: number; lengt
 function $scanTo(target: TextNode): Scan | null {
   const at: Scan = { fenced: false, skip: false, inCode: 0, afterSpace: true, lineStart: true };
   const newLine = () => Object.assign(at, { lineStart: true, skip: false, inCode: 0, afterSpace: true });
-  for (const paragraph of $getRoot().getChildren()) {
-    if (!$isElementNode(paragraph)) continue;
+  for (const paragraph of $lines($getRoot())) {
     newLine();
     for (const node of paragraph.getChildren()) {
       if ($isLineBreakNode(node)) {

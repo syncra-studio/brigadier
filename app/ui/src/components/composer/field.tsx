@@ -4,6 +4,8 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
 import { $getLexicalContent, $insertDataTransferForRichText } from "@lexical/clipboard";
 import { mergeRegister } from "@lexical/utils";
 import {
@@ -16,6 +18,7 @@ import {
   $isLineBreakNode,
   $isRangeSelection,
   COMMAND_PRIORITY_NORMAL,
+  type ElementNode,
   COPY_COMMAND,
   CUT_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
@@ -37,7 +40,7 @@ import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments"
 import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
-import { MarkdownKeys, UrlNode } from "./markdown-keys";
+import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
 
@@ -65,6 +68,7 @@ function enterAction(event: KeyboardEvent): "send" | "other" | "new" | null {
   return matches(event, "send") ? "send" : matches(event, "follow-up-other") ? "other" : matches(event, "start-new") ? "new" : null;
 }
 
+/** What's typed, a drawn list as Markdown: `- item`, `1. item`, a nested one indented under its item's text. */
 function $read(): Parts {
   const parts: Parts = [];
   const add = (text: string) => {
@@ -72,37 +76,92 @@ function $read(): Parts {
     if (typeof parts[last] === "string") parts[last] += text;
     else if (text) parts.push(text);
   };
-  $getRoot()
-    .getChildren()
-    .forEach((block, at) => {
-      if (at > 0) add("\n");
-      if (!$isElementNode(block)) return;
-      for (const node of block.getChildren()) {
-        if ($isChipNode(node)) parts.push(node.__chip);
-        else add($isLineBreakNode(node) ? "\n" : node.getTextContent());
+  let first = true;
+  const line = (prefix: string, block: ElementNode) => {
+    if (!first) add("\n");
+    first = false;
+    add(prefix);
+    for (const node of block.getChildren()) {
+      if ($isChipNode(node)) parts.push(node.__chip);
+      else add($isLineBreakNode(node) ? "\n" : node.getTextContent());
+    }
+  };
+  const list = (node: ListNode, indent: string) => {
+    let number = node.getStart();
+    let width = 2;
+    for (const item of node.getChildren().filter($isListItemNode)) {
+      // An item holding only a list is the one above's nested list.
+      const nested = item.getFirstChild();
+      if ($isListNode(nested)) {
+        list(nested, indent + " ".repeat(width));
+        continue;
       }
-    });
+      const marker = node.getListType() === "number" ? `${number++}. ` : "- ";
+      width = marker.length;
+      line(indent + marker, item);
+    }
+  };
+  for (const block of $getRoot().getChildren()) {
+    if ($isListNode(block)) list(block, "");
+    else if ($isElementNode(block)) {
+      // A line straight after a list reads in Markdown as its last item going on: a blank line ends the list.
+      if ($isListNode(block.getPreviousSibling()) && !block.isEmpty()) add("\n");
+      line("", block);
+    }
+  }
   return parts;
 }
 
 /** `select`: the caret goes to the end (which also focuses the field), as for a recalled prompt; not on mount. */
 function $write(parts: Parts, select = true): void {
-  const paragraph = $createParagraphNode();
+  const root = $getRoot().clear();
+  const lines: Parts[] = [[]];
   for (const part of parts) {
-    if (typeof part !== "string") {
-      paragraph.append(new ChipNode(part));
-      continue;
-    }
-    part.split("\n").forEach((line, at) => {
-      if (at > 0) paragraph.append($createLineBreakNode());
-      if (line) paragraph.append($createTextNode(line));
-    });
+    if (typeof part !== "string") lines.at(-1)!.push(part);
+    else
+      part.split("\n").forEach((text, at) => {
+        if (at > 0) lines.push([]);
+        if (text) lines.at(-1)!.push(text);
+      });
   }
-  $getRoot().clear().append(paragraph);
-  if (select) paragraph.selectEnd();
+  // Markdown list lines come back drawn, nested by their indents (`indents`: the open lists' depths).
+  let indents: number[] = [];
+  const isItem = (line?: Parts) => typeof line?.[0] === "string" && ITEM.test(line[0]);
+  for (const [at, line] of lines.entries()) {
+    // The blank line $read puts between a list and the line after it.
+    if (line.length === 0 && indents.length > 0 && lines[at + 1]?.length && !isItem(lines[at + 1])) continue;
+    const item = typeof line[0] === "string" ? ITEM.exec(line[0]) : null;
+    let block: ElementNode;
+    if (!item) {
+      indents = [];
+      root.append((block = $createParagraphNode()));
+    } else {
+      line[0] = (line[0] as string).slice(item[0].length);
+      const indent = item[1]!.length;
+      const type = item[3] ? "number" : "bullet";
+      while (indents.length > 0 && indents.at(-1)! > indent) indents.pop();
+      if (indents.length === 0 || indents.at(-1)! < indent) indents.push(indent);
+      const last = root.getLastChild();
+      const list = $isListNode(last) && !(indents.length === 1 && last.getListType() !== type) ? last : $createListNode(type, Number(item[3] ?? 1));
+      if (list !== last) root.append(list);
+      const node = $createListItemNode();
+      list.append(node);
+      node.setIndent(indents.length - 1);
+      const parent = node.getParent();
+      if ($isListNode(parent) && parent.getListType() !== type) parent.setListType(type);
+      block = node;
+    }
+    for (const part of line) {
+      if (typeof part !== "string") block.append(new ChipNode(part));
+      else if (part) block.append($createTextNode(part));
+    }
+  }
+  if (select) root.selectEnd();
 }
 
 const NAMESPACE = "composer";
+// The note's list look (note/page.css).
+const THEME = { list: { ul: "m-0 ps-6 list-disc", ol: "m-0 ps-6 list-decimal", nested: { listitem: "list-none" } } };
 const LEXICAL = "application/x-lexical-editor";
 
 /**
@@ -235,6 +294,8 @@ export function ComposerField({
   const [scrolled, setScrolled] = useState(false);
   const [numbers, setNumbers] = useState(() => numbersOf(initial.parts));
   const { box, pad } = SIZES[size];
+  // A one-line field stays plain text; the others draw lists.
+  const TextPlugin = size === "line" ? PlainTextPlugin : RichTextPlugin;
   const list = commands?.commands;
   const chips = useMemo(() => ({ onOpen, commands: new Map((list ?? []).map((command) => [command.id, command])) }), [onOpen, list]);
   const onChange = (parts: Parts) => {
@@ -249,7 +310,8 @@ export function ComposerField({
     <LexicalComposer
       initialConfig={{
         namespace: NAMESPACE,
-        nodes: [ChipNode, UrlNode],
+        nodes: [ChipNode, UrlNode, ListNode, ListItemNode],
+        theme: THEME,
         editorState: () => $write(initial.parts, false),
         onError: (error) => console.error("[composer]", error),
       }}
@@ -260,7 +322,7 @@ export function ComposerField({
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         className={cx("relative w-full cursor-text", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
-        <PlainTextPlugin
+        <TextPlugin
           contentEditable={
             // Lexical sets white-space inline, so a line's no-wrap has to be important.
             <ContentEditable
@@ -333,7 +395,8 @@ function Keys({
   const submit = useEffectEvent((event: KeyboardEvent | null) => {
     if (!event || event.isComposing || !onSubmit) return false;
     const action = enterAction(event);
-    if (!action || (action === "new" && !onSubmitNew)) return false;
+    // ⏎ in a list adds an item; ⌘⏎ still sends.
+    if (!action || (action === "new" && !onSubmitNew) || (action === "send" && $caretItem())) return false;
     event.preventDefault();
     // A held Enter is one press: it can't send twice or answer the next card.
     if (event.repeat) return true;
