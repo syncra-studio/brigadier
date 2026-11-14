@@ -85,7 +85,7 @@ export function ViewMenu({ grouping, onGrouping, projects, show }: { grouping: G
           </DropdownMenuLabel>
           {projects.toSorted((a, b) => a.name.localeCompare(b.name)).map((project) => (
             <DropdownMenuCheckboxItem key={project.id} inset closeOnClick={false} checked={!show.hiddenProjects.has(project.id)} onCheckedChange={(on) => tickProject(project.id, on)}>
-              <ProjectBadge name={project.name} tone={projects.indexOf(project)} />
+              <ProjectBadge id={project.id} name={project.name} tone={projects.indexOf(project)} />
               <span className="min-w-0 flex-1 truncate">{project.name}</span>
             </DropdownMenuCheckboxItem>
           ))}

@@ -326,7 +326,7 @@ function ProjectRow({
         <Tooltip>
           <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-expanded={open} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => onOpenChange(!open)} />}>
             {/* Its badge, as View's menu shows it [new-design]; folded or not reads from the row's aria-expanded. */}
-            <ProjectBadge name={project.name} tone={tone} />
+            <ProjectBadge id={project.id} name={project.name} tone={tone} />
             <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
           </TooltipTrigger>
           {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}

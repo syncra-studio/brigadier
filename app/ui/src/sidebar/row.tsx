@@ -1,5 +1,5 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
@@ -68,14 +68,34 @@ const TAGS = [
   "bg-tag-grey-wash text-tag-grey",
 ];
 
+// Which projects have a logo, found once a run. shortcut: a logo added or removed shows after a reload, watch the folder if that bites.
+const logos = new Map<string, boolean>();
+
 /**
- * A row's badge: its project's initials, in that project's colour. `tone` is the project's place in the order
- * projects were added, so it keeps its colour as others are added.
+ * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
+ * project's colour. `tone` is the project's place in the order projects were added, so it keeps its colour as
+ * others are added. Initials show while the logo is looked for.
  */
-export function ProjectBadge({ name, tone = 0 }: { name: string | null; tone: number | undefined }) {
+export function ProjectBadge({ id, name, tone = 0 }: { id?: string; name: string | null; tone: number | undefined }) {
+  const [, found] = useState(false);
+  const logo = id === undefined || name === null ? false : logos.get(id);
+  const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
+  if (logo) return <img aria-hidden alt="" src={src} className="size-icon-md shrink-0 rounded-xs object-contain" />;
   return (
     <span aria-hidden className={cx("flex h-icon-md min-w-icon-md shrink-0 items-center justify-center rounded-xs px-0.75 text-badge font-bold tracking-badge", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
+      {logo === undefined && (
+        <img
+          hidden
+          alt=""
+          src={src}
+          onLoad={() => {
+            logos.set(id!, true);
+            found(true);
+          }}
+          onError={() => logos.set(id!, false)}
+        />
+      )}
     </span>
   );
 }
@@ -164,7 +184,7 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && project && !sub && <ProjectBadge name={project.name} tone={tone} />}
+            {badged && project && !sub && <ProjectBadge id={project.id} name={project.name} tone={tone} />}
             {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
             {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
             {fold && (
@@ -200,7 +220,7 @@ export function SessionRowItem({
                   <>
                     <div className="border-t border-border" />
                     <div className={cx(CARD_LINE, "text-sm")}>
-                      <ProjectBadge name={project.name} tone={tone} />
+                      <ProjectBadge id={project.id} name={project.name} tone={tone} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>
                   </>
