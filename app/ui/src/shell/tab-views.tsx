@@ -63,8 +63,9 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
         <h2 className="font-medium">Tools</h2>
-        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-5">
-          <div className={CARD}>
+        {/* A chat with no project has only Terminal and New note, centred at a fifth of the row each [D284]. */}
+        <div className={cx("grid grid-cols-2 gap-2", repo ? "@new-tab:grid-cols-5" : "@new-tab:grid-cols-10")}>
+          <div className={cx(CARD, !repo && "@new-tab:col-span-2 @new-tab:first:col-start-4")}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
               <span className={TOP}>
                 <Dock className={ICON} />
@@ -73,7 +74,7 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               <span className={LABEL}>Terminal</span>
             </button>
           </div>
-          <div className={CARD}>
+          <div className={cx(CARD, !repo && "@new-tab:col-span-2 @new-tab:first:col-start-4")}>
             <button type="button" disabled={archived} onClick={() => replaceWith(() => openTab(owner, "note", newId()))} className={TOOL}>
               <span className={TOP}>
                 <Document className={ICON} />
@@ -84,30 +85,32 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
           {repoTile(PullRequestOpen, "Pull requests", () => replaceWith(() => openPrs(owner, prs)))}
           {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
           {repoTile(PlayCircle, "Actions", () => replaceWith(() => openTab(owner, "actions")))}
-          <div className={CARD}>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
-                <span className={TOP}>
-                  <Grid className={ICON} />
-                  <ChevronDown className={ICON} />
-                </span>
-                <span className={LABEL}>More tools…</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
-                <DropdownMenuItem disabled>
-                  <ChatCompose />
-                  Side chat
-                  <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <Search />
-                  Find file
-                  <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {repo && (
+            <div className={CARD}>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
+                  <span className={TOP}>
+                    <Grid className={ICON} />
+                    <ChevronDown className={ICON} />
+                  </span>
+                  <span className={LABEL}>More tools…</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
+                  <DropdownMenuItem disabled>
+                    <ChatCompose />
+                    Side chat
+                    <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled>
+                    <Search />
+                    Find file
+                    <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
         <NoteList owner={owner} active={active} onOpen={(note) => replaceWith(() => openTab(owner, "note", note))} />
       </div>
