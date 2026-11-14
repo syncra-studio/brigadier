@@ -66,10 +66,11 @@ export function TooltipIconButton({
         // A round glass button on its own (New tab): 30px, control-fill with the glass edge [new-design].
         look === "round" && "flex size-7.5 items-center justify-center rounded-capsule bg-control text-foreground ring-1 ring-glass-stroke ring-inset hover:bg-fill-hover svg:size-icon-md motion-safe:active:scale-press",
         look === "strip" && "h-7.5 rounded-icon-button",
-        // A button inside a glass pill (History, the toolbar): 32 by 26 [new-design].
-        look === "pill" && "flex h-6.5 w-8 items-center justify-center rounded-icon-button text-foreground transition-all hover:bg-fill disabled:opacity-disabled svg:size-icon-md motion-safe:active:scale-press",
-        // Context and Files in their pill: 32 by 26, dim at rest, white with a glow while on [new-design].
-        look === "toggle" && "flex h-6.5 w-8 items-center justify-center rounded-capsule text-toggle-off transition-all hover:text-foreground aria-pressed:text-foreground aria-pressed:drop-shadow-toggle-glow disabled:opacity-disabled svg:size-icon-md",
+        // A segment of a glass pill (History, the toolbar): 32 by 28, the pill's height inside its 1px edge, so its hover
+        // fills the segment and, at either end, rounds as the pill does [new-design].
+        look === "pill" && "flex h-7 w-8 items-center justify-center rounded-capsule text-foreground transition-all hover:bg-fill disabled:opacity-disabled svg:size-icon-md motion-safe:active:scale-press",
+        // Context and Files in their pill: a segment as above, dim at rest, white with a glow while on [new-design].
+        look === "toggle" && "flex h-7 w-8 items-center justify-center rounded-capsule text-toggle-off transition-all hover:bg-fill hover:text-foreground aria-pressed:text-foreground aria-pressed:drop-shadow-toggle-glow disabled:opacity-disabled svg:size-icon-md",
         look === "chip" && "h-7.5 rounded-capsule border border-border px-2",
         look === "chip-tall" && "flex-col rounded-capsule border border-border py-2",
         className,

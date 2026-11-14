@@ -298,7 +298,7 @@
   --spacing-titlebar: 2.5rem;
   /* The new design's tab bar: 56px, its controls 30px tall on the traffic lights' centre line (35px down). */
   --spacing-tab-bar: 3.5rem;
-  /* The History pill: Back and Forward (32 each), its rule (9), the sidebar toggle (28), 3px in from each end. */
+  /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
   --spacing-history: 6.6875rem;
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px), and what clears the Context/Files

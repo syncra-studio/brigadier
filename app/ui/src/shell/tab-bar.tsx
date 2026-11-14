@@ -30,7 +30,7 @@ import { Toolbar } from "./toolbar";
 /** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
 const CLOSING_MS = 200;
 
-const TAB = "session-tab @container/tab app-no-drag group/tab relative flex h-6.5 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
+const TAB = "session-tab @container/tab app-no-drag group/tab relative flex h-7 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
 const LOOK = (active: boolean) => (active ? "bg-selection shadow-session-tab text-foreground ring-1 ring-glass-stroke ring-inset" : "text-toolbar-foreground hover:bg-fill");
 // Squeezed to its icon (the crowded bar), a tab shows the icon alone, centred [new-design].
 const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring @max-tab-icon/tab:-ms-1.5 @max-tab-icon/tab:justify-center";
@@ -343,7 +343,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
       <div className="session-tab-room flex min-w-0 flex-1 items-center gap-2 self-stretch">
         {/* The tabs in one glass pill [new-design]. */}
-        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-0.5 ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys}>
+        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys}>
           {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
           <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">
             {/* Held inside the strip, which is a tab high: it moves along the row only. */}

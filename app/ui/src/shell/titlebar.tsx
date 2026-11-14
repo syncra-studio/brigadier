@@ -92,7 +92,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     };
   });
   return (
-    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 win:top-3.25 items-center rounded-capsule bg-control px-0.75 ring-1 ring-glass-stroke ring-inset">
+    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 win:top-3.25 items-center rounded-capsule bg-control px-px ring-1 ring-glass-stroke ring-inset">
       <TitlebarTips>
         <TooltipIconButton look="pill" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />
@@ -100,11 +100,11 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
         <TooltipIconButton look="pill" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
           <ArrowRight />
         </TooltipIconButton>
-        {/* Its name says what a click does; aria-expanded would draw the toolbar look's open fill. Settings holds the panel open, so it has none [D34]. */}
+        {/* Its name says what a click does; aria-expanded would draw an open fill. Settings holds the panel open, so it has none [D34]. */}
         {canToggle && (
           <>
             <span aria-hidden className="mx-1 h-4 w-px bg-divider" />
-            <TooltipIconButton look="toolbar" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+            <TooltipIconButton look="pill" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
               {open ? <Sidebar /> : <SidebarFloatingLeft />}
             </TooltipIconButton>
           </>
