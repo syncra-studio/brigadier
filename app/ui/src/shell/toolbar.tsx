@@ -8,7 +8,7 @@ import { Tasks } from "../icons";
 import { useProjects } from "../projects/projects";
 import { RightPanelToggle, useHasPanel } from "./right-panel";
 import { useCardToggle } from "./summary-card";
-import { CHAT, HOME, selectTab } from "./tab-store";
+import { CHAT, HOME, selectTab, useTabs } from "./tab-store";
 
 /** A control whose feature isn't built yet [D388]: drawn and named only. A disabled button hears no pointer, so its tip hangs on what holds it. */
 function Drawn({ tooltip, className, children }: { tooltip: string; className?: string | false; children: ReactNode }) {
@@ -24,9 +24,13 @@ function Drawn({ tooltip, className, children }: { tooltip: string; className?: 
   );
 }
 
-/** Context shows and hides the summary card where the chat has one [D1014]; elsewhere it's still drawn only. */
+/**
+ * Context shows and hides the summary card where the chat has one [D1014]; elsewhere it's still drawn only. It reads
+ * pressed only while the card can be seen, on the chat's tab [new-design]; its click is the same on any tab.
+ */
 function ContextButton({ owner, className }: { owner: string; className?: string | false }) {
   const { shown, toggle } = useCardToggle(owner);
+  const onChat = useTabs(owner).active === CHAT;
   if (!useHasPanel(owner))
     return (
       <Drawn tooltip="Context" className={className}>
@@ -35,7 +39,7 @@ function ContextButton({ owner, className }: { owner: string; className?: string
     );
   return (
     <span className={cx("app-no-drag flex", className)}>
-      <TooltipIconButton look="toggle" tooltip="Context" pressed={shown} onClick={() => {
+      <TooltipIconButton look="toggle" tooltip="Context" pressed={shown && onChat} onClick={() => {
         // The card is the chat's: Context brings the chat to the front first, as the old app's did.
         selectTab(owner, CHAT);
         toggle();
