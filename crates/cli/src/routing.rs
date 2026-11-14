@@ -131,9 +131,21 @@ fn table(data: &Path, groups: &[Value]) -> Value {
     let rows: Map<String, Value> = ROWS
         .iter()
         .map(|r| {
-            let row =
-                (saved["rows"][r].as_array().cloned()).unwrap_or_else(|| default_row(groups, r));
-            (r.to_string(), row.into())
+            // An entry its agent no longer lists (gone, or hidden in Settings) is dropped, so it
+            // never blocks a save; an agent off keeps its entries.
+            let row = (saved["rows"][r].as_array())
+                .map(|l| {
+                    (l.iter())
+                        .filter(|e| {
+                            let a = str_of(e, "agent");
+                            groups.iter().all(|g| g["provider"] != a)
+                                || model_of(groups, a, str_of(e, "model")).is_some()
+                        })
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_else(|| default_row(groups, r));
+            (r.to_string(), Value::Array(row))
         })
         .collect();
     let rules = saved["rules"].as_array().cloned().unwrap_or_default();
@@ -156,8 +168,17 @@ fn entry_error(groups: &[Value], e: &Value) -> Option<String> {
 }
 
 /// A whole new value checked, keeping only what differs from the defaults, so an untouched row
-/// follows its CLIs' lists.
-fn checked(groups: &[Value], v: &Value) -> Result<Value, String> {
+/// follows its CLIs' lists. What's already saved isn't checked again: only what the user just
+/// added is refused.
+fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> {
+    let kept = |x: &Value| {
+        (saved["rows"]
+            .as_object()
+            .into_iter()
+            .flat_map(|m| m.values()))
+        .chain([&saved["rules"]])
+        .any(|l| l.as_array().is_some_and(|l| l.contains(x)))
+    };
     let mut rows = Map::new();
     if let Some(k) =
         (v["rows"].as_object().into_iter().flatten()).find(|(k, _)| !ROWS.contains(&k.as_str()))
@@ -168,7 +189,10 @@ fn checked(groups: &[Value], v: &Value) -> Result<Value, String> {
         let Some(list) = v["rows"][r].as_array() else {
             continue;
         };
-        if let Some(why) = list.iter().find_map(|e| entry_error(groups, e)) {
+        if let Some(why) = (list.iter())
+            .filter(|e| !kept(e))
+            .find_map(|e| entry_error(groups, e))
+        {
             return Err(why);
         }
         if *list != default_row(groups, r) {
@@ -176,7 +200,7 @@ fn checked(groups: &[Value], v: &Value) -> Result<Value, String> {
         }
     }
     let rules = v["rules"].as_array().cloned().unwrap_or_default();
-    for rule in &rules {
+    for rule in rules.iter().filter(|r| !kept(r)) {
         match str_of(rule, "never") {
             "model" => {
                 let e = json!({"agent": rule["agent"], "model": rule["model"]});
@@ -215,7 +239,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map_err(|e| io::Error::other(format!("routing set: {e}")))?;
             let groups = groups();
             let _one = lock(data)?;
-            match checked(&groups, &v) {
+            match checked(&groups, &v, &read(&data.join(FILE))) {
                 Ok(kept) => core::write_atomic(&data.join(FILE), kept.to_string().as_bytes())?,
                 Err(why) => return Ok(shown(data, &groups, Some(why))),
             }
