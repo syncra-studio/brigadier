@@ -76,7 +76,7 @@ export function PendingModelLine({ id }: { id: string }) {
   return (
     <div className="pt-2">
       {line.agent ? (
-        <SwitchDivider change={{ id: line.op, turnId: "", kind: "switch", state: "switched", reason: "picked", from: line.from, to: line.agent, model: line.to, handoff: true, automatic: false, text: "" }} />
+        <SwitchDivider change={{ id: line.op, turnId: "", kind: "switch", state: "switching", reason: "picked", from: line.from, to: line.agent, model: line.to, handoff: true, automatic: false, text: "" }} />
       ) : (
         <ChangeLine item={{ id: line.op, turnId: "", kind: "line", reason: "model", why: "changed", from: line.from, to: line.to }} />
       )}

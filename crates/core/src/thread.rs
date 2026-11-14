@@ -14,6 +14,7 @@ mod asks;
 mod find;
 mod page;
 mod peer;
+mod pick;
 mod rows;
 mod saved;
 mod subagents;
@@ -112,6 +113,8 @@ pub struct Thread {
     /// A rebirth's divider: from its cut turn's end till the input carrying it on [D203], then till its fresh conversation names itself [D88].
     cutting: Option<usize>,
     reborn: Option<usize>,
+    /// A switch's divider, live from the pick or its input till the new model's first output [D241].
+    switching: Option<usize>,
     /// When the last limit on this side resets (ms), as its CLI said: the next turn after it says so [D487].
     reset_at: Option<u64>,
     /// The agent and model the last turn ran: the next turn on another model of the same agent says so [D487].
@@ -202,6 +205,7 @@ impl Thread {
                 self.changed_items.insert(at);
             }
         }
+        self.switch_shown(kind);
         self.fold.push(item);
         if let Some(before) = pick {
             self.picked(item, before);
@@ -292,6 +296,7 @@ impl Thread {
         let Some(o) = self.open.take() else {
             return;
         };
+        self.switch_ended(o.cut());
         self.closed += 1;
         let status = match outcome {
             "done" => "done",

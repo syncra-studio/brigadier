@@ -232,8 +232,8 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
         </>
       );
     case "switching":
-      // Under way, it shimmers as compaction's running line does (D59).
-      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}` : to ? `Switching to ${to}` : "Switching"}</span>;
+      // Under way till the new model runs, it shimmers as compaction's running line does (D59, D241).
+      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}…` : to ? `Switching to ${to}…` : "Switching…"}</span>;
     case "switched":
       // A switch logged before the shape has only Rust's sentence.
       if (!change.to) return <span>{change.text}</span>;

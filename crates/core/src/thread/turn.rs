@@ -6,72 +6,6 @@ use crate::fold::Turn;
 use serde_json::{Value, json};
 
 impl Thread {
-    /// A model picked for the conversation's agent: its line at once, where the user is, and the
-    /// next turn on it says nothing more [D76, D124, D125].
-    /// What a pick's line needs from before it's folded: the model the agent ran, and whether
-    /// another agent was picked.
-    pub(super) fn before_pick(&self, note: &Value) -> (Option<String>, bool) {
-        let b = s(note, &["backend"]);
-        let was = (self.fold.models.get(b).cloned())
-            .or_else(|| self.ran.clone().filter(|(r, _)| r == b).map(|(_, m)| m));
-        (was, self.fold.picked.is_some())
-    }
-
-    pub(super) fn picked(&mut self, note: &Value, (was, back): (Option<String>, bool)) {
-        match note["pick"] == true {
-            false => self.model_picked(s(note, &["backend"]).into(), was, note, back),
-            true if note["to_label"].is_string() => self.agent_picked(note),
-            true => {}
-        }
-    }
-
-    /// Its line names both models as the picker does; picked back from another agent, it reads as
-    /// that switch's own, even on the same model.
-    fn model_picked(&mut self, backend: String, was: Option<String>, note: &Value, back: bool) {
-        let model = note["model"].as_str().map(String::from);
-        let Some(model) = model.or_else(|| self.fold.models.get(&backend).cloned()) else {
-            return;
-        };
-        if back && note["to_label"].is_string() {
-            self.agent_picked(note);
-            self.pick_row = None;
-            self.ran = Some((backend, model));
-            return;
-        }
-        let Some(from) = was.filter(|m| !m.is_empty() && *m != model) else {
-            return;
-        };
-        let named = |k: &str, id: String| note[k].as_str().map_or(id, String::from);
-        self.pick_line(json!({"kind": "line", "reason": "model", "why": "changed",
-            "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}));
-        self.ran = Some((backend, model));
-    }
-
-    /// Another agent picked: its switch row at once, which the turn that goes to it takes in
-    /// place; every pick its own row [D76, D90].
-    fn agent_picked(&mut self, note: &Value) {
-        let (to, model) = (s(note, &["to_label"]), s(note, &["name"]));
-        let at = self.pick_line(
-            json!({"kind": "switch", "reason": "picked", "state": "switched",
-            "from": note["from_label"], "to": to, "model": model, "handoff": true,
-            "automatic": false, "text": format!("Switched to {to} · {model}"), "op": note["op"]}),
-        );
-        self.pick_row = Some(at);
-    }
-
-    /// A pick's line where the user is: in the running turn, never folded into its work, as the
-    /// new model carries on under it [D124]; between turns in none, so the last one's answer keeps
-    /// its actions above it.
-    fn pick_line(&mut self, row: Value) -> usize {
-        self.break_group();
-        let at = self.add(row);
-        match self.open.as_mut() {
-            Some(o) => o.kept.push(at as u64 + 1),
-            None => self.items[at]["turnId"] = "".into(),
-        }
-        at
-    }
-
     /// A turn the user's Stop ended, however its agent ended it: the clean interrupt too; one its
     /// agent says ended well finished before the Stop took. One its host or agent dropped says
     /// so, a line that stays once another turn runs [D92].
@@ -367,13 +301,16 @@ impl Thread {
             // The kit's switch shape (D133); `text` is the whole note, for logs from before it.
             let sw = &t.switch;
             let named = sw["to"].get("name").unwrap_or(&sw["to"]["model"]);
-            let switched = json!({"state": "switched", "text": note, "from": sw["from_label"],
-                "to": sw["to_label"], "model": named, "handoff": sw["fresh"],
-                "automatic": sw["auto"], "error": null});
             // A picked agent's row was drawn at its pick [D76].
             let picked = (sw["why"] == "picked")
                 .then(|| self.pick_row.take())
                 .flatten();
+            // Live till the new model's first output, but a pick made idle was done at once [D125, D241].
+            let live = picked.is_none_or(|at| self.items[at]["state"] != "switched");
+            let state = if live { "switching" } else { "switched" };
+            let switched = json!({"state": state, "text": note, "from": sw["from_label"],
+                "to": sw["to_label"], "model": named, "handoff": sw["fresh"],
+                "automatic": sw["auto"], "error": null});
             let at = match picked.or_else(|| self.limit_row.take()) {
                 Some(at) => at,
                 None => self.add(json!({"kind": "switch", "reason": reason(sw["why"].as_str())})),
@@ -383,6 +320,7 @@ impl Thread {
                 self.items[at][k] = v.clone();
             }
             self.changed_items.insert(at);
+            self.switching = live.then_some(at);
             if t.origin != "user" {
                 return;
             }

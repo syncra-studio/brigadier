@@ -204,14 +204,15 @@ export type Item = Base &
     | { kind: "notice"; reason: "sign-in"; text: string }
     /**
      * A usage limit (or a refused resume) and the switch past it: one row Rust changes in place [D51, D132], in the
-     * kit's switch shape (D133). Rust sends `limit`, `switched`, and `over` for a limit no switch took (a Stop, a new
-     * message); `switching` and `failed` are the click's own pending states until Rust's row moves. `from`/`to` are
+     * kit's switch shape (D133). Rust sends `limit`, `switching` from a pick mid-turn or the switch's input till the new
+     * model's first output [D241], `switched`, and `over` for a limit no switch took (a Stop, a new message); the click
+     * shows `switching` and `failed` as its own pending states until Rust's row moves. `from`/`to` are
      * display names Rust resolved once switched; at the limit, `backend` and `account` say which side it hit.
      */
     | {
         kind: "switch";
         state: "limit" | "switching" | "switched" | "failed" | "over";
-        /** `picked`: the user picked another agent's model, and the next message went to it [D129]; only ever switched. */
+        /** `picked`: the user picked another agent's model, and the next message went to it [D129]. */
         reason: "usage-limit" | "credits" | "unresumable" | "picked";
         from?: string | null;
         to?: string | null;
