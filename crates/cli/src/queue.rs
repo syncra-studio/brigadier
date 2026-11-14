@@ -432,6 +432,9 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             }
             owner::call(data, id, req)
         };
+        let mut msg = core::message::compose(&spec, &item.text, item.parts.clone())?;
+        // What's held for the parent's next message goes with it [D329].
+        let held = crate::workers::with_next(data, id, &mut msg.agent);
         let reply = core::send(
             &spec,
             &f.fold,
@@ -439,11 +442,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             &call,
             &item.id,
             item.origin.as_deref().unwrap_or("user"),
-            &core::message::compose(&spec, &item.text, item.parts.clone())?,
+            &msg,
             None,
             None,
         );
         if went(&dir, &reply, &item.id) {
+            crate::workers::went_with(data, id, held);
             q.items.remove(at);
         } else if reply["error"] != "changed" {
             let why = reply["message"]

@@ -1,11 +1,12 @@
-//! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034].
+//! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
+//! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, said, write_ended};
-use crate::workers::{link, write_json};
+use super::{Res, all, fresh, write_ended};
+use crate::workers::{link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core};
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The parent's own `wait` on its worker takes the result it returns, so it isn't sent again; any
 /// other session's wait never does [D3034]. Its text, when there's one to take.
@@ -46,4 +47,49 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
     let note = json!({"event": "worker", "phase": "result", "result": said(&res)});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     Some(res.text)
+}
+
+/// The results held for the parent's next message, or waiting to wake it, go with that message,
+/// after its text: one turn, one answer, never a wake per worker [D95, D314, D329]. Ones the user
+/// ended come last, the agent told to mention them only if something matters [D330]. Call under
+/// the parent's queue lock; `went_with` once the message is in.
+pub fn with_next(data: &Path, pid: &str, agent: &mut String) -> Vec<PathBuf> {
+    let mut due: Vec<(PathBuf, Res)> = (all(data, pid).into_iter())
+        .filter(|(_, r)| matches!(r.state.as_str(), "held" | "written") && r.how != "asks")
+        .collect();
+    due.sort_by_key(|(_, r)| r.ended);
+    for (_, r) in due.iter().filter(|(_, r)| !r.ended) {
+        *agent += &format!("\n\n{}", r.text);
+    }
+    if due.iter().any(|(_, r)| r.ended) {
+        *agent += "\n\nThe user ended these workers. Mention them only if something matters (say, a file one left uncommitted), in one short line of your reply:";
+        for (_, r) in due.iter().filter(|(_, r)| r.ended) {
+            *agent += &format!("\n\n{}", r.text);
+        }
+    }
+    due.into_iter().map(|(path, _)| path).collect()
+}
+
+/// The message they went with is in: taken, each with its sentence but one the user ended,
+/// whose "You ended" line already says it [D97, D330].
+pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
+    for (path, mut r) in taken
+        .into_iter()
+        .filter_map(|p| Some((p.clone(), read_json::<Res>(&p)?)))
+    {
+        r.state = "taken".into();
+        let _ = write_json(&path, &r);
+        if !r.ended {
+            let note = json!({"event": "worker", "phase": "result", "result": said(&r)});
+            let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
+        }
+    }
+}
+
+/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
+pub(super) fn said(r: &Res) -> String {
+    match r.merge.as_str() {
+        "" => format!("{}:{}", r.how, r.wid),
+        m => format!("{}:{}:{m}", r.how, r.wid),
+    }
 }

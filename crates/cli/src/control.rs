@@ -3,10 +3,10 @@
 //! logs it, writes it and marks it delivered as it does a message; one never proven delivered
 //! stays uncertain and is never sent again by itself [D60, D82].
 
-use crate::{flag, owner};
+use crate::{call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::Fold;
-use brigadier_core::{self as core, as_run};
+use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -347,4 +347,54 @@ pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
         core::create(data, &spec)?;
     }
     Ok(json!({"ok": true, "level": spec.level, "op": op}))
+}
+
+/// The user's message, or a start's first [D54].
+pub(crate) fn send(
+    data: &Path,
+    spec: &Spec,
+    text: &str,
+    parts: Value,
+    cid: Option<&str>,
+    backend: Option<&str>,
+    retry_of: Option<&str>,
+) -> io::Result<Value> {
+    crate::rewind::settled(data, spec)?;
+    let _fence = core::session::fence(data, spec)?;
+    let cid = cid.map_or_else(new_cid, String::from);
+    let call = call_fn(data, &spec.id);
+    let mut msg = core::message::compose(spec, text, parts)?;
+    // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
+    let (_lock, _) = crate::queue::hold(&spec.dir)?;
+    let held = crate::workers::with_next(data, &spec.id, &mut msg.agent);
+    let go = || -> io::Result<Value> {
+        let f = core::fold(&spec.dir, true)?;
+        let running = child(data, &spec.id);
+        Ok(core::send(
+            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
+        ))
+    };
+    let mut reply = go()?;
+    let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
+    // Retry a busy race or moving host only when the log proves the command never got in;
+    // an uncertain delivery is never sent again by itself [D54].
+    if reply["result"].is_null() && !logged() {
+        thread::sleep(Duration::from_millis(200));
+        // If no host answers, the resend fails too and the log decides the result below.
+        let _ = owner::ensure(data, spec);
+        reply = go()?;
+    }
+    // A dropped connection says nothing about the log: the log itself does.
+    if reply["result"].is_null() {
+        reply["result"] = match (reply["ok"] == true, logged()) {
+            (true, _) => "delivered",
+            (false, true) => "logged",
+            (false, false) => "not_logged",
+        }
+        .into();
+    }
+    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+        crate::workers::went_with(data, &spec.id, held);
+    }
+    Ok(reply)
 }

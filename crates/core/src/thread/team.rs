@@ -66,6 +66,8 @@ impl Thread {
             }
             Some("ended") => {
                 self.workers_ended(ids.as_array().map_or(&[], Vec::as_slice), ts);
+                // An ended worker's result wakes no one, so a block it alone held folds now [D314, D330].
+                self.settle_held(false);
                 self.team_row(json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}));
             }
             // The user's Stop ended the block: the workers that run on hold it no longer.

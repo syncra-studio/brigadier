@@ -20,7 +20,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
-pub use take::{take, take_ask};
+use take::said;
+pub use take::{take, take_ask, went_with, with_next};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -40,8 +41,11 @@ pub(super) struct Res {
     pub text: String,
     pub at: u64,
     /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, till a turn
-    /// of the parent's ends) | taken (by the parent's own `wait`) | dropped (its family is deleted)
+    /// of the parent's ends or its next message; `ended` by the user, till that message [D330]) |
+    /// taken (by the parent's own `wait` or its next message) | dropped (its family is deleted)
     pub state: String,
+    #[serde(default)]
+    pub ended: bool,
     /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
     #[serde(default)]
     pub hop: u64,
@@ -187,6 +191,7 @@ fn write(
     let base = core::worktrees::base(&dir);
     let word = match how {
         "finished" => "finished",
+        "stopped" if l.last["by"] == "user" => "was ended by the user",
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
         "context" => "stopped: its context is full",
@@ -295,6 +300,7 @@ fn write(
         at: log::now_ms(),
         // A stopped task's result never wakes the parent: it goes with its next turn [D314].
         state: if how == "stopped" { "held" } else { "written" }.into(),
+        ended: how == "stopped" && l.last["by"] == "user",
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
     };
@@ -373,14 +379,6 @@ pub(super) fn fresh(data: &Path, r: &Res) -> bool {
     r.how != "asks" || super::asks::waits(data, &r.wid, &r.turn)
 }
 
-/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
-fn said(r: &Res) -> String {
-    match r.merge.as_str() {
-        "" => format!("{}:{}", r.how, r.wid),
-        m => format!("{}:{}:{m}", r.how, r.wid),
-    }
-}
-
 fn has_sent(data: &Path, pid: &str) -> bool {
     all(data, pid).iter().any(|(_, r)| r.state == "sent")
 }
@@ -407,7 +405,7 @@ pub(crate) fn settled(f: &fold::Fold, id: &str, state: &str) -> Option<&'static 
 fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> {
     let mut results = all(data, pid);
     // A stopped worker's result goes once a turn of the parent's ends after it [D314].
-    let due = |r: &Res| r.state == "held" && r.at < finished;
+    let due = |r: &Res| r.state == "held" && !r.ended && r.at < finished;
     for (path, r) in results.iter_mut().filter(|(_, r)| due(r)) {
         r.state = "written".into();
         write_json(path, r)?;

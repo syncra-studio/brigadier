@@ -227,7 +227,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
-                Some(text) => send(data, &spec, text, parts, flag(args, "--cid"), None, None),
+                Some(text) => {
+                    control::send(data, &spec, text, parts, flag(args, "--cid"), None, None)
+                }
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
@@ -247,7 +249,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
-            send(
+            control::send(
                 data,
                 &spec,
                 text,
@@ -393,49 +395,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => Err(io::Error::other(USAGE)),
     }
-}
-
-fn send(
-    data: &Path,
-    spec: &Spec,
-    text: &str,
-    parts: Value,
-    cid: Option<&str>,
-    backend: Option<&str>,
-    retry_of: Option<&str>,
-) -> io::Result<Value> {
-    rewind::settled(data, spec)?;
-    let _fence = core::session::fence(data, spec)?;
-    let cid = cid.map_or_else(control::new_cid, String::from);
-    let call = call_fn(data, &spec.id);
-    let msg = core::message::compose(spec, text, parts)?;
-    let go = || -> io::Result<Value> {
-        let f = core::fold(&spec.dir, true)?;
-        let running = child(data, &spec.id);
-        Ok(core::send(
-            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
-        ))
-    };
-    let mut reply = go()?;
-    let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
-    // Retry a busy race or moving host only when the log proves the command never got in;
-    // an uncertain delivery is never sent again by itself [D54].
-    if reply["result"].is_null() && !logged() {
-        thread::sleep(Duration::from_millis(200));
-        // If no host answers, the resend fails too and the log decides the result below.
-        let _ = owner::ensure(data, spec);
-        reply = go()?;
-    }
-    // A dropped connection says nothing about the log: the log itself does.
-    if reply["result"].is_null() {
-        reply["result"] = match (reply["ok"] == true, logged()) {
-            (true, _) => "delivered",
-            (false, true) => "logged",
-            (false, false) => "not_logged",
-        }
-        .into();
-    }
-    Ok(reply)
 }
 
 fn read(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {

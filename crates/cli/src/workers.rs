@@ -18,7 +18,7 @@ pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub use make::start;
 pub use pause::held;
-pub use result::{deliver, take, take_ask};
+pub use result::{deliver, take, take_ask, went_with, with_next};
 pub(crate) use result::{hop as result_hop, last_of_turn, settled};
 pub use row::row;
 
@@ -281,7 +281,8 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
         .filter(|l| l.paused || l.last.is_null() || crate::sessions::working(data, wid, &all))
     {
         l.paused = false;
-        l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms()});
+        // Who ended it, for its result: one the user ended goes quietly [D330].
+        l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms(), "by": by});
         write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;
     }
     halt(data, top, wid, "user")?;

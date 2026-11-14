@@ -79,6 +79,7 @@ fn write(
         text,
         at: log::now_ms(),
         state: "written".into(),
+        ended: false,
         hop: crate::peers::hop_of(data, wid, turn),
         merge: String::new(),
     };
