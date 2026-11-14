@@ -474,11 +474,15 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     let f = core::fold(&spec.dir, true)?;
     let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
     let call = crate::call_fn(data, id);
-    Ok(core::recover(
-        &spec,
-        &f.fold,
-        &live,
-        crate::child(data, id),
-        &call,
-    ))
+    // The user's Resume takes what's held for the session, as their next message would [D329].
+    let mut more = String::new();
+    let held = match queued {
+        true => crate::workers::with_next(data, id, &mut more),
+        false => vec![],
+    };
+    let reply = core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more);
+    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+        crate::workers::went_with(data, id, held);
+    }
+    Ok(reply)
 }

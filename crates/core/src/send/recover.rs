@@ -13,8 +13,15 @@ pub(crate) const RESUME: &str = "[The user stopped you, then asked you to resume
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
 /// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
-/// turn continues through the backend's resume id.
-pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -> Value {
+/// turn continues through the backend's resume id. `more`: what goes with the user's Resume [D329].
+pub fn recover(
+    spec: &Spec,
+    f: &Fold,
+    live: &Live,
+    child: Running,
+    call: Call,
+    more: &str,
+) -> Value {
     let status = fold::status(f, live);
     let state = status["state"].as_str().unwrap_or("");
     let now = log::now_ms();
@@ -128,11 +135,12 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             {
                 return json!({"ok": false, "error": "The agent stopped before its conversation began, so there's nothing to carry on. Send your message again."});
             }
-            let msg = if resend {
+            let mut msg = if resend {
                 again(spec, last["text"].as_str().unwrap_or(""), &last["parts"])
             } else {
                 Message::plain(RESUME)
             };
+            msg.agent += more;
             let mut reply = send(
                 spec,
                 f,
