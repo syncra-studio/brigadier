@@ -65,6 +65,7 @@ export function AppSidebar({
 }: {
   /** undefined until the first list arrives. */
   rows: SessionRow[] | undefined;
+  /** Oldest first: a project's place here picks its badge's colour. */
   projects: Project[];
   /** The open session's id. */
   active: string | null;

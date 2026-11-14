@@ -136,7 +136,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
         ) : (
         <AppSidebar
           rows={rows}
-          projects={projects ?? []}
+          projects={projects?.toSorted((a, b) => a.added - b.added) ?? []}
           active={active}
           home={active === null}
           offline={daemon === null}

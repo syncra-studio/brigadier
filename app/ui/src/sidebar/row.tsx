@@ -57,10 +57,24 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-/** A row's badge: its project's initials, in that project's colour. `tone` is the project's place in Rust's list. */
-export function ProjectBadge({ name, tone }: { name: string | null; tone: number | undefined }) {
+// Finder's tags in their order, each project the next as it is added, so neighbours differ [new-design].
+const TAGS = [
+  "bg-tag-red-wash text-tag-red",
+  "bg-tag-orange-wash text-tag-orange",
+  "bg-tag-yellow-wash text-tag-yellow",
+  "bg-tag-green-wash text-tag-green",
+  "bg-tag-blue-wash text-tag-blue",
+  "bg-tag-purple-wash text-tag-purple",
+  "bg-tag-grey-wash text-tag-grey",
+];
+
+/**
+ * A row's badge: its project's initials, in that project's colour. `tone` is the project's place in the order
+ * projects were added, so it keeps its colour as others are added.
+ */
+export function ProjectBadge({ name, tone = 0 }: { name: string | null; tone: number | undefined }) {
   return (
-    <span aria-hidden data-tone={tone} className={cx("flex h-icon-md min-w-icon-md shrink-0 items-center justify-center rounded-xs px-0.75 text-badge font-bold tracking-badge", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
+    <span aria-hidden className={cx("flex h-icon-md min-w-icon-md shrink-0 items-center justify-center rounded-xs px-0.75 text-badge font-bold tracking-badge", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
     </span>
   );

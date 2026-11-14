@@ -60,6 +60,21 @@
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
+  /* Finder's tag colours (Apple's system colours, dark), a project badge's text on its 15% wash [new-design]. */
+  --color-tag-red: rgb(255 69 58);
+  --color-tag-red-wash: color-mix(in oklab, var(--color-tag-red) 15%, transparent);
+  --color-tag-orange: rgb(255 159 10);
+  --color-tag-orange-wash: color-mix(in oklab, var(--color-tag-orange) 15%, transparent);
+  --color-tag-yellow: rgb(255 214 10);
+  --color-tag-yellow-wash: color-mix(in oklab, var(--color-tag-yellow) 15%, transparent);
+  --color-tag-green: rgb(48 209 88);
+  --color-tag-green-wash: color-mix(in oklab, var(--color-tag-green) 15%, transparent);
+  --color-tag-blue: rgb(10 132 255);
+  --color-tag-blue-wash: color-mix(in oklab, var(--color-tag-blue) 15%, transparent);
+  --color-tag-purple: rgb(191 90 242);
+  --color-tag-purple-wash: color-mix(in oklab, var(--color-tag-purple) 15%, transparent);
+  --color-tag-grey: rgb(152 152 157);
+  --color-tag-grey-wash: color-mix(in oklab, var(--color-tag-grey) 15%, transparent);
   /* Pull request words, the old app's PR colours. */
   --color-pr-yellow: #fbc959;
   --color-pr-purple: #d080e2;
@@ -1141,14 +1156,6 @@
 /* Text scrolled under the top edge of a field fades out (the composer once it scrolls). */
 @utility mask-fade-top {
   mask-image: linear-gradient(to bottom, transparent, black var(--spacing-control-sm));
-}
-
-/* A project's badge: its place in the list turned by the golden angle, so neighbours land far apart.
-   shortcut: hues stay at least 32° apart up to 8 projects and about 20° by 13, pick from a fixed set if people run more. */
-/* A project's initials badge: the new design's one green, --success on --success-fill, for every project. */
-@utility project-tone {
-  background-color: var(--color-success-wash);
-  color: var(--color-success);
 }
 
 /* Something on a bar or in a list that is only sometimes there: it grows along data-axis while data-open. */
