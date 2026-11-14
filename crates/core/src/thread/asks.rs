@@ -48,7 +48,7 @@ impl Thread {
         if item["phase"] == "asked" {
             let q = &r["items"][0];
             let at = self.add(json!({"kind": "question", "question": q["text"],
-                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r}));
+                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true}));
             self.pending.push(at);
             self.pending_changed = true;
             return self.user_waits(at, ts);

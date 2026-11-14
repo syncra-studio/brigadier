@@ -39,6 +39,10 @@ impl Thread {
     }
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
+        // A worker held before its first turn has no turn yet, and still shows its card [D2028].
+        if kind == "note" && item["event"] == "hold" {
+            return self.hold(item, ts);
+        }
         let Some(turn) = self.turn_id() else {
             return;
         };
@@ -357,7 +361,6 @@ impl Thread {
             }
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
-            "note" if item["event"] == "hold" => self.hold(item, ts),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {
                 let forked = self.items.iter().rposition(|r| r["kind"] == "forked");
