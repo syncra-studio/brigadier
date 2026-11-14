@@ -62,7 +62,7 @@ export function Toolbar({ owner }: { owner: string }) {
   // One glass pill [new-design], a circle the New tab button's size round a lone toggle (Files on Home); on Windows
   // fixed under the caption buttons, where the panels open beneath it.
   return (
-    <div className="app-no-drag flex h-7.5 shrink-0 win:fixed win:end-4 win:top-18 win:z-30 items-center gap-0.5 rounded-capsule bg-control px-px ring-1 ring-glass-stroke ring-inset [&>:only-child>button]:w-7">
+    <div className="app-no-drag flex h-7.5 shrink-0 win:fixed win:end-4 win:top-18 win:z-30 items-center gap-0.5 rounded-capsule bg-control px-px ring-1 ring-glass-stroke ring-inset lone-toggle:w-7">
       <TitlebarTips>
         {!home && <ContextButton owner={owner} className={enter} />}
         {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}

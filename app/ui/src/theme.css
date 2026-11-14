@@ -867,6 +867,8 @@
 @custom-variant summary-shift (&[data-pinned][data-summary="shift"]);
 @custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
+/* The toolbar pill's button while it is the only one there. */
+@custom-variant lone-toggle (& > :only-child > button);
 /* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
 @custom-variant win (:where([data-platform="win32"]) &);
 /* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
@@ -1267,6 +1269,10 @@
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
+}
+/* The panel's top above its card (sidebar-width-source's --sidebar-top). */
+@utility sidebar-top {
+  padding-top: var(--sidebar-top);
 }
 /* The floating card inside it, the panel's 4px inset off each side. */
 @utility sidebar-card-width {
