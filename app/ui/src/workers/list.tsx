@@ -45,7 +45,7 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
       </TitlebarTips>
       <span className="flex-1" />
       <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose} className="under-toggles:hidden">
+        <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
           <X />
         </TooltipIconButton>
       </TitlebarTips>

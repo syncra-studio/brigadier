@@ -347,7 +347,7 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
         onToggleDetails={() => setDetails(!details)}
         actions={
           <TitlebarTips>
-            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose} className="under-toggles:hidden">
+            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
               <X />
             </TooltipIconButton>
           </TitlebarTips>

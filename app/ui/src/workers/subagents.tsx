@@ -80,7 +80,7 @@ export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: (
         onBack={onBack}
         actions={
           <TitlebarTips>
-            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose} className="under-toggles:hidden">
+            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
               <X />
             </TooltipIconButton>
           </TitlebarTips>
