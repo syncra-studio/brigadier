@@ -1374,9 +1374,9 @@
   margin-inline-start: calc(var(--reading-start) - var(--spacing) * 4);
 }
 /* Beside the pinned summary card (summary-card.tsx, the pane a container): the column ends where the card's room
-   starts (its w-71). */
+   starts: its w-71 and the scrollbar lane it keeps clear of (D42). */
 @utility reading-beside-summary {
-  max-width: min(var(--container-reading), calc(100cqw - var(--spacing) * 71 - (var(--reading-start) - var(--spacing) * 4)));
+  max-width: min(var(--container-reading), calc(100cqw - var(--spacing) * 73.5 - (var(--reading-start) - var(--spacing) * 4)));
 }
 
 /* The tab bar's start: 8px, or past the History pill where it sits in the bar. It moves with the sidebar. */
