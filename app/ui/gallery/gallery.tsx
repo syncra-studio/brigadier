@@ -18,6 +18,7 @@ import { PickersGallery } from "./pickers";
 import { Popups } from "./popups";
 import { QuestionGallery } from "./questions";
 import { RewindGallery } from "./rewind";
+import { RoutingGallery } from "./routing";
 import { ThreadGallery } from "./thread";
 import { WorkersGallery } from "./workers";
 import "./gallery.css";
@@ -110,6 +111,9 @@ function GalleryPage() {
             </Area>
             <Area name="Pickers">
               <PickersGallery />
+            </Area>
+            <Area name="Settings">
+              <RoutingGallery />
             </Area>
             <Area name="Controls">
               <Kit />
