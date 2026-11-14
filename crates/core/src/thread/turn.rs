@@ -286,7 +286,10 @@ impl Thread {
             }
         }
         // A model of this agent picked mid-turn: live till the turn carrying it on draws a row [D241].
-        if let Some(at) = self.pick_row.take_if(|at| self.items[*at]["kind"] == "line") {
+        if let Some(at) = self
+            .pick_row
+            .take_if(|at| self.items[*at]["kind"] == "line")
+        {
             self.switching = Some(at);
         }
         // A rebirth shows as one divider, the message that carries it under it; a cut another turn beat fails [D88, D112, D203].

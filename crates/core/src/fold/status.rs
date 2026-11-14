@@ -45,6 +45,11 @@ pub fn resumable(fold: &Fold, state: &str) -> bool {
             .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
 }
 
+/// Whether a worker waits on the user's call on its row's hold [D2028, D342].
+pub fn held(fold: &Fold) -> bool {
+    fold.hold.as_ref().is_some_and(|h| h["phase"] == "asked")
+}
+
 /// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on. Only
 /// while no turn is open.
 pub fn switchable(fold: &Fold) -> Option<&'static str> {
@@ -137,6 +142,10 @@ pub fn quiet(fold: &Fold, state: &str) -> bool {
 pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
     let turn = fold.turns.first();
     let (kind, id, text) = match state {
+        "waiting_answer" if turn.is_none() => {
+            let id = fold.hold.as_ref()?["id"].as_str()?;
+            ("question", format!("ask:{id}"), None)
+        }
         "waiting_answer" => {
             let turn = turn?;
             match turn.asks.iter().find(|(_, r)| r["to"] != "parent") {
@@ -192,6 +201,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             .unwrap_or("");
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
+            _ if held(fold) => (
+                "waiting_answer",
+                fold.hold.clone().unwrap_or_default()["why"].clone(),
+            ),
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
             _ if fold.limit.is_some() => (
                 if fold.credits {

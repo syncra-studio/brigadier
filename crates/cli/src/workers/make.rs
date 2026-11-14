@@ -6,7 +6,7 @@ use super::{
     Link, Record, below, closing, family_lock, git, place, record, refuse, result, save, setting,
     write_json,
 };
-use crate::{accounts, control, models, owner, settings, title};
+use crate::{control, models, owner, routing, settings, title};
 use brigadier_core::{self as core, Spec, adapters, projects};
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -36,54 +36,6 @@ fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, sessio
     format!(
         "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
-}
-
-/// The agent, model and effort a worker runs: the parent's own where none is named, else what
-/// the user allows in Rust's catalog [D2040, D3030]. Never the app path's `fake` default.
-fn pick(
-    data: &Path,
-    me: &str,
-    parent: &Spec,
-    f: &core::fold::Fold,
-    flags: &dyn Fn(&str) -> Option<String>,
-) -> Result<(String, Option<String>, Option<String>), Value> {
-    let now = models::next_agent(parent, f).to_string();
-    let run = core::as_run(parent, f, &now, None);
-    let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
-    let agent = agent.unwrap_or_else(|| now.clone());
-    if agent == now && model.is_none() {
-        return Ok((agent, run.model, effort.or(run.effort)));
-    }
-    let args = ["models", "--session", me].map(String::from);
-    let groups = models::run(data, &args).map_err(|e| refuse(&e.to_string()))?;
-    let group = (groups["groups"].as_array().into_iter().flatten())
-        .find(|g| g["provider"] == agent.as_str() && g["unavailable"].is_null());
-    let Some(group) = group else {
-        return Err(refuse(&format!(
-            "{agent:?} isn't an agent you may use. `brigadier models` lists them."
-        )));
-    };
-    let Some(model) = model else {
-        return match effort {
-            Some(_) => Err(refuse("--effort needs --model for another agent.")),
-            None => Ok((agent, None, None)),
-        };
-    };
-    let found =
-        (group["models"].as_array().into_iter().flatten()).find(|m| m["id"] == model.as_str());
-    let Some(found) = found else {
-        return Err(refuse(&format!(
-            "{model:?} isn't a model of {agent} you may use. `brigadier models` lists them."
-        )));
-    };
-    if let Some(e) = &effort
-        && !(found["efforts"].as_array().into_iter().flatten()).any(|x| x == e.as_str())
-    {
-        return Err(refuse(&format!(
-            "{model} has no effort {e:?}. `brigadier models` lists its efforts."
-        )));
-    }
-    Ok((agent, Some(model), effort))
 }
 
 /// How deep workers may start workers of their own; a worker at this depth can't [D2026, D3038].
@@ -119,34 +71,7 @@ pub fn start(
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
     };
-    let (backend, model, effort) = match pick(data, me, &parent, &f, flags) {
-        Ok(p) => p,
-        Err(e) => return e,
-    };
-    let Some(a) = adapters::get(&backend) else {
-        return refuse(&format!("{backend:?} isn't an agent."));
-    };
-    // The parent's account on its own agent; another agent's in use [D2040].
-    let account = if backend == models::next_agent(&parent, &f) {
-        f.accounts
-            .get(&backend)
-            .cloned()
-            .or(parent.starts_on.clone())
-    } else {
-        let spec = Spec {
-            backend: backend.clone(),
-            ..Default::default()
-        };
-        accounts::starting(data, spec).starts_on
-    }
-    .filter(|a| !a.is_empty());
-    // The parent's level carries over, Full access too, as the old app's; a held project's is Ask
-    // [D187, D313]. A Brigade sub-session's the same, as D196 sets nothing else.
     let held = models::held(data, parent.project.as_deref());
-    let level = (parent.level.as_deref())
-        .filter(|l| (!held || *l == "ask") && a.can().levels.contains(l))
-        .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
-        .map(String::from);
     let project = parent
         .project
         .clone()
@@ -160,8 +85,8 @@ pub fn start(
     // Proposed: `--title` names it; else its brief does [D3029].
     let named = flags("--title").filter(|t| !t.trim().is_empty());
     let title = named.unwrap_or_else(|| title::from(brief));
-    let asked =
-        json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort")});
+    let asked = json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort"),
+        "row": flags("--row")});
     let reserved = (|| -> Result<Record, Value> {
         let _family = family_lock(data, &root).map_err(|e| refuse(&e.to_string()))?;
         if closing(data, me) || !parent.dir.join("session.json").exists() {
@@ -195,6 +120,16 @@ pub fn start(
                 break id;
             }
         };
+        let p = routing::resolve(data, me, &parent, &f, flags, &wid)?;
+        let Some(a) = adapters::get(&p.agent) else {
+            return Err(refuse(&format!("{:?} isn't an agent.", p.agent)));
+        };
+        // The parent's level carries over, Full access too, as the old app's; a held project's is
+        // Ask [D187, D313, D316]. A Brigade sub-session's the same, as D196 sets nothing else.
+        let level = (parent.level.as_deref())
+            .filter(|l| (!held || *l == "ask") && a.can().levels.contains(l))
+            .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
+            .map(String::from);
         let r = Record {
             wid,
             cid: control::new_cid(),
@@ -206,14 +141,16 @@ pub fn start(
             state: "starting".into(),
             error: None,
             asked,
-            backend: backend.clone(),
-            model: model.clone(),
-            effort: effort.clone(),
+            backend: p.agent,
+            model: p.model,
+            effort: p.effort,
             level,
-            account,
+            account: p.account,
             project,
             base: base.clone(),
             session,
+            pick: p.ran,
+            hold: p.hold,
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)
@@ -225,30 +162,38 @@ pub fn start(
     let note = json!({"event": "worker", "phase": "started", "id": r.wid, "title": r.title});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     begin(data, me, &r.wid);
-    let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
-    let ran: Vec<&str> = ran.into_iter().flatten().collect();
+    let (backend, model, effort) = (&r.backend, &r.model, &r.effort);
+    let mut ran = r.pick.clone();
+    (ran["agent"], ran["model"]) = (json!(backend), json!(model));
+    let ran = routing::receipt(&ran).unwrap_or_else(|| {
+        let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
+        ran.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+    });
     let place = match &base {
         Some(b) => format!("in its own worktree off {b}"),
         None => "in a folder of its own".into(),
     };
     let what = if session { "session" } else { "worker" };
-    let mut text = format!(
-        "Started {what} {} ({}) on {}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
-        r.title,
-        r.wid,
-        ran.join(" · "),
-        r.wid
-    );
+    let mut text = match r.hold["why"].as_str() {
+        Some(why) => format!(
+            "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a lower row or waits. Go on with your work; its result comes to you when it runs.",
+            r.title, r.wid
+        ),
+        None => format!(
+            "Started {what} {} ({}) on {ran}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
+            r.title, r.wid, r.wid
+        ),
+    };
     if dirty {
         text +=
             " Your uncommitted edits aren't in its worktree; commit them first if it needs them.";
     }
     json!({"ok": true, "id": r.wid, "title": r.title, "agent": backend, "model": model, "effort": effort,
-        "base": base, "uncommitted": dirty, "text": text})
+        "account": r.account, "receipt": ran, "held": r.hold["why"], "base": base, "uncommitted": dirty, "text": text})
 }
 
 /// Makes a reserved worker off the caller's thread, once at a time in this daemon.
-pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
+pub(crate) fn begin(data: &Path, pid: &str, wid: &str) {
     {
         let mut making = MAKING.lock().unwrap();
         if !making
@@ -266,6 +211,7 @@ pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
             // A stop while it was being made keeps its word: no result, never started.
             if record(&data, &pid, &wid).is_none_or(|now| now.state != "stopped") {
                 match made {
+                    Ok(()) if !r.hold.is_null() => r.state = "held".into(),
                     Ok(()) => r.state = "started".into(),
                     Err(e) => {
                         r.state = "failed".into();
@@ -318,8 +264,17 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             },
         )?,
     };
-    let ran =
-        json!({"agent": r.backend, "model": r.model, "effort": r.effort, "account": r.account});
+    let mut ran = r.pick.clone();
+    for (k, v) in [
+        ("agent", json!(r.backend)),
+        ("model", json!(r.model)),
+        ("account", json!(r.account)),
+    ] {
+        ran[k] = v;
+    }
+    if ran["effort"].is_null() {
+        ran["effort"] = json!(r.effort);
+    }
     if !dir.join("worker.json").exists() {
         let l = Link {
             parent: pid.into(),
@@ -351,6 +306,10 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         None => fs::create_dir_all(&cwd)?,
     }
     owner::ensure(data, &spec)?;
+    // Its row out of quota: it waits on the user's call, its brief unsent [D2028].
+    if !r.hold.is_null() {
+        return crate::routing::ask(data, &r.wid, &r.hold);
+    }
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.cid) {
         return Ok(());
     }

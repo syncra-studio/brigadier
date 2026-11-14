@@ -63,6 +63,11 @@ pub(crate) fn of(data: &Path, agent: &str, account: &str) -> Vec<Window> {
     found
 }
 
+/// Whether an account's last check found it signed in; None before any check.
+pub(crate) fn signed_in(data: &Path, agent: &str, account: &str) -> Option<bool> {
+    load(data)[key(agent, account)]["signed_in"].as_bool()
+}
+
 /// Keeps a sample read at `at`: each window replaces the one of its name unless that one is newer;
 /// `who` (signed in, email) where a check said it. One writer at a time, across processes.
 fn record(

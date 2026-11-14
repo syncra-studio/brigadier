@@ -144,7 +144,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         };
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
         // ended by itself before the Pause took reports as ever.
-        if l.paused && how == "stopped" {
+        // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
+        if (l.paused && how == "stopped") || (how == "limit" && !l.ran["label"].is_null()) {
             continue;
         }
         write(data, &l, wid, turn, how, None)?;

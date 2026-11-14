@@ -25,7 +25,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         // Every id given, each loaded first so an unknown one refuses before any is archived.
         "archive" => {
             let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
-            let specs: Vec<_> = ids.map(|id| core::load(data, id).map(|s| (id, s))).collect::<io::Result<_>>()?;
+            let specs: Vec<_> = ids
+                .map(|id| core::load(data, id).map(|s| (id, s)))
+                .collect::<io::Result<_>>()?;
             for (id, spec) in specs {
                 crate::rewind::settled(data, &spec)
                     .and_then(|()| core::git::recover::settled(data, id))

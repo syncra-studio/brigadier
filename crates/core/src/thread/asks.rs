@@ -41,6 +41,25 @@ impl Thread {
         }
     }
 
+    /// A worker's routing hold [D2028, D342]: Rust's question card for the user, as a sub-session's
+    /// passed ask is, closed by the user's answer.
+    pub(super) fn hold(&mut self, item: &Value, ts: u64) {
+        let r = &item["request"];
+        if item["phase"] == "asked" {
+            let q = &r["items"][0];
+            let at = self.add(json!({"kind": "question", "question": q["text"],
+                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r}));
+            self.pending.push(at);
+            self.pending_changed = true;
+            return self.user_waits(at, ts);
+        }
+        if let Some(at) = self.unwait(item["id"].as_str().unwrap_or("")) {
+            self.items[at]["answer"] = item["choice"].clone();
+            self.changed_items.insert(at);
+            self.end_wait(ts);
+        }
+    }
+
     /// The waiting request with this id (or row) stops waiting; its row.
     pub(super) fn unwait(&mut self, id: &str) -> Option<usize> {
         let k = (self.pending.iter()).position(|&at| self.items[at]["request"]["id"] == id)?;

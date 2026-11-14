@@ -26,6 +26,7 @@ pub mod queue;
 mod relay;
 mod rename;
 pub mod rewind;
+mod routing;
 mod sessions;
 mod settings;
 mod setup;
@@ -125,7 +126,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" => &[][..],
+        | "panel" | "routing" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
@@ -373,6 +374,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "host" => host::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "settings" => settings::run(data, args),
+        "routing" => routing::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" | "rebirth" => accounts::run(data, args),
         "awake" => settings::awake(data, args.get(1)),

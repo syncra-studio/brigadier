@@ -81,20 +81,23 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
             &[],
         ),
         "start" => (
-            "brigadier start \"<brief>\" [--agent A] [--model M] [--effort E] [--title T] [--json]
+            "brigadier start \"<brief>\" [--row best|standard|quick] [--agent A] [--model M] [--effort E] [--title T] [--json]
 
 Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
 It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
 last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now.
 Its permission prompts and questions come to you the same way, never to the user: judge each and
 answer with `brigadier send <id> --allow`, `--deny \"<reason>\"` or your answer as the message.
-Without --agent, --model and --effort it runs on yours; `brigadier models` lists the others you may use.
+It runs on the first model of the user's routing row with an account that has room, Standard if none
+is named: best for hard problems, plans and reviews; standard for most work; quick for look-ups and
+small edits. --model runs that model where the user allows it, never replaced; --agent keeps to one
+agent. `brigadier models` lists the models and rows. A row out of quota holds the worker for the user.
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
 Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
 A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
-            &["--agent", "--model", "--effort", "--title"],
+            &["--row", "--agent", "--model", "--effort", "--title"],
             &["--session"],
         ),
         "stop" => (
@@ -103,7 +106,7 @@ A Brigade's boss starts a full session instead with --session: `brigadier help b
             &[],
         ),
         "models" => (
-            "brigadier models [--json]\n\nThe agents, models and efforts the user lets you use; the default effort is marked *.",
+            "brigadier models [--json]\n\nThe agents, models and efforts the user lets you use; the default effort is marked *. Then the user's routing rows and rules, which `start --row` follows.",
             &[],
             &[],
         ),
@@ -267,6 +270,9 @@ pub fn run(
         }),
         "stop" => Ok(workers::stop(data, me, id)),
         "send" if call.has("--to-user") => Ok(workers::to_user(data, me, id)),
+        "send" if crate::routing::held(data, id) => {
+            Err(refuse(&workers::for_user(data, id).unwrap_or_default()))
+        }
         "send"
             if call.has("--allow")
                 || call.value("--deny").is_some()
@@ -456,5 +462,7 @@ fn models(data: &Path, me: &str) -> Value {
     if agents.is_empty() {
         text += "No agents are available.\n";
     }
-    json!({"ok": true, "agents": agents, "text": text})
+    let routing = crate::routing::run(data, &["routing".into()]).unwrap_or_default();
+    text += &crate::routing::said(&routing);
+    json!({"ok": true, "agents": agents, "routing": routing, "text": text})
 }

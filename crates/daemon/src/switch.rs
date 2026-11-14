@@ -11,10 +11,12 @@ pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashM
     seen.retain(|id, _| rows.contains_key(id));
     let mut settings = None; // read once a pass, and only with a session at its limit
     for (id, row) in rows {
-        // A worker's limit moves follow its own routing, a later step [D3030].
+        // A worker's limit moves follow its own routing row, whatever the session settings
+        // [D2037, D2041]; nothing else moves it.
+        let worker = !row["worker"].is_null();
         let Some(why) = row["switchable"]
             .as_str()
-            .filter(|_| row["worker"].is_null())
+            .filter(|w| !worker || *w == "limited")
         else {
             seen.remove(id);
             continue;
@@ -26,7 +28,7 @@ pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashM
             continue;
         }
         seen.insert(id.clone(), at);
-        if !brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why) {
+        if !worker && !brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why) {
             continue;
         }
         let (data, id) = (data.to_path_buf(), id.clone());

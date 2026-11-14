@@ -50,6 +50,7 @@ impl Fold {
         (self.limit, self.resets) = (None, None);
         self.sign_in = None;
         self.refused = None;
+        self.hold = None;
         // A switch takes effect with the input that continues it, in the same frame [D51].
         let switch = &item["switch"];
         if let Some(to) = switch["to"]["backend"].as_str() {

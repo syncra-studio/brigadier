@@ -20,6 +20,8 @@ pub struct Target<'a> {
     pub backend: &'a str,
     pub account: &'a str,
     pub model: Option<&'a str>,
+    /// Its effort when a worker's routing row sets one [D2041]; else the session's own.
+    pub effort: Option<&'a str>,
     /// The model as the picker names it, where known [D76].
     pub name: Option<&'a str>,
     pub label: &'a str,
@@ -110,6 +112,9 @@ pub fn switch(
     }
     if let Some(m) = to.model {
         run.model = Some(m.into());
+    }
+    if let Some(e) = to.effort {
+        (run.effort, switch["to"]["effort"]) = (Some(e.into()), e.into());
     }
     let mut setup = adapters::setup(&run);
     if held {

@@ -17,7 +17,7 @@ pub use live::{
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, mark, notice, quiet, resumable, status, switchable, works};
+pub use status::{Owner, held, mark, notice, quiet, resumable, status, switchable, works};
 use std::collections::{BTreeMap, BTreeSet};
 pub use turns::Turn;
 
@@ -87,6 +87,10 @@ pub struct Fold {
     /// The CLI refused to resume the conversation on this account (D90 Q4).
     #[serde(default)]
     pub refused: Option<String>,
+    /// A worker held for the user's call, its routing row out of quota: Rust's `hold` note while
+    /// asked, then while it waits for the reset (`until`) [D2028, D342].
+    #[serde(default)]
+    pub hold: Option<Value>,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
@@ -458,6 +462,7 @@ impl Fold {
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("peer") => self.passed_to_user(item),
+                Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);
                     self.turns

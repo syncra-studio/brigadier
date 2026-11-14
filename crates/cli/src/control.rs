@@ -109,6 +109,14 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     if let Some(mid) = request.strip_prefix("peer-") {
         return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
     }
+    // A worker's routing hold: Rust's own question, the user's call [D2028].
+    if request.starts_with("hold-") {
+        let choice = (answers.iter().flatten())
+            .find_map(Value::as_str)
+            .unwrap_or("");
+        let args = ["routing", "answer", id, request, choice].map(String::from);
+        return crate::routing::run(data, &args);
+    }
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
     answered(data, id, request, control)
 }

@@ -46,7 +46,7 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
     let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
-        "receipt": format!("Ran on {}", model.join(" · ")), "added": last["added"], "removed": last["removed"],
+        "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))), "added": last["added"], "removed": last["removed"],
         "now": if kind == "working" { now } else { None }})
 }
 

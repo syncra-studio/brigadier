@@ -43,8 +43,10 @@ impl Thread {
         let named = |k: &str, id: String| note[k].as_str().map_or(id, String::from);
         // Live while a turn runs, as another agent's pick is [D241].
         let live = self.open.is_some();
-        let at = self.pick_line(json!({"kind": "line", "reason": "model", "why": "changed", "live": live,
-            "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}));
+        let at = self.pick_line(
+            json!({"kind": "line", "reason": "model", "why": "changed", "live": live,
+            "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}),
+        );
         self.pick_row = live.then_some(at);
         self.ran = Some((backend, model));
     }

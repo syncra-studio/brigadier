@@ -122,8 +122,13 @@ pub fn paths(data: &Path, req: &Value) -> Value {
     let root = format!("{}/", checkout.root.display());
     let mut found = serde_json::Map::new();
     for asked in (req["paths"].as_array().into_iter().flatten()).filter_map(Value::as_str) {
-        let want = asked.strip_prefix(&root).unwrap_or(asked).trim_end_matches('/');
-        let mut named = all.iter().filter(|f| !f.2 && f.1.rsplit('/').next() == Some(want));
+        let want = asked
+            .strip_prefix(&root)
+            .unwrap_or(asked)
+            .trim_end_matches('/');
+        let mut named = all
+            .iter()
+            .filter(|f| !f.2 && f.1.rsplit('/').next() == Some(want));
         let alone = named.next().filter(|_| named.next().is_none());
         if let Some((_, path, folder)) = all.iter().find(|f| f.1 == want).or(alone) {
             found.insert(asked.into(), json!({"path": path, "folder": folder}));

@@ -13,9 +13,11 @@ mod pause;
 mod result;
 pub(crate) mod row;
 pub(crate) use asks::question;
+pub(crate) use asks::told_held;
 pub use asks::{answer, asks_parent, for_user};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
+pub(crate) use make::begin;
 pub use make::start;
 pub use pause::held;
 pub use result::{deliver, take, take_ask, went_with, with_next};
@@ -63,6 +65,13 @@ pub(crate) struct Record {
     /// A Brigade's sub-session, not a worker [D189].
     #[serde(default)]
     pub session: bool,
+    /// What its `ran` keeps beside agent, model, effort and account: its routing row, the
+    /// account's name and quota at the start, the same-row note [D2037, D2041, D3018].
+    #[serde(default)]
+    pub pick: Value,
+    /// Its row out of quota: the user's call it waits for before it starts [D2028, D342].
+    #[serde(default)]
+    pub hold: Value,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.
@@ -442,6 +451,12 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         }
         if row["worker"]["kind"] == "doneNotMerged" {
             merged(data, id);
+        }
+        // A hold the user said to wait out goes on once its reset has passed [D2028].
+        if !row["worker"].is_null()
+            && matches!(row["state"].as_str(), Some("new" | "idle" | "limited"))
+        {
+            crate::routing::due(data, id);
         }
     }
     deliver(data, rows);

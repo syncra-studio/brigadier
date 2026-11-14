@@ -357,6 +357,7 @@ impl Thread {
             }
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
+            "note" if item["event"] == "hold" => self.hold(item, ts),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {
                 let forked = self.items.iter().rposition(|r| r["kind"] == "forked");

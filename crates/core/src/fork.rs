@@ -337,7 +337,9 @@ fn build(
             project: src.project.clone(),
             // The picked model in the fork's own record, as a model switch; no effort is the CLI's
             // default, as `set` [D1081, D1089].
-            model: ask.to.map_or(run.model.clone(), |(_, m, ..)| Some(m.into())),
+            model: ask
+                .to
+                .map_or(run.model.clone(), |(_, m, ..)| Some(m.into())),
             effort: ask
                 .to
                 .map_or(run.effort.clone(), |(_, _, e, _)| e.map(String::from)),
@@ -382,8 +384,10 @@ fn build(
     let lines: String = copied.iter().map(|item| format!("{item}\n")).collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;
     // The copied messages' files are the fork's own, so they show and open after the source's delete.
-    let ids = (copied.iter()).flat_map(|item| item["parts"]["files"].as_array().into_iter().flatten());
-    for id in (ids.filter_map(|file| file["id"].as_str())).filter(|id| crate::check_id(id).is_ok()) {
+    let ids =
+        (copied.iter()).flat_map(|item| item["parts"]["files"].as_array().into_iter().flatten());
+    for id in (ids.filter_map(|file| file["id"].as_str())).filter(|id| crate::check_id(id).is_ok())
+    {
         let Ok(found) = fs::read_dir(crate::message::sent(&src.dir).join(id)) else {
             continue;
         };

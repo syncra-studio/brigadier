@@ -28,6 +28,9 @@ pub(super) fn waiting(data: &Path, wid: &str, id: Option<&str>) -> Option<(Strin
 pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
     waiting(data, wid, Some(id)).is_some()
         || crate::peers::question(data, wid).is_some_and(|mid| mid == id)
+        || (core::fold(&core::session_dir(data, wid), true).ok())
+            .and_then(|f| f.fold.hold)
+            .is_some_and(|h| h["id"] == id)
 }
 
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.
@@ -56,6 +59,19 @@ pub(crate) fn question(data: &Path, wid: &str, mid: &str, text: &str) -> io::Res
     let turn = turn.turns.first().map_or(String::new(), |t| t.id.clone());
     let r = json!({"items": [{"text": text}]});
     write(data, &l, wid, mid, said(&l.title, wid, &r), &turn)
+}
+
+/// Tells worker `wid`'s parent once that its row is out and the user decides (`why`: "Quick's
+/// models are at their limit, resets 15:10"); the parent keeps working [D2028, D342].
+pub(crate) fn told_held(data: &Path, wid: &str, id: &str, why: &str) -> io::Result<()> {
+    let Some(l) = link(data, wid) else {
+        return Ok(());
+    };
+    let text = format!(
+        "Worker {} ({wid}) is held: {why}. Only the user settles it, on its card; go on with your work, its result comes to you when it runs.",
+        l.title
+    );
+    write(data, &l, wid, id, text, "")
 }
 
 /// One ask's record in the parent's results, once.
@@ -150,6 +166,12 @@ fn subject(r: &Value) -> String {
 /// What session `id` waits on its user for, as a `wait` on it says: only the user answers it [D126].
 pub fn for_user(data: &Path, id: &str) -> Option<String> {
     let f = core::fold(&core::session_dir(data, id), true).ok()?.fold;
+    if let Some(h) = &f.hold {
+        return Some(format!(
+            "{id} is held: {}. Only the user can choose, on its card. End your turn: its result comes to you when it runs.",
+            h["why"].as_str().unwrap_or("")
+        ));
+    }
     let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"] != "parent")?;
     let what = match r["items"].is_array() {
         true => "to answer its question".to_string(),
