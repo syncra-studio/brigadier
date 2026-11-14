@@ -32,6 +32,7 @@ mod setup;
 mod side;
 mod switching;
 mod tabs;
+pub mod usage;
 pub mod workers;
 pub use brigadier_core::title;
 

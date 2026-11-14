@@ -479,21 +479,3 @@ pub fn api_error(v: &Value, text: String) -> Option<Event> {
         _ => return None,
     })
 }
-
-/// A limit hit, from its rate_limit_event: its reset time is in seconds [D74, D220]. Rejected while
-/// extra usage still pays, the turn carries on.
-pub fn rate_limit(info: &Value) -> Vec<Event> {
-    let overage = matches!(s(info, &["overageStatus"]), "allowed" | "allowed_warning");
-    if info["status"] != "rejected" || overage {
-        return vec![];
-    }
-    let words = match s(info, &["rateLimitType"]) {
-        "five_hour" => "5-hour limit reached",
-        t if t.starts_with("seven_day") => "Weekly limit reached",
-        _ => "Usage limit reached",
-    };
-    vec![Event::Limited(
-        words.into(),
-        info["resetsAt"].as_u64().map(|t| t * 1000),
-    )]
-}

@@ -16,7 +16,9 @@ use std::thread;
 use std::time::Duration;
 
 mod child;
+mod limits;
 use child::{activity, child};
+use limits::{limit_id, merge, out_of_credits, resets, tell_limits};
 
 /// How long the limit read may hold back a turn's end (proposed).
 const LIMIT_WAIT: Duration = Duration::from_secs(5);
@@ -290,49 +292,10 @@ fn from_server(state: &Shared, mut v: Value) {
                     st.limits.insert(limit_id(&snap), snap);
                 }
             }
+            tell_limits(st);
             flush(st);
         }
     }
-}
-
-fn limit_id(snap: &Value) -> String {
-    snap["limitId"].as_str().unwrap_or("codex").into()
-}
-
-/// A limit update is sparse: what it leaves out or null stays as last known.
-fn merge(st: &mut State, snap: &Value) {
-    let known = st.limits.entry(limit_id(snap)).or_insert_with(|| json!({}));
-    for (k, v) in snap.as_object().into_iter().flatten() {
-        if !v.is_null() {
-            known[k.as_str()] = v.clone();
-        }
-    }
-}
-
-/// When the limit that was hit resets (ms): of the buckets marked as reached, or all if none is,
-/// the windows used up, the latest reset among them; None when none says (proposed) [D74, D220].
-fn resets(limits: &HashMap<String, Value>) -> Option<u64> {
-    let reached = limits
-        .values()
-        .any(|s| !s["rateLimitReachedType"].is_null());
-    (limits.values())
-        .filter(|s| !reached || !s["rateLimitReachedType"].is_null())
-        .flat_map(|s| [&s["primary"], &s["secondary"]])
-        .filter(|w| w["usedPercent"].as_i64().is_some_and(|u| u >= 100))
-        .filter_map(|w| w["resetsAt"].as_u64())
-        .max()
-        .map(|secs| secs * 1000)
-}
-
-/// Whether Codex marks the account out of credits, which no reset lifts. Only its main bucket
-/// carries the mark, read fresh once a limited turn ends. A spend cap is another value and stays a limit.
-fn out_of_credits(limits: &HashMap<String, Value>) -> bool {
-    matches!(
-        limits
-            .get("codex")
-            .and_then(|s| s["rateLimitReachedType"].as_str()),
-        Some("workspace_owner_credits_depleted" | "workspace_member_credits_depleted")
-    )
 }
 
 fn flush(st: &mut State) {
@@ -348,7 +311,8 @@ fn notification(state: &Shared, v: &mut Value) {
     let st = &mut *state.lock().unwrap();
     let p = &v["params"];
     if method == "account/rateLimits/updated" {
-        return merge(st, &p["rateLimits"].clone());
+        merge(st, &p["rateLimits"].clone());
+        return tell_limits(st);
     }
     if method == "skills/changed" {
         return skills(state);

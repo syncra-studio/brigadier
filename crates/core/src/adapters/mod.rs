@@ -52,6 +52,8 @@ pub enum Event {
     Limited(String, Option<u64>),
     /// The account has no credits left: no limit, it never comes back by itself.
     OutOfCredits,
+    /// Its usage limits as its CLI reported them during a run, each window it named [D28, D2039].
+    Limits(Vec<Limit>),
     SignIn(String),
     /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
     Unresumable(String),

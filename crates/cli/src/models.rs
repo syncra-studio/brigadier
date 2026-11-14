@@ -149,7 +149,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         .into_iter()
         .flatten()
         .filter(|check| check["enabled"] == true || own.iter().any(|b| check["name"] == *b))
-        .map(|check| group(check, held, &chosen, &hidden))
+        .map(|check| {
+            let mut g = group(check, held, &chosen, &hidden);
+            g["usage"] = crate::usage::of_agent(data, check["name"].as_str().unwrap_or(""));
+            g
+        })
         .collect();
     Ok(json!({"ok": true, "groups": groups}))
 }

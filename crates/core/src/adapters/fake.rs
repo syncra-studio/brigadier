@@ -81,6 +81,7 @@ impl Adapter for Fake {
             } else {
                 vec![]
             },
+            usage: signed_in.then(|| limits(spec)).flatten(),
             ..Default::default()
         })
     }
@@ -104,6 +105,7 @@ impl Adapter for Fake {
         for (k, v) in &spec.opts {
             env.push((k.clone(), v.clone()));
         }
+        env.push(("FAKE_USAGE".into(), usage_file(spec).display().to_string()));
         Launch {
             argv,
             env,
@@ -233,6 +235,10 @@ impl Adapter for Fake {
             "check" => vec![Event::Checking(v["on"] == true)],
             "context" => vec![Event::Context(v["used"].as_u64().unwrap_or(0), None)],
             "deny" => vec![Event::Denied],
+            "limits" => serde_json::from_value(v["windows"].clone()).map_or_else(
+                |_| vec![Event::Unknown(line.into())],
+                |l| vec![Event::Limits(l)],
+            ),
             "fail" => vec![Event::Failed(
                 match s(&v, &["why"]) {
                     "capacity" => "capacity",
@@ -292,6 +298,19 @@ impl Adapter for Fake {
             Err(e) => Landing::Unknown(e.to_string()),
         }
     }
+}
+
+/// The usage a drill gives an account: `usage.json` in its home beside its `login` mark, or in
+/// the accounts folder for the computer's login; a list of `Limit`s. None without the file.
+fn usage_file(spec: &Spec) -> PathBuf {
+    match &spec.account {
+        Some((_, home)) => home.join("usage.json"),
+        None => crate::data_of(spec).join("accounts/usage.json"),
+    }
+}
+
+fn limits(spec: &Spec) -> Option<Vec<super::Limit>> {
+    serde_json::from_slice(&std::fs::read(usage_file(spec)).ok()?).ok()
 }
 
 fn conv(spec: &Spec, resume: &str) -> PathBuf {

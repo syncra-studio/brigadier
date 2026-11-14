@@ -176,6 +176,9 @@ pub struct Fold {
     /// The stalled turn the user's Continue carries on: the rebirth guard starts over [D144].
     #[serde(default)]
     pub go_on: Option<String>,
+    /// Its CLI's newest usage report in a run, `{backend, account, limits, at}`, for the store [D2039].
+    #[serde(default)]
+    pub limits: Option<Value>,
 }
 
 impl Fold {
@@ -205,6 +208,7 @@ impl Fold {
                 | "stderr"
                 | "unknown"
                 | "usage"
+                | "limits"
                 | "context"
                 | "plan"
                 | "question"
@@ -408,6 +412,15 @@ impl Fold {
             }
             "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
             "plan" => self.plan = Some(item["steps"].clone()),
+            "limits" => {
+                let account = self
+                    .accounts
+                    .get(&self.backend)
+                    .cloned()
+                    .unwrap_or_default();
+                self.limits = Some(json!({"backend": self.backend, "account": account,
+                    "limits": item["limits"], "at": ts}));
+            }
             "limited" => {
                 self.limit = Some(str_of("message"));
                 self.credits = item["credits"] == true;

@@ -205,6 +205,15 @@ impl Agent {
                 emit(json!({"t": "check", "on": false}));
             }
             "deny" => emit(json!({"t": "deny"})),
+            // Its account's usage file as it reads now, reported as a CLI reports it mid-run [D2039].
+            "usage" => {
+                let file = env::var("FAKE_USAGE").unwrap_or_default();
+                let windows: serde_json::Value = fs::read(file)
+                    .ok()
+                    .and_then(|b| serde_json::from_slice(&b).ok())
+                    .unwrap_or_default();
+                emit(json!({"t": "limits", "windows": windows}));
+            }
             why @ ("overload" | "nomodel" | "blocked" | "unsafe" | "review" | "fail") => {
                 let (why, message) = match why {
                     "overload" => ("capacity", "The model is overloaded (529)."),

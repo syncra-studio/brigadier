@@ -370,7 +370,7 @@ impl Adapter for Claude {
                     tool_end(b, result, parent.clone())
                 })
                 .collect(),
-            ("rate_limit_event", _) => control::rate_limit(&v["rate_limit_info"]),
+            ("rate_limit_event", _) => models::rate_limit(&v["rate_limit_info"]),
             ("result", _) => {
                 // With its cost so far, as the CLI reports it [D221].
                 let mut usage = v["usage"].clone();

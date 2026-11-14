@@ -15,6 +15,9 @@ pub fn events(v: &Value) -> Vec<Event> {
             level: None,
         }],
         "" if s(v, &["type"]) == "brigadier.skills" => vec![Event::Commands(commands(d))],
+        "" if s(v, &["type"]) == "brigadier.limits" => {
+            vec![Event::Limits(super::super::models::usage(d))]
+        }
         "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
         "turn/started" => vec![Event::TurnStart],
         "turn/completed" => completed(p),

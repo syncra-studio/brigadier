@@ -288,7 +288,11 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 true => a.latest(),
                 false => kept(),
             });
-            let checked = a.check(&accounts::check_as(data, a, cwd), &exe, cwd);
+            let (account, spec) = accounts::check_as(data, a, cwd);
+            let checked = a.check(&spec, &exe, cwd);
+            if let Ok(c) = &checked {
+                crate::usage::checked(data, a.name(), &account, c);
+            }
             (checked, latest.join().ok().flatten())
         });
         match checked {

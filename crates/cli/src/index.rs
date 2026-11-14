@@ -312,8 +312,8 @@ impl Index {
             // It holds its project's own folder: Local checkout can't start there again [D306].
             row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));
             row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
-            // How full its context is, and a rebirth due now [D88, D108].
-            row["context"] = json!(f.fold.context);
+            row["limits"] = json!(f.fold.limits); // its CLI's newest usage report, for the store [D2039]
+            row["context"] = json!(f.fold.context); // how full its context is; a rebirth due now below [D88, D108]
             let lost = state == "undelivered"
                 && f.fold
                     .turns
