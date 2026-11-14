@@ -460,8 +460,8 @@
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
-  /* The pinned summary card's edge and lift (the old app's --shadow-summary). */
-  --shadow-summary: 0 0 0 0.5px oklch(1 0 0 / 16%), 0 3px 7.5px oklch(0 0 0 / 4%), 0 0 20px oklch(0 0 0 / 5%);
+  /* The summary card's lift (the new design's Context card; its edge is the glass stroke). */
+  --shadow-summary: 0 8px 24px #00000040;
   /* The new design's menu shadow. */
   --shadow-overlay: 0 10px 32px #00000080;
   --drop-shadow-toggle-glow: 0 0 8px #ffffffa6;
