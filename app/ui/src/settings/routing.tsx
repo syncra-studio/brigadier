@@ -148,11 +148,20 @@ export function RoutingSettings() {
       (cause) => setError(errorText(cause)),
     );
   }, [online]);
-  const save = (next: Routing) =>
-    run(["routing", "set", JSON.stringify({ rows: next.rows, rules: next.rules, review: next.review })]).then((back) => {
-      setValue(back as Routing);
-      return back as Routing;
-    });
+  // One save at a time, in edit order, as settings' own; only the latest edit's reply, or the last
+  // reply before it when that one fails, becomes the table, so an older one never covers a newer edit.
+  const saving = useRef({ chain: Promise.resolve() as Promise<unknown>, latest: 0, kept: null as Routing | null });
+  const save = (next: Routing) => {
+    const mine = saving.current;
+    const n = ++mine.latest;
+    const sent = mine.chain.then(() => run(["routing", "set", JSON.stringify({ rows: next.rows, rules: next.rules, review: next.review })]) as Promise<Routing>);
+    mine.chain = sent.then(
+      (back) => (mine.kept = back),
+      () => undefined,
+    );
+    void mine.chain.then(() => n === mine.latest && mine.kept && setValue(mine.kept));
+    return sent;
+  };
   return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} results={results} review />;
 }
 
