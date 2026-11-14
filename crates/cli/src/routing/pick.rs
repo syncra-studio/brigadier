@@ -243,6 +243,10 @@ pub(crate) fn resolve(
             let mut list = t["rows"][&row].as_array().cloned().unwrap_or_default();
             if let Some(authors) = review {
                 list.sort_by_key(|e| authors.iter().any(|a| e["agent"] == a.as_str()));
+                // The switch's reviewers that failed or met their limit are passed by [D3026].
+                let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
+                let gone: Vec<Value> = gone.unwrap_or_default();
+                list.retain(|e| !gone.contains(&json!({"agent": e["agent"], "model": e["model"]})));
             }
             if let Some(a) = &agent {
                 list.retain(|e| e["agent"] == a.as_str());

@@ -6,14 +6,19 @@
 //! log (`outcomes.rs`) [D2038]. One review, one fix pass, never a loop.
 //!
 //! A reviewer's `worker.json` `review` is `{"of": <id> | "session", "switch": bool}`; a reviewed
-//! worker's is `{"state", "by", "turn", "model", "reviewer", "findings", "line"}`, its state
-//! running (its reviewer works), sent (its fix turn runs), done or off (its result goes, with
-//! `line`), or agent (reviewed by `--reviewing`, so the switch never reviews it again).
+//! worker's is `{"state", "by", "turn", "tried", "model", "reviewer", "findings", "line"}`, its
+//! state running (its reviewer works), sending (its findings go), sent (its fix turn runs), done
+//! or off (its result goes, with `line`), or agent (reviewed by `--reviewing`, so the switch never
+//! reviews it again). `tried`: the reviewers that failed or met their limit, each passed by for
+//! the next eligible one; only when none is left does the review not run.
+
+mod line;
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, fold::Fold};
 use brigadier_frames::procs;
+use line::{count, cut, reviewed, word};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io;
@@ -24,8 +29,10 @@ const BRIEF: &str = "Try to break it. For each finding give file:line and either
 /// Proposed: in its fixed line, the merge sentence's place, so Rust reads its count [D74].
 pub(super) const FINDINGS: &str =
     "End your last message with one line: `Findings: N`, N the number of real findings.";
-/// The flag only the switch's own start gives; no agent can type it.
+/// The flags only the switch's own start gives; no agent can type them. `review-tried` (read by
+/// routing's pick): the reviewers passed by.
 const SWITCH: &str = "review-switch";
+const TRIED: &str = "review-tried";
 
 /// What a review starts with: its brief and title, the commit its worktree is made at (none for
 /// `session`: the caller's head), the agents whose work it reviews, and its mark.
@@ -167,44 +174,6 @@ fn lock(data: &Path) -> io::Result<fs::File> {
     Ok(file)
 }
 
-/// The number on the last line saying `key` ("findings: 4", any case); none when it isn't said
-/// [D74].
-fn count(text: &str, key: &str) -> Option<u64> {
-    let text = text.to_lowercase();
-    let rest = text
-        .lines()
-        .rev()
-        .find_map(|l| l.split_once(key).map(|(_, r)| r))?;
-    let digits: String = rest
-        .trim_start()
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
-}
-
-fn cut(mut s: String, most: usize) -> String {
-    if s.len() > most {
-        let mut at = most;
-        while !s.is_char_boundary(at) {
-            at -= 1;
-        }
-        s.truncate(at);
-        s += "\n[cut]";
-    }
-    s
-}
-
-/// How a turn ended, in the reviewer's or fix turn's words.
-fn word(how: &str) -> &'static str {
-    match how {
-        "stopped" => "was stopped",
-        "limit" => "stopped at a usage limit",
-        "context" => "ran out of context",
-        _ => "failed",
-    }
-}
-
 /// w185's review note [D2038], into `into`'s log.
 fn note(data: &Path, into: &str, r: &Value, counts: [Option<u64>; 3], why: Option<&str>) {
     let [findings, fixed, rejected] = counts;
@@ -213,29 +182,6 @@ fn note(data: &Path, into: &str, r: &Value, counts: [Option<u64>; 3], why: Optio
     if let Ok(spec) = core::load(data, into) {
         let _ = owner::ensure(data, &spec);
         let _ = owner::call(data, into, json!({"op": "note", "data": n}));
-    }
-}
-
-/// "Reviewed by ‹model›: 4 findings, 3 fixed, 1 rejected", each count only where it was said.
-fn reviewed(r: &Value, fixed: Option<u64>, rejected: Option<u64>) -> String {
-    let n = r["findings"].as_u64();
-    let found = n.map(|n| match n {
-        0 => "no findings".to_string(),
-        1 => "1 finding".into(),
-        n => format!("{n} findings"),
-    });
-    let parts: Vec<String> = [
-        found,
-        fixed.map(|n| format!("{n} fixed")),
-        rejected.map(|n| format!("{n} rejected")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    let model = r["model"].as_str().unwrap_or("another model");
-    match parts.is_empty() {
-        true => format!("Reviewed by {model}"),
-        false => format!("Reviewed by {model}: {}", parts.join(", ")),
     }
 }
 
@@ -257,19 +203,10 @@ pub(super) fn holds(
     wid: &str,
     turn: &str,
     how: &'static str,
+    f: &Fold,
 ) -> Option<&'static str> {
     if l.review["of"].is_string() {
-        let next = {
-            let _one = lock(data).ok()?;
-            if result::path_of(data, &l.parent, wid, turn).exists() {
-                return None;
-            }
-            result::write(data, l, wid, turn, how, None).ok()?;
-            act(data, l, wid, turn, how)
-        };
-        if let Some(of) = next {
-            let _ = result::write_ended(data, &of, false);
-        }
+        after(data, l, wid, turn, how, None);
         return None;
     }
     let on = how == "finished" && !l.session && routing::review_on(data);
@@ -278,47 +215,52 @@ pub(super) fn holds(
     }
     let _one = lock(data).ok()?;
     *l = link(data, wid)?;
+    // Moved on while this waited for the lock: its fix turn reports now, or it's written [D3006].
+    let path = result::path_of(data, &l.parent, wid, turn);
+    if !result::reported(l, f).iter().any(|t| t == turn) || path.exists() {
+        return None;
+    }
     let r = l.review.clone();
     match r["state"].as_str() {
         None if r.is_null() && span(data, wid).is_some() => {
-            let pid = l.parent.clone();
-            // One a restart cut short is reserved already: taken, never a second [D54].
-            let made = (records(data, &pid).into_iter())
-                .find(|x| x.review["of"] == wid && x.review["switch"] == true);
-            let by = match made {
-                Some(x) => Ok(x.wid),
-                None => {
-                    let all = procs::all();
-                    let running = |id: &str| crate::sessions::working(data, id, &all);
-                    let flags = |k: &str| match k {
-                        "--reviewing" => Some(wid.to_string()),
-                        SWITCH => Some("1".into()),
-                        _ => None,
-                    };
-                    let reply = super::make::start(data, &pid, "", &flags, &running, false);
-                    match reply["id"].as_str().filter(|_| reply["ok"] == true) {
-                        Some(id) => Ok(id.to_string()),
-                        None => Err(reply["error"]
-                            .as_str()
-                            .unwrap_or("its start failed")
-                            .to_string()),
-                    }
-                }
-            };
-            match by {
+            match next(data, l, wid) {
                 Ok(by) => l.review = json!({"state": "running", "by": by, "turn": turn}),
                 Err(why) => off(data, l, wid, &why),
             }
             let _ = save(data, wid, l);
             (l.review["state"] != "running").then_some(how)
         }
-        // Its reviewer ended and a restart cut what came next: it never hangs, never sends twice.
+        // Its reviewer's result is written with its next step, under this lock: none yet, it still
+        // works or is being made, its start's failure too. One whose next step a restart cut
+        // short, or stopped before it was made, never hangs it, never sends twice.
         Some("running") => {
             let by = r["by"].as_str().unwrap_or("");
-            link(data, by).filter(|x| x.last.is_null())?;
+            let made = records(data, &l.parent).into_iter().find(|x| x.wid == by);
+            let ended = result::all(data, &l.parent)
+                .iter()
+                .any(|(_, x)| x.wid == by);
+            if !ended && made.is_some_and(|x| x.state != "stopped") {
+                return None;
+            }
             off(data, l, wid, "interrupted");
             let _ = save(data, wid, l);
             Some(how)
+        }
+        // A restart cut its findings' send: the reviewer's own record says whether it went.
+        Some("sending") => {
+            let out = core::session_dir(data, r["by"].as_str().unwrap_or("")).join("peers/out");
+            let mid = (fs::read_dir(out).into_iter().flatten().flatten())
+                .filter_map(|e| super::read_json::<Value>(&e.path()))
+                .find(|o| o["to"] == wid && o["state"] != "stopped")
+                .and_then(|o| o["mid"].as_str().map(String::from));
+            let Some(mid) = mid else {
+                off(data, l, wid, "its findings couldn't be sent");
+                let _ = save(data, wid, l);
+                return Some(how);
+            };
+            (l.report, l.review["state"]) = (vec![mid], "sent".into());
+            let _ = save(data, wid, l);
+            None
         }
         Some("sent") => {
             let said = last_of_turn(data, wid, turn).unwrap_or_default();
@@ -343,10 +285,58 @@ pub(super) fn holds(
     }
 }
 
-/// After the result of a reviewer that never started.
-pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) {
+/// Starts the switch's reviewer of `wid`, its sibling, on the next eligible model past those
+/// tried; one a restart cut short is reserved already: taken, never a second [D54]. The why it
+/// can't, once none is left.
+fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
+    let tried = a.review["tried"].as_array().cloned().unwrap_or_default();
+    let new = |x: &str| tried.iter().all(|t| t["by"] != x);
+    let made = (records(data, &a.parent).into_iter())
+        .find(|x| x.review["of"] == wid && x.review["switch"] == true && new(&x.wid));
+    if let Some(x) = made {
+        return Ok(x.wid);
+    }
+    let all = procs::all();
+    let running = |id: &str| crate::sessions::working(data, id, &all);
+    let past = tried
+        .iter()
+        .map(|t| json!({"agent": t["agent"], "model": t["model"]}));
+    let past = Value::from_iter(past).to_string();
+    let flags = |k: &str| match k {
+        "--reviewing" => Some(wid.to_string()),
+        SWITCH => Some("1".into()),
+        TRIED => Some(past.clone()),
+        _ => None,
+    };
+    let reply = super::make::start(data, &a.parent, "", &flags, &running, false);
+    if let Some(id) = reply["id"].as_str().filter(|_| reply["ok"] == true) {
+        return Ok(id.to_string());
+    }
+    let why = reply["error"].as_str().unwrap_or("its start failed");
+    if tried.is_empty() {
+        return Err(why.into());
+    }
+    // "qwen3:4b failed and fake-large stopped at a usage limit", then any left without room.
+    let gone = tried.iter().map(|t| {
+        let name = t["name"].as_str().unwrap_or("its reviewer");
+        format!("{name} {}", word(t["how"].as_str().unwrap_or("")))
+    });
+    let mut gone = gone.collect::<Vec<_>>().join(" and ");
+    let room = why.strip_prefix("Review didn't run: ");
+    if let Some(room) = room.filter(|w| w.contains("no account with room")) {
+        gone += &format!("; {room}");
+    }
+    Err(gone)
+}
+
+/// A reviewer's end, its start's failure too: its result, then what comes next, under the lock.
+pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str, error: Option<&str>) {
     let next = {
         let Ok(_one) = lock(data) else { return };
+        let path = result::path_of(data, &l.parent, wid, turn);
+        if path.exists() || result::write(data, l, wid, turn, how, error).is_err() {
+            return;
+        }
         act(data, l, wid, turn, how)
     };
     if let Some(of) = next {
@@ -355,7 +345,8 @@ pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) {
 }
 
 /// Under the lock, after a reviewer's result: its note; under the switch, its findings to its
-/// worker as one peer message, which starts the fix turn, or the worker whose result goes now.
+/// worker as one peer message, which starts the fix turn, the next reviewer after one that failed
+/// or met its limit, or the worker whose result goes now.
 fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String> {
     let of = l.review["of"].as_str().unwrap_or("");
     let said = (how == "finished")
@@ -381,6 +372,20 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         (a.review["model"], a.review["reviewer"]) = (model.clone(), reviewer);
         a.review["findings"] = json!(findings);
         match (why, findings, said) {
+            (Some(_), ..) if matches!(how, "failed" | "limit") => {
+                let me = json!({"by": wid, "agent": l.ran["agent"], "model": l.ran["model"], "name": model, "how": how});
+                let mut tried = a.review["tried"].as_array().cloned().unwrap_or_default();
+                tried.push(me);
+                a.review["tried"] = tried.into();
+                match next(data, &a, of) {
+                    Ok(by) => {
+                        a.review["by"] = by.into();
+                        let _ = save(data, of, &a);
+                        return None;
+                    }
+                    Err(why) => off(data, &mut a, of, &why),
+                }
+            }
             (Some(why), ..) => off(data, &mut a, of, &why),
             (None, Some(0), _) => {
                 a.review["state"] = "done".into();
@@ -394,6 +399,9 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
                     cut(said, 15 << 10),
                     model.as_str().unwrap_or("another model")
                 );
+                // Saved first: a send a restart cuts short is found by the reviewer's record.
+                a.review["state"] = "sending".into();
+                let _ = save(data, of, &a);
                 let sent = crate::peers::send(data, wid, &json!({"id": of}), &text, None, &|| true);
                 match sent["mid"].as_str().filter(|_| sent["ok"] == true) {
                     // Its fix turn reports in place of the turn it held [D3006].

@@ -273,6 +273,8 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
         turn: None,
         state: "adding".into(),
     };
+    // A switch review's findings start a fix turn of their own, never steered [D3026].
+    let steer = workers::link(data, from).is_none_or(|l| l.review["switch"] != true);
     let how = queue::add_peer(&dir, &mid, &origin, &body, || {
         let f = core::fold(&dir, true)?.fold;
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
@@ -280,7 +282,7 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
         // queue is the user's own [D118]. A turn that can't take it yet (not begun, waiting on the
         // user, an agent with no steer) holds it for the next pass; a dead host's turn doesn't.
         let alive = owner::state(data, &to) == core::fold::Owner::Alive;
-        if let Some(t) = f.turns.first().filter(|_| alive) {
+        if let Some(t) = f.turns.first().filter(|_| alive && steer) {
             if !(can && t.began && t.asks.is_empty()) {
                 (rec.how, rec.turn, rec.state) = ("steer".into(), None, "held".into());
                 save(data, &to, "in", &mid, &rec)?;
@@ -414,14 +416,11 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
         open.iter().cloned().collect()
     };
     for id in senders {
-        if !PASSING
-            .lock()
-            .unwrap()
-            .get_or_insert_with(BTreeSet::new)
-            .insert(id.clone())
-        {
+        let mut passing = PASSING.lock().unwrap();
+        if !passing.get_or_insert_with(BTreeSet::new).insert(id.clone()) {
             continue;
         }
+        drop(passing);
         let states: BTreeMap<String, String> = (rows.iter())
             .map(|(k, r)| (k.clone(), r["state"].as_str().unwrap_or("").to_string()))
             .collect();

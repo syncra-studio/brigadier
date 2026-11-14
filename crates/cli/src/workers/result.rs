@@ -153,7 +153,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         if (l.paused && how == "stopped") || moves {
             continue;
         }
-        let Some(how) = review::holds(data, &mut l, wid, turn, how) else {
+        let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
             continue;
         };
         write(data, &l, wid, turn, how, None)?;
@@ -170,8 +170,11 @@ pub(super) fn failed(data: &Path, pid: &str, r: &Record) {
         review: r.review.clone(),
         ..Default::default()
     };
-    let _ = write(data, &l, &r.wid, &r.cid, "failed", r.error.as_deref());
-    review::after(data, &l, &r.wid, &r.cid, "failed");
+    let error = r.error.as_deref();
+    match l.review["of"].is_string() {
+        true => review::after(data, &l, &r.wid, &r.cid, "failed", error),
+        false => drop(write(data, &l, &r.wid, &r.cid, "failed", error)),
+    }
 }
 
 fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
