@@ -83,6 +83,8 @@ export function CodeBlock({
   const cut = long && !open && searched;
   const shown = long && !open && !searched ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
+  // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248].
+  const prose = /^(|text|txt|plain|plaintext)$/i.test(language);
   return (
     <div data-look={look} className={cx("relative overflow-clip border border-border", frame.card)}>
       <div className={cx("flex items-center ps-3", frame.head)}>
@@ -96,7 +98,7 @@ export function CodeBlock({
         <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
       </div>
       <div className="relative">
-        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
+        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", prose && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
           {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
         </pre>
         {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}
