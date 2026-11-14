@@ -55,7 +55,8 @@ export function PrList({ owner }: { owner: string }) {
   useEffect(() => {
     if (daemon && loaded && Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
   }, [daemon, owner, loaded]);
-  const prs = (kept?.prs ?? []).toSorted((a, b) => Number(b.state === "open") - Number(a.state === "open"));
+  // Rust keeps them open first, then by recency [D256].
+  const prs = kept?.prs ?? [];
   const open = prs.filter((pr) => pr.state === "open").length;
   return (
     <div data-slot="pr-list" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">

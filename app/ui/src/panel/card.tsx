@@ -203,9 +203,15 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
           }
         >
           <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>
-            {prs.map((pr) => (
+            {/* Rust's order, open first [D256]: the first 5, then the rest in the Pull requests tab. */}
+            {prs.slice(0, 5).map((pr) => (
               <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
             ))}
+            {prs.length > 5 && (
+              <Line onClick={() => onPrs?.(prs)} className="text-muted-foreground hover:text-foreground">
+                {prs.length - 5} more
+              </Line>
+            )}
             {/* A watch read that failed: the last PRs stay above, with their age and why [D1009]. */}
             {kept?.error && <Note warn text={["Couldn't check", kept.okAt && ago(kept.okAt, nowMs), kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />}
           </div>

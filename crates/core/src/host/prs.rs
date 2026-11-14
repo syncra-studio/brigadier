@@ -3,9 +3,9 @@
 //! watch's, `info`'s and a merge's [D1009, D1017].
 //! `prs.json` (proposed) is `{okAt, error, branch, head, prs}`: when the last whole read answered,
 //! why the last one didn't (null when it did), the branch and its local head then, and each PR's row.
-//! Its PRs are every one the session touched [D175]: its branches' (kept once read, whichever branch
-//! it's on now), and those its own commands looked at in detail, in any repository on its server
-//! [D213].
+//! Its PRs are every one the session touched [D175]: each of its branches' open PR, else its latest
+//! (kept once read, whichever branch it's on now) [D256], and those its own commands looked at in
+//! detail, in any repository on its server [D213]; open ones first, then by recency.
 
 use super::touched::touched;
 use super::{Gh, Kind, Pr, Repo, gh};
@@ -13,6 +13,7 @@ use crate::adapters::iso_ms;
 use crate::{git, worktrees};
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
@@ -68,7 +69,7 @@ impl Pr {
         busy.entry(self.dir.clone()).or_default().clone()
     }
 
-    /// The branch's PRs and every other one the session touched [D175], in any repository on its
+    /// The branch's live PR and every other one the session touched [D175, D256], in any repository on its
     /// server [D213], in one GraphQL read [D207].
     fn read(&self, gh: &Gh) -> Read {
         let Some(repo) = self.repo.as_ref() else {
@@ -134,11 +135,13 @@ impl Pr {
         for p in (mine.iter()).filter(|p| p["state"] == "MERGED") {
             self.record_merge(p);
         }
-        let mut rows: Vec<Value> = mine.iter().map(|p| row(p)).collect();
+        // Of the branch's own, only its open PR, else its latest; never its older history [D256].
+        let shown: Vec<&&Value> = open.or(mine.first()).into_iter().collect();
+        let mut rows: Vec<Value> = shown.iter().map(|p| row(p)).collect();
         let mut missed = None;
         for k in numbers.iter().rev() {
             let (r, n) = k;
-            if r.is_none() && mine.iter().any(|p| p["number"] == *n) {
+            if r.is_none() && shown.iter().any(|p| p["number"] == *n) {
                 continue;
             }
             if let Some(was) = merged(k) {
@@ -165,6 +168,8 @@ impl Pr {
                 (_, None) => {}
             }
         }
+        // Open first, then the latest [D256]: the card shows the first few, the PR tab them all.
+        rows.sort_by_key(|p| (p["state"] != "open", Reverse(p["updatedAtMs"].as_i64())));
         Ok((rows, missed))
     }
 
