@@ -209,6 +209,20 @@ pub fn busy(data: &Path, id: &str) -> bool {
         || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
 }
 
+/// Whether parent `pid`'s worker `wid` ended with nothing left to tell it: not being made, not
+/// paused, each task it reports ended with its result written, and none still on its way.
+pub fn over(data: &Path, pid: &str, wid: &str) -> bool {
+    let Some(l) = link(data, wid) else {
+        return record(data, pid, wid).is_none_or(|r| r.state != "starting");
+    };
+    let due =
+        |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent" | "held");
+    !l.paused
+        && !busy(data, wid)
+        && (l.report.iter()).all(|t| result::path_of(data, pid, wid, t).exists())
+        && !result::all(data, pid).iter().any(|(_, r)| due(r))
+}
+
 /// What session `me`'s `wait` is on: the session it names, else its own workers still working or
 /// with a result it hasn't taken, as the old app's bare wait.
 pub fn waited(data: &Path, me: &str, id: &str) -> Result<Vec<String>, Value> {

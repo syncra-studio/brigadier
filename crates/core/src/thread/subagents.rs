@@ -47,6 +47,21 @@ impl Thread {
         }
     }
 
+    /// Workers holding an ended turn that the daemon finds `over`, though no note of their end is in
+    /// the log (a build before results were noted, or a note a dead host missed): they hold it no
+    /// more, its time still its own end's [D328, D336].
+    pub fn workers_over(&mut self, over: impl Fn(&str) -> bool) {
+        let held = &self.held;
+        let gone: Vec<String> = (self.workers.iter())
+            .filter(|(w, t)| held.contains_key(*t) && over(w))
+            .map(|(w, _)| w.clone())
+            .collect();
+        if !gone.is_empty() {
+            gone.iter().for_each(|w| _ = self.workers.remove(w));
+            self.settle_held(false);
+        }
+    }
+
     /// A subagent at row `row` ended: the turn that waits on it counts one fewer. With none left it
     /// stays open for the turn its agent wakes for next, which carries it on; one that can't come
     /// now, as another turn runs, folds it at once.
