@@ -173,7 +173,7 @@ export function FileTree({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-divider p-3 win:pe-toggles-clear">
+      <div className="shrink-0 border-b border-divider p-3 under-toggles:pe-toggles-clear">
         <Input
           ref={search}
           aria-label="Search files"

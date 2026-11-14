@@ -882,6 +882,8 @@
 /* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
 @custom-variant win (:where([data-platform="win32"]) &);
 /* On Windows, with no right panel open: what the fixed Context/Files toggles would cover. */
+/* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
+@custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]:not(:has(~ .right-panel-width-source[data-state="expanded"]))) &);
 @custom-variant toggles-clear (:where([data-platform="win32"] main:not(:has(> .right-panel-width-source[data-state="expanded"]))) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));

@@ -26,7 +26,7 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
   onClose: () => void;
 }) {
   return (
-    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center gap-1 px-2 win:pe-toggles-clear">
+    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center gap-1 px-2 under-toggles:pe-toggles-clear">
       <TitlebarTips>
         {tabs.map((tab) => (
           <TooltipIconButton
@@ -45,7 +45,7 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
       </TitlebarTips>
       <span className="flex-1" />
       <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
+        <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose} className="under-toggles:hidden">
           <X />
         </TooltipIconButton>
       </TitlebarTips>
