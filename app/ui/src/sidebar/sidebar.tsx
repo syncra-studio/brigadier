@@ -203,7 +203,7 @@ export function AppSidebar({
           {/* Windows has no traffic lights: the name heads the row the History pill ends. */}
           <div className="h-7.5 win:hidden" />
           <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap win:pe-history">
-            <BrigadierMark className="size-5 shrink-0" />
+            <BrigadierMark className="size-icon-md shrink-0" />
             Brigadier
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
@@ -345,7 +345,7 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
   return (
     <div className="flex flex-col items-center gap-3 pt-2.75 win:pt-1.25">
       <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
-        <BrigadierMark className="size-5 group-hover/mark:hidden group-focus-visible/mark:hidden" />
+        <BrigadierMark className="group-hover/mark:hidden group-focus-visible/mark:hidden" />
         <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
       </TooltipIconButton>
       <div className="flex flex-col items-center gap-0.5">
