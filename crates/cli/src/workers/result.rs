@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 use take::said;
-pub use take::{hop, take, take_ask, went_with, with_next};
+pub use take::{going, hop, reported, take, take_ask, told, went_with, with_next};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -120,7 +120,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    for turn in &l.report.clone() {
+    for turn in &reported(&l, &f) {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {

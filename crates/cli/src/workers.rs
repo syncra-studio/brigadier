@@ -229,7 +229,7 @@ pub fn busy(data: &Path, id: &str) -> bool {
     !made
         || (l.session && brigade::leading(data, id))
         || l.review["state"] == "running"
-        || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
+        || result::going(&l, &f)
 }
 
 /// Whether parent `pid`'s worker `wid` ended with nothing left to tell it: not being made, not
@@ -242,7 +242,7 @@ pub fn over(data: &Path, pid: &str, wid: &str) -> bool {
         |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent" | "held");
     !l.paused
         && !busy(data, wid)
-        && (l.report.iter()).all(|t| result::path_of(data, pid, wid, t).exists())
+        && result::told(data, pid, wid, &l)
         && !result::all(data, pid).iter().any(|(_, r)| due(r))
 }
 

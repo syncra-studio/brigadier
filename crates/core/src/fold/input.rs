@@ -55,6 +55,12 @@ impl Fold {
         let switch = &item["switch"];
         if let Some(to) = switch["to"]["backend"].as_str() {
             self.generation += 1;
+            // The turn it carries on, by that turn's stable id where it's the one just ended.
+            if let Some(of) = item["retry_of"].as_str() {
+                let last = self.last.as_ref().filter(|l| l["cid"] == of);
+                let of = last.and_then(|l| l["id"].as_str()).unwrap_or(of);
+                self.carried.insert(of.into(), cid.clone());
+            }
             let account = switch["to"]["account"].as_str().unwrap_or("");
             match account {
                 "" => self.accounts.remove(to),

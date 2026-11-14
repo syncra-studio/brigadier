@@ -1,10 +1,10 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, write_ended};
-use crate::workers::{link, read_json, write_json};
+use super::{Res, all, fresh, path_of, write_ended};
+use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, fold::Fold};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -100,4 +100,28 @@ pub fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
         .into_iter()
         .find(|(_, r)| r.id == id)
         .map(|(_, r)| r.hop)
+}
+
+/// The turns a worker reports, each one a limit switch carried on followed to the switch's own
+/// input, as its log says [D2041]: what a crash before `worker.json` moved can't lose.
+pub fn reported<'a>(l: &'a Link, f: &'a Fold) -> Vec<String> {
+    let on = |mut t: &'a String| {
+        // Each switch's input is newer than the turn it carries on: this ends.
+        while let Some(next) = f.carried.get(t) {
+            t = next;
+        }
+        t.clone()
+    };
+    l.report.iter().map(on).collect()
+}
+
+/// Whether a turn it reports is still on its way or running.
+pub fn going(l: &Link, f: &Fold) -> bool {
+    (reported(l, f).iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
+}
+
+/// Whether each turn it reports has its result written.
+pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
+    let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
+    f.is_ok_and(|f| (reported(l, &f).iter()).all(|t| path_of(data, pid, wid, t).exists()))
 }

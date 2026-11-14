@@ -245,8 +245,9 @@ fn attempt(
         from: &from,
     };
     let mut reply = switch::switch(&spec, &f, &ping, &call, &target, auto, &still);
-    if reply["ok"] == true && worker {
-        crate::routing::moved(data, id, ran, &f)?;
+    // The turn it carries on reports in place of the one cut, by the log [D2041].
+    if reply["ok"] == true && worker && !ran.is_null() {
+        crate::routing::set_ran(data, id, ran)?;
     }
     reply["to"] = to_label.into();
     Ok(reply)

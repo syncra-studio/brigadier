@@ -101,6 +101,10 @@ pub struct Fold {
     /// The model each backend a switch moved to runs [D51].
     #[serde(default)]
     pub models: BTreeMap<String, String>,
+    /// Each turn a switch carried on, by its id: the switch's own input, which goes on in its
+    /// place [D51, D2041].
+    #[serde(default)]
+    pub carried: BTreeMap<String, String>,
     /// The newest setup (model, effort, level) given to the running child, from its inputs: what a
     /// turn start compares to. None for a child no input set up.
     #[serde(default)]

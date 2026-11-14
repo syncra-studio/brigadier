@@ -214,19 +214,6 @@ pub(crate) fn set_ran(data: &Path, wid: &str, ran: Value) -> io::Result<()> {
     workers::write_json(&core::session_dir(data, wid).join("worker.json"), &l)
 }
 
-/// A worker moved at its limit: its `ran` says where it runs now (`ran` null: as it was), and
-/// the turn that carries on (the switch's own cid, `sw-‹ts›`) reports in place of the one cut.
-pub(crate) fn moved(data: &Path, wid: &str, ran: Value, f: &Fold) -> io::Result<()> {
-    let mut l = workers::link(data, wid).ok_or_else(|| io::Error::other("not a worker"))?;
-    if !ran.is_null() {
-        l.ran = ran;
-    }
-    let ts = f.last.as_ref().map_or(Value::Null, |l| l["ts"].clone());
-    l.report.pop();
-    l.report.push(format!("sw-{ts}"));
-    workers::write_json(&core::session_dir(data, wid).join("worker.json"), &l)
-}
-
 /// A worker held before it started goes on, on what the user's call gave it: its session, made
 /// with no turn yet, takes it, and it's made as any start [D2028]: refused with start's words while
 /// its family runs its most [D3001], its hold kept.
