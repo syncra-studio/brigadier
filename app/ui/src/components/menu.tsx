@@ -7,7 +7,7 @@ import { spacingPx } from "./tooltip";
 
 /** A menu's surface; the context menu and the select share it. */
 export const menuSurface = cx(
-  "z-popup min-w-menu rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-border outline-none menu-motion",
+  "z-popup min-w-menu rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-popover-edge backdrop-blur-popover outline-none menu-motion",
 );
 
 // A menu row (a two-line one grows: give it `py-2`); the context menu shares it. Padding is set per side

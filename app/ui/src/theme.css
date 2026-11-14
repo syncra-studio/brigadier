@@ -7,14 +7,26 @@
 @theme static {
   --*: initial;
 
-  /* oklch(0.21 0.002 106) in hex: main reads this line for the window, and Electron can't parse oklch. */
-  --color-background: #181817;
-  --color-chrome: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
-  --color-card: oklch(0.255 0.003 106);
-  --color-popover: oklch(0.297 0.002 106);
+  /* The new design's bg-window, in hex: main reads this line for the window, and Electron can't parse oklch. */
+  --color-background: #151517;
+  /* The window around the floating sidebar and panels: the page itself now [new-design]. */
+  --color-chrome: var(--color-background);
+  /* The floating sidebar, strip, right panel and summary card (the new design's #222224). */
+  --color-card: #222224;
+  /* Menus and the hover card: the new design's menu-bg, its edge, and its blur behind. */
+  --color-popover: #2b2b2ef2;
+  --color-popover-edge: #ffffff1f;
+  /* The new design's glass: a pill's fill (control-fill) and edge (glass-stroke), and the active tab and picked row (selection). */
+  --color-control: #ffffff12;
+  --color-glass-stroke: #ffffff14;
+  --color-selection: #ffffff1c;
+  /* A user's message bubble: control-fill with the glass edge. */
+  --color-bubble: var(--color-control);
+  --color-bubble-edge: var(--color-glass-stroke);
   --color-muted: oklch(0.315 0.004 106);
-  --color-foreground: oklch(0.985 0.002 106);
-  --color-muted-foreground: oklch(0.708 0.004 106);
+  /* The new design's label and label-2; label-3 is --color-placeholder (label-2 at 60%). */
+  --color-foreground: #f5f5f7;
+  --color-muted-foreground: #ebebf599;
   --color-primary: oklch(0.922 0.002 106);
   --color-primary-fg: oklch(0.255 0.003 106);
   /* Apple's system red (HIG, dark), the owner's pick. */
@@ -22,7 +34,8 @@
   --color-warning: oklch(0.769 0.165 62);
   --color-success: oklch(0.765 0.15 155);
   --color-border: oklch(0.985 0.002 106 / 10%);
-  --color-divider: oklch(0.985 0.002 106 / 8%);
+  /* The new design's separator. */
+  --color-divider: #ffffff14;
   /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
   --color-find-match: oklch(0.86 0.17 95 / 38%);
   --color-find-match-active: oklch(0.66 0.18 50 / 85%);
@@ -177,13 +190,14 @@
   /* The line between a split button's halves (the old border-background/40). */
   --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
   /* The composer card, and a field's placeholder in it. */
-  --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
+  --color-composer: var(--color-card);
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
   --color-rail-line: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
   --color-rail-line-current: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  --color-rail-glass: color-mix(in oklab, var(--color-card) 70%, transparent);
+  /* Kept as it was (the old card at 70%): the new design leaves the rail's cards alone. */
+  --color-rail-glass: #232322b3;
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
   /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
      text, an outlined button's wash, the filled button's hover, a file list's ground. */
@@ -403,6 +417,8 @@
   --radius-image-viewer: 0.625rem;
   --radius-tooltip: 1rem;
   --radius-overlay: 1.25rem;
+  /* The floating sidebar, strip and right panel cards (the new design's 18). */
+  --radius-panel: 1.125rem;
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
   --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
   --radius-capsule: 9999px;
@@ -419,11 +435,13 @@
   --radius-composer: 1.375rem;
   /* An image attachment's thumbnail. */
 
-  --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
+  /* The composer card's 1px edge (the new design's --border stroke). */
+  --shadow-hairline: inset 0 0 0 1px var(--color-border);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The pinned summary card's edge and lift (the old app's --shadow-summary). */
   --shadow-summary: 0 0 0 0.5px oklch(1 0 0 / 16%), 0 3px 7.5px oklch(0 0 0 / 4%), 0 0 20px oklch(0 0 0 / 5%);
-  --shadow-overlay: 0 12px 32px oklch(0 0 0 / 35%);
+  /* The new design's menu shadow. */
+  --shadow-overlay: 0 10px 32px #00000080;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
@@ -463,6 +481,8 @@
   --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
+  /* Behind a menu or the hover card (the new design's). */
+  --blur-popover: 30px;
   /* A list folding open or shut, the sidebar's spring; the peek's way out. */
   --duration-fold: 300ms;
   --duration-peek-out: 200ms;

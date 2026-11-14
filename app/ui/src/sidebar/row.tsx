@@ -173,7 +173,7 @@ export function SessionRowItem({
               sideOffset={() => spacingPx() * 4}
               className="z-popup"
             >
-              <BaseTooltip.Popup className="pointer-events-none flex w-66 flex-col rounded-surface border border-border bg-popover px-3 py-2.5 text-start text-sm text-foreground shadow-tooltip popup-motion">
+              <BaseTooltip.Popup className="pointer-events-none flex w-66 flex-col rounded-surface border border-popover-edge bg-popover backdrop-blur-popover px-3 py-2.5 text-start text-sm text-foreground shadow-tooltip popup-motion">
                 <p className="mb-1 line-clamp-3 font-medium wrap-anywhere">{title}</p>
                 {words && (
                   <div className={cx(CARD_LINE, row.mark && "-ms-0.5")}>
