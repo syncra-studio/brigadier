@@ -28,8 +28,6 @@ export type SourceState = {
   sinceBase: SourceFile[];
 };
 
-export type Branch = { name: string; remote: boolean; atMs: number; author: string; subject: string };
-
 /** A pull request of the session's branch, as the host module reads it [D1017, D1030]: what its row and dot say. */
 export type Pr = {
   number: number;

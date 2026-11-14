@@ -176,7 +176,7 @@ setGitHandler((frame) => {
 });
 
 /** The session's agent is at work: a turn open, stalled or not, or its background jobs still running [D1208, D1252]. */
-export const isWorking = (row: Row | undefined) => (row as ComposerRow | undefined)?.running === true || row?.works === true;
+const isWorking = (row: Row | undefined) => (row as ComposerRow | undefined)?.running === true || row?.works === true;
 
 /** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
 export function useGitWatch(owner: string | null): void {
