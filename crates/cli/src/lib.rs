@@ -49,7 +49,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
-       brigadier tabs <id> [open|replace <tab> <kind> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen]
+       brigadier tabs <id> [open|replace <tab> <kind> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen] | note <id> read <note> | write <note> <text> | list
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
@@ -290,7 +290,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
         "draft" => attach::kept(data, args),
-        "attach" => attach::run(data, args),
+        "attach" | "note" => attach::run(data, args),
         "command" => command::run(data, args),
         "commands" => commands::run(data, args),
         "status" => {

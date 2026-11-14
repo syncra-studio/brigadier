@@ -16,14 +16,15 @@ const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
-/// card's Background history [D200].
-const KINDS: [&str; 6] = [
+/// card's Background history [D200]; a note, by its id [D244].
+const KINDS: [&str; 7] = [
     "new",
     "terminal",
     "pr",
     "review",
     "attachment",
     "background",
+    "note",
 ];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
@@ -215,7 +216,8 @@ fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
         ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
             core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
         }),
-        ("file" | "pr" | "attachment", None) => false,
+        ("note", Some(note)) => core::check_id(note).is_ok(),
+        ("file" | "pr" | "attachment" | "note", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

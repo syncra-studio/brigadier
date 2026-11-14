@@ -1,6 +1,9 @@
 //! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
-//! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022].
+//! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022]; and
+//! `note`, the session's notes (note.rs).
+
+mod note;
 
 use super::{HOME_DRAFT, arg, flag, remove};
 use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};
@@ -11,6 +14,9 @@ use std::io;
 use std::path::Path;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    if args[0] == "note" {
+        return note::run(data, args);
+    }
     let owner = arg(args, 1)?;
     if owner != HOME_DRAFT {
         core::load(data, owner)?;

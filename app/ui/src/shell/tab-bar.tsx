@@ -21,6 +21,7 @@ import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
+import { useNoteTitle } from "./note-tab";
 import { useTabKeys } from "./tab-keys";
 import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
@@ -150,7 +151,8 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
   const { ref, handleRef } = useSortable({ id: tab.id, index, disabled: closing });
   // It grows in once: a node moved in the DOM (a drag, a drop) would otherwise replay it [D432].
   const [fresh, setFresh] = useState(() => justOpened(tab.id));
-  const name = nameOf(tab);
+  const note = useNoteTitle(owner, tab.kind === "note" ? (tab.target ?? "") : "");
+  const name = tab.kind === "note" ? note : nameOf(tab);
   return (
     <ContextMenu>
       <ContextMenuTrigger

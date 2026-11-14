@@ -37,49 +37,59 @@ export function AttachmentTab({ owner, id, label, active }: { owner: string; id:
   return <FileViewer path={label} read={read} active={active} />;
 }
 
-/**
- * The composer's pasted text as the old app's PastedTextView: each edit kept by Rust under the same id once typing
- * rests, and as soon as the tab is left or closed, so Send carries it. Sent or taken out, it says so; a save that
- * fails keeps the text and tries again with the next edit [D2098].
- */
+/** The composer's pasted text as the old app's PastedTextView, kept under its id; sent or taken out, it says so [D2098]. */
 function PastePage({ owner, id, text, active }: { owner: string; id: string; text: string; active: boolean }) {
+  const save = (next: string) => daemonRun(["attach", owner, "write", id, next]).then((reply) => ({ ...reply, gone: String(reply.error).includes("no longer") }));
+  return <KeptText label={PASTE_LABEL} text={text} active={active} save={save} gone="This pasted text is no longer in the message." />;
+}
+
+/**
+ * Text edited in a tab and kept by Rust once typing rests, and as soon as the tab is left or closed. A save that
+ * fails keeps the text and tries again with the next edit; one whose file is `gone` says so [D2098, D244].
+ */
+export function KeptText({ label, text, active, save, gone, placeholder }: { label: string; text: string; active: boolean; save: (text: string) => Promise<Record<string, any>>; gone?: string; placeholder?: string }) {
   const [state, setState] = useState<"gone" | { error: string } | null>(null);
   const pending = useRef<string | null>(null);
   const latest = useRef(text);
   // One write after another, so an older edit never lands over a newer one.
   const writes = useRef(Promise.resolve());
   const timer = useRef<number | undefined>(undefined);
+  const saving = useRef(save);
+  saving.current = save;
   const keep = useCallback(() => {
     window.clearTimeout(timer.current);
     const next = pending.current;
     if (next === null) return;
     pending.current = null;
     writes.current = writes.current.then(() =>
-      daemonRun(["attach", owner, "write", id, next]).then((reply) => {
+      saving.current(next).then((reply) => {
         if (reply.ok) return setState(null);
-        if (String(reply.error).includes("no longer")) return setState("gone");
+        if (reply.gone) return setState("gone");
         // Not kept: it goes with the next edit, or as the tab is left, unless a newer one went meanwhile.
         if (latest.current === next) pending.current ??= next;
         setState({ error: String(reply.error ?? "Couldn't keep this edit.") });
       }),
     );
-  }, [owner, id]);
-  // Send is on the Chat tab: leaving this one keeps the edit at once [D2098].
+  }, []);
+  // Leaving the tab keeps the edit at once: Send, for one, is on the Chat tab [D2098].
   useEffect(() => {
     if (!active) keep();
   }, [active, keep]);
   useEffect(() => keep, [keep]);
   return (
-    <div data-slot="paste-tab" className="min-h-0 flex-1 overflow-y-auto px-5 pt-15 pb-32">
+    <div data-slot="kept-text" className="min-h-0 flex-1 overflow-y-auto px-5 pt-15 pb-32">
       <div className="mx-auto flex w-full max-w-184 flex-col gap-3">
         {state === "gone" ? (
-          <p className="text-sm text-muted-foreground">This pasted text is no longer in the message.</p>
+          <p className="text-sm text-muted-foreground">{gone}</p>
         ) : (
           <>
             {state && <ErrorLine size="sm" error={state.error} />}
             <textarea
-              aria-label={PASTE_LABEL}
+              aria-label={label}
               defaultValue={text}
+              placeholder={placeholder}
+              // A new note starts where it's typed.
+              autoFocus={active && text === "" && placeholder !== undefined}
               spellCheck={false}
               onChange={(event) => {
                 pending.current = latest.current = event.target.value;
@@ -87,7 +97,7 @@ function PastePage({ owner, id, text, active }: { owner: string; id: string; tex
                 timer.current = window.setTimeout(keep, KEEP_AFTER_MS);
               }}
               // The ring sits a little outside the words, which keep their place.
-              className="-m-2 block min-h-48 resize-none rounded-control bg-transparent p-2 text-plan whitespace-pre-wrap text-foreground caret-foreground outline-none field-sizing-content focus-visible:focus-ring"
+              className="-m-2 block min-h-48 resize-none rounded-control bg-transparent p-2 text-plan whitespace-pre-wrap text-foreground caret-foreground outline-none field-sizing-content placeholder:text-placeholder focus-visible:focus-ring"
             />
           </>
         )}

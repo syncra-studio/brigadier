@@ -21,8 +21,9 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 42] = [
+const ROUTED: [&str; 43] = [
     "attach",
+    "note",
     "command",
     "commands",
     "start",

@@ -25,10 +25,11 @@ export const TAB_KINDS = {
   review: { name: "Review", icon: Compare },
   attachment: { name: "Attachment", icon: FileDocument },
   background: { name: "Background history", icon: Clock },
+  note: { name: "Note", icon: Document },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104]. A file tab also has the line last asked for, and whether it's
+ * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244]. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string };
