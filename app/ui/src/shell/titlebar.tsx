@@ -24,19 +24,19 @@ const MOUSE_FORWARD = 4;
 export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]:not(:empty)') !== null;
 
 /**
- * The open sidebar's x for the traffic lights, and the strip's and closed's, on the window's top row above the rail
- * card [new-design]. The real lights are 60px wide, not the board's 52: collapsed they end 8px before the pill at 80.
+ * The traffic lights' x on the tab bar's row, the same in every sidebar mode [D48]. The real lights are 60px wide,
+ * not the board's 52: they end 7px before the History pill at 80.
  */
-const LIGHTS_X = { open: 24, strip: 13, hidden: 13 };
+const LIGHTS_X = 13;
 
 /**
- * The History pill: Back, Forward and the sidebar toggle, on the traffic lights' line, at the sidebar card's top end
- * while it is open, else first in the tab bar [new-design]. The toggle steps open, strip, closed, and open again.
+ * The History pill: Back, Forward and the sidebar toggle, first in the tab bar, the same place in every sidebar mode
+ * [D48]. The toggle steps open, strip, closed, and open again.
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, setOpen, collapse, setCollapse, canToggle } = useSidebar();
   const mode = open ? "open" : collapse === "hidden" ? "hidden" : "strip";
-  useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X[mode]), [mode]);
+  useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
   const toggleSidebar = () => {
     if (mode === "open") setCollapse("strip");
     if (mode === "strip") setCollapse("hidden");

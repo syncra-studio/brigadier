@@ -212,14 +212,11 @@ export function AppSidebar({
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
     >
       <SearchRoot search={search}>
-        {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
-        <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
-          {/* No traffic lights (Windows, macOS full screen): the name heads the row the History pill ends. */}
-          <div className="h-7.5 no-lights:hidden" />
-          <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap no-lights:pe-history">
+        {/* The card's top, under the tab bar [D48]: the name, New chat, Search. */}
+        <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
+          <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
             <BrigadierMark className="size-icon-md shrink-0" />
-            {/* Cut at the content's edge, the h1 clipping at its padding, which without traffic lights is the pill's room; there a gap before it. */}
-            <span className="min-w-0 truncate no-lights:me-2">Brigadier</span>
+            <span className="min-w-0 truncate">Brigadier</span>
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
             <ComposeEditSquare />
@@ -372,7 +369,7 @@ function ProjectRow({
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   const { setOpen } = useSidebar();
   return (
-    <div className="flex flex-col items-center gap-3 pt-2.75 win:pt-1.25">
+    <div className="flex flex-col items-center gap-3 pt-2.75">
       <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
         <BrigadierMark className="group-hover/mark:hidden group-focus-visible/mark:hidden" />
         <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />

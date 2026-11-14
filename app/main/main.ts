@@ -269,7 +269,7 @@ ipcMain.handle("save-attachment", async (event, at: string, name: string) => {
   await copyFile(file, picked.filePath);
   return true;
 });
-// The sidebar's state puts the traffic lights at its own x, on the tab bar's line [new-design].
+// The page puts the traffic lights at its x, on the tab bar's line [new-design, D48].
 ipcMain.on("traffic-lights", (event, x: number) => {
   if (process.platform === "darwin" && platform === "darwin") BrowserWindow.fromWebContents(event.sender)?.setWindowButtonPosition({ x, y: LIGHTS_Y });
 });

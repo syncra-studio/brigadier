@@ -81,9 +81,8 @@ export function SettingsNav({ current }: { current: string }) {
   };
   return (
     <>
-      {/* Under the traffic lights' row, its title on the app sidebar's name line; on Windows it shares the History pill's
-          line instead [new-design]. */}
-      <div className="shrink-0 pt-10.75 win:-mt-1.5 win:pt-0">
+      {/* At the card's top, its title on the app sidebar's name line [D48]. */}
+      <div className="shrink-0 pt-0.25">
         <NavHeader title="Settings" />
       </div>
       <div className="px-2 pb-2">

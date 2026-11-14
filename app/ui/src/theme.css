@@ -317,6 +317,8 @@
   --spacing-tab-bar: 3.5rem;
   /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
   --spacing-history: 6.6875rem;
+  /* Its start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge. */
+  --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px), and what clears the Context/Files
      toggles fixed under them (70px wide, 16px in, 8px apart). */
@@ -894,8 +896,6 @@
 @custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
 
 @custom-variant win (:where([data-platform="win32"]) &);
-/* No traffic lights: Windows, or macOS full screen [D38]. */
-@custom-variant no-lights (:where([data-fullscreen], [data-platform="win32"]) &);
 /* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
 @custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]:not(:has(~ .right-panel-width-source[data-state="expanded"]))) &);
 /* On Windows, with no right panel open: what the fixed Context/Files toggles would cover. */
@@ -1258,39 +1258,21 @@
       min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
     )
   );
-  /* How wide the panel shows beside the content: what the title bar keeps clear of. */
+  /* How wide the panel shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-sidebar-strip);
-  /* Where the History pill sits, from the window's start, and the tab bar's start padding clearing it [new-design]:
-     collapsed, after the traffic lights on the window's top row; open, at the sidebar card's top end. Collapsed, the
-     rail card starts under that row, level with the right panel's card; open, the lights sit in the card's own. */
-  --history-start: calc(var(--spacing-traffic-lights) + var(--spacing));
-  --history-shift: 0%;
-  --tab-bar-start: calc(var(--spacing-traffic-lights) + var(--spacing-history) + var(--spacing) * 2 - var(--sidebar-shown));
-  /* The strip's rail card 1px under the tab bar [D41]. */
-  --sidebar-top: calc(var(--spacing-tab-bar) + var(--spacing) * 0.25);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
-    --history-start: calc(var(--sidebar-open-width) - var(--spacing) * 2.5);
-    --history-shift: -100%;
-    --tab-bar-start: calc(var(--spacing) * 2);
-    --sidebar-top: calc(var(--spacing) * 2);
   }
   &[data-state="collapsed"][data-collapse="hidden"] {
     --sidebar-shown: 0px;
   }
 }
-/* No traffic lights: the pill leads the tab bar, and the rail card runs from the top. */
-:root:is([data-fullscreen], [data-platform="win32"]) [data-state="collapsed"] {
-  --history-start: calc(var(--sidebar-shown) + var(--spacing) * 3);
-  --tab-bar-start: calc(var(--spacing-history) + var(--spacing) * 4);
-  --sidebar-top: calc(var(--spacing) * 2);
-}
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* The panel's top above its card (sidebar-width-source's --sidebar-top). */
+/* The panel's top above its card: the right panel's, 6px under the tab bar, in every mode [D48]. */
 @utility sidebar-top {
-  padding-top: var(--sidebar-top);
+  padding-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
 }
 /* The floating card inside it, the panel's 4px inset off each side. */
 @utility sidebar-card-width {
@@ -1349,34 +1331,25 @@
 :root[data-fullscreen] {
   --spacing-titlebar-start: calc(var(--spacing) * 2);
 }
+:root:is([data-fullscreen], [data-platform="win32"]) {
+  --spacing-history-start: calc(var(--spacing-surface-inset) + var(--spacing));
+}
 
 /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
 @utility titlebar-nav {
   --opacity-disabled: var(--opacity-titlebar-nowhere);
 }
 
-/* The History pill's place (sidebar-width-source), moving with the sidebar. */
+/* The History pill, first in the tab bar across the window's top: on the sidebar card's start edge, or with traffic
+   lights 4px past them. It never moves with the sidebar [D48]. */
 @utility history-pill {
   top: calc(var(--spacing) * 5);
-  inset-inline-start: var(--history-start);
-  translate: var(--history-shift) 0;
-  transition-property: inset-inline-start;
-  transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-sidebar);
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
+  inset-inline-start: var(--spacing-history-start);
 }
 
-/* The tab bar's start: 8px, or past the History pill where it sits in the bar. It moves with the sidebar. */
+/* The tab bar runs from the window's start: its tabs 8px past the History pill [D48]. */
 @utility titlebar-clear {
-  padding-inline-start: var(--tab-bar-start);
-  transition-property: padding-inline-start;
-  transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-sidebar);
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
+  padding-inline-start: calc(var(--spacing-history-start) + var(--spacing-history) + var(--spacing) * 2);
 }
 
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
@@ -1389,7 +1362,6 @@
 /* The tab bar [D360]: the old app's. It starts after a short rule, at the sidebar's edge or, with the sidebar folded,
    after Back, Forward and the toggle. */
 @utility session-tab-bar {
-  position: relative;
   /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
   &:not([data-settled]) .session-tab,
   &:not([data-settled]) .session-tab::after {
