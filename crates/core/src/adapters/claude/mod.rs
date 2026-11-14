@@ -175,6 +175,10 @@ impl Adapter for Claude {
         }
         // The standing text [D181], and its own messages between sessions off.
         argv.extend(control::standing(spec));
+        // A note chat reads the session's checkout beside its own folder [D282].
+        if let Some(dir) = spec.opts.get("reads") {
+            argv.extend(["--add-dir".into(), dir.clone()]);
+        }
         if let Some(id) = resume {
             argv.extend(["--resume".into(), id.into()]);
             // shortcut: this flag isn't in the CLI reference, only Anthropic's open-source SDK; replace it if the CLI documents another.

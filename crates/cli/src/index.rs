@@ -12,10 +12,9 @@ pub use find::find;
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
+use std::{fs, io};
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
@@ -312,6 +311,7 @@ impl Index {
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
+            row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
             // How full its context is, and a rebirth due now [D88, D108].
             row["context"] = json!(f.fold.context);
             let lost = state == "undelivered"

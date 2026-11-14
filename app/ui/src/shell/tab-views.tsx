@@ -199,7 +199,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               ) : tab.kind === "actions" ? (
                 <Actions owner={owner} />
               ) : tab.kind === "note" ? (
-                <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} active={tab.id === active} />
+                <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} tabId={tab.id} active={tab.id === active} />
               ) : tab.kind === "new" ? (
                 <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
               ) : (

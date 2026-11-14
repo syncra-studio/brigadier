@@ -1,0 +1,245 @@
+/* A note, as the old app's page tab drew its page (PageTab.css), in the theme's units and tokens. */
+@reference "../theme.css";
+
+.note-tab {
+  @apply relative flex min-h-0 flex-1 flex-col text-foreground;
+}
+.note-scroll {
+  @apply min-h-0 flex-1 overflow-y-auto px-5 pt-15 pb-32;
+}
+.note-column {
+  @apply relative mx-auto w-full max-w-184;
+}
+
+.note-heading {
+  @apply relative mb-6;
+}
+.note-emoji-button {
+  @apply absolute -start-9 top-0.75 text-quiet-foreground opacity-80;
+}
+.note-emoji-button[data-chosen] {
+  @apply opacity-100;
+}
+.note-heading:not(:hover, :focus-within) .note-emoji-button:not([data-chosen], [aria-expanded="true"]) {
+  @apply opacity-0;
+}
+.note-emoji {
+  @apply text-xl leading-none;
+}
+.note-title {
+  @apply block w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-page-title font-semibold text-inherit outline-none field-sizing-content placeholder:text-quiet-foreground;
+}
+.note-emoji-grid {
+  @apply mb-1 grid grid-cols-8 gap-0.5;
+}
+.note-emoji-choice {
+  @apply size-8 rounded-control text-nav-title leading-none hover:bg-fill focus-visible:focus-ring aria-selected:bg-fill;
+}
+
+/* The bar over the note: File and Insert capsules. */
+.note-top-bar {
+  @apply flex h-12 shrink-0 items-center gap-1.5 p-2;
+}
+.note-capsule {
+  @apply flex h-8 items-center rounded-capsule bg-fill-faint p-0.5 shadow-hairline;
+}
+.note-file-button {
+  @apply gap-1 ps-2.5 pe-2 text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill aria-expanded:text-foreground;
+}
+.note-notice {
+  @apply ms-2 text-label text-muted-foreground;
+}
+
+/* The File, Insert and Text menus, and the `/` list. */
+.note-menu {
+  @apply min-w-60 p-1 text-label;
+}
+.note-insert-list,
+.note-slash-menu {
+  @apply w-90;
+}
+.note-menu-label {
+  @apply px-2 py-1 text-label text-quiet-foreground;
+}
+.note-menu-item {
+  @apply flex cursor-default items-center gap-2 rounded-menu-item px-2 py-1.25 text-label aria-selected:bg-fill data-highlighted:bg-fill data-current:font-semibold;
+}
+.note-block-icon {
+  @apply text-muted-foreground;
+  stroke-width: 1.3;
+}
+.note-slash-menu {
+  @apply absolute top-7 z-popup max-h-88 overflow-y-auto rounded-overlay bg-popover text-foreground shadow-overlay ring ring-border;
+}
+
+/* Above selected text. */
+.note-selection-toolbar {
+  @apply fixed z-popup flex h-9 -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-capsule bg-popover px-1 py-0.5 text-label text-foreground shadow-overlay ring ring-border;
+  margin-top: calc(var(--spacing) * -2);
+}
+.note-toolbar-button {
+  @apply rounded-capsule;
+}
+.note-glyph {
+  @apply text-base leading-none;
+}
+.note-toolbar-divider {
+  @apply mx-1 h-4 w-px bg-divider;
+}
+.note-toolbar-text {
+  @apply flex h-7 items-center gap-1 rounded-capsule ps-2.5 pe-2 hover:bg-fill aria-expanded:bg-fill;
+}
+.note-link-field {
+  @apply h-7 w-64 border-0 bg-transparent px-2.5 text-inherit outline-none;
+}
+
+/* Show notes. */
+.note-list {
+  @apply m-0 flex max-h-80 list-none flex-col overflow-y-auto p-0;
+}
+.note-list-row {
+  @apply flex h-9 w-full items-center gap-2 rounded-control px-2 text-start aria-current:bg-fill;
+}
+.note-list-empty {
+  @apply px-2 py-3 text-muted-foreground;
+}
+
+/* The chat's folded strip. */
+.note-vertical {
+  writing-mode: vertical-rl;
+}
+
+/* The body: what Lexical renders, styled as a document. Its box reaches into the gutter, where the drag handle sits
+   beside the block under the pointer. */
+.note-body {
+  @apply relative -ms-9 ps-9;
+}
+.note-drag-handle {
+  @apply pointer-events-none absolute start-1 top-0 flex size-6 cursor-grab touch-none items-center justify-center rounded-sm text-quiet-foreground opacity-0 hover:bg-fill hover:text-foreground active:cursor-grabbing;
+}
+.note-drag-handle[data-shown] {
+  @apply pointer-events-auto opacity-100;
+}
+.note-drag-dots {
+  @apply h-4 w-2.5;
+}
+.note-drop-line {
+  @apply pointer-events-none absolute start-9 end-0 top-0 h-0.5 rounded-full bg-ring opacity-0;
+}
+.note-drop-line[data-shown] {
+  @apply opacity-100;
+}
+.note-content > .note-block-dragging {
+  @apply opacity-40;
+}
+.note-content {
+  @apply min-h-48 text-plan caret-foreground outline-none;
+  & > * + * {
+    @apply mt-2;
+  }
+}
+.note-p {
+  @apply m-0;
+}
+.note-h1,
+.note-h2,
+.note-h3,
+.note-h4 {
+  @apply m-0 font-semibold;
+}
+.note-content > .note-h1:not(:first-child),
+.note-content > .note-h2:not(:first-child) {
+  @apply mt-6;
+}
+.note-content > .note-h3:not(:first-child) {
+  @apply mt-4;
+}
+.note-h1 {
+  @apply text-2xl;
+}
+.note-h2 {
+  @apply text-xl;
+}
+.note-h3 {
+  @apply text-base;
+}
+.note-quote {
+  @apply m-0 border-s-3 border-quote-edge ps-3.5 text-quiet-foreground;
+}
+.note-ul,
+.note-ol {
+  @apply m-0 ps-6;
+}
+.note-ul {
+  @apply list-disc;
+}
+.note-ol {
+  @apply list-decimal;
+}
+.note-li-nested {
+  @apply list-none;
+}
+.note-checklist {
+  @apply list-none ps-0;
+}
+.note-li-checked,
+.note-li-unchecked {
+  @apply relative list-none ps-6.5 outline-none;
+}
+.note-li-checked::before,
+.note-li-unchecked::before {
+  @apply absolute start-0 top-0.75 size-4 cursor-pointer rounded-checkbox border border-quiet-foreground;
+  content: "";
+}
+/* Checked: the checkbox's look, the switch's blue with a tick. */
+.note-li-checked::before {
+  @apply border-toggle-on bg-toggle-on;
+}
+.note-li-checked::after {
+  @apply pointer-events-none absolute start-1.5 top-1.5 h-2.25 w-1.25 rotate-45 border-e-2 border-b-2 border-foreground;
+  content: "";
+}
+.note-li-checked {
+  @apply text-quiet-foreground line-through;
+}
+.note-link {
+  @apply text-link underline underline-offset-2;
+}
+.note-code {
+  @apply m-0 block overflow-x-auto rounded-control bg-code-surface px-4 py-3 font-mono text-code whitespace-pre;
+  tab-size: 2;
+}
+.note-inline-code {
+  @apply rounded-xs bg-code-surface px-1.25 py-0.25 font-mono text-code-inline;
+}
+.note-bold {
+  @apply font-semibold;
+}
+.note-italic {
+  @apply italic;
+}
+.note-underline {
+  @apply underline;
+}
+.note-strike {
+  @apply line-through;
+}
+.note-underline-strike {
+  @apply underline line-through;
+}
+.note-hr {
+  @apply my-4 border-0 border-t border-prose-rule;
+  &.selected {
+    @apply focus-ring;
+  }
+}
+.note-table {
+  @apply w-full table-fixed border-collapse;
+}
+.note-td,
+.note-th {
+  @apply min-w-16 border border-table-rule px-2.5 py-1.5 text-start align-top;
+}
+.note-th {
+  @apply bg-fill-faint font-semibold;
+}

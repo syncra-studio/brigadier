@@ -437,20 +437,33 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         now.rev = was.rev + 1;
         write(&path, &now)?;
     }
-    // A note closed before the first message goes with its tab: there's no session to list it [D280].
+    let notes = |tabs: &Tabs| -> Vec<String> {
+        (tabs.tabs.iter().filter(|t| t.kind == "note"))
+            .filter_map(|t| t.target.clone())
+            .collect()
+    };
+    let open = notes(&now);
     if home {
-        let open = |note: &str| {
-            (now.tabs.iter()).any(|t| t.kind == "note" && t.target.as_deref() == Some(note))
-        };
+        // A note closed before the first message goes with its tab: there's no session to list it [D280].
         for entry in fs::read_dir(note::home(data))
             .into_iter()
             .flatten()
             .flatten()
         {
             let path = entry.path();
-            if !path.file_stem().and_then(|s| s.to_str()).is_some_and(open) {
+            if !path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|n| open.iter().any(|o| o == n))
+            {
                 let _ = fs::remove_file(path);
             }
+        }
+    } else {
+        // A note's side chat goes with the last tab showing the note, as the old app's tab chat [D281].
+        let dir = core::session_dir(data, id).join("notes");
+        for gone in notes(&was).iter().filter(|n| !open.contains(n)) {
+            note::drop_chat(data, &dir, gone)?;
         }
     }
     Ok(state(&now))

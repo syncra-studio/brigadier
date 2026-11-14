@@ -101,6 +101,8 @@ pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<
     // A Replace all cut short too: its record goes with the folder.
     core::git::recover::settled(data, id)?;
     stop(data, id, by)?;
+    // Its notes' side chats are sessions of their own: they go first [D281].
+    crate::attach::note::drop_chats(data, &spec.dir)?;
     let f = core::fold(&spec.dir, false)?;
     crate::attach::sweep_home(data);
     Ok(session::delete(&spec, &f.fold, drop))

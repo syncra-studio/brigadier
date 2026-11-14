@@ -95,7 +95,7 @@ export function AppSidebar({
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
   // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a row [D189].
-  const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss)), [rows]);
+  const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
   const kept = shown?.filter(show.keeps);

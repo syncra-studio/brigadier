@@ -38,6 +38,8 @@ export type Row = {
   background_ran?: boolean;
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
+  /** A note's side chat: shown in its note's tab, never as a row, a notice or in the Dock's count [D281]. */
+  noteChat?: boolean;
   /** The Brigade session that started this one [D189]. */
   boss?: string | null;
   /** The session it was forked from, which its row sits under [D48]. */

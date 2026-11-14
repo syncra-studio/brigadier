@@ -20,6 +20,16 @@ pub type CallIn<'a> = &'a dyn Fn(&str, Value) -> io::Result<Value>;
 /// What a Brigade's every message from its user starts with, for its agent only [D185].
 const BRIGADE: &str = "[Brigade: you are this job's boss. Run `brigadier help brigade` and follow it before anything else.]";
 
+/// What a note's side chat reads first: the note it's beside, and the checkout it may read.
+fn note_lead(note: &str, reads: Option<&str>) -> String {
+    let checkout = reads.map_or(String::new(), |r| {
+        format!(" To build it from the project, read the session's checkout at {r}; change nothing there.")
+    });
+    format!(
+        "[This chat is beside the user's note {note}, in the same window. When the user asks, write or change that note by editing the file in place: its first line `# ` is the note's title (an emoji may lead it), then a blank line, then its body in Markdown (headings, lists, `- [ ]` checklists, tables, quotes, code). Change no other file.{checkout}]"
+    )
+}
+
 /// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
 pub type Running = Option<u64>;
 
@@ -40,6 +50,12 @@ pub fn send(
     // The agent reads the message as composed; the record keeps what the user wrote [D109, D127].
     // A Brigade's own message points its agent at the recipe first, as Fusion's did [D185].
     let led = (spec.brigade && origin == "user").then(|| format!("{BRIGADE}\n\n{}", msg.agent));
+    // A note's side chat is told each time which note it's beside, as the old app's page chat was [D281].
+    let led = led.or_else(|| {
+        let note = spec.opts.get("note").filter(|_| origin == "user")?;
+        let reads = spec.opts.get("reads").map(String::as_str);
+        Some(format!("{}\n\n{}", note_lead(note, reads), msg.agent))
+    });
     let text = led.as_deref().unwrap_or(msg.agent.as_str());
     // The user's next turn, or their Resume, goes to the agent they picked; a message into a
     // running turn stays with it, the pick waiting for the next [D90, D76].
@@ -151,7 +167,7 @@ pub fn send(
     if !msg.parts.is_null() {
         base["parts"] = msg.parts.clone();
     }
-    if led.is_some() {
+    if spec.brigade && origin == "user" {
         base["brigade"] = true.into();
     }
     if held {

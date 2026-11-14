@@ -53,7 +53,7 @@ function deliver(row: Row, notice: Notice, open: string | null): void {
 
 /** Delivers Rust's notices, keeps the Dock's badge at the count of sessions that need you and the menu bar's Running list. */
 export function useNotices(open: string | null): void {
-  const { rows } = useDaemon();
+  const rows = useDaemon().rows?.filter((row) => !row.noteChat);
   useEffect(() => {
     if (!rows) return;
     for (const row of rows) {
