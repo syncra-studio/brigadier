@@ -21,7 +21,7 @@ import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
-import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
+import { WorkerHeader, WorkerThread } from "./view";
 
 /*
  * 4.2's drawn parts on Rust's rows [D3010, D3012, D3013, D3018]: a worker's row carries `worker`, which Rust folds
@@ -320,14 +320,13 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
   );
 }
 
-/** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
+/** A worker opened: its header, its details in the tip of its ⓘ, and its thread, Rust's snapshot of it, asked again as its row changes [D3013]. */
 function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner: string; onBack: () => void; onClose: () => void }) {
   const rows = useDaemon().rows;
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
   const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
   const [{ items, turns, setup }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null }>({ items: [], turns: [] });
-  const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
     ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup }));
@@ -342,9 +341,8 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
         worker={worker}
-        details={details}
-        onBack={() => (details ? setDetails(false) : onBack())}
-        onToggleDetails={() => setDetails(!details)}
+        details
+        onBack={onBack}
         actions={
           <TitlebarTips>
             <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
@@ -353,7 +351,7 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
           </TitlebarTips>
         }
       />
-      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
+      <ParentName value={parent}><WorkerThread worker={worker} items={rest} turns={turns} setup={setup} /></ParentName>
     </section>
   );
 }

@@ -5,7 +5,7 @@ import { cx } from "../components/cx";
 import { Section } from "../components/section";
 import { TooltipIconButton } from "../components/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ArrowLeft, ChevronRight } from "../icons";
+import { ArrowLeft, ChevronRight, Info } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Body } from "../components/thread/body";
 import { SetupRow } from "../components/thread/setup";
@@ -24,75 +24,70 @@ import { WORKERS_LABEL } from "./list";
  * for it [D3018], how long it worked, and its thread, read only. The user talks to it from the parent's composer.
  */
 
-/** Its header: back, its glyph and name, its model and state (a click shows its details) and the panel's own actions; no End here. */
-export function WorkerHeader({ worker, details = false, onBack, onToggleDetails, actions, list = WORKERS_LABEL }: {
+/** Its header: back, its glyph and name, an ⓘ whose tip holds its details, its model and state, and the panel's own actions; no End here. */
+export function WorkerHeader({ worker, details = false, onBack, actions, list = WORKERS_LABEL }: {
   worker: Worker;
   /** The list Back goes to. */
   list?: string;
+  /** It has details to show; a CLI's own subagent has none, and its state stands as words. */
   details?: boolean;
   onBack: () => void;
-  /** Absent for one with no details to show (a CLI's own subagent): its state stands as words. */
-  onToggleDetails?: () => void;
   actions?: ReactNode;
 }) {
   return (
     <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2 under-toggles:pe-toggles-clear">
-      <TooltipIconButton tooltip={details ? "Back to worker" : `Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
+      <TooltipIconButton tooltip={`Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
         <ArrowLeft />
       </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />
       <h2 className="min-w-8 truncate text-label font-medium" title={worker.name}>
         {worker.name}
       </h2>
-      {/* Its model and state at the end; a click shows its details. Where the header is short the model gives way
-          first, then the name, never the state: the model sizes as nothing (contain-inline-size) and takes the room left. */}
-      {!onToggleDetails ? (
+      {!details ? (
         <span className="ms-auto shrink-0 whitespace-nowrap text-label text-muted-foreground">{worker.word}</span>
       ) : (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={`Worker details: ${worker.model} · ${worker.word}`}
-              aria-pressed={details}
-              data-slot="worker-header-model"
-              onClick={onToggleDetails}
-              className="flex grow cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
-            />
-          }
-        >
-          <span className="grow truncate text-end contain-inline-size">{worker.model}</span>
-          <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Worker details · {worker.model} · {worker.word}
-        </TooltipContent>
-      </Tooltip>
+        <>
+          <WorkerDetails worker={worker} />
+          {/* Where the header is short the model gives way first, then the name, never the state: the model sizes as
+              nothing (contain-inline-size) and takes the room left. */}
+          <span data-slot="worker-header-model" className="flex grow text-label text-muted-foreground">
+            <span className="grow truncate text-end contain-inline-size">{worker.model}</span>
+            <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
+          </span>
+        </>
       )}
       {actions}
     </header>
   );
 }
 
-/** Its details page, as the old WorkerDetails: why this model, and the instructions it was started with. */
-export function WorkerDetails({ worker }: { worker: Worker }) {
+/** Its details, as the old WorkerDetails, in the ⓘ's tip after its name: why this model, and the instructions it was started with. */
+function WorkerDetails({ worker }: { worker: Worker }) {
   return (
-    <div data-slot="worker-details" className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 wrap-anywhere">
-      <div className="flex flex-col gap-4">
-        <h3 className="text-sm font-medium">Details</h3>
-        <Section title="Why this model">
-          <p className="text-sm">{worker.model}</p>
-          {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
-        </Section>
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Instructions</h3>
-          <div className="text-sm leading-relaxed">
-            <Markdown text={worker.brief ?? ""} keep={`instructions:${worker.id}`} />
-          </div>
-        </section>
-      </div>
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span role="img" tabIndex={0} aria-label="Worker details" data-slot="worker-details" className="-ms-1 flex shrink-0 rounded-control text-muted-foreground hover:text-foreground focus-visible:focus-ring">
+            <Info className="size-icon-sm" />
+          </span>
+        }
+      />
+      <TooltipContent side="bottom">
+        <div className="flex min-w-0 flex-col gap-2 py-1 text-start wrap-anywhere">
+          <Section title="Why this model">
+            <p>{worker.model}</p>
+            {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
+          </Section>
+          {worker.brief && (
+            <Section title="Instructions">
+              <div className="line-clamp-8 leading-relaxed">
+                <Markdown text={worker.brief} keep={`instructions:${worker.id}`} />
+              </div>
+            </Section>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -10,7 +10,7 @@ import type { Item, Turn } from "../src/thread/item";
 import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
-import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
+import { WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
@@ -86,16 +86,14 @@ const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2"
 const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
 const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
-/** A worker opened in the panel: its header and thread, or its details. */
+/** A worker opened in the panel: its header, its details in its ⓘ's tip, and its thread. */
 function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
-  const [details, setDetails] = useState(false);
   return (
     <Panel>
       <WorkerHeader
         worker={shown}
-        details={details}
-        onBack={() => setDetails(false)}
-        onToggleDetails={() => setDetails(!details)}
+        details
+        onBack={noop}
         actions={
           <TitlebarTips>
             <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={noop}>
@@ -104,7 +102,7 @@ function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] })
           </TitlebarTips>
         }
       />
-      {details ? <WorkerDetails worker={shown} /> : <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />}
+      <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />
     </Panel>
   );
 }
@@ -120,7 +118,7 @@ function LivePanel() {
       <Panel>
         {shown ? (
           <>
-            <WorkerHeader worker={shown} details={false} onBack={() => setOpen(null)} onToggleDetails={noop} />
+            <WorkerHeader worker={shown} details onBack={() => setOpen(null)} />
             <WorkerThread worker={shown} items={RECENT} turns={[DONE_TURN]} />
           </>
         ) : (
