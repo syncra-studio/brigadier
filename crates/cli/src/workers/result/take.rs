@@ -93,3 +93,11 @@ pub(super) fn said(r: &Res) -> String {
         m => format!("{}:{}:{m}", r.how, r.wid),
     }
 }
+
+/// The hop a result carries, by its command id in the parent.
+pub fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
+    all(data, pid)
+        .into_iter()
+        .find(|(_, r)| r.id == id)
+        .map(|(_, r)| r.hop)
+}

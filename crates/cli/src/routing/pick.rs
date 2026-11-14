@@ -196,6 +196,8 @@ pub(super) fn first(data: &Path, groups: &[Value], t: &Value, row: &str) -> Valu
 /// entry with an account that has room, a later one with a note [D2041]. `--agent` alone takes
 /// the row's entries on it, else its default model; `--effort` alone applies to the entry taken
 /// (proposed). Runs under the data dir's lock, so the reservation it makes is seen by the next.
+/// A review's (`review`: its authors' agents) is Best on another agent first, then on theirs, at
+/// high where the model has it; it never holds: none placed, it doesn't run [D3026].
 pub(crate) fn resolve(
     data: &Path,
     me: &str,
@@ -203,6 +205,7 @@ pub(crate) fn resolve(
     f: &Fold,
     flags: &dyn Fn(&str) -> Option<String>,
     wid: &str,
+    review: Option<&[String]>,
 ) -> Result<Pick, Value> {
     let refuse = |m: &str| workers::refuse(m);
     let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
@@ -226,8 +229,12 @@ pub(crate) fn resolve(
             )
         }
         None => {
-            let row = row.unwrap_or_else(|| "standard".into());
+            let row =
+                row.unwrap_or_else(|| (if review.is_some() { "best" } else { "standard" }).into());
             let mut list = t["rows"][&row].as_array().cloned().unwrap_or_default();
+            if let Some(authors) = review {
+                list.sort_by_key(|e| authors.iter().any(|a| e["agent"] == a.as_str()));
+            }
             if let Some(a) = &agent {
                 list.retain(|e| e["agent"] == a.as_str());
                 if list.is_empty() {
@@ -259,8 +266,14 @@ pub(crate) fn resolve(
             Err(why) if model.is_some() => return Err(refuse(&why)),
             Err(_) => continue,
         };
-        let (runs_at, capped) = effort_of(&rules, a, m, e["effort"].as_str(), effort.is_some())
-            .map_err(|w| refuse(&w))?;
+        let high = (m["efforts"].as_array().into_iter().flatten()).any(|x| x == "high");
+        let want = if review.is_some() && high {
+            Some("high")
+        } else {
+            e["effort"].as_str()
+        };
+        let (runs_at, capped) =
+            effort_of(&rules, a, m, want, effort.is_some()).map_err(|w| refuse(&w))?;
         let Some(adapter) = adapters::get(a) else {
             continue;
         };
@@ -296,6 +309,13 @@ pub(crate) fn resolve(
                 first.get_or_insert(pick);
             }
         }
+    }
+    if review.is_some() {
+        let why = match out.is_empty() {
+            true => "no model in your Best row is one you may use".into(),
+            false => format!("{} had no account with room", out.join(" and ")),
+        };
+        return Err(refuse(&format!("Review didn't run: {why}.")));
     }
     let Some(mut pick) = first else {
         let row = title(row.as_deref().unwrap_or("standard"));

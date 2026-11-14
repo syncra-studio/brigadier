@@ -38,6 +38,11 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }
 
+/// Whether Settings › Routing's Adversarial review is on [D3026, C4].
+pub(crate) fn review_on(data: &Path) -> bool {
+    read(&data.join(FILE))["review"] == true
+}
+
 /// "Best", "Standard", "Quick".
 pub(crate) fn title(row: &str) -> String {
     let mut c = row.chars();

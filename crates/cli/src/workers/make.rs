@@ -23,8 +23,16 @@ static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
-fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, session: bool) -> String {
+/// A reviewer's commits nothing: its count takes the merge sentence's place [D3026].
+fn fixed_line(
+    parent: &str,
+    pid: &str,
+    merge: Option<(&str, &str, &str)>,
+    session: bool,
+    review: bool,
+) -> String {
     let land = match merge {
+        _ if review => super::review::FINDINGS.into(),
         Some((to, branch, base)) => format!(
             "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
         ),
@@ -58,6 +66,15 @@ pub fn start(
             "You're a worker at depth {depth}, the deepest allowed, so you can't start workers. Do it yourself, or use your own subagents."
         ));
     }
+    // A review's brief is Rust's: the reviewed task, its commits, then the fixed one [D3026].
+    let review = match flags("--reviewing") {
+        Some(of) => match super::review::plan(data, me, &of, brief, flags) {
+            Ok(r) => Some(r),
+            Err(e) => return e,
+        },
+        None => None,
+    };
+    let brief = review.as_ref().map_or(brief, |r| r.brief.as_str());
     // A retry's brief is its chain's first and a note; `brief` says what failed [D2037, D342].
     let retry = match flags("--retry") {
         Some(id) => match routing::retry(data, me, &id, brief, flags) {
@@ -86,16 +103,21 @@ pub fn start(
         .project
         .clone()
         .filter(|p| projects::get(data, p).is_ok());
+    // A review of a worker starts at that worker's head.
+    let at = review.as_ref().and_then(|r| r.base.clone());
     let base = project.as_ref().and_then(|_| {
-        git(&parent.cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        (at.clone())
+            .or_else(|| git(&parent.cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"]))
             .or_else(|| git(&parent.cwd, &["rev-parse", "--verify", "HEAD"]))
     });
     let dirty = base.is_some()
+        && at.is_none()
         && git(&parent.cwd, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
     // Proposed: `--title` names it; else its brief does [D3029].
     let named = flags("--title").filter(|t| !t.trim().is_empty());
-    let title =
-        (named.or(retry.as_ref().map(|r| r.title.clone()))).unwrap_or_else(|| title::from(brief));
+    let title = (named.or(retry.as_ref().map(|r| r.title.clone())))
+        .or(review.as_ref().map(|r| r.title.clone()))
+        .unwrap_or_else(|| title::from(brief));
     let asked = json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort"),
         "row": flags("--row")});
     let reserved = (|| -> Result<Record, Value> {
@@ -132,7 +154,9 @@ pub fn start(
             }
         };
         let shown = retry.as_ref().is_some_and(|r| r.ask.is_some());
-        let mut p = routing::resolve(data, me, &parent, &f, &picked, if shown { "" } else { &wid })?;
+        let wid_ = if shown { "" } else { wid.as_str() };
+        let authors = review.as_ref().map(|r| r.authors.as_slice());
+        let mut p = routing::resolve(data, me, &parent, &f, &picked, wid_, authors)?;
         if let Some(rt) = &retry {
             rt.apply(&mut p);
         }
@@ -167,6 +191,7 @@ pub fn start(
             pick: p.ran,
             hold: p.hold,
             retry: retry.as_ref().map_or(Value::Null, |r| r.note.clone()),
+            review: review.as_ref().map_or(Value::Null, |r| r.mark.clone()),
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)
@@ -175,6 +200,9 @@ pub fn start(
         Ok(r) => r,
         Err(e) => return e,
     };
+    if let Some(rv) = &review {
+        super::review::marked(data, rv, &r.wid);
+    }
     let note = json!({"event": "worker", "phase": "started", "id": r.wid, "title": r.title});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     begin(data, me, &r.wid);
@@ -315,6 +343,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             last: Value::Null,
             paused: false,
             session: r.session,
+            review: r.review.clone(),
         };
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
@@ -349,11 +378,14 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
     let merge =
         (branch.as_deref().zip(r.base.as_deref())).map(|(b, base)| (parent.cwd.as_str(), b, base));
-    let text = format!(
-        "{}\n\n{}",
-        r.brief.trim_end(),
-        fixed_line(&core::share::title(&parent), pid, merge, r.session)
+    let line = fixed_line(
+        &core::share::title(&parent),
+        pid,
+        merge,
+        r.session,
+        !r.review.is_null(),
     );
+    let text = format!("{}\n\n{line}", r.brief.trim_end());
     if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
         return Err(io::Error::other("It was stopped before it started."));
     }

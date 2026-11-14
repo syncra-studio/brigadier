@@ -99,7 +99,8 @@ fn landed(
 pub(crate) fn results(data: &Path) -> Value {
     let mut rows = vec![];
     let mut retried: HashMap<String, u64> = HashMap::new();
-    let mut reviews = (0u64, 0u64, 0u64, 0u64);
+    // A sum any review left unknown is unknown, never 0 [D74].
+    let mut reviews = (0u64, [Some(0u64); 3]);
     for wid in core::ids(data) {
         let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
             continue;
@@ -113,13 +114,10 @@ pub(crate) fn results(data: &Path) -> Value {
                 *retried.entry(of.into()).or_default() += 1;
             }
             if n["phase"] == "review" && n["ran"] == true {
-                let count = |k: &str| n[k].as_u64().unwrap_or(0);
                 reviews.0 += 1;
-                (reviews.1, reviews.2, reviews.3) = (
-                    reviews.1 + count("findings"),
-                    reviews.2 + count("fixed"),
-                    reviews.3 + count("rejected"),
-                );
+                for (sum, k) in reviews.1.iter_mut().zip(["findings", "fixed", "rejected"]) {
+                    *sum = sum.zip(n[k].as_u64()).map(|(a, b)| a + b);
+                }
             }
         }
         rows.push((wid, l.ran, end.unwrap_or_default()));
@@ -154,7 +152,7 @@ pub(crate) fn results(data: &Path) -> Value {
     let models: Vec<Value> = (models.into_iter())
         .map(|((agent, model), (succeeded, of))| json!({"agent": agent, "model": model, "succeeded": succeeded, "of": of}))
         .collect();
-    let (count, findings, fixed, rejected) = reviews;
+    let (count, [findings, fixed, rejected]) = reviews;
     let reviews = (count > 0).then(
         || json!({"count": count, "findings": findings, "fixed": fixed, "rejected": rejected}),
     );

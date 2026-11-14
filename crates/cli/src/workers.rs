@@ -11,17 +11,18 @@ mod family;
 mod make;
 mod pause;
 mod result;
+mod review;
 pub(crate) mod row;
-pub(crate) use asks::question;
-pub(crate) use asks::told_held;
 pub use asks::{answer, asks_parent, for_user};
+pub(crate) use asks::{question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub(crate) use make::begin;
 pub use make::start;
 pub use pause::held;
 pub use result::{deliver, take, take_ask, went_with, with_next};
-pub(crate) use result::{hop as result_hop, last_of_turn, settled};
+pub(crate) use result::{hop as result_hop, settled};
+pub(crate) use review::{last_of_turn, moves};
 pub use row::row;
 
 use crate::{arg, owner, queue, settings};
@@ -75,6 +76,9 @@ pub(crate) struct Record {
     /// A retry's `retry_of`, `chain`, `step` and `note`, for its start outcome [D2037].
     #[serde(default)]
     pub retry: Value,
+    /// A reviewer's mark, as its link's (`review.rs`) [D3026].
+    #[serde(default)]
+    pub review: Value,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.
@@ -101,6 +105,9 @@ pub(crate) struct Link {
     /// A Brigade's sub-session: a full lead, its own workers a family of their own [D189].
     #[serde(default)]
     pub session: bool,
+    /// A reviewer's mark, or a reviewed worker's review (`review.rs`) [D3026].
+    #[serde(default)]
+    pub review: Value,
 }
 
 fn records_dir(data: &Path, pid: &str) -> PathBuf {
@@ -221,6 +228,7 @@ pub fn busy(data: &Path, id: &str) -> bool {
     };
     !made
         || (l.session && brigade::leading(data, id))
+        || l.review["state"] == "running"
         || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
 }
 
@@ -315,6 +323,7 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
         write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;
     }
     halt(data, top, wid, "user")?;
+    review::stop(data, top, wid);
     let mine: Vec<String> = (records(data, wid).into_iter())
         .filter(|r| {
             r.state == "starting"

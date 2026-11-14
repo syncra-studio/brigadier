@@ -72,6 +72,12 @@ pub(crate) fn plan(
             "No worker {id:?} of yours: only the session that started a worker may retry it."
         )));
     };
+    // One review, one fix pass, never a loop [D3026] (proposed).
+    if l.review["of"].is_string() {
+        return Err(refuse(&format!(
+            "{id} is a review: it runs once and isn't retried."
+        )));
+    }
     if l.last.is_null() {
         return Err(refuse(&format!(
             "{id} hasn't ended. Wait for its result, or `brigadier stop {id}`, then retry it."

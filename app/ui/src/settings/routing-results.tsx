@@ -11,7 +11,7 @@ import { ROUTING_ROWS } from "./routing";
  */
 export type Results = {
   models: { agent: string; model: string; succeeded: number; of: number }[];
-  reviews: { count: number; findings: number; fixed: number; rejected: number } | null;
+  reviews: { count: number; findings: number | null; fixed: number | null; rejected: number | null } | null;
 };
 
 /**
@@ -49,10 +49,16 @@ export function YourResults({ results, groups }: { results: Results | null; grou
         })}
         {results?.reviews && (
           <p data-slot="reviews-line" className="py-3 text-label text-foreground">
-            {results.reviews.count} reviews · {results.reviews.findings} findings · {results.reviews.fixed} fixed · {results.reviews.rejected} rejected
+            {reviewsLine(results.reviews)}
           </p>
         )}
       </SettingsCard>
     </SettingsSection>
   );
+}
+
+/** "2 reviews · 5 findings · 3 fixed": a count no review said is left out, never 0 [D74]. */
+function reviewsLine({ count, findings, fixed, rejected }: NonNullable<Results["reviews"]>) {
+  const n = (v: number | null, one: string, many = one) => (v === null ? null : `${v} ${v === 1 ? one : many}`);
+  return [n(count, "review", "reviews"), n(findings, "finding", "findings"), n(fixed, "fixed"), n(rejected, "rejected")].filter(Boolean).join(" · ");
 }

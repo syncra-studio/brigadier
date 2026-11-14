@@ -7,6 +7,7 @@
 
 mod take;
 
+use super::review::{self, last_of_turn};
 use super::{Link, Record, closing, git, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
@@ -21,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 use take::said;
-pub use take::{take, take_ask, went_with, with_next};
+pub use take::{hop, take, take_ask, went_with, with_next};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -42,7 +43,8 @@ pub(super) struct Res {
     pub at: u64,
     /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, till a turn
     /// of the parent's ends or its next message; `ended` by the user, till that message [D330]) |
-    /// taken (by the parent's own `wait` or its next message) | dropped (its family is deleted)
+    /// taken (by the parent's own `wait` or its next message) | dropped (its family is deleted) |
+    /// review (a reviewer the switch started: its findings go to its worker instead [D3026])
     pub state: String,
     #[serde(default)]
     pub ended: bool,
@@ -112,12 +114,13 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed.
 pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
-    let Some(l) = link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
+    let Some(mut l) =
+        link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
     else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    for turn in &l.report {
+    for turn in &l.report.clone() {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
@@ -145,9 +148,14 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
         // ended by itself before the Pause took reports as ever.
         // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
-        if (l.paused && how == "stopped") || (how == "limit" && !l.ran["label"].is_null()) {
+        // A reviewer and a fix turn end at their limit [D3026].
+        let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
+        if (l.paused && how == "stopped") || moves {
             continue;
         }
+        let Some(how) = review::holds(data, &mut l, wid, turn, how) else {
+            continue;
+        };
         write(data, &l, wid, turn, how, None)?;
     }
     Ok(())
@@ -159,9 +167,11 @@ pub(super) fn failed(data: &Path, pid: &str, r: &Record) {
         parent: pid.into(),
         title: r.title.clone(),
         ran: json!({"agent": r.backend, "model": r.model, "effort": r.effort}),
+        review: r.review.clone(),
         ..Default::default()
     };
     let _ = write(data, &l, &r.wid, &r.cid, "failed", r.error.as_deref());
+    review::after(data, &l, &r.wid, &r.cid, "failed");
 }
 
 fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
@@ -177,7 +187,7 @@ fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
 
 /// Writes one result: the sender's record, first, in the parent's folder [D54]. Then the worker's
 /// row shows how it ended. `error`: a start that failed, whose worker never ran.
-fn write(
+pub(super) fn write(
     data: &Path,
     l: &Link,
     wid: &str,
@@ -274,6 +284,7 @@ fn write(
         .filter_map(|v| v.as_str())
         .collect();
     text += &format!("Ran on {}.\n", ran.join(" · "));
+    text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
     // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
     let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
@@ -301,7 +312,12 @@ fn write(
         text,
         at: log::now_ms(),
         // A stopped task's result never wakes the parent: it goes with its next turn [D314].
-        state: if how == "stopped" { "held" } else { "written" }.into(),
+        state: match how {
+            _ if l.review["switch"] == true => "review",
+            "stopped" => "held",
+            _ => "written",
+        }
+        .into(),
         ended: how == "stopped" && l.last["by"] == "user",
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
@@ -320,24 +336,6 @@ fn write(
         }
     }
     Ok(())
-}
-
-/// A turn's own last message, by the turn's stable id.
-pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
-    let mut thread = core::thread::Thread::default();
-    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| thread.push(i));
-    let items = thread.session(id, "", None, None)["items"].take();
-    (items.as_array().into_iter().flatten().rev())
-        .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
-        .and_then(|i| i["text"].as_str().map(String::from))
-}
-
-/// The hop a result carries, by its command id in the parent.
-pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
-    all(data, pid)
-        .into_iter()
-        .find(|(_, r)| r.id == id)
-        .map(|(_, r)| r.hop)
 }
 
 /// The daemon's pass: each parent with an open result, between turns, gets its oldest one, off

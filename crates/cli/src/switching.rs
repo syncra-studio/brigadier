@@ -162,7 +162,14 @@ fn attempt(
     let mut target: Option<To> = None;
     let mut kind = "accounts";
     let mut ran = Value::Null;
-    let worker = crate::workers::link(data, id).is_some();
+    let link = crate::workers::link(data, id);
+    // A reviewer's limit, or a fix turn's, is its end: never moved, its result goes on [D3026].
+    if to.is_none() && pick.is_none() && link.as_ref().is_some_and(|l| !crate::workers::moves(l)) {
+        return Ok(
+            json!({"ok": false, "error": "review", "message": "A review's turn ends at its limit."}),
+        );
+    }
+    let worker = link.is_some();
     if to.is_some() {
         target = to;
     } else if worker && pick.is_none() && auto {

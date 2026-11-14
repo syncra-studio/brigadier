@@ -153,8 +153,7 @@ export function RoutingSettings() {
       setValue(back as Routing);
       return back as Routing;
     });
-  // No review switch until 4.10 wires it [D2079].
-  return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} results={results} />;
+  return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} results={results} review />;
 }
 
 /** "✻ Opus 5.5 · High": the agent's mark, the model, then its effort after a dot (no effort: just the model). */
