@@ -17,8 +17,8 @@ pub use asks::{answer, asks_parent, for_user};
 pub(crate) use asks::{question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
-pub(crate) use make::begin;
 pub use make::start;
+pub(crate) use make::{begin, full};
 pub use pause::held;
 pub use result::{deliver, take, take_ask, went_with, with_next};
 pub(crate) use result::{hop as result_hop, settled};
@@ -285,17 +285,17 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     json!({"ok": true, "text": format!("Stopped {} ({id}).{kept}", r.title)})
 }
 
-/// Stops worker `wid` below `top`. One still being made is marked so its brief never goes, and
-/// stopped once its making ends, if it got that far. `by`: "user", or "pause".
+/// Stops worker `wid` below `top`. One being made, or held on its card (by Stop, not Pause), is
+/// marked so its brief never goes, then stopped once made; its card goes. `by`: "user"/"pause".
 fn halt(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
     if let Some(pid) = parent_of(data, top, wid) {
-        let (root, _) = place(data, &pid);
-        let _family = family_lock(data, &root)?;
-        if let Some(mut r) = record(data, &pid, wid).filter(|r| r.state == "starting") {
+        let _family = family_lock(data, &place(data, &pid).0)?;
+        if let Some(mut r) = record(data, &pid, wid).filter(|r| crate::routing::stops(r, by)) {
             r.state = "stopped".into();
             save(data, &pid, &r)?;
         }
     }
+    crate::routing::stopped(data, wid, by);
     let started = Instant::now();
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));

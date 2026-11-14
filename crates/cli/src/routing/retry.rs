@@ -1,7 +1,8 @@
 //! `start --retry <id> "<what failed>"` [D2037, D342]: a fresh worker, never the failed one's
 //! transcript, from its chain's first brief and a note, one step up the ladder: more effort on
 //! the same model, then a row up, at most two steps; past them, the user's call on its card
-//! [D2028]. The chain's steps are read from its start outcome notes, so a restart keeps them.
+//! [D2028]. The chain's steps are read from its workers' records, kept under the family lock when
+//! each is reserved, so a restart, or one held and never launched, keeps them [D350].
 
 use super::pick::{Pick, first};
 use super::*;
@@ -26,6 +27,17 @@ impl Retry {
             .map(|(_, v)| v.clone())
     }
 
+    /// Start's refusal, under the family lock, when another retry of its chain took its rung
+    /// since this plan was read: two never take one [D350].
+    pub(crate) fn taken(&self, data: &Path, me: &str) -> Option<Value> {
+        let (chain, step) = (&self.note["chain"], &self.note["step"]);
+        let rung = step == "effort" || step == "row";
+        let took = |r: &workers::Record| r.retry["chain"] == *chain && r.retry["step"] == *step;
+        (rung && workers::records(data, me).iter().any(took)).then(|| {
+            workers::refuse("Another retry of it just took that step. Retry it again to go on.")
+        })
+    }
+
     /// Its pick's `ran` gains the retry's words; past the ladder it holds, asking the user
     /// "Retry on ‹the row's first›" or "Stop here" (proposed).
     pub(crate) fn apply(&self, p: &mut Pick) {
@@ -37,12 +49,6 @@ impl Retry {
             p.hold = json!({"retry": true, "why": why, "row": p.ran["row"], "lower": lower});
         }
     }
-}
-
-fn start_of(data: &Path, wid: &str) -> Value {
-    (workers::outcomes(data, wid).into_iter())
-        .find(|o| o["phase"] == "start")
-        .unwrap_or_default()
 }
 
 /// The plan for `me`'s retry of its worker `id`. Only its parent may; the ladder picks, so
@@ -83,18 +89,15 @@ pub(crate) fn plan(
             "{id} hasn't ended. Wait for its result, or `brigadier stop {id}`, then retry it."
         )));
     }
-    let chain = start_of(data, id)["chain"]
-        .as_str()
+    let records = workers::records(data, me);
+    let chain = (records.iter().find(|r| r.wid == id))
+        .and_then(|r| r.retry["chain"].as_str())
         .unwrap_or(id)
         .to_string();
     let head = workers::link(data, &chain).unwrap_or_else(|| l.clone());
-    let kin: Vec<String> = (workers::records(data, me).into_iter())
+    let steps: Vec<Value> = (records.iter())
         .filter(|r| r.retry["chain"] == chain.as_str())
-        .map(|r| r.wid)
-        .collect();
-    let steps: Vec<Value> = kin
-        .iter()
-        .map(|w| start_of(data, w)["step"].clone())
+        .map(|r| r.retry["step"].clone())
         .collect();
     let taken = |s: &str| steps.iter().any(|x| x == s);
     let rung = if taken("row") {
@@ -107,7 +110,7 @@ pub(crate) fn plan(
         .filter(|s| *s == "effort" || *s == "row")
         .count()
         + 1;
-    let n = kin.len() + 1;
+    let n = steps.len() + 1;
     let temporary = (workers::outcomes(data, id).iter().rev())
         .find(|o| o["phase"] == "end")
         .is_some_and(|o| o["temporary"] == true);

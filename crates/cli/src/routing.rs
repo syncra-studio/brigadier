@@ -17,7 +17,7 @@ mod hold;
 mod pick;
 mod retry;
 
-pub(crate) use hold::{ask, moved};
+pub(crate) use hold::{ask, moved, stopped, stops};
 pub(crate) use pick::{next, receipt, resolve};
 pub(crate) use retry::plan as retry;
 

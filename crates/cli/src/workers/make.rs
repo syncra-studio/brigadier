@@ -127,25 +127,11 @@ pub fn start(
                 "This session is being deleted, so it starts no workers.",
             ));
         }
-        let limit = setting(data, "workers", 6);
-        let busy = (below(data, &root).iter())
-            // A Brigade's sub-sessions head families of their own [D189].
-            .filter(|r| r.root == root)
-            // Its own log, not only the row, which lags just after a launch.
-            .filter(|r| {
-                r.state == "starting"
-                    || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
-            })
-            .count() as u64;
-        if busy >= limit {
-            return Err(refuse(&format!(
-                "{} running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one.",
-                if busy == 1 {
-                    "1 worker is".into()
-                } else {
-                    format!("{busy} workers are")
-                }
-            )));
+        if let Some(no) = full(data, &root, running) {
+            return Err(no);
+        }
+        if let Some(no) = retry.as_ref().and_then(|r| r.taken(data, me)) {
+            return Err(no);
         }
         let wid = loop {
             let id = format!("w{}", &adapters::uuid()[..8]);
@@ -244,6 +230,25 @@ pub fn start(
     json!({"ok": true, "id": r.wid, "title": r.title, "agent": backend, "model": model, "effort": effort,
         "account": r.account, "receipt": receipt, "asked": r.asked, "ran": ran, "why": why, "retry": r.retry,
         "held": r.hold["why"], "base": base, "uncommitted": dirty, "text": text})
+}
+
+/// Start's refusal when `root`'s family runs its most workers at once, under its lock [D3001];
+/// a held one let go counts the same way.
+pub(crate) fn full(data: &Path, root: &str, running: &dyn Fn(&str) -> bool) -> Option<Value> {
+    let limit = setting(data, "workers", 6);
+    let busy = (below(data, root).iter())
+        // A Brigade's sub-sessions head families of their own [D189].
+        .filter(|r| r.root == root)
+        // Its own log, not only the row, which lags just after a launch.
+        .filter(|r| {
+            r.state == "starting"
+                || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
+        })
+        .count() as u64;
+    (busy >= limit).then(|| refuse(&format!(
+        "{} running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one.",
+        if busy == 1 { "1 worker is".into() } else { format!("{busy} workers are") }
+    )))
 }
 
 /// Makes a reserved worker off the caller's thread, once at a time in this daemon.
