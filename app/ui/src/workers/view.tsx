@@ -15,7 +15,7 @@ import { Markdown } from "../thread/markdown";
 import { GroupLine } from "../components/thread/body";
 import { px } from "../shell/right-panel";
 import { duration, useSecond } from "../thread/words";
-import { finished, type Worker } from "./chip";
+import { finished, waiting, type Worker } from "./chip";
 import { WORKERS_LABEL } from "./list";
 
 /*
@@ -132,6 +132,8 @@ function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] 
   // Its turns' time, so the waits between its messages don't count; from its start while it has none.
   const ms = turns.length === 0 ? (done ? (worker.lastAt ?? now) : now) - worker.startedAt : turns.reduce((sum, turn) => sum + Math.max(0, (turn.endedAt ?? now) - turn.startedAt), 0);
   const took = duration(ms);
+  // Held before its first turn, it hasn't worked yet: Needs you or Limit until says why.
+  if (turns.length === 0 && waiting(worker)) return null;
   return (
     <div data-slot="worker-work-header" className="border-b border-border pb-2 text-sm text-faint-foreground tabular-nums">
       {worker.kind === "stopped" ? `Ended after ${took}` : done ? `Worked for ${took}` : `Working for ${took}`}
