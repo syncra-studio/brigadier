@@ -19,18 +19,25 @@ import { useHasPanel } from "./right-panel";
 import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 
 /*
- * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end, the thread's
- * column (at the pane's start, D40) ending before it where it would run under; too narrow for both, it floats over
- * the thread, and only when asked, so it never covers the conversation by itself [D48]. Wave 2 owns
+ * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end. Where the pane
+ * has room beside the thread's column it sits there; with less, the column moves aside for it; too narrow for both,
+ * it floats over the thread, and only when asked, so it never covers the conversation by itself [D48]. Wave 2 owns
  * the frame and what's in it; the other Delegator wires the Context button to `useCardToggle` [D1014].
  */
 
-type Layout = "beside" | "float";
+type Layout = "beside" | "shift" | "float";
 
-// The old theme's --spacing-summary-gutter-from, in rem.
+// The old theme's --spacing-summary-gutter-from and --spacing-summary-beside-from, in rem.
 const GUTTER_FROM = 50.25;
+const BESIDE_FROM = 25;
 
-const layoutOf = (width: number): Layout => (width < GUTTER_FROM * Number.parseFloat(getComputedStyle(document.documentElement).fontSize) ? "float" : "beside");
+function layoutOf(width: number): Layout {
+  const root = getComputedStyle(document.documentElement);
+  const rem = Number.parseFloat(root.fontSize);
+  const column = Number.parseFloat(root.getPropertyValue("--container-reading")) * rem;
+  if (width < GUTTER_FROM * rem) return "float";
+  return (width - column) / 2 < BESIDE_FROM * rem ? "shift" : "beside";
+}
 
 /** Per owner: `pinned`, the user's show or hide, which holds at every width; `floating`, shown over the thread where it floats. */
 type Card = { pinned: boolean; floating: boolean; layout: Layout | null };
@@ -223,12 +230,11 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       data-pinned={(has && state.pinned) || undefined}
       className={cx(
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
-        // A container, so the rows in the scroller and the composer under it measure the same width for the card.
-        "@container relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
-        // The reading column at the tab bar's first pill [D40]. Beside the card it takes its narrower width at once, so
-        // it never runs under the card easing in; back, it widens as the old app's.
-        "reading-column:reading-start summary-beside:reading-column:reading-beside-summary",
-        settled && "motion-safe:reading-column:transition-all motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift motion-safe:summary-beside:reading-column:transition-transform",
+        "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
+        // As the old app: the reading column glides aside and takes its narrower width at once. Back, it widens as it
+        // glides home, so it never runs under the sidebar meanwhile (a side panel opening).
+        "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
+        settled && "motion-safe:reading-column:transition-all motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift motion-safe:summary-shift:reading-column:transition-transform",
       )}
     >
       {children}
