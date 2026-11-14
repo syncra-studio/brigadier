@@ -20,6 +20,8 @@
   --color-control: #ffffff12;
   --color-glass-stroke: #ffffff14;
   --color-selection: #ffffff1c;
+  /* A card's edge while its resize handle is hovered or dragged [D16]. */
+  --color-resize-edge: #ffffff47;
   /* Context and Files at rest; on, they glow (--drop-shadow-toggle-glow) [new-design]. */
   --color-toggle-off: #ffffff59;
   /* A user's message bubble: control-fill with the glass edge. */
@@ -373,7 +375,7 @@
   --spacing-sidebar-thread-min: 20rem;
   /* Collapsed to a strip of icons: the old app's 48px strip, as the rail card inside the panel's 4px insets. */
   --spacing-sidebar-strip: calc(var(--spacing) * 10 + var(--spacing-icon-md));
-  /* The panel's grab area. */
+  /* The panel's grab area, over the gap and its card's edge. */
   --spacing-resize-handle: 1rem;
   /* A window narrower than this folds the sidebar by itself. */
   --spacing-narrow-window: 60rem;
@@ -457,6 +459,9 @@
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
+  /* A card's own edge lit on its resize handle's side, an inset line that curves into its corners [D16]. */
+  --inset-shadow-resize-start: inset 1px 0 0 var(--color-resize-edge);
+  --inset-shadow-resize-end: inset -1px 0 0 var(--color-resize-edge);
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The summary card's lift (the new design's Context card; its edge is the glass stroke). */
@@ -870,6 +875,9 @@
 /* The toolbar pill's button while it is the only one there. */
 @custom-variant lone-toggle (& > :only-child > button);
 /* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
+/* A card whose resize handle, its panel's direct child, is hovered or dragged [D16]. */
+@custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
+
 @custom-variant win (:where([data-platform="win32"]) &);
 /* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
 @custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]:not(:has(~ .right-panel-width-source[data-state="expanded"]))) &);

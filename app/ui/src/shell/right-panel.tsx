@@ -107,7 +107,7 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
       >
         {/* A floating card 4px off the thread and 6px under the tab bar [new-design]. */}
         <div className="right-panel-width flex h-full min-h-0 flex-col ps-1 pt-1.5">
-          <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset">
+          <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset resize-lit:inset-shadow-resize-start rtl:resize-lit:inset-shadow-resize-end">
             {shown && <Files key={owner} owner={owner} />}
           </div>
         </div>
@@ -147,6 +147,7 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose }:
   return (
     <div
       role="separator"
+      data-slot="resize-handle"
       aria-orientation="vertical"
       aria-label={label}
       data-resizing={resizing || undefined}
@@ -182,9 +183,8 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose }:
       onPointerUp={end}
       onPointerCancel={end}
       onLostPointerCapture={end}
-      className="group/resize absolute start-0 top-0 bottom-0 z-10 flex w-resize-handle -translate-x-1/2 cursor-col-resize justify-center rtl:translate-x-1/2"
+      className="absolute start-0 top-0 bottom-0 z-10 w-resize-handle -translate-x-1/2 cursor-col-resize rtl:translate-x-1/2"
     >
-      <span className="w-px bg-input opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
     </div>
   );
 }
