@@ -205,7 +205,7 @@ export function ActionCardActions({ leading, children }: { leading?: ReactNode; 
   return (
     <div className="flex items-center gap-2 px-4 pt-2 pb-4 @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
       {leading}
-      <div className="ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @max-card-narrow/approval-card:ms-0 @max-card-narrow/approval-card:w-full @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
+      <div className="ms-auto flex shrink-0 items-center justify-end gap-2 @max-card-narrow/approval-card:ms-0 @max-card-narrow/approval-card:w-full @max-card-narrow/approval-card:flex-col @max-card-narrow/approval-card:items-stretch">
         {children}
       </div>
     </div>
