@@ -56,6 +56,11 @@ const TABLE: Routing = {
     { never: "above", effort: "high", agent: null },
   ],
   review: false,
+  now: {
+    best: { agent: "cloud", model: "large", effort: "high" },
+    standard: { agent: "cloud", model: "medium", effort: "medium" },
+    quick: { agent: "cloud", model: "small", effort: "low" },
+  },
 };
 
 const RESULTS: Results = {

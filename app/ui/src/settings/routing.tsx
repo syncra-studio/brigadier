@@ -1,4 +1,4 @@
-import { type ComponentType, useRef, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 
 import { effortLabel, type ModelGroup, ProviderMark } from "../components/composer/model-picker";
 import { named } from "../components/composer/model-keys";
@@ -7,8 +7,10 @@ import { ErrorLine } from "../components/error-line";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
+import { useDaemon } from "../daemon";
 import { Bolt, ChevronRight, ChevronUp, Code, type IconProps, Nodes } from "../icons";
-import { errorText } from "../onboarding/api";
+import { errorText, run } from "../onboarding/api";
+import { asGroups } from "../session/model";
 import { SettingsPage, SettingsSection } from "./parts";
 import { OrderList } from "./routing-order";
 import { type Results, YourResults } from "./routing-results";
@@ -19,8 +21,11 @@ export type Entry = { agent: string; model: string; effort: string | null };
 /** A rule, added from menus and exact [D338, D341]: never a model, or never above an effort (on one agent, or every one). */
 export type Rule = { never: "model"; agent: string; model: string } | { never: "above"; effort: string; agent: string | null };
 export type RowName = "best" | "standard" | "quick";
-/** Rust's routing table (C4): the three rows [D2037], the rules, and 4.10's review switch [D3026]. */
-export type Routing = { rows: Record<RowName, Entry[]>; rules: Rule[]; review: boolean };
+/**
+ * Rust's routing table (C4): the three rows [D2037], the rules, and 4.10's review switch [D3026]; `now` is each
+ * row's first entry the rules allow, at the effort they let it run (null: none, so it can't start).
+ */
+export type Routing = { rows: Record<RowName, Entry[]>; rules: Rule[]; review: boolean; now: Record<RowName, Entry | null> };
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const ROUTING_ROWS = {
@@ -35,16 +40,6 @@ const ROWS: { row: RowName; title: string; icon: ComponentType<IconProps> }[] = 
   { row: "standard", title: "Standard", icon: Code },
   { row: "quick", title: "Quick", icon: Bolt },
 ];
-
-/** Whether a rule keeps an entry out: its model, or an effort above the rule's in that model's own list [D341]. */
-export function refuses(rule: Rule, entry: Entry, groups: readonly ModelGroup[]): boolean {
-  if (rule.never === "model") return rule.agent === entry.agent && rule.model === entry.model;
-  if (rule.agent !== null && rule.agent !== entry.agent) return false;
-  const model = groups.find((group) => group.provider === entry.agent)?.models.find((each) => each.id === entry.model);
-  const efforts = model?.efforts ?? [];
-  const limit = efforts.indexOf(rule.effort);
-  return limit >= 0 && efforts.indexOf(entry.effort ?? model?.defaultEffort ?? "") > limit;
-}
 
 /**
  * Settings › Routing, the old app's page cut to 4.5 [D2037, D2038, D338, D341]: who does what (Best, Standard and
@@ -109,7 +104,7 @@ export function RoutingPage({
                   title={title}
                   icon={icon}
                   order={shown.rows[row]}
-                  rules={shown.rules}
+                  now={shown.now[row]}
                   groups={groups}
                   open={open === row}
                   onToggle={() => setOpen(open === row ? null : row)}
@@ -131,6 +126,32 @@ export function RoutingPage({
       )}
     </SettingsPage>
   );
+}
+
+/** The page in Settings: Rust's table and models, a change saved through the routing op and settled on its reply [C4, D30]. */
+export function RoutingSettings() {
+  const online = Boolean(useDaemon().daemon);
+  const [value, setValue] = useState<Routing | null>(null);
+  const [groups, setGroups] = useState<ModelGroup[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!online) return;
+    setError(null);
+    Promise.all([run(["routing"]), run(["models"])]).then(
+      ([table, models]) => {
+        setValue(table as Routing);
+        setGroups(asGroups(models.groups));
+      },
+      (cause) => setError(errorText(cause)),
+    );
+  }, [online]);
+  const save = (next: Routing) =>
+    run(["routing", "set", JSON.stringify({ rows: next.rows, rules: next.rules, review: next.review })]).then((back) => {
+      setValue(back as Routing);
+      return back as Routing;
+    });
+  // No review switch until 4.10 wires it [D2079].
+  return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} />;
 }
 
 /** "✻ Opus 5.5 · High": the agent's mark, the model, then its effort after a dot (no effort: just the model). */
@@ -157,7 +178,7 @@ function KindRow({
   title,
   icon: Icon,
   order,
-  rules,
+  now,
   groups,
   open,
   onToggle,
@@ -166,14 +187,13 @@ function KindRow({
   title: string;
   icon: ComponentType<IconProps>;
   order: Entry[];
-  rules: readonly Rule[];
+  now: Entry | null;
   groups: ModelGroup[];
   open: boolean;
   onToggle: () => void;
   onSave: (order: Entry[]) => void;
 }) {
   const names = order.map((entry) => named(groups, entry.agent, entry.model));
-  const now = order.find((entry) => !rules.some((rule) => refuses(rule, entry, groups)));
   const who = `Your order · ${names.join(", then ")}`;
   const line = order.length === 0 ? "Your order · empty, so it can't start" : now ? who : `${who} · Your rules keep ${names.join(" and ")} out, so it can't start`;
   const Chevron = open ? ChevronUp : ChevronRight;
