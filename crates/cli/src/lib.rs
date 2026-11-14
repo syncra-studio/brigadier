@@ -196,6 +196,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let fresh = !core::session_dir(data, id).join("session.json").exists();
             let spec = if fresh {
+                core::share::one_local(data, project.as_ref(), &spec)?;
                 core::create(data, &accounts::starting(data, spec))?
             } else {
                 core::load(data, id)?

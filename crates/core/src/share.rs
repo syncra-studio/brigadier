@@ -2,8 +2,10 @@
 //! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], and who lands its work
 //! [D1082].
 
+use crate::projects::Project;
 use crate::{Spec, fork, ids, load, worktrees};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// A folder as the same place: canonical while it exists, as recorded while it's freed.
@@ -21,6 +23,35 @@ pub fn in_folder(data: &Path, folder: &Path, except: Option<&str>) -> Vec<Spec> 
         .collect();
     all.sort_by(|a, b| (a.created, &a.id).cmp(&(b.created, &b.id)));
     all
+}
+
+/// Refuses new session `spec` in its project's own folder while another unarchived session works
+/// there: one Local checkout session at a time [D306].
+pub fn one_local(data: &Path, project: Option<&Project>, spec: &Spec) -> io::Result<()> {
+    let Some(folder) = project.map(|p| Path::new(&p.folder)) else {
+        return Ok(());
+    };
+    if key(folder) != key(Path::new(&spec.cwd)) {
+        return Ok(());
+    }
+    let mut others = in_folder(data, folder, Some(&spec.id)).into_iter();
+    match others.find(|o| crate::session::lifecycle(&o.dir).0.is_none()) {
+        Some(o) => Err(io::Error::other(format!(
+            "\"{}\" works in this project's local checkout. Start in a new worktree, or archive it first.",
+            title(&o)
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// Whether `spec` holds its project's own folder, unarchived, so no other session may start there
+/// [D306].
+pub fn holds_local(spec: Option<&Spec>, projects: &[Project]) -> bool {
+    spec.is_some_and(|s| {
+        (projects.iter())
+            .any(|p| s.project.as_ref() == Some(&p.id) && Path::new(&p.folder) == Path::new(&s.cwd))
+            && crate::session::lifecycle(&s.dir).0.is_none()
+    })
 }
 
 pub fn others(data: &Path, spec: &Spec) -> Vec<Spec> {

@@ -259,9 +259,7 @@ impl Index {
                 e.orphaned_since = None;
             }
             let works = e.error.is_none() && fold::works(&f.fold, &live);
-            if e.spec.is_none() {
-                e.spec = core::load(&self.data, id).ok();
-            }
+            e.spec = e.spec.take().or_else(|| core::load(&self.data, id).ok());
             let project = e
                 .spec
                 .as_ref()
@@ -311,6 +309,8 @@ impl Index {
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
+            // It holds its project's own folder: Local checkout can't start there again [D306].
+            row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));
             row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
             // How full its context is, and a rebirth due now [D88, D108].
             row["context"] = json!(f.fold.context);

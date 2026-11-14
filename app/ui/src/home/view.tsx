@@ -5,9 +5,11 @@ import { SharedComposer } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
+import { ChipContext, ComposerChip } from "../components/composer/chip";
 import { NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
 import { showToast } from "../components/toast";
+import { openThread } from "../daemon";
 import { BrigadierMark } from "../onboarding/mark";
 import { daemonRun } from "../session/composer";
 import { HOME_DRAFT } from "../session/draft";
@@ -46,6 +48,8 @@ export type HomeProps = {
   onNoProject: () => void;
   workIn: WorkIn;
   onWorkIn: (next: WorkIn) => void;
+  /** The session already in the project's own folder, Rust's: Local checkout waits for a worktree [D306]. */
+  localHolder?: { id: string; title: string };
   /** The project's branches and worktrees. */
   repo: RepoState;
   /** The base branch picked here; null: the checked-out one [D392]. */
@@ -87,7 +91,8 @@ export function HomeView(props: HomeProps) {
   const [empty, setEmpty] = useState(() => !props.initial || isEmpty(props.initial));
   const noModel = props.groups !== null && !props.model;
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
-  const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : undefined;
+  const holder = project ? props.localHolder : undefined;
+  const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : holder ? "Start in a new worktree" : undefined;
   const field = useRef<ComposerFieldHandle>(null);
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
   const typed = useRef(props.initial?.parts ?? []);
@@ -163,6 +168,27 @@ export function HomeView(props: HomeProps) {
                       }
                     >
                       No model is available.
+                    </NoticeRow>
+                  </ul>
+                </RailItem>
+              )}
+              {holder && (
+                <RailItem label="Notices">
+                  <ul aria-live="polite">
+                    <NoticeRow
+                      level="warning"
+                      subject={
+                        <ChipContext value={{ onOpen: (_, id) => openThread(id), commands: new Map() }}>
+                          <ComposerChip chip={{ kind: "mention", type: "chat", id: holder.id, label: holder.title }} />
+                        </ChipContext>
+                      }
+                      action={
+                        <Button variant="link-blue" size={null} onClick={() => props.onWorkIn("worktree")}>
+                          New worktree
+                        </Button>
+                      }
+                    >
+                      works in the local checkout. Start this session in a new worktree.
                     </NoticeRow>
                   </ul>
                 </RailItem>

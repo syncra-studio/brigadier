@@ -38,6 +38,8 @@ export type Row = {
   background_ran?: boolean;
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
+  /** It holds its project's own folder, unarchived: Local checkout can't start there again [D306]. */
+  local?: boolean;
   /** A note's side chat: shown in its note's tab, never as a row, a notice or in the Dock's count [D281]. */
   noteChat?: boolean;
   /** The Brigade session that started this one [D189]. */

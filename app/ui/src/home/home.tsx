@@ -122,6 +122,7 @@ export function HomeDraft() {
           openAddProject(path);
         }}
         workIn={draft.workIn}
+        localHolder={draft.workIn === "local" && id ? rows?.find((row) => row.project === id && row.local) : undefined}
         onWorkIn={(workIn) => setHomeDraft({ workIn })}
         repo={repo}
         base={base}
