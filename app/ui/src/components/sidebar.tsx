@@ -3,7 +3,6 @@ import {
   createContext,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
-  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -15,7 +14,6 @@ import {
 
 import { matches } from "../shortcuts";
 import { cx } from "./cx";
-import { createPeek, PEEK_EXIT_MS, type Peek, type PeekPhase, type PeekZone } from "./sidebar-peek";
 import { TooltipProvider } from "./tooltip";
 
 /*
@@ -26,11 +24,6 @@ import { TooltipProvider } from "./tooltip";
  * window it collapses by itself, and comes back once there is room. While `keepOpen` it stays expanded.
  *
  * It holds nothing: open, width and collapse come in, and changes go out (the app remembers them).
- *
- * Collapsed, it peeks: resting the pointer on anything marked `data-sidebar-peek-trigger` (the strip's
- * mark), or on the window's start edge while hidden, floats the expanded panel over the content until
- * the pointer leaves it (sidebar-peek.ts has the timing). It never takes focus; Escape, a click outside,
- * resizing the window or `navigationKey` changing put it away, and it doesn't open under a menu or dialog.
  */
 
 export type SidebarCollapse = "strip" | "hidden";
@@ -50,8 +43,6 @@ type SidebarContextProps = {
   onWidthChange: (width: number) => void;
   /** Whether it can collapse here (not while held open). */
   canToggle: boolean;
-  /** The collapsed panel floating over the content: up, playing its exit, or not shown. */
-  peek: PeekPhase;
 };
 
 const SidebarContext = createContext<SidebarContextProps | null>(null);
@@ -74,109 +65,6 @@ function subscribeResize(onChange: () => void) {
 }
 const isNarrow = () => innerWidth < tokenPx("--spacing-narrow-window");
 
-/**
- * A menu, popover or dialog is in use (focus is in it): the peek neither opens nor closes under it. Focus,
- * not presence, so a popup merely shown doesn't count.
- */
-function overlayOpen() {
-  return document.activeElement?.closest('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]') != null;
-}
-
-/** After the window is resized, the peek waits this long before it can open again. */
-const RESIZE_SETTLE_MS = 300;
-
-/** What a pointer event is over, for this sidebar's peek (its own trigger and panel, not another sidebar's). */
-function peekZone(event: PointerEvent, own: Element | null): PeekZone {
-  const target = event.target instanceof Element && own?.contains(event.target) ? event.target : null;
-  if (target?.closest("[data-sidebar-peek-panel]")) return "panel";
-  // Only a resting mouse: not a touch, not a drag passing by. A trigger out of use (inert) doesn't count.
-  const trigger = target?.closest("[data-sidebar-peek-trigger]");
-  if (event.pointerType === "mouse" && event.buttons === 0 && trigger && !trigger.closest("[inert]")) return "trigger";
-  return "outside";
-}
-
-/** The peek's pointer and keyboard wiring. `blocked` says whether it may open now. */
-function usePeek(
-  wrapper: RefObject<HTMLDivElement | null>,
-  blocked: () => boolean,
-  open: boolean,
-  navigationKey: string | undefined,
-): PeekPhase {
-  const [phase, setPhase] = useState<PeekPhase>("closed");
-  const peek = useRef<Peek | null>(null);
-  const isBlocked = useRef(blocked);
-  useEffect(() => {
-    isBlocked.current = blocked;
-  }, [blocked]);
-
-  useEffect(() => {
-    const fine = matchMedia("(hover: hover) and (pointer: fine)");
-    const still = matchMedia("(prefers-reduced-motion: reduce)");
-    let resizedAt = -Infinity;
-    const controller = createPeek({
-      onChange: (next) => {
-        // Put away while focus is inside, it hands focus to the sidebar toggle, not to nowhere.
-        const card = wrapper.current?.querySelector("[data-sidebar-peek-panel]");
-        if (next !== "open" && card?.contains(document.activeElement)) {
-          document.querySelector<HTMLElement>("[data-slot=sidebar-toggle]")?.focus({ preventScroll: true });
-        }
-        setPhase(next);
-      },
-      canOpen: () => fine.matches && !isBlocked.current() && performance.now() - resizedAt > RESIZE_SETTLE_MS && !overlayOpen(),
-      holdOpen: overlayOpen,
-      exitMs: () => (still.matches ? 0 : PEEK_EXIT_MS),
-    });
-    peek.current = controller;
-    const onPointer = (event: PointerEvent) => controller.point(peekZone(event, wrapper.current));
-    const onLeave = () => controller.point("outside");
-    const onPointerDown = (event: PointerEvent) => {
-      if (controller.phase() !== "open" || overlayOpen()) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target && wrapper.current?.contains(target) && target.closest("[data-sidebar-peek-panel], [data-sidebar-peek-trigger]")) return;
-      controller.dismiss();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      // A menu or dialog takes its own Escape first.
-      if (event.key !== "Escape" || event.defaultPrevented || overlayOpen()) return;
-      if (controller.phase() === "open") controller.dismiss();
-    };
-    const onResize = () => {
-      resizedAt = performance.now();
-      controller.dismiss();
-    };
-    document.addEventListener("pointermove", onPointer, { passive: true });
-    document.addEventListener("pointerover", onPointer, { passive: true });
-    document.documentElement.addEventListener("pointerleave", onLeave);
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    addEventListener("resize", onResize);
-    return () => {
-      controller.dispose();
-      peek.current = null;
-      document.removeEventListener("pointermove", onPointer);
-      document.removeEventListener("pointerover", onPointer);
-      document.documentElement.removeEventListener("pointerleave", onLeave);
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-      removeEventListener("resize", onResize);
-    };
-  }, [wrapper]);
-
-  // Opened for real, it is the panel itself again.
-  useEffect(() => {
-    if (open) peek.current?.reset();
-  }, [open]);
-  // Going anywhere else puts it away.
-  const seenKey = useRef(navigationKey);
-  useEffect(() => {
-    if (seenKey.current === navigationKey) return;
-    seenKey.current = navigationKey;
-    peek.current?.dismiss();
-  }, [navigationKey]);
-
-  return open ? "closed" : phase;
-}
-
 export function SidebarProvider({
   open: wideOpen,
   onOpenChange,
@@ -185,7 +73,6 @@ export function SidebarProvider({
   collapse = "strip",
   onCollapseChange = () => {},
   keepOpen = false,
-  navigationKey,
   className,
   children,
   ...props
@@ -200,7 +87,6 @@ export function SidebarProvider({
   collapse?: SidebarCollapse;
   onCollapseChange?: (collapse: SidebarCollapse) => void;
   keepOpen?: boolean;
-  navigationKey?: string;
 }) {
   // In a narrow window it collapses, and the toggle opens it only until the window changes again.
   const narrow = useSyncExternalStore(subscribeResize, isNarrow);
@@ -221,9 +107,6 @@ export function SidebarProvider({
   );
   const toggleSidebar = useCallback(() => setOpen(!open), [setOpen, open]);
   const [resizing, setResizing] = useState(false);
-  const peekBlocked = useCallback(() => open || resizing, [open, resizing]);
-  const wrapper = useRef<HTMLDivElement>(null);
-  const peek = usePeek(wrapper, peekBlocked, open, navigationKey);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -238,15 +121,14 @@ export function SidebarProvider({
   const hidden = !open && collapse === "hidden";
   const state = open ? "expanded" : "collapsed";
   const context = useMemo<SidebarContextProps>(
-    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen, peek }),
-    [state, open, collapse, onCollapseChange, hidden, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen, peek],
+    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen }),
+    [state, open, collapse, onCollapseChange, hidden, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen],
   );
 
   return (
     <SidebarContext.Provider value={context}>
       <TooltipProvider delay={0}>
         <div
-          ref={wrapper}
           data-slot="sidebar-wrapper"
           data-state={state}
           data-collapse={hidden ? "hidden" : "strip"}
@@ -264,7 +146,6 @@ export function SidebarProvider({
 /**
  * The panel: a floating card inset from the window [new-design], its top row dragging the window. The expanded
  * contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is shared by both, below them.
- * Collapsed or hidden, the expanded contents can peek at the window's start, with the foot, over the strip.
  */
 export function SidebarPanel({
   strip,
@@ -273,7 +154,7 @@ export function SidebarPanel({
   children,
   ...props
 }: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
-  const { open, hidden, resizing, peek } = useSidebar();
+  const { open, hidden, resizing } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
       <div
@@ -309,13 +190,6 @@ export function SidebarPanel({
         </div>
       </div>
       {open && <SidebarResizeHandle />}
-      {peek !== "closed" && (
-        <SidebarPeek closing={peek === "closing"} foot={foot}>
-          {children}
-        </SidebarPeek>
-      )}
-      {/* Hidden, the window's start edge peeks it. */}
-      {hidden && <div aria-hidden data-sidebar-peek-trigger className="fixed start-0 top-tab-bar bottom-0 z-20 w-sidebar-peek-edge" />}
     </div>
   );
 }
@@ -370,33 +244,5 @@ function SidebarResizeHandle() {
     >
       <span className="w-px bg-input opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
     </div>
-  );
-}
-
-/**
- * The collapsed panel peeking: its expanded contents over the strip and the content, which never moves for
- * it, each exactly where it sits expanded (or, hidden, on a card at the window's start). It fades in and
- * out without moving, so the mark stays put (at once with Reduce Motion).
- */
-function SidebarPeek({ closing, foot, children }: { closing: boolean; foot: ReactNode; children: ReactNode }) {
-  const context = useSidebar();
-  const expanded = useMemo<SidebarContextProps>(() => ({ ...context, open: true, state: "expanded" }), [context]);
-  return (
-    <SidebarContext.Provider value={expanded}>
-      <div
-        inert={closing}
-        data-slot="sidebar-peek"
-        data-sidebar-peek-panel
-        className={cx(
-          "sidebar-panel-width absolute inset-y-0 start-0 z-40 flex flex-col px-1 pt-2 pb-1 motion-reduce:animate-none",
-          closing ? "pointer-events-none animate-peek-out" : "animate-peek-in",
-        )}
-      >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground shadow-overlay ring-1 ring-glass-stroke ring-inset">
-          <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
-          {foot}
-        </div>
-      </div>
-    </SidebarContext.Provider>
   );
 }

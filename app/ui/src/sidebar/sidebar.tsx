@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavList, NavRow, NavSection } from "../components/nav";
@@ -9,7 +8,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
@@ -370,18 +369,17 @@ function ProjectRow({
 }
 
 /**
- * The collapsed rail [new-design]: under the traffic lights the logo (resting on it peeks the panel), New chat and
- * Search, a rule, then the lists (`children`). The sidebar toggle is the History pill's; a click on the logo opens it too.
+ * The collapsed rail [new-design]: the logo, New chat and Search, a rule, then the lists (`children`). The sidebar
+ * toggle is the History pill's; a click on the logo opens it too, its glyph showing the way while hovered.
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
-  const { setOpen, peek } = useSidebar();
+  const { setOpen } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-3 pt-11.25 win:pt-1.25">
-      {/* Above the peek it opens, so a click on the logo still opens the sidebar, as the old strip's mark did; the peek
-          draws its own logo, so this one hides while it shows. */}
-      <button type="button" aria-label="Show sidebar" data-sidebar-peek-trigger onClick={() => setOpen(true)} className="relative z-50 flex h-7.5 w-9 cursor-pointer items-center justify-center rounded-icon-button text-foreground focus-visible:focus-ring">
-        <BrigadierMark className={cx("size-6", peek !== "closed" && "invisible")} />
-      </button>
+      <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
+        <BrigadierMark className="size-5 group-hover/mark:hidden group-focus-visible/mark:hidden" />
+        <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
+      </TooltipIconButton>
       <div className="flex flex-col items-center gap-0.5">
         <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
           <ComposeEditSquare />

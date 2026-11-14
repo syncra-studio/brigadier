@@ -128,7 +128,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} navigationKey={hash} className="ps-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset">
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />
