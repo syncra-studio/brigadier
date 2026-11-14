@@ -39,6 +39,22 @@ function layoutOf(width: number): Layout {
   return (width - column) / 2 < BESIDE_FROM * rem ? "shift" : "beside";
 }
 
+/**
+ * The pane's width once the side panels easing beside it (sidebar-motion) reach theirs: a fold lays the card out for
+ * where it ends from its first frame, so the column and the card move with the fold, not jump midway [D45, D49].
+ */
+function settledWidth(pane: Element, width: number) {
+  let left = 0;
+  for (const panel of document.querySelectorAll(".sidebar-motion")) {
+    // A panel's own inner card eases inside it, clipped: only the outermost one takes the pane's room.
+    if (panel.contains(pane) || panel.parentElement?.closest(".sidebar-motion")) continue;
+    const easing = panel.getAnimations().find((each) => each instanceof CSSTransition && each.transitionProperty === "width");
+    const to = easing?.effect instanceof KeyframeEffect ? easing.effect.getKeyframes().at(-1)?.width : undefined;
+    if (typeof to === "string") left += panel.getBoundingClientRect().width - Number.parseFloat(to);
+  }
+  return width + left;
+}
+
 /** Per owner: `pinned`, the user's show or hide, which holds at every width; `floating`, shown over the thread where it floats. */
 type Card = { pinned: boolean; floating: boolean; layout: Layout | null };
 const OPENED: Card = { pinned: true, floating: false, layout: null };
@@ -151,7 +167,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       const resized = innerWidth !== windowWidth;
       windowWidth = innerWidth;
       const before = cardOf(owner);
-      const layout = layoutOf(width);
+      const layout = layoutOf(settledWidth(element, width));
       // On the element at once, for CSS: the column's move and the card's hiding land in this frame, not the next.
       element.dataset.summary = layout;
       // A shown card stays shown as the window narrows, floating; a side panel narrowing the pane is moving on to
@@ -230,10 +246,9 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       className={cx(
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
-        // As the old app: the reading column glides aside and takes its narrower width at once. Back, it widens as it
-        // glides home, so it never runs under the sidebar meanwhile (a side panel opening).
+        // As the old app: the reading column glides aside, narrowing, and back, with the card and a fold as one.
         "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
-        settled && "motion-safe:reading-column:transition-all motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift motion-safe:summary-shift:reading-column:transition-transform",
+        settled && "reading-column:summary-shift-motion",
       )}
     >
       {children}

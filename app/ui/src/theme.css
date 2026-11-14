@@ -511,11 +511,9 @@
 
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-popup: ease;
-  /* The sidebar opening and closing: a spring. */
-  --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1.001, 1.001, 1.002, 1.001, 1.001, 1);
-  /* The summary card's motion, the old app's springs: the thread's column moving aside, the card easing in and out. */
-  --ease-summary-shift: linear(0, 0.055, 0.177, 0.322, 0.463, 0.589, 0.694, 0.779, 0.844, 0.893, 0.929, 0.954, 0.972, 0.983, 0.991, 0.996, 1);
-  --ease-summary-card: linear(0, 0.109, 0.309, 0.503, 0.658, 0.773, 0.852, 0.906, 0.941, 0.963, 0.978, 0.986, 0.992, 0.995, 0.997, 0.998, 1);
+  /* The sidebar and the right panels opening and closing, and what moves with them (the thread's column, the summary
+     card): one smooth ease out, the old spring without its bounce [D49]. */
+  --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1 75%, 1);
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
@@ -1476,15 +1474,26 @@
 @utility summary-card-motion {
   transition-property: opacity, translate, scale, visibility;
   transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-summary-card);
+  transition-timing-function: var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
 }
 
-/* The sidebar's column easing between its widths on a spring; still while it is dragged. */
+/* The reading column moving aside for the pinned card and back, narrowing as it goes: with the card, and with a fold
+   when a panel's width is what makes the room [D45, D49]. */
+@utility summary-shift-motion {
+  transition-property: translate, max-width;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* The sidebar's column easing between its widths; still while it is dragged. */
 @utility sidebar-motion {
-  transition-property: width, padding-top;
+  transition-property: width;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
   &[data-resizing] {
