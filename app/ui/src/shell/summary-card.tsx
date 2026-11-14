@@ -65,7 +65,7 @@ export function useCardToggle(owner: string) {
 }
 
 // The card itself, pinned or floating.
-// The new design's floating card: #222224, 18px corners, the glass edge.
+// The new design's floating card: the card colour, the panel's corners, the glass edge.
 const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
 
 /** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
