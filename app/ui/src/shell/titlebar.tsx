@@ -23,9 +23,22 @@ const MOUSE_FORWARD = 4;
 // An empty listbox is no menu: a note's editor keeps one, Lexical's typeahead anchor, while its / menu is shut [D291].
 export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]:not(:empty)') !== null;
 
-/** Back, Forward and the sidebar toggle at a fixed spot on the traffic lights' line; they stay put while the sidebar moves. */
+/** The open sidebar's x for the traffic lights, the strip's, and closed's: each in its own top row [new-design]. */
+const LIGHTS_X = { open: 24, strip: 14, hidden: 20 };
+
+/**
+ * The History pill: Back, Forward and the sidebar toggle, on the traffic lights' line, at the sidebar card's top end
+ * while it is open, else first in the tab bar [new-design]. The toggle steps open, strip, closed, and open again.
+ */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
-  const { open, toggleSidebar, canToggle } = useSidebar();
+  const { open, setOpen, collapse, setCollapse, canToggle } = useSidebar();
+  const mode = open ? "open" : collapse === "hidden" ? "hidden" : "strip";
+  useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X[mode]), [mode]);
+  const toggleSidebar = () => {
+    if (mode === "open") setCollapse("strip");
+    if (mode === "strip") setCollapse("hidden");
+    setOpen(mode === "hidden");
+  };
   const forward = ahead.use();
   const page = settingsPageOf(hash);
   const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") ? "" : null;
@@ -61,7 +74,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       if (event.type === "mouseup") step(event.button === MOUSE_BACK ? -1 : 1);
     };
     const offMenu = window.brigadier?.onMenu((command) => {
-      if (command === "toggle-sidebar") toggleSidebar();
+      if (command === "toggle-sidebar") setOpen(!open);
       if (command === "back") step(-1);
       if (command === "forward") step(1);
     });
@@ -76,19 +89,22 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     };
   });
   return (
-    <div className="titlebar-nav app-no-drag absolute start-titlebar-start top-0 z-20 flex h-titlebar items-center gap-1.5">
+    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 items-center rounded-capsule bg-control px-0.75 ring-1 ring-glass-stroke ring-inset">
       <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
+        <TooltipIconButton look="pill" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />
         </TooltipIconButton>
-        <TooltipIconButton look="toolbar" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
+        <TooltipIconButton look="pill" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={stepForward}>
           <ArrowRight />
         </TooltipIconButton>
-        {/* Its name says which way it goes; aria-expanded would draw the toolbar look's open fill. Settings holds the panel open, so it has none [D34]. */}
+        {/* Its name says what a click does; aria-expanded would draw the toolbar look's open fill. Settings holds the panel open, so it has none [D34]. */}
         {canToggle && (
-          <TooltipIconButton look="toolbar" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
-            {open ? <Sidebar /> : <SidebarFloatingLeft />}
-          </TooltipIconButton>
+          <>
+            <span aria-hidden className="mx-1 h-4 w-px bg-divider" />
+            <TooltipIconButton look="toolbar" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+              {open ? <Sidebar /> : <SidebarFloatingLeft />}
+            </TooltipIconButton>
+          </>
         )}
       </TitlebarTips>
     </div>

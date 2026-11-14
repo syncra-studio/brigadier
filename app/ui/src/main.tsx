@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
-import { SidebarPanel, SidebarProvider } from "./components/sidebar";
+import { type SidebarCollapse, SidebarPanel, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
 import { hhmm } from "./thread/words";
@@ -118,6 +118,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
   const { daemon, projects } = useDaemon();
   const [open, setOpen] = useStored("sidebar.open", true);
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
+  const [collapse, setCollapse] = useStored<SidebarCollapse>("sidebar.collapse", "strip");
   useSeen(rows?.find((row) => row.id === active));
   return (
     <div
@@ -127,9 +128,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
-      <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined} navigationKey={hash} className="ps-surface-inset pb-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} navigationKey={hash} className="ps-surface-inset">
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />
@@ -148,7 +147,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         )}
-        <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col pe-surface-inset pb-surface-inset">{children}</div>
         <TitlebarNav hash={hash} rows={rows} />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}

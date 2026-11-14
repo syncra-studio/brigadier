@@ -12,7 +12,8 @@ import { useDaemon } from "../daemon";
 import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { openSettings } from "../settings/shell";
-import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
+import { BarChart, ChevronRight, FeedbackGlyph, Lightbulb, Settings } from "../icons";
+import { openFeedback } from "../feedback/dialog";
 import { keysOf } from "../shortcuts";
 import { UpdatesRow } from "./updates";
 import { type Limit, type SwitchAgent, loadAccounts, useAccounts } from "../accounts/api";
@@ -234,6 +235,10 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
     <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} onClick={() => openSettings("general")}>
       <Settings />
     </TooltipIconButton>,
+    // Feedback sits in the foot now, after Settings [new-design].
+    <TooltipIconButton key="feedback" look="strip" side={open ? "top" : "right"} tooltip="Send Feedback" onClick={() => openFeedback()}>
+      <FeedbackGlyph />
+    </TooltipIconButton>,
     <KeepAwakeMenu key="awake" />,
     <UsageMenu key="usage" />,
     <UpdatesRow key="updates" />,
@@ -242,7 +247,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
       <div key="archived" inert={open} className={cx("flex flex-col items-center transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
         {archived}
         {/* Set apart from the icons under it by the titlebar's rule, laid flat [D426]. */}
-        <span aria-hidden className="strip-rule my-1.5" />
+        <span aria-hidden className="strip-rule my-2.5" />
       </div>
     ),
   ];
@@ -250,7 +255,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   // The row is its final width from the start, or it would wrap while the panel widens.
   return (
     <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} className={cx("flex px-2 py-2", open ? "sidebar-panel-width relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col gap-px")}>
+      <div ref={foot} className={cx("flex px-2 pt-2", open ? "sidebar-card-width relative flex-row flex-wrap items-center gap-0.5 pb-2" : "absolute inset-x-0 bottom-0 flex-col items-center gap-0.5 pb-2.5")}>
         {open ? icons : icons.toReversed()}
       </div>
     </div>

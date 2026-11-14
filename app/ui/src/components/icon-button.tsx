@@ -12,7 +12,7 @@ const TOOLBAR = cx(
 
 // A sidebar strip or foot icon: a row tall, filled while hovered, pressed or while its menu is open.
 const STRIP = cx(
-  "relative flex min-w-8 gap-1.5 text-strip-foreground transition-all motion-safe:active:scale-press",
+  "strip-button relative flex gap-1.5 text-strip-foreground transition-all motion-safe:active:scale-press",
   "hover:bg-fill hover:text-foreground aria-expanded:bg-fill aria-expanded:text-foreground",
   "aria-pressed:bg-fill aria-pressed:text-foreground",
 );
@@ -28,7 +28,7 @@ export type TooltipIconButtonProps = ButtonProps & {
    * (the strip's look, outlined and round-ended, for the foot's update pill) and `chip-tall` (the same,
    * standing up) take their tip timing from the provider around them (TitlebarTips, the sidebar).
    */
-  look?: "ghost" | "toolbar" | "strip" | "chip" | "chip-tall";
+  look?: "ghost" | "toolbar" | "strip" | "chip" | "chip-tall" | "pill" | "round";
   /** Switched on (aria-pressed). */
   pressed?: boolean;
   /** A small dot on the icon, in this background class ("bg-warning"). */
@@ -52,7 +52,7 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   const ghost = look === "ghost";
-  const flat = look === "strip" || look === "chip" || look === "chip-tall";
+  const flat = look === "strip" || look === "chip" || look === "chip-tall" || look === "pill" || look === "round";
   const button = (
     <Button
       variant={flat ? null : (variant ?? "ghost")}
@@ -62,8 +62,12 @@ export function TooltipIconButton({
       className={cx(
         ghost && (variant ?? "ghost") === "ghost" && "aria-expanded:bg-fill",
         look === "toolbar" && TOOLBAR,
-        flat && STRIP,
+        flat && look !== "round" && STRIP,
+        // A round glass button on its own (New tab): 30px, control-fill with the glass edge [new-design].
+        look === "round" && "flex size-7.5 items-center justify-center rounded-capsule bg-control text-foreground ring-1 ring-glass-stroke ring-inset hover:bg-fill-hover svg:size-icon-md motion-safe:active:scale-press",
         look === "strip" && "h-7.5 rounded-icon-button",
+        // A button inside a glass pill (History, the toolbar): 32 by 26 [new-design].
+        look === "pill" && "h-6.5 w-8 items-center justify-center rounded-icon-button disabled:opacity-disabled",
         look === "chip" && "h-7.5 rounded-capsule border border-border px-2",
         look === "chip-tall" && "flex-col rounded-capsule border border-border py-2",
         className,

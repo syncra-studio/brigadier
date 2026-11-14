@@ -58,13 +58,17 @@ export function Toolbar({ owner }: { owner: string }) {
   const [fresh] = useState(() => justStarted(owner));
   const enter = fresh && "motion-safe:animate-fade-in";
   const panel = !home || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
+  if (home && !panel) return null;
+  // One glass pill [new-design].
   return (
-    <TitlebarTips>
-      {!home && <ContextButton owner={owner} className={enter} />}
-      {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}
-      {panel && (
-        <RightPanelToggle owner={owner} className={enter} />
-      )}
-    </TitlebarTips>
+    <div className="app-no-drag flex h-7.5 shrink-0 items-center gap-0.5 rounded-capsule bg-control px-0.5 ring-1 ring-glass-stroke ring-inset">
+      <TitlebarTips>
+        {!home && <ContextButton owner={owner} className={enter} />}
+        {/* The left toggle's folded icon, mirrored; the panel itself mounts in right-panel.tsx [D410]. */}
+        {panel && (
+          <RightPanelToggle owner={owner} className={enter} />
+        )}
+      </TitlebarTips>
+    </div>
   );
 }

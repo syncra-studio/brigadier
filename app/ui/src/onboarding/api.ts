@@ -45,6 +45,10 @@ declare global {
       introFinish(fadeMs: number): Promise<void>;
       introRelease(): Promise<void>;
       onIntroEnded(listener: () => void): () => void;
+      /** The platform the window is drawn for: process.platform, or the dev flag's stand-in (BRIGADIER_FAKE_PLATFORM). */
+      platform: string;
+      /** Moves macOS's traffic lights to x (their y stays on the tab bar's centre line), as the sidebar opens, strips or closes. */
+      trafficLights(x: number): void;
     };
   }
 }

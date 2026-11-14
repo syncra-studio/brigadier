@@ -30,8 +30,8 @@ import { Toolbar } from "./toolbar";
 /** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
 const CLOSING_MS = 200;
 
-const TAB = "session-tab app-no-drag group/tab relative flex h-control-md min-w-0 items-center gap-1 rounded-session-tab ps-2.5 pe-1.75 select-none";
-const LOOK = (active: boolean) => (active ? "bg-fill shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
+const TAB = "session-tab app-no-drag group/tab relative flex h-6.5 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
+const LOOK = (active: boolean) => (active ? "bg-selection shadow-session-tab text-foreground ring-1 ring-glass-stroke ring-inset" : "text-toolbar-foreground hover:bg-fill");
 const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring";
 const TITLE = "session-tab-title min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
 // A press is a click until it moves: a drag that started on the press would take the click.
@@ -296,18 +296,6 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     };
   }, [active, count]);
 
-  // The rule before the toolbar shows once the tabs fill the bar.
-  const [gap, setGap] = useState<HTMLDivElement | null>(null);
-  const [full, setFull] = useState(false);
-  useLayoutEffect(() => {
-    if (!gap) return;
-    const measure = () => setFull(gap.getBoundingClientRect().width < 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(gap);
-    return () => observer.disconnect();
-  }, [gap]);
-
   const onKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "tab") return;
@@ -330,7 +318,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   };
 
   const newTab = (
-    <TooltipIconButton look="toolbar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className={cx("app-no-drag", !bare && "ms-0.5")} onClick={() => openTab(owner, "new")}>
+    <TooltipIconButton look="round" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
       <Plus />
     </TooltipIconButton>
   );
@@ -342,7 +330,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   // Home with no tab of its own has no tab bar, as the old app's untabbed draft: "+" leads the toolbar at the end [D39].
   if (bare)
     return (
-      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-titlebar shrink-0 items-center justify-end gap-1 pe-1">
+      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-tab-bar shrink-0 items-center justify-end gap-2 pt-3.5 pe-1">
         {reconnecting}
         {newTab}
         <Toolbar owner={owner} />
@@ -350,10 +338,11 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     );
 
   return (
-    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
+    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-tab-bar shrink-0 items-center gap-2 pt-3.5 pe-1">
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
-      <div className="session-tab-room flex min-w-0 flex-1 items-center gap-1 self-stretch">
-        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex min-w-0 items-center gap-0.5" onKeyDown={onKeys}>
+      <div className="session-tab-room flex min-w-0 flex-1 items-center gap-2 self-stretch">
+        {/* The tabs in one glass pill [new-design]. */}
+        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-0.5 ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys}>
           {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
           <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">
             {/* Held inside the strip, which is a tab high: it moves along the row only. */}
@@ -376,9 +365,8 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
         </div>
         {newTab}
         {reconnecting}
-        <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
+        <div className="min-w-0 flex-1 self-stretch" />
       </div>
-      <span aria-hidden data-hidden={!full || undefined} className="mx-0.5 h-4 w-px shrink-0 bg-fill transition-opacity data-hidden:opacity-0 motion-reduce:transition-none" />
       <Toolbar owner={owner} />
     </header>
   );

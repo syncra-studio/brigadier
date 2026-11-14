@@ -3,23 +3,22 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
+import { NavFold, NavList, NavRow, NavSection } from "../components/nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
-import { SidebarPanel, useSidebar } from "../components/sidebar";
+import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
-import { openFeedback } from "../feedback/dialog";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
 import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
-import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
+import { ArchivedFlyout, ChatsFlyout, NoProjects, PinnedFlyout, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, SessionRowItem } from "./row";
@@ -81,7 +80,7 @@ export function AppSidebar({
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
-  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "none");
+  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "project");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -203,41 +202,33 @@ export function AppSidebar({
     <SidebarPanel
       strip={
         <Strip onNewChat={onNewChat}>
+          {pinned.length > 0 && <PinnedFlyout pinned={pinned} {...listed} />}
           <ProjectsFlyout projects={byName} sessions={rest ?? []} {...listed} />
-          <ChatsFlyout pinned={pinned} chats={homeless} {...listed} />
+          <ChatsFlyout chats={homeless} {...listed} />
         </Strip>
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
-      mark={<BrigadierMark className="size-5 strip-mark-lit:invisible" />}
     >
-      <NavHeader
-        title={
-          <span className="-ms-0.5 flex items-center gap-2">
-            {/* The panel draws the logo over this space. */}
-            <span className="size-5 shrink-0" />
+      <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
+        {/* The card's top [new-design]: the traffic lights' row (the History pill sits at its end), the name, New chat, Search. */}
+        <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
+          <div className="h-7.5" />
+          <h1 className="flex h-7.5 items-center gap-2 ps-1.5 text-nav-title font-semibold">
+            <BrigadierMark className="size-5 shrink-0" />
             Brigadier
-          </span>
-        }
-        actions={
-          <>
-            <TooltipIconButton tooltip="Send Feedback" look="toolbar" side="bottom" onClick={() => openFeedback()}>
-              <FeedbackGlyph />
-            </TooltipIconButton>
-            <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
-              <MagnifyingGlassSmSearch />
-            </TooltipIconButton>
-          </>
-        }
-      />
-      <NavList className="mb-2 px-2">
-        <li>
-          <NavRow data-active={home || undefined} onClick={onNewChat}>
+          </h1>
+          <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
             <ComposeEditSquare />
             New chat
           </NavRow>
-        </li>
-      </NavList>
-      <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
+          <div className="flex h-7.5 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1">
+            <button type="button" aria-label="Search" title={`Search ${keysOf("search")[0]}`} onClick={openSearch} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 self-stretch text-label text-placeholder outline-none focus-visible:focus-ring">
+              <MagnifyingGlassSmSearch className="size-icon-sm shrink-0" />
+              Search
+            </button>
+            {view}
+          </div>
+        </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={list} className={LIST}>
             {rest === undefined ? (
@@ -254,7 +245,6 @@ export function AppSidebar({
                   title={grouping === "none" ? "Open" : "Projects"}
                   open={isOpen(grouping === "none" ? "open" : "projects")}
                   onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
-                  steadyEnd={view}
                   actions={
                     grouping === "project" && (
                       <Tooltip>
@@ -294,7 +284,7 @@ export function AppSidebar({
                 </NavSection>
                 {/* Sessions with no project (made before projects were records) [D224]. */}
                 {grouping === "project" && homeless.length > 0 && (
-                  <NavSection title="Chats without a project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                  <NavSection title="Chats" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
                     <NavList>{homeless.map((each) => row(each, {}))}</NavList>
                   </NavSection>
                 )}
@@ -378,26 +368,26 @@ function ProjectRow({
   );
 }
 
-/** The collapsed strip: the mark, which peeks the panel and opens it, New chat, Search and the lists (`children`). */
+/**
+ * The collapsed rail [new-design]: under the traffic lights the logo (resting on it peeks the panel), New chat and
+ * Search, a rule, then the lists (`children`). The sidebar toggle is the History pill's, never here.
+ */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
-  const { setOpen, peek } = useSidebar();
   return (
-    <div className="flex flex-col items-center gap-1 pt-2.75">
-      {/* Resting on its row peeks the panel, which stands in for a tooltip. */}
-      <div data-sidebar-peek-trigger className="flex w-full justify-center">
-        {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
-        <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" data-strip-mark className={cx("group/mark z-50", peek === "open" && "bg-fill text-foreground")} onClick={() => setOpen(true)}>
-          {/* The panel draws the logo over this space; hovered or focused, it gives way to this. */}
-          <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
+    <div className="flex flex-col items-center gap-3 pt-11.25">
+      <div data-sidebar-peek-trigger className="flex h-7.5 w-9 items-center justify-center text-foreground">
+        <BrigadierMark className="size-6" />
+      </div>
+      <div className="flex flex-col items-center gap-0.5">
+        <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
+          <ComposeEditSquare />
+        </TooltipIconButton>
+        <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
+          <MagnifyingGlassSmSearch />
         </TooltipIconButton>
       </div>
-      <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
-        <ComposeEditSquare />
-      </TooltipIconButton>
-      <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
-        <MagnifyingGlassSmSearch />
-      </TooltipIconButton>
-      {children}
+      <span aria-hidden className="h-px w-6 bg-divider" />
+      <div className="flex flex-col items-center gap-0.5">{children}</div>
     </div>
   );
 }

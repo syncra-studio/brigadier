@@ -39,6 +39,8 @@ type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
   collapse: SidebarCollapse;
+  /** Picks strip or hidden for when it collapses (the History pill's toggle steps through them). */
+  setCollapse: (collapse: SidebarCollapse) => void;
   hidden: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -181,6 +183,7 @@ export function SidebarProvider({
   width,
   onWidthChange,
   collapse = "strip",
+  onCollapseChange = () => {},
   keepOpen = false,
   navigationKey,
   className,
@@ -195,6 +198,7 @@ export function SidebarProvider({
   onWidthChange: (width: number) => void;
   /** Collapsed to a strip of icons, or hidden. */
   collapse?: SidebarCollapse;
+  onCollapseChange?: (collapse: SidebarCollapse) => void;
   keepOpen?: boolean;
   navigationKey?: string;
 }) {
@@ -234,8 +238,8 @@ export function SidebarProvider({
   const hidden = !open && collapse === "hidden";
   const state = open ? "expanded" : "collapsed";
   const context = useMemo<SidebarContextProps>(
-    () => ({ state, open, collapse, hidden, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen, peek }),
-    [state, open, collapse, hidden, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen, peek],
+    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen, peek }),
+    [state, open, collapse, onCollapseChange, hidden, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen, peek],
   );
 
   return (
@@ -258,19 +262,17 @@ export function SidebarProvider({
 }
 
 /**
- * The panel: its column's top (the titlebar strip) drags the window, the rest is the panel's own surface.
- * The expanded contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is
- * shared by both, below them. `mark` is the one logo above them all, so it never fades or remounts with them. Collapsed or hidden, the expanded contents can peek at the window's start,
- * with the foot, over the strip.
+ * The panel: a floating card inset from the window [new-design], its top row dragging the window. The expanded
+ * contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is shared by both, below them.
+ * Collapsed or hidden, the expanded contents can peek at the window's start, with the foot, over the strip.
  */
 export function SidebarPanel({
   strip,
   foot,
-  mark,
   className,
   children,
   ...props
-}: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode; mark?: ReactNode }) {
+}: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
   const { open, hidden, resizing, peek } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
@@ -279,14 +281,14 @@ export function SidebarPanel({
         data-resizing={resizing || undefined}
         className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
       >
-        <div className="flex h-full flex-col">
-          <div className="app-drag h-titlebar shrink-0" />
-          <div data-sidebar="sidebar" className={cx("flex min-h-0 flex-1 flex-col rounded-s-surface bg-background text-foreground", className)} {...props}>
+        <div data-resizing={resizing || undefined} className={cx("sidebar-motion flex h-full flex-col px-1 pt-2 pb-1", open ? "sidebar-panel-width" : "w-sidebar-strip")}>
+          <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground ring-1 ring-glass-stroke ring-inset", className)} {...props}>
+            <div aria-hidden className="app-drag absolute inset-x-0 top-0 h-tab-bar" />
             <div className="relative min-h-0 flex-1">
               <div
                 inert={!open}
                 className={cx(
-                  "sidebar-panel-width absolute inset-y-0 start-0 flex flex-col transition-opacity motion-reduce:transition-none",
+                  "sidebar-card-width absolute inset-y-0 start-0 flex flex-col transition-opacity motion-reduce:transition-none",
                   open ? "opacity-100" : "opacity-0",
                 )}
               >
@@ -295,31 +297,25 @@ export function SidebarPanel({
               <div
                 inert={open || hidden}
                 className={cx(
-                  "absolute inset-y-0 start-0 flex w-sidebar-strip flex-col transition-opacity motion-reduce:transition-none",
+                  "rail-icons absolute inset-0 flex flex-col transition-opacity motion-reduce:transition-none",
                   open || hidden ? "opacity-0" : "opacity-100",
                 )}
               >
                 {strip}
               </div>
             </div>
-            {foot}
+            <div className={cx(!open && "rail-icons")}>{foot}</div>
           </div>
         </div>
       </div>
       {open && <SidebarResizeHandle />}
       {peek !== "closed" && (
-        <SidebarPeek closing={peek === "closing"} hidden={hidden} foot={foot}>
+        <SidebarPeek closing={peek === "closing"} foot={foot}>
           {children}
         </SidebarPeek>
       )}
-      {/* Outside the panel's clip, above a peek, and through a click on the strip's button under it. */}
-      {mark && (
-        <div className={cx("pointer-events-none absolute start-3.5 top-titlebar z-50 mt-4 flex size-5 text-foreground transition-opacity motion-reduce:transition-none", hidden && peek !== "open" && "opacity-0")}>
-          {mark}
-        </div>
-      )}
       {/* Hidden, the window's start edge peeks it. */}
-      {hidden && <div aria-hidden data-sidebar-peek-trigger className="fixed start-0 top-titlebar bottom-0 z-20 w-sidebar-peek-edge" />}
+      {hidden && <div aria-hidden data-sidebar-peek-trigger className="fixed start-0 top-tab-bar bottom-0 z-20 w-sidebar-peek-edge" />}
     </div>
   );
 }
@@ -370,7 +366,7 @@ function SidebarResizeHandle() {
       }}
       onPointerUp={end}
       onPointerCancel={end}
-      className="group/resize absolute end-0 top-titlebar bottom-0 z-10 flex w-resize-handle translate-x-1/2 cursor-col-resize justify-center rtl:-translate-x-1/2"
+      className="group/resize absolute end-0 top-tab-bar bottom-0 z-10 flex w-resize-handle translate-x-1/2 cursor-col-resize justify-center rtl:-translate-x-1/2"
     >
       <span className="w-px bg-input opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
     </div>
@@ -382,7 +378,7 @@ function SidebarResizeHandle() {
  * it, each exactly where it sits expanded (or, hidden, on a card at the window's start). It fades in and
  * out without moving, so the mark stays put (at once with Reduce Motion).
  */
-function SidebarPeek({ closing, hidden, foot, children }: { closing: boolean; hidden: boolean; foot: ReactNode; children: ReactNode }) {
+function SidebarPeek({ closing, foot, children }: { closing: boolean; foot: ReactNode; children: ReactNode }) {
   const context = useSidebar();
   const expanded = useMemo<SidebarContextProps>(() => ({ ...context, open: true, state: "expanded" }), [context]);
   return (
@@ -392,15 +388,14 @@ function SidebarPeek({ closing, hidden, foot, children }: { closing: boolean; hi
         data-slot="sidebar-peek"
         data-sidebar-peek-panel
         className={cx(
-          "sidebar-panel-width absolute top-titlebar bottom-0 z-40 flex flex-col overflow-hidden bg-background text-foreground shadow-overlay motion-reduce:animate-none",
-          // Over the strip it is the expanded panel, its edge and shadow on the far side only. Hidden, it is a card.
-          "start-0 rounded-surface",
-          hidden ? "ring-1 ring-border" : "peek-edge border-e border-border",
+          "sidebar-panel-width absolute inset-y-0 start-0 z-40 flex flex-col px-1 pt-2 pb-1 motion-reduce:animate-none",
           closing ? "pointer-events-none animate-peek-out" : "animate-peek-in",
         )}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
-        {foot}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground shadow-overlay ring-1 ring-glass-stroke ring-inset">
+          <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+          {foot}
+        </div>
       </div>
     </SidebarContext.Provider>
   );
