@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { showToast } from "../components/toast";
-import { ask, type Row, useDaemon } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
 import { gitDone, gitFailed } from "../panel/notice";
-import { openPr } from "../panel/open";
 import { type AgentChip, chipFor } from "./agent-chip";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
-import { ChecksFailedRow } from "./thread-rows";
 import { type PrSend, type PullRequest, sendKey } from "./pull-requests";
 
 /** What the agent reads for a Send: the chip's facts, in full. */
@@ -159,27 +157,4 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       }}
     />
   );
-}
-
-/** The session's open PRs whose checks fail, as Rust's watch last read them [D1017]. */
-export const failing = (row: Row | undefined) => row?.prs?.prs.filter((pr) => pr.state === "open" && pr.health === "failed") ?? [];
-
-/**
- * The failing-checks rows at the thread's end, live from Rust's watch and never logged, so each goes once its checks
- * pass [D1017]. Send to agent leaves the PR tab's own Fix chip for the user to send [D1027].
- */
-export function ChecksFailedRows({ owner, row }: { owner: string; row: Row | undefined }) {
-  const chips = useChips(owner);
-  const offline = !useDaemon().daemon;
-  return failing(row).map((pr) => {
-    const checks = pr.failedChecks ?? [];
-    const added = chips.some((chip) => chip.kind === "agent" && chip.pr === pr.number && chip.key === "fix");
-    const onSend = () => {
-      if (added) return;
-      const chip: AgentChip = { id: "fix", kind: "fix", pr: pr.number, reasons: checks.length ? `${checks.join(", ")} failed` : "checks failed" };
-      const text = `Fix PR #${pr.number}${pr.url ? ` (${pr.url})` : ""}: its checks failed. Its failed checks: ${checks.join(", ") || "none named"}.`;
-      addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: "fix", pr: pr.number, chip, text });
-    };
-    return <ChecksFailedRow key={pr.number} number={pr.number} checks={checks} added={added} offline={offline} onSend={onSend} onOpen={() => openPr(owner, pr)} />;
-  });
 }

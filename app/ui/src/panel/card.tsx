@@ -6,8 +6,10 @@ import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
-import { Branch, ChevronDown } from "../icons";
-import { PullRequestOpen } from "../landing/icons";
+import { Branch, Check, ChevronDown } from "../icons";
+import type { AgentChip } from "../landing/agent-chip";
+import { PullRequestOpen, Sparkles } from "../landing/icons";
+import { addChip, useChips } from "./chips";
 import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
@@ -204,9 +206,16 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         >
           <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>
             {/* Rust's order, open first [D256]: the first 5, then the rest in the Pull requests tab. */}
-            {prs.slice(0, 5).map((pr) => (
-              <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
-            ))}
+            {prs.slice(0, 5).map((pr) =>
+              pr.state === "open" && pr.health === "failed" && session ? (
+                <div key={`${pr.repo ?? ""}#${pr.number}`} className="group/row relative min-w-0">
+                  <PrLine pr={pr} failing onClick={() => onPr?.(pr)} />
+                  <SendFix owner={session} pr={pr} />
+                </div>
+              ) : (
+                <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
+              ),
+            )}
             {prs.length > 5 && (
               <Line onClick={() => onPrs?.(prs)} className="text-muted-foreground hover:text-foreground">
                 {prs.length - 5} more
@@ -220,6 +229,33 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
       {workers}
       {pickers}
     </>
+  );
+}
+
+/**
+ * A failing PR's Send to agent, over its card row's end on hover as the Background rows' Stop: it leaves the PR tab's
+ * Fix chip above the composer and sends nothing [D261, D1027]; once it has, it reads Added.
+ */
+function SendFix({ owner, pr }: { owner: string; pr: Pr }) {
+  const added = useChips(owner).some((chip) => chip.kind === "agent" && chip.pr === pr.number && chip.key === "fix");
+  const checks = pr.failedChecks ?? [];
+  const send = () => {
+    const chip: AgentChip = { id: "fix", kind: "fix", pr: pr.number, reasons: checks.length ? `${checks.join(", ")} failed` : "checks failed" };
+    const text = `Fix PR #${pr.number}${pr.url ? ` (${pr.url})` : ""}: its checks failed. Its failed checks: ${checks.join(", ") || "none named"}.`;
+    addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: "fix", pr: pr.number, chip, text });
+  };
+  return (
+    <span
+      data-slot="summary-row-action"
+      className={cx(
+        "row-backing pointer-events-none absolute inset-y-0 end-0 flex items-center ps-4 opacity-0 transition-opacity",
+        "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100",
+      )}
+    >
+      <TooltipIconButton tooltip={added ? "Added" : "Send to agent"} aria-label={`Send #${pr.number}'s failed checks to agent`} disabled={added} className="shrink-0 rounded-icon-button text-row-foreground hover:text-foreground" onClick={send}>
+        {added ? <Check /> : <Sparkles />}
+      </TooltipIconButton>
+    </span>
   );
 }
 

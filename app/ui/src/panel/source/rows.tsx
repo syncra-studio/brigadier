@@ -2,7 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../../components/cx";
 import { InfoTip } from "../../components/thread/tip";
-import { Warning } from "../../icons";
+import { Warning, X } from "../../icons";
 import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "../../landing/icons";
 import { STATE_WORDS } from "../../landing/pr-words";
 import type { Pr } from "../types";
@@ -38,11 +38,18 @@ export const PR_LOOK = {
   merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
   closed: { Icon: PullRequestClosed, tint: "text-destructive" },
 };
-export function PrLine({ pr, onClick }: { pr: Pr; onClick?: () => void }) {
+/** A PR's card row; `failing` (Rust's read: its checks fail) ends it in a red ✗ before its state, hidden while the row's Send to agent shows [D261]. */
+export function PrLine({ pr, failing = false, onClick }: { pr: Pr; failing?: boolean; onClick?: () => void }) {
   const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
   const { Icon, tint } = PR_LOOK[state];
+  const end = (
+    <span className={cx("flex items-center gap-1.5", failing && "group-hover/row:invisible group-has-focus-visible/row:invisible")}>
+      {failing && <X aria-label="Checks failed" className="size-icon-sm text-destructive" />}
+      <span className={tint}>{STATE_WORDS[state]}</span>
+    </span>
+  );
   return (
-    <Line onClick={onClick} icon={<span className={cx("flex", tint)}><Icon /></span>} end={<span className={tint}>{STATE_WORDS[state]}</span>}>
+    <Line onClick={onClick} icon={<span className={cx("flex", tint)}><Icon /></span>} end={end}>
       {/* One from another repository says which, short [D213]. */}
       <span className="text-muted-foreground">
         {pr.repo && `${pr.repo.slice(pr.repo.indexOf("/") + 1)} `}#{pr.number}

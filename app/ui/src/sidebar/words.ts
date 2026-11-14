@@ -75,6 +75,8 @@ export function statusWords(row: SessionRow): string | null {
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
   // Answered, but its block stays open on its subagents [D118].
   if (row.mark === "working" && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS.working;
+  // Amber for a PR failing its checks, the session itself at rest [D261].
+  if (row.mark === "amber" && row.pr?.chip === "checks_failed" && !STATE_WORDS[row.state]) return "Checks failed";
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
 }

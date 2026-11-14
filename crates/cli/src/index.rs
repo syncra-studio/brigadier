@@ -6,7 +6,7 @@ use crate::owner;
 
 mod find;
 use brigadier_core::fold::{self, Owner};
-use brigadier_core::{self as core, Folded, adapters, norm, projects};
+use brigadier_core::{self as core, Folded, adapters, host::marked, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
 pub use find::find;
 use rusqlite::{Connection, OpenFlags, params};
@@ -243,7 +243,7 @@ impl Index {
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let mark = match &e.error {
                 Some(_) => Some("amber"),
-                None => fold::mark(&f.fold, &live, e.marks.seen, auto),
+                None => marked(fold::mark(&f.fold, &live, e.marks.seen, auto), &e.marks.pr),
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();

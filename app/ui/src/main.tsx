@@ -24,7 +24,6 @@ import { FolderDrop } from "./shell/folder-drop";
 import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
-import { ChecksFailedRows, failing } from "./landing/live";
 import { Demo } from "./session/Demo";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { ImageViewerHost } from "./components/image-viewer";
@@ -236,7 +235,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || sides || picking || failing(row).length > 0) && (
+                      (line || sending || starting || sides || picking) && (
                         <>
                           <StartingBubble id={id} />
                           <StartingSetup id={id} />
@@ -245,7 +244,6 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
                           <SentBubbles id={id} />
                           <PendingSideLines source={id} />
                           <PendingModelLine id={id} />
-                          <ChecksFailedRows owner={id} row={row} />
                         </>
                       )
                     }
