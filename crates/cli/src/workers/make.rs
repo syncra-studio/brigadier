@@ -266,7 +266,7 @@ pub(crate) fn begin(data: &Path, pid: &str, wid: &str) {
     thread::spawn(move || {
         if let Some(mut r) = record(&data, &pid, &wid).filter(|r| r.state == "starting") {
             let made = make(&data, &pid, &r);
-            let _family = family_lock(&data, &r.root);
+            let family = family_lock(&data, &r.root);
             // A stop while it was being made keeps its word: no result, never started.
             if record(&data, &pid, &wid).is_none_or(|now| now.state != "stopped") {
                 match made {
@@ -278,6 +278,9 @@ pub(crate) fn begin(data: &Path, pid: &str, wid: &str) {
                     }
                 }
                 let _ = save(&data, &pid, &r);
+                // Its result, past the family lock: a reviewer's takes `review.lock`, which is
+                // never taken under it.
+                drop(family);
                 if r.state == "failed" {
                     result::failed(&data, &pid, &r);
                 }
