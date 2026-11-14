@@ -280,15 +280,17 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
       data-state={open ? "expanded" : "collapsed"}
       data-width={width ?? undefined}
       data-beside={filesOpen ? px("--spacing-sidebar-min") : undefined}
-      className={cx("right-panel-width-source start-hairline relative flex h-full shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
+      className="right-panel-width-source relative flex h-full shrink-0"
     >
       <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
-        <div ref={content} className="right-panel-width flex h-full flex-col">
+        {/* A floating card as Files' [new-design]. */}
+        <div ref={content} className="right-panel-width flex h-full flex-col ps-1 pt-1.5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset">
           <Opens owner={owner}>
             {!opened && !agent && <PanelTabs active={tab} tabs={tabs} finishedWords={finishedWords(workers)} onSelect={(next) => show(owner, { ...shown, tab: next })} onClose={close} />}
             <div
               id="workers-panel-content"
-              className={cx("flex min-h-0 flex-1 flex-col overflow-clip bg-background transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
+              className={cx("flex min-h-0 flex-1 flex-col overflow-clip transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
             >
               {mounted &&
                 (opened ? (
@@ -302,6 +304,7 @@ export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (
                 ))}
             </div>
           </Opens>
+          </div>
         </div>
       </div>
       {open && (

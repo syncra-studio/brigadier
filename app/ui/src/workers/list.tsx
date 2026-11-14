@@ -26,7 +26,7 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
   onClose: () => void;
 }) {
   return (
-    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center gap-1 bg-background px-2">
+    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center gap-1 px-2 win:pe-toggles-clear">
       <TitlebarTips>
         {tabs.map((tab) => (
           <TooltipIconButton
