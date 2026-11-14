@@ -249,16 +249,27 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
-            control::send(
+            let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+            let reply = control::send(
                 data,
                 &spec,
                 text,
                 parts,
-                flag(args, "--cid"),
+                Some(&cid),
                 flag(args, "--backend"),
                 // A failed turn's message again, after its rewind: it replaces that attempt [D492].
                 flag(args, "--retry-of"),
-            )
+            )?;
+            // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
+            // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
+            if reply["error"] != "busy: a turn is running" {
+                return Ok(reply);
+            }
+            let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];
+            queued.extend(["--qid".into(), cid.clone()]);
+            queued.extend(args.iter().skip_while(|a| *a != "--parts").take(2).cloned());
+            queue::run(data, &queued)?;
+            Ok(json!({"ok": true, "result": "queued", "cid": cid}))
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
         "seen" => {

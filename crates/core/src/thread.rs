@@ -252,9 +252,7 @@ impl Thread {
                     row = Self::peer_item(from, text, ts, &item["cid"]);
                 }
                 row["steer"] = true.into();
-                // It folds with the work it steered: only the last reply stays under "Worked for" [D118].
-                let at = self.add(row);
-                self.below_steer(at);
+                self.steered(row, peer.is_some());
             }
         } else {
             self.content(item, kind, ts);

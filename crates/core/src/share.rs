@@ -99,11 +99,16 @@ pub fn owner<'a>(spec: &'a Spec, others: &'a [Spec]) -> &'a Spec {
         .unwrap_or(spec)
 }
 
-/// The session's name in a sentence.
+/// The session's name in a sentence: as its row's, the name given, else its first message's.
 pub fn title(spec: &Spec) -> String {
     fs::read_to_string(spec.dir.join("title"))
         .ok()
         .filter(|t| !t.trim().is_empty())
+        .or_else(|| {
+            let all = crate::archive::read(&spec.dir).ok()?;
+            let first = all.into_iter().find(|e| e.from == "user")?;
+            Some(crate::title::from(&first.text)).filter(|t| !t.is_empty())
+        })
         .unwrap_or_else(|| "Another session".into())
 }
 

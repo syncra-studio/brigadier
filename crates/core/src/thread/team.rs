@@ -15,12 +15,13 @@ impl Thread {
     }
 
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
-    pub(super) fn kept_row(&mut self, row: Value) {
+    pub(super) fn kept_row(&mut self, row: Value) -> usize {
         self.break_group();
         let at = self.add(row);
         if let Some(o) = self.open.as_mut() {
             o.kept.push(at as u64 + 1);
         }
+        at
     }
 
     /// The agent's to-do list: one row a turn, where it was first written, each update in its

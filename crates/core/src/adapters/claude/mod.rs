@@ -135,6 +135,12 @@ impl Adapter for Claude {
         false
     }
 
+    /// A message written to it mid-turn joins the turn that runs (its steer is that same message),
+    /// so only a steer goes then; taken as the next turn's too, it ran twice [D324].
+    fn queues(&self) -> bool {
+        false
+    }
+
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
         let model = control::model(spec);
