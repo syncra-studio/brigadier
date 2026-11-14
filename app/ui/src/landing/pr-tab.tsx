@@ -21,8 +21,8 @@ const TAB = cx(
   "hover:text-foreground focus-visible:focus-ring data-active:bg-fill-subtle data-active:text-foreground",
 );
 const COUNT = "rounded-capsule bg-muted px-1.5 text-xs text-muted-foreground tabular-nums";
-/** The page's column, as GitHub's: wide enough for the side column. */
-const COLUMN = "mx-auto w-full max-w-settings px-5";
+/** The page's column: it fills the tab, as the lists do [D278, D206]. */
+const COLUMN = "w-full px-5";
 
 const Ref = ({ children }: { children: ReactNode }) => <span className="rounded-control bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">{children}</span>;
 
