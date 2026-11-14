@@ -354,7 +354,7 @@ function SidebarResizeHandle() {
         if (!start.current) return;
         const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
         const wanted = start.current.width + (event.clientX - start.current.x) * (rtl ? -1 : 1);
-        const min = tokenPx("--spacing-sidebar-min");
+        const min = tokenPx("--spacing-sidebar-open-min");
         if (wanted < min / 2) {
           end(event);
           setOpen(false);

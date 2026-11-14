@@ -214,7 +214,7 @@ export function AppSidebar({
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5 win:pt-1.25">
           {/* Windows has no traffic lights: the name heads the row the History pill ends. */}
           <div className="h-7.5 win:hidden" />
-          <h1 className="flex h-7.5 items-center gap-2 ps-1.5 text-nav-title font-semibold">
+          <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap win:pe-history">
             <BrigadierMark className="size-5 shrink-0" />
             Brigadier
           </h1>
