@@ -18,6 +18,7 @@ import { FileSection } from "../review/file-section";
 import type { DiffComment } from "../review/types";
 import { SearchField } from "../settings/archived-toolbar";
 import { Markdown } from "../thread/markdown";
+import { useHost } from "./host";
 import type { PrFiles as Files, PullRequest } from "./pull-requests";
 import { FRESH_MS } from "./pr-words";
 
@@ -42,6 +43,7 @@ const drafts = new Map<string, Draft>();
  */
 export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner: string; target: string; pr: PullRequest; tick: number; onOpen: () => void; onReviewed: () => void }) {
   const { daemon } = useDaemon();
+  const host = useHost(owner);
   const [files, setFiles] = useState<Files | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shown = useRef<Files | null>(null);
@@ -50,7 +52,7 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
   const list = useRef<HTMLDivElement>(null);
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
-  const key = `${owner} ${target}`;
+  const key = `${host} ${target}`;
   const [draft, setDraftState] = useState<Draft>(() => drafts.get(key) ?? { comments: [], body: "" });
   const setDraft = (next: Draft) => {
     drafts.set(key, next);
@@ -62,7 +64,7 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
   };
   const read = () => {
     const mine = ++at.current;
-    ask({ op: "run", args: ["host", owner, "files", target] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "files", target] }, (reply) => {
       if (at.current !== mine) return;
       if (reply.ok) {
         land(reply.files);
@@ -79,16 +81,16 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
     const forced = seen.current !== tick;
     seen.current = tick;
     if (shown.current) return void ((forced || !fresh(shown.current)) && read());
-    ask({ op: "run", args: ["host", owner, "files", target, "kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "files", target, "kept"] }, (reply) => {
       const kept: Files | null = reply.ok ? reply.files : null;
       if (kept && !shown.current) land(kept);
       if (!fresh(shown.current)) read();
     });
-  }, [daemon, owner, target, pr.head, tick]);
+  }, [daemon, host, target, pr.head, tick]);
 
   const sides = (path: string) =>
     new Promise<Sides>((resolve, reject) =>
-      ask({ op: "run", args: ["host", owner, "sides", target, path] }, (reply) => {
+      ask({ op: "run", args: ["host", host, "sides", target, path] }, (reply) => {
         if (reply.ok) return resolve(reply.sides);
         showToast(`Couldn't open ${path}'s other lines: ${String(reply.error)}`, { tone: "error" });
         reject(new Error(String(reply.error)));
@@ -259,6 +261,7 @@ function SubmitReview({
   onReviewed: () => void;
 }) {
   const { daemon } = useDaemon();
+  const host = useHost(owner);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [event, setEvent] = useState<Event>("COMMENT");
@@ -272,7 +275,7 @@ function SubmitReview({
     setBusy(true);
     setError(null);
     const review = { event, body: draft.body.trim(), head, comments: draft.comments };
-    ask({ op: "run", args: ["host", owner, "review", target, JSON.stringify(review)] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "review", target, JSON.stringify(review)] }, (reply) => {
       setBusy(false);
       if (!reply.ok) return setError(reply.error === "disconnected" ? "Brigadier isn't running. Try again once it's back." : String(reply.error));
       onDraft({ comments: [], body: "" });

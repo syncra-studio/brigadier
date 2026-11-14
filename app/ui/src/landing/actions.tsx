@@ -10,6 +10,7 @@ import { Note } from "../panel/source/rows";
 import { SearchField } from "../settings/archived-toolbar";
 import { useSecond } from "../thread/words";
 import { type Found, lasted, Ref, type Run, RunPage, StateIcon, duration, plural, useRerun, useSend, type Workflow } from "./action-run";
+import { useHost } from "./host";
 import { Sparkles } from "./icons";
 import { Filter } from "./pr-list";
 import { CheckAgain } from "./pr-parts";
@@ -136,6 +137,7 @@ export function Actions({ owner }: { owner: string }) {
  * opens and the stale ones are read together, so a switch paints at once [D207].
  */
 function RunList({ owner, hidden, onOpen }: { owner: string; hidden: boolean; onOpen: (run: Run) => void }) {
+  const host = useHost(owner);
   const { daemon } = useDaemon();
   const now = useSecond(!hidden);
   const [workflows, setWorkflows] = useState<Workflow[] | null>(null);
@@ -159,7 +161,7 @@ function RunList({ owner, hidden, onOpen }: { owner: string; hidden: boolean; on
   // One call for all of them; a failed one keeps each last read, and says why.
   const read = (queries: string[], then?: (flows: Workflow[]) => void) => {
     setReading((was) => [...was, ...queries]);
-    ask({ op: "run", args: ["host", owner, "runs", ...queries] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "runs", ...queries] }, (reply) => {
       setReading((was) => was.filter((q) => !queries.includes(q)));
       setFailed(reply.ok ? null : String(reply.error ?? "Couldn't check."));
       if (!reply.ok) return;
@@ -169,7 +171,7 @@ function RunList({ owner, hidden, onOpen }: { owner: string; hidden: boolean; on
   };
   // Their last reads at once, then one read of those older than the watch's quickest pace.
   const bring = (queries: string[], then?: (flows: Workflow[]) => void) =>
-    ask({ op: "run", args: ["host", owner, "runs", ...queries, "--kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "runs", ...queries, "--kept"] }, (reply) => {
       const last = land(reply);
       if (then) return then(reply.workflows?.list ?? []);
       const stale = queries.filter((_, i) => Date.now() - (last[i]?.okAt ?? 0) > FRESH_MS);
@@ -189,7 +191,7 @@ function RunList({ owner, hidden, onOpen }: { owner: string; hidden: boolean; on
   useEffect(() => {
     if (!daemon) return;
     bring([""], (flows) => (flows.length ? bring(["", ...viewsOf(flows)]) : read([""], (fresh) => read(viewsOf(fresh)))));
-  }, [daemon, owner]);
+  }, [daemon, host]);
 
   const runs = found?.runs ?? [];
   const busy = reading.includes(query);

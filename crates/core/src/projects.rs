@@ -417,7 +417,16 @@ pub fn remove(data: &Path, id: &str) -> io::Result<()> {
         list.retain(|p| p.id != id);
         Ok(())
     })?;
-    Ok(())
+    // Its folder goes with it: what its tabs read before a session there started [D279].
+    match fs::remove_dir_all(dir(data, id)) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// A project's own folder, at this exact path, removed with the project [D35, D279].
+pub fn dir(data: &Path, id: &str) -> PathBuf {
+    data.join("projects").join(id)
 }
 
 /// At the daemon's start: a Remove project cut short frees its project for new work again; its

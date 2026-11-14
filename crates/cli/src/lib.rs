@@ -127,10 +127,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         | "panel" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
-    for id in ids.iter().filter(|a| {
-        *a != "--all"
-            && !(matches!(cmd, "draft" | "tabs" | "attach" | "commands") && *a == HOME_DRAFT)
-    }) {
+    let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
+    let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT);
+    for id in ids.iter().filter(checked) {
         core::check_id(id)?;
     }
     match cmd {

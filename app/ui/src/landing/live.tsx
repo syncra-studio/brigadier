@@ -5,6 +5,7 @@ import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
 import { gitDone, gitFailed } from "../panel/notice";
 import { type AgentChip, chipFor } from "./agent-chip";
+import { useHost } from "./host";
 import type { Posted } from "./pr-conversation";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
@@ -37,6 +38,7 @@ const asked = new Set<string>();
  * composer [D1264]. Each Send leaves a chip the user sends [D1027].
  */
 export function LivePrTab({ owner, target }: { owner: string; target: string }) {
+  const host = useHost(owner);
   // `n`, or `owner/name#n` for another repository's PR [D213].
   const hash = target.lastIndexOf("#");
   const repo = hash < 0 ? null : target.slice(0, hash);
@@ -62,7 +64,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
     if (reading.current) return void (again.current = true);
     reading.current = true;
     setChecking(true);
-    ask({ op: "run", args: ["host", owner, "view", target] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "view", target] }, (reply) => {
       reading.current = false;
       if (again.current) {
         again.current = false;
@@ -82,18 +84,18 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   // The kept read at once, and again whenever the row says a newer one was kept; a stale one is read afresh.
   useEffect(() => {
     if (!daemon) return;
-    ask({ op: "run", args: ["host", owner, "view", target, "kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "view", target, "kept"] }, (reply) => {
       if (reply.ok && reply.pr) land(reply.pr);
       latest.current = reply.ok && reply.pr && (!latest.current || reply.pr.checkedAtMs > (latest.current.checkedAtMs ?? 0)) ? reply.pr : latest.current;
       if (stale()) read();
     });
-  }, [daemon, owner, target, row?.viewedAtMs]);
+  }, [daemon, host, target, row?.viewedAtMs]);
   useEffect(() => {
     if (!daemon) return;
     const focus = () => stale() && read();
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
-  }, [daemon, owner, target]);
+  }, [daemon, host, target]);
   // A posted comment gives way to the read that has it, reconciled by its id [D260].
   useEffect(() => {
     if (pr) setPosted((all) => all.filter((post) => post.id === null || !pr.comments.some((c) => c.id === post.id)));
@@ -104,7 +106,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
     for (const check of pr.checks) {
       if (check.state !== "failed" || !check.url || asked.has(check.id)) continue;
       asked.add(check.id);
-      ask({ op: "run", args: ["host", owner, "log", check.url] }, (reply) => {
+      ask({ op: "run", args: ["host", host, "log", check.url] }, (reply) => {
         if (!reply.ok) return void asked.delete(check.id);
         logs.set(check.id, reply.log ?? null);
         setLogged((n) => n + 1);
@@ -152,7 +154,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
         new Promise((done) => {
           const key = crypto.randomUUID();
           setPosted((all) => [...all, { key, body, id: null }]);
-          ask({ op: "run", args: ["host", owner, "comment", target, body] }, (reply) => {
+          ask({ op: "run", args: ["host", host, "comment", target, body] }, (reply) => {
             if (!reply.ok) {
               setPosted((all) => all.filter((post) => post.key !== key));
               return done(reply.error === "disconnected" ? "Brigadier isn't connected." : `Couldn't comment: ${String(reply.error).split("\n")[0]}`);
@@ -166,7 +168,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       onMerge={(style, head) => {
         setMerging(true);
         setRefused(null);
-        ask({ op: "run", args: ["host", owner, "merge", target, style, head] }, (reply) => {
+        ask({ op: "run", args: ["host", host, "merge", target, style, head] }, (reply) => {
           setMerging(false);
           if (!reply.ok) {
             const why = reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error);

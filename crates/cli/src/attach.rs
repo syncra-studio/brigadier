@@ -3,7 +3,7 @@
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022]; and
 //! `note`, the session's notes (note.rs).
 
-mod note;
+pub(crate) mod note;
 
 use super::{HOME_DRAFT, arg, flag, remove};
 use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};

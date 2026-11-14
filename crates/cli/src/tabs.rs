@@ -4,6 +4,7 @@
 //! `reopen`, and answers the whole state with a `rev` that only grows, so the app can tell Rust's
 //! newer word from an older one after a lost reply [D30, D71].
 
+use crate::attach::note;
 use crate::{HOME_DRAFT, USAGE, arg};
 use brigadier_core::{self as core, projects, session, worktrees};
 use serde::{Deserialize, Serialize};
@@ -436,6 +437,22 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         now.rev = was.rev + 1;
         write(&path, &now)?;
     }
+    // A note closed before the first message goes with its tab: there's no session to list it [D280].
+    if home {
+        let open = |note: &str| {
+            (now.tabs.iter()).any(|t| t.kind == "note" && t.target.as_deref() == Some(note))
+        };
+        for entry in fs::read_dir(note::home(data))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let path = entry.path();
+            if !path.file_stem().and_then(|s| s.to_str()).is_some_and(open) {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
     Ok(state(&now))
 }
 
@@ -457,6 +474,11 @@ pub fn carry(data: &Path, to: &str) -> io::Result<()> {
         closed: vec![],
     };
     write(&file(data, to), &carried)?;
+    // Home's notes are the session's now, as their tabs are [D280].
+    let notes = note::home(data);
+    if notes.is_dir() {
+        fs::rename(&notes, core::session_dir(data, to).join("notes"))?;
+    }
     home.active = CHAT.into();
     home.rev += 1;
     write(&from, &home)

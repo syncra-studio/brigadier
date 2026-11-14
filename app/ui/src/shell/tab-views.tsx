@@ -5,11 +5,12 @@ import { EmptyState } from "../components/empty-state";
 import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, PlayCircle, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
+import { useHomeProject } from "../home/start";
 import { Actions } from "../landing/actions";
+import { HostOf } from "../landing/host";
 import { PullRequestOpen } from "../landing/icons";
 import { LivePrTab } from "../landing/live";
 import { PrList } from "../landing/pr-list";
@@ -44,25 +45,20 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
   };
   // The card's last known PRs, so it opens what the card's PR button opens [D200, D240].
   const prs = useDaemon().rows?.find((row) => row.id === owner)?.prs?.prs ?? [];
-  // A session's own: before there is one (Home), the tile says why it's off. A disabled button hears no pointer, so its tip hangs on what holds it.
-  const sessionTile = (Icon: typeof PullRequestOpen, label: string, open: () => void) => {
-    const tile = (
-      <button type="button" disabled={owner === HOME} onClick={open} className={TOOL}>
-        <span className={TOP}>
-          <Icon className={ICON} />
-        </span>
-        <span className={LABEL}>{label}</span>
-      </button>
+  // Before the first message they read the picked project's repository; a chat with no project has none, so no tile [D279].
+  const home = useHomeProject();
+  const repo = owner !== HOME || home !== null;
+  const repoTile = (Icon: typeof PullRequestOpen, label: string, open: () => void) =>
+    repo && (
+      <div className={CARD}>
+        <button type="button" onClick={open} className={TOOL}>
+          <span className={TOP}>
+            <Icon className={ICON} />
+          </span>
+          <span className={LABEL}>{label}</span>
+        </button>
+      </div>
     );
-    return owner !== HOME ? (
-      tile
-    ) : (
-      <Tooltip>
-        <TooltipTrigger render={<span className="flex w-full" />}>{tile}</TooltipTrigger>
-        <TooltipContent>Start the session to see its {label.toLowerCase()}</TooltipContent>
-      </Tooltip>
-    );
-  };
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
@@ -78,16 +74,16 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
             </button>
           </div>
           <div className={CARD}>
-            <button type="button" disabled={archived || owner === HOME} onClick={() => replaceWith(() => openTab(owner, "note", newId()))} className={TOOL}>
+            <button type="button" disabled={archived} onClick={() => replaceWith(() => openTab(owner, "note", newId()))} className={TOOL}>
               <span className={TOP}>
                 <Document className={ICON} />
               </span>
               <span className={LABEL}>New note</span>
             </button>
           </div>
-          <div className={CARD}>{sessionTile(PullRequestOpen, "Pull requests", () => replaceWith(() => openPrs(owner, prs)))}</div>
+          {repoTile(PullRequestOpen, "Pull requests", () => replaceWith(() => openPrs(owner, prs)))}
           {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
-          <div className={CARD}>{sessionTile(PlayCircle, "Actions", () => replaceWith(() => openTab(owner, "actions")))}</div>
+          {repoTile(PlayCircle, "Actions", () => replaceWith(() => openTab(owner, "actions")))}
           <div className={CARD}>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
@@ -162,6 +158,9 @@ function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);
   const [workersShown, setWorkersShown] = useState(0);
+  // Home's tabs read the picked project's repository until the first message makes its session [D279].
+  const home = useHomeProject();
+  const host = owner === HOME ? (home?.id ?? null) : null;
   return (
     <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
       <div className="relative flex min-h-0 min-w-0 flex-1">
@@ -169,27 +168,41 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           <SummarySlot owner={owner}>{children}</SummarySlot>
         </div>
         {tabs.map((tab) => (
-          <div key={tab.id} role="tabpanel" aria-label={TAB_KINDS[tab.kind].name} inert={tab.id !== active} className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}>
+          <div
+            key={tab.id}
+            role="tabpanel"
+            aria-label={TAB_KINDS[tab.kind].name}
+            inert={tab.id !== active}
+            className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}
+          >
             {/* Each kind until it's wired: the terminal comes later [D361]. */}
-            {tab.kind === "file" ? (
-              <FileTab key={tab.target} tab={tab} active={tab.id === active} />
-            ) : tab.kind === "pr" ? (
-              tab.target === "list" ? (
-                <PrList owner={owner} />
+            <HostOf.Provider key={host} value={host}>
+              {owner === HOME && !host && (tab.kind === "pr" || tab.kind === "actions") ? (
+                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
+              ) : tab.kind === "file" ? (
+                <FileTab key={tab.target} tab={tab} active={tab.id === active} />
+              ) : tab.kind === "pr" ? (
+                tab.target === "list" ? (
+                  <PrList owner={owner} />
+                ) : (
+                  <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
+                )
+              ) : tab.kind === "review" ? (
+                <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
+              ) : tab.kind === "attachment" ? (
+                <AttachmentTab key={tab.target?.split("/")[0]} owner={owner} id={tab.target?.split("/")[0] ?? ""} label={tab.target?.split("/")[1] ?? ""} active={tab.id === active} />
+              ) : tab.kind === "background" ? (
+                <BackgroundHistory owner={owner} />
+              ) : tab.kind === "actions" ? (
+                <Actions owner={owner} />
+              ) : tab.kind === "note" ? (
+                <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} active={tab.id === active} />
+              ) : tab.kind === "new" ? (
+                <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
               ) : (
-                <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
-              )
-            ) : tab.kind === "review" ? (
-              <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
-            ) : tab.kind === "attachment" ? (
-              <AttachmentTab key={tab.target?.split("/")[0]} owner={owner} id={tab.target?.split("/")[0] ?? ""} label={tab.target?.split("/")[1] ?? ""} active={tab.id === active} />
-            ) : tab.kind === "background" ? (
-              <BackgroundHistory owner={owner} />
-            ) : tab.kind === "actions" ? (
-              <Actions owner={owner} />
-            ) : tab.kind === "note" ? (
-              <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} active={tab.id === active} />
-            ) : tab.kind === "new" ? <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} /> : <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />}
+                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />
+              )}
+            </HostOf.Provider>
           </div>
         ))}
       </div>

@@ -104,7 +104,7 @@ impl Pr {
                     == other.map(str::to_ascii_lowercase)
         });
         let mine = other.is_none() && super::prs::belongs(pr, repo, &self.branch);
-        if !mine && !touched {
+        if !mine && !touched && !self.project {
             return err(format!("#{number} isn't one of this session's PRs."));
         }
         let checks: Vec<Value> = checks_of(pr).iter().map(check).collect();

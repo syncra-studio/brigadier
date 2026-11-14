@@ -343,14 +343,34 @@ pub struct Pr {
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
     dir: std::path::PathBuf,
+    /// A project's, before a session there starts: any PR of its repository opens [D279].
+    project: bool,
 }
 
-/// The session's PR facts, from Rust's records and git, never from the client.
+/// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
+/// before a session there starts and which goes with the project [D279].
+pub fn dir(data: &Path, id: &str) -> std::path::PathBuf {
+    match crate::projects::get(data, id) {
+        Ok(_) => crate::projects::dir(data, id),
+        Err(_) => crate::session_dir(data, id),
+    }
+}
+
+/// The session's PR facts, from Rust's records and git, never from the client. A project's are
+/// its main checkout's, with no base and nothing it lands [D279].
 pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
-    let checkout = git::checkout(data, &Target::Session(id))?;
+    let project = crate::projects::get(data, id).is_ok();
+    let target = match project {
+        true => Target::Project(id),
+        false => Target::Session(id),
+    };
+    let checkout = git::checkout(data, &target)?;
     // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
     // A Local session has none: its PRs are still read, and none of them lands it.
-    let base = crate::share::base(data, &crate::load(data, id)?).unwrap_or_default();
+    let base = match project {
+        true => String::new(),
+        false => crate::share::base(data, &crate::load(data, id)?).unwrap_or_default(),
+    };
     let never = AtomicBool::new(false);
     let out = git::read(
         &checkout.root,
@@ -378,8 +398,12 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         base_ref: base,
         base: host_base,
         repo,
-        record: crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
-        dir: crate::session_dir(data, id),
+        record: match project {
+            true => None,
+            false => crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
+        },
+        dir: dir(data, id),
+        project,
     })
 }
 

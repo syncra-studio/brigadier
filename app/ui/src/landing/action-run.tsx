@@ -11,6 +11,7 @@ import { ArrowLeft, Check, CheckCircle, ChevronRight, type IconProps, InfoCircle
 import { addChip, useChips } from "../panel/chips";
 import { useSecond } from "../thread/words";
 import type { AgentChip } from "./agent-chip";
+import { useHost } from "./host";
 import { Clock, Sparkles, XCircle } from "./icons";
 import { CheckAgain } from "./pr-parts";
 import { ago, duration as short, FRESH_MS } from "./pr-words";
@@ -129,6 +130,7 @@ export const Ref = ({ children }: { children: ReactNode }) => <span className="m
 
 /** Re-run all its jobs or only the failed ones, on GitHub, once asked [D264]. */
 export function useRerun(owner: string, onDone: () => void) {
+  const host = useHost(owner);
   const [asking, setAsking] = useState<{ run: Run; failed: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const dialog = (
@@ -145,7 +147,7 @@ export function useRerun(owner: string, onDone: () => void) {
         ask(
           {
             op: "run",
-            args: ["host", owner, "rerun", String(asking.run.id), asking.failed ? "failed" : "all"],
+            args: ["host", host, "rerun", String(asking.run.id), asking.failed ? "failed" : "all"],
           },
           (reply) => {
             setBusy(false);
@@ -199,6 +201,7 @@ const LABEL = "text-xs text-muted-foreground";
  * again every few seconds; a running job shows its steps' states only, as GitHub has no public live log.
  */
 export function RunPage({ owner, first, onBack }: { owner: string; first: Run; onBack: () => void }) {
+  const host = useHost(owner);
   const { daemon } = useDaemon();
   const [page, setPage] = useState<RunRead>({
     run: first,
@@ -219,7 +222,7 @@ export function RunPage({ owner, first, onBack }: { owner: string; first: Run; o
     if (reading.current) return;
     reading.current = true;
     setBusy(true);
-    ask({ op: "run", args: ["host", owner, "run", String(first.id)] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "run", String(first.id)] }, (reply) => {
       reading.current = false;
       setBusy(false);
       setLoaded(true);
@@ -229,14 +232,14 @@ export function RunPage({ owner, first, onBack }: { owner: string; first: Run; o
   };
   useEffect(() => {
     if (!daemon) return;
-    ask({ op: "run", args: ["host", owner, "run", String(first.id), "kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "run", String(first.id), "kept"] }, (reply) => {
       if (reply.ok && reply.run) {
         setPage(reply.run);
         setLoaded(true);
       }
       if (Date.now() - (reply.run?.okAt ?? 0) > FRESH_MS) read();
     });
-  }, [daemon, owner, first.id]);
+  }, [daemon, host, first.id]);
   useEffect(() => {
     if (!daemon || !going) return;
     const every = setInterval(read, LIVE_MS);
@@ -389,11 +392,12 @@ function JobRow({ owner, job, now }: { owner: string; job: Job; now: number }) {
 
 /** A finished job's log, read once and kept by Rust; its `##[group]` lines fold as GitHub's do. */
 function JobLog({ owner, job }: { owner: string; job: number }) {
+  const host = useHost(owner);
   const [log, setLog] = useState<{ lines: LogLine[]; cut: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    ask({ op: "run", args: ["host", owner, "job-log", String(job)] }, (reply) => (reply.ok ? setLog(reply.log) : setError(String(reply.error))));
-  }, [owner, job]);
+    ask({ op: "run", args: ["host", host, "job-log", String(job)] }, (reply) => (reply.ok ? setLog(reply.log) : setError(String(reply.error))));
+  }, [host, job]);
   if (error) return <ErrorLine error={`Couldn't read the log · ${error.split("\n")[0]}`} />;
   if (!log) return <p className="ps-6 text-xs text-muted-foreground">Reading the log…</p>;
   return (

@@ -20,7 +20,10 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    brigadier_core::load(data, id)?;
+    // A project's id is Home's tabs, before a session there starts [D279].
+    if brigadier_core::projects::get(data, id).is_err() {
+        brigadier_core::load(data, id)?;
+    }
     // Landing is the folder owner's alone; all of these wait for no other session's turn [D1082].
     if arg(args, 2)? == "merge"
         && let Some(owner) = brigadier_core::share::lands(data, id)
@@ -37,7 +40,7 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             .filter(|a| *a != "--kept")
             .collect();
         if args.iter().any(|a| a == "--kept") {
-            let dir = brigadier_core::session_dir(data, id);
+            let dir = host::dir(data, id);
             let found: Vec<_> = queries.iter().map(|q| host::kept_search(&dir, q)).collect();
             return Ok(json!({"ok": true, "found": found}));
         }
@@ -49,7 +52,7 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The last read, from the session's folder alone: no git, no host [D207].
     // (A comment's words are never this, even when they read "kept".)
     if matches!(arg(args, 2)?, "view" | "files") && args.get(4).is_some_and(|a| a == "kept") {
-        let dir = brigadier_core::session_dir(data, id);
+        let dir = host::dir(data, id);
         let (other, n) = number(args)?;
         return Ok(match arg(args, 2)? {
             "view" => json!({"ok": true, "pr": host::kept_view(&dir, other.as_deref(), n)}),
@@ -71,7 +74,7 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             Some(prs) => json!({"ok": true, "prs": prs}),
             // The read failed: `prs.json` keeps the last PRs with why, and the reply says it too.
             None => {
-                let kept = host::kept(&brigadier_core::session_dir(data, id));
+                let kept = host::kept(&host::dir(data, id));
                 return Err(io::Error::other(
                     kept["error"]
                         .as_str()
@@ -115,7 +118,7 @@ fn number(args: &[String]) -> io::Result<(Option<String>, u64)> {
 /// The Actions tab's [D264]: runs by GitHub's search words (`--kept`: their last reads), a run's
 /// page (`kept`: its last read), a finished job's log, and a re-run; None for any other.
 fn actions(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
-    let dir = || brigadier_core::session_dir(data, id);
+    let dir = || host::dir(data, id);
     let run = || {
         arg(args, 3)?
             .parse::<u64>()

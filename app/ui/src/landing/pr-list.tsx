@@ -18,6 +18,7 @@ import { Note } from "../panel/source/rows";
 import type { Pr } from "../panel/types";
 import { SearchField } from "../settings/archived-toolbar";
 import { useSecond } from "../thread/words";
+import { useHost } from "./host";
 import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "./icons";
 import { CheckAgain } from "./pr-parts";
 import { ago, FRESH_MS } from "./pr-words";
@@ -147,13 +148,16 @@ export function Filter({ label, value, choices, onPick }: { label: string; value
  * its last read at once and reads again when older than the watch's quickest pace, and on Check again [D207, D208].
  */
 export function PrList({ owner }: { owner: string }) {
+  const host = useHost(owner);
+  // Before the first message there's no session, so no This session view: it opens on All [D279].
+  const views = host === owner ? VIEWS : VIEWS.slice(1);
   const { daemon, rows } = useDaemon();
   const kept = rows?.find((row) => row.id === owner)?.prs;
   const now = useSecond(true);
-  const [view, setView] = useState("session");
+  const [view, setView] = useState(views[0].id);
   // The search's words: what the box shows, and what was last asked.
-  const [text, setText] = useState("");
-  const [query, setQuery] = useState("");
+  const [text, setText] = useState(views[0].query);
+  const [query, setQuery] = useState(views[0].query);
   const [closed, setClosed] = useState(false);
   // Every query's last read the tab holds, the side views' brought in as it opens: a switch paints at once [D207].
   const [reads, setReads] = useState<Partial<Record<string, Found>>>({});
@@ -167,7 +171,7 @@ export function PrList({ owner }: { owner: string }) {
   // One read for all of them [D207]; a failed one keeps each last read with why.
   const read = (queries: string[]) => {
     setReading((was) => [...was, ...queries]);
-    ask({ op: "run", args: ["host", owner, "search", ...queries] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "search", ...queries] }, (reply) => {
       setReading((was) => was.filter((q) => !queries.includes(q)));
       const why = reply.error ?? "Couldn't search.";
       setReads((was) => ({
@@ -178,7 +182,7 @@ export function PrList({ owner }: { owner: string }) {
   };
   // Their last reads at once, then one read of those older than the watch's quickest pace.
   const bring = (queries: string[]) =>
-    ask({ op: "run", args: ["host", owner, "search", ...queries, "--kept"] }, (reply) => {
+    ask({ op: "run", args: ["host", host, "search", ...queries, "--kept"] }, (reply) => {
       const last: (Found | null)[] = reply.found ?? [];
       put(last.filter((f): f is Found => !!f));
       const stale = queries.filter((_, i) => Date.now() - (last[i]?.okAt ?? 0) > FRESH_MS);
@@ -208,9 +212,9 @@ export function PrList({ owner }: { owner: string }) {
   const loaded = rows !== undefined;
   useEffect(() => {
     if (!daemon || !loaded) return;
-    if (Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
+    if (session && Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
     bring(VIEWS.slice(1).map((v) => v.query));
-  }, [daemon, owner, loaded]);
+  }, [daemon, host, loaded]);
 
   // Rust keeps the session's open first, then by recency [D256].
   const mine = kept?.prs ?? [];
@@ -229,7 +233,7 @@ export function PrList({ owner }: { owner: string }) {
   return (
     <div data-slot="pr-list" className="flex min-h-0 flex-1 gap-6 overflow-y-auto p-5">
       <nav aria-label="Pull request views" className="flex w-52 shrink-0 flex-col gap-0.5">
-        {VIEWS.map(({ id, label, Icon }) => (
+        {views.map(({ id, label, Icon }) => (
           <NavRow key={id} aria-current={view === id ? "page" : undefined} onClick={() => pick(id)}>
             <Icon className="text-muted-foreground" />
             {label}
@@ -246,7 +250,7 @@ export function PrList({ owner }: { owner: string }) {
           onSubmit={(event) => {
             event.preventDefault();
             if (text.trim()) search(text.trim());
-            else pick("session");
+            else pick(views[0].id);
           }}
         >
           <SearchField label="Search all pull requests" value={text} onChange={setText} />
@@ -261,7 +265,12 @@ export function PrList({ owner }: { owner: string }) {
               <CheckCircle className="size-icon-sm" /> {counts.closed?.toLocaleString() ?? "–"} Closed
             </button>
             <span className="flex-1" />
-            <Filter label="Author" value={words.find((w) => w.startsWith("author:"))} choices={[{ value: "author:@me", label: "You" }, ...authors.map((a) => ({ value: `author:${a}`, label: a }))]} onPick={refine} />
+            <Filter
+              label="Author"
+              value={words.find((w) => w.startsWith("author:"))}
+              choices={[{ value: "author:@me", label: "You" }, ...authors.map((a) => ({ value: `author:${a}`, label: a }))]}
+              onPick={refine}
+            />
             <Filter label="Reviews" value={words.find((w) => REVIEWS.some((r) => r.value === w))} choices={REVIEWS} onPick={refine} />
             <Filter label={SORTS.find((s) => words.includes(s.value))?.label ?? "Newest"} value={words.find((w) => w.startsWith("sort:")) ?? "sort:created-desc"} choices={SORTS} onPick={refine} />
           </li>
@@ -271,7 +280,14 @@ export function PrList({ owner }: { owner: string }) {
           {prs.length === 0 && (
             <li className="px-4 py-10">
               {session ? (
-                rows !== undefined && <EmptyState variant="centered" icon={PullRequestOpen} title={mine.length ? "None here" : "No pull requests yet"} detail={mine.length ? undefined : "The ones this session opens or works on show here"} />
+                rows !== undefined && (
+                  <EmptyState
+                    variant="centered"
+                    icon={PullRequestOpen}
+                    title={mine.length ? "None here" : "No pull requests yet"}
+                    detail={mine.length ? undefined : "The ones this session opens or works on show here"}
+                  />
+                )
               ) : found ? (
                 <EmptyState variant="centered" icon={PullRequestOpen} title="No pull requests match" />
               ) : (

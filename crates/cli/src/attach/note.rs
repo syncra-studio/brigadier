@@ -2,10 +2,10 @@
 //! under `notes/` in its folder, so they go with it [D244]. The app names a note; it's kept once
 //! written, and emptied it goes, so no blank note is ever listed.
 
-use crate::{arg, remove};
+use crate::{HOME_DRAFT, arg, remove};
 use brigadier_core::{self as core, check_id, message::MAX_BYTES};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use std::{fs, io};
 
@@ -17,10 +17,20 @@ fn title(text: &str) -> &str {
         .unwrap_or("")
 }
 
+/// Home's notes, before the first message makes its session: they go to it then, and one whose
+/// tab is closed first goes (`tabs.rs`) [D280].
+pub fn home(data: &Path) -> PathBuf {
+    data.join("home-notes")
+}
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    core::load(data, id)?;
-    let dir = core::session_dir(data, id).join("notes");
+    let dir = if id == HOME_DRAFT {
+        home(data)
+    } else {
+        core::load(data, id)?;
+        core::session_dir(data, id).join("notes")
+    };
     let file = |note: &str| check_id(note).map(|()| dir.join(format!("{note}.md")));
     match arg(args, 2)? {
         // One not written yet reads empty: a new note's tab.
