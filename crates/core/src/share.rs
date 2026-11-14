@@ -37,8 +37,9 @@ pub fn one_local(data: &Path, project: Option<&Project>, spec: &Spec) -> io::Res
     let mut others = in_folder(data, folder, Some(&spec.id)).into_iter();
     match others.find(|o| crate::session::lifecycle(&o.dir).0.is_none()) {
         Some(o) => Err(io::Error::other(format!(
-            "\"{}\" works in this project's local checkout. Start in a new worktree, or archive it first.",
-            title(&o)
+            "\"{}\" ({}) works in this project's local checkout. Start in a new worktree, or archive it first.",
+            title(&o),
+            o.id
         ))),
         None => Ok(()),
     }
