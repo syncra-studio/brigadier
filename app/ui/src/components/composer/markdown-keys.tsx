@@ -77,6 +77,27 @@ export const $caretItem = () => {
  */
 export function MarkdownKeys() {
   const [editor] = useLexicalComposerContext();
+  // Text typed after an address that extends it joins it here, before useLexicalTextEntity's own merge (transforms run in
+  // the order registered), which leaves the caret at the address's old end so typed "example.com" read "exampleom.c".
+  useEffect(
+    () =>
+      editor.registerNodeTransform(TextNode, (node) => {
+        const url = node.getPreviousSibling();
+        if (!(url instanceof UrlNode) || !node.isSimpleText() || url.getLatest().__mode !== 0) return;
+        const before = url.getTextContent();
+        const text = node.getTextContent();
+        const take = (urlIn(before + text)?.end ?? 0) - before.length;
+        if (take <= 0) return;
+        const selection = $getSelection();
+        const caret = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.key === node.getKey() ? selection.anchor.offset : null;
+        url.setTextContent(before + text.slice(0, take));
+        if (take < text.length) node.setTextContent(text.slice(take));
+        if (caret !== null && caret > take) node.select(caret - take, caret - take);
+        else if (caret !== null) url.select(before.length + caret, before.length + caret);
+        if (take === text.length) node.remove();
+      }),
+    [editor],
+  );
   useLexicalTextEntity(urlIn, UrlNode, toUrl);
   useEffect(
     () =>
