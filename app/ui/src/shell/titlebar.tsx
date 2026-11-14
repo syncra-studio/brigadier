@@ -23,8 +23,11 @@ const MOUSE_FORWARD = 4;
 // An empty listbox is no menu: a note's editor keeps one, Lexical's typeahead anchor, while its / menu is shut [D291].
 export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]:not(:empty)') !== null;
 
-/** The open sidebar's x for the traffic lights, the strip's, and closed's: each in its own top row [new-design]. */
-const LIGHTS_X = { open: 24, strip: 14, hidden: 20 };
+/**
+ * The open sidebar's x for the traffic lights, the strip's, and closed's: each in its own top row [new-design]. The real
+ * lights are 60px wide, not the board's 52: centred on the 64px rail card (10 to 70), and closed 8px before the pill at 80.
+ */
+const LIGHTS_X = { open: 24, strip: 10, hidden: 13 };
 
 /**
  * The History pill: Back, Forward and the sidebar toggle, on the traffic lights' line, at the sidebar card's top end
