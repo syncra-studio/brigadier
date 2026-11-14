@@ -162,3 +162,9 @@ pub fn stopped(spec: &Spec, msg: &Value) -> Value {
     p["delivery"] = "steer".into();
     p
 }
+
+/// Its `--version` line ("1.19.5", "opencode v2.2.7") names a version before 2.
+pub(super) fn before_2(version: &str) -> bool {
+    let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
+    matches!(number.split('.').next(), Some("0" | "1"))
+}

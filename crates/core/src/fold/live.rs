@@ -46,7 +46,7 @@ const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
 
 /// Each topmost process under the agent born in one of its ended turns' tool windows, still alive.
 /// The agent's own helpers (MCP servers) start with it, before any tool, so none count; those its
-/// CLI starts later it names.
+/// CLI starts later it names, and they're never a job, though what runs under one can be.
 fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
     let below = procs::descendants(all, child);
     let helpers = (fold.child.as_ref())
@@ -68,9 +68,10 @@ fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
             }) || (running > 0
                 && p.start_us >= running.saturating_sub(SLACK_MS) * 1000
                 && task_of(fold, p.start_us).is_some()))
+            && !own(p)
     };
     let mut tops: Vec<&procs::Proc> = (below.iter())
-        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)) && !own(p))
+        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)))
         .collect();
     // One row a task: its own process, born before a hook that ran beside it.
     tops.sort_by_key(|p| p.start_us);

@@ -7,14 +7,14 @@ use std::io;
 use std::path::Path;
 
 /// Another session's message [D2034]: under the queue's lock, a repeat of its id (queued, being
-/// edited or in the log) is dropped; else `first` records it and may take it itself (a steer),
-/// told whether anything waits; else it goes last, as its sender's. Says which happened.
+/// edited or in the log) is dropped; else `first` records it and may take it itself (a steer, or
+/// held for the running turn), saying how; else it goes last, as its sender's. Says which happened.
 pub fn add_peer(
     dir: &Path,
     mid: &str,
     origin: &str,
     text: &str,
-    first: impl FnOnce(bool) -> io::Result<bool>,
+    first: impl FnOnce() -> io::Result<Option<&'static str>>,
 ) -> io::Result<&'static str> {
     change(dir, |q| {
         let known = q.items.iter().any(|i| i.id == mid)
@@ -23,8 +23,8 @@ pub fn add_peer(
         if known {
             return Ok("repeat");
         }
-        if first(!q.items.is_empty() || q.editing.is_some())? {
-            return Ok("steered");
+        if let Some(how) = first()? {
+            return Ok(how);
         }
         q.items.push(Item {
             id: mid.into(),

@@ -16,19 +16,13 @@ use super::{
     Timing, base_env, home_path, mark_superseded, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, message, model, model_info, model_ref, prompt, rules, stopped};
+use control::{answers, before_2, message, model, model_info, model_ref, prompt, rules, stopped};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 pub struct OpenCode;
-
-/// Its `--version` line ("1.19.5", "opencode v2.2.7") names a version before 2.
-fn before_2(version: &str) -> bool {
-    let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
-    matches!(number.split('.').next(), Some("0" | "1"))
-}
 
 /// Providers that run on this Mac: OpenCode finds their servers by itself [D68].
 const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
@@ -226,6 +220,11 @@ impl Adapter for OpenCode {
 
     fn per_turn(&self) -> bool {
         false
+    }
+
+    /// Its PTY daemon, started at the first shell command; the commands run under it.
+    fn helpers(&self) -> &[&str] {
+        &["opencode-pty"]
     }
 
     /// Each line to the helper is one request to its server, applied only once its reply names it.

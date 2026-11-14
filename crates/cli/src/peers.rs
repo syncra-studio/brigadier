@@ -1,6 +1,6 @@
-//! Messages between sessions [D2034, D2035, D3014]: `brigadier send <id> "…" [--wait]` puts the
-//! message in the receiver's own queue, or steers it into its turn, by the Follow-up setting
-//! [D188]. It goes as `peer:<sender>`, never as the user, so it answers and approves nothing.
+//! Messages between sessions [D2034, D2035, D3014]: `brigadier send <id> "…" [--wait]` steers the
+//! message into the receiver's running turn, never its user's queue, or starts its next turn. It
+//! goes as `peer:<sender>`, never as the user, so it answers and approves nothing.
 //!
 //! Delivered once across restarts, on the delivery rules [D54, D82, D237]: the message's id is its
 //! queue item's id and its steer's command id all the way through. The sender's record
@@ -12,7 +12,7 @@
 
 mod reply;
 
-use crate::{control, owner, queue, settings, workers};
+use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::log;
 pub(crate) use reply::{answer, asked, open_question, question};
@@ -63,7 +63,7 @@ struct In {
     /// The receiver's turn it was steered into.
     #[serde(default)]
     turn: Option<String>,
-    /// adding | queued | steering | delivered | uncertain | dropped
+    /// adding | held (for its running turn) | queued | steering | delivered | uncertain | dropped
     state: String,
 }
 
@@ -223,6 +223,7 @@ pub fn send(
     };
     let said = match how {
         "steered" => "It went into the turn it's working on.",
+        "held" => "It goes into the turn it's working on as soon as that turn can take it.",
         "dropped" => return refuse(&format!("{to} was deleted.")),
         _ if row["running"] == true => "It's queued: it gets it when its turn ends.",
         _ => "It's queued and starts its next turn.",
@@ -237,8 +238,8 @@ pub fn send(
 }
 
 /// Hands a message to its receiver: recorded and judged under its queue lock, a repeat dropped;
-/// steered into its turn where Follow-up says steer and it can take one, else queued [D188].
-/// Says how: steered | queued | repeat | dropped.
+/// steered into its running turn, or held till that turn can take it, else queued to start the
+/// next. Says how: steered | held | queued | repeat | dropped.
 fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
     let to = out.to.clone();
     let dir = core::session_dir(data, &to);
@@ -248,7 +249,6 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
     }
     let origin = format!("peer:{from}");
     let body = envelope(data, from, &out.text);
-    let steers = settings::get(data, "follow_up") == "steer";
     let mid = out.mid.clone();
     let mut rec = In {
         mid: mid.clone(),
@@ -259,15 +259,21 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
         turn: None,
         state: "adding".into(),
     };
-    let how = queue::add_peer(&dir, &mid, &origin, &body, |waiting| {
+    let how = queue::add_peer(&dir, &mid, &origin, &body, || {
         let f = core::fold(&dir, true)?.fold;
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
-        // Never past the user's queued messages, nor into a turn that waits on the user.
-        let turn = (f.turns.first())
-            .filter(|t| steers && can && !waiting && t.began && t.asks.is_empty())
-            .map(|t| t.id.clone());
-        if let Some(turn) = turn {
-            (rec.how, rec.turn, rec.state) = ("steer".into(), Some(turn), "steering".into());
+        // Mid-turn it goes into that turn, past the user's queue and whatever Follow-up says: that
+        // queue is the user's own [D118]. A turn that can't take it yet (not begun, waiting on the
+        // user, an agent with no steer) holds it for the next pass; a dead host's turn doesn't.
+        let alive = owner::state(data, &to) == core::fold::Owner::Alive;
+        if let Some(t) = f.turns.first().filter(|_| alive) {
+            if !(can && t.began && t.asks.is_empty()) {
+                (rec.how, rec.turn, rec.state) = ("steer".into(), None, "held".into());
+                save(data, &to, "in", &mid, &rec)?;
+                return Ok(Some("held"));
+            }
+            (rec.how, rec.turn, rec.state) =
+                ("steer".into(), Some(t.id.clone()), "steering".into());
             save(data, &to, "in", &mid, &rec)?;
             let reply = control::steer_as(data, &to, &body, &Value::Null, Some(&mid), &origin)?;
             let logged = core::fold(&dir, true).is_ok_and(|f| f.fold.cids.contains_key(&mid));
@@ -280,8 +286,9 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
             if let Some(state) = state {
                 rec.state = state.into();
                 save(data, &to, "in", &mid, &rec)?;
-                return Ok(true);
+                return Ok(Some("steered"));
             }
+            // Its turn ended meanwhile: it starts the next one.
             (rec.how, rec.turn) = ("queue".into(), None);
         }
         // Proposed: a parent's message to its own worker reports back as its brief does.
@@ -292,8 +299,11 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
             workers::write_json(&dir.join("worker.json"), &l)?;
         }
         rec.state = "adding".into();
-        save(data, &to, "in", &mid, &rec).map(|()| false)
+        save(data, &to, "in", &mid, &rec).map(|()| None)
     })?;
+    if how == "held" {
+        return Ok(how);
+    }
     if how == "queued" {
         rec.state = "queued".into();
         save(data, &to, "in", &mid, &rec)?;
@@ -433,7 +443,10 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
         // shortcut: 10 s covers a live send's hand-off; one slower is handed twice, the repeat dropped.
         let cut = match &rec {
             None => out.at + 10_000 < now,
-            Some(r) => r.state == "adding" || (r.state == "steering" && r.at + 10_000 < now),
+            Some(r) => {
+                matches!(r.state.as_str(), "adding" | "held")
+                    || (r.state == "steering" && r.at + 10_000 < now)
+            }
         };
         if cut {
             hand(data, from, &mut out)?;
