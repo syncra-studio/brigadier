@@ -221,10 +221,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(shown(data, &groups, None))
         }
+        "results" => Ok(crate::outcomes::results(data)),
         "resume" => hold::resume(data, arg(2)),
         "answer" => hold::answer(data, arg(2), arg(3), arg(4)),
         _ => Err(io::Error::other(
-            "usage: brigadier routing [set <json> | resume <wid> | answer <wid> <request> <choice>]",
+            "usage: brigadier routing [set <json> | results | resume <wid> | answer <wid> <request> <choice>]",
         )),
     }
 }

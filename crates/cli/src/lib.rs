@@ -19,6 +19,7 @@ mod last;
 mod mcp;
 pub mod mention;
 mod models;
+mod outcomes;
 pub mod owner;
 mod panel;
 pub mod peers;

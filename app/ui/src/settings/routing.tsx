@@ -134,9 +134,12 @@ export function RoutingSettings() {
   const [value, setValue] = useState<Routing | null>(null);
   const [groups, setGroups] = useState<ModelGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<Results | null>(null);
   useEffect(() => {
     if (!online) return;
     setError(null);
+    // Your results read every worker's log, so the table never waits on them [D2038].
+    run(["routing", "results"]).then((back) => setResults(back as Results), (cause) => setError(errorText(cause)));
     Promise.all([run(["routing"]), run(["models"])]).then(
       ([table, models]) => {
         setValue(table as Routing);
@@ -151,7 +154,7 @@ export function RoutingSettings() {
       return back as Routing;
     });
   // No review switch until 4.10 wires it [D2079].
-  return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} />;
+  return <RoutingPage value={value} groups={groups} onChange={save} error={error} offline={!online} results={results} />;
 }
 
 /** "✻ Opus 5.5 · High": the agent's mark, the model, then its effort after a dot (no effort: just the model). */

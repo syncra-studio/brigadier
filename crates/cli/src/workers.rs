@@ -370,7 +370,7 @@ pub fn still(data: &Path, id: &str) {
 }
 
 /// The start and end outcomes in a worker's log, folded [D2038].
-fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
+pub(crate) fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
     let mut all = vec![];
     let _ = core::read(&core::session_dir(data, wid), |i| {
         if i["kind"] == "note" && i["event"] == "outcome" {

@@ -41,7 +41,7 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "configuration", label: "Configuration", icon: SettingsSlider, group: "Personal", component: ConfigurationPage, rows: Object.values(CONFIGURATION_ROWS) },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardShortcut, group: "Personal", component: ShortcutsPage, rows: SHORTCUTS_ROWS },
   { id: "providers", label: "Providers", formerly: ["Accounts", "Usage", "Switching"], icon: RobotHead, group: "Agents", component: ProvidersPage, rows: Object.values(PROVIDERS_ROWS) },
-  { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: [ROUTING_ROWS.rows, ROUTING_ROWS.rules] },
+  { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: [ROUTING_ROWS.rows, ROUTING_ROWS.rules, ROUTING_ROWS.results] },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];
