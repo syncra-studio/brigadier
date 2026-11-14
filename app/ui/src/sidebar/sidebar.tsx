@@ -6,7 +6,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavList, NavRow, NavSection } from "../components/nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
-import { SidebarPanel } from "../components/sidebar";
+import { SidebarPanel, useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus } from "../icons";
@@ -371,14 +371,17 @@ function ProjectRow({
 
 /**
  * The collapsed rail [new-design]: under the traffic lights the logo (resting on it peeks the panel), New chat and
- * Search, a rule, then the lists (`children`). The sidebar toggle is the History pill's, never here.
+ * Search, a rule, then the lists (`children`). The sidebar toggle is the History pill's; a click on the logo opens it too.
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
+  const { setOpen, peek } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-3 pt-11.25 win:pt-1.25">
-      <div data-sidebar-peek-trigger className="flex h-7.5 w-9 items-center justify-center text-foreground">
-        <BrigadierMark className="size-6" />
-      </div>
+      {/* Above the peek it opens, so a click on the logo still opens the sidebar, as the old strip's mark did; the peek
+          draws its own logo, so this one hides while it shows. */}
+      <button type="button" aria-label="Show sidebar" data-sidebar-peek-trigger onClick={() => setOpen(true)} className="relative z-50 flex h-7.5 w-9 cursor-pointer items-center justify-center rounded-icon-button text-foreground focus-visible:focus-ring">
+        <BrigadierMark className={cx("size-6", peek !== "closed" && "invisible")} />
+      </button>
       <div className="flex flex-col items-center gap-0.5">
         <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
           <ComposeEditSquare />
