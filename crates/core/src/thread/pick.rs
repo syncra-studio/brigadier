@@ -41,8 +41,11 @@ impl Thread {
             return;
         };
         let named = |k: &str, id: String| note[k].as_str().map_or(id, String::from);
-        self.pick_line(json!({"kind": "line", "reason": "model", "why": "changed",
+        // Live while a turn runs, as another agent's pick is [D241].
+        let live = self.open.is_some();
+        let at = self.pick_line(json!({"kind": "line", "reason": "model", "why": "changed", "live": live,
             "from": named("was", from), "to": named("name", model.clone()), "op": note["op"]}));
+        self.pick_row = live.then_some(at);
         self.ran = Some((backend, model));
     }
 
@@ -66,6 +69,10 @@ impl Thread {
     /// new model carries on under it [D124]; between turns in none, so the last one's answer keeps
     /// its actions above it.
     fn pick_line(&mut self, row: Value) -> usize {
+        // A pick still live that another replaces is done: its turn carries on on the new one.
+        if let Some(at) = self.pick_row.take() {
+            self.switched(at);
+        }
         self.break_group();
         let at = self.add(row);
         match self.open.as_mut() {
@@ -93,7 +100,10 @@ impl Thread {
     }
 
     fn switched(&mut self, at: usize) {
-        self.items[at]["state"] = "switched".into();
+        match self.items[at]["kind"] == "switch" {
+            true => self.items[at]["state"] = "switched".into(),
+            false => self.items[at]["live"] = false.into(),
+        }
         self.changed_items.insert(at);
     }
 }

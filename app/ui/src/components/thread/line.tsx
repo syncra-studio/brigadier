@@ -49,8 +49,9 @@ export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line
       return <ThreadLine icon={ArrowRotateCw}>Usage limit reset · {hhmm(item.at)}</ThreadLine>;
     case "model":
       return item.why === "changed" ? (
-        <ThreadLine icon={Sparkle} tip={`${item.from ? `From ${item.from}. ` : ""}Answers may read differently from here on.`}>
-          Switched model to {item.to}
+        // Under way till the new model draws a row, it shimmers as a switch's divider does (D241).
+        <ThreadLine icon={Sparkle} live={item.live} tip={`${item.from ? `From ${item.from}. ` : ""}Answers may read differently from here on.`}>
+          {item.live ? `Switching model to ${item.to}…` : `Switched model to ${item.to}`}
         </ThreadLine>
       ) : (
         <ThreadLine icon={Sparkle} tip={item.from ? `The agent sent this request on from ${item.from}.` : "The agent sent this request on to another model."}>

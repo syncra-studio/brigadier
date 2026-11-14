@@ -252,7 +252,12 @@ impl Thread {
             .filter(|_| wakes && !resuming)
             .and_then(|id| self.held.remove(&id));
         match resumed.or(held.map(|(o, _)| o)) {
-            Some(o) => self.rejoin(o),
+            // Carried on by another agent, the turn is that agent's now [D124].
+            Some(mut o) => {
+                o.backend.clone_from(&t.backend);
+                self.turns[o.at]["backend"] = t.backend.clone().into();
+                self.rejoin(o)
+            }
             None => {
                 self.settle_held(true);
                 self.new_turn(t, ts)
@@ -272,6 +277,10 @@ impl Thread {
             if let Some((_, from)) = moved.filter(|_| t.switch.is_null()) {
                 self.add(json!({"kind": "line", "reason": "model", "why": "changed", "from": from, "to": model}));
             }
+        }
+        // A model of this agent picked mid-turn: live till the turn carrying it on draws a row [D241].
+        if let Some(at) = self.pick_row.take_if(|at| self.items[*at]["kind"] == "line") {
+            self.switching = Some(at);
         }
         // A rebirth shows as one divider, the message that carries it under it; a cut another turn beat fails [D88, D112, D203].
         let rebirth = matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"));
