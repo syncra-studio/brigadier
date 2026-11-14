@@ -1,9 +1,7 @@
 name: Bench
 
-# Separate report, after the 01:30 nightly. No push/release event, no required check.
+# Manual only: runs when the user dispatches it. No schedule, push/release event or required check.
 on:
-  schedule:
-    - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
       live:
@@ -44,7 +42,7 @@ jobs:
         id: credentials
         env:
           PROVIDER: ${{ matrix.provider }}
-          ENABLED: ${{ github.event_name == 'schedule' || inputs.live }}
+          ENABLED: ${{ inputs.live }}
         run: |
           live=false
           if [ "$ENABLED" = true ]; then

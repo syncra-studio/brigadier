@@ -126,8 +126,8 @@ skills; trust changes and rollouts cannot alter the real CLI home. Existing Clau
 and credentials are used, and only this run's explicit transcript ids are removed.
 
 The [Bench workflow](https://github.com/syncra-studio/brigadier-ai/actions/workflows/bench.yml)
-runs at 05:30 UTC, after the nightly's 01:30 start, in two independent arm-set jobs. It does not
-wait for or modify the nightly. Credentials are existing repository secrets:
+runs only when dispatched by hand, in two independent arm-set jobs. It has no schedule and does
+not touch the nightly. Credentials are existing repository secrets:
 
 - Claude: `CLAUDE_CODE_OAUTH_TOKEN` **or** `ANTHROPIC_API_KEY`.
 - Codex: `CODEX_AUTH_JSON` containing the CLI auth JSON.
