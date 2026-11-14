@@ -31,7 +31,7 @@ type Read = Result<(Vec<Value>, Option<String>), String>;
 /// What every PR read asks the host for: the list's row and the head commit's checks, read in one
 /// snapshot, so a PR's head and its checks always agree.
 // shortcut: a head's first 100 checks only, until a repository has more.
-pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
+pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision createdAt author { login } comments { totalCount } headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
 
 impl Pr {
     /// The session's PRs, read now and kept; None when the host couldn't list them.
@@ -64,7 +64,7 @@ impl Pr {
         })
     }
 
-    fn one(&self) -> Arc<Mutex<()>> {
+    pub(super) fn one(&self) -> Arc<Mutex<()>> {
         let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         busy.entry(self.dir.clone()).or_default().clone()
     }
@@ -296,7 +296,7 @@ fn key(row: &Value) -> Key {
 }
 
 /// A row from a repository other than the session's names it, `owner/name` from its URL [D213].
-fn mark(mut row: Value, repo: &Repo) -> Value {
+pub(super) fn mark(mut row: Value, repo: &Repo) -> Value {
     let path = (row["url"].as_str())
         .and_then(|u| u.split_once("://"))
         .and_then(|(_, rest)| {
@@ -382,10 +382,27 @@ fn row(pr: &Value) -> Value {
         "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms),
         "failedChecks": checks.map(|c| c.iter().filter(|c| c["bucket"] == "fail").map(|c| c["name"].clone()).collect::<Vec<_>>()), "passed": count("pass"),
         "cancelled": count("cancel"), "skipped": count("skipping"),
+        "author": pr["author"]["login"], "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),
+        "comments": pr["comments"]["totalCount"], "review": pr["reviewDecision"].as_str().map(str::to_lowercase),
+        "checks": checks.map(|c| {
+            let not = |of: &[&str]| c.iter().filter(|c| of.contains(&c["bucket"].as_str().unwrap_or(""))).count();
+            tally(c.len(), c.len() - not(&["pass", "skipping"]), not(&["fail", "cancel"]))
+        }),
         "approved": match pr["reviewDecision"].as_str() {
             Some("APPROVED") => Some(true), Some("REVIEW_REQUIRED" | "CHANGES_REQUESTED") => Some(false), _ => None },
         "mergeable": match pr["mergeable"].as_str() {
             Some("MERGEABLE") => Some(true), Some("CONFLICTING") => Some(false), _ => None }})
+}
+
+/// A PR's checks as GitHub's list counts them [D258]: done well (passed or skipped) of all, and
+/// the mark, failed over pending over passed.
+pub(super) fn tally(all: usize, not_ok: usize, failed: usize) -> Value {
+    let mark = match (failed, not_ok) {
+        (0, 0) => "pass",
+        (0, _) => "pending",
+        _ => "fail",
+    };
+    json!({"ok": all - not_ok, "all": all, "mark": mark})
 }
 
 /// A session's kept PRs (`prs.json`), or null before any read.

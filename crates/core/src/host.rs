@@ -8,9 +8,11 @@ use crate::load;
 use crate::repos::{failed, tool};
 
 mod prs;
+mod search;
 mod touched;
 mod view;
 pub use prs::{chip, kept, moved_on, opened};
+pub use search::kept_search;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io;

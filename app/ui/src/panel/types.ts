@@ -59,6 +59,12 @@ export type Pr = {
   updatedAtMs?: number | null;
   /** When its tab's read last kept it (`pr/<n>.json`): the tab brings that read in again [D207]. */
   viewedAtMs?: number;
+  /** The list's row as GitHub's [D258]: who opened it and when, its review, checks done well of all, comments. */
+  author?: string | null;
+  createdAtMs?: number | null;
+  review?: "review_required" | "approved" | "changes_requested" | null;
+  checks?: { ok: number; all: number; mark: "pass" | "fail" | "pending" } | null;
+  comments?: number | null;
 };
 
 /**

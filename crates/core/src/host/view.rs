@@ -26,13 +26,13 @@ fn kept_path(dir: &Path, other: Option<&str>, number: u64, what: &str) -> PathBu
         .join(format!("{number}.{what}"))
 }
 
-fn read_kept(path: PathBuf) -> Value {
+pub(super) fn read_kept(path: PathBuf) -> Value {
     (fs::read(path).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or(Value::Null)
 }
 
-fn keep(path: &Path, value: &Value) {
+pub(super) fn keep(path: &Path, value: &Value) {
     let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
     let wrote = fs::create_dir_all(path.parent().unwrap_or(path))
         .and_then(|()| fs::write(&tmp, value.to_string()))
