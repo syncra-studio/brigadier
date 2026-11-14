@@ -15,7 +15,7 @@ function Drawn({ tooltip, className, children }: { tooltip: string; className?: 
   return (
     <Tooltip>
       <TooltipTrigger render={<span className={cx("app-no-drag flex", className)} />}>
-        <TooltipIconButton look="toolbar" tip={false} tooltip={tooltip} disabled>
+        <TooltipIconButton look="toggle" tip={false} tooltip={tooltip} disabled>
           {children}
         </TooltipIconButton>
       </TooltipTrigger>
@@ -35,7 +35,7 @@ function ContextButton({ owner, className }: { owner: string; className?: string
     );
   return (
     <span className={cx("app-no-drag flex", className)}>
-      <TooltipIconButton look="toolbar" tooltip="Context" pressed={shown} onClick={() => {
+      <TooltipIconButton look="toggle" tooltip="Context" pressed={shown} onClick={() => {
         // The card is the chat's: Context brings the chat to the front first, as the old app's did.
         selectTab(owner, CHAT);
         toggle();

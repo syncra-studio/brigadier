@@ -33,7 +33,7 @@ export function useHasPanel(owner: string): boolean {
 /** The toggle as drawn. */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
+    <TooltipIconButton look="toggle" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
       <Folders />
     </TooltipIconButton>
   );

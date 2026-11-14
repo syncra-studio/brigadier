@@ -20,6 +20,8 @@
   --color-control: #ffffff12;
   --color-glass-stroke: #ffffff14;
   --color-selection: #ffffff1c;
+  /* Context and Files at rest; on, they glow (--drop-shadow-toggle-glow) [new-design]. */
+  --color-toggle-off: #ffffff59;
   /* A user's message bubble: control-fill with the glass edge. */
   --color-bubble: var(--color-control);
   --color-bubble-edge: var(--color-glass-stroke);
@@ -277,6 +279,8 @@
   --tracking-section: -0.01em;
   --tracking-tight: -0.025em;
   --tracking-wide: 0.025em;
+  /* The project badge's initials [new-design]. */
+  --tracking-badge: 0.3px;
   --tracking-wider: 0.05em;
   --tracking-widest: 0.1em;
 
@@ -455,6 +459,7 @@
   --shadow-summary: 0 0 0 0.5px oklch(1 0 0 / 16%), 0 3px 7.5px oklch(0 0 0 / 4%), 0 0 20px oklch(0 0 0 / 5%);
   /* The new design's menu shadow. */
   --shadow-overlay: 0 10px 32px #00000080;
+  --drop-shadow-toggle-glow: 0 0 8px #ffffffa6;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
