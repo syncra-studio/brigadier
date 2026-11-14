@@ -5,9 +5,10 @@ import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
 import { CodeBlock } from "./code";
+import { RefWord, remarkRefs } from "./refs";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
-const plugins = [remarkGfm, remarkBreaks];
+const plugins = [remarkGfm, remarkBreaks, remarkRefs];
 
 /**
  * A reply's markdown, one top-level block at a time, so while a reply streams only its last block parses
@@ -130,23 +131,36 @@ const Block = memo(function Block({ text, keep, chip, chunks }: { text: string; 
   );
 });
 
+const textOf = (node?: Node): string => node?.value ?? (node?.children ?? []).map(textOf).join("");
+
 type Node = {
   type: string;
   tagName?: string;
   value?: string;
-  properties?: { className?: unknown; dataAt?: number };
+  properties?: { className?: unknown; dataAt?: number; dataRef?: string };
   position?: { start: { offset?: number }; end: { offset?: number } };
   children?: Node[];
 };
 
-/** Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. */
+/**
+ * Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. A word or
+ * inline code an answer's refs know becomes the composer's chip (refs.tsx); a web link opens in the browser [D251, D252].
+ */
 const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
   span: ({ node, ...span }) => {
-    const at = (node as Node | undefined)?.properties?.dataAt;
+    const { dataAt: at, dataRef: word } = (node as Node | undefined)?.properties ?? {};
+    if (word !== undefined) return <RefWord word={word} plain={span.children} />;
     return at === undefined ? <span {...span} /> : <Fade at={at}>{span.children}</Fade>;
   },
+  // A new window's open goes to the browser (main.ts); a plain click's navigation is refused there.
+  a: ({ node: _, href, ...link }) => {
+    if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
+    if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
+    return <RefWord word={href} plain={<a href={href} {...link} />} />;
+  },
+  // Its words from the tree, as a chunk still fading splits them.
+  code: ({ node, children, ...rest }) => <RefWord word={textOf(node as Node | undefined)} plain={<code {...rest}>{children}</code>} />,
   ...(chip && {
-    a: ({ node: _, href, ...link }) => (href?.startsWith("chip:") ? chip(Number(href.slice(5))) : <a href={href} {...link} />),
     // A chip typed between backticks still shows as itself, as the old app lifted it out of the code.
     // shortcut: one inside a fenced block shows its placeholder, until a user's code block draws chips.
     code: ({ node: _, children, ...rest }) =>

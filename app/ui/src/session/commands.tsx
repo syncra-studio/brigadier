@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useMemo, useState } from "react";
+import { type RefObject, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { OpenKind } from "../components/composer/chip";
 import { openWorker } from "../workers/live";
@@ -45,6 +45,12 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     };
   }, [owner, backend, project, fresh]);
 
+  useEffect(() => {
+    if (!listed) return;
+    listedOf.set(owner, listed);
+    for (const heard of hearing) heard();
+  }, [owner, listed]);
+
   // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra` is [] or [/new].
   const all = useMemo(() => listed && [...listed, ...extra], [listed, extra.length]);
   const commands: Commands = {
@@ -63,6 +69,15 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
   const plus = <PlusMenu onFiles={onFiles} field={field} commands={commands} chats={chats} />;
   return { commands, onOpen, plus };
 }
+
+/** Each session's `/` list as its composer last read it, for the chips its answers draw [D251]. */
+const listedOf = new Map<string, SlashCommand[]>();
+const hearing = new Set<() => void>();
+const hear = (heard: () => void) => {
+  hearing.add(heard);
+  return () => void hearing.delete(heard);
+};
+export const useListedCommands = (owner: string | undefined) => useSyncExternalStore(hear, () => (owner ? listedOf.get(owner) : undefined));
 
 /**
  * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in

@@ -257,6 +257,15 @@ pub(super) fn serve(
                     let _ = out.send(reply.to_string());
                 });
             }
+            // Which of an answer's path-like words are the checkout's files and folders [D251].
+            "paths" => {
+                let (out, data, req) = (out.clone(), PathBuf::from(data), req.clone());
+                thread::spawn(move || {
+                    let mut reply = brigadier::mention::paths(&data, &req);
+                    reply["re"] = re;
+                    let _ = out.send(reply.to_string());
+                });
+            }
             "search" => {
                 let q = req["q"].as_str().unwrap_or("");
                 let reply = match index::search(data, q) {

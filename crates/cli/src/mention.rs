@@ -108,3 +108,26 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
     };
     json!({"ok": true, "query": q, "groups": groups})
 }
+
+/// `{owner, paths}` → `{ok, found: {asked: {path, folder}}}`: which of an answer's path-like words
+/// name a file or folder of the session's checkout, so the answer draws it as the composer's chip
+/// [D251]. A path under the checkout's root counts as the relative one; a bare file name, when
+/// exactly one file has it.
+pub fn paths(data: &Path, req: &Value) -> Value {
+    let target = Target::Session(req["owner"].as_str().unwrap_or(""));
+    let Ok(checkout) = git::checkout(data, &target) else {
+        return json!({"ok": true, "found": {}});
+    };
+    let all = files::mention(&checkout, "", &AtomicBool::new(false)).unwrap_or_default();
+    let root = format!("{}/", checkout.root.display());
+    let mut found = serde_json::Map::new();
+    for asked in (req["paths"].as_array().into_iter().flatten()).filter_map(Value::as_str) {
+        let want = asked.strip_prefix(&root).unwrap_or(asked).trim_end_matches('/');
+        let mut named = all.iter().filter(|f| !f.2 && f.1.rsplit('/').next() == Some(want));
+        let alone = named.next().filter(|_| named.next().is_none());
+        if let Some((_, path, folder)) = all.iter().find(|f| f.1 == want).or(alone) {
+            found.insert(asked.into(), json!({"path": path, "folder": folder}));
+        }
+    }
+    json!({"ok": true, "found": found})
+}

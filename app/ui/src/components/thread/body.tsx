@@ -6,6 +6,7 @@ import type { Item, SentFile, Turn } from "../../thread/item";
 import { useKept } from "../../thread/kept";
 import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
+import { AnswerRefs } from "../../thread/refs";
 import { duration } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
@@ -121,7 +122,9 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           fork={fork}
           older={older}
         >
-          <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
+          <AnswerRefs text={item.text} done={!item.streaming}>
+            <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
+          </AnswerRefs>
         </AssistantMessage>
         </>
       );

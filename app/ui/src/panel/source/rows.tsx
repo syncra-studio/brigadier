@@ -32,7 +32,7 @@ export function Line({ icon, end, onClick, className, children }: { icon?: React
 }
 
 /** A PR's state as GitHub says it, in its icon, word and colour: Open, Draft, Merged, Closed [D202]. */
-const PR_LOOK = {
+export const PR_LOOK = {
   open: { Icon: PullRequestOpen, tint: "text-success" },
   draft: { Icon: PullRequestDraft, tint: "text-muted-foreground" },
   merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
