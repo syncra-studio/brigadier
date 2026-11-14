@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { ErrorLine } from "../components/error-line";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
+import type { Quota } from "../components/composer/quota-lines";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
 import { type Row, threadSource } from "../daemon";
@@ -28,6 +29,7 @@ type Rust = {
   mark: string | null;
   unavailable: "install" | "sign-in" | null;
   models: { id: string; name: string; efforts: string[]; default_effort: string | null; fast: string | null; legacy: boolean }[];
+  usage?: Quota[] | null;
 };
 
 /** Rust's groups in the kit picker's shape. */

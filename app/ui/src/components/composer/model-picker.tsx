@@ -2,7 +2,6 @@ import { type HTMLAttributes, type ReactElement, type RefObject, useEffect, useR
 
 import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Star, StarFilled, Terminal } from "../../icons";
 import { setStar, useSettings } from "../../settings/api";
-import { Button } from "../button";
 import { cx } from "../cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { Segment, SegmentedRoot } from "../segmented";
@@ -10,6 +9,8 @@ import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
 import { focusChoice, moveKeys, named, useClosesOnTyping } from "./model-keys";
+import { NotSetUp } from "./not-set-up";
+import { type Quota, QuotaLines } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
@@ -40,6 +41,8 @@ export type ModelGroup = {
   mark: string | null;
   models: Model[];
   unavailable?: "install" | "sign-in" | null;
+  /** Each signed-in account's limits, where Rust serves them [D337]. */
+  usage?: Quota[] | null;
 };
 
 /** What the session runs on; `fast` on its model's fast tier. */
@@ -314,8 +317,9 @@ export function ModelPicker({
           </PopoverTrigger>
         )}
         <PopoverContent
-          side={anchor ? "bottom" : "top"}
-          align={anchor ? "start" : "end"}
+          // A settings row's select opens under it, as the old app's settings pickers.
+          side={anchor || trigger ? "bottom" : "top"}
+          align={anchor || trigger ? "start" : "end"}
           padded={false}
           aria-label="Model"
           // In a composer it sits above the card, as its other menus do, not over the field.
@@ -406,34 +410,11 @@ export function ModelPicker({
                 </div>
                 {matches?.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models match “{needle}”</p>}
                 {!matches && !group && favorites.length === 0 && <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No favorites yet</p>}
-                {!matches && group?.unavailable && (
-                  <div data-slot="model-picker-not-set-up" className="flex flex-col items-center gap-2.5 px-5 py-7 text-center">
-                    <span className="grid size-8.5 shrink-0 place-items-center rounded-nav border border-divider text-muted-foreground">
-                      <ProviderMark mark={group.mark} className="size-4.25" />
-                    </span>
-                    <p className="text-sm font-medium text-foreground">
-                      {group.label} {group.unavailable === "install" ? "isn't installed" : "isn't signed in"}
-                    </p>
-                    <p className="max-w-72 text-xs text-muted-foreground">
-                      {group.unavailable === "install" ? "Install it and its models show here." : "Sign in and its models show here."}
-                    </p>
-                    {onSetUp && (
-                      <Button
-                        variant="soft"
-                        size="sm"
-                        onClick={() => {
-                          setOpen(false);
-                          onSetUp(group.provider);
-                        }}
-                      >
-                        Set up {group.label}
-                      </Button>
-                    )}
-                  </div>
-                )}
+                {!matches && group?.unavailable && <NotSetUp group={group} onSetUp={onSetUp && (() => (setOpen(false), onSetUp(group.provider)))} />}
                 {!matches && !group?.unavailable && group?.models.length === 0 && (
                   <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models listed yet</p>
                 )}
+                {!matches && group?.usage && <QuotaLines usage={group.usage} />}
               </div>
             </div>
             {efforts && (
