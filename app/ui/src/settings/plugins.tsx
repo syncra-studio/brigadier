@@ -1,0 +1,401 @@
+import { useRef, useState } from "react";
+
+import { Badge } from "../components/badge";
+import { Button } from "../components/button";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { cx } from "../components/cx";
+import { ErrorLine } from "../components/error-line";
+import { Segmented } from "../components/segmented";
+import { RowText, SettingsCard } from "../components/settings-card";
+import { Switch } from "../components/switch";
+import { errorText } from "../onboarding/api";
+import { Folder, Folders, Mcp, Plus, Spinner, ToolsSkills } from "../icons";
+import { SearchField } from "./archived-toolbar";
+import { SettingsPage, SettingsSection } from "./parts";
+import { type AddFirst, AddDialog, type Draft, RefreshDialog } from "./plugins-dialogs";
+import { DetailsPage, type SignInStart } from "./plugins-details";
+import { AgentTile, PluginMark } from "./plugins-marks";
+
+/** Where an item is on: every project, or only these (by id). */
+export type Scope = { all: true } | { projects: string[] };
+export type Kind = "server" | "skill";
+/** A remote server's standing; null for a skill or a local server. */
+export type Status = "signed_in" | "needs_sign_in" | "cant_reach" | "off";
+/** One item of the library, as Rust's `plugins` says it [D2043]. `note` is a quiet line: a skill an agent keeps its own copy of (D415), a server each agent signs in to itself (wave4 D2045). */
+export type Item = {
+  key: string;
+  kind: Kind;
+  name: string;
+  description: string;
+  /** A server's address or command, a skill's folder. */
+  detail: string;
+  on: boolean;
+  scope: Scope;
+  status: Status | null;
+  sign_in: "brigadier" | "cli" | null;
+  /** The agents that get it, by label. */
+  agents: string[];
+  note: string | null;
+};
+/** One of an agent's own skills or servers, read-only: Add to library copies its definition, never its tokens. */
+export type Own = { key: string; kind: Kind; name: string; detail: string; agent: string; in_library: boolean };
+export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[] };
+
+/** What the page asks of Rust; each answers with the whole page as it is after. */
+export type PluginActions = {
+  add: (draft: Draft | { own: string }) => Promise<Plugins>;
+  set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
+  remove: (key: string) => Promise<Plugins>;
+  /** Reads the page again, its agents' own included. */
+  refresh: () => Promise<Plugins>;
+  /** Signs in through the browser: settles once it's done, or with its error. */
+  signIn: (key: string) => Promise<unknown>;
+  cancel: (key: string) => Promise<unknown>;
+  signOut: (key: string) => Promise<unknown>;
+  /** A skill's folder, from the system's picker; null when none was chosen. */
+  pickFolder: () => Promise<string | null>;
+};
+
+export const TAB_LABEL: Record<Kind, string> = { server: "MCP servers", skill: "Skills" };
+const DESCRIPTION = "Skills and MCP servers your agents can use.";
+
+/** The page's rows, for Settings search; the page draws these words. */
+export const PLUGINS_ROWS = {
+  server: { label: "MCP servers", description: "Servers every agent can use, in every project or only some" },
+  skill: { label: "Skills", description: "Skills every agent can use, in every project or only some" },
+  own: { label: "Each agent's own", description: "What each agent has in its own settings. Add to library copies it, never its sign-in." },
+} as const;
+
+const STATUS: Record<Status, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
+  signed_in: { label: "Signed in", variant: "success" },
+  needs_sign_in: { label: "Needs sign-in", variant: "warning" },
+  cant_reach: { label: "Can't reach", variant: "destructive" },
+  off: { label: "Off", variant: "secondary" },
+};
+
+/** Where an item is on, as its tag: "Global", a project's name, "3 projects"; null when it's in none. */
+export function chipOf(value: Plugins, item: Item): string | null {
+  if ("all" in item.scope) return "Global";
+  const names = item.scope.projects.map((id) => value.projects.find((project) => project.id === id)?.name ?? id);
+  if (names.length === 0) return null;
+  return names.length === 1 ? names[0]! : `${names.length} projects`;
+}
+
+const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
+
+/** A dialog open over the page; the gallery opens one at first. */
+export type Open = { type: "add"; remote: boolean; first?: AddFirst } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string };
+
+/**
+ * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each card
+ * with its mark, line, scope chip, status chip, agents and switch; each agent's own with Add to library; an item's page.
+ * Pure props: a change shows at once and settles on the page Rust answers with, or goes back with Rust's words [D30].
+ * `value` null is loading; `detail` an item's page. `remote` offers remote servers in Add (4.13).
+ */
+export function PluginsPage({
+  value,
+  error,
+  offline = false,
+  marks,
+  actions,
+  detail,
+  onDetail,
+  remote,
+  open: openFirst = null,
+  signing,
+}: {
+  value: Plugins | null;
+  error?: string | null;
+  offline?: boolean;
+  /** Each agent's mark, by its label. */
+  marks: Record<string, string | null>;
+  actions: PluginActions;
+  detail: string | null;
+  onDetail: (key: string | null) => void;
+  remote: boolean;
+  open?: Open | null;
+  signing?: SignInStart;
+}) {
+  const [tab, setTab] = useState<Kind>(() => value?.items.find((item) => item.key === detail)?.kind ?? "server");
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Open | null>(openFirst);
+  const [checking, setChecking] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  // A change in flight, or settled, on the page it was made from; a newer page from Rust replaces it.
+  const [mine, setMine] = useState<{ base: Plugins; shown: Plugins } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const ops = useRef(0);
+  const shown = mine && mine.base === value ? mine.shown : value;
+
+  /** Shows `next` at once, then Rust's answer to `send`; its refusal puts the page back and says why. */
+  const change = (next: Plugins, send: () => Promise<Plugins>): Promise<boolean> => {
+    if (!value || !shown) return Promise.resolve(false);
+    const op = ++ops.current;
+    const base = value;
+    setMine({ base, shown: next });
+    setFailed(null);
+    setSaid(null);
+    return send().then(
+      (back) => {
+        if (op === ops.current) setMine({ base, shown: back });
+        return true;
+      },
+      (cause: unknown) => {
+        if (op === ops.current) {
+          setMine(null);
+          setFailed(errorText(cause));
+        }
+        return false;
+      },
+    );
+  };
+  const withItem = (key: string, patch: Partial<Item>) => shown && { ...shown, items: shown.items.map((item) => (item.key === key ? { ...item, ...patch } : item)) };
+  const set = (key: string, patch: { on?: boolean; scope?: Scope }) => void change(withItem(key, patch)!, () => actions.set(key, patch));
+  /** Copies agents' own items into the library, one after another; the page settles on the last answer. */
+  const addOwn = (keys: string[]) =>
+    shown &&
+    change({ ...shown, own: shown.own.map((each) => (keys.includes(each.key) ? { ...each, in_library: true } : each)) }, () =>
+      keys.reduce<Promise<Plugins>>((before, key) => before.then(() => actions.add({ own: key })), Promise.resolve(shown)),
+    );
+  const remove = (key: string) => {
+    if (!shown) return Promise.resolve(false);
+    onDetail(null);
+    return change({ ...shown, items: shown.items.filter((item) => item.key !== key) }, () => actions.remove(key));
+  };
+  /** The only place an agent's new own items are looked for: what wasn't there before opens the dialog. */
+  const refresh = () => {
+    if (!shown || checking) return;
+    const before = new Set(shown.own.map((own) => own.key));
+    setChecking(true);
+    setSaid(null);
+    void change(shown, async () => {
+      const back = await actions.refresh();
+      const found = back.own.filter((own) => !before.has(own.key) && !own.in_library);
+      if (found.length) setOpen({ type: "refresh", found });
+      else setSaid("Nothing changed. There are no new skills or MCP servers in your agents' own settings.");
+      return back;
+    }).finally(() => setChecking(false));
+  };
+
+  const item = detail ? shown?.items.find((each) => each.key === detail) : undefined;
+  const close = () => setOpen(null);
+  let page;
+  if (shown && item) {
+    page = <DetailsPage value={shown} item={item} marks={marks} actions={actions} signing={signing} onScope={(scope) => set(item.key, { scope })} onRemove={() => setOpen({ type: "remove", key: item.key })} />;
+  } else {
+    const count = (kind: Kind) => shown?.items.filter((each) => each.kind === kind).length ?? 0;
+    const items = shown?.items.filter((each) => each.kind === tab && matches(query, each.name, each.description, each.detail)) ?? [];
+    const own = shown?.own.filter((each) => each.kind === tab && matches(query, each.name, each.detail, each.agent)) ?? [];
+    page = (
+      <SettingsPage title="Plugins" description={DESCRIPTION}>
+        <div className="flex flex-col gap-5">
+          <div data-slot="plugins-toolbar" className="flex flex-wrap items-center gap-3">
+            <Segmented
+              label="Plugins"
+              value={tab}
+              options={(["server", "skill"] as const).map((kind) => ({
+                value: kind,
+                label: (
+                  <>
+                    {TAB_LABEL[kind]} <span className="text-faint-foreground">{count(kind)}</span>
+                  </>
+                ),
+              }))}
+              onChange={(next) => {
+                setTab(next);
+                setQuery("");
+              }}
+            />
+            <span className="flex-1" />
+            {/* "Search" alone fits a narrow window; the field's name still says what it searches. */}
+            <div className="flex max-w-60 min-w-28 flex-1">
+              <SearchField label={tab === "server" ? "Search MCP servers" : "Search skills"} value={query} onChange={setQuery} />
+            </div>
+            <Button variant="soft" size="sm" disabled={!shown || checking} onClick={refresh}>
+              {checking && <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />}
+              {checking ? "Checking…" : "Refresh"}
+            </Button>
+            <Button size="sm" disabled={!shown} onClick={() => setOpen({ type: "add", remote })}>
+              <Plus aria-hidden />
+              Add
+            </Button>
+          </div>
+          {said && (
+            <p role="status" className="text-label text-quiet-foreground">
+              {said}
+            </p>
+          )}
+          {!shown ? (
+            error ? (
+              <ErrorLine error={error} className="py-6 text-center" />
+            ) : (
+              <p role="status" className="py-6 text-center text-label text-quiet-foreground">
+                Loading plugins…
+              </p>
+            )
+          ) : count(tab) === 0 ? (
+            <EmptyTab tab={tab} remote={remote} onAdd={() => setOpen({ type: "add", remote })} />
+          ) : items.length === 0 && own.length === 0 ? (
+            <p data-slot="no-match" className="py-6 text-center text-label text-quiet-foreground">
+              Nothing matches “{query.trim()}”.
+            </p>
+          ) : (
+            <div data-slot="plugins-grid" className="grid grid-cols-1 gap-2.5 @reading:grid-cols-2">
+              {items.map((each) => (
+                <PluginCard key={each.key} item={each} chip={chipOf(shown, each)} marks={marks} onOpen={() => onDetail(each.key)} onSwitch={(on) => set(each.key, { on })} />
+              ))}
+            </div>
+          )}
+          {own.length > 0 && <OwnList own={own} marks={marks} onAdd={(each) => void addOwn([each.key])} />}
+        </div>
+      </SettingsPage>
+    );
+  }
+  const target = open?.type === "remove" ? shown?.items.find((each) => each.key === open.key) : undefined;
+  return (
+    <div className="@container relative flex h-full min-w-0 flex-1">
+      {/* Brigadier isn't running: the last page, dimmed, nothing on it reachable. */}
+      <div inert={offline} className={cx("flex min-w-0 flex-1", offline && "opacity-disabled")}>
+        {page}
+      </div>
+      {/* What a change failed with, on the list or an item's page alike, the old app's. */}
+      <ErrorLine error={failed} className="absolute inset-x-5 bottom-4 bg-background" />
+      {open?.type === "add" && shown && (
+        <AddDialog remote={open.remote} first={open.first} pickFolder={actions.pickFolder} onAdd={(draft) =>
+            actions.add(draft).then(
+              (back) => setMine({ base: value!, shown: back }),
+              (cause: unknown) => {
+                // Said on the page too: the dialog may be hidden by then.
+                setFailed(errorText(cause));
+                throw cause;
+              },
+            )
+          } onClose={close} />
+      )}
+      {open?.type === "refresh" && (
+        <RefreshDialog
+          found={open.found}
+          onApply={(keys) => {
+            void addOwn(keys);
+            close();
+          }}
+          onClose={close}
+        />
+      )}
+      {target && (
+        <RemoveDialog
+          item={target}
+          onRemove={() => {
+            void remove(target.key);
+            close();
+          }}
+          onClose={close}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One item in the list's grid: its mark, name, line, where it's on, its standing and agents; its switch at the corner. */
+function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip: string | null; marks: Record<string, string | null>; onOpen: () => void; onSwitch: (on: boolean) => void }) {
+  const status = item.on ? item.status : "off";
+  const signIn = item.sign_in === "brigadier" && item.status === "needs_sign_in";
+  // How it runs (a command, an address or a folder) is in code's letters.
+  const line = signIn ? "Must sign in" : item.description || item.detail;
+  return (
+    <SettingsCard data-slot="plugin-row" data-key={item.key} data-off={!item.on || undefined} split={false} className="flex-row items-start gap-3 px-4 py-3.5">
+      <button type="button" onClick={onOpen} aria-label={`Open ${item.name}`} className={cx("flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-start focus-visible:focus-ring", !item.on && "opacity-disabled")}>
+        <PluginMark item={item} />
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="truncate text-label font-medium">{item.name}</span>
+          <span className={cx("truncate text-xs", signIn ? "text-warning" : "text-quiet-foreground", !signIn && !item.description && "font-mono")}>{line}</span>
+          {item.note && <span className="text-xs text-quiet-foreground">{item.note}</span>}
+          <span className="flex flex-wrap items-center gap-1.5 pt-1.5">
+            {chip && <ScopeChip text={chip} />}
+            {status && <Badge variant={STATUS[status].variant}>{STATUS[status].label}</Badge>}
+            {item.agents.map((agent) => (
+              <AgentTile key={agent} agent={agent} mark={marks[agent]} />
+            ))}
+          </span>
+        </span>
+      </button>
+      <Switch aria-label={item.name} checked={item.on} onCheckedChange={onSwitch} />
+    </SettingsCard>
+  );
+}
+
+/** Where an item is on, as a tag: "Global", a project's name, "3 projects". */
+export function ScopeChip({ text }: { text: string }) {
+  const Icon = text === "Global" ? Folders : Folder;
+  return (
+    <span data-slot="scope-chip" className="flex h-5 w-fit shrink-0 items-center gap-1 rounded-capsule bg-fill-subtle px-2 text-xs text-quiet-foreground">
+      <Icon aria-hidden className="size-3" />
+      {text}
+    </span>
+  );
+}
+
+/** Each agent's own skills or servers, read-only; Add to library copies one in. */
+function OwnList({ own, marks, onAdd }: { own: Own[]; marks: Record<string, string | null>; onAdd: (own: Own) => void }) {
+  return (
+    <SettingsSection title={PLUGINS_ROWS.own.label} description={PLUGINS_ROWS.own.description} setting={PLUGINS_ROWS.own.label}>
+      <SettingsCard>
+        {own.map((each) => (
+          <div key={each.key} data-slot="own-row" className="flex items-center gap-3 px-4 py-3">
+            <AgentTile agent={each.agent} mark={marks[each.agent]} large />
+            <RowText title={each.name} line={<span className="font-mono">{each.detail}</span>} truncate />
+            <span className="shrink-0 text-xs text-quiet-foreground">{each.agent}</span>
+            {each.in_library ? (
+              <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
+            ) : (
+              <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name} to library`} onClick={() => onAdd(each)}>
+                Add to library
+              </Button>
+            )}
+          </div>
+        ))}
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/** A tab with nothing in it yet. */
+function EmptyTab({ tab, remote, onAdd }: { tab: Kind; remote: boolean; onAdd: () => void }) {
+  const [help, setHelp] = useState(false);
+  const Icon = tab === "server" ? Mcp : ToolsSkills;
+  return (
+    <SettingsCard data-slot="plugins-empty" split={false} className="items-center gap-2 px-6 py-12 text-center">
+      <span className="flex size-11 items-center justify-center rounded-nav bg-fill-subtle">
+        <Icon aria-hidden className="size-5 text-quiet-foreground" />
+      </span>
+      <span className="pt-2 text-sm font-medium">No {tab === "skill" ? "skills" : "MCP servers"} yet</span>
+      <span className="text-label text-quiet-foreground">Add one once and every agent can use it, in all your projects or just some.</span>
+      <span className="flex items-center gap-3 pt-3">
+        <Button size="sm" onClick={onAdd}>
+          Add
+        </Button>
+        <Button variant="ghost" size="sm" aria-expanded={help} onClick={() => setHelp(!help)}>
+          What can I add?
+        </Button>
+      </span>
+      {help && <span className="max-w-md pt-2 text-xs text-quiet-foreground">{remote ? `${ADD_HINT}, or one at an address.` : `${ADD_HINT}.`}</span>}
+    </SettingsCard>
+  );
+}
+
+const ADD_HINT = "A skill folder with a SKILL.md, an MCP server your agents start on this computer";
+
+/** Removing one library item: one choice, the old app's (proposed). */
+function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () => void; onClose: () => void }) {
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={`Remove ${item.name}?`}
+      description="Removes it from Brigadier's library. Sessions already running keep it until they end."
+      confirm="Remove"
+      destructive
+      onConfirm={onRemove}
+    />
+  );
+}

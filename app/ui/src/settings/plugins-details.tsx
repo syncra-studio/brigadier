@@ -1,0 +1,173 @@
+import { useRef, useState } from "react";
+
+import { Button } from "../components/button";
+import { CopyButton } from "../components/copy-button";
+import { ErrorLine } from "../components/error-line";
+import { Radio, RadioGroup } from "../components/radio";
+import { RowText, SettingsCard } from "../components/settings-card";
+import { Switch } from "../components/switch";
+import { Folder, Spinner } from "../icons";
+import { errorText } from "../onboarding/api";
+import { SettingsPage, SettingsSection } from "./parts";
+import { AgentTile, PluginMark } from "./plugins-marks";
+import type { Item, PluginActions, Plugins, Scope } from "./plugins";
+
+/** How the gallery opens a sign-in: waiting on the browser, or failed with these words. */
+export type SignInStart = "waiting" | { error: string } | undefined;
+
+const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
+
+/** One item: its sign-in, where it's on, how it runs, and Remove. */
+export function DetailsPage({
+  value,
+  item,
+  marks,
+  actions,
+  signing,
+  onScope,
+  onRemove,
+}: {
+  value: Plugins;
+  item: Item;
+  marks: Record<string, string | null>;
+  actions: PluginActions;
+  signing: SignInStart;
+  onScope: (scope: Scope) => void;
+  onRemove: () => void;
+}) {
+  const some = "projects" in item.scope ? item.scope.projects : null;
+  const toggle = (id: string, on: boolean) => onScope({ projects: on ? [...some!, id] : some!.filter((each) => each !== id) });
+  const first = item.kind === "skill" ? "Folder" : /^[a-z]+:\/\//.test(item.detail) ? "Address" : "Command";
+  return (
+    <SettingsPage
+      title={item.name}
+      description={`${KIND_LABEL[item.kind]} · ${item.description || item.detail.replace(/^https:\/\//, "")}`}
+      mark={<PluginMark item={item} large />}
+      back={{ label: "Plugins", href: "#settings/plugins" }}
+    >
+      {(item.note || item.agents.length > 0) && (
+        <div className="flex flex-col gap-2">
+          {item.note && <p className="text-xs text-quiet-foreground">{item.note}</p>}
+          {item.agents.length > 0 && (
+            <div aria-label="Agents" className="flex flex-wrap items-center gap-1.5">
+              {item.agents.map((agent) => (
+                <AgentTile key={agent} agent={agent} mark={marks[agent]} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {item.sign_in === "brigadier" && <SignIn key={item.key} item={item} actions={actions} start={signing} />}
+      <SettingsSection title="Projects" description="Where it's on. New sessions pick up changes." setting="Projects">
+        <RadioGroup
+          aria-label="Where it's on"
+          value={some ? "some" : "all"}
+          onValueChange={(next) => (next === "all" ? onScope({ all: true }) : value.projects.length > 0 && onScope({ projects: value.projects.map((project) => project.id) }))}
+        >
+          <SettingsCard>
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+              <Radio value="all" className="mt-0.5" />
+              <RowText title="All projects" line="On in every project, and in new ones you add." />
+            </label>
+            {/* From All projects, it starts on in each project: nothing changes until one is turned off. */}
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+              <Radio value="some" disabled={value.projects.length === 0} className="mt-0.5" />
+              <RowText title="Only some projects" line="On only in the projects you pick." />
+            </label>
+          </SettingsCard>
+        </RadioGroup>
+        {some && value.projects.length > 0 && (
+          <SettingsCard>
+            {value.projects.map((project) => {
+              const on = some.includes(project.id);
+              return (
+                <div key={project.id} data-slot="project-switch" className="flex items-center gap-3 px-4 py-3">
+                  <Folder aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
+                  <RowText title={project.name} />
+                  {/* It stays on somewhere: the last project on can't be turned off. */}
+                  <Switch aria-label={project.name} checked={on} disabled={on && some.length === 1} onCheckedChange={(next) => toggle(project.id, next)} />
+                </div>
+              );
+            })}
+          </SettingsCard>
+        )}
+      </SettingsSection>
+      <SettingsSection title="Advanced" setting="Advanced">
+        <SettingsCard>
+          <div className="flex items-center gap-6 px-4 py-3">
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-label font-medium">{first}</span>
+              <span className="font-mono text-xs break-all text-quiet-foreground">{item.detail}</span>
+            </span>
+            <CopyButton text={item.detail} size="icon-xs" className="text-muted-foreground" />
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+      <div data-slot="remove-row" className="flex items-center gap-4">
+        <Button variant="soft-destructive" size="sm" onClick={onRemove}>
+          Remove {item.name}
+        </Button>
+        <span className="text-xs text-faint-foreground">Removes it from Brigadier's library. New sessions pick up changes.</span>
+      </div>
+    </SettingsPage>
+  );
+}
+
+const STANDING = { signed_in: "Signed in", needs_sign_in: "Not signed in", cant_reach: "Can't reach it. Brigadier keeps trying.", off: "Off" } as const;
+
+/** A server Brigadier signs in to: its standing, Sign in (Waiting for browser… with Cancel while it runs), Sign out, and what failed. */
+function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; start: SignInStart }) {
+  const [waiting, setWaiting] = useState(start === "waiting");
+  const [error, setError] = useState<string | null>(typeof start === "object" ? start.error : null);
+  const generation = useRef(0);
+  const run = (work: () => Promise<unknown>, wait: boolean) => {
+    const current = ++generation.current;
+    setWaiting(wait);
+    setError(null);
+    work()
+      .catch((cause: unknown) => generation.current === current && setError(errorText(cause)))
+      .finally(() => generation.current === current && setWaiting(false));
+  };
+  const signedIn = item.status === "signed_in";
+  return (
+    <div data-slot="sign-in-status" className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p role="status" className="text-label text-quiet-foreground">
+          {item.status ? STANDING[item.status] : "Not signed in"}
+        </p>
+        {waiting ? (
+          <>
+            <Button variant="ghost" size="sm" disabled>
+              <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />
+              Waiting for browser…
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // The sign-in's own promise settles as cancelled; its words aren't an error.
+                generation.current++;
+                setWaiting(false);
+                void actions.cancel(item.key).catch((cause: unknown) => setError(errorText(cause)));
+              }}
+            >
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" size="sm" onClick={() => run(() => actions.signIn(item.key), true)}>
+              {signedIn ? "Sign in again" : "Sign in"}
+            </Button>
+            {signedIn && (
+              <Button variant="ghost" size="sm" onClick={() => run(() => actions.signOut(item.key), false)}>
+                Sign out
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+      <ErrorLine error={error} />
+    </div>
+  );
+}

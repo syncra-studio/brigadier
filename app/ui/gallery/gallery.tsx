@@ -15,6 +15,7 @@ import { Panes } from "./panes";
 import { Area } from "./parts";
 import { PeersGallery } from "./peers";
 import { PickersGallery } from "./pickers";
+import { PluginsGallery } from "./plugins";
 import { Popups } from "./popups";
 import { QuestionGallery } from "./questions";
 import { RewindGallery } from "./rewind";
@@ -114,6 +115,7 @@ function GalleryPage() {
             </Area>
             <Area name="Settings">
               <RoutingGallery />
+              <PluginsGallery />
             </Area>
             <Area name="Controls">
               <Kit />
