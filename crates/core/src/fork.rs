@@ -274,6 +274,14 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
             )
         }
     };
+    // Settings › Routing's rules hold before anything is made, as a send's do [D376, D388 Q10].
+    let mut run = as_run(&s.src, &f, &backend, Some(&account));
+    if let Some((_, m, e, _)) = ask.to {
+        (run.model, run.effort) = (Some(m.into()), e.map(String::from));
+    }
+    if let Err(e) = run.ruled(ask.to.map_or(backend.as_str(), |(b, ..)| b)) {
+        return Ok(refused("barred", &e));
+    }
     let mut op = rf::Op {
         fork: ask.fork.into(),
         account,

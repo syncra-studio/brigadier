@@ -151,6 +151,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Some(spec) => session_pick(spec)?,
                 None => home_pick(data, args)?,
             };
+            // A model a rule bars is refused before anything is made, as Send as new's [D388 Q10].
+            if let Err(e) =
+                crate::routing::launch(data, &pick.0, pick.1.as_deref(), pick.2.as_deref())
+            {
+                return Ok(json!({"ok": false, "result": "refused", "error": e}));
+            }
             // Kept first: a start cut short is still found, and deleted, with the session.
             fs::create_dir_all(&dir)?;
             mine.push(chat.into());
