@@ -402,7 +402,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             resuming={resuming || offline}
             steer={canSteer && running}
             canEdit={empty}
-            error={error ?? (stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null)}
+            error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
             onResume={resume}
             onSteer={steerQueued}
             onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}

@@ -269,6 +269,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let reply = recover(data, id, true)?;
                     let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
                     if reply["ok"] != true && !went {
+                        // Its first message can't go either: it waits saying why, as a refused send's does [D392 P9].
+                        if let Some(first) = q.items.first_mut() {
+                            let why = reply["message"].as_str().or(reply["error"].as_str());
+                            first.error = Some(why.unwrap_or("refused").into());
+                        }
                         return Ok(Some(reply));
                     }
                 }
