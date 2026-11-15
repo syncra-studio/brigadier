@@ -156,7 +156,8 @@ impl Thread {
                 || row["hidden"] == true
                 || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
         };
-        let cut = o.cut() || o.stop.0.as_deref() == Some("user");
+        // Not a model picked mid-turn: its carry-on starts under the divider, where it was picked [D124, D362].
+        let cut = (o.cut() && !self.fold.switched) || o.stop.0.as_deref() == Some("user");
         o.joins = (o.answer)
             .filter(|&a| cut && (a + 1..=self.items.len() as u64).all(mid))
             .map(|a| {
