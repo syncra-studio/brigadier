@@ -14,7 +14,7 @@
 
 mod line;
 mod plan;
-pub(crate) use plan::plan_held;
+pub(crate) use plan::{plan_gone, plan_held};
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};

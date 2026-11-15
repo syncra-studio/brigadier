@@ -53,7 +53,26 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
         return;
     };
     let held = (f.fold.turns.first()).and_then(|t| t.asks.get(request));
-    if !f.fold.plans.now.is_null() || held.is_none_or(|r| r["to"] != "review") {
+    let now = &f.fold.plans.now;
+    if held.is_none_or(|r| r["to"] != "review")
+        || !matches!(now["state"].as_str(), None | Some("running"))
+    {
+        return;
+    }
+    if now["state"] == "running" {
+        // A restart cut its reviewer's end short: its result is written, never acted on [D54].
+        let by = now["by"].as_str().unwrap_or("");
+        let ended = super::result::all(data, id)
+            .into_iter()
+            .find(|(_, x)| x.wid == by);
+        match (ended, link(data, by)) {
+            (Some((_, r)), Some(l)) => _ = super::act(data, &l, by, &r.turn, &r.how),
+            (Some(_), None) => {
+                let n = json!({"phase": "off", "why": "its reviewer's record is gone"});
+                plan_note(data, id, request, n);
+            }
+            (None, _) => {}
+        }
         return;
     }
     // One a restart cut short is reserved already: taken, never a second [D54].
@@ -99,6 +118,35 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
         Err(why) => json!({"phase": "off", "why": why}),
     };
     plan_note(data, id, request, n);
+}
+
+/// The daemon's pass for session `id`: a plan reviewer still working once its plan no longer
+/// waits on it (its turn stopped, the session closed, or it was answered without the review) is
+/// stopped as `brigadier stop` does; its one result is written as any stopped reviewer's [D385].
+pub(crate) fn plan_gone(data: &Path, id: &str) {
+    let ended = super::result::all(data, id);
+    let open: Vec<_> = (records(data, id).into_iter())
+        .filter(|x| x.review["plan"].is_string() && x.state == "started")
+        .filter(|x| ended.iter().all(|(_, r)| r.wid != x.wid))
+        .collect();
+    if open.is_empty() {
+        return;
+    }
+    let Ok(f) = core::fold(&core::session_dir(data, id), true) else {
+        return;
+    };
+    let all = procs::all();
+    for x in open {
+        let asked = (f.fold.turns.first()).and_then(|t| t.asks.get(x.review["plan"].as_str()?));
+        if asked.is_some_and(|r| r["to"] == "review")
+            || !crate::sessions::working(data, &x.wid, &all)
+        {
+            continue;
+        }
+        if crate::workers::end(data, id, &x.wid, "user").is_ok() {
+            crate::workers::ended(data, id, &[x.wid], "user");
+        }
+    }
 }
 
 fn plan_note(data: &Path, id: &str, request: &str, mut n: Value) {

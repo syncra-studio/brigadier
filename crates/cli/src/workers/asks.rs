@@ -42,6 +42,7 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
     if let Some(request) = row["reason"]["review"].as_str() {
         super::review::plan_held(data, id, request);
     }
+    super::review::plan_gone(data, id);
 }
 
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.
