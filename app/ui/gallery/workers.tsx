@@ -19,7 +19,7 @@ const act = () => Promise.resolve();
 
 const BRIEF =
   "Target src/upload/retry.rs\n\nChange: retry failed uploads 5 times with doubling waits from 1 s; stop at once on a 4xx. Keep the public API as it is, and commit on your branch when the tests pass.";
-const RECEIPT = "Standard → Large model · medium · Work (5-hour 40%, resets 15:10)";
+const RECEIPT = "Write code → Large model · Medium · Work (5-hour 40%, resets 15:10)";
 
 const worker = (id: string, name: string, kind: Worker["kind"], word: string, more: Partial<Worker> = {}): Worker => ({
   id,
@@ -35,7 +35,7 @@ const worker = (id: string, name: string, kind: Worker["kind"], word: string, mo
 });
 
 export const RETRY = worker("w-retry", "Retry backoff", "working", "Working", { now: "Running cargo test", added: 42, removed: 7 });
-export const PROGRESS = worker("w-progress", "Progress bar", "working", "Working", { now: "Writing…", startedAt: NOW - 210_000, added: 18, model: "Fast model", receipt: "Quick → Fast model · low · Personal (5-hour 12%, resets 17:40)" });
+export const PROGRESS = worker("w-progress", "Progress bar", "working", "Working", { now: "Writing…", startedAt: NOW - 210_000, added: 18, model: "Fast model", receipt: "Quick actions → Fast model · Low · Personal (5-hour 12%, resets 17:40)" });
 const HELD = worker("w-held", "Docs table", "needsYou", "Needs you", { startedAt: NOW - 240_000 });
 const LIMIT = worker("w-limit", "Schema check", "limit", "Limit until 15:10");
 const PAUSED = worker("w-paused", "Upload copy", "paused", "Paused", { startedAt: NOW - 300_000 });
