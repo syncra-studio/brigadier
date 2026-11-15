@@ -1,9 +1,10 @@
 import { Popover as BasePopover } from "@base-ui/react/popover";
 import { type HTMLAttributes, type KeyboardEvent, type ReactElement, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
-import { Bolt, Terminal } from "../../icons";
+import { Bolt, MagnifyingGlassSmSearch, Terminal, X } from "../../icons";
 import { cx } from "../cx";
 import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
+import { fuzzyMatch, MatchedText } from "./menus";
 import { moveKeys, named, useClosesOnTyping } from "./model-keys";
 import { SwitchAgentDialog } from "./switch-agent";
 
@@ -97,6 +98,9 @@ const CHIP = cx(
 );
 const RULE = <div aria-hidden className="w-px shrink-0 self-stretch bg-divider" />;
 
+/** A CLI with more models than this (older ones too) gets a search over them [D92]. */
+const SEARCH_PAST = 20;
+
 /** Effort levels from least to most, as the CLIs list them. */
 const LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -119,7 +123,9 @@ export type ShelfProps = {
  * height), a vertical effort scale and the Fast key, greyed for a model without a fast tier. A pick keeps it open. The
  * scale and key follow the chip under the keyboard, else the one in use; a level or Fast of a model not picked yet
  * picks it so. A CLI not installed or not signed in is dimmed, and says so with Set up in place of its models. Another
- * CLI's model asks "Switch to X?" first. `onEnter` and `onEscape`: the strip's keys that fold it; `onLeave`: Set up.
+ * CLI's model asks "Switch to X?" first. A CLI with a long list gets a search in place of its name [D92]: its models
+ * only, best match first, Enter picks the first; a letter typed anywhere starts it, Esc clears it before it closes.
+ * `onEnter` and `onEscape`: the strip's keys that fold it; `onLeave`: Set up.
  */
 export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true, automatic, efforts = true, onEnter, onEscape, onLeave }: ShelfProps & { onEnter?: () => void; onEscape?: () => void; onLeave?: () => void }) {
   const auto = automatic?.chosen === true;
@@ -127,10 +133,20 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
   const [underKeys, setUnderKeys] = useState<{ provider: string; model: Model } | null>(null);
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
+  const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
-  // It opens with the keyboard on the chip in use (else the first).
-  useEffect(() => root.current?.querySelector<HTMLElement>("[data-picker-part=models] [tabindex='0']")?.focus(), []);
+  const field = useRef<HTMLInputElement>(null);
+  // It opens with the keyboard on the chip in use (else the first), scrolled into view.
+  useEffect(() => {
+    const chosen = root.current?.querySelector<HTMLElement>("[data-picker-part=models] [tabindex='0']");
+    chosen?.focus({ preventScroll: true });
+    chosen?.scrollIntoView({ block: "nearest" });
+  }, []);
+  const browse = (provider: string) => {
+    if (provider !== browsing) setQuery("");
+    setBrowsing(provider);
+  };
 
   const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
@@ -146,6 +162,16 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
 
   const models = group && !group.unavailable ? [...group.models.filter((each) => !each.legacy), ...group.models.filter((each) => each.legacy)] : [];
   const shown = group && models.some((each) => isChecked(group.provider, each));
+  const searchable = models.length > SEARCH_PAST;
+  const needle = searchable ? query.trim() : "";
+  // Best match first, the CLI's order within each rank (a stable sort).
+  const listed = needle
+    ? models
+        .map((each) => ({ each, rank: fuzzyMatch(each.name, needle)?.rank }))
+        .filter((row) => row.rank !== undefined)
+        .toSorted((a, b) => a.rank! - b.rank!)
+        .map((row) => row.each)
+    : models;
   // The scale's model: the chip under the keyboard (of the CLI browsed: another's chip left without a blur), else the
   // one in use when its CLI is the one browsed.
   const inHand = (underKeys?.provider === group?.provider ? underKeys?.model : null) ?? (shown ? models.find((each) => isChecked(group!.provider, each)) : null) ?? null;
@@ -167,24 +193,56 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   // Leaving a chip for the scale or the key keeps the model they act on.
   const keeps = (to: EventTarget | null) => to instanceof Node && Boolean(side.current?.contains(to));
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    // Keys from the Switch dialog (a portal) are its own.
+    if (!root.current?.contains(target)) return;
+    const typed = (event.key.length === 1 && event.key !== " " && !event.metaKey && !event.ctrlKey && !event.altKey) || event.key === "Backspace";
+    if (searchable && target !== field.current && typed) {
+      // A letter typed anywhere in the shelf goes to its search.
+      event.preventDefault();
+      setQuery((now) => (event.key === "Backspace" ? now.slice(0, -1) : now + event.key));
+      field.current?.focus();
+      return;
+    }
+    const chips = [...(root.current?.querySelectorAll<HTMLElement>("[data-picker-part=models] [data-picker-item]") ?? [])];
+    if (target === field.current && event.key === "ArrowDown") {
+      event.preventDefault();
+      chips[0]?.focus();
+      return;
+    }
+    if (field.current && event.key === "ArrowUp" && chips.includes(target) && target.offsetTop === chips[0]!.offsetTop) {
+      event.preventDefault();
+      field.current.focus();
+      return;
+    }
+    if (event.key === "Escape" && query) {
+      // Esc clears the search first; the next one closes.
+      event.preventDefault();
+      event.stopPropagation();
+      setQuery("");
+      field.current?.focus();
+      return;
+    }
     if (moveKeys(event)) return;
     if (event.key === "Escape" && onEscape) {
       event.preventDefault();
       onEscape();
     } else if (event.key === "Enter" && onEnter && (event.target as HTMLElement).closest("[data-picker-part]")) onEnter();
   };
-  const anyChip = auto || Boolean(shown);
-  const chip = (key: string, label: string, pressed: boolean, first: boolean, onClick: () => void, entry?: Model) => (
+  const anyChip = (auto && !needle) || listed.some((each) => isChecked(group!.provider, each));
+  const chip = (key: string, label: ReactNode, pressed: boolean, first: boolean, onClick: () => void, entry?: Model) => (
     <button
       key={key}
       type="button"
       data-picker-item=""
       aria-pressed={pressed}
       tabIndex={pressed || (!anyChip && first) ? 0 : -1}
+      // While searching, the first match is ringed: Enter picks it.
+      data-first={(needle && first) || undefined}
       onClick={onClick}
       onFocus={() => setUnderKeys(entry && group ? { provider: group.provider, model: entry } : null)}
       onBlur={(event) => !keeps(event.relatedTarget) && setUnderKeys(null)}
-      className={CHIP}
+      className={cx(CHIP, "data-first:focus-ring")}
     >
       {label}
     </button>
@@ -205,8 +263,8 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
                   aria-label={entry.label}
                   aria-pressed={on}
                   tabIndex={on ? 0 : -1}
-                  onClick={() => setBrowsing(entry.provider)}
-                  onFocus={() => setBrowsing(entry.provider)}
+                  onClick={() => browse(entry.provider)}
+                  onFocus={() => browse(entry.provider)}
                   className="grid h-control-sm w-8 cursor-pointer place-items-center rounded-icon-button outline-none hover:bg-fill focus-visible:focus-ring aria-pressed:bg-selection"
                 >
                   <ProviderMark mark={entry.mark} className={cx("size-icon-md", entry.unavailable && "opacity-picker-dim")} />
@@ -217,7 +275,43 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
         </div>
         {RULE}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          <div className="shrink-0 text-2xs font-semibold text-placeholder">{group ? (group.short ?? group.label) : "Models"}</div>
+          {searchable && group ? (
+            <label className="flex h-control-sm shrink-0 items-center gap-1.5 rounded-capsule border border-glass-stroke bg-fill-faint px-2.5 text-label">
+              <MagnifyingGlassSmSearch aria-hidden className="size-icon-sm shrink-0 text-placeholder" />
+              <input
+                ref={field}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || !needle || !listed[0]) return;
+                  event.preventDefault();
+                  pick(group.provider, listed[0]);
+                  onEnter?.();
+                }}
+                placeholder={`Search ${group.short ?? group.label}`}
+                aria-label={`Search ${group.short ?? group.label}`}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-placeholder"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setQuery("");
+                    field.current?.focus();
+                  }}
+                  className="grid shrink-0 cursor-pointer place-items-center rounded-full text-placeholder outline-none hover:text-foreground focus-visible:focus-ring"
+                >
+                  <X aria-hidden className="size-icon-xs" />
+                </button>
+              )}
+            </label>
+          ) : (
+            <div className="shrink-0 text-2xs font-semibold text-placeholder">{group ? (group.short ?? group.label) : "Models"}</div>
+          )}
           {group?.unavailable ? (
             <div data-slot="model-picker-not-set-up" className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-label text-muted-foreground">
               <span>
@@ -239,11 +333,15 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
             </div>
           ) : (
             <div role="group" aria-label={group ? `${group.label} models` : "Models"} data-picker-part="models" className="-m-1 flex min-h-0 flex-wrap content-start gap-x-1.5 gap-y-2 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
-              {automatic && (
+              {automatic && !needle && (
                 <Tip tip={automatic.hint}>{chip("automatic", automatic.label, auto, true, automatic.onChoose)}</Tip>
               )}
-              {group && models.map((entry, index) => chip(entry.id, entry.name, isChecked(group.provider, entry), !automatic && index === 0, () => pick(group.provider, entry), entry))}
+              {group &&
+                listed.map((entry, index) =>
+                  chip(entry.id, needle ? <span><MatchedText text={entry.name} query={needle} hit="font-semibold text-foreground" /></span> : entry.name, isChecked(group.provider, entry), (!automatic || Boolean(needle)) && index === 0, () => pick(group.provider, entry), entry),
+                )}
               {group && models.length === 0 && <p className="text-xs text-muted-foreground">No models listed yet</p>}
+              {needle && listed.length === 0 && <p className="text-xs text-placeholder">No models match “{needle}”</p>}
             </div>
           )}
         </div>
