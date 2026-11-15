@@ -44,6 +44,11 @@ pub fn named(name: &str) -> String {
     format!("{PREFIX}{name}")
 }
 
+/// A library server's key from its name in an agent's config, as `plugins add` makes it.
+pub fn key(server: &str) -> String {
+    format!("server:{}", plain(server))
+}
+
 /// A server as the thread names it: a library one by its plain name ("Used Linear") [D176].
 pub fn plain(server: &str) -> &str {
     server.strip_prefix(PREFIX).unwrap_or(server)
@@ -100,8 +105,27 @@ pub struct Kit {
     pub skills: PathBuf,
     /// The skills linked there, by name.
     pub names: Vec<String>,
-    /// Each local server on: its item, `env` its secrets.
+    /// Each server on: its item, a local one's `env` its secrets, a remote one's `to` and
+    /// `headers` what the agent reaches it at and with.
     pub servers: Vec<Value>,
+}
+
+/// The library servers an agent is given, and the names of its own servers that go off for them
+/// [D407]; a server only each agent signs in to yields to the agent's own copy [wave4 D2045].
+pub fn split(servers: &[Value], own: &[Value]) -> (Vec<Value>, Vec<String>) {
+    let (mut given, mut off) = (vec![], vec![]);
+    for s in servers {
+        let mine = own.iter().filter(|o| same(o, s));
+        let names: Vec<String> = mine
+            .filter_map(|o| o["name"].as_str().map(String::from))
+            .collect();
+        if s["sign_in"] == "cli" && !names.is_empty() {
+            continue;
+        }
+        off.extend(names);
+        given.push(s.clone());
+    }
+    (given, off)
 }
 
 /// The library for a launch of `spec`, its skills linked by their plain names but those in
@@ -130,8 +154,30 @@ pub fn kit(spec: &Spec, skip: &[String]) -> Option<Kit> {
             names.push(name.to_string());
         }
     }
-    // shortcut: a remote server waits for 4.13's proxy; only local ones are passed.
-    all.retain(|i| i["kind"] == "skill" || i["command"].is_string());
+    // A remote server goes through this session's proxy, which holds its sign-in or key; one only
+    // each agent signs in to goes as it is [wave4 D2043, D2045]. No proxy, none of them.
+    let proxy: Value = fs::read(dir.join("proxy.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    all.retain_mut(|i| {
+        let Some(url) = i["url"].as_str().map(String::from) else {
+            return true;
+        };
+        (i["to"], i["headers"]) = match (i["sign_in"] == "cli", proxy["port"].as_u64()) {
+            (true, _) => (url.into(), json!({})),
+            (false, Some(port)) => (
+                format!(
+                    "http://127.0.0.1:{port}/mcp/{}",
+                    named(plain_str(&i["name"]))
+                )
+                .into(),
+                json!({"Authorization": format!("Bearer {}", plain_str(&proxy["secret"]))}),
+            ),
+            (false, None) => return false,
+        };
+        true
+    });
     with_secrets(&data, &mut all);
     let servers = all.into_iter().filter(|i| i["kind"] == "server");
     Some(Kit {

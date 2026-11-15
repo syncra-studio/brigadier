@@ -8,6 +8,8 @@
 //! An app update replaces this binary on disk. A host that holds no process then re-execs itself
 //! onto the new one (same pid); one with work keeps its old build until the work ends [D60].
 
+mod proxy;
+
 use brigadier_frames::runner::{Groups, Runner};
 use brigadier_frames::{procs, take_lock, wire};
 use serde_json::{Value, json};
@@ -64,6 +66,14 @@ fn main() -> io::Result<()> {
 
     let runner = Runner::open(&dir, Box::new(watch))?;
     let listener = wire::bind(&dir.join("s"))?;
+    // The MCP proxy's port survives a move: its listener goes through exec as the lock does.
+    let proxy_fd = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--proxy-fd=")?.parse().ok());
+    let proxy = {
+        let runner = runner.clone();
+        proxy::start(&dir, proxy_fd, Box::new(move |v| drop(runner.note(v))))?
+    };
     {
         let (runner, fd) = (runner.clone(), lock.as_raw_fd());
         thread::spawn(move || {
@@ -86,12 +96,15 @@ fn main() -> io::Result<()> {
                     let _ = d.wait();
                 }
                 unsafe { libc::fcntl(fd, libc::F_SETFD, 0) };
+                proxy::keep(proxy);
                 let error = Command::new(&exe)
                     .arg(&dir)
                     .arg(format!("--lock-fd={fd}"))
+                    .arg(format!("--proxy-fd={proxy}"))
                     .exec();
                 // Still the old image: carry on as it, with a fresh watchdog, until the file changes again.
                 unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+                proxy::unkeep(proxy);
                 let _ = runner.note(&json!({"event": "move_failed", "error": error.to_string()}));
                 match spawn_watchdog(&exe) {
                     Ok(d) => *dog.lock().unwrap() = Some(d),

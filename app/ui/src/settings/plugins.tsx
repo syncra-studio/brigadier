@@ -34,7 +34,7 @@ export type Item = {
   scope: Scope;
   status: Status | null;
   sign_in: "brigadier" | "cli" | null;
-  /** Whether Brigadier holds its sign-in; null until 4.13 says. */
+  /** Whether Brigadier holds its sign-in; null where it signs none in. */
   signed_in: boolean | null;
   /** The agents that get it, by label. */
   agents: string[];
@@ -428,7 +428,7 @@ const send = (...args: string[]) => {
   return sent;
 };
 
-/** The page in Settings: Rust's library, each change through `plugins`, its reply the page [D30, D2043]. Remote servers wait for 4.13's sign-in. */
+/** The page in Settings: Rust's library, each change through `plugins`, its reply the page [D30, D2043]. */
 export function PluginsSettings({ detail }: { detail?: string }) {
   const online = Boolean(useDaemon().daemon);
   const agents = useAgents().list;
@@ -446,9 +446,15 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     set: (key, change) => send("set", key, JSON.stringify(change)),
     remove: (key) => send("remove", key),
     refresh: () => send(),
-    signIn: (key) => send("signin", key),
-    cancel: (key) => send("cancel", key),
-    signOut: (key) => send("signout", key),
+    // Rust starts it and answers its page, which opens in the browser; its end answers the page, waited
+    // for outside the chain so Cancel isn't held behind it.
+    signIn: async (key) => {
+      const started = await run(["plugins", "signin", key]);
+      window.brigadier?.openLink(String(started.url));
+      setValue((last = (await run(["plugins", "wait", key])) as Plugins));
+    },
+    cancel: (key) => send("cancel", key).then(setValue),
+    signOut: (key) => send("signout", key).then(setValue),
     pickFolder: async () => (await window.brigadier?.pickFolder()) ?? null,
   };
   return (
@@ -460,7 +466,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
       actions={actions}
       detail={detail ?? null}
       onDetail={(key) => (location.hash = key ? `#settings/plugins/${encodeURIComponent(key)}` : "#settings/plugins")}
-      remote={false}
+      remote
       tab={lastTab}
     />
   );

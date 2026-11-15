@@ -1,5 +1,6 @@
-//! `plugins [add '<json>' | set <key> '<json>' | remove <key>]`: Settings › Plugins [D2043, D2046].
-//! Each prints the library's items, each agent's own (read only) and the projects.
+//! `plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key>]`:
+//! Settings › Plugins [D2043, D2046]. Each prints the library's items, each agent's own (read
+//! only) and the projects; `signin` its URL instead.
 
 use brigadier_core::library::{self, secrets};
 use brigadier_core::{adapters, projects};
@@ -17,6 +18,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let json = |i: usize| {
         serde_json::from_str::<Value>(arg(i)).map_err(|e| io::Error::other(format!("plugins: {e}")))
     };
+    // A sign-in is the daemon's, outside the library's lock: `wait` waits on a browser.
+    if let verb @ ("signin" | "wait" | "cancel" | "signout") = arg(1) {
+        let r = crate::signin::run(data, &[verb, arg(2)]);
+        return Ok(match (verb, r["ok"] == true) {
+            ("signin", _) | (_, false) => r,
+            _ => list(data),
+        });
+    }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match arg(1) {
         "" => {}
@@ -25,7 +34,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | set <key> '<json>' | remove <key>]",
+                "usage: brigadier plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key>]",
             ));
         }
     }
@@ -113,12 +122,23 @@ fn list(data: &Path) -> Value {
                 .filter(has)
                 .map(|a| a.label())
                 .collect();
-            let note = (!kept.is_empty()).then(|| {
-                format!("{} uses your own copy of this skill.", kept.join(" and "))
-            });
+            let note = match i["sign_in"] == "cli" {
+                true => Some("Signed in by each agent.".to_string()),
+                false => (!kept.is_empty()).then(|| {
+                    format!("{} uses your own copy of this skill.", kept.join(" and "))
+                }),
+            };
+            let key = str(&i["key"]);
+            let ours = i["sign_in"] == "brigadier";
+            let status = match ours {
+                true if i["on"] != true => json!("off"),
+                true => crate::signin::status(data, key).into(),
+                false => Value::Null,
+            };
+            let signed_in = ours.then(|| crate::signin::signed_in(data, key));
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
-                "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": i.get("status"),
-                "sign_in": i.get("sign_in"), "signed_in": i.get("signed_in"), "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
+                "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
+                "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
                 "note": note})
         })
         .collect();
@@ -191,6 +211,18 @@ fn add(data: &Path, mut v: Value) -> io::Result<()> {
         }
     } else if let Some(url) = v["url"].as_str() {
         item["url"] = url.into();
+        // An API key's header: its value to the Keychain item, only its name here. A server given
+        // one isn't asked how it signs in.
+        let headers: Map<String, Value> = v["headers"].as_object().cloned().unwrap_or_default();
+        if headers.is_empty() {
+            item["sign_in"] = crate::signin::kind(url).map_err(|e| refuse(&e))?.into();
+        }
+        item["headers"] = headers.keys().cloned().collect::<Vec<_>>().into();
+        if !headers.is_empty() {
+            secrets::update(data, |p| {
+                p.insert(key.clone(), json!({ "headers": headers }));
+            })?;
+        }
     } else {
         let command = v["command"].as_str().filter(|c| !c.trim().is_empty());
         item["command"] = command
@@ -245,6 +277,10 @@ fn remove(data: &Path, key: &str) -> io::Result<()> {
     let Some(at) = items.iter().position(|i| i["key"] == key) else {
         return Ok(());
     };
+    // Signed out first, its grant revoked where the server offers that.
+    if items[at]["url"].is_string() {
+        crate::signin::run(data, &["signout", key]);
+    }
     // Its folder and secrets first, so a failed cleanup stays listed to retry.
     forget(data, key, str(&items[at]["name"]))?;
     items.remove(at);

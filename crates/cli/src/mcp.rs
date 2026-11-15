@@ -38,6 +38,8 @@ enum Way {
         /// A 0600 file of its headers, so no secret shows in the process list.
         headers: Option<PathBuf>,
         session: Option<String>,
+        /// A library server's data folder, key and the Authorization it was sent with [D417].
+        signed: Option<(PathBuf, String, Option<String>)>,
     },
 }
 
@@ -294,18 +296,25 @@ fn open(data: &Path, me: &str, server: &Value, cwd: &Path) -> Result<Conn, Strin
     let name = str(&server["name"]);
     let way = match server["url"].as_str() {
         Some(url) => {
-            let headers = server["headers"]
-                .as_object()
-                .filter(|h| !h.is_empty())
-                .map(|h| {
-                    let path = core::session_dir(data, me)
-                        .join(format!("mcp-{}.headers", core::adapters::uuid()));
-                    let text: String = h
-                        .iter()
-                        .map(|(k, v)| format!("{k}: {}\n", str(v)))
-                        .collect();
-                    (path, text)
-                });
+            // A library one with its key or the daemon's current token, straight from the daemon.
+            let ours = server["agent"] == "library" && server["sign_in"] != "cli";
+            let key = server["key"].as_str().filter(|_| ours);
+            let (url, own, signed) = match key {
+                Some(key) => {
+                    let (url, h, _) = crate::signin::reach(data, key, None)?;
+                    let used = h
+                        .get("Authorization")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    (url, Value::Object(h), Some((data.into(), key.into(), used)))
+                }
+                None => (url.into(), server["headers"].clone(), None),
+            };
+            let headers = (own.as_object()).filter(|h| !h.is_empty()).map(|h| {
+                let path = core::session_dir(data, me)
+                    .join(format!("mcp-{}.headers", core::adapters::uuid()));
+                (path, http::lines(h))
+            });
             let headers = match headers {
                 Some((path, text)) => {
                     let mut f = std::fs::OpenOptions::new();
@@ -321,9 +330,10 @@ fn open(data: &Path, me: &str, server: &Value, cwd: &Path) -> Result<Conn, Strin
                 None => None,
             };
             Way::Http {
-                url: url.into(),
+                url,
                 headers,
                 session: None,
+                signed,
             }
         }
         None => {
@@ -451,6 +461,7 @@ fn send(conn: &mut Conn, msg: &Value, wait: Duration) -> Result<Vec<Value>, Stri
             url,
             headers,
             session,
-        } => http::post(url, headers.as_deref(), session, msg, wait),
+            signed,
+        } => http::send(url, headers, session, signed, msg, wait),
     }
 }

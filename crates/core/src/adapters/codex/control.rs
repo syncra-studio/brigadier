@@ -75,24 +75,26 @@ fn library(spec: &Spec, open: &mut Value) -> Value {
         return config;
     };
     open["skillRoots"] = json!([kit.skills]);
-    for s in &kit.servers {
-        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
-        for key in ["command", "args", "env"]
-            .iter()
-            .filter(|k| !s[**k].is_null())
-        {
-            config[format!("mcp_servers.{name}.{key}")] = s[*key].clone();
-        }
-    }
     let (home, cwd) = (
         super::super::cli_home(spec, ".codex", ""),
         std::path::Path::new(&spec.cwd),
     );
-    for own in servers(&home, cwd) {
-        if kit.servers.iter().any(|s| crate::library::same(&own, s)) {
-            let name = own["name"].as_str().unwrap_or("");
-            config[format!("mcp_servers.{name}.enabled")] = false.into();
+    let (given, off) = crate::library::split(&kit.servers, &servers(&home, cwd));
+    for s in &given {
+        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
+        // A remote one at its `to`, with its headers (the proxy's bearer) [wave4 D2043].
+        let keys: &[(&str, &str)] = match s["to"].is_string() {
+            true => &[("to", "url"), ("headers", "http_headers")],
+            false => &[("command", "command"), ("args", "args"), ("env", "env")],
+        };
+        for (from, key) in keys {
+            if !s[*from].is_null() {
+                config[format!("mcp_servers.{name}.{key}")] = s[*from].clone();
+            }
         }
+    }
+    for name in off {
+        config[format!("mcp_servers.{name}.enabled")] = false.into();
     }
     // A skill only by its app-server's own launch flag: a thread's config doesn't reach its list.
     let own = super::super::Adapter::fixed_commands(&super::Codex, Some(cwd), Some(spec));

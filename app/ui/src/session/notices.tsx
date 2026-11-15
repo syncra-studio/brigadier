@@ -67,6 +67,43 @@ export function GoOn({ turn }: { turn: string }) {
   );
 }
 
+/**
+ * A library server's Sign in on the thread's line [wave4 D2043]: Rust starts it and answers the page, which opens in
+ * the browser; "Waiting for browser…" with Cancel till Rust says how it ended. One sign-in fixes every session.
+ */
+export function PluginSignIn({ plugin }: { plugin: string }) {
+  const at = useContext(SessionOfThread);
+  const [state, setState] = useState<{ step: "idle" | "waiting" | "done"; error?: string; code?: string }>({ step: "idle" });
+  if (state.step === "done") return <span className="text-muted-foreground">Signed in</span>;
+  if (state.step === "waiting") {
+    return (
+      <>
+        <span className="me-1.5 shimmer">Waiting for browser…</span>
+        {state.code && <span className="me-1.5">Code {state.code}</span>}
+        <ErrorAction onClick={() => void daemonRun(["plugins", "cancel", plugin])}>Cancel</ErrorAction>
+      </>
+    );
+  }
+  const go = async () => {
+    setState({ step: "waiting" });
+    const started = await daemonRun(["plugins", "signin", plugin]);
+    if (!started.ok) return setState({ step: "idle", error: failure(started) });
+    // A device sign-in's page asks for its code.
+    if (typeof started.code === "string") setState({ step: "waiting", code: started.code });
+    window.brigadier?.openLink(String(started.url));
+    const ended = await daemonRun(["plugins", "wait", plugin]);
+    setState(ended.ok ? { step: "done" } : { step: "idle", error: failure(ended) });
+  };
+  return (
+    <>
+      {state.error && <span className="me-1.5">· {state.error}</span>}
+      <ErrorAction disabled={at?.offline} onClick={() => void go()}>
+        {state.error ? "Try again" : "Sign in"}
+      </ErrorAction>
+    </>
+  );
+}
+
 /** "A retires on 12 Dec." with what it suggests, never a move it hasn't said it makes [D74]. */
 export function retiringNotice({ name, at, to }: Retiring): Notice {
   const when = at === null ? `${name} is being retired.` : at > Date.now() ? `${name} retires on ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.` : `${name} was retired.`;

@@ -200,8 +200,8 @@ export type Item = Base &
      * model's servers were busy), its model isn't available, or a safety check ended the conversation.
      */
     | { kind: "notice"; reason: "failed"; why: "turn-failed" | "model-unavailable" | "ended-for-safety" | "context-full"; cause: "capacity" | null; text: string | null }
-    /** The agent's own sign-in error, its line linking to where sign-in lives [D381]. */
-    | { kind: "notice"; reason: "sign-in"; text: string }
+    /** A sign-in error, its line linking to where sign-in lives [D381]: the agent's own, or a library server's (`plugin`, its key) [wave4 D2043]. */
+    | { kind: "notice"; reason: "sign-in"; text: string; plugin?: string | null }
     /**
      * A usage limit (or a refused resume) and the switch past it: one row Rust changes in place [D51, D132], in the
      * kit's switch shape (D133). Rust sends `limit`, `switching` from a pick mid-turn or the switch's input till the new

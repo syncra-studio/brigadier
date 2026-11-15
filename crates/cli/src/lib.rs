@@ -33,6 +33,7 @@ mod sessions;
 mod settings;
 mod setup;
 mod side;
+pub mod signin;
 mod switching;
 mod tabs;
 pub mod usage;

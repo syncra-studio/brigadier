@@ -203,15 +203,19 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         return <ErrorState summary={words} details={item.text} action={again} />;
       }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
-      // Sign-in lives on Settings › Providers [D347, D381, D2054].
+      // An agent's sign-in lives on Settings › Providers [D347, D381, D2054]; a library server's is its Sign in (`again`).
       return (
         <NoticeRow
           level="error"
           text={item.text}
           link={
-            <a href="#settings/providers" className="ms-1.5 whitespace-nowrap text-link hover:underline">
-              Open Providers
-            </a>
+            item.plugin ? (
+              <span className="ms-1.5 whitespace-nowrap">{again}</span>
+            ) : (
+              <a href="#settings/providers" className="ms-1.5 whitespace-nowrap text-link hover:underline">
+                Open Providers
+              </a>
+            )
           }
         />
       );

@@ -62,6 +62,18 @@ fn agent_call(data: &Path, args: &[String]) -> Option<Value> {
         Ok(asked) => asked,
         Err(e) => return no_daemon(data, e.kind() == std::io::ErrorKind::PermissionDenied),
     };
+    // A sign-in lives in the daemon, past this process [wave4 D2030].
+    let signing = matches!(
+        args.get(1).map(String::as_str),
+        Some("signin" | "wait" | "cancel" | "signout")
+    );
+    if who["app"] == true && args.first().is_some_and(|a| a == "plugins") && signing {
+        let _ = conn.set_timeout(Some(Duration::from_secs(660)));
+        let reply = conn.call(&json!({"id": 2, "op": "run", "args": args}));
+        return Some(reply.unwrap_or_else(
+            |e| json!({"ok": false, "error": format!("Brigadier stopped answering: {e}")}),
+        ));
+    }
     if who["app"] == true {
         return None;
     }

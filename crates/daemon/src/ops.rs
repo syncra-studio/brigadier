@@ -80,6 +80,7 @@ pub(super) fn serve(
         return Ok(());
     }
     let (caller, here) = (caller::of(&stream, data), Arc::new(AtomicBool::new(true)));
+    let peer = wire::peer_pid(&stream).unwrap_or(0);
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     let mut version = [0; 4];
     stream.read_exact(&mut version)?;
@@ -115,6 +116,16 @@ pub(super) fn serve(
     while let Ok(text) = wire::read_frame(&mut stream) {
         let req: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         let re = req["id"].clone();
+        // A session's proxy asking for a server's token: its host's pid alone is answered.
+        if req["op"] == "upstream" {
+            let (out, data) = (out.clone(), PathBuf::from(data));
+            thread::spawn(move || {
+                let mut reply = brigadier::signin::upstream(&data, peer, &req);
+                reply["re"] = re;
+                let _ = out.send(reply.to_string());
+            });
+            continue;
+        }
         if caller::serve(&caller, &req, &out, data, state, &here) {
             continue;
         }

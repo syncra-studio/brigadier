@@ -36,9 +36,9 @@ that touched a file (words may then be left out). A newer message may revise an 
 The user's MCP servers: Brigadier's library for this project first, then every agent's own config,
 the same on every agent: `list` names them, `tools <server>` lists its tools with their input
 schemas, `call` runs one tool with the JSON object of its arguments (none: {}) and prints what it
-answered. One connection per server is kept
-for you while you use it, so what a call opens stays good for your next call. A server that needs a
-sign-in says so: Brigadier can't sign in to one yet.",
+answered. One connection per server is kept for you while you use it, so what a call opens stays
+good for your next call. A library server uses Brigadier's one sign-in; one whose sign-in ended says
+so, and the user signs in again in Brigadier (Settings › Plugins).",
             &[],
             &[],
         ),

@@ -1,14 +1,17 @@
 //! MCP's Streamable HTTP transport, one POST at a time.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+/// A server's refusal of what it was sent with; a library one's sign-in is retried once on it.
+pub(super) const REFUSED: &str = "it needs a sign-in that only its own agent holds";
+
 /// One Streamable HTTP POST through the system's curl (its TLS; no client of our own): the answers
 /// in its JSON or event-stream body, its session id kept.
-pub(super) fn post(
+fn post(
     url: &str,
     headers: Option<&Path>,
     session: &mut Option<String>,
@@ -70,7 +73,7 @@ pub(super) fn post(
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     if status == 401 || status == 403 {
-        return Err("it needs a sign-in, which Brigadier can't do yet".into());
+        return Err(REFUSED.into());
     }
     if status >= 400 {
         return Err(format!(
@@ -94,4 +97,57 @@ pub(super) fn post(
             .collect(),
     };
     Ok(found)
+}
+
+/// One POST; a library server's (`signed`: its data folder, key and the Authorization last sent)
+/// with its current key or token each time, so a sign-out or sign-in holds at once, and on a
+/// refusal one refresh by the daemon and one retry [D417].
+pub(super) fn send(
+    url: &str,
+    headers: &Option<PathBuf>,
+    session: &mut Option<String>,
+    signed: &mut Option<(PathBuf, String, Option<String>)>,
+    msg: &Value,
+    wait: Duration,
+) -> Result<Vec<Value>, String> {
+    if let Some((data, key, used)) = signed.as_mut() {
+        renew(headers, used, &crate::signin::reach(data, key, None)?.1)?;
+    }
+    let r = post(url, headers.as_deref(), session, msg, wait);
+    let refused = r.as_ref().is_err_and(|e| e == REFUSED);
+    let Some((data, key, used)) = signed.as_mut().filter(|_| refused) else {
+        return r;
+    };
+    let (_, h, title) = crate::signin::reach(data, key, used.as_deref())?;
+    renew(headers, used, &h)?;
+    post(url, headers.as_deref(), session, msg, wait).map_err(|e| match e == REFUSED {
+        true => format!("{title} needs sign-in in Brigadier (Settings › Plugins)."),
+        false => e,
+    })
+}
+
+/// Rewrites a library server's headers file when its Authorization changed.
+fn renew(
+    file: &Option<PathBuf>,
+    used: &mut Option<String>,
+    h: &Map<String, Value>,
+) -> Result<(), String> {
+    let now = h
+        .get("Authorization")
+        .and_then(Value::as_str)
+        .map(String::from);
+    if now != *used {
+        if let Some(path) = file {
+            std::fs::write(path, lines(h)).map_err(|e| e.to_string())?;
+        }
+        *used = now;
+    }
+    Ok(())
+}
+
+/// Headers as curl's `@file` takes them.
+pub(super) fn lines(h: &Map<String, Value>) -> String {
+    h.iter()
+        .map(|(k, v)| format!("{k}: {}\n", v.as_str().unwrap_or("")))
+        .collect()
 }

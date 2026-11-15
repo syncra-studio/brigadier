@@ -38,23 +38,31 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
 fn library(config: &mut Value, kit: &crate::library::Kit, spec: &Spec) {
     config["skills"] = json!([kit.skills]);
     let mut mcp = serde_json::Map::new();
-    for s in &kit.servers {
+    let own = super::commands::mcp_servers(std::path::Path::new(&spec.cwd));
+    let (given, off) = crate::library::split(&kit.servers, &own);
+    for s in &given {
+        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
+        // A remote one through the proxy, its own OAuth off; one only each agent signs in to keeps it.
+        if s["to"].is_string() {
+            let mut remote = json!({"type": "remote", "url": s["to"], "headers": s["headers"]});
+            if s["sign_in"] != "cli" {
+                remote["oauth"] = false.into();
+            }
+            mcp.insert(name, remote);
+            continue;
+        }
         let args = s["args"].as_array().cloned().unwrap_or_default();
         let command: Vec<Value> = std::iter::once(s["command"].clone()).chain(args).collect();
         let env = s["env"].as_object().cloned().unwrap_or_default();
-        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
         mcp.insert(
             name,
             json!({"type": "local", "command": command, "environment": env}),
         );
     }
-    for own in super::commands::mcp_servers(std::path::Path::new(&spec.cwd)) {
-        if kit.servers.iter().any(|s| crate::library::same(&own, s)) {
-            let name = own["name"].as_str().unwrap_or("").to_string();
-            // Off whether its entry is replaced or merged: a stub that never connects.
-            let off = json!({"type": "local", "command": ["true"], "disabled": true});
-            mcp.insert(name, off);
-        }
+    for name in off {
+        // Off whether its entry is replaced or merged: a stub that never connects.
+        let off = json!({"type": "local", "command": ["true"], "disabled": true});
+        mcp.insert(name, off);
     }
     config["mcp"] = json!({ "servers": mcp });
 }

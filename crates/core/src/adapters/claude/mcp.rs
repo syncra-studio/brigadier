@@ -44,16 +44,27 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
         return;
     };
     argv.extend(["--add-dir".into(), kit.dir.display().to_string()]);
+    // Its own copy of each goes off for this session by name, the user's others untouched [D407].
+    let (given, off) = library::split(&kit.servers, &mcp_servers(cwd));
     // Each secret reaches its server through a variable of Claude's own env, never the file.
     let mut servers = Map::new();
-    for (i, s) in kit.servers.iter().enumerate() {
+    for (i, s) in given.iter().enumerate() {
+        let name = library::named(s["name"].as_str().unwrap_or(""));
+        // The proxy's bearer as it is: Claude empties a credential-looking `${VAR}` in a remote
+        // server's headers (w07 §2); it opens only this session's proxy.
+        if s["to"].is_string() {
+            servers.insert(
+                name,
+                json!({"type": "http", "url": s["to"], "headers": s["headers"]}),
+            );
+            continue;
+        }
         let mut vars = Map::new();
         for (k, v) in s["env"].as_object().into_iter().flatten() {
             let var = format!("BRIGADIER_MCP_{i}_{k}");
             env.push((var.clone(), v.as_str().unwrap_or("").into()));
             vars.insert(k.clone(), format!("${{{var}}}").into());
         }
-        let name = library::named(s["name"].as_str().unwrap_or(""));
         servers.insert(
             name,
             json!({"command": s["command"], "args": s["args"], "env": vars}),
@@ -65,11 +76,7 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
         return;
     }
     argv.extend(["--mcp-config".into(), file.display().to_string()]);
-    // Its own copy of each goes off for this session by name, the user's others untouched [D407].
-    let denied: Vec<Value> = (mcp_servers(cwd).into_iter())
-        .filter(|own| kit.servers.iter().any(|s| library::same(own, s)))
-        .map(|own| json!({"serverName": own["name"]}))
-        .collect();
+    let denied: Vec<Value> = (off.iter()).map(|n| json!({ "serverName": n })).collect();
     let at = argv.iter().rposition(|a| a == "--settings");
     if let (false, Some(at)) = (denied.is_empty(), at) {
         let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();

@@ -174,6 +174,7 @@ fn main() -> io::Result<()> {
         brigadier::workers::pass(&data, &index.rows);
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);
+        brigadier::signin::pass(&data);
         // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
         let on = match awake_mode(&data) {
             "off" => false,
