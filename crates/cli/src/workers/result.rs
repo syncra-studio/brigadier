@@ -219,7 +219,7 @@ pub(super) fn write(
     // Proposed: the extras past how it ended, its last message, branch and commits: the diff
     // stat, uncommitted files, the receipt and the `read` pointer [D3029].
     let (mut added, mut removed, mut commits) = (0u64, 0u64, 0usize);
-    let landed = core::worktrees::unlanded(&dir).ok().flatten().is_none();
+    let landed = core::worktrees::merged(&dir).unwrap_or(true);
     // Its own commits since it began; merged once they're all in the parent's branch [D97].
     let start = (core::worktrees::lands(&dir).ok().flatten()).map(|l| l.base_commit);
     let made = start.as_ref().map_or(0, |c| {
@@ -272,8 +272,6 @@ pub(super) fn write(
                 .unwrap_or_default();
             let why = if git(&to, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_some() {
                 format!("{to} is mid-merge")
-            } else if !dirty.is_empty() {
-                "it left changes uncommitted".into()
             } else {
                 format!("{ahead} commits {base} doesn't have")
             };
