@@ -104,10 +104,10 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
         "levels": levels, "level": level, "held": held})
 }
 
-/// `models [--session ID | --project P | --cwd D] [--fresh]`: the groups from each agent's last
+/// `models [--session ID | --project P | --cwd D] [--fresh] [--all]`: the groups from each agent's last
 /// check in that folder, at once; `--fresh` checks again first, for the page to ask after the first
 /// answer. Each carries its levels and the one a new session there starts on. Agents turned off
-/// and models hidden are left out.
+/// and models hidden are left out, and those a rule bars unless `--all`.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "set" {
         return set(data, args);
@@ -145,7 +145,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         .cloned()
         .unwrap_or_default();
     hidden.retain(|h| !on.iter().any(|m| h == m));
-    let groups: Vec<Value> = reply["agents"]
+    let mut groups: Vec<Value> = reply["agents"]
         .as_array()
         .into_iter()
         .flatten()
@@ -156,6 +156,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             g
         })
         .collect();
+    // The pickers never offer what a rule bars; `--all` is Settings › Routing's own list [D376].
+    if !args.iter().any(|a| a == "--all") {
+        crate::routing::picks(data, &mut groups);
+    }
     Ok(json!({"ok": true, "groups": groups}))
 }
 

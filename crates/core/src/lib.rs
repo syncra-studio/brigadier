@@ -116,6 +116,48 @@ pub struct Spec {
     /// The user's jobs in words, set at launch for a session's lead text, never kept [D387].
     #[serde(skip)]
     pub jobs: Option<String>,
+    /// Settings › Routing's one check, set by the CLI, which every launch runs on what it starts [D376].
+    #[serde(skip)]
+    pub rules: Option<Check>,
+    /// What that check made of this launch, for its CLI's own subagents [D376].
+    #[serde(skip)]
+    pub ruled: Ruled,
+}
+
+/// The check: `agent`'s `model` (None: its default) at `effort` (None: the model's default); the
+/// rule's words refusing it, else what the rules make of it.
+pub type Check = fn(&Path, &str, Option<&str>, Option<&str>) -> Result<Ruled, String>;
+
+/// What the rules make of one launch [D376].
+#[derive(Clone, Default)]
+pub struct Ruled {
+    /// The effort a rule's cap runs it at, where the one asked is above it [D338].
+    pub effort: Option<String>,
+    /// A rule names its agent, so its CLI's own subagents start on its model and effort.
+    pub touched: bool,
+    /// The models its agent lists that no rule bars, where a rule bars one.
+    pub models: Option<Vec<String>>,
+}
+
+impl Spec {
+    /// The check run on starting this on `agent`; why not, else this at the capped effort and with
+    /// what its subagents keep. No check set: as it is.
+    pub fn ruled(&self, agent: &str) -> Result<Spec, String> {
+        let Some(check) = self.rules else {
+            return Ok(self.clone());
+        };
+        let ruled = check(
+            &data_of(self),
+            agent,
+            self.model.as_deref(),
+            self.effort.as_deref(),
+        )?;
+        Ok(Spec {
+            effort: ruled.effort.clone().or(self.effort.clone()),
+            ruled,
+            ..self.clone()
+        })
+    }
 }
 
 pub fn data_dir() -> PathBuf {

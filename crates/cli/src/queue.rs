@@ -480,6 +480,7 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
         true => crate::workers::with_next(data, id, &mut more),
         false => vec![],
     };
+    let spec = crate::routing::told(data, &spec);
     let reply = core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more);
     if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
         crate::workers::went_with(data, id, held);

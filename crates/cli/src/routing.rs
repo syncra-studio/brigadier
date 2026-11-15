@@ -72,9 +72,15 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
             r["groups"].as_array().cloned().unwrap_or_default()
         })
     };
-    let home = of(&["models".into()]);
+    // Barred models too: the table and its checks name them [D376].
+    let home = of(&["models".into(), "--all".into()]);
     let here = me.map_or(vec![], |m| {
-        of(&["models".into(), "--session".into(), m.into()])
+        of(&[
+            "models".into(),
+            "--all".into(),
+            "--session".into(),
+            m.into(),
+        ])
     });
     // A folder not checked yet takes the home folder's check, as Home's picker does.
     let all = match here
@@ -115,9 +121,10 @@ pub(crate) fn current(data: &Path) -> Value {
 }
 
 /// What a session's agent is told of the jobs at launch, after its lead rule [D387]; a worker,
-/// naked, is told none.
+/// naked, is told none. Every launch carries the rules' check [D376].
 pub(crate) fn told(data: &Path, spec: &Spec) -> Spec {
     let mut spec = spec.clone();
+    spec.rules = Some(launch);
     if !spec.naked {
         let t = current(data);
         spec.jobs = Some(jobs::lead(t["jobs"].as_array().map_or(&[], Vec::as_slice)));
@@ -256,6 +263,88 @@ fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value
         (t["error"], t["message"]) = ("invalid".into(), why.into());
     }
     t
+}
+
+fn rules_of(data: &Path) -> Vec<Value> {
+    (read(&data.join(FILE))["rules"].as_array().cloned()).unwrap_or_default()
+}
+
+/// Every launch's check, as `Spec::rules` [D376, D388 Q9 Q10, D392 P9]: a model a "never use" rule
+/// bars is refused in the rule's words, so the user picks another; an effort above a cap runs at
+/// the cap. Not a worker's whole `allowed`: a session keeps a model hidden or no longer listed.
+pub(crate) fn launch(
+    data: &Path,
+    agent: &str,
+    model: Option<&str>,
+    effort: Option<&str>,
+) -> Result<core::Ruled, String> {
+    let rules = rules_of(data);
+    let touched = (rules.iter())
+        .any(|r| r["agent"] == agent || (r["never"] == "above" && r["agent"].is_null()));
+    if !touched {
+        return Ok(core::Ruled::default());
+    }
+    let groups = groups(data, None);
+    let listed: Vec<&Value> = (groups.iter().find(|g| g["provider"] == agent))
+        .and_then(|g| g["models"].as_array())
+        .into_iter()
+        .flatten()
+        .collect();
+    // Unpicked, it runs its CLI's default model.
+    let id = model
+        .or_else(|| (listed.iter().find(|m| m["default"] == true)).and_then(|m| m["id"].as_str()));
+    let m = id.and_then(|id| listed.iter().find(|m| m["id"] == id));
+    if let Some(id) = id.filter(|id| barred(&rules, agent, id)) {
+        let name = m.and_then(|m| m["name"].as_str()).unwrap_or(id);
+        return Err(format!("{name} is barred by your rule; pick another model"));
+    }
+    let effort = m
+        .and_then(|m| effort_of(&rules, agent, m, effort, false).ok())
+        .filter(|(_, note)| note.is_some())
+        .and_then(|(e, _)| e);
+    let ids = || listed.iter().filter_map(|m| m["id"].as_str());
+    let mut models: Vec<String> = ids()
+        .filter(|x| !barred(&rules, agent, x))
+        .map(String::from)
+        .collect();
+    // Its own model stays, listed or not.
+    models.extend(
+        id.filter(|id| !models.iter().any(|x| x == id))
+            .map(String::from),
+    );
+    let models = ids().any(|x| barred(&rules, agent, x)).then_some(models);
+    Ok(core::Ruled {
+        effort,
+        touched,
+        models,
+    })
+}
+
+/// The pickers' models: none a rule bars, no effort above a cap [D376].
+pub(crate) fn picks(data: &Path, groups: &mut [Value]) {
+    let rules = rules_of(data);
+    for g in groups {
+        let agent = str_of(g, "provider").to_string();
+        let Some(ms) = g["models"].as_array_mut() else {
+            continue;
+        };
+        ms.retain(|m| !barred(&rules, &agent, str_of(m, "id")));
+        for m in ms {
+            let efforts: Vec<String> = (m["efforts"].as_array().into_iter().flatten())
+                .filter_map(|e| e.as_str().map(String::from))
+                .collect();
+            let refs: Vec<&str> = efforts.iter().map(String::as_str).collect();
+            let Some(cap) = cap(&rules, &agent, &refs) else {
+                continue;
+            };
+            m["efforts"] = json!(efforts[..=cap]);
+            if (m["default_effort"].as_str())
+                .is_some_and(|d| !efforts[..=cap].iter().any(|e| e == d))
+            {
+                m["default_effort"] = efforts[cap].clone().into();
+            }
+        }
+    }
 }
 
 fn barred(rules: &[Value], agent: &str, id: &str) -> bool {

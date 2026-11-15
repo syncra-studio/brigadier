@@ -174,7 +174,7 @@ export function RoutingSettings() {
     setError(null);
     // Your results read every worker's log, so the table never waits on them [D2038].
     run(["routing", "results"]).then((back) => setResults(back as Results), (cause) => setError(errorText(cause)));
-    Promise.all([readRouting(), run(["models"])]).then(
+    Promise.all([readRouting(), run(["models", "--all"])]).then(
       ([table, models]) => {
         setValue(table);
         setGroups(asGroups(models.groups));

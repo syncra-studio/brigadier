@@ -118,6 +118,11 @@ pub fn switch(
     if let Some(e) = to.effort {
         (run.effort, switch["to"]["effort"]) = (Some(e.into()), e.into());
     }
+    // A switch is a launch too: the rules hold on it as on any [D376].
+    let run = match run.ruled(to.backend) {
+        Ok(run) => run,
+        Err(e) => return json!({"ok": false, "error": e.clone(), "message": e}),
+    };
     let mut setup = adapters::setup(&run);
     if held {
         setup["held"] = true.into();
