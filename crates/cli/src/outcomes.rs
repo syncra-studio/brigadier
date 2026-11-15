@@ -100,8 +100,11 @@ fn landed(
     (true, false)
 }
 
-/// `routing results`: each worker's outcome, then success per model as it ran (after any move
-/// in its row) [D2038], and the reviews' counts [D3026]; the rules below are proposed.
+/// `routing results` [C5, D388 Q13]: by job (`ran.job`; `--model` workers under none, those from
+/// before jobs under their row's title), then by model as it ran (after any move in its job): how
+/// many it kept, of those counted [D2038]; and the reviews' counts [D3026]. Kept: finished, its
+/// last commit in its parent's branch, never retried or reverted. Work not merged yet isn't
+/// counted until it is.
 pub(crate) fn results(data: &Path) -> Value {
     let mut rows = vec![];
     let mut retried: HashMap<String, u64> = HashMap::new();
@@ -129,38 +132,67 @@ pub(crate) fn results(data: &Path) -> Value {
         rows.push((wid, l.ran, end.unwrap_or_default()));
     }
     let mut branches = HashMap::new();
-    let mut models: BTreeMap<(String, String), (u64, u64)> = BTreeMap::new();
-    let workers: Vec<Value> = (rows.into_iter())
-        .map(|(wid, ran, end)| {
-            let commits = end["commits"].as_u64().unwrap_or(0);
-            let (kept, reverted) = match commits {
-                0 => (false, false),
-                _ => landed(data, &wid, &mut branches),
-            };
-            // Each `--retry` is its parent reporting a failed check on it: the only check report.
-            let retries = retried.get(&wid).copied().unwrap_or(0);
-            let how = end["how"].as_str().unwrap_or("");
-            // A worker that changed nothing never succeeds; stopped, temporary and nothing
-            // changed aren't counted unless it was retried or reverted.
-            let succeeded = how == "finished" && commits > 0 && retries == 0 && !reverted;
-            let failed = how == "failed" && end["temporary"] != true;
-            let counted = succeeded || failed || retries > 0 || reverted;
-            let (agent, model) = (ran["agent"].as_str().unwrap_or(""), ran["model"].as_str().unwrap_or(""));
-            if counted {
-                let m = models.entry((agent.into(), model.into())).or_default();
-                (m.0, m.1) = (m.0 + succeeded as u64, m.1 + 1);
-            }
-            json!({"id": wid, "agent": agent, "model": model, "how": end["how"], "temporary": end["temporary"],
-                "commits": commits, "retries": retries, "checks": retries, "kept": kept, "reverted": reverted,
-                "succeeded": succeeded, "counted": counted})
-        })
-        .collect();
-    let models: Vec<Value> = (models.into_iter())
-        .map(|((agent, model), (succeeded, of))| json!({"agent": agent, "model": model, "succeeded": succeeded, "of": of}))
+    // (job, agent, model) → name, kept, of, finished, retried, any commits.
+    type Tally = (Value, u64, u64, u64, u64, bool);
+    let mut tally: BTreeMap<(Option<String>, String, String), Tally> = BTreeMap::new();
+    for (wid, ran, end) in rows {
+        let commits = end["commits"].as_u64().unwrap_or(0);
+        let (landed, reverted) = match commits {
+            0 => (false, false),
+            _ => landed(data, &wid, &mut branches),
+        };
+        // Each `--retry` is its parent reporting a failed check on it: the only check report.
+        let retries = retried.get(&wid).copied().unwrap_or(0);
+        let finished = end["how"] == "finished";
+        let kept = finished && commits > 0 && landed && retries == 0 && !reverted;
+        let failed = end["how"] == "failed" && end["temporary"] != true;
+        let counted = kept || failed || retries > 0 || reverted;
+        let job = (ran["job"].as_str().map(String::from))
+            .or(ran["row"].as_str().map(crate::routing::capital));
+        let agent = ran["agent"].as_str().unwrap_or("").to_string();
+        let model = ran["real"]
+            .as_str()
+            .or(ran["model"].as_str())
+            .unwrap_or("")
+            .to_string();
+        let t = tally.entry((job, agent, model)).or_default();
+        if t.0.is_null() {
+            t.0 = ran.get("name").cloned().unwrap_or_default();
+        }
+        (t.1, t.2) = (t.1 + kept as u64, t.2 + counted as u64);
+        (t.3, t.4, t.5) = (
+            t.3 + finished as u64,
+            t.4 + (retries > 0) as u64,
+            t.5 || commits > 0,
+        );
+    }
+    // Jobs in the user's order, then any gone or from before jobs, then named models.
+    let order: Vec<Value> = (crate::routing::run(data, &["routing".into()]).ok())
+        .and_then(|t| t["jobs"].as_array().cloned())
+        .unwrap_or_default();
+    let rank = |j: &Option<String>| match j {
+        Some(j) => order
+            .iter()
+            .position(|o| o["name"] == j.as_str())
+            .unwrap_or(order.len()),
+        None => order.len() + 1,
+    };
+    let mut jobs: Vec<(Option<String>, Vec<Value>)> = vec![];
+    for ((job, agent, model), (name, kept, of, finished, retried, commits)) in tally {
+        let m = json!({"agent": agent, "model": model, "name": name, "kept": commits.then_some(kept),
+            "of": of, "finished": finished, "retried": retried});
+        match jobs.iter_mut().find(|(j, _)| *j == job) {
+            Some((_, l)) => l.push(m),
+            None => jobs.push((job, vec![m])),
+        }
+    }
+    jobs.sort_by_key(|(j, _)| rank(j));
+    let jobs: Vec<Value> = (jobs.into_iter())
+        .map(|(job, models)| json!({"job": job, "models": models}))
         .collect();
     let (count, [findings, fixed, rejected]) = reviews;
     let reviews = (count > 0).then(
         || json!({"count": count, "findings": findings, "fixed": fixed, "rejected": rejected}),
     );
-    json!({"models": models, "reviews": reviews, "workers": workers, "ok": true})
+    json!({"jobs": jobs, "reviews": reviews, "ok": true})
 }
