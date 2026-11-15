@@ -384,12 +384,13 @@ pub(crate) fn send(
     retry_of: Option<&str>,
 ) -> io::Result<Value> {
     crate::rewind::settled(data, spec)?;
+    // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
+    // Taken before the fence, the order every rewind and delivery takes them in [JR-FX2].
+    let (_lock, _) = crate::queue::hold(&spec.dir)?;
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
     let mut msg = core::message::compose(spec, text, parts)?;
-    // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
-    let (_lock, _) = crate::queue::hold(&spec.dir)?;
     let held = crate::workers::with_next(data, &spec.id, &mut msg.agent);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
