@@ -318,9 +318,10 @@ function JobEditor({
     onType?.(next);
   };
   // Only the two fields over the job as it is now: its order may have changed since this opened. What it opened on, a
-  // refused rename, isn't sent again as it's left, so the user can still leave it for another editor.
+  // refused rename, isn't sent again as it's left, so the user can still leave it for another editor; typed back to the
+  // job as saved, it is, so the refusal goes.
   const changed = (from: Job) => typed.name !== from.name || typed.for !== from.for;
-  const commit = () => (onType || (changed(job) && changed(first))) && onCommit({ ...job, name: typed.name, for: typed.for });
+  const commit = () => (onType || changed(first)) && onCommit({ ...job, name: typed.name, for: typed.for });
   const fixed = job.name === REVIEW_JOB && !onType;
   const leave = onType ? undefined : commit;
   return (
