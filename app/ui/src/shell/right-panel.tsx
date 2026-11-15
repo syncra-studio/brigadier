@@ -6,7 +6,7 @@ import { TitlebarTips } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { FilesView } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
-import { FilesGlyph, RobotHead, Sidebar, SidebarFloatingLeft } from "../icons";
+import { Agent, FilesGlyph, Sidebar, SidebarFloatingLeft } from "../icons";
 import { useGitWatch } from "../panel/git";
 import { openPanel, type PanelTab, setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory, usePanelTab } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
@@ -66,7 +66,7 @@ function Files({ owner }: { owner: string }) {
   return <FilesView owner={owner} shown={front} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />;
 }
 
-const VIEWS = { files: { title: "Files", Icon: FilesGlyph }, workers: { title: WORKERS_LABEL, Icon: RobotHead } } as const;
+const VIEWS = { files: { title: "Files", Icon: FilesGlyph }, workers: { title: WORKERS_LABEL, Icon: Agent } } as const;
 
 /**
  * The views' icons as tabs, centred in a row at the panel's top, as the old app's PaneViewTabs: the shown one filled
