@@ -215,6 +215,14 @@ pub(crate) fn resolve(
     }
     let name = job.as_ref().map(|j| str_of(j, "name").to_string());
     let mine = models::next_agent(parent, f).to_string();
+    let by: Vec<String> = (review.into_iter().flatten())
+        .map(|a| {
+            adapters::get(a)
+                .map_or(a.as_str(), |x| x.short_label())
+                .to_string()
+        })
+        .collect();
+    let mut passed = false;
     let list = match &model {
         Some(m) => {
             let a = agent.clone().unwrap_or(mine);
@@ -236,7 +244,9 @@ pub(crate) fn resolve(
             }
             if let Some(authors) = review {
                 // Never on its author's agent [D385].
+                let n = list.len();
                 list.retain(|e| !authors.iter().any(|a| e["agent"] == a.as_str()));
+                passed = list.len() < n;
                 // The switch's reviewers that failed or met their limit are passed by [D3026].
                 let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
                 let gone: Vec<Value> = gone.unwrap_or_default();
@@ -292,6 +302,10 @@ pub(crate) fn resolve(
                 "effort": runs_at.or(m["default_effort"].as_str().map(String::from)), "capped": capped}),
             hold: Value::Null,
         };
+        if passed {
+            // Its why line: "the first in Review on another agent than Claude" [D385].
+            pick.ran["other_than"] = jobs::and(&by).into();
+        }
         match place(data, adapter, id, &base, &parent.cwd, wid, "\0") {
             Ok((account, kept)) => {
                 pick.account = Some(account).filter(|x| !x.is_empty());
@@ -300,7 +314,7 @@ pub(crate) fn resolve(
                 if let Some(job) = name.as_ref().filter(|_| !out.is_empty()) {
                     pick.ran["note"] = format!(
                         "{} had no account with room, so the next in {job} ran",
-                        out.join(" and ")
+                        jobs::and(&out)
                     )
                     .into();
                 }
@@ -313,18 +327,11 @@ pub(crate) fn resolve(
             }
         }
     }
-    if let Some(authors) = review {
-        let names: Vec<String> = (authors.iter())
-            .map(|a| {
-                adapters::get(a)
-                    .map_or(a.as_str(), |x| x.short_label())
-                    .to_string()
-            })
-            .collect();
+    if review.is_some() {
         return Err(refuse(&format!(
             "Review didn't run: no model in your {} job on another agent than {} has room.",
             jobs::REVIEW,
-            names.join(" and ")
+            jobs::and(&by)
         )));
     }
     let Some(mut pick) = first else {
@@ -337,7 +344,7 @@ pub(crate) fn resolve(
         Some(j) => format!("{j}'s models are at their limit"),
         None => format!("{} is at its limit", out.join(", ")),
     };
-    pick.hold = json!({"job": name, "why": why, "out": out.join(" and "), "resets": soonest,
+    pick.hold = json!({"job": name, "why": why, "out": jobs::and(&out), "resets": soonest,
         "use": super::hold::other(data, &groups, &t, name.as_deref(), parent, f)});
     Ok(pick)
 }
@@ -419,7 +426,7 @@ pub(crate) fn next(
                     ),
                     false => format!(
                         "{} had no account with room, so the next in {} ran",
-                        out.join(" and "),
+                        jobs::and(&out),
                         job.as_deref().unwrap_or("")
                     ),
                 };
@@ -448,7 +455,7 @@ pub(crate) fn next(
         None => format!("{} is at its limit", out[0]),
     };
     let resets = soonest.or(f.resets);
-    let hold = json!({"job": job, "why": why, "out": out.join(" and "), "resets": resets,
+    let hold = json!({"job": job, "why": why, "out": jobs::and(&out), "resets": resets,
             "use": super::hold::other(data, &groups, &t, job.as_deref(), &parent, &pf)});
     drop(_one);
     ask(data, wid, &hold)?;

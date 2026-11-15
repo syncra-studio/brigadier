@@ -295,7 +295,10 @@ pub(crate) fn why(asked: &Value, ran: &Value, retry: &Value) -> String {
         _ => None,
     };
     let named = match (asked["model"].is_string(), ran["job"].as_str()) {
-        (false, Some(job)) => format!("the first model in {job}"),
+        (false, Some(job)) => match ran["other_than"].as_str() {
+            Some(a) => format!("the first in {job} on another agent than {a}"),
+            None => format!("the first model in {job}"),
+        },
         _ => "the model asked for".into(),
     };
     (ran["note"].as_str().or(ran["capped"].as_str()).or(step)).map_or(named, String::from)

@@ -172,7 +172,7 @@ pub(crate) fn lead(jobs: &[Value]) -> String {
 }
 
 /// "A", "A and B", "A, B and C".
-fn and(words: &[String]) -> String {
+pub(super) fn and(words: &[String]) -> String {
     match words {
         [] => String::new(),
         [one] => one.clone(),
