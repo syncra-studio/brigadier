@@ -14,7 +14,7 @@ import { Folder, Folders, Mcp, Plus, Spinner, ToolsSkills } from "../icons";
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
 import { type AddFirst, AddDialog, type Draft, RefreshDialog } from "./plugins-dialogs";
-import { DetailsPage, type SignInStart } from "./plugins-details";
+import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
 /** Where an item is on: every project, or only these (by id). */
@@ -52,7 +52,7 @@ export type PluginActions = {
   /** Reads the page again, its agents' own included. */
   refresh: () => Promise<Plugins>;
   /** Signs in through the browser: settles once it's done, or with its error. */
-  signIn: (key: string) => Promise<unknown>;
+  signIn: (key: string, onDevice: (device: Device) => void) => Promise<unknown>;
   cancel: (key: string) => Promise<unknown>;
   signOut: (key: string) => Promise<unknown>;
   /** A skill's folder, from the system's picker; null when none was chosen. */
@@ -448,8 +448,9 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     refresh: () => send(),
     // Rust starts it and answers its page, which opens in the browser; its end answers the page, waited
     // for outside the chain so Cancel isn't held behind it.
-    signIn: async (key) => {
+    signIn: async (key, onDevice) => {
       const started = await run(["plugins", "signin", key]);
+      if (typeof started.code === "string") onDevice({ code: started.code, page: String(started.url) });
       window.brigadier?.openLink(String(started.url));
       setValue((last = (await run(["plugins", "wait", key])) as Plugins));
     },

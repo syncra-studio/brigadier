@@ -107,6 +107,7 @@ const FILES = { name: "files", command: "uvx mcp-files --root .", values: [{ id:
 const SKILL = { kind: "skill" as const, folder: "~/skills/changelog" };
 const DIALOGS: [string, Open][] = [
   ["Add a server at an address", { type: "add", remote: true, first: { form: { remote: true, name: "linear", url: "https://mcp.linear.app/mcp" } } }],
+  ["A server at an address, with an API key", { type: "add", remote: true, first: { form: { remote: true, name: "context7", url: "https://mcp.context7.com/mcp", values: [{ id: 0, name: "CONTEXT7_API_KEY", value: "ctx7sk-demo" }] } } }],
   ["Add a local command", { type: "add", remote: true, first: { form: FILES } }],
   ["Its command, confirmed", { type: "add", remote: true, first: { form: FILES, step: "confirm" } }],
   ["Add a skill", { type: "add", remote: true, first: { form: SKILL } }],
@@ -166,6 +167,7 @@ export function PluginsGallery() {
         <Still label="All projects, signed in" detail="linear" />
         <Still label="Sign in" detail="notion" />
         <Still label="Waiting for browser" detail="notion" signing="waiting" />
+        <Still label="Waiting for browser, a device code" detail="notion" signing={{ code: "WDJB-MJHT", page: "https://github.com/login/device" }} />
         <Still label="Sign-in failed" detail="notion" signing={{ error: "Notion said: access_denied. Try again, or check the account you picked." }} />
         <Still label="Signed in by each agent" detail="figma" />
         <Still label="A skill an agent keeps its own of" detail="release" />

@@ -7,13 +7,16 @@ import { Radio, RadioGroup } from "../components/radio";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
 import { Folder, Spinner } from "../icons";
+import { DeviceCode } from "../onboarding/agents";
 import { errorText } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "./parts";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import type { Item, PluginActions, Plugins, Scope } from "./plugins";
 
 /** How the gallery opens a sign-in: waiting on the browser, or failed with these words. */
-export type SignInStart = "waiting" | { error: string } | undefined;
+/** A device sign-in's one-time code and the page it's entered on (GitHub's). */
+export type Device = { code: string; page: string };
+export type SignInStart = "waiting" | Device | { error: string } | undefined;
 
 const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
 
@@ -117,16 +120,18 @@ const STANDING = { signed_in: "Signed in", needs_sign_in: "Not signed in", cant_
 
 /** A server Brigadier signs in to: its standing, Sign in (Waiting for browser… with Cancel while it runs), Sign out, and what failed. */
 function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; start: SignInStart }) {
-  const [waiting, setWaiting] = useState(start === "waiting");
-  const [error, setError] = useState<string | null>(typeof start === "object" ? start.error : null);
+  const [waiting, setWaiting] = useState(start === "waiting" || (typeof start === "object" && "code" in start));
+  const [device, setDevice] = useState<Device | null>(typeof start === "object" && "code" in start ? start : null);
+  const [error, setError] = useState<string | null>(typeof start === "object" && "error" in start ? start.error : null);
   const generation = useRef(0);
-  const run = (work: () => Promise<unknown>, wait: boolean) => {
+  const run = (work: (current: number) => Promise<unknown>, wait: boolean) => {
     const current = ++generation.current;
     setWaiting(wait);
+    setDevice(null);
     setError(null);
-    work()
+    work(current)
       .catch((cause: unknown) => generation.current === current && setError(errorText(cause)))
-      .finally(() => generation.current === current && setWaiting(false));
+      .finally(() => generation.current === current && (setWaiting(false), setDevice(null)));
   };
   const signedIn = item.status === "signed_in";
   // Signing in doesn't reach a server that's down; it's offered there only while there's no sign-in.
@@ -150,6 +155,7 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
                 // The sign-in's own promise settles as cancelled; its words aren't an error.
                 generation.current++;
                 setWaiting(false);
+                setDevice(null);
                 void actions.cancel(item.key).catch((cause: unknown) => setError(errorText(cause)));
               }}
             >
@@ -159,7 +165,7 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
         ) : (
           offer && (
           <>
-            <Button variant="ghost" size="sm" onClick={() => run(() => actions.signIn(item.key), true)}>
+            <Button variant="ghost" size="sm" onClick={() => run((current) => actions.signIn(item.key, (shown) => generation.current === current && setDevice(shown)), true)}>
               {signedIn ? "Sign in again" : "Sign in"}
             </Button>
             {signedIn && (
@@ -171,6 +177,7 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
           )
         )}
       </div>
+      {waiting && device && <DeviceCode page={device.page} code={device.code} />}
       <ErrorLine error={error} />
     </div>
   );

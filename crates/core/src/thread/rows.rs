@@ -313,8 +313,7 @@ impl Thread {
             }
             // The agent's own sign-in, or a library server's (its key) a session's proxy found ended [D381, wave4 D2043].
             k @ ("sign_in" | "note") if k == "sign_in" || item["event"] == "sign_in" => {
-                self.break_group();
-                self.add(json!({"kind": "notice", "reason": "sign-in", "text": item["message"], "plugin": item["server"].as_str().map(crate::library::key)}));
+                self.kept_row(json!({"kind": "notice", "reason": "sign-in", "text": item["message"], "plugin": item["server"].as_str().map(crate::library::key)}));
             }
             "compaction" => {
                 self.break_group();

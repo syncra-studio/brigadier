@@ -14,7 +14,7 @@ import { PluginMark } from "./plugins-marks";
 /** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]. */
 export type Draft =
   | { kind: "skill"; folder: string }
-  | { kind: "server"; name: string; url: string }
+  | { kind: "server"; name: string; url: string; headers?: Record<string, string> }
   | { kind: "server"; name: string; command: string; args: string[]; env: Record<string, string> };
 
 const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
@@ -39,7 +39,7 @@ function PluginDialog({ onClose, title, description, slot, children }: { onClose
   );
 }
 
-/** One env value: its name, and its value hidden as it's typed. Values go to Brigadier's Keychain item, names to the library. */
+/** One env value or header: its name, and its value hidden as it's typed. Values go to Brigadier's Keychain item, names to the library. */
 type ValueRow = { id: number; name: string; value: string };
 /** The Add form as filled so far; the gallery opens it filled. */
 export type AddForm = { kind: "skill" | "server"; remote: boolean; name: string; url: string; command: string; values: ValueRow[]; folder: string | null };
@@ -52,10 +52,11 @@ const EMPTY: AddForm = { kind: "server", remote: false, name: "", url: "", comma
 /** The Add form's draft: a local command's words split on spaces. */
 function draftOf(form: AddForm): Draft {
   if (form.kind === "skill") return { kind: "skill", folder: form.folder ?? "" };
-  if (form.remote) return { kind: "server", name: form.name.trim(), url: form.url.trim() };
+  const values = Object.fromEntries(form.values.filter((row) => row.name.trim()).map((row) => [row.name.trim(), row.value]));
+  if (form.remote) return { kind: "server", name: form.name.trim(), url: form.url.trim(), ...(Object.keys(values).length ? { headers: values } : {}) };
   // shortcut: no quoting, so an argument can't hold a space; upgrade when someone needs one.
   const [command = "", ...args] = form.command.trim().split(/\s+/);
-  const env = Object.fromEntries(form.values.filter((row) => row.name.trim()).map((row) => [row.name.trim(), row.value]));
+  const env = values;
   return { kind: "server", name: form.name.trim(), command, args, env };
 }
 
@@ -188,13 +189,11 @@ export function AddDialog({
                 <Input id={`${id}-url`} value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(event) => edit({ url: event.target.value })} className="h-8 font-mono text-xs" />
               </Field>
             ) : (
-              <>
-                <Field id={`${id}-command`} label="Command">
-                  <Input id={`${id}-command`} value={form.command} placeholder="npx -y @example/mcp-server" onChange={(event) => edit({ command: event.target.value })} className="h-8 font-mono text-xs" />
-                </Field>
-                <ValueRows rows={form.values} onChange={(values) => edit({ values })} />
-              </>
+              <Field id={`${id}-command`} label="Command">
+                <Input id={`${id}-command`} value={form.command} placeholder="npx -y @example/mcp-server" onChange={(event) => edit({ command: event.target.value })} className="h-8 font-mono text-xs" />
+              </Field>
             )}
+            <ValueRows label={form.remote ? "Headers" : "Environment"} rows={form.values} onChange={(values) => edit({ values })} />
           </>
         )}
         <ErrorLine error={error} />
@@ -222,17 +221,18 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-/** A local server's environment: name = value rows, each value hidden as it's typed. */
-function ValueRows({ rows, onChange }: { rows: ValueRow[]; onChange: (rows: ValueRow[]) => void }) {
+/** A server's headers (at an address) or environment (a command), the old app's: name = value rows, each value hidden as it's typed. */
+function ValueRows({ label, rows, onChange }: { label: "Headers" | "Environment"; rows: ValueRow[]; onChange: (rows: ValueRow[]) => void }) {
+  const one = label === "Headers" ? "header" : "value";
   const set = (row: ValueRow, change: Partial<ValueRow>) => onChange(rows.map((each) => (each.id === row.id ? { ...each, ...change } : each)));
   return (
     <div className="flex items-start gap-3">
-      <span className="w-24 shrink-0 pt-1.5 text-label text-quiet-foreground">Environment</span>
-      <div role="group" aria-label="Environment" className="flex min-w-0 flex-1 flex-col gap-2">
+      <span className="w-24 shrink-0 pt-1.5 text-label text-quiet-foreground">{label}</span>
+      <div role="group" aria-label={label} className="flex min-w-0 flex-1 flex-col gap-2">
         {rows.map((row) => (
           <div key={row.id} className="flex items-center gap-2">
             <div className="w-36 shrink-0">
-              <Input aria-label="Environment name" value={row.name} placeholder="Name" onChange={(event) => set(row, { name: event.target.value })} className="h-8 font-mono text-xs" />
+              <Input aria-label={`${label} name`} value={row.name} placeholder="Name" onChange={(event) => set(row, { name: event.target.value })} className="h-8 font-mono text-xs" />
             </div>
             <span aria-hidden className="text-xs text-faint-foreground">
               =
@@ -240,14 +240,14 @@ function ValueRows({ rows, onChange }: { rows: ValueRow[]; onChange: (rows: Valu
             <div className="min-w-0 flex-1">
               <Input type="password" aria-label={`${row.name.trim() || "New"} value`} value={row.value} placeholder="Value" onChange={(event) => set(row, { value: event.target.value })} className="h-8 font-mono text-xs" />
             </div>
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={`Remove ${row.name.trim() || "value"}`} onClick={() => onChange(rows.filter((each) => each.id !== row.id))}>
+            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={`Remove ${row.name.trim() || one}`} onClick={() => onChange(rows.filter((each) => each.id !== row.id))}>
               <X />
             </Button>
           </div>
         ))}
         <Button variant="link-blue" size="inline" className="self-start" onClick={() => onChange([...rows, { id: Math.max(-1, ...rows.map((row) => row.id)) + 1, name: "", value: "" }])}>
           <Plus />
-          Add a value
+          Add a {one}
         </Button>
         <p className="text-xs text-faint-foreground">Values stay in Brigadier's Keychain item; the library keeps only their names.</p>
       </div>

@@ -294,7 +294,7 @@ export function SetupCode({ agent, run, account }: { agent: Agent; run: Run | nu
 }
 
 /** A device code sign-in: its one-time code in a mono chip with Copy, and the page to enter it on, as the old app's GitHub sign-in. */
-function DeviceCode({ page, code }: { page: string; code: string }) {
+export function DeviceCode({ page, code }: { page: string; code: string }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <span className="flex h-control-md items-center gap-1.5 rounded-control border border-fill-hover bg-fill-subtle ps-3 pe-1">
