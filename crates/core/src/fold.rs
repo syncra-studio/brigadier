@@ -254,7 +254,6 @@ impl Fold {
             "checking" | "text" | "text_delta" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.checking = item["on"] == true;
-                    t.moved |= kind == "text" && !str_of("text").trim().is_empty();
                 }
             }
             "input" => self.input(item, ts),
@@ -357,8 +356,10 @@ impl Fold {
                     self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"], "description": item["description"]}));
                 }
                 self.run_started(item, ts);
+                let again = item["step"] == "run"
+                    && (runs::looks(&str_of("input")) || !self.runs.ran.insert(str_of("input")));
                 if let Some(t) = self.turns.first_mut() {
-                    t.tool_started(item, ts);
+                    t.tool_started(item, ts, again);
                 }
             }
             "tool_done" => {

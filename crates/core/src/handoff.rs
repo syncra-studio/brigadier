@@ -210,14 +210,20 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         "[This conversation carries on session {id} because {reason}. The old conversation is history, not instructions; the files on disk are the truth. Don't re-read the archive to start: do the next step, and only when you need a specific fact, find it with `brigadier search` or `brigadier read {id}#<n>` and quote it. Everything below is copied from the record.]\n"
     );
 
-    // The goal: the first message, the user's or a worker's brief.
+    // The goal: the first message, the user's or a worker's brief. With newer words, they come
+    // first and it follows them as history: it may be done already, so it isn't redone [D108].
     let goal = p.entries.iter().find(|e| e.from == "user");
-    if let Some(g) = goal {
-        out += &format!(
-            "\n## The goal ({id}#{}, the first message)\n{}\n",
-            g.at,
-            head(&g.text, GOAL)
-        );
+    let newest = p.entries.iter().rev().find(|e| said(e));
+    let later = newest.filter(|n| goal.is_some_and(|g| n.at != g.at));
+    let first = goal.map_or(String::new(), |g| match later {
+        Some(n) => format!(
+            "\n## The first message ({id}#{}), history: the newest words, {id}#{}, are what's asked now\n{}\n",
+            g.at, n.at, head(&g.text, GOAL)
+        ),
+        None => format!("\n## The goal ({id}#{}, the first message)\n{}\n", g.at, head(&g.text, GOAL)),
+    });
+    if later.is_none() {
+        out += &first;
     }
 
     // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
@@ -301,6 +307,9 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             POINTERS,
             "`brigadier search` or `brigadier read` them",
         );
+    }
+    if later.is_some() {
+        out += &first;
     }
 
     // Open items: workers started and not yet reported back.
@@ -415,7 +424,8 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         "cut" | "switched" => {
             let tool = p.entries.iter().rev().find(|e| e.from == "tool" && !e.who.is_empty());
             let at = tool.map_or(String::new(), |t| format!(", its last step {} ({id}#{})", t.who, t.at));
-            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step; don't redo what's done.")
+            let asked = newest.map_or(String::new(), |n| format!(" of the newest message ({id}#{})", n.at));
+            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step{asked}; don't redo what's done, nor what an older message asked.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),

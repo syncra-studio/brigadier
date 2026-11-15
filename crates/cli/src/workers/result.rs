@@ -128,8 +128,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         }
         let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
         // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
-        // conversation, whose own end reports instead [D88, D108].
-        if f.cut.as_deref() == Some(turn)
+        // conversation, whose own end reports instead [D88, D108], unless it ended done first.
+        if (f.cut.as_deref() == Some(turn) && !last.is_some_and(|l| l["outcome"] == "done"))
             || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
         {
             continue;

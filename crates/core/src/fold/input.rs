@@ -61,6 +61,9 @@ impl Fold {
         if self.control(item, &cid) {
             return;
         }
+        if item["origin"] != "system" {
+            self.runs.ran.clear();
+        }
         // A message ends what a held turn's subagent asked, as any new turn ends what waits.
         if self.turns.first().is_some_and(|t| t.held) {
             self.close("withdrawn", Value::Null, ts);

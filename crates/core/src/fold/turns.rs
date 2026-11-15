@@ -77,7 +77,9 @@ pub struct Turn {
     pub edited: BTreeSet<String>,
     #[serde(default)]
     pub editing: BTreeMap<String, Vec<String>>,
-    /// It did something new: an edit, a command or reply text, the rebirth guard's progress [D144].
+    /// It did something new: an edit, or a command that does more than look and wasn't run since
+    /// the last message, the rebirth guard's progress [D144]. A reply ends its turn, so no cut
+    /// follows it; text before a cut is only what it's about to do.
     #[serde(default)]
     pub moved: bool,
     /// The agent's own output for it: a reply, a step, a thought or an ask.
@@ -101,15 +103,16 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
-    /// A tool began: it's open until its end, and an edit's paths wait for it.
-    pub(super) fn tool_started(&mut self, item: &Value, ts: u64) {
+    /// A tool began: it's open until its end, and an edit's paths wait for it. `again`: a command
+    /// that only looks or ran before since the last message.
+    pub(super) fn tool_started(&mut self, item: &Value, ts: u64, again: bool) {
         if self.tools.is_empty() {
             self.tools_since = ts;
         }
         if self.first_tool == 0 {
             self.first_tool = ts;
         }
-        self.moved |= matches!(item["step"].as_str(), Some("run" | "edit"));
+        self.moved |= item["step"] == "edit" || (item["step"] == "run" && !again);
         self.tools
             .insert(item["id"].as_str().unwrap_or_default().into());
         self.edit_started(item);
