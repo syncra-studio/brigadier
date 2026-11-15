@@ -48,7 +48,7 @@ export function YourResults({ results, groups }: { results: Results | null; grou
 function ResultRow({ agent, name, kept, of, finished, retried, group }: Model & { group: ModelGroup | undefined }) {
   const share = kept !== null && of >= COMPARED ? Math.round((kept / of) * 100) : null;
   const counts =
-    kept === null ? [`${finished} finished`, retried > 0 && `${retried} retried`].filter(Boolean).join(" · ") : `${kept} of ${of} kept${share === null ? " · too few to compare" : ""}`;
+    kept === null ? [finished > 0 && `${finished} finished`, retried > 0 && `${retried} retried`].filter(Boolean).join(" · ") : `${kept} of ${of} kept${share === null ? " · too few to compare" : ""}`;
   return (
     <div data-slot="result-row" className="flex items-center gap-3.5 py-2">
       <span className="flex min-w-0 flex-1 items-center gap-2.5">

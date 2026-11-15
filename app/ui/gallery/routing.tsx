@@ -100,7 +100,14 @@ const RESULTS: Results = {
     },
     { job: "Look into the codebase", models: [{ agent: "cloud", model: "medium", name: "Medium model", kept: null, of: 10, finished: 9, retried: 1 }] },
     { job: "Plan and orchestrate", models: [{ agent: "cloud", model: "large", name: "Large model", kept: null, of: 4, finished: 4, retried: 0 }] },
-    { job: null, models: [{ agent: "other", model: "mini", name: "Mini model", kept: 3, of: 4, finished: 4, retried: 0 }] },
+    {
+      job: null,
+      models: [
+        { agent: "other", model: "mini", name: "Mini model", kept: 3, of: 4, finished: 4, retried: 0 },
+        // Only retried, none finished: "1 retried", leaving out the 0 (C5).
+        { agent: "other", model: "tiny", name: "Tiny model", kept: null, of: 1, finished: 0, retried: 1 },
+      ],
+    },
     { job: "Best", models: [{ agent: "cloud", model: "large", name: "Large model", kept: 17, of: 20, finished: 20, retried: 1 }] },
   ],
   reviews: { count: 6, findings: 14, fixed: 11, rejected: 3 },

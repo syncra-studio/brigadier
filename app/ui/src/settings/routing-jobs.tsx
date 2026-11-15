@@ -62,6 +62,8 @@ export function Jobs({
   onAnswer: (offer: Offer, answer: Answer) => Promise<boolean>;
 }) {
   const [used, setUsed] = useState<{ offer: Offer; before: Entry[] }[]>([]);
+  // A refused rename's typed job, kept in its editor beside Rust's words while they show [U1].
+  const [refused, setRefused] = useState<{ from: string; typed: Job } | null>(null);
   const forget = (offer: Offer) => setUsed((now) => now.filter((each) => each.offer !== offer));
   const put = (name: string, next: Job) => onSave(jobs.map((job) => (job.name === name ? next : job)));
   const move = (from: number, to: number) => {
@@ -122,10 +124,15 @@ export function Jobs({
                 {open && (
                   <JobEditor
                     job={job}
+                    typed={failed && refused?.from === job.name ? refused.typed : job}
                     error={failed}
                     onCommit={(next) => {
                       if (next.name !== job.name) onEditing(next.name);
-                      void put(job.name, next).then((ok) => ok || onEditing(job.name));
+                      void put(job.name, next).then((ok) => {
+                        if (ok) return;
+                        setRefused({ from: job.name, typed: next });
+                        onEditing(job.name);
+                      });
                     }}
                     actions={
                       job.name !== REVIEW_JOB && (
@@ -182,7 +189,7 @@ export function Jobs({
               onCommit={add}
               actions={
                 <>
-                  <Button variant="soft" size="sm" onClick={() => add(draft)}>
+                  <Button variant="soft" size="sm" type="submit">
                     Add job
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => onDraft(null)}>
@@ -287,16 +294,33 @@ function SortableJob({
 
 /**
  * The editor, in the block over its order: Name and "Use this for", nothing else [D384, D387]. A field saves as it's
- * left or on Enter (`onCommit`); a new job's on Add job. Review's name can't change, and says why.
+ * left or on Enter (`onCommit`); a new job's on Add job or Enter. Review's name can't change, and says why.
+ * `typed` opens it on what was typed, not yet saved.
  */
-function JobEditor({ job, error, onType, onCommit, actions }: { job: Job; error: string | null; onType?: (job: Job) => void; onCommit: (job: Job) => void; actions: ReactNode }) {
-  const [typed, setTyped] = useState(job);
+function JobEditor({
+  job,
+  typed: first = job,
+  error,
+  onType,
+  onCommit,
+  actions,
+}: {
+  job: Job;
+  typed?: Job;
+  error: string | null;
+  onType?: (job: Job) => void;
+  onCommit: (job: Job) => void;
+  actions: ReactNode;
+}) {
+  const [typed, setTyped] = useState(first);
   const type = (next: Job) => {
     setTyped(next);
     onType?.(next);
   };
-  // Only the two fields over the job as it is now: its order may have changed since this opened.
-  const commit = () => (onType || typed.name !== job.name || typed.for !== job.for) && onCommit({ ...job, name: typed.name, for: typed.for });
+  // Only the two fields over the job as it is now: its order may have changed since this opened. What it opened on, a
+  // refused rename, isn't sent again as it's left, so the user can still leave it for another editor.
+  const changed = (from: Job) => typed.name !== from.name || typed.for !== from.for;
+  const commit = () => (onType || (changed(job) && changed(first))) && onCommit({ ...job, name: typed.name, for: typed.for });
   const fixed = job.name === REVIEW_JOB && !onType;
   const leave = onType ? undefined : commit;
   return (
@@ -318,6 +342,8 @@ function JobEditor({ job, error, onType, onCommit, actions }: { job: Job; error:
         <Input value={typed.for} onValueChange={(line) => type({ ...typed, for: line })} onBlur={leave} />
       </label>
       <ErrorLine error={error} />
+      {/* A job's own editor saves as it's left, with no Save to draw: Enter needs a submit button to submit a form. */}
+      {!onType && <button type="submit" hidden />}
       {actions && <div className="flex items-center gap-2 pt-2">{actions}</div>}
       <p className="pt-4 text-label text-quiet-foreground">Models, tried in order · the next runs only when one is out of quota</p>
     </form>

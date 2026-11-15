@@ -91,9 +91,17 @@ export function RoutingPage({
 }) {
   // A change in flight, or settled, on the table it was made from; a new table from Rust replaces it.
   const [mine, setMine] = useState<{ base: Routing; shown: Routing } | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
   const [editing, setEditing] = useState(editingFirst);
   const [draft, setDraft] = useState(draftFirst);
+  // The editor open: `true` the new job's, a name that job's, null none. A refusal belongs to the one it came from:
+  // it goes once another opens or that one closes, not when a failed save puts its editor back [D384, D387].
+  const at = draft !== null || editing;
+  const [failed, setFailed] = useState<{ text: string; at: typeof at } | null>(null);
+  const [seen, setSeen] = useState(at);
+  if (seen !== at) {
+    setSeen(at);
+    if (failed && failed.at !== at) setFailed(null);
+  }
   const ops = useRef(0);
   const shown = mine && mine.base === value ? mine.shown : value;
   // True once Rust took it.
@@ -111,7 +119,7 @@ export function RoutingPage({
       (cause: unknown) => {
         if (op === ops.current) {
           setMine(null);
-          setFailed(errorText(cause));
+          setFailed({ text: errorText(cause), at });
         }
         return false;
       },
@@ -128,12 +136,12 @@ export function RoutingPage({
         </SettingsCard>
       ) : (
         <div className={cx("flex flex-col gap-10", offline && "pointer-events-none opacity-disabled")}>
-          <ErrorLine error={(editorOpen ? null : failed) ?? error} />
+          <ErrorLine error={(editorOpen ? null : failed?.text) ?? error} />
           <Jobs
             jobs={shown.jobs}
             offers={shown.offers}
             groups={groups}
-            failed={editorOpen ? failed : null}
+            failed={editorOpen ? (failed?.text ?? null) : null}
             editing={editing}
             draft={draft}
             onEditing={setEditing}
