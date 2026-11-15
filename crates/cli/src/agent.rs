@@ -478,7 +478,7 @@ fn models(data: &Path, me: &str) -> Value {
     if agents.is_empty() {
         text += "No agents are available.\n";
     }
-    let routing = crate::routing::run(data, &["routing".into()]).unwrap_or_default();
+    let routing = crate::routing::current(data);
     text += &crate::routing::said(&routing);
     json!({"ok": true, "agents": agents, "routing": routing, "text": text})
 }

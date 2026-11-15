@@ -167,9 +167,8 @@ pub(crate) fn results(data: &Path) -> Value {
         );
     }
     // Jobs in the user's order, then any gone or from before jobs, then named models.
-    let order: Vec<Value> = (crate::routing::run(data, &["routing".into()]).ok())
-        .and_then(|t| t["jobs"].as_array().cloned())
-        .unwrap_or_default();
+    let order: Vec<Value> =
+        (crate::routing::current(data)["jobs"].as_array().cloned()).unwrap_or_default();
     let rank = |j: &Option<String>| match j {
         Some(j) => order
             .iter()

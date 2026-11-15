@@ -15,6 +15,7 @@ use std::path::Path;
 
 mod hold;
 mod jobs;
+mod offers;
 mod pick;
 mod retry;
 
@@ -108,12 +109,17 @@ fn table(data: &Path, groups: &[Value]) -> Value {
     json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true})
 }
 
+/// The table without offers, for agents and results: agents never see offers [D386].
+pub(crate) fn current(data: &Path) -> Value {
+    table(data, &groups(data, None))
+}
+
 /// What a session's agent is told of the jobs at launch, after its lead rule [D387]; a worker,
 /// naked, is told none.
 pub(crate) fn told(data: &Path, spec: &Spec) -> Spec {
     let mut spec = spec.clone();
     if !spec.naked {
-        let t = table(data, &groups(data, None));
+        let t = current(data);
         spec.jobs = Some(jobs::lead(t["jobs"].as_array().map_or(&[], Vec::as_slice)));
     }
     spec
@@ -198,39 +204,51 @@ fn checked(groups: &[Value], v: &Value, now: &Value, saved: &Value) -> Result<Va
     Ok(out)
 }
 
-/// `routing [--json]`, `routing set <json>` and the daemon's and app's own `routing resume <wid>`
-/// and `routing answer <wid> <request> <choice>` [C5, D30].
+/// Saves a new table checked against `now`, the table as it stands, or says why not; the caller
+/// holds the lock.
+fn save(data: &Path, groups: &[Value], v: &Value, now: &Value) -> io::Result<Option<String>> {
+    match checked(groups, v, now, &read(&data.join(FILE))) {
+        Ok(kept) => core::write_atomic(&data.join(FILE), kept.to_string().as_bytes()).map(|_| None),
+        Err(why) => Ok(Some(why)),
+    }
+}
+
+/// `routing [--json]`, `routing set <json>`, `routing offer <id> use|later|never` and the
+/// daemon's and app's own `routing resume <wid>` and `routing answer <wid> <request> <choice>`
+/// [C5, D30].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
     let groups = || groups(data, None);
     match arg(1) {
-        "" | "--json" => Ok(shown(data, &groups(), None)),
+        "" | "--json" => {
+            let groups = groups();
+            let _one = lock(data)?;
+            Ok(shown(data, &groups, None))
+        }
         "set" => {
             let v: Value = serde_json::from_str(arg(2))
                 .map_err(|e| io::Error::other(format!("routing set: {e}")))?;
             let groups = groups();
             let _one = lock(data)?;
-            let now = table(data, &groups);
-            match checked(&groups, &v, &now, &read(&data.join(FILE))) {
-                Ok(kept) => core::write_atomic(&data.join(FILE), kept.to_string().as_bytes())?,
-                Err(why) => return Ok(shown(data, &groups, Some(why))),
-            }
-            Ok(shown(data, &groups, None))
+            let why = save(data, &groups, &v, &table(data, &groups))?;
+            Ok(shown(data, &groups, why))
         }
+        "offer" => offers::answer(data, &groups(), arg(2), arg(3)),
         "results" => Ok(crate::outcomes::results(data)),
         "resume" => hold::resume(data, arg(2)),
         "answer" => hold::answer(data, arg(2), arg(3), arg(4)),
         _ => Err(io::Error::other(
-            "usage: brigadier routing [set <json> | results | resume <wid> | answer <wid> <request> <choice>]",
+            "usage: brigadier routing [set <json> | offer <id> use|later|never | results | resume <wid> | answer <wid> <request> <choice>]",
         )),
     }
 }
 
-/// The table as the page and the agent read it [C5], with the page's grey lines; `offers` are
-/// R2's; `why` a refused set's.
+/// The table as the page reads it [C5], with the page's grey lines and the offers open now; `why`
+/// a refused change's. The caller holds the lock.
 fn shown(data: &Path, groups: &[Value], why: Option<String>) -> Value {
     let mut t = table(data, groups);
-    (t["offers"], t["notes"]) = (json!([]), jobs::notes(groups));
+    let offers = offers::open(data, groups, &t).unwrap_or_default();
+    (t["offers"], t["notes"]) = (offers.into(), jobs::notes(groups));
     t["ok"] = why.is_none().into();
     if let Some(why) = why {
         (t["error"], t["message"]) = ("invalid".into(), why.into());
