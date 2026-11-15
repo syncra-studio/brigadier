@@ -170,10 +170,8 @@ pub(crate) fn plan(
         let after = json!({"agent": agent, "model": model}).to_string();
         ("next", vec![j, ("job-after", after)], label, None)
     } else {
-        let why = format!(
-            "{} failed again ({failed}) with no step up left",
-            head.title
-        );
+        // The parent's words say how it failed; ours only that the ladder is done.
+        let why = format!("No step up is left for {}: {failed}", head.title);
         // Its job's first; one with no job, the model it ran on.
         let flags = match job.clone() {
             Some(j) => vec![j],
@@ -190,9 +188,16 @@ pub(crate) fn plan(
     let note = format!(
         "The last try ({id}) failed: {failed}. Its commits, if any, are already on your branch."
     );
+    // Numbered among all its parent's retries of that title: two chains whose heads share a
+    // title never draw the same one.
+    let title = format!("{} · retry ", head.title);
+    let k = (records.iter())
+        .filter(|r| r.title.starts_with(&title))
+        .count()
+        + 1;
     Ok(Retry {
         brief: format!("{}\n\n{note}", head.brief.trim_end()),
-        title: format!("{} · retry {n}", head.title),
+        title: format!("{title}{k}"),
         flags,
         note: json!({"retry_of": id, "chain": chain, "step": step, "note": note}),
         ran: over,
