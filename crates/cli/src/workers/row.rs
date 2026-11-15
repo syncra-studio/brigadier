@@ -64,9 +64,17 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         "now": if kind == "working" { f.calls.last() } else { None }})
 }
 
+/// "15:10", or a day or more away "Mon 09:00", as the model picker says when a limit resets.
 pub(crate) fn clock(ms: u64) -> String {
     let secs = (ms / 1000) as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&secs, &mut tm) };
-    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    let day = ["Sun ", "Mon ", "Tue ", "Wed ", "Thu ", "Fri ", "Sat "][tm.tm_wday as usize % 7];
+    let far = ms >= brigadier_frames::log::now_ms() + 86_400_000;
+    format!(
+        "{}{:02}:{:02}",
+        if far { day } else { "" },
+        tm.tm_hour,
+        tm.tm_min
+    )
 }
