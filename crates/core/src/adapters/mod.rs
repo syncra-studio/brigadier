@@ -12,7 +12,7 @@ pub mod setup;
 mod shell;
 
 pub use classify::{classify, temporary};
-pub use files::{change, counts, denied, drop_lines, encode, question, sha1, under, uuid};
+pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
 pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;

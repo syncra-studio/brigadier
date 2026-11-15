@@ -153,12 +153,7 @@ pub fn prompt(spec: &Spec, text: &str) -> Value {
 /// A job the user stopped from the card, said plainly and steered into the wake its own exit
 /// notice starts, so the agent doesn't start it again [D117].
 pub fn stopped(spec: &Spec, msg: &Value) -> Value {
-    let what =
-        (msg["command"].as_str()).map_or("a background process".into(), |c| format!("`{c}`"));
-    let text = format!(
-        "The user stopped {what} themselves, from Brigadier. Leave it stopped: don't start it again."
-    );
-    let mut p = prompt(spec, &text);
+    let mut p = prompt(spec, &super::super::stopped(msg));
     p["delivery"] = "steer".into();
     p
 }

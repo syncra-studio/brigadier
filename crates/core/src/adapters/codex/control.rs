@@ -116,6 +116,13 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         Some("answer") => answer(spec, msg)?,
         Some("steer") => json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"]))}),
         Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
+        // Codex has no channel for it: the note steers the turn that runs, else starts the wake
+        // that joins the block [D117].
+        Some("stop_task") => {
+            let mut line = turn(spec, &super::super::stopped(msg));
+            line["steer"] = line["turn"]["input"].clone();
+            line
+        }
         _ => return Err("Codex takes no such control message.".into()),
     };
     Ok(Delivery::Stdin(format!("{line}\n")))

@@ -214,8 +214,10 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
     let cid = c["id"].as_str().unwrap_or("").to_string();
     let st = &mut *state.lock().unwrap();
     let (thread, turn) = (st.thread.clone(), st.turn.clone());
-    st.stopped = c["interrupt"] == true || (st.stopped && !c["turn"].is_object());
-    if c["turn"].is_object() {
+    // A line with a turn and a steer steers the turn that runs, else starts its own [D117].
+    let starts = c["turn"].is_object() && (c["steer"].is_null() || turn.is_empty());
+    st.stopped = c["interrupt"] == true || (st.stopped && !starts);
+    if starts {
         let mut params = c["turn"].clone();
         params["threadId"] = thread.into();
         ask(st, "turn/start", params, Pending::Reply(cid));
