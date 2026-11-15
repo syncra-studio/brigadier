@@ -198,3 +198,14 @@ pub fn versioned(name: &str) -> Option<(String, Vec<u32>)> {
     }
     None
 }
+
+/// What an agent's own subagents keep of the rules, by what its CLI lets Brigadier set [D376].
+#[derive(Clone, Copy, PartialEq)]
+pub enum Subagents {
+    /// Nothing reaches them.
+    Untold,
+    /// They can't run a model a rule bars.
+    Barred,
+    /// They start on the session's model and effort, but its agent can pick another.
+    Defaults,
+}

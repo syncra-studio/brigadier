@@ -13,7 +13,7 @@ mod shell;
 
 pub use classify::{classify, temporary};
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
-pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
+pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};
@@ -446,16 +446,6 @@ pub trait Adapter: Sync {
     fn runs(&self, spec: &Spec) -> Option<String> {
         spec.model.clone()
     }
-}
-
-/// What an agent's own subagents keep of the rules, by what its CLI lets Brigadier set [D376].
-#[derive(Clone, Copy, PartialEq)]
-pub enum Subagents {
-    Untold,
-    /// They can't run a model a rule bars.
-    Barred,
-    /// They start on the session's model and effort, but its agent can pick another.
-    Defaults,
 }
 
 /// A default job's entry: (job, model id, effort).
