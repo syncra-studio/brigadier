@@ -65,10 +65,7 @@ impl Thread {
         let (Some(r), Some(&at)) = (r, at) else {
             return;
         };
-        for k in ["review", "reviewed"]
-            .into_iter()
-            .filter(|k| !r[*k].is_null())
-        {
+        for k in ["review", "reviewed"] {
             self.items[at]["request"][k] = r[k].clone();
         }
         self.pending_changed = true;

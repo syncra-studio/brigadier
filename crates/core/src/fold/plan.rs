@@ -132,6 +132,7 @@ impl Fold {
         let parent = self.for_parent(&json!({"kind": "approval"}));
         if let Some(r) = self.turns[0].asks.get_mut(id) {
             r["reviewed"] = line.into();
+            r.as_object_mut().map(|r| r.remove("review"));
             match parent {
                 true => r["to"] = "parent".into(),
                 false => _ = r.as_object_mut().map(|r| r.remove("to")),
