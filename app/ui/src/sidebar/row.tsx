@@ -68,6 +68,9 @@ const TAGS = [
   "bg-tag-grey-wash text-tag-grey",
 ];
 
+// Every badge's one square and corners, initials or logo, so none is wider than another [D62].
+const BADGE = "size-icon-md shrink-0 overflow-hidden rounded-badge";
+
 // Which projects have a logo, found once a run. shortcut: a logo added or removed shows after a reload, watch the folder if that bites.
 const logos = new Map<string, boolean>();
 
@@ -80,9 +83,9 @@ export function ProjectBadge({ id, name, tone = 0 }: { id?: string; name: string
   const [, found] = useState(false);
   const logo = id === undefined || name === null ? false : logos.get(id);
   const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
-  if (logo) return <img aria-hidden alt="" src={src} className="size-icon-md shrink-0 rounded-xs object-contain" />;
+  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, "object-cover")} />;
   return (
-    <span aria-hidden className={cx("flex h-icon-md min-w-icon-md shrink-0 items-center justify-center rounded-xs px-0.75 text-badge font-bold tracking-badge", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
+    <span aria-hidden className={cx(BADGE, "flex items-center justify-center text-badge font-bold", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
       {logo === undefined && (
         <img

@@ -263,8 +263,8 @@
   --text-page-title--line-height: 2.125rem;
   --text-nav-title: 1.125rem;
   --text-nav-title--line-height: 1.5rem;
-  /* A project's initials in its badge. */
-  --text-badge: 0.5625rem;
+  /* A project's initials in its badge: two wide letters ("MW") fit its 16px square [D62]. */
+  --text-badge: 0.5rem;
   --text-badge--line-height: 1rem;
   --text-diff: 0.75rem;
   --text-diff--line-height: 1.35rem;
@@ -296,8 +296,6 @@
   --tracking-section: -0.01em;
   --tracking-tight: -0.025em;
   --tracking-wide: 0.025em;
-  /* The project badge's initials [new-design]. */
-  --tracking-badge: 0.3px;
   --tracking-wider: 0.05em;
   --tracking-widest: 0.1em;
 
@@ -447,6 +445,8 @@
   --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
+  /* A project's badge, initials or logo (the board's 4) [D62]. */
+  --radius-badge: 0.25rem;
   --radius-control: 0.5rem;
   --radius-surface: 0.75rem;
   /* The image the viewer shows (the old app's rounded-lg). */
