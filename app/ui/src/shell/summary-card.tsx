@@ -157,8 +157,11 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
 export function SummaryPane({ owner, card, room = card !== null, children }: { owner: string; card: ReactNode | null; room?: boolean; children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
   const state = useCard(owner);
-  // The first layout lands before anything eases, so a thread opens already in place.
-  const [settled, setSettled] = useState(false);
+  // The first layout lands before anything eases, so a thread opens already in place. Kept per owner, so the render
+  // that switches sessions already has the easing off: the old session's room going doesn't start easing the shared
+  // pane's column out and back before the next session's lands [D423].
+  const [settledFor, setSettledFor] = useState<string | null>(null);
+  const settled = settledFor === owner;
   const has = room;
 
   useLayoutEffect(() => {
@@ -190,15 +193,14 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
         const floating = before.layout === "float" ? before.floating && resized : before.layout !== null && resized && before.pinned;
         if (layout !== before.layout || floating !== before.floating) setCard(owner, { layout, floating });
       } else if (layout !== before.layout) setCard(owner, { layout, floating: false });
-      if (!frame) frame = requestAnimationFrame(() => setSettled(true));
+      if (!frame) frame = requestAnimationFrame(() => setSettledFor(owner));
     });
     observer.observe(element, { box: "border-box" });
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
       delete element.dataset.summary;
-      // The next session's first layout lands in place too, not eased in [D423].
-      setSettled(false);
+      setSettledFor(null);
       setCard(owner, { layout: null, floating: false });
     };
   }, [has, owner]);
