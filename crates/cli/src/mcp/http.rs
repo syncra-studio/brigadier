@@ -110,15 +110,23 @@ pub(super) fn send(
     msg: &Value,
     wait: Duration,
 ) -> Result<Vec<Value>, String> {
+    // A server re-added at another address: its credentials never go to the old one.
+    let reach = |data: &PathBuf, key: &str, stale: Option<&str>| {
+        let (now, h, title) = crate::signin::reach(data, key, stale)?;
+        match now == url {
+            true => Ok((h, title)),
+            false => Err("its address changed; call it again".to_string()),
+        }
+    };
     if let Some((data, key, used)) = signed.as_mut() {
-        renew(headers, used, &crate::signin::reach(data, key, None)?.1)?;
+        renew(headers, used, &reach(data, key, None)?.0)?;
     }
     let r = post(url, headers.as_deref(), session, msg, wait);
     let refused = r.as_ref().is_err_and(|e| e == REFUSED);
     let Some((data, key, used)) = signed.as_mut().filter(|_| refused) else {
         return r;
     };
-    let (_, h, title) = crate::signin::reach(data, key, used.as_deref())?;
+    let (h, title) = reach(data, key, used.as_deref())?;
     renew(headers, used, &h)?;
     post(url, headers.as_deref(), session, msg, wait).map_err(|e| match e == REFUSED {
         true => format!("{title} needs sign-in in Brigadier (Settings › Plugins)."),
