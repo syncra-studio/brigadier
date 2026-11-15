@@ -322,6 +322,11 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 starts_on: r.account.clone(),
                 naked: !r.session,
                 boss: r.session.then(|| pid.to_string()),
+                opts: (r.review["plan"]
+                    .is_string()
+                    .then(|| ("plan_review".into(), "1".into())))
+                .into_iter()
+                .collect(),
                 ..Default::default()
             },
         )?,

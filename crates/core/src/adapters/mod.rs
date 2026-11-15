@@ -222,10 +222,13 @@ pub enum Retune {
 /// What a turn runs with, as its input frame records it.
 pub fn setup(spec: &Spec) -> Value {
     let mut setup = json!({"model": spec.model, "effort": spec.effort, "level": spec.level});
-    // Only where on, so a setup without them reads as before; a worker's asks go to its parent [D131].
+    // Only where on, so a setup without them reads as before; a worker's asks go to its parent
+    // [D131]. A plan reviewer's go to the user, as a session's: its author is held on that plan
+    // while it lives, so it can't answer them [D395, D355].
+    let reviewer = spec.opts.contains_key("plan_review");
     let on = [
         ("fast", spec.fast),
-        ("worker", spec.naked || spec.boss.is_some()),
+        ("worker", (spec.naked || spec.boss.is_some()) && !reviewer),
     ];
     (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
     // Its subagents' allowlist, launch-only, so a change restarts an idle child [D376].

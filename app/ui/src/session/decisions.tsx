@@ -172,7 +172,10 @@ function useWaiting(id: string, source: Source) {
   const listed = (list: { id: string }[] | undefined, each: Answer) => list?.some((one) => one.id === each.request.id) === true;
   // Refused, and nothing waits on it any more (the turn ended, it was answered elsewhere): stale.
   const stale = [...(mine?.values() ?? [])].filter((each) => each.error !== undefined && !listed("items" in each.request ? session?.questions : session?.approvals, each));
-  const approvals: (PendingApproval | WorkerApproval)[] = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request])), ...workers];
+  // A plan its review holds has nothing to answer: what can be answered (its reviewer's own ask) shows first [D395].
+  const approvals: (PendingApproval | WorkerApproval)[] = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request])), ...workers].sort(
+    (a, b) => Number(Boolean(a.review)) - Number(Boolean(b.review)),
+  );
   const questions = [...(session?.questions ?? []), ...stale.flatMap((each) => ("items" in each.request ? [each.request] : []))];
   return {
     approvals,
