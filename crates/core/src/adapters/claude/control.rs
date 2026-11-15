@@ -131,7 +131,8 @@ pub fn rules(grants: &[Value]) -> Vec<String> {
         .flat_map(|g| widen(&g["cli"]["rule"]))
         .filter_map(|r| {
             let (tool, content) = (s(&r, &["toolName"]), s(&r, &["ruleContent"]));
-            (!tool.is_empty() && !content.is_empty()).then(|| format!("{tool}({content})"))
+            let rule = (content.is_empty()).then(|| tool.to_string());
+            (!tool.is_empty()).then(|| rule.unwrap_or_else(|| format!("{tool}({content})")))
         })
         .collect()
 }
@@ -227,10 +228,10 @@ fn approval(id: &str, r: &Value) -> Event {
     };
     match tool {
         "Bash" => {
-            let c = content
-                .filter(|c| !c.is_empty())
-                .unwrap_or_else(|| field("command"));
-            if !c.is_empty() {
+            let command = field("command");
+            let c = (content.filter(|c| !c.is_empty()))
+                .or_else(|| crate::agent::call(&command).then(|| command.clone()));
+            if let Some(c) = c {
                 let prefix = c.trim_end_matches(" *").trim_end_matches(":*");
                 let prefix = if crate::agent::call(&c) {
                     "brigadier"
@@ -242,6 +243,9 @@ fn approval(id: &str, r: &Value) -> Event {
                     prefix,
                     json!({"toolName": tool, "ruleContent": c}),
                 );
+            } else if !command.is_empty() {
+                // No rule suggested: Claude can't check it before it runs, so only its tool's rule holds [D365].
+                grant("tool", tool, json!({"toolName": tool}));
             }
             a["action"] = "command".into();
             a["command"] = field("command").into();
