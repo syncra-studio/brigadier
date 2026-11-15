@@ -32,6 +32,8 @@ export type Worker = {
   receipt?: string;
   /** What its parent asked for, where that isn't what ran [D2037]. */
   asked?: string;
+  /** Why it runs on that, in a line [D2037]. */
+  why?: string;
 };
 
 const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["paused", "failed", "stopped", "merged", "doneNotMerged", "done"]);

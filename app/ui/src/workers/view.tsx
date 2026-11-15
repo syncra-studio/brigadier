@@ -84,6 +84,7 @@ export function WorkerDetails({ worker }: { worker: Worker }) {
         <Section title="Why this model">
           <p className="text-sm">{worker.model}</p>
           {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
+          {worker.why && <p className="text-xs text-muted-foreground first-letter:uppercase">{worker.why}</p>}
           {worker.asked && <p className="text-xs text-muted-foreground">{worker.asked}</p>}
         </Section>
         <section className="flex flex-col gap-2">

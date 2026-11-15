@@ -47,12 +47,18 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         },
     };
     let ran = &l.ran;
+    // A retry's step is on its record in its parent's folder [D2037].
+    let wid = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let retry = (dir.parent().and_then(Path::parent))
+        .and_then(|data| super::record(data, &l.parent, wid))
+        .map(|r| r.retry)
+        .unwrap_or_default();
     let model = [&ran["agent"], &ran["model"], &ran["effort"]];
     let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
         "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))),
-        "asked": crate::routing::asked(&l.asked, ran), "added": last["added"], "removed": last["removed"],
+        "asked": crate::routing::asked(&l.asked, ran), "why": crate::routing::why(&l.asked, ran, &retry), "added": last["added"], "removed": last["removed"],
         "now": if kind == "working" { f.calls.last() } else { None }})
 }
 
