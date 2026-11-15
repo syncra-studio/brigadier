@@ -202,8 +202,9 @@ fn question(id: &str, r: &Value) -> Event {
     Event::Question(json!({"id": id, "title": null, "items": items, "cli": {"questions": asked}}))
 }
 
-/// A permission prompt as D177's PendingApproval. Its grant is the rule Claude suggests, kept for
-/// this session only; the rule rides along for the answer.
+/// A permission prompt as D177's PendingApproval. Its grant is the rule Claude suggests, else the
+/// narrowest that allows this request again, kept for this session only [D167]; the rule rides
+/// along for the answer.
 fn approval(id: &str, r: &Value) -> Event {
     let (tool, input) = (s(r, &["tool_name"]), &r["input"]);
     let field = |k: &str| s(input, &[k]).to_string();
@@ -226,7 +227,10 @@ fn approval(id: &str, r: &Value) -> Event {
     };
     match tool {
         "Bash" => {
-            if let Some(c) = content.filter(|c| !c.is_empty()) {
+            let c = content
+                .filter(|c| !c.is_empty())
+                .unwrap_or_else(|| field("command"));
+            if !c.is_empty() {
                 let prefix = c.trim_end_matches(" *").trim_end_matches(":*");
                 let prefix = if crate::agent::call(&c) {
                     "brigadier"
@@ -257,7 +261,9 @@ fn approval(id: &str, r: &Value) -> Event {
             a["paths"] = json!([path]);
         }
         "WebFetch" => {
-            if let Some(host) = content.as_deref().and_then(|c| c.strip_prefix("domain:")) {
+            let url = field("url");
+            let host = content.as_deref().and_then(|c| c.strip_prefix("domain:"));
+            if let Some(host) = host.or(Some(self::host(&url))).filter(|h| !h.is_empty()) {
                 grant(
                     "network",
                     host,
@@ -265,9 +271,18 @@ fn approval(id: &str, r: &Value) -> Event {
                 );
             }
             a["action"] = "network".into();
-            a["host"] = host(&field("url")).into();
+            a["host"] = self::host(&url).into();
         }
-        _ => a["input"] = format!("{tool} {input}").into(),
+        _ => {
+            let pattern = content.as_deref().filter(|c| !c.is_empty());
+            let pattern = pattern.map_or(tool.to_string(), |c| format!("{tool}({c})"));
+            grant(
+                "tool",
+                &pattern,
+                suggested.clone().unwrap_or(json!({"toolName": tool})),
+            );
+            a["input"] = format!("{tool} {input}").into();
+        }
     }
     Event::Approval(a)
 }
