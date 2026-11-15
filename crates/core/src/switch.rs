@@ -134,7 +134,7 @@ pub fn switch(
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
     let req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
-        "backend": to.backend, "retry_of": last["cid"], "switch": switch, "setup": setup, "argv": launch.argv, "env": env,
+        "backend": to.backend, "retry_of": last["cid"], "switch": switch, "setup": setup, "review": spec.review, "argv": launch.argv, "env": env,
         "cwd": spec.cwd, "keep_stdin": launch.keep_stdin, "input": launch.input,
         "cli_version": cli_version(spec, a), "replace": true, "if_len": ping["len"]});
     if !still() {
