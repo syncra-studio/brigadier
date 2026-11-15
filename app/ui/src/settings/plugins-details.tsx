@@ -133,7 +133,8 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
       .catch((cause: unknown) => generation.current === current && setError(errorText(cause)))
       .finally(() => generation.current === current && (setWaiting(false), setDevice(null)));
   };
-  const signedIn = item.status === "signed_in";
+  // Signed in while off or unreachable too: Brigadier still holds and refreshes the grant.
+  const signedIn = item.signed_in === true;
   // Signing in doesn't reach a server that's down; it's offered there only while there's no sign-in.
   const offer = item.status !== "cant_reach" || item.signed_in === false;
   return (
@@ -163,18 +164,18 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
             </Button>
           </>
         ) : (
-          offer && (
           <>
-            <Button variant="ghost" size="sm" onClick={() => run((current) => actions.signIn(item.key, (shown) => generation.current === current && setDevice(shown)), true)}>
-              {signedIn ? "Sign in again" : "Sign in"}
-            </Button>
+            {offer && (
+              <Button variant="ghost" size="sm" onClick={() => run((current) => actions.signIn(item.key, (shown) => generation.current === current && setDevice(shown)), true)}>
+                {signedIn ? "Sign in again" : "Sign in"}
+              </Button>
+            )}
             {signedIn && (
               <Button variant="ghost" size="sm" onClick={() => run(() => actions.signOut(item.key), false)}>
                 Sign out
               </Button>
             )}
           </>
-          )
         )}
       </div>
       {waiting && device && <DeviceCode page={device.page} code={device.code} />}
