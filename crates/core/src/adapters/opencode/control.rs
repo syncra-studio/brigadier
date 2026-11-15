@@ -13,6 +13,15 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
         json!({"instructions": [style.display().to_string()], "compaction": {"auto": false}});
     // Its to-do tool, an experimental flag (packages/schema/src/config/flag.ts) [D104, D116].
     config["experimental"] = json!({"todo": crate::rebirth::todo()});
+    // Where a rule names OpenCode, its subagent-mode agents start on the session's model and
+    // capped effort; its task tool can still name others [D376].
+    if spec.ruled.touched {
+        let mut agent = json!({"model": model(spec)});
+        if let Some(e) = &spec.effort {
+            agent["variant"] = e.as_str().into();
+        }
+        config["agent"] = json!({"general": agent, "explore": agent});
+    }
     if spec.naked {
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));

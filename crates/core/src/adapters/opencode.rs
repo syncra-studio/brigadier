@@ -91,9 +91,9 @@ impl Adapter for OpenCode {
         "OpenCode"
     }
 
-    // Its subagents take a model from its config, never an effort [D376].
-    fn subagent_rules(&self) -> &'static [&'static str] {
-        &["model"]
+    // A subagent's configured model and variant are defaults its task tool overrides [D376].
+    fn subagents(&self) -> super::Subagents {
+        super::Subagents::Defaults
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {

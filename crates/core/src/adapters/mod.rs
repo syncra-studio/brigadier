@@ -438,11 +438,21 @@ pub trait Adapter: Sync {
     fn plans(&self) -> bool {
         false
     }
-    /// The rule kinds (`never` "model", "above") its own subagents keep, where its CLI lets
-    /// Brigadier set them [D376].
-    fn subagent_rules(&self) -> &'static [&'static str] {
-        &[]
+    /// What its CLI lets the rules make of its own subagents [D376].
+    fn subagents(&self) -> Subagents {
+        Subagents::Untold
     }
+}
+
+/// What an agent's own subagents keep of the rules, by what its CLI lets Brigadier set [D376].
+#[derive(Clone, Copy, PartialEq)]
+pub enum Subagents {
+    /// Nothing reaches them.
+    Untold,
+    /// They can't run a model a rule bars.
+    Barred,
+    /// They start on the session's model and effort, but its agent can pick another.
+    Defaults,
 }
 
 /// A default job's entry: (job, model id, effort).

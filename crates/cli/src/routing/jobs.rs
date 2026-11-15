@@ -210,25 +210,25 @@ pub(super) fn notes(groups: &[Value]) -> Value {
         );
     }
     let mut rules = "They hold everywhere Brigadier starts a model: your pickers, sessions, workers, Brigade bosses, side chats, forks and the commit writer.".to_string();
-    let both = names(&|a| a.subagent_rules().len() > 1, true);
-    let never = names(&|a| a.subagent_rules() == ["model"], true);
+    // What each CLI really lets the rules make of its own subagents [D376, D392 P1].
+    let barred = names(&|a| a.subagents() == adapters::Subagents::Barred, true);
+    let defaults = names(&|a| a.subagents() == adapters::Subagents::Defaults, true);
     let mut said = vec![];
-    if !both.is_empty() {
-        said.push(format!("{} keep to both", and(&both)));
-    }
-    if !never.is_empty() {
-        let cli = if never.len() == 1 {
-            "its CLI can't"
-        } else {
-            "their CLIs can't"
-        };
+    if !barred.is_empty() {
         said.push(format!(
-            "{} keep to \"Never use\" only, as {cli} cap a subagent's effort",
-            and(&never)
+            "{} can't run a model your rules bar.",
+            and(&barred)
+        ));
+    }
+    if !defaults.is_empty() {
+        let their = if defaults.len() == 1 { "its" } else { "their" };
+        said.push(format!(
+            "{} start on the session's model and effort, but {their} agent can still pick another.",
+            and(&defaults)
         ));
     }
     if !said.is_empty() {
-        rules += &format!(" Your agents' own subagents: {}.", said.join("; "));
+        rules += &format!(" Your agents' own subagents: {}", said.join(" "));
     }
     json!({"review": review, "rules": rules})
 }

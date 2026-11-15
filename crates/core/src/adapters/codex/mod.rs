@@ -44,8 +44,9 @@ impl Adapter for Codex {
         ]
     }
 
-    fn subagent_rules(&self) -> &'static [&'static str] {
-        &["model", "above"]
+    // `agents.default_subagent_*` are defaults its `spawn_agent` overrides [D376].
+    fn subagents(&self) -> super::Subagents {
+        super::Subagents::Defaults
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {

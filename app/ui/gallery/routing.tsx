@@ -85,7 +85,7 @@ const TABLE: Routing = {
   ],
   notes: {
     review: "Plans are reviewed from Cloud agent's plan mode. Other agent doesn't hand Brigadier a plan, so its plans aren't reviewed.",
-    rules: "They hold everywhere Brigadier starts a model: your pickers, sessions, workers, Brigade bosses, side chats, forks and the commit writer. Your agents' own subagents: Cloud agent's keep to both; Other agent's keep to \"Never use\" only, as its CLI can't cap a subagent's effort.",
+    rules: "They hold everywhere Brigadier starts a model: your pickers, sessions, workers, Brigade bosses, side chats, forks and the commit writer. Your agents' own subagents: Cloud agent's can't run a model your rules bar. Other agent's start on the session's model and effort, but its agent can still pick another.",
   },
 };
 
