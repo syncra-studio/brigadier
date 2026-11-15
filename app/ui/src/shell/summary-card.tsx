@@ -95,7 +95,7 @@ const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
-    <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col toggles-clear:end-toggles-clear">
+    <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col">
       <aside
         aria-label="Context"
         aria-hidden={!shown || undefined}

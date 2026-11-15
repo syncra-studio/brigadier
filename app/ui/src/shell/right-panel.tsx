@@ -75,7 +75,7 @@ const VIEWS = { files: { title: "Files", Icon: Folders }, workers: { title: WORK
 function PanelViews({ owner, views, active }: { owner: string; views: readonly PanelTab[]; active: PanelTab }) {
   const finished = finishedWords(useWorkers(owner));
   return (
-    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center justify-center gap-1 px-2 under-toggles:pe-toggles-clear">
+    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center justify-center gap-1 px-2">
       <TitlebarTips>
         {views.map((id, index) => {
           const { title, Icon } = VIEWS[id];

@@ -320,10 +320,8 @@
   /* Its start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge. */
   --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
-     overlay's env values; with none, as under the dev flag, the board's 138px), and what clears the Context/Files
-     toggles fixed under them (70px wide, 20px in: 12px inside the right panel's card [D55]; 8px apart). */
+     overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
-  --spacing-toggles-clear: 5.625rem;
   /* Safari's tabs [D52]: crowded, the front tab and Chat keep 12rem [D53], the others shrink to 33px then scroll;
      below 88px a tab shows its icon alone, below 64px no × either. The rule between two tabs in back. */
   --spacing-session-tab-active: 12rem;
@@ -895,10 +893,6 @@
 @custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
 
 @custom-variant win (:where([data-platform="win32"]) &);
-/* On Windows, inside the right panel open, whose top row the fixed toggles sit over. */
-@custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]) &);
-/* On Windows, with the right panel closed: what the fixed Context and right panel toggles would cover. */
-@custom-variant toggles-clear (:where([data-platform="win32"] main:not(:has(> .right-panel-width-source[data-state="expanded"]))) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
 
