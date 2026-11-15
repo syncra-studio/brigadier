@@ -18,7 +18,8 @@ import { TooltipProvider } from "./tooltip";
 
 /*
  * The sidebar panel: expanded to its width, collapsed to a strip of icons, or fully hidden. It eases
- * between these on a spring (the content beside it moves with it) while its contents cross-fade; the
+ * between these (the content beside it moves with it) while its contents cross-fade; hiding slides it off
+ * the window's start and showing slides it back, at the width it has there [D63]; the
  * expanded contents keep their full width, revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles
  * it. Its edge drags to resize it; dragged below half its smallest width, it collapses. In a narrow
  * window it collapses by itself, and comes back once there is room. While `keepOpen` it stays expanded.
@@ -35,6 +36,10 @@ type SidebarContextProps = {
   /** Picks strip or hidden for when it collapses (the History pill's toggle steps through them). */
   setCollapse: (collapse: SidebarCollapse) => void;
   hidden: boolean;
+  /** Whether the card draws its open layout: open, or hidden from open (it slides off and back at the width it had). */
+  drawn: boolean;
+  /** The last fold went into or out of hidden: the card slides off or onto the window's start, its width and contents set [D63]. */
+  slide: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   resizing: boolean;
@@ -120,9 +125,14 @@ export function SidebarProvider({
 
   const hidden = !open && collapse === "hidden";
   const state = open ? "expanded" : "collapsed";
+  const mode = open ? "open" : hidden ? "hidden" : "strip";
+  const [fold, setFold] = useState({ from: mode, to: mode });
+  if (fold.to !== mode) setFold({ from: fold.to, to: mode });
+  const slide = fold.from === "hidden" || mode === "hidden";
+  const drawn = hidden ? fold.from === "open" : open;
   const context = useMemo<SidebarContextProps>(
-    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen }),
-    [state, open, collapse, onCollapseChange, hidden, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen],
+    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, drawn, slide, setOpen, toggleSidebar, resizing, setResizing, onWidthChange, canToggle: !keepOpen }),
+    [state, open, collapse, onCollapseChange, hidden, drawn, slide, setOpen, toggleSidebar, resizing, onWidthChange, keepOpen],
   );
 
   return (
@@ -154,23 +164,33 @@ export function SidebarPanel({
   children,
   ...props
 }: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
-  const { open, hidden, resizing } = useSidebar();
+  const { open, hidden, drawn, slide, resizing } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
       <div
         inert={hidden}
         data-resizing={resizing || undefined}
-        className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
+        className={cx("sidebar-motion sidebar-clip h-full", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
       >
-        <div data-resizing={resizing || undefined} className={cx("sidebar-motion relative flex h-full flex-col sidebar-top px-1 pb-window-inset", open ? "sidebar-panel-width" : "w-sidebar-strip")}>
+        {/* Hiding slides the card off the window's start as its room closes, on the same curve, so its end stays on the room's [D63]. */}
+        <div
+          data-resizing={resizing || undefined}
+          data-slide={slide || undefined}
+          className={cx(
+            "sidebar-motion relative flex h-full flex-col sidebar-top px-1 pb-window-inset",
+            drawn ? "sidebar-panel-width" : "w-sidebar-strip",
+            hidden && "-translate-x-full rtl:translate-x-full",
+          )}
+        >
           <div aria-hidden className="app-drag absolute inset-x-0 top-0 h-tab-bar" />
           <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground ring-1 ring-glass-stroke ring-inset resize-lit:inset-shadow-resize-end rtl:resize-lit:inset-shadow-resize-start", className)} {...props}>
             <div className="relative min-h-0 flex-1">
               <div
                 inert={!open}
                 className={cx(
-                  "sidebar-card-width absolute inset-y-0 start-0 flex flex-col transition-opacity motion-reduce:transition-none",
-                  open ? "opacity-100" : "opacity-0",
+                  "sidebar-card-width absolute inset-y-0 start-0 flex flex-col",
+                  !slide && "transition-opacity motion-reduce:transition-none",
+                  drawn ? "opacity-100" : "opacity-0",
                 )}
               >
                 {children}
@@ -178,8 +198,9 @@ export function SidebarPanel({
               <div
                 inert={open || hidden}
                 className={cx(
-                  "absolute inset-0 flex flex-col transition-opacity motion-reduce:transition-none",
-                  open || hidden ? "opacity-0" : "opacity-100",
+                  "absolute inset-0 flex flex-col",
+                  !slide && "transition-opacity motion-reduce:transition-none",
+                  drawn ? "opacity-0" : "opacity-100",
                 )}
               >
                 {strip}

@@ -1264,6 +1264,11 @@
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
+/* The sidebar's room clips its card, out to the window's start, so a hiding card slides off the window [D63]. */
+@utility sidebar-clip {
+  overflow: clip;
+  overflow-clip-margin: var(--spacing-surface-inset);
+}
 /* The panel's top above its card: the right panel's, 6px under the tab bar, in every mode [D48]. */
 @utility sidebar-top {
   padding-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
@@ -1495,11 +1500,15 @@
   }
 }
 
-/* The sidebar's column easing between its widths; still while it is dragged. */
+/* The sidebar's column easing between its widths, or its card sliding off and onto the window at its width; still
+   while it is dragged. */
 @utility sidebar-motion {
-  transition-property: width;
+  transition-property: width, translate;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
+  &[data-slide] {
+    transition-property: translate;
+  }
   &[data-resizing] {
     transition: none;
   }
