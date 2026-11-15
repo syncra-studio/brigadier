@@ -298,7 +298,10 @@ impl Thread {
         self.said(&Value::Null, "", ts);
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
-        self.revising = None;
+        // Its card goes with it, so the list is re-sent even when nothing else waited.
+        if self.revising.take().is_some() {
+            self.pending_changed = true;
+        }
         self.end_wait(ts);
         self.break_group();
         let Some(o) = self.open.take() else {
