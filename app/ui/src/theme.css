@@ -1479,9 +1479,9 @@
   transition-duration: var(--duration-bar);
 }
 
-/* The pinned summary card easing in from the pane's end and out (the old app's): visible until it has gone. */
+/* The pinned summary card shrinking and fading in and out where it sits [D67]: visible until it has gone. */
 @utility summary-card-motion {
-  transition-property: opacity, translate, scale, visibility;
+  transition-property: opacity, scale, visibility;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {

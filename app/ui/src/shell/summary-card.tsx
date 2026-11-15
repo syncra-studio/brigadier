@@ -91,7 +91,7 @@ export function useCardToggle(owner: string) {
 // The new design's floating card: the card colour, the panel's corners, the glass edge.
 const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
 
-/** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
+/** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
@@ -101,9 +101,9 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-hidden={!shown || undefined}
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
-          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). It shrinks
-          // and fades in place there, not out past the pane's end, where a fold's switch would show it cut by a right panel [D63].
-          shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" :"invisible translate-x-full scale-80 opacity-0",
+          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). Shown or
+          // hidden, it shrinks and fades toward its top corner, never out past the pane's end, where a right panel cut it [D63, D67].
+          shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" : "invisible scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
