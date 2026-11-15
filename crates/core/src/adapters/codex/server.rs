@@ -73,6 +73,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             "-c",
             "suppress_unstable_features_warning=true",
         ])
+        .args(&args[1..])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -164,12 +165,19 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
         st.cwd = o["cwd"].as_str().unwrap_or("").into();
         st.grants = c["grants"].as_array().cloned().unwrap_or_default();
     }
+    // The library's skills, as its one extra root: this server is this session's alone [D2043].
+    let mut o = o.clone();
+    if let Some(roots) = o.as_object_mut().and_then(|o| o.remove("skillRoots"))
+        && let Err(e) = call(state, "skills/extraRoots/set", json!({"extraRoots": roots}))
+    {
+        eprintln!("Codex took no library skills: {e}");
+    }
     let method = if o["threadId"].is_string() {
         "thread/resume"
     } else {
         "thread/start"
     };
-    match call(state, method, o.clone()) {
+    match call(state, method, o) {
         Ok(r) => {
             let thread = r["thread"]["id"].clone();
             state.lock().unwrap().thread = thread.as_str().unwrap_or("").into();

@@ -350,16 +350,19 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         }
         None => vec![],
     };
+    // A library server's tool, `b-linear_get_issue`, by its server and own name ("Used Linear") [D176].
+    let library = (name.strip_prefix(crate::library::PREFIX)).and_then(|n| n.split_once('_'));
     let mut events = vec![Event::ToolStart(Tool {
         id: id.clone(),
         name: match step {
             "skill" => field(&["name"]),
-            _ => name.into(),
+            _ => library.map_or(name, |(_, tool)| tool).into(),
         },
         step,
         input: what,
         at: state["time"]["start"].as_u64(),
         description: field(&["description"]),
+        server: library.map(|(server, _)| crate::library::named(server)),
         ..Default::default()
     })];
     if finished {

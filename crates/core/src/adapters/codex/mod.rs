@@ -233,16 +233,21 @@ impl Adapter for Codex {
         // A thread that never took a turn has no record, and Codex refuses to resume it.
         let home = cli_home(spec, ".codex", "");
         let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());
-        let open =
-            json!({"open": control::open(spec, resume), "grants": spec.grants, "id": spec.cid});
+        let mut open = control::open(spec, resume);
+        // Its app-server's own flags for the library [D407].
+        let flags = (open.as_object_mut()).and_then(|o| o.remove("launch"));
+        let flags = (flags
+            .into_iter()
+            .flat_map(|f| f.as_array().cloned().unwrap_or_default()))
+        .filter_map(|f| f.as_str().map(String::from));
+        let open = json!({"open": open, "grants": spec.grants, "id": spec.cid});
         let lines = [Some(open), text.map(|t| control::turn(spec, t))];
         Launch {
-            argv: vec![
-                helper.display().to_string(),
-                "helper".into(),
-                "codex".into(),
-                exe.display().to_string(),
-            ],
+            argv: [helper, "helper".into(), "codex".into(), exe.clone()]
+                .map(|a| a.display().to_string())
+                .into_iter()
+                .chain(flags)
+                .collect(),
             env: base_env(spec, &exe, self.keys()),
             keep_stdin: true,
             input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),

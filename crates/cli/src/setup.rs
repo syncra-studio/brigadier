@@ -186,7 +186,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
-fn available() -> Vec<&'static dyn Adapter> {
+pub(crate) fn available() -> Vec<&'static dyn Adapter> {
     adapters::all()
         .into_iter()
         .filter(|a| agent(a.name()).is_ok())

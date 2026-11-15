@@ -96,18 +96,28 @@ fn refuse(message: &str) -> Value {
     json!({"ok": false, "error": message})
 }
 
-/// The servers every agent's config holds for the caller's project folder (else its own), by name
-/// once, the first agent's; switched-off ones left out.
+/// The library's servers on for the caller's project, then those every agent's config holds for
+/// its folder (else the caller's own), by name once, the first agent's; switched-off ones left
+/// out, and an agent's own copy of a library one [D407].
 fn servers(data: &Path, me: &str) -> (Vec<Value>, PathBuf) {
     let spec = core::load(data, me).ok();
-    let project =
-        (spec.as_ref().and_then(|s| s.project.clone())).and_then(|p| projects::get(data, &p).ok());
+    let id = spec.as_ref().and_then(|s| s.project.clone());
+    let project = id.as_ref().and_then(|p| projects::get(data, p).ok());
     let cwd = PathBuf::from(spec.map(|s| s.cwd).unwrap_or_default());
     let folder = project.map_or(cwd.clone(), |p| PathBuf::from(p.folder));
-    let mut all: Vec<Value> = vec![];
+    let mut all: Vec<Value> = (core::library::on_for(data, id.as_deref()).into_iter())
+        .filter(|i| i["kind"] == "server")
+        .map(|mut i| {
+            i["agent"] = "library".into();
+            i
+        })
+        .collect();
+    core::library::with_secrets(data, &mut all);
+    let library = |x: &Value, s: &Value| x["key"].is_string() && core::library::same(s, x);
     for a in adapters::all() {
         for mut s in a.mcp_servers(&folder) {
-            if s["enabled"] == false || all.iter().any(|x| x["name"] == s["name"]) {
+            if s["enabled"] == false || all.iter().any(|x| x["name"] == s["name"] || library(x, &s))
+            {
                 continue;
             }
             s["agent"] = a.label().into();
@@ -154,16 +164,7 @@ pub fn run(data: &Path, me: &str, words: &[&str]) -> Value {
 
 fn list(all: &[Value]) -> Value {
     let list: Vec<Value> = (all.iter())
-        .map(|s| {
-            let at = s["url"].as_str().map(String::from).unwrap_or_else(|| {
-                let args = (s["args"].as_array().into_iter().flatten()).filter_map(Value::as_str);
-                std::iter::once(s["command"].as_str().unwrap_or(""))
-                    .chain(args)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            });
-            json!({"name": s["name"], "agent": s["agent"], "at": at})
-        })
+        .map(|s| json!({"name": s["name"], "agent": s["agent"], "at": core::library::detail(s)}))
         .collect();
     let text: String = match list.is_empty() {
         true => "No MCP servers.\n".into(),

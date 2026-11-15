@@ -78,6 +78,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 json!(fixed.unwrap_or_default())
             }),
     };
+    // The library's skills and servers on for the project, at once, before any CLI ran [D409].
+    for i in core::library::on_for(data, project.as_deref()) {
+        let skill = i["kind"] == "skill";
+        let path = skill.then(|| Path::new(i["path"].as_str().unwrap_or("")).join("SKILL.md"));
+        if let Some(l) =
+            (commands.as_array_mut()).filter(|l| !l.iter().any(|l| l["name"] == i["name"]))
+        {
+            l.push(json!({"name": i["name"], "description": i["description"],
+                "kind": if skill { "skill" } else { "mcp" }, "path": path, "instant": false}));
+        }
+    }
     if let Some(run) = &run {
         relative(Some(&mut commands), &run.cwd);
     }

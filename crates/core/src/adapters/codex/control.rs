@@ -34,7 +34,7 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     }
     open["config"] = match spec.naked {
         true => naked(spec),
-        false => json!({}),
+        false => library(spec, &mut open),
     };
     // Its compaction can't be turned off: as late as it lets, so Brigadier's rebirth comes first [D88, D98].
     open["config"]["model_auto_compact_token_limit"] = 1_000_000_000u64.into();
@@ -64,6 +64,69 @@ fn naked(spec: &Spec) -> Value {
         config[format!("mcp_servers.{name}.enabled")] = false.into();
     }
     config
+}
+
+/// The library for a session's thread [D2043]: its skills' folder as an extra root, which the
+/// helper sets, its local servers by their Brigadier names, and the user's own copy of each, a
+/// server by name and a skill by its file, off for this thread [D407].
+fn library(spec: &Spec, open: &mut Value) -> Value {
+    let mut config = json!({});
+    let Some(kit) = crate::library::kit(spec, &[]) else {
+        return config;
+    };
+    open["skillRoots"] = json!([kit.skills]);
+    for s in &kit.servers {
+        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
+        for key in ["command", "args", "env"]
+            .iter()
+            .filter(|k| !s[**k].is_null())
+        {
+            config[format!("mcp_servers.{name}.{key}")] = s[*key].clone();
+        }
+    }
+    let (home, cwd) = (
+        super::super::cli_home(spec, ".codex", ""),
+        std::path::Path::new(&spec.cwd),
+    );
+    for own in servers(&home, cwd) {
+        if kit.servers.iter().any(|s| crate::library::same(&own, s)) {
+            let name = own["name"].as_str().unwrap_or("");
+            config[format!("mcp_servers.{name}.enabled")] = false.into();
+        }
+    }
+    // A skill only by its app-server's own launch flag: a thread's config doesn't reach its list.
+    let own = super::super::Adapter::fixed_commands(&super::Codex, Some(cwd), Some(spec));
+    let off: Vec<String> = (own.iter())
+        .filter(|k| k["kind"] == "skill" && kit.names.iter().any(|n| k["name"] == **n))
+        .filter_map(|k| std::fs::canonicalize(k["path"].as_str()?).ok())
+        .map(|p| format!("{{path = {}, enabled = false}}", json!(p)))
+        .collect();
+    if !off.is_empty() {
+        // The flag replaces the user's own list, so theirs goes first.
+        let mut all = skills_config(&home, cwd);
+        all.extend(off);
+        open["launch"] = json!(["-c", format!("skills.config=[{}]", all.join(", "))]);
+    }
+    config
+}
+
+/// The user's own `[[skills.config]]` entries, the folder's then its home's, as inline tables.
+fn skills_config(home: &std::path::Path, folder: &std::path::Path) -> Vec<String> {
+    let files = [folder.join(".codex/config.toml"), home.join("config.toml")];
+    let docs = files.iter().filter_map(|f| {
+        let text = std::fs::read_to_string(f).ok()?;
+        text.parse::<toml_edit::DocumentMut>().ok()
+    });
+    let mut all = vec![];
+    for doc in docs {
+        let entries = doc.get("skills").and_then(|s| s.get("config"));
+        let entries = entries
+            .and_then(|c| c.as_array_of_tables())
+            .into_iter()
+            .flatten();
+        all.extend(entries.map(|t| t.clone().into_inline_table().to_string()));
+    }
+    all
 }
 
 /// Its MCP servers in the folder's `.codex/config.toml` and its home's, read only, each as the

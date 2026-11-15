@@ -218,9 +218,7 @@ impl Adapter for Claude {
         let input = text.map(|t| self.encode(spec, t));
         let mut env = base_env(spec, &exe, self.keys());
         control::own(&mut env);
-        if spec.naked {
-            control::naked(&mut argv, &mut env);
-        }
+        mcp::launch(spec, &mut argv, &mut env);
         Launch {
             argv,
             env,
@@ -257,6 +255,9 @@ impl Adapter for Claude {
 
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
         commands::fixed(cwd, run)
+    }
+    fn own_skill_wins(&self) -> bool {
+        true
     }
     fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
         mcp::mcp_servers(folder)

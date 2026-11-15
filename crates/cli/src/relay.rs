@@ -16,7 +16,7 @@ type Spec = (
 pub fn spec(cmd: &str) -> Option<Spec> {
     Some(match cmd {
         "skill" => (
-            "brigadier skill [<name>] [--json]\n\nThe user's skills, from every agent's own folders. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
+            "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
             &[],
             &[],
         ),
@@ -33,9 +33,10 @@ that touched a file (words may then be left out). A newer message may revise an 
         "mcp" => (
             "brigadier mcp list | tools <server> | call <server> <tool> ['<json>'] [--json]
 
-The user's own MCP servers, from every agent's own config, the same on every agent: `list` names
-them, `tools <server>` lists its tools with their input schemas, `call` runs one tool with the JSON
-object of its arguments (none: {}) and prints what it answered. One connection per server is kept
+The user's MCP servers: Brigadier's library for this project first, then every agent's own config,
+the same on every agent: `list` names them, `tools <server>` lists its tools with their input
+schemas, `call` runs one tool with the JSON object of its arguments (none: {}) and prints what it
+answered. One connection per server is kept
 for you while you use it, so what a call opens stays good for your next call. A server that needs a
 sign-in says so: Brigadier can't sign in to one yet.",
             &[],
@@ -81,10 +82,16 @@ pub fn run(
     }
 }
 
-/// The user's skills each agent keeps for the caller's folder, by name once: the first agent's.
+/// The library's skills on for the caller's project, then those each agent keeps for its folder,
+/// by name once: the library's, else the first agent's [D407].
 fn skills(data: &Path, me: &str) -> Vec<Value> {
-    let cwd = core::load(data, me).map(|s| s.cwd).unwrap_or_default();
-    let mut all: Vec<Value> = vec![];
+    let spec = core::load(data, me).ok();
+    let project = spec.as_ref().and_then(|s| s.project.clone());
+    let cwd = spec.map(|s| s.cwd).unwrap_or_default();
+    let mut all: Vec<Value> = (core::library::on_for(data, project.as_deref()).into_iter())
+        .filter(|i| i["kind"] == "skill")
+        .map(|i| json!({"name": i["name"], "path": Path::new(i["path"].as_str().unwrap_or("")).join("SKILL.md")}))
+        .collect();
     for a in adapters::all() {
         for k in a.fixed_commands(Some(Path::new(&cwd)), None) {
             if k["kind"] == "skill"
@@ -99,7 +106,7 @@ fn skills(data: &Path, me: &str) -> Vec<Value> {
 }
 
 /// The `description:` of a SKILL.md's front matter, on one line; a `>` or `|` block's lines joined.
-fn described(text: &str) -> String {
+pub(crate) fn described(text: &str) -> String {
     let front = text
         .strip_prefix("---")
         .and_then(|t| t.split("\n---").next());

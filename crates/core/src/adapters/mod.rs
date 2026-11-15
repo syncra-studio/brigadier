@@ -12,6 +12,7 @@ pub mod setup;
 mod shell;
 
 pub use classify::{classify, temporary};
+pub use files::repeat;
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
 pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
@@ -385,6 +386,11 @@ pub trait Adapter: Sync {
     }
     /// Fills in the file of each listed skill or command its list didn't name [D146, D2098].
     fn locate(&self, _run: &Spec, _list: &mut [Value]) {}
+    /// Whether its user's own skill of a library skill's name stays, as no flag turns off only
+    /// that copy: its sessions skip the library's [D415].
+    fn own_skill_wins(&self) -> bool {
+        false
+    }
     fn timing(&self) -> Timing;
     /// Files and folders this backend wrote outside the session folder for this session only, by
     /// exact path. Delete removes them entirely.
@@ -484,14 +490,6 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
         Some((_, home)) => home.join(rest),
         None => home_path(default).join(rest),
     }
-}
-
-/// Whether a session grant is for this exact command in this folder, as Codex keys its own cache:
-/// such a repeat is answered without asking the user [D193, D247, D389].
-pub fn repeat(g: &Value, command: &Value, cwd: &Value) -> bool {
-    // An unknown folder never matches: the user is asked again [D391].
-    let folder = !cwd.is_null() && g["cli"]["cwd"] == *cwd;
-    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && folder
 }
 
 /// Text of a JSON line's field, or empty.

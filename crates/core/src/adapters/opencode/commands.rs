@@ -72,10 +72,17 @@ pub(super) fn mcp_servers(folder: &std::path::Path) -> Vec<Value> {
     for file in files {
         let text = std::fs::read_to_string(file).unwrap_or_default();
         let v: Value = serde_json::from_str(&jsonc(&text)).unwrap_or_default();
-        for (name, d) in v["mcp"].as_object().into_iter().flatten() {
+        // Its current `mcp.servers` and `disabled`, else the older `mcp` and `enabled`.
+        let servers = v["mcp"]["servers"].as_object().or(v["mcp"].as_object());
+        for (name, d) in servers.into_iter().flatten() {
             let command = d["command"].as_array().cloned().unwrap_or_default();
+            let enabled = if d["disabled"] == true {
+                json!(false)
+            } else {
+                d["enabled"].clone()
+            };
             all.push(json!({"name": name, "command": command.first(), "args": command.get(1..),
-                "env": d["environment"], "url": d["url"], "headers": d["headers"], "enabled": d["enabled"]}));
+                "env": d["environment"], "url": d["url"], "headers": d["headers"], "enabled": enabled}));
         }
     }
     all

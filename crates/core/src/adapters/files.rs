@@ -231,3 +231,11 @@ pub fn encode(text: &str) -> String {
         })
         .collect()
 }
+
+/// Whether a session grant is for this exact command in this folder, as Codex keys its own cache:
+/// such a repeat is answered without asking the user [D193, D247, D389].
+pub fn repeat(g: &Value, command: &Value, cwd: &Value) -> bool {
+    // An unknown folder never matches: the user is asked again [D391].
+    let folder = !cwd.is_null() && g["cli"]["cwd"] == *cwd;
+    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && folder
+}

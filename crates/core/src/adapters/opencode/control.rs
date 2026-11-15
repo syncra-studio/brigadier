@@ -26,8 +26,37 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));
         env.push(("OPENCODE_DISABLE_CLAUDE_CODE".into(), "1".into()));
+    } else if let Some(kit) = crate::library::kit(spec, &[]) {
+        library(&mut config, &kit, spec);
     }
     config
+}
+
+/// The library [D2043]: its skills' folder, which outranks the user's own of a name
+/// (opencode.ai/docs/skills#precedence), its local servers by their Brigadier names, and the
+/// user's own copy of each server off for this session (opencode.ai/docs/mcp-servers) [D407].
+fn library(config: &mut Value, kit: &crate::library::Kit, spec: &Spec) {
+    config["skills"] = json!([kit.skills]);
+    let mut mcp = serde_json::Map::new();
+    for s in &kit.servers {
+        let args = s["args"].as_array().cloned().unwrap_or_default();
+        let command: Vec<Value> = std::iter::once(s["command"].clone()).chain(args).collect();
+        let env = s["env"].as_object().cloned().unwrap_or_default();
+        let name = crate::library::named(s["name"].as_str().unwrap_or(""));
+        mcp.insert(
+            name,
+            json!({"type": "local", "command": command, "environment": env}),
+        );
+    }
+    for own in super::commands::mcp_servers(std::path::Path::new(&spec.cwd)) {
+        if kit.servers.iter().any(|s| crate::library::same(&own, s)) {
+            let name = own["name"].as_str().unwrap_or("").to_string();
+            // Off whether its entry is replaced or merged: a stub that never connects.
+            let off = json!({"type": "local", "command": ["true"], "disabled": true});
+            mcp.insert(name, off);
+        }
+    }
+    config["mcp"] = json!({ "servers": mcp });
 }
 
 /// A model from its server's list, as the old app read it: its name, its variants as its efforts,
