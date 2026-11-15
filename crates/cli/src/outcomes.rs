@@ -123,18 +123,24 @@ pub(crate) fn results(data: &Path) -> Value {
         if let Ok(f) = core::fold(&core::session_dir(data, &wid), true) {
             f.fold.plans.done.iter().for_each(&mut add);
         }
-        // One that never ended (held unstarted, or still going) is no result yet [C5].
-        let Some(l) = workers::link(data, &wid).filter(|l| !l.session && !l.last.is_null()) else {
+        let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
             continue;
         };
         let notes = workers::outcomes(data, &wid);
-        let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
+        // A retry still going has already said its parent failed a check.
         for n in &notes {
             // A rerun after a temporary end isn't a failed check [D340, D353].
             let start = n["phase"] == "start" && n["step"] != "same";
             if let Some(of) = n["retry_of"].as_str().filter(|_| start) {
                 *retried.entry(of.into()).or_default() += 1;
             }
+        }
+        // One that never ended (held unstarted, or still going) is no result yet [C5].
+        if l.last.is_null() {
+            continue;
+        }
+        let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
+        for n in &notes {
             if n["phase"] == "review" && n["ran"] == true {
                 add(n);
             }
