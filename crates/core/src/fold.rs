@@ -194,13 +194,6 @@ pub struct Fold {
 }
 
 impl Fold {
-    /// What the running child takes, as its agent confirmed it: its level, or its `real` model.
-    fn took(&mut self, k: &str, v: &Value) {
-        if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
-            g[k] = v.clone();
-        }
-    }
-
     pub fn push(&mut self, item: &Value) {
         self.items += 1;
         let ts = item["ts"].as_u64().unwrap_or(0);

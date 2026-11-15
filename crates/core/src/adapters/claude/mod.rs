@@ -8,6 +8,8 @@ mod control;
 mod mcp;
 mod models;
 mod tools;
+mod trust;
+mod updates;
 
 use super::setup::{first_field, newest};
 use super::{
@@ -15,14 +17,10 @@ use super::{
     Retune, Rewound, Seed, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
+use cleanup::project_dir;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
-
-mod trust;
-mod updates;
-
-use cleanup::project_dir;
 
 pub struct Claude;
 

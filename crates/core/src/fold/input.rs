@@ -4,10 +4,10 @@ use super::{Fold, Picked, Turn};
 use serde_json::Value;
 
 impl Fold {
-    /// The level the running child takes from here, as its agent confirmed it.
-    pub(super) fn took_level(&mut self, item: &Value) {
+    /// What the running child takes, as its agent confirmed it: its level, or its `real` model.
+    pub(super) fn took(&mut self, k: &str, v: &Value) {
         if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
-            g["level"] = item["level"].clone();
+            g[k] = v.clone();
         }
     }
 
