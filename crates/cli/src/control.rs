@@ -144,6 +144,28 @@ pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
     }
 }
 
+/// A session the user stopped or paused that its CLI woke on its own (a background task ended):
+/// stopped again at once, as the user left it, by the same hand [D90, D95].
+pub fn hush(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+    static HUSHING: std::sync::Mutex<std::collections::BTreeSet<String>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    for (id, row) in rows {
+        let Some(by) = row["woke"].as_str() else {
+            continue;
+        };
+        if !HUSHING.lock().unwrap().insert(id.clone()) {
+            continue;
+        }
+        let (data, id, by) = (data.to_path_buf(), id.clone(), by.to_string());
+        thread::spawn(move || {
+            if let Err(e) = crate::queue::stop(&data, &id, &by) {
+                eprintln!("brigadierd: hush {id}: {e}");
+            }
+            HUSHING.lock().unwrap().remove(&id);
+        });
+    }
+}
+
 fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
     let (decision, answers) = (
         control["decision"].as_str().map(String::from),

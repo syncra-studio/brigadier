@@ -45,6 +45,18 @@ pub fn resumable(fold: &Fold, state: &str) -> bool {
             .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
 }
 
+/// A turn its CLI started on its own (a background task's end) after the user's Stop or a Pause,
+/// with no message since: who stopped it, so it's stopped again at once [D90, D95].
+pub fn woke(fold: &Fold) -> Option<&str> {
+    fold.turns
+        .first()
+        .filter(|t| t.origin == "agent" && !t.stopping)?;
+    let last = fold.last.as_ref().filter(|l| l["outcome"] == "stopped")?;
+    last["reason"]
+        .as_str()
+        .filter(|by| matches!(*by, "user" | "pause"))
+}
+
 /// Whether a worker waits on the user's call on its row's hold [D2028, D342].
 pub fn held(fold: &Fold) -> bool {
     fold.hold.as_ref().is_some_and(|h| h["phase"] == "asked")

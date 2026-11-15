@@ -298,8 +298,7 @@ impl Index {
                              // A turn whose host is gone has nothing left to stop or queue behind [D60].
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
-                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()),
-                             "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref()),
+                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()), "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref()),
                              // Its last turn was the user's Stop: Send and the queue offer Resume [D373, D2004].
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
@@ -307,6 +306,7 @@ impl Index {
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              // The turn the loop guard stopped: its line offers Continue [D144].
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
+            row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
             // It holds its project's own folder: Local checkout can't start there again [D306].

@@ -18,7 +18,7 @@ pub use live::{
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, held, mark, notice, quiet, resumable, status, switchable, works};
+pub use status::{Owner, held, mark, notice, quiet, resumable, status, switchable, woke, works};
 use std::collections::{BTreeMap, BTreeSet};
 pub use turns::Turn;
 

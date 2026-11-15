@@ -146,11 +146,11 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
             _ => "failed",
         };
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
-        // ended by itself before the Pause took reports as ever.
+        // ended by itself before the Pause took reports as ever; one a later wake hid, as stopped.
         // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
         // A reviewer and a fix turn end at their limit [D3026].
         let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
-        if (l.paused && how == "stopped") || moves {
+        if (l.paused && (how == "stopped" || last.is_none())) || moves {
             continue;
         }
         let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
