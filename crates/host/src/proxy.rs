@@ -229,7 +229,24 @@ impl Proxy {
             }
             text.push_str("Connection: close\r\n\r\n");
             out.write_all(text.as_bytes())?;
-            // Streams as it comes; a CLI that hangs up ends curl.
+            // Streams as it comes; a CLI that hangs up ends curl, even while the stream is quiet.
+            let (mut peer, pid) = (out.try_clone()?, child.id() as i32);
+            let gone = thread::spawn(move || {
+                let mut b = [0u8; 256];
+                loop {
+                    match peer.read(&mut b) {
+                        Ok(n) if n > 0 => {}
+                        Err(e)
+                            if matches!(
+                                e.kind(),
+                                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                            ) => {}
+                        _ => break,
+                    }
+                }
+                // Not reaped until the wait below, so the pid is still curl's.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+            });
             let mut buf = [0u8; 16 << 10];
             loop {
                 match from.read(&mut buf) {
@@ -238,6 +255,8 @@ impl Proxy {
                     Ok(_) => {}
                 }
             }
+            let _ = out.shutdown(std::net::Shutdown::Both);
+            let _ = gone.join();
             let _ = child.kill();
             let _ = child.wait();
             return Ok(());
