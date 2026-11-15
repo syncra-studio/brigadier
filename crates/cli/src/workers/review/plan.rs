@@ -55,12 +55,13 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
     let held = (f.fold.turns.first()).and_then(|t| t.asks.get(request));
     let now = &f.fold.plans.now;
     if held.is_none_or(|r| r["to"] != "review")
-        || !matches!(now["state"].as_str(), None | Some("running"))
+        || !matches!(now["state"].as_str(), None | Some("running" | "sent"))
     {
         return;
     }
-    if now["state"] == "running" {
-        // A restart cut its reviewer's end short: its result is written, never acted on [D54].
+    if now["state"] != Value::Null {
+        // A restart cut its reviewer's end short: its result is written, never acted on, or its
+        // findings said to go but never sent; the plan still held, no reply reached the log [D54].
         let by = now["by"].as_str().unwrap_or("");
         let ended = super::result::all(data, id)
             .into_iter()
