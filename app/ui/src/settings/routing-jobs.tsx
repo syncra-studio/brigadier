@@ -295,7 +295,8 @@ function JobEditor({ job, error, onType, onCommit, actions }: { job: Job; error:
     setTyped(next);
     onType?.(next);
   };
-  const commit = () => (onType || typed.name !== job.name || typed.for !== job.for) && onCommit(typed);
+  // Only the two fields over the job as it is now: its order may have changed since this opened.
+  const commit = () => (onType || typed.name !== job.name || typed.for !== job.for) && onCommit({ ...job, name: typed.name, for: typed.for });
   const fixed = job.name === REVIEW_JOB && !onType;
   const leave = onType ? undefined : commit;
   return (
