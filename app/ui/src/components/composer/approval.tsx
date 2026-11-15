@@ -42,6 +42,8 @@ export type PendingApproval = {
   review?: { by: string; name: string };
   /** A plan's review line: "Plan reviewed by ‹model›: 5 findings, 4 fixed, 1 rejected", or "Review didn't run: ‹why›". */
   reviewed?: string;
+  /** A plan sent back, kept while its agent revises it: its next plan takes this card (D401). */
+  revising?: boolean;
 };
 
 export type ApprovalDecision = "allow" | "allowSession" | "deny";
@@ -113,12 +115,12 @@ export function describe(approval: PendingApproval): Shown {
         allow: "Land",
       };
     // The plan the agent proposed in its plan mode: build it, or reply to change it.
-    // While its review holds it, nothing to answer yet (§6).
+    // While its review holds it, or its agent revises it, nothing to answer yet (§6, D401).
     case "plan":
       return {
         icon: <Sparkle />,
         kind: "Plan",
-        title: approval.review ? `Reviewing this plan · ${approval.review.name}` : reason || "Build this plan?",
+        title: approval.revising ? "Revising this plan" : approval.review ? `Reviewing this plan · ${approval.review.name}` : reason || "Build this plan?",
         detail: approval.reviewed,
         body: prose,
         allow: "Build it",
@@ -257,8 +259,9 @@ export function ApprovalCard({
     const active = document.activeElement;
     if (!inField(active) || active?.closest("[data-slot=composer-card]")) card.current?.focus({ preventScroll: true });
   }, []);
-  const reviewing = approval.review;
-  useCardKeys(!busy && !reviewing, { enter: primary, escape }, card);
+  const reviewing = approval.revising ? undefined : approval.review;
+  const waits = Boolean(approval.review || approval.revising);
+  useCardKeys(!busy && !waits, { enter: primary, escape }, card);
 
   const grant = approval.grant ? grantTip(approval.grant) : null;
   const allow = shown.allow ?? "Allow once";
@@ -300,7 +303,7 @@ export function ApprovalCard({
       </div>
       {shown.body}
       <ErrorLine error={error} className="px-4 pt-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
-      {!reviewing && (
+      {!waits && (
         <ActionCardActions
           leading={
             asksReason && (

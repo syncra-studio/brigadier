@@ -125,6 +125,8 @@ pub struct Thread {
     pending: Vec<usize>,
     #[serde(skip)]
     pending_changed: bool,
+    /// A plan sent back, its card kept while its agent revises; its next plan takes its row [D401].
+    revising: Option<usize>,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
     /// The level the last input set up, to tell when trust taken back holds the next to Ask.
@@ -296,6 +298,7 @@ impl Thread {
         self.said(&Value::Null, "", ts);
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
+        self.revising = None;
         self.end_wait(ts);
         self.break_group();
         let Some(o) = self.open.take() else {

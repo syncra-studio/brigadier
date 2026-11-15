@@ -231,6 +231,15 @@ impl Thread {
                 o.asked = None;
             }
         }
+        // A plan sent back keeps its card while its agent revises it [D401].
+        if row["kind"] == "approval"
+            && row["request"]["action"] == "plan"
+            && row["decision"] == "denied"
+        {
+            self.revising = Some(at);
+            self.pending_changed = true;
+        }
+        let row = &mut self.items[at];
         // Who answered, when not the user: a plan the review sent back says so [D394].
         if matches!(c["by"].as_str(), Some("parent" | "review")) {
             row["by"] = c["by"].clone();
@@ -398,6 +407,15 @@ impl Thread {
                 })
                 .collect()
         };
-        json!({"approvals": of("approval"), "questions": of("question")})
+        let mut approvals = of("approval");
+        // The plan its agent revises, nobody's to answer, till its next plan takes the card [D401].
+        let revising = (self.revising.iter())
+            .filter(|&&at| matches!(self.items[at]["to"].as_str(), None | Some("review")));
+        approvals.extend(revising.map(|&at| {
+            let mut r = self.items[at]["request"].clone();
+            r["revising"] = true.into();
+            r
+        }));
+        json!({"approvals": approvals, "questions": of("question")})
     }
 }

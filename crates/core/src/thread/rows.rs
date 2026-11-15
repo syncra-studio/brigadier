@@ -186,8 +186,22 @@ impl Thread {
                 if let Some(line) = asked.map(|r| &r["reviewed"]).filter(|l| l.is_string()) {
                     request["reviewed"] = line.clone();
                 }
-                let at =
-                    self.add(json!({"kind": "approval", "request": request, "decision": null}));
+                // A revised plan takes the row of the one sent back: one plan card, updated [D401].
+                let revised = (request["action"] == "plan")
+                    .then(|| self.revising.take())
+                    .flatten();
+                let at = match revised {
+                    Some(at) => {
+                        let row = &mut self.items[at];
+                        (row["request"], row["decision"]) = (request, Value::Null);
+                        row.as_object_mut().map(|r| r.remove("by"));
+                        self.changed_items.insert(at);
+                        at
+                    }
+                    None => {
+                        self.add(json!({"kind": "approval", "request": request, "decision": null}))
+                    }
+                };
                 self.wait_on(at, ts, item);
             }
             "resolved" => {
