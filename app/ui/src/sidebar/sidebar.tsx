@@ -216,7 +216,7 @@ export function AppSidebar({
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
           <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
             <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
-              <BrigadierMark spinOnHover className="block size-icon-mark" />
+              <BrigadierMark className="block size-icon-mark" />
             </button>
             <span className="min-w-0 truncate">Brigadier</span>
           </h1>
@@ -366,13 +366,13 @@ function ProjectRow({
 
 /**
  * The collapsed rail [new-design]: the logo, New chat and Search, a rule, then the lists (`children`). The sidebar
- * toggle is the History pill's. The logo spins under the pointer, as Home's does, and a click on it goes Home [D66].
+ * toggle is the History pill's. A click on the logo goes Home [D66, D69].
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 pt-2.75">
       <TooltipIconButton tooltip="Home" tip={false} look="strip" onClick={onNewChat}>
-        <BrigadierMark spinOnHover className="size-icon-mark" />
+        <BrigadierMark className="size-icon-mark" />
       </TooltipIconButton>
       <div className="flex flex-col items-center gap-0.5">
         <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
