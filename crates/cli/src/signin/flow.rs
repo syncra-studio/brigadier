@@ -302,8 +302,9 @@ pub(super) fn wait(data: &Path, key: &str) -> Value {
         match live {
             Some(l) if l.signing.is_some() => {}
             Some(l) => {
-                return match l.ended.take() {
-                    Some(Err(e)) => refuse(&e),
+                // Every waiter gets the outcome; the next sign-in clears it.
+                return match &l.ended {
+                    Some(Err(e)) => refuse(e),
                     _ => json!({"ok": true, "status": status_of(s.as_ref().unwrap(), key)}),
                 };
             }
