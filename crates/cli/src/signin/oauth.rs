@@ -52,8 +52,17 @@ pub(super) fn fetch(
     body: &str,
 ) -> Result<Reply, String> {
     let mut c = Command::new("/usr/bin/curl");
-    c.args(["-sS", "-D", "-", "--max-time", "30", "-X", method])
-        .args(["-H", "Accept: application/json, text/event-stream"]);
+    c.args([
+        "-sS",
+        "--suppress-connect-headers",
+        "-D",
+        "-",
+        "--max-time",
+        "30",
+        "-X",
+        method,
+    ])
+    .args(["-H", "Accept: application/json, text/event-stream"]);
     if let Some(kind) = kind {
         c.args(["-H".into(), format!("Content-Type: {kind}")])
             .args(["--data-binary", "@-"]);

@@ -403,6 +403,7 @@ fn curl(
     let mut c = Command::new("/usr/bin/curl");
     c.args([
         "-sS",
+        "--suppress-connect-headers",
         "-N",
         "-D",
         "-",
