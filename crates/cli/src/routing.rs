@@ -174,6 +174,13 @@ fn entry_error(groups: &[Value], e: &Value) -> Option<String> {
     (!has).then(|| format!("{id} has no effort {effort:?}."))
 }
 
+/// An entry a "never use" rule bars, refused when added as an invalid one is [D341, D363].
+fn barred_error(groups: &[Value], rules: &[Value], e: &Value) -> Option<String> {
+    let (agent, id) = (str_of(e, "agent"), str_of(e, "model"));
+    let name = model_of(groups, agent, id).map_or(id, |m| m["name"].as_str().unwrap_or(id));
+    barred(rules, agent, id).then(|| format!("{name} is barred by your rule \"Never use {name}\"."))
+}
+
 /// A whole new value checked, keeping only what differs from the defaults, so an untouched row
 /// follows its CLIs' lists. What's already saved isn't checked again: only what the user just
 /// added is refused.
@@ -186,6 +193,7 @@ fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> 
         .chain([&saved["rules"]])
         .any(|l| l.as_array().is_some_and(|l| l.contains(x)))
     };
+    let rules = v["rules"].as_array().cloned().unwrap_or_default();
     let mut rows = Map::new();
     if let Some(k) =
         (v["rows"].as_object().into_iter().flatten()).find(|(k, _)| !ROWS.contains(&k.as_str()))
@@ -198,7 +206,7 @@ fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> 
         };
         if let Some(why) = (list.iter())
             .filter(|e| !kept(e))
-            .find_map(|e| entry_error(groups, e))
+            .find_map(|e| entry_error(groups, e).or_else(|| barred_error(groups, &rules, e)))
         {
             return Err(why);
         }
@@ -206,7 +214,6 @@ fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> 
             rows.insert(r.into(), list.clone().into());
         }
     }
-    let rules = v["rules"].as_array().cloned().unwrap_or_default();
     for rule in rules.iter().filter(|r| !kept(r)) {
         match str_of(rule, "never") {
             "model" => {
