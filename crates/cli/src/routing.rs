@@ -306,15 +306,14 @@ pub(crate) fn launch(
         .filter(|(_, note)| note.is_some())
         .and_then(|(e, _)| e);
     let ids = || listed.iter().filter_map(|m| m["id"].as_str());
-    let mut models: Vec<String> = ids()
-        .filter(|x| !barred(&rules, agent, x))
+    // No older version: one named pins its family's alias to it ("haiku" ran Haiku 4.5) [D376].
+    let mut models: Vec<String> = (listed.iter().filter(|m| m["legacy"] != true))
+        .filter_map(|m| m["id"].as_str())
+        .filter(|x| !barred(&rules, agent, x) && Some(*x) != id)
         .map(String::from)
         .collect();
     // Its own model stays, listed or not.
-    models.extend(
-        id.filter(|id| !models.iter().any(|x| x == id))
-            .map(String::from),
-    );
+    models.extend(id.map(String::from));
     let models = ids().any(|x| barred(&rules, agent, x)).then_some(models);
     Ok(core::Ruled {
         effort,
