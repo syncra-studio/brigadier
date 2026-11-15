@@ -37,6 +37,34 @@ impl Fold {
         }
     }
 
+    /// A subagent asks after its parent's turn ended, held for it: the ask gets a turn of its own,
+    /// so it waits on the user and can be answered [D128, D131].
+    pub(super) fn held_ask(&mut self, ts: u64) {
+        if self.turns.is_empty() && !self.agents.is_empty() {
+            self.turns.push(super::Turn {
+                id: format!("a{}", self.items),
+                origin: "agent".into(),
+                backend: self.backend.clone(),
+                ts,
+                delivered: Some(ts),
+                began: true,
+                held: true,
+                ..Default::default()
+            });
+        }
+    }
+
+    /// That turn goes once nothing it was opened for waits.
+    pub(super) fn unhold(&mut self) {
+        if self
+            .turns
+            .first()
+            .is_some_and(|t| t.held && t.asks.is_empty())
+        {
+            self.turns.remove(0);
+        }
+    }
+
     /// A sub-session's ask its boss passed to the user [D189]: its own request now waits on the
     /// user, or the question it sent its boss (`peer-<mid>`) is the user's to answer, till answered.
     pub(super) fn passed_to_user(&mut self, item: &Value) {
@@ -113,6 +141,7 @@ impl Fold {
                     self.claims.insert(cid.into(), id.into());
                     self.closed.insert(id.into(), "uncertain".into());
                 }
+                self.unhold();
                 true
             }
             Some("interrupt") => {

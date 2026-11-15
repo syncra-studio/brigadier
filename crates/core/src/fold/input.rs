@@ -47,6 +47,10 @@ impl Fold {
         if self.control(item, &cid) {
             return;
         }
+        // A message ends what a held turn's subagent asked, as any new turn ends what waits.
+        if self.turns.first().is_some_and(|t| t.held) {
+            self.close("withdrawn", Value::Null, ts);
+        }
         (self.limit, self.resets) = (None, None);
         self.sign_in = None;
         self.refused = None;

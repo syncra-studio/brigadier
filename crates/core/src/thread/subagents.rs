@@ -94,9 +94,15 @@ impl Thread {
             .map(|(id, _)| id.clone())
             .collect();
         for id in done {
-            let (o, work) = self.held.remove(&id).unwrap();
+            let (mut o, work) = self.held.remove(&id).unwrap();
             let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(o.started);
             self.turns[o.at]["held"] = Value::Null;
+            // Its subagent's ask still waited: the wait ends with it.
+            if let Some(since) = o.wait.take() {
+                o.waited += ended.saturating_sub(since);
+                self.turns[o.at]["waitingSince"] = Value::Null;
+                self.turns[o.at]["waitedMs"] = o.waited.into();
+            }
             // A cut whose carry-on never came ended where it was stopped.
             if o.cut() {
                 self.turns[o.at]["status"] = "cancelled".into();

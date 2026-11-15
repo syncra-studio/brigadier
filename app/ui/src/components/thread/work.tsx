@@ -27,7 +27,7 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
   const label =
     workWords(turn, work, now) +
     (live && workers ? ` · ${workers} ${workers === 1 ? "worker" : "workers"} running` : "") +
-    (turn.status === "running" && waitingSince != null
+    (live && waitingSince != null
       ? " · waiting for you"
       : !live && waitedMs !== undefined && waitedMs >= 1000
         ? ` · waited for ${duration(waitedMs)}`

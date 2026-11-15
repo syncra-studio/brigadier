@@ -84,6 +84,10 @@ pub struct Turn {
     /// sees it, so it leaves no mark, unread or notice [D119].
     #[serde(default)]
     pub quiet: bool,
+    /// Opened only for an ask a subagent made while its parent's ended turn was held for it: it
+    /// lasts while that ask waits, and leaves no end of its own [D118, D131].
+    #[serde(default)]
+    pub held: bool,
 }
 
 /// The paths a FileChange list names.
@@ -138,6 +142,15 @@ impl Turn {
 impl Fold {
     pub(super) fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
+            if turn.held {
+                self.end_asks(if outcome == "interrupted" {
+                    "withdrawn"
+                } else {
+                    outcome
+                });
+                self.turns.remove(0);
+                return;
+            }
             self.end_asks(if outcome == "interrupted" {
                 "withdrawn"
             } else {

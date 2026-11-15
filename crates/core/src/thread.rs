@@ -184,7 +184,7 @@ impl Thread {
                 .fold
                 .turns
                 .first()
-                .is_some_and(|t| t.question.is_some());
+                .is_some_and(|t| t.question.is_some() && !t.held);
         // Another model or agent picked: its line the moment it's picked [D76].
         let pick = (kind == "note" && item["event"] == "setup").then(|| self.before_pick(item));
         // A rebirth's divider: done once the fresh conversation names itself, failed if its turn ends first [D88, D112].
@@ -265,6 +265,12 @@ impl Thread {
             .map_or("failed", |l| l["outcome"].as_str().unwrap_or("failed"))
             .to_string();
         for t in before.iter().filter(|t| !after.contains(&t.id)) {
+            // A turn opened only for a held turn's ask ends only what it asked: the block runs on.
+            if t.held {
+                self.withdraw_all();
+                self.end_wait(ts);
+                continue;
+            }
             // A queued input closed before it ran (a stop) still shows, as a turn of its own.
             if !self.shown.contains(&t.id) {
                 self.open_turn(t, ts);
@@ -276,7 +282,8 @@ impl Thread {
             .fold
             .turns
             .first()
-            .filter(|t| !self.shown.contains(&t.id))
+            // One opened only for a held turn's ask is that held turn's, never one of its own.
+            .filter(|t| !t.held && !self.shown.contains(&t.id))
             .cloned()
         {
             self.close_turn(&outcome, ts);
@@ -416,23 +423,6 @@ impl Thread {
         self.items.push(row);
         self.changed_items.insert(at);
         at
-    }
-
-    /// The turn's wait on the user ends once nothing waits on them any more [D128].
-    fn end_wait(&mut self, ts: u64) {
-        if (self.pending.iter()).any(|&at| self.items[at]["to"] != "parent") {
-            return;
-        }
-        let Some(o) = self.open.as_mut() else {
-            return;
-        };
-        if let Some(since) = o.wait.take() {
-            o.waited += ts.saturating_sub(since);
-            let turn = &mut self.turns[o.at];
-            turn["waitingSince"] = Value::Null;
-            turn["waitedMs"] = o.waited.into();
-            self.changed_turns.insert(o.at);
-        }
     }
 
     /// Only unfinished script or CLI startup needs the host's live state.

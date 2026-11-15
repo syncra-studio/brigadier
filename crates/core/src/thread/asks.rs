@@ -29,7 +29,10 @@ impl Thread {
         }
         self.changed_items.insert(at);
         let question = self.items[at]["kind"] == "question";
-        if let Some(o) = self.open.as_mut() {
+        let turn = self.items[at]["turnId"].as_str().unwrap_or("").to_string();
+        // Or the turn held for the subagent that asks: it waits on the user as a running one [D128].
+        let held = self.held.get_mut(&turn).map(|(o, _)| o);
+        if let Some(o) = self.open.as_mut().or(held) {
             if question {
                 o.kept.push(at as u64 + 1);
             }
@@ -57,6 +60,24 @@ impl Thread {
             self.items[at]["answer"] = item["choice"].clone();
             self.changed_items.insert(at);
             self.end_wait(ts);
+        }
+    }
+
+    /// The turn's wait on the user ends once nothing waits on them any more [D128]; so does a held
+    /// turn's, whose subagent asked.
+    pub(super) fn end_wait(&mut self, ts: u64) {
+        if (self.pending.iter()).any(|&at| self.items[at]["to"] != "parent") {
+            return;
+        }
+        let held = self.held.values_mut().map(|(o, _)| o);
+        for o in self.open.iter_mut().chain(held) {
+            if let Some(since) = o.wait.take() {
+                o.waited += ts.saturating_sub(since);
+                let turn = &mut self.turns[o.at];
+                turn["waitingSince"] = Value::Null;
+                turn["waitedMs"] = o.waited.into();
+                self.changed_turns.insert(o.at);
+            }
         }
     }
 

@@ -307,6 +307,10 @@ impl Fold {
                 }
             }
             "turn_start" => {
+                // The agent woke: what a held turn's subagent asked ends, as at any new turn.
+                if self.turns.first().is_some_and(|t| t.held) {
+                    self.close("withdrawn", Value::Null, ts);
+                }
                 if self.turns.is_empty() {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
@@ -382,15 +386,20 @@ impl Fold {
                 }
             }
             "question" => {
+                self.held_ask(ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.question = Some(str_of("text"));
                 }
                 self.ask(item);
             }
-            "approval" => self.ask(item),
+            "approval" => {
+                self.held_ask(ts);
+                self.ask(item);
+            }
             "resolved" => {
                 let id = str_of("id");
                 self.end_ask(&id, item["decision"].as_str().unwrap_or("withdrawn"));
+                self.unhold();
             }
             "reply" => {
                 self.replies.insert(str_of("id"), item.clone());
@@ -403,6 +412,7 @@ impl Fold {
                     t.question = None;
                 }
                 self.end_ask(&str_of("id"), "answered");
+                self.unhold();
             }
             "commands" => {
                 self.commands
