@@ -33,6 +33,7 @@
   { "id": "follow-up-other", "keys": ["CmdOrCtrl+Enter", "Alt+Enter"], "name": "Steer", "line": "While an answer works, send the message into it now", "where": "In the composer" },
   { "id": "start-new", "keys": ["CmdOrCtrl+Alt+Enter"], "name": "Start as a new session", "line": "Send the message as a new session in the background, and stay here" },
   { "id": "history", "keys": ["Up", "Down"], "name": "Earlier prompts", "line": "Walk back through your prompts, and forward again; in an empty field ↑ takes back a queued message first" },
+  { "id": "model", "keys": ["CmdOrCtrl+."], "name": "Model", "line": "Open or fold the model picker over the composer", "where": "In the composer" },
   { "id": "commands", "keys": ["/"], "name": "Commands", "line": "Open the commands menu" },
   { "id": "stop", "keys": ["Esc Esc"], "name": "Stop", "line": "Stop the reply that is running" },
 

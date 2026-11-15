@@ -217,6 +217,8 @@
   --color-rail-line-current: color-mix(in oklab, var(--color-foreground) 60%, transparent);
   /* Kept as it was (the old card at 70%): the new design leaves the rail's cards alone. */
   --color-rail-glass: #232322b3;
+  /* The model picker's strip: the boards' rail fill (L2S6P's status slot) [D85]. */
+  --color-model-strip: #1c1c1e;
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
   /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
      text, an outlined button's wash, the filled button's hover, a file list's ground. */
@@ -436,9 +438,11 @@
   /* A sent message's image, above its bubble (the old app's). */
   --spacing-attachment-sent: 5rem;
   --spacing-attachment-card: 14rem;
-  /* The model picker: its width and its one height. */
-  --spacing-model-picker: 33.75rem;
-  --spacing-model-picker-height: 22.25rem;
+  /* The model picker's shelf (EJkBJ, EMxDa): its width in the popover (the strip's 497 inside), its one height, and
+     its marks' two columns of 32 [D84, D89]. */
+  --spacing-model-picker: 31.0625rem;
+  --spacing-model-picker-height: 10.0625rem;
+  --spacing-model-marks: 4.125rem;
 
   --radius-sm: 0.375rem;
   --radius-session-tab: 0.5rem;
@@ -522,6 +526,8 @@
   --blur-material: 24px;
   /* Behind a menu or the hover card (the new design's). */
   --blur-popover: 30px;
+  /* Behind the model picker's strip (the boards' rail) [D85]. */
+  --blur-model-strip: 4px;
   /* A list folding open or shut, the sidebar's spring. */
   --duration-fold: 300ms;
   /* A rail card opening from nothing to its height; a queued row fading in. */
@@ -534,6 +540,18 @@
     to {
       grid-template-rows: 1fr;
       opacity: 1;
+    }
+  }
+  /* Folding it back to nothing, from its height. */
+  --animate-rail-close: rail-close var(--duration-fold) var(--ease-enter) both;
+  @keyframes rail-close {
+    from {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+    to {
+      grid-template-rows: 0fr;
+      opacity: 0;
     }
   }
   --animate-fade-in: fade-in 200ms;
@@ -606,6 +624,9 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
+  /* The model picker's dimmed parts: an effort its model doesn't take, a CLI not set up; the Fast key of a model without one [D84]. */
+  --opacity-picker-dim: 35%;
+  --opacity-picker-none: 30%;
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
   --opacity-tab-close: 60%;
@@ -1574,6 +1595,32 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--edge-top), black calc(100% - var(--edge-bottom)), transparent);
   animation: edge-fade linear both;
   animation-timeline: scroll(self y);
+}
+/* The same fade along a row that scrolls sideways (the model picker's marks past ten). */
+@property --edge-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --edge-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes edge-fade-x {
+  from {
+    --edge-start: 0px;
+    --edge-end: var(--spacing-group-fade);
+  }
+  to {
+    --edge-start: var(--spacing-group-fade);
+    --edge-end: 0px;
+  }
+}
+@utility scroll-edge-fade-x {
+  mask-image: linear-gradient(to right, transparent, black var(--edge-start), black calc(100% - var(--edge-end)), transparent);
+  animation: edge-fade-x linear both;
+  animation-timeline: scroll(self x);
 }
 @utility edge-fade-shell {
   --edge-size-top: 2rem;

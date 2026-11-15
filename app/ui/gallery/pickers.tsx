@@ -8,6 +8,7 @@ import { type ModelChoice, type ModelGroup, ModelPicker } from "../src/component
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { BranchPicker, type RepoState } from "../src/home/branch";
 import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "../src/home/pills";
+import { SelectTrigger } from "../src/components/select";
 import { showToast } from "../src/components/toast";
 import { useBranchPicker } from "../src/panel/branch-picker";
 import { BRANCHES, CLEAN } from "../src/panel/fake";
@@ -38,14 +39,19 @@ export function useAgents(): ModelGroup[] {
   return groups;
 }
 
-/** The model picker on Rust's list: the first model there until one is picked. */
-export function LiveModelPicker() {
+/** Rust's list and a pick on it: the first model there until one is picked. */
+export function useLiveModel() {
   const groups = useAgents();
   const [picked, setPicked] = useState<ModelChoice | null>(null);
   const listed = groups.some((group) => group.provider === picked?.provider && group.models.some((model) => model.id === picked.model));
   const first = groups.find((group) => !group.unavailable && group.models.length > 0)!;
   const value = listed ? picked! : { provider: first.provider, model: first.models[0]!.id, effort: first.models[0]!.defaultEffort ?? null };
-  return <ModelPicker groups={groups} value={value} onChange={setPicked} />;
+  return { groups, value, onChange: setPicked };
+}
+
+/** The popover model picker on Rust's list, from a settings select. */
+function LiveModelPicker() {
+  return <ModelPicker {...useLiveModel()} asksSwitch={false} trigger={({ children, ...props }) => <SelectTrigger {...props} label="Model">{children}</SelectTrigger>} />;
 }
 
 const PROJECTS: DraftProject[] = [
