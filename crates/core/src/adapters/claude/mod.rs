@@ -288,6 +288,7 @@ impl Adapter for Claude {
         let mut events: Vec<Event> = match (kind, s(&v, &["subtype"])) {
             ("system", "init") => [
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
+                v["model"].as_str().map(|m| Event::Model(m.into())),
                 Some(Event::TurnStart),
                 control::level(&v),
                 control::commands(&v),

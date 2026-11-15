@@ -18,7 +18,7 @@ mod jobs;
 mod pick;
 mod retry;
 
-pub(crate) use hold::{ask, set_ran, stopped, stops};
+pub(crate) use hold::{ask, real, set_ran, stopped, stops};
 pub(crate) use jobs::said;
 pub(crate) use pick::{next, receipt, resolve};
 pub(crate) use retry::plan as retry;

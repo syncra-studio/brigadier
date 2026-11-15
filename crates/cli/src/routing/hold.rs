@@ -286,6 +286,16 @@ pub(crate) fn set_ran(data: &Path, wid: &str, ran: Value) -> io::Result<()> {
     workers::write_json(&core::session_dir(data, wid).join("worker.json"), &l)
 }
 
+/// The model its CLI said a worker's pick runs, by its own id, kept on its `ran` once: a move
+/// replaces `ran` [D383].
+pub(crate) fn real(dir: &Path, ran: &mut Value) {
+    let given = core::fold(dir, true).ok().and_then(|f| f.fold.given);
+    let real = given.as_ref().and_then(|g| g["real"].as_str());
+    if let Some(r) = real.filter(|_| ran.is_object() && ran["real"].is_null()) {
+        ran["real"] = r.into();
+    }
+}
+
 /// A worker held before it started goes on, on what the user's call gave it: its session, made
 /// with no turn yet, takes it, and it's made as any start [D2028]: refused with start's words while
 /// its family runs its most [D3001], its hold kept.

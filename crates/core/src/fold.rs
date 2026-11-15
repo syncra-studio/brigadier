@@ -190,10 +190,10 @@ pub struct Fold {
 }
 
 impl Fold {
-    /// The level the running child takes from here, as its agent confirmed it.
-    fn took_level(&mut self, item: &Value) {
+    /// What the running child takes, as its agent confirmed it: its level, or its `real` model.
+    fn took(&mut self, k: &str, v: &Value) {
         if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
-            g["level"] = item["level"].clone();
+            g[k] = v.clone();
         }
     }
 
@@ -410,7 +410,8 @@ impl Fold {
                 self.acked(item, ts);
             }
             // The level the agent says it runs at is the one recorded, never the one asked [D175].
-            "level" => self.took_level(item),
+            "level" => self.took("level", &item["level"]),
+            "model" => self.took("real", &item["id"]),
             "answer" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.question = None;
@@ -475,7 +476,7 @@ impl Fold {
                 }
                 Some("go_on") => self.go_on = Some(str_of("turn")),
                 // A new level the running child confirmed mid-turn [D166].
-                Some("level") => self.took_level(item),
+                Some("level") => self.took("level", &item["level"]),
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),

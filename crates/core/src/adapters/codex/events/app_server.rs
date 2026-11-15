@@ -18,7 +18,14 @@ pub fn events(v: &Value) -> Vec<Event> {
         "" if s(v, &["type"]) == "brigadier.limits" => {
             vec![Event::Limits(super::super::models::usage(d))]
         }
-        "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
+        "thread/started" => [Event::Resume(s(p, &["thread", "id"]).into())]
+            .into_iter()
+            .chain(
+                p["thread"]["model"]
+                    .as_str()
+                    .map(|m| Event::Model(m.into())),
+            )
+            .collect(),
         "turn/started" => vec![Event::TurnStart],
         "turn/completed" => completed(p),
         // The reply as it's written; its whole text follows when its item completes [D147].

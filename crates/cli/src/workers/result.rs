@@ -331,6 +331,7 @@ pub(super) fn write(
     if let Some(mut l) = read_json::<Link>(&link_path) {
         l.last = json!({"how": how, "at": res.at, "landed": landed, "merged": merged,
             "commits": commits, "added": added, "removed": removed});
+        crate::routing::real(&dir, &mut l.ran);
         write_json(&link_path, &l)?;
         if spec.is_some() {
             let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why});

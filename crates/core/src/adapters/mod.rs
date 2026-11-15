@@ -96,6 +96,9 @@ pub enum Event {
     },
     /// The CLI ran this request on another model than the one asked: from (where it says), to [D487].
     Rerouted(Option<String>, String),
+    /// The model the CLI says this conversation runs on, by its own id (`claude-opus-5-5` behind
+    /// `opus`): a worker's `ran.real` [D383].
+    Model(String),
     /// A failed turn's error, with its cause where the CLI says it as structure [D487]: "capacity",
     /// "model" (not available), "blocked" (a reply withheld), "ended" (the conversation can't go
     /// on), "review" (its own reviewer ended the turn), "timeout", "connection"; "" for any other.

@@ -275,6 +275,7 @@ impl Norm {
                     json!({"kind": "retrying", "attempt": attempt, "max": max, "at": at})
                 }
                 Event::Rerouted(from, to) => json!({"kind": "rerouted", "from": from, "to": to}),
+                Event::Model(id) => json!({"kind": "model", "backend": self.backend, "id": id}),
                 Event::Failed(why, m) => json!({"kind": "failed", "why": why, "message": m}),
                 Event::Checking(on) => json!({"kind": "checking", "on": on}),
                 Event::Denied => json!({"kind": "denied"}),

@@ -175,7 +175,10 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
         Ok(r) => {
             let thread = r["thread"]["id"].clone();
             state.lock().unwrap().thread = thread.as_str().unwrap_or("").into();
-            say(json!({"method": "thread/started", "params": {"thread": {"id": thread}}}));
+            // Its result names the model it runs (`ran.real`).
+            say(
+                json!({"method": "thread/started", "params": {"thread": {"id": thread, "model": r["model"]}}}),
+            );
             skills(state);
             Ok(())
         }
