@@ -1,7 +1,7 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, path_of, write_ended};
+use super::{Res, all, fresh, path_of, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core, fold::Fold};
@@ -124,6 +124,21 @@ pub fn going(l: &Link, f: &Fold) -> bool {
 pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
     let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
     f.is_ok_and(|f| (reported(l, &f).iter()).all(|t| path_of(data, pid, wid, t).exists()))
+}
+
+/// A held worker the user ended before it ever ran: its one result, quiet as any the user ended,
+/// with the parent's next turn [D364, D314, D330].
+pub fn unrun(data: &Path, wid: &str) -> std::io::Result<()> {
+    let Some(l) = link(data, wid).filter(|l| l.last["by"] == "user") else {
+        return Ok(());
+    };
+    match l.report.first() {
+        Some(turn) if !path_of(data, &l.parent, wid, turn).exists() => {
+            let e = Some("the user ended it while it was held.");
+            write(data, &l, wid, turn, "stopped", e)
+        }
+        _ => Ok(()),
+    }
 }
 
 /// A temporary failure's line in its result: the parent may run it again [D340] (proposed words).

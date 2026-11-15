@@ -114,7 +114,8 @@ pub(crate) fn stops(r: &workers::Record, by: &str) -> bool {
     r.state == "starting" || (r.state == "held" && by == "user")
 }
 
-/// A stopped worker's hold card goes, by its id as its own answer's does, its wait with it.
+/// A stopped worker's hold card goes, by its id as its own answer's does, its wait with it. One
+/// the user ended before it ever ran has no turn to report: this is its one result [D364].
 pub(crate) fn stopped(data: &Path, wid: &str, by: &str) {
     let Ok(f) = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold) else {
         return;
@@ -129,6 +130,9 @@ pub(crate) fn stopped(data: &Path, wid: &str, by: &str) {
     };
     let note = json!({"event": "hold", "phase": "answered", "id": hold["id"], "choice": choice});
     let _ = owner::call(data, wid, json!({"op": "note", "data": note}));
+    if f.cids.is_empty() {
+        let _ = workers::unrun(data, wid);
+    }
 }
 
 /// The daemon's: a hold whose reset has passed goes on as picked.
