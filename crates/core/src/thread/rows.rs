@@ -106,6 +106,7 @@ impl Thread {
                 self.keys.insert(key(str_of("id")), at);
                 if step == "agent" {
                     self.children.insert(str_of("id"), at);
+                    self.count_helpers(&turn);
                 }
             }
             // The backend's own record of a turn's edits, with their diffs [D95].

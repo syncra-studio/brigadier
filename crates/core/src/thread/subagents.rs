@@ -67,7 +67,16 @@ impl Thread {
     /// now, as another turn runs, folds it at once.
     pub(super) fn helper_ended(&mut self, row: usize, ts: u64) {
         let turn = self.items[row]["turnId"].as_str().unwrap_or("").to_string();
+        self.count_helpers(&turn);
         self.held_left(&turn, ts);
+    }
+
+    /// While its turn still runs, its header counts the subagents it waits on too [D114, D118].
+    pub(super) fn count_helpers(&mut self, turn: &str) {
+        if let Some(at) = self.open.as_ref().filter(|o| o.id == turn).map(|o| o.at) {
+            self.turns[at]["helpers"] = self.helpers(turn).into();
+            self.changed_turns.insert(at);
+        }
     }
 
     fn held_left(&mut self, turn: &str, ts: u64) {
