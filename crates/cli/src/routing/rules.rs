@@ -84,11 +84,25 @@ pub(super) fn barred(rules: &[Value], agent: &str, id: &str) -> bool {
     (rules.iter()).any(|r| r["never"] == "model" && r["agent"] == agent && r["model"] == id)
 }
 
-/// The highest effort `agent`'s model may run at by the "never above" rules, by its own list.
+/// The effort words agents share, low to high: for a model whose own list lacks a rule's.
+const EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// The highest effort `agent`'s model may run at by the "never above" rules, by its own list;
+/// one without the rule's effort, its highest below it by the shared words ("never above high"
+/// leaves none, low, medium of none, low, medium, xhigh) [D376, D392 P9].
 pub(super) fn cap(rules: &[Value], agent: &str, efforts: &[&str]) -> Option<usize> {
+    let rank = |e: &str| EFFORTS.iter().position(|x| *x == e);
     (rules.iter())
         .filter(|r| r["never"] == "above" && (r["agent"].is_null() || r["agent"] == agent))
-        .filter_map(|r| efforts.iter().position(|e| r["effort"] == *e))
+        .filter_map(|r| {
+            let top = str_of(r, "effort");
+            (efforts.iter().position(|e| *e == top)).or_else(|| {
+                let top = rank(top)?;
+                efforts
+                    .iter()
+                    .rposition(|e| rank(e).is_some_and(|k| k < top))
+            })
+        })
         .min()
 }
 
