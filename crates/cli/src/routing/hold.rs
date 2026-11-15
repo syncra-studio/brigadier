@@ -66,7 +66,6 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     let to = &hold["use"];
     let why = str_of(hold, "why");
     let job = hold["job"].as_str();
-    let mut options = vec![];
     // Past a retry's ladder: retry on the job's first, or stop here [D2037, D350].
     if hold["retry"] == true {
         let from = job.map_or("The model it ran on".into(), |j| {
@@ -83,13 +82,13 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
         owner::call(data, wid, json!({"op": "note", "data": note}))?;
         return workers::told_held(data, wid, &id, why);
     }
+    let mut options = vec![
+        json!({"label": format!("Wait until {when}"), "description": "Then it starts as picked"}),
+    ];
     if to.is_object() {
         options.push(json!({"label": format!("Use {}", words(to)),
             "description": format!("Has room; it's not in {}", job.unwrap_or(""))}));
     }
-    options.push(
-        json!({"label": format!("Wait until {when}"), "description": "Then it starts as picked"}),
-    );
     let out = hold["out"]
         .as_str()
         .filter(|o| !o.is_empty() && job.is_some());
