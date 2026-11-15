@@ -185,12 +185,11 @@ fn real(links: &[workers::Link], seen: &Value, agent: &str, model: &str) -> Opti
 
 /// (b): in each job, a model lower in its list that clearly beat one above it, by the user's own
 /// results there; moved up past the highest it beat, never removed [D386].
-fn results(data: &Path, jobs: &[Value], seen: &Value, groups: &[Value]) -> Vec<Value> {
+fn results(data: &Path, jobs: &[Value], seen: &Value, groups: &[Value], r: &Value) -> Vec<Value> {
     let links: Vec<workers::Link> = (core::ids(data).iter())
         .filter_map(|w| workers::link(data, w))
         .filter(|l| !l.session)
         .collect();
-    let r = crate::outcomes::results(data);
     let mut out = vec![];
     for j in jobs {
         let job = str_of(j, "name");
@@ -320,7 +319,7 @@ fn id_of(o: &Value) -> String {
 
 /// The offers open now, after taking in what changed since the last read [C5]; the caller holds
 /// the routing lock. The very first read of an agent only fills its `seen`.
-pub(super) fn open(data: &Path, groups: &[Value], t: &Value) -> io::Result<Vec<Value>> {
+pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::Result<Vec<Value>> {
     let path = data.join(FILE);
     let mut saved = match read(&path) {
         v @ Value::Object(_) => v,
@@ -402,7 +401,7 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value) -> io::Result<Vec<V
             o
         })
         .collect();
-    all.extend(results(data, &jobs, &saved["seen"], groups));
+    all.extend(results(data, &jobs, &saved["seen"], groups, r));
     // Never one the user refused, or a model their rules bar.
     let rules = t["rules"].as_array().cloned().unwrap_or_default();
     all.retain(|o| {
@@ -422,25 +421,19 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value) -> io::Result<Vec<V
 /// normal save; Not now hides it 7 days; Don't offer again is forever, for that job, kind and
 /// model. Returns the table, or why not.
 pub(super) fn answer(data: &Path, groups: &[Value], id: &str, how: &str) -> io::Result<Value> {
+    let r = crate::outcomes::results(data);
     let _one = lock(data)?;
     let t = table(data, groups);
-    let open = open(data, groups, &t)?;
+    let open = open(data, groups, &t, &r)?;
+    let no = |why: &str| Ok(shown(data, groups, &r, Some(why.into())));
     let Some(o) = open.iter().find(|o| o["id"] == id) else {
-        return Ok(shown(
-            data,
-            groups,
-            Some("That offer isn't open any more.".into()),
-        ));
+        return no("That offer isn't open any more.");
     };
     let path = data.join(FILE);
     let (from, to) = (str_of(o, "from"), str_of(o, "to"));
     if how == "use" {
         let Some(job) = o["job"].as_str() else {
-            return Ok(shown(
-                data,
-                groups,
-                Some("It names no job to change.".into()),
-            ));
+            return no("It names no job to change.");
         };
         let mut jobs = t["jobs"].as_array().cloned().unwrap_or_default();
         let j = (jobs.iter_mut())
@@ -464,11 +457,11 @@ pub(super) fn answer(data: &Path, groups: &[Value], id: &str, how: &str) -> io::
                 });
                 list[at] = json!({"agent": agent, "model": model, "effort": if has { effort } else { Value::Null }});
             }
-            _ => return Ok(shown(data, groups, Some("A notice has only OK.".into()))),
+            _ => return no("A notice has only OK."),
         }
         let v = json!({"jobs": jobs, "rules": t["rules"], "review": t["review"]});
         if let Some(why) = save(data, groups, &v, &t)? {
-            return Ok(shown(data, groups, Some(why)));
+            return Ok(shown(data, groups, &r, Some(why)));
         }
     } else if matches!(how, "later" | "never") {
         let until = (how == "later").then_some(log::now_ms() + LATER);
@@ -488,5 +481,5 @@ pub(super) fn answer(data: &Path, groups: &[Value], id: &str, how: &str) -> io::
         }
         core::write_atomic(&path, saved.to_string().as_bytes())?;
     }
-    Ok(shown(data, groups, None))
+    Ok(shown(data, groups, &r, None))
 }

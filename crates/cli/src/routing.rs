@@ -219,22 +219,24 @@ fn save(data: &Path, groups: &[Value], v: &Value, now: &Value) -> io::Result<Opt
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
     let groups = || groups(data, None);
+    // Read before the lock every start also takes: it walks every worker's log and git [D2038].
+    let results = || crate::outcomes::results(data);
     match arg(1) {
         "" | "--json" => {
-            let groups = groups();
+            let (groups, r) = (groups(), results());
             let _one = lock(data)?;
-            Ok(shown(data, &groups, None))
+            Ok(shown(data, &groups, &r, None))
         }
         "set" => {
             let v: Value = serde_json::from_str(arg(2))
                 .map_err(|e| io::Error::other(format!("routing set: {e}")))?;
-            let groups = groups();
+            let (groups, r) = (groups(), results());
             let _one = lock(data)?;
             let why = save(data, &groups, &v, &table(data, &groups))?;
-            Ok(shown(data, &groups, why))
+            Ok(shown(data, &groups, &r, why))
         }
         "offer" => offers::answer(data, &groups(), arg(2), arg(3)),
-        "results" => Ok(crate::outcomes::results(data)),
+        "results" => Ok(results()),
         "resume" => hold::resume(data, arg(2)),
         "answer" => hold::answer(data, arg(2), arg(3), arg(4)),
         _ => Err(io::Error::other(
@@ -245,9 +247,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 /// The table as the page reads it [C5], with the page's grey lines and the offers open now; `why`
 /// a refused change's. The caller holds the lock.
-fn shown(data: &Path, groups: &[Value], why: Option<String>) -> Value {
+fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value {
     let mut t = table(data, groups);
-    let offers = offers::open(data, groups, &t).unwrap_or_default();
+    let offers = offers::open(data, groups, &t, r).unwrap_or_default();
     (t["offers"], t["notes"]) = (offers.into(), jobs::notes(groups));
     t["ok"] = why.is_none().into();
     if let Some(why) = why {
