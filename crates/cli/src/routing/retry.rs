@@ -1,10 +1,12 @@
 //! `start --retry <id> "<what failed>"` [D2037, D342]: a fresh worker, never the failed one's
 //! transcript, from its chain's first brief and a note, one step up the ladder: more effort on
-//! the same model, then a row up, at most two steps; past them, the user's call on its card
-//! [D2028]. The chain's steps are read from its workers' records, kept under the family lock when
-//! each is reserved, so a restart, or one held and never launched, keeps them [D350].
+//! the same model, then its job's next entry after the one that ran, at most two steps; past
+//! them, the user's call on its card [D2028, D350-D353]. A worker with no job (a `--model` one,
+//! one from before jobs, or its job since deleted or renamed) has no next entry [D392 P5]. The
+//! chain's steps are read from its workers' records, kept under the family lock when each is
+//! reserved, so a restart, or one held and never launched, keeps them [D350].
 
-use super::pick::{Pick, first};
+use super::pick::Pick;
 use super::*;
 
 /// A retry's plan: its brief and title, the flags its pick takes, and what it keeps.
@@ -14,7 +16,7 @@ pub(crate) struct Retry {
     flags: Vec<(&'static str, String)>,
     /// Its start outcome's `retry_of`, `chain`, `step` and `note` [D2037].
     pub note: Value,
-    /// Laid over its pick's `ran`, for the receipt: `retry`, `failed`, and the row it stays on.
+    /// Laid over its pick's `ran`, for the receipt: `retry` and `failed`.
     ran: Value,
     /// Past the ladder: why it holds for the user; its card's pick reserves only on Retry on.
     pub ask: Option<String>,
@@ -31,7 +33,7 @@ impl Retry {
     /// since this plan was read: two never take one [D350].
     pub(crate) fn taken(&self, data: &Path, me: &str) -> Option<Value> {
         let (chain, step) = (&self.note["chain"], &self.note["step"]);
-        let rung = step == "effort" || step == "row";
+        let rung = step == "effort" || step == "next";
         let took = |r: &workers::Record| r.retry["chain"] == *chain && r.retry["step"] == *step;
         (rung && workers::records(data, me).iter().any(took)).then(|| {
             workers::refuse("Another retry of it just took that step. Retry it again to go on.")
@@ -39,20 +41,21 @@ impl Retry {
     }
 
     /// Its pick's `ran` gains the retry's words; past the ladder it holds, asking the user
-    /// "Retry on ‹the row's first›" or "Stop here" (proposed).
+    /// "Retry on ‹the job's first›" or "Stop here" (proposed).
     pub(crate) fn apply(&self, p: &mut Pick) {
         for (k, v) in self.ran.as_object().into_iter().flatten() {
             p.ran[k] = v.clone();
         }
         if let Some(why) = &self.ask {
-            let lower = json!({"agent": p.agent, "model": p.model, "effort": p.effort, "row": p.ran["row"]});
-            p.hold = json!({"retry": true, "why": why, "row": p.ran["row"], "lower": lower});
+            let to = json!({"agent": p.agent, "model": p.model, "effort": p.effort.clone().or(p.ran["effort"].as_str().map(String::from)),
+                "name": p.ran["name"]});
+            p.hold = json!({"retry": true, "why": why, "job": p.ran["job"], "use": to});
         }
     }
 }
 
 /// The plan for `me`'s retry of its worker `id`. Only its parent may; the ladder picks, so
-/// `--row`, `--agent`, `--model` and `--effort` are refused. One whose last end was temporary
+/// `--job`, `--agent`, `--model` and `--effort` are refused. One whose last end was temporary
 /// runs again on the same pick, no ladder step [D340] (proposed).
 pub(crate) fn plan(
     data: &Path,
@@ -62,10 +65,10 @@ pub(crate) fn plan(
     flags: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Retry, Value> {
     let refuse = workers::refuse;
-    let given = ["--row", "--agent", "--model", "--effort"];
+    let given = ["--job", "--agent", "--model", "--effort"];
     if let Some(f) = given.into_iter().find(|f| flags(f).is_some()) {
         return Err(refuse(&format!(
-            "--retry takes no {f}: the ladder picks, more effort first, then a row up."
+            "--retry takes no {f}: the ladder picks, more effort first, then the job's next model."
         )));
     }
     if failed.trim().is_empty() {
@@ -100,14 +103,14 @@ pub(crate) fn plan(
         .map(|r| r.retry["step"].clone())
         .collect();
     let taken = |s: &str| steps.iter().any(|x| x == s);
-    let rung = if taken("row") {
+    let rung = if taken("next") {
         2
     } else {
         taken("effort") as usize
     };
     let ladder = steps
         .iter()
-        .filter(|s| *s == "effort" || *s == "row")
+        .filter(|s| *s == "effort" || *s == "next")
         .count()
         + 1;
     let n = steps.len() + 1;
@@ -117,14 +120,29 @@ pub(crate) fn plan(
 
     let ran = &l.ran;
     let (agent, model) = (str_of(ran, "agent"), str_of(ran, "model"));
-    // One started on a named model has no row: Standard's, as a start with none (proposed).
-    let row = ran["row"].as_str().unwrap_or("standard");
-    let up = (ROWS.iter().position(|r| *r == row))
-        .and_then(|i| i.checked_sub(1))
-        .map(|i| ROWS[i]);
     let groups = groups(data, Some(me));
     let t = table(data, &groups);
     let rules = t["rules"].as_array().cloned().unwrap_or_default();
+    let all = t["jobs"].as_array().cloned().unwrap_or_default();
+    let job = ran["job"].as_str().and_then(|j| jobs::named(&all, j));
+    let entries = job
+        .and_then(|j| j["entries"].as_array().cloned())
+        .unwrap_or_default();
+    // The entries after the one that ran that the user allows: none where it isn't in its job.
+    let at = (entries.iter()).position(|e| e["agent"] == agent && e["model"] == model);
+    let next = at.is_some_and(|i| {
+        (entries.iter().skip(i + 1)).any(|e| {
+            allowed(
+                data,
+                &groups,
+                &rules,
+                str_of(e, "agent"),
+                str_of(e, "model"),
+            )
+            .is_ok()
+        })
+    });
+    let job = job.map(|j| ("--job", str_of(j, "name").to_string()));
     // The same model at its next effort, by its own list, within the "never above" rules.
     let more = || {
         let m = allowed(data, &groups, &rules, agent, model).ok()?;
@@ -135,9 +153,11 @@ pub(crate) fn plan(
         let ok = cap(&rules, agent, &efforts).is_none_or(|c| at <= c);
         efforts.get(at).filter(|_| ok).map(|e| e.to_string())
     };
+    // On the same model, in its job where it has one.
     let same = |effort: Option<String>| {
         let mut f = vec![("--agent", agent.to_string()), ("--model", model.into())];
         f.extend(effort.map(|e| ("--effort", e)));
+        f.extend(job.clone());
         f
     };
     let label = format!("Retry {ladder} of 2");
@@ -146,25 +166,27 @@ pub(crate) fn plan(
         ("same", same(e), format!("Retry {n} on the same pick"), None)
     } else if let Some(e) = more().filter(|_| rung == 0) {
         ("effort", same(Some(e)), label, None)
-    } else if let Some(r) = up.filter(|r| rung < 2 && first(data, &groups, &t, r).is_object()) {
-        ("row", vec![("--row", r.to_string())], label, None)
+    } else if let Some(j) = job.clone().filter(|_| next && rung < 2) {
+        let after = json!({"agent": agent, "model": model}).to_string();
+        ("next", vec![j, ("job-after", after)], label, None)
     } else {
         let why = format!(
             "{} failed again ({failed}) with no step up left",
             head.title
         );
-        let r = up.unwrap_or("best").to_string();
+        // Its job's first; one with no job, the model it ran on.
+        let flags = match job.clone() {
+            Some(j) => vec![j],
+            None => same(ran["effort"].as_str().map(String::from)),
+        };
         (
             "asked",
-            vec![("--row", r)],
+            flags,
             format!("Retry {n}, the user's call"),
             Some(why),
         )
     };
-    let mut over = json!({"retry": label, "failed": failed});
-    if matches!(step, "same" | "effort") {
-        over["row"] = ran["row"].clone();
-    }
+    let over = json!({"retry": label, "failed": failed});
     let note = format!(
         "The last try ({id}) failed: {failed}. Its commits, if any, are already on your branch."
     );

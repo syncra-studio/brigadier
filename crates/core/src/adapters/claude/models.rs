@@ -13,6 +13,15 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
+/// The jobs Claude's models seed, in the spec's order (D392 P1).
+pub const SEEDS: &[super::super::Seed] = &[
+    ("Write code", "opus", Some("high")),
+    ("Look into the codebase", "sonnet", Some("low")),
+    ("Plan and orchestrate", "fable", Some("high")),
+    ("Quick actions", "haiku", Some("low")),
+    ("Review", "opus", Some("high")),
+];
+
 /// Its models and usage; where its list can't be read, its aliases by id.
 pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
     let (models, usage) = listed(spec, exe, cwd).unwrap_or_else(|_| {

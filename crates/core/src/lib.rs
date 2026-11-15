@@ -113,6 +113,9 @@ pub struct Spec {
     /// agent's CLI makes the fork [D1089].
     #[serde(skip)]
     pub branch: bool,
+    /// The user's jobs in words, set at launch for a session's lead text, never kept [D387].
+    #[serde(skip)]
+    pub jobs: Option<String>,
 }
 
 pub fn data_dir() -> PathBuf {

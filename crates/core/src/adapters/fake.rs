@@ -1,5 +1,6 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
+use super::Seed;
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
     Retune, Rewound, Timing, Tool, Who, base_env, change, s, shell_step,
@@ -13,6 +14,20 @@ pub struct Fake;
 impl Adapter for Fake {
     fn name(&self) -> &'static str {
         "fake"
+    }
+
+    // Two models per job where it has them, so a drill shows the next entry and the ladder.
+    fn seeds(&self) -> &'static [Seed] {
+        &[
+            ("Write code", "fake-large", Some("high")),
+            ("Write code", "fake", Some("high")),
+            ("Look into the codebase", "fake", Some("low")),
+            ("Research the web", "fake", None),
+            ("Plan and orchestrate", "fake-large", Some("high")),
+            ("Quick actions", "fake", Some("low")),
+            ("Review", "fake-large", Some("high")),
+            ("Review", "fake", Some("high")),
+        ]
     }
 
     fn exe(&self) -> Option<PathBuf> {
@@ -66,7 +81,7 @@ impl Adapter for Fake {
                     default_effort: Some(default.into()),
                     ..ModelInfo::plain("fake", true)
                 };
-                // Its default and its top model; no small one, as a CLI that names none [D2075].
+                // Its default and its top model [D2075].
                 vec![
                     ModelInfo {
                         default: true,

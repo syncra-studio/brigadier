@@ -174,3 +174,23 @@ impl Fork for Claude {
         Ok(())
     }
 }
+
+/// Its record's assistant texts and tool calls, as counted for a transcript's check.
+pub(super) fn counts(spec: &Spec, resume: &str) -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string(transcript(spec, resume)).ok()?;
+    let (mut texts, mut tools) = (0, 0);
+    for v in text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|v| v["type"] == "assistant")
+    {
+        for b in v["message"]["content"].as_array().into_iter().flatten() {
+            match s(b, &["type"]) {
+                "text" => texts += 1,
+                "tool_use" => tools += 1,
+                _ => {}
+            }
+        }
+    }
+    Some((texts, tools))
+}

@@ -1,5 +1,5 @@
-//! The resolver: a worker's model and account from its row, by quota where the user lets it
-//! [D2037, D2040, D2041, D51], and its receipt [D3018].
+//! The resolver: a worker's model and account from its job, by quota where the user lets it
+//! [D2037, D2040, D2041, D51, D375, D387], and its receipt [D3018].
 
 use super::*;
 
@@ -169,8 +169,8 @@ pub(super) fn place(
 }
 
 /// A worker's pick [D2037]: what it runs, and what its `ran` keeps beside that for its life (its
-/// row, the account's name and quota at the start, and the same-row note) [D2041, D3018]; with
-/// `hold` set when its row is out [D2028].
+/// job, the account's name and quota at the start, and the next-entry note) [D2041, D3018]; with
+/// `hold` set when its job is out [D2028].
 pub(crate) struct Pick {
     pub agent: String,
     pub model: Option<String>,
@@ -180,33 +180,14 @@ pub(crate) struct Pick {
     pub hold: Value,
 }
 
-/// The first entry of the row below `row` the user allows: the hold's "Use …" [D2028].
-pub(super) fn lower(data: &Path, groups: &[Value], t: &Value, row: Option<&str>) -> Value {
-    let next = row
-        .and_then(|r| ROWS.iter().position(|x| *x == r))
-        .and_then(|i| ROWS.get(i + 1));
-    next.map_or(Value::Null, |r| first(data, groups, t, r))
-}
-
-/// The first entry of `row` the user allows, with its row.
-pub(super) fn first(data: &Path, groups: &[Value], t: &Value, row: &str) -> Value {
-    let rules = t["rules"].as_array().cloned().unwrap_or_default();
-    let list = t["rows"][row].as_array().cloned().unwrap_or_default();
-    (list.into_iter())
-        .find(|e| allowed(data, groups, &rules, str_of(e, "agent"), str_of(e, "model")).is_ok())
-        .map_or(Value::Null, |mut e| {
-            e["row"] = row.into();
-            e
-        })
-}
-
-/// The pick for a worker of `parent` [D339]: the agent's `--model` when it's allowed (refused with
-/// the reason otherwise, never replaced), else the row's order, `--row` or Standard; the first
-/// entry with an account that has room, a later one with a note [D2041]. `--agent` alone takes
-/// the row's entries on it, else its default model; `--effort` alone applies to the entry taken
-/// (proposed). Runs under the data dir's lock, so the reservation it makes is seen by the next.
-/// A review's (`review`: its authors' agents) is Best on another agent first, then on theirs, at
-/// high where the model has it; it never holds: none placed, it doesn't run [D3026].
+/// The pick for a worker of `parent` [D339, D387]: the agent's `--model` when it's allowed
+/// (refused with the reason otherwise, never replaced), else its `--job`'s order; the first entry
+/// with an account that has room, a later one with a note [D375]. A start naming neither is
+/// refused with the user's jobs. `--agent` takes the job's entries on it, else its
+/// default model; `--effort` applies to the entry taken [D392 P4]. Runs under the data dir's lock,
+/// so the reservation it makes is seen by the next. A review's (`review`: its authors' agents) is
+/// the Review job's first entry on another agent, at high where the model has it; it never holds:
+/// none placed, it doesn't run [D385, D3026].
 pub(crate) fn resolve(
     data: &Path,
     me: &str,
@@ -218,31 +199,44 @@ pub(crate) fn resolve(
 ) -> Result<Pick, Value> {
     let refuse = |m: &str| workers::refuse(m);
     let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
-    let row = flags("--row");
-    if let Some(r) = row.as_deref().filter(|r| !ROWS.contains(r)) {
-        return Err(refuse(&format!(
-            "--row takes best, standard or quick, not {r:?}."
-        )));
-    }
     let _one = lock(data).map_err(|e| refuse(&e.to_string()))?;
     let groups = groups(data, Some(me));
     let t = table(data, &groups);
     let rules = t["rules"].as_array().cloned().unwrap_or_default();
+    let all = t["jobs"].as_array().cloned().unwrap_or_default();
+    let asked = if review.is_some() {
+        Some(jobs::REVIEW.into())
+    } else {
+        flags("--job")
+    };
+    let job = asked.as_deref().and_then(|j| jobs::named(&all, j)).cloned();
+    if review.is_none() && (job.is_none() && (asked.is_some() || model.is_none())) {
+        return Err(refuse(&jobs::refusal(&all)));
+    }
+    let name = job.as_ref().map(|j| str_of(j, "name").to_string());
     let mine = models::next_agent(parent, f).to_string();
-    let (row, list) = match &model {
+    let list = match &model {
         Some(m) => {
             let a = agent.clone().unwrap_or(mine);
-            (
-                None,
-                vec![json!({"agent": a, "model": m, "effort": effort})],
-            )
+            vec![json!({"agent": a, "model": m, "effort": effort})]
         }
         None => {
-            let row =
-                row.unwrap_or_else(|| (if review.is_some() { "best" } else { "standard" }).into());
-            let mut list = t["rows"][&row].as_array().cloned().unwrap_or_default();
+            let mut list = job
+                .as_ref()
+                .and_then(|j| j["entries"].as_array().cloned())
+                .unwrap_or_default();
+            // A retry's next step: the entries after the one that ran [D350].
+            if let Some(ran) =
+                flags("job-after").and_then(|x| serde_json::from_str::<Value>(&x).ok())
+            {
+                let at = list
+                    .iter()
+                    .position(|e| e["agent"] == ran["agent"] && e["model"] == ran["model"]);
+                list.drain(..at.map_or(0, |i| i + 1));
+            }
             if let Some(authors) = review {
-                list.sort_by_key(|e| authors.iter().any(|a| e["agent"] == a.as_str()));
+                // Never on its author's agent [D385].
+                list.retain(|e| !authors.iter().any(|a| e["agent"] == a.as_str()));
                 // The switch's reviewers that failed or met their limit are passed by [D3026].
                 let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
                 let gone: Vec<Value> = gone.unwrap_or_default();
@@ -250,14 +244,11 @@ pub(crate) fn resolve(
             }
             if let Some(a) = &agent {
                 list.retain(|e| e["agent"] == a.as_str());
-                if list.is_empty() {
-                    let own: Vec<Value> = groups
-                        .iter()
-                        .filter(|g| g["provider"] == a.as_str())
-                        .cloned()
-                        .collect();
-                    list = default_row(&own, "standard");
-                }
+                list.extend(
+                    list.is_empty()
+                        .then(|| jobs::default_of(&groups, Some(a)))
+                        .flatten(),
+                );
                 if list.is_empty() {
                     return Err(refuse(&format!(
                         "{a:?} isn't an agent you may use. `brigadier models` lists them."
@@ -267,7 +258,7 @@ pub(crate) fn resolve(
             for e in list.iter_mut().filter(|_| effort.is_some()) {
                 e["effort"] = json!(effort);
             }
-            (Some(row), list)
+            list
         }
     };
     let v = accounts::load(data);
@@ -291,13 +282,13 @@ pub(crate) fn resolve(
             continue;
         };
         let base = account_for(data, parent, f, a);
-        let name = m.get("name").unwrap_or(&m["id"]).clone();
+        let shown = m.get("name").unwrap_or(&m["id"]).clone();
         let mut pick = Pick {
             agent: a.into(),
             model: Some(id.into()),
             effort: runs_at.clone(),
             account: Some(base.clone()).filter(|b| !b.is_empty()),
-            ran: json!({"row": row, "name": name, "label": label(&v, a, &base), "quota": null,
+            ran: json!({"job": name, "name": shown, "label": label(&v, a, &base), "quota": null,
                 "effort": runs_at.or(m["default_effort"].as_str().map(String::from)), "capped": capped}),
             hold: Value::Null,
         };
@@ -306,10 +297,9 @@ pub(crate) fn resolve(
                 pick.account = Some(account).filter(|x| !x.is_empty());
                 (pick.ran["label"], pick.ran["quota"]) =
                     (kept["label"].clone(), kept["quota"].clone());
-                if !out.is_empty() {
-                    let row = title(row.as_deref().unwrap_or("standard"));
+                if let Some(job) = name.as_ref().filter(|_| !out.is_empty()) {
                     pick.ran["note"] = format!(
-                        "{} had no account with room, so the next in {row} ran",
+                        "{} had no account with room, so the next in {job} ran",
                         out.join(" and ")
                     )
                     .into();
@@ -317,50 +307,58 @@ pub(crate) fn resolve(
                 return Ok(pick);
             }
             Err(at) => {
-                out.push(name.as_str().unwrap_or(id).to_string());
+                out.push(shown.as_str().unwrap_or(id).to_string());
                 soonest = at.map_or(soonest, |at| Some(soonest.map_or(at, |s| s.min(at))));
                 first.get_or_insert(pick);
             }
         }
     }
-    if review.is_some() {
-        let why = match out.is_empty() {
-            true => "no model in your Best row is one you may use".into(),
-            false => format!("{} had no account with room", out.join(" and ")),
-        };
-        return Err(refuse(&format!("Review didn't run: {why}.")));
+    if let Some(authors) = review {
+        let names: Vec<String> = (authors.iter())
+            .map(|a| {
+                adapters::get(a)
+                    .map_or(a.as_str(), |x| x.short_label())
+                    .to_string()
+            })
+            .collect();
+        return Err(refuse(&format!(
+            "Review didn't run: no model in your {} job on another agent than {} has room.",
+            jobs::REVIEW,
+            names.join(" and ")
+        )));
     }
     let Some(mut pick) = first else {
-        let row = title(row.as_deref().unwrap_or("standard"));
         return Err(refuse(&format!(
-            "No model in your {row} row is one you may use: Settings › Routing sets it."
+            "No model in your {} job is one you may use: Settings › Routing sets it.",
+            name.unwrap_or_default()
         )));
     };
-    let why = match &row {
-        Some(r) => format!("{}'s models are at their limit", title(r)),
+    let why = match &name {
+        Some(j) => format!("{j}'s models are at their limit"),
         None => format!("{} is at its limit", out.join(", ")),
     };
-    pick.hold = json!({"row": row, "why": why, "resets": soonest,
-        "lower": lower(data, &groups, &t, row.as_deref())});
+    pick.hold = json!({"job": name, "why": why, "out": out.join(" and "), "resets": soonest,
+        "use": super::hold::other(data, &groups, &t, name.as_deref(), parent, f)});
     Ok(pick)
 }
 
-/// The receipt [D3018]: "Standard → ‹model› · medium · Work (5-hour 40%, resets 15:10)", from
+/// The receipt [D3018]: "Write code → ‹model› · High · Work (5-hour 40%, resets 15:10)", from
 /// the start's snapshot in `ran`; once the reset has passed, without it, or "Usage limit" for a
-/// window that was at its limit [D379]; the account alone with no quota known (proposed).
+/// window that was at its limit [D379]; the account alone with no quota known (proposed). One
+/// from before jobs names its row.
 pub(crate) fn receipt(ran: &Value) -> Option<String> {
     ran.get("label")?;
-    let row = ran["row"].as_str().map(title);
+    let job = (ran["job"].as_str().map(String::from)).or(ran["row"].as_str().map(capital));
     let model = ran["name"].as_str().or(ran["model"].as_str())?;
-    // A retry's: "Retry 1 of 2 → Quick: fake · high (tests failed)" [D2037] (proposed).
-    let mut text = match (ran["retry"].as_str(), row) {
+    // A retry's: "Retry 1 of 2 → Write code: fake · High (tests failed)" [D2037] (proposed).
+    let mut text = match (ran["retry"].as_str(), job) {
         (Some(t), Some(r)) => format!("{t} → {r}: {model}"),
         (None, Some(r)) => format!("{r} → {model}"),
         (Some(t), None) => format!("{t} → {model}"),
         (None, None) => model.to_string(),
     };
     if let Some(e) = ran["effort"].as_str() {
-        text += &format!(" · {e}");
+        text += &format!(" · {}", capital(e));
     }
     if let Some(f) = ran["failed"].as_str() {
         text += &format!(" ({f})");
@@ -387,8 +385,8 @@ pub(crate) fn receipt(ran: &Value) -> Option<String> {
     Some(text)
 }
 
-/// A worker at its limit moves within its own row [D2037, D2041]: another account on the same
-/// model where automatic switching is on for its agent [D51], else the row's next entry the user
+/// A worker at its limit moves within its own job [D2037, D2041, D375]: another account on the same
+/// model where automatic switching is on for its agent [D51], else the job's next entry the user
 /// allows with an account that has room; none, and it holds for the user's call [D2028].
 pub(crate) fn next(
     data: &Path,
@@ -417,10 +415,12 @@ pub(crate) fn next(
         .cloned()
         .or(spec.model.clone())
         .unwrap_or_default();
-    let row = l.ran["row"].as_str();
-    let list = row.map_or(vec![], |r| {
-        t["rows"][r].as_array().cloned().unwrap_or_default()
+    let all = t["jobs"].as_array().cloned().unwrap_or_default();
+    let job = (l.ran["job"].as_str()).and_then(|j| jobs::named(&all, j));
+    let list = job.map_or(vec![], |j| {
+        j["entries"].as_array().cloned().unwrap_or_default()
     });
+    let job = job.map(|j| str_of(j, "name").to_string());
     let at = list
         .iter()
         .position(|e| e["agent"] == backend.as_str() && e["model"] == now.as_str());
@@ -463,12 +463,12 @@ pub(crate) fn next(
                     false => format!(
                         "{} had no account with room, so the next in {} ran",
                         out.join(" and "),
-                        title(row.unwrap_or(""))
+                        job.as_deref().unwrap_or("")
                     ),
                 };
                 // Said outright, so another model never keeps the last one's effort.
                 let effort = runs_at.or(m["default_effort"].as_str().map(String::from));
-                let ran = json!({"agent": a, "model": id, "account": account, "row": row, "name": name,
+                let ran = json!({"agent": a, "model": id, "account": account, "job": job, "name": name,
                     "effort": effort, "label": kept["label"], "quota": kept["quota"], "capped": capped, "note": note});
                 return Ok(Some(((adapter, account, Some(id.into()), effort), ran)));
             }
@@ -486,13 +486,13 @@ pub(crate) fn next(
             }
         }
     }
-    let why = match row {
-        Some(r) => format!("{}'s models are at their limit", title(r)),
+    let why = match &job {
+        Some(j) => format!("{j}'s models are at their limit"),
         None => format!("{} is at its limit", out[0]),
     };
     let resets = soonest.or(f.resets);
-    let hold =
-        json!({"row": row, "why": why, "resets": resets, "lower": lower(data, &groups, &t, row)});
+    let hold = json!({"job": job, "why": why, "out": out.join(" and "), "resets": resets,
+            "use": super::hold::other(data, &groups, &t, job.as_deref(), &parent, &pf)});
     drop(_one);
     ask(data, wid, &hold)?;
     Ok(None)

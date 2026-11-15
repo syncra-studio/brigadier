@@ -426,7 +426,24 @@ pub trait Adapter: Sync {
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }
+    /// Its entries in the default jobs, as (job, model id, effort), in its order; routing keeps
+    /// the ones its list names [D392 P1].
+    fn seeds(&self) -> &'static [Seed] {
+        &[]
+    }
+    /// Whether it hands Brigadier a plan to approve, so the Adversarial review reviews its plans.
+    fn plans(&self) -> bool {
+        false
+    }
+    /// The rule kinds (`never` "model", "above") its own subagents keep, where its CLI lets
+    /// Brigadier set them [D376].
+    fn subagent_rules(&self) -> &'static [&'static str] {
+        &[]
+    }
 }
+
+/// A default job's entry: (job, model id, effort).
+pub type Seed = (&'static str, &'static str, Option<&'static str>);
 
 pub fn all() -> [&'static dyn Adapter; 4] {
     [

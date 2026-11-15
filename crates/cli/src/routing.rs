@@ -1,27 +1,28 @@
-//! Settings › Routing [D2037, D338, D339, D341]: three rows (Best, Standard, Quick), each an
-//! ordered list of agent · model · effort, and the user's exact rules; and the resolver that picks
-//! a worker's model and account from them, kept for its life [D2037, D2040, D2041]. A row out of
-//! quota holds the worker for the user's call [D2028, D342].
+//! Settings › Routing [D378, D383, D338, D341]: the user's jobs, each an ordered list of agent ·
+//! model · effort, and their exact rules; and the resolver that picks a worker's model and account
+//! from its job, kept for its life [D2037, D2040, D2041, D375]. A job out of quota holds the worker
+//! for the user's call [D2028, D342].
 
 use crate::accounts::{self, accounts_of, listed};
 use crate::workers::{self, row::clock};
 use crate::{models, owner, settings, usage};
 use brigadier_core::{self as core, Spec, adapters, fold::Fold};
 use brigadier_frames::log;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::Path;
 
 mod hold;
+mod jobs;
 mod pick;
 mod retry;
 
 pub(crate) use hold::{ask, set_ran, stopped, stops};
+pub(crate) use jobs::said;
 pub(crate) use pick::{next, receipt, resolve};
 pub(crate) use retry::plan as retry;
 
-pub(crate) const ROWS: [&str; 3] = ["best", "standard", "quick"];
 const FILE: &str = "routing.json";
 const RESERVED: &str = "reservations.json";
 /// How long a hold with no known reset waits: the shortest plan window (proposed, as D51's).
@@ -43,9 +44,9 @@ pub(crate) fn review_on(data: &Path) -> bool {
     read(&data.join(FILE))["review"] == true
 }
 
-/// "Best", "Standard", "Quick".
-pub(crate) fn title(row: &str) -> String {
-    let mut c = row.chars();
+/// "High" for "high"; a row's title for one from before jobs.
+pub(crate) fn capital(word: &str) -> String {
+    let mut c = word.chars();
     c.next()
         .map_or(String::new(), |f| f.to_uppercase().chain(c).collect())
 }
@@ -99,64 +100,23 @@ fn model_of<'a>(groups: &'a [Value], agent: &str, id: &str) -> Option<&'a Value>
     (g["models"].as_array()?.iter()).find(|m| m["id"] == id)
 }
 
-/// A row as its CLIs mark it [D2075]: Best each agent's top model at high, Standard its default,
-/// Quick its small one. Proposed where a CLI marks none: no top, its default at high; no small,
-/// its default at its lowest effort; no high, its highest below max.
-fn default_row(groups: &[Value], row: &str) -> Vec<Value> {
-    let high = |m: &Value| {
-        let efforts = m["efforts"].as_array().cloned().unwrap_or_default();
-        match efforts.iter().any(|e| e == "high") {
-            true => json!("high"),
-            false => efforts
-                .into_iter()
-                .rev()
-                .find(|e| e != "max")
-                .unwrap_or_default(),
-        }
-    };
-    (groups.iter())
-        .filter_map(|g| {
-            let ms = g["models"].as_array()?;
-            let mark = |k: &str| ms.iter().find(|m| m[k] == true);
-            let standard = mark("default").or(ms.first())?;
-            let (m, effort) = match row {
-                "best" => mark("top").map_or((standard, high(standard)), |m| (m, high(m))),
-                "quick" => match mark("small") {
-                    Some(m) => (m, Value::Null),
-                    None => (standard, standard["efforts"][0].clone()),
-                },
-                _ => (standard, Value::Null),
-            };
-            Some(json!({"agent": g["provider"], "model": m["id"], "effort": effort}))
-        })
-        .collect()
-}
-
-/// The table [C4]: the user's rows, each row they never set filled from the defaults.
+/// The table [C5]: the user's jobs (the seeds or carried rows until the first save), rules and
+/// review switch.
 fn table(data: &Path, groups: &[Value]) -> Value {
     let saved = read(&data.join(FILE));
-    let rows: Map<String, Value> = ROWS
-        .iter()
-        .map(|r| {
-            // An entry its agent no longer lists (gone, or hidden in Settings) is dropped, so it
-            // never blocks a save; an agent off keeps its entries.
-            let row = (saved["rows"][r].as_array())
-                .map(|l| {
-                    (l.iter())
-                        .filter(|e| {
-                            let a = str_of(e, "agent");
-                            groups.iter().all(|g| g["provider"] != a)
-                                || model_of(groups, a, str_of(e, "model")).is_some()
-                        })
-                        .cloned()
-                        .collect()
-                })
-                .unwrap_or_else(|| default_row(groups, r));
-            (r.to_string(), Value::Array(row))
-        })
-        .collect();
     let rules = saved["rules"].as_array().cloned().unwrap_or_default();
-    json!({"rows": rows, "rules": rules, "review": saved["review"] == true})
+    json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true})
+}
+
+/// What a session's agent is told of the jobs at launch, after its lead rule [D387]; a worker,
+/// naked, is told none.
+pub(crate) fn told(data: &Path, spec: &Spec) -> Spec {
+    let mut spec = spec.clone();
+    if !spec.naked {
+        let t = table(data, &groups(data, None));
+        spec.jobs = Some(jobs::lead(t["jobs"].as_array().map_or(&[], Vec::as_slice)));
+    }
+    spec
 }
 
 /// Why an entry can't be one: an agent off or missing, a model it doesn't list, an effort that
@@ -181,37 +141,33 @@ fn barred_error(groups: &[Value], rules: &[Value], e: &Value) -> Option<String> 
     barred(rules, agent, id).then(|| format!("{name} is barred by your rule \"Never use {name}\"."))
 }
 
-/// A whole new value checked, keeping only what differs from the defaults, so an untouched row
-/// follows its CLIs' lists. What's already saved isn't checked again: only what the user just
-/// added is refused.
-fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> {
+/// A whole new value checked against the table as it stands: what's already in it isn't checked
+/// again, only what the user just added is refused. The first save writes the whole list and
+/// drops the carried rows [D388 Q4]; no `jobs` keeps the list as it stands.
+fn checked(groups: &[Value], v: &Value, now: &Value, saved: &Value) -> Result<Value, String> {
     let kept = |x: &Value| {
-        (saved["rows"]
-            .as_object()
-            .into_iter()
-            .flat_map(|m| m.values()))
-        .chain([&saved["rules"]])
-        .any(|l| l.as_array().is_some_and(|l| l.contains(x)))
+        (now["jobs"].as_array().into_iter().flatten())
+            .map(|j| &j["entries"])
+            .chain([&now["rules"]])
+            .any(|l| l.as_array().is_some_and(|l| l.contains(x)))
     };
     let rules = v["rules"].as_array().cloned().unwrap_or_default();
-    let mut rows = Map::new();
-    if let Some(k) =
-        (v["rows"].as_object().into_iter().flatten()).find(|(k, _)| !ROWS.contains(&k.as_str()))
-    {
-        return Err(format!("There's no row {:?}.", k.0));
-    }
-    for r in ROWS {
-        let Some(list) = v["rows"][r].as_array() else {
-            continue;
-        };
+    let mut out = match saved {
+        Value::Object(_) => saved.clone(),
+        _ => json!({}),
+    };
+    if let Some(list) = v["jobs"].as_array() {
+        let list = jobs::limits(list)?;
         if let Some(why) = (list.iter())
+            .flat_map(|j| j["entries"].as_array().cloned().unwrap_or_default())
             .filter(|e| !kept(e))
-            .find_map(|e| entry_error(groups, e).or_else(|| barred_error(groups, &rules, e)))
+            .find_map(|e| entry_error(groups, &e).or_else(|| barred_error(groups, &rules, &e)))
         {
             return Err(why);
         }
-        if *list != default_row(groups, r) {
-            rows.insert(r.into(), list.clone().into());
+        out["jobs"] = list.into();
+        if let Some(o) = out.as_object_mut() {
+            o.remove("rows");
         }
     }
     for rule in rules.iter().filter(|r| !kept(r)) {
@@ -238,11 +194,12 @@ fn checked(groups: &[Value], v: &Value, saved: &Value) -> Result<Value, String> 
             }
         }
     }
-    Ok(json!({"rows": rows, "rules": rules, "review": v["review"] == true}))
+    (out["rules"], out["review"]) = (rules.into(), (v["review"] == true).into());
+    Ok(out)
 }
 
 /// `routing [--json]`, `routing set <json>` and the daemon's and app's own `routing resume <wid>`
-/// and `routing answer <wid> <request> <choice>` [C4, D30].
+/// and `routing answer <wid> <request> <choice>` [C5, D30].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
     let groups = || groups(data, None);
@@ -253,7 +210,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map_err(|e| io::Error::other(format!("routing set: {e}")))?;
             let groups = groups();
             let _one = lock(data)?;
-            match checked(&groups, &v, &read(&data.join(FILE))) {
+            let now = table(data, &groups);
+            match checked(&groups, &v, &now, &read(&data.join(FILE))) {
                 Ok(kept) => core::write_atomic(&data.join(FILE), kept.to_string().as_bytes())?,
                 Err(why) => return Ok(shown(data, &groups, Some(why))),
             }
@@ -268,25 +226,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
-/// The table as the page and the agent read it [C4], with each row's `now`: the entry a start
-/// takes first by the rules, at the effort they let it run (quota aside); `why` a refused set's.
+/// The table as the page and the agent read it [C5], with the page's grey lines; `offers` are
+/// R2's; `why` a refused set's.
 fn shown(data: &Path, groups: &[Value], why: Option<String>) -> Value {
     let mut t = table(data, groups);
-    let rules = t["rules"].as_array().cloned().unwrap_or_default();
-    let now: Map<String, Value> = ROWS
-        .iter()
-        .map(|r| {
-            let list = t["rows"][*r].as_array().cloned().unwrap_or_default();
-            let first = list.into_iter().find_map(|e| {
-                let (a, id) = (str_of(&e, "agent"), str_of(&e, "model"));
-                let m = allowed(data, groups, &rules, a, id).ok()?;
-                let (effort, capped) = effort_of(&rules, a, m, e["effort"].as_str(), false).ok()?;
-                Some(json!({"agent": a, "model": id, "effort": effort, "capped": capped}))
-            });
-            (r.to_string(), first.unwrap_or_default())
-        })
-        .collect();
-    t["now"] = now.into();
+    (t["offers"], t["notes"]) = (json!([]), jobs::notes(groups));
     t["ok"] = why.is_none().into();
     if let Some(why) = why {
         (t["error"], t["message"]) = ("invalid".into(), why.into());
@@ -367,35 +311,27 @@ fn effort_of(
 }
 
 /// Why a start ran on what it did, in a line, for its reply and start outcome [D2037]: the
-/// same-row or user's note, a rule's cap, the retry's step, else what was asked (proposed).
+/// next-entry or user's note, a rule's cap, the retry's step, else what was asked.
 pub(crate) fn why(asked: &Value, ran: &Value, retry: &Value) -> String {
     let step = match retry["step"].as_str() {
         Some("effort") => Some("a retry: the same model one effort up"),
-        Some("row") => Some("a retry: one row up"),
+        Some("next") => Some("a retry: the job's next model"),
         Some("same") => Some("a retry on the same pick, as its last end was temporary"),
         _ => None,
     };
-    let named = match asked["model"].is_string() {
-        true => "the model asked for",
-        false => "your row's first model",
+    let named = match (asked["model"].is_string(), ran["job"].as_str()) {
+        (false, Some(job)) => format!("the first model in {job}"),
+        _ => "the model asked for".into(),
     };
-    (ran["note"].as_str().or(ran["capped"].as_str()).or(step))
-        .unwrap_or(named)
-        .to_string()
+    (ran["note"].as_str().or(ran["capped"].as_str()).or(step)).map_or(named, String::from)
 }
 
-/// What was asked, in words, where it isn't what ran: "Asked for Standard · fake-large" [D2037].
+/// What was asked, in words, where it isn't what ran: "Asked for Write code · fake-large" [D2037].
 pub(crate) fn asked(asked: &Value, ran: &Value) -> Option<String> {
-    let keys = ["row", "agent", "model", "effort"];
-    let differs = keys
-        .iter()
-        .any(|k| asked[k].is_string() && asked[k] != ran[k]);
-    let words: Vec<String> = (keys.iter())
-        .filter_map(|k| {
-            asked[k]
-                .as_str()
-                .map(|v| if *k == "row" { title(v) } else { v.into() })
-        })
+    let differs =
+        (["agent", "model", "effort"].iter()).any(|k| asked[k].is_string() && asked[k] != ran[k]);
+    let words: Vec<&str> = (["job", "agent", "model", "effort"].iter())
+        .filter_map(|k| asked[k].as_str())
         .collect();
     differs.then(|| format!("Asked for {}", words.join(" · ")))
 }
@@ -405,9 +341,9 @@ pub(crate) fn held(data: &Path, id: &str) -> bool {
     core::fold(&core::session_dir(data, id), true).is_ok_and(|f| f.fold.hold.is_some())
 }
 
-/// The entries after `agent`'s `model` on other agents, in the first row holding it (Best, then
-/// Standard, then Quick, proposed), each one the user allows at the effort the rules let it run:
-/// the session limit switch's order, never a lower row's [D2028].
+/// The entries after `agent`'s `model` on other agents, in the first job holding it, in the
+/// user's order, each one the user allows at the effort the rules let it run: the session limit
+/// switch's order [D2028, D376].
 pub(crate) fn after(
     data: &Path,
     agent: &str,
@@ -416,60 +352,23 @@ pub(crate) fn after(
     let groups = groups(data, None);
     let t = table(data, &groups);
     let rules = t["rules"].as_array().cloned().unwrap_or_default();
-    let holds = |r: &&&str| {
-        (t["rows"][**r].as_array().into_iter().flatten())
-            .any(|e| e["agent"] == agent && e["model"] == model)
-    };
-    let Some(row) = ROWS.iter().find(holds) else {
+    let it = |e: &Value| e["agent"] == agent && e["model"] == model;
+    let Some(list) = (t["jobs"].as_array().into_iter().flatten())
+        .filter_map(|j| j["entries"].as_array())
+        .find(|l| l.iter().any(it))
+    else {
         return vec![];
     };
-    let list = t["rows"][*row].as_array().cloned().unwrap_or_default();
-    let at = list
-        .iter()
-        .position(|e| e["agent"] == agent && e["model"] == model)
-        .unwrap_or(0);
-    (list.into_iter().skip(at + 1))
+    let at = list.iter().position(it).unwrap_or(0);
+    (list.iter().skip(at + 1))
         .filter(|e| e["agent"] != agent)
         .filter_map(|e| {
-            let (a, id) = (str_of(&e, "agent"), str_of(&e, "model"));
+            let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
             let m = allowed(data, &groups, &rules, a, id).ok()?;
             let (effort, _) = effort_of(&rules, a, m, e["effort"].as_str(), false).ok()?;
             Some((a.to_string(), id.to_string(), effort))
         })
         .collect()
-}
-
-/// The rows and rules in words, for the agent's `brigadier models` [C4].
-pub(crate) fn said(t: &Value) -> String {
-    let mut text = "Routing rows (start --row), first with room runs:\n".to_string();
-    for r in ROWS {
-        let list: Vec<String> = (t["rows"][r].as_array().into_iter().flatten())
-            .map(|e| {
-                let effort = e["effort"]
-                    .as_str()
-                    .map_or(String::new(), |x| format!(" · {x}"));
-                format!("{} · {}{effort}", str_of(e, "agent"), str_of(e, "model"))
-            })
-            .collect();
-        text += &format!("  {r}: {}\n", list.join(", then "));
-    }
-    for rule in t["rules"].as_array().into_iter().flatten() {
-        text += &match str_of(rule, "never") {
-            "model" => format!(
-                "  Never use {} · {}\n",
-                str_of(rule, "agent"),
-                str_of(rule, "model")
-            ),
-            _ => format!(
-                "  Never above {}{}\n",
-                str_of(rule, "effort"),
-                rule["agent"]
-                    .as_str()
-                    .map_or(String::new(), |a| format!(" on {a}"))
-            ),
-        };
-    }
-    text
 }
 
 /// The daemon's: worker `wid`'s wait for its reset is over, so it goes on as picked [D2028].

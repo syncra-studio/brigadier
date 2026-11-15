@@ -31,12 +31,12 @@ const LEAD: &str = "You lead this session: the user talks to you. Questions, loo
 const VOICE: &str = "How you answer: put the outcome first, the result, the answer or the decision, then only what the reader needs to act on it. Write short paragraphs of plain, whole sentences. Use a list only for three or more parallel items, and keep it flat. A long answer may have short headings; no line starts with bold text. Sum up routine checks in one line, and say what you could not check. Keep every number, path, name, command and error text exact. Anything the user is meant to copy or send on, like a message draft, a command or a snippet, goes in its own fenced code block, a draft in a `text` one. Quote the words you mean instead of citing a record number like (#17277). If what you did was set off by something only your working notes say, say it in the answer. While you work, write a line only when you find something or change course.";
 
 /// The standing text an adapter passes at launch: the commit style, the line, a session's lead
-/// rule, then the voice.
+/// rule and the user's jobs [D387], then the voice.
 pub fn standing(spec: &Spec) -> String {
-    let lead = if spec.naked {
-        String::new()
-    } else {
-        format!("{LEAD}\n\n")
+    let lead = match (spec.naked, &spec.jobs) {
+        (true, _) => String::new(),
+        (false, Some(jobs)) => format!("{LEAD}\n\n{jobs}\n\n"),
+        (false, None) => format!("{LEAD}\n\n"),
     };
     format!("{} {}\n\n{lead}{VOICE}", crate::writer::STYLE, LINE.trim())
 }

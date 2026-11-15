@@ -1,13 +1,57 @@
-//! A worker held for the user's call, its row out of quota: Rust's question on its card, the
-//! parent told once, and the answer that lets it go on [D2028, D342].
+//! A worker held for the user's call, its job out of quota: Rust's question on its card, the
+//! parent told once, and the answer that lets it go on [D2028, D342, D388 Q7].
 
 use super::pick::{account_for, label, place};
 use super::*;
 use brigadier_frames::procs;
 
+/// "Claude · Sonnet 5.5 · High": an entry as its card names it.
+fn words(e: &Value) -> String {
+    let agent = adapters::get(str_of(e, "agent")).map_or(str_of(e, "agent"), |a| a.short_label());
+    let model = e["name"].as_str().unwrap_or(str_of(e, "model"));
+    let effort = e["effort"]
+        .as_str()
+        .map_or(String::new(), |x| format!(" · {}", capital(x)));
+    format!("{agent} · {model}{effort}")
+}
+
+/// The hold's "Use …" [D388 Q7, D392 P6]: the first model the rules allow with room, from the
+/// other jobs in order, at `job`'s first effort, or the model's default where it lacks that one.
+/// Only shown, nothing reserved; none for a worker with no job.
+pub(super) fn other(
+    data: &Path,
+    groups: &[Value],
+    t: &Value,
+    job: Option<&str>,
+    parent: &Spec,
+    f: &Fold,
+) -> Value {
+    let all = t["jobs"].as_array().map_or(&[][..], Vec::as_slice);
+    let Some(own) = job.and_then(|j| jobs::named(all, j)) else {
+        return Value::Null;
+    };
+    let mine = own["entries"].as_array().cloned().unwrap_or_default();
+    let want = mine.first().and_then(|e| e["effort"].as_str());
+    let rules = t["rules"].as_array().cloned().unwrap_or_default();
+    (all.iter().filter(|j| j["name"] != own["name"]))
+        .flat_map(|j| j["entries"].as_array().cloned().unwrap_or_default())
+        .filter(|e| !mine.contains(e))
+        .find_map(|e| {
+            let (a, id) = (str_of(&e, "agent"), str_of(&e, "model"));
+            let m = allowed(data, groups, &rules, a, id).ok()?;
+            let has = |w: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == w);
+            let (effort, _) = effort_of(&rules, a, m, want.filter(has), false).ok()?;
+            let base = account_for(data, parent, f, a);
+            place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0").ok()?;
+            let effort = effort.or(m["default_effort"].as_str().map(String::from));
+            Some(json!({"agent": a, "model": id, "effort": effort, "name": m.get("name").unwrap_or(&m["id"])}))
+        })
+        .unwrap_or_default()
+}
+
 /// Asks the user on worker `wid`'s own card, with Rust's question, and tells its parent once
-/// [D2028, D342]: "Use ‹the lower row's first›" and "Wait until ‹reset›", only Wait with no row
-/// below. The parent keeps working; only the user settles it.
+/// [D2028, D342]: "Use ‹the first model with room in another job›" and "Wait until ‹reset›", only
+/// Wait with none [D388 Q7]. The parent keeps working; only the user settles it.
 pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     if core::fold(&core::session_dir(data, wid), true)?
         .fold
@@ -19,45 +63,50 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     let id = format!("hold-{}", &adapters::uuid()[..8]);
     let until = hold["resets"].as_u64().unwrap_or(log::now_ms() + SKIP_MS);
     let when = clock(until);
-    let lower = &hold["lower"];
+    let to = &hold["use"];
     let why = str_of(hold, "why");
+    let job = hold["job"].as_str();
     let mut options = vec![];
-    // Past a retry's ladder: retry on the row's first, or stop here [D2037] (proposed words).
+    // Past a retry's ladder: retry on the job's first, or stop here [D2037, D350].
     if hold["retry"] == true {
-        let (row, model) = (title(str_of(lower, "row")), str_of(lower, "model"));
+        let from = job.map_or("The model it ran on".into(), |j| {
+            format!("The first in {j}")
+        });
         let options = json!([
-            {"label": format!("Retry on {} · {model}", str_of(lower, "agent")),
-                "description": format!("The first in your {row} row")},
+            {"label": format!("Retry on {}", words(to)), "description": from},
             {"label": "Stop here", "description": "It doesn't run again"}]);
         let item = json!({"text": format!("{why}. How should it go on?"), "options": options,
             "recommended": null, "multiSelect": false});
         let request = json!({"id": id, "title": "Out of retries", "items": [item], "held": true});
         let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "retry": true,
-            "lower": lower, "row": hold["row"], "request": request});
+            "use": to, "job": job, "request": request});
         owner::call(data, wid, json!({"op": "note", "data": note}))?;
         return workers::told_held(data, wid, &id, why);
     }
-    if lower.is_object() {
-        let (row, model) = (title(str_of(lower, "row")), str_of(lower, "model"));
-        options.push(
-            json!({"label": format!("Use {} · {model}", str_of(lower, "agent")),
-            "description": format!("The first in your {row} row")}),
-        );
+    if to.is_object() {
+        options.push(json!({"label": format!("Use {}", words(to)),
+            "description": format!("Has room; it's not in {}", job.unwrap_or(""))}));
     }
     options.push(
         json!({"label": format!("Wait until {when}"), "description": "Then it starts as picked"}),
     );
-    let item = json!({"text": format!("{why} until {when}. How should it go on?"), "options": options,
-        "recommended": null, "multiSelect": false});
+    let out = hold["out"]
+        .as_str()
+        .filter(|o| !o.is_empty() && job.is_some());
+    let text = format!(
+        "{why} until {when}{}. How should it go on?",
+        out.map_or(String::new(), |o| format!(": {o}"))
+    );
+    let item = json!({"text": text, "options": options, "recommended": null, "multiSelect": false});
     // `held`: its card offers only these answers, no words of the user's and no Skip.
     let request = json!({"id": id, "title": "Out of quota", "items": [item], "held": true});
     let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "resets": until,
-        "lower": lower, "row": hold["row"], "request": request});
+        "use": to, "job": job, "request": request});
     owner::call(data, wid, json!({"op": "note", "data": note}))?;
     workers::told_held(data, wid, &id, &format!("{why}, resets {when}"))
 }
 
-/// The user's answer on a hold's card: "Use …" runs the lower row's entry now, "Wait …" waits for
+/// The user's answer on a hold's card: "Use …" runs its model now, "Wait …" waits for
 /// the reset, then goes on as picked (`resume`). Its note goes only once the answer is taken, so a
 /// refused one, or a crash before it, leaves the card up to answer again.
 pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io::Result<Value> {
@@ -76,9 +125,15 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
         return Ok(json!({"ok": false, "error": "invalid",
             "message": "A held worker takes only one of its card's answers."}));
     }
+    // A card from before jobs named its model `lower`; it still answers.
+    let to = if hold["use"].is_object() {
+        &hold["use"]
+    } else {
+        &hold["lower"]
+    };
     if hold["retry"] == true {
         let reply = match choice.starts_with("Retry on ") {
-            true => go(data, wid, Some(&hold["lower"]))?,
+            true => go(data, wid, Some(to))?,
             false => {
                 let pid = workers::link(data, wid)
                     .map(|l| l.parent)
@@ -89,12 +144,12 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
         let note = json!({"event": "hold", "phase": "answered", "id": request, "choice": choice});
         return taken(data, wid, reply, note);
     }
-    let lower = choice.starts_with("Use ") && hold["lower"].is_object();
-    let phase = if lower { "answered" } else { "waiting" };
+    let used = choice.starts_with("Use ") && to.is_object();
+    let phase = if used { "answered" } else { "waiting" };
     let note = json!({"event": "hold", "phase": phase, "id": request, "choice": choice,
-        "resets": hold["resets"], "lower": hold["lower"], "row": hold["row"]});
-    let reply = match lower {
-        true => go(data, wid, Some(&hold["lower"]))?,
+        "resets": hold["resets"], "use": to, "job": hold["job"]});
+    let reply = match used {
+        true => go(data, wid, Some(to))?,
         false => json!({"ok": true}),
     };
     taken(data, wid, reply, note)
@@ -147,13 +202,13 @@ pub(super) fn resume(data: &Path, wid: &str) -> io::Result<Value> {
     taken(data, wid, reply, note)
 }
 
-/// Goes on after a hold: on `entry` (the lower row's), else as picked. One never started is made
+/// Goes on after a hold: on `entry` (the card's), else as picked. One never started is made
 /// now; one that ran is moved through the switch path, behind its divider [D241, D245].
 fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
     let l = workers::link(data, wid).ok_or_else(|| io::Error::other("not a worker"))?;
     let spec = core::load(data, wid)?;
     let f = core::fold(&spec.dir, true)?.fold;
-    // Where it runs now: a move in its row may have taken it to another agent.
+    // Where it runs now: a move in its job may have taken it to another agent.
     let now = if f.backend.is_empty() {
         &spec.backend
     } else {
@@ -172,7 +227,7 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
             let m = model_of(&groups, &backend, str_of(e, "model"))
                 .cloned()
                 .unwrap_or_default();
-            // Its row's effort within the user's rules, as any pick's [D338].
+            // The card's effort within the user's rules, as any pick's [D338].
             let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
             let (effort, capped) = match effort_of(rules, &backend, &m, e["effort"].as_str(), false)
             {
@@ -187,10 +242,16 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                         json!({"label": label(&accounts::load(data), &backend, &base)}),
                     )
                 });
-            ran = json!({"agent": backend, "model": e["model"], "effort": effort.clone().or(m["default_effort"].as_str().map(String::from)),
-                "account": account, "row": e["row"], "name": m.get("name").unwrap_or(&e["model"]),
-                "label": kept["label"], "quota": kept["quota"], "capped": capped, "note": "the user chose this row",
-                "retry": l.ran["retry"], "failed": l.ran["failed"]});
+            // It keeps its job (or a row from before jobs), its retry and what failed.
+            let effort_ran = effort
+                .clone()
+                .or(m["default_effort"].as_str().map(String::from));
+            let now = json!({"agent": backend, "model": e["model"], "effort": effort_ran, "account": account,
+                "name": m.get("name").unwrap_or(&e["model"]), "label": kept["label"], "quota": kept["quota"],
+                "capped": capped, "note": "the user chose this model"});
+            for (k, v) in now.as_object().into_iter().flatten() {
+                ran[k] = v.clone();
+            }
             (e["model"].as_str().map(String::from), effort, account)
         }
         None => (
@@ -219,7 +280,7 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
     )
 }
 
-/// A worker's `ran` after a move within its row or the user's call on its hold [D2037, D2041].
+/// A worker's `ran` after a move within its job or the user's call on its hold [D2037, D2041].
 pub(crate) fn set_ran(data: &Path, wid: &str, ran: Value) -> io::Result<()> {
     let mut l = workers::link(data, wid).ok_or_else(|| io::Error::other("not a worker"))?;
     l.ran = ran;

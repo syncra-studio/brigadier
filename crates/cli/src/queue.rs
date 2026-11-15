@@ -436,7 +436,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         // What's held for the parent's next message goes with it [D329].
         let held = crate::workers::with_next(data, id, &mut msg.agent);
         let reply = core::send(
-            &spec,
+            &crate::routing::told(data, &spec),
             &f.fold,
             child,
             &call,

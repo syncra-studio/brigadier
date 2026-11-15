@@ -98,6 +98,14 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         false => Message::plain(""),
     };
     Ok(core::send(
-        &spec, &f, child, &call, &cid, "system", &msg, None, None,
+        &crate::routing::told(data, &spec),
+        &f,
+        child,
+        &call,
+        &cid,
+        "system",
+        &msg,
+        None,
+        None,
     ))
 }

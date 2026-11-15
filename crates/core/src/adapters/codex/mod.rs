@@ -1,5 +1,6 @@
 //! Codex CLI: chat runs its app-server through Brigadier's helper, a thread per session [D159].
 
+use super::Seed;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
@@ -33,6 +34,18 @@ impl Adapter for Codex {
 
     fn label(&self) -> &'static str {
         "Codex"
+    }
+
+    fn seeds(&self) -> &'static [Seed] {
+        &[
+            ("Write code", "gpt-6.1-sol", Some("high")),
+            ("Research the web", "gpt-6.1-terra", None),
+            ("Review", "gpt-6.1-sol", Some("high")),
+        ]
+    }
+
+    fn subagent_rules(&self) -> &'static [&'static str] {
+        &["model", "above"]
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {

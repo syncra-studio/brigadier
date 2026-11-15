@@ -49,7 +49,7 @@ fn fixed_line(
 /// How deep workers may start workers of their own; a worker at this depth can't [D2026, D3038].
 const DEEPEST: u64 = 4;
 
-/// `brigadier start "<brief>" [--agent A] [--model M] [--effort E] [--title T]`, for session `me`'s
+/// `brigadier start --job J "<brief>" [--agent A] [--model M] [--effort E] [--title T]`, for session `me`'s
 /// agent: reserves the worker under its family's lock and answers at once [D3000]; the worker is
 /// made and launched off this call. `running`: whether a session's turn runs now.
 pub fn start(
@@ -118,8 +118,8 @@ pub fn start(
     let title = (named.or(retry.as_ref().map(|r| r.title.clone())))
         .or(review.as_ref().map(|r| r.title.clone()))
         .unwrap_or_else(|| title::from(brief));
-    let asked = json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort"),
-        "row": flags("--row")});
+    let asked = json!({"job": flags("--job"), "agent": flags("--agent"), "model": flags("--model"),
+        "effort": flags("--effort")});
     let reserved = (|| -> Result<Record, Value> {
         let _family = family_lock(data, &root).map_err(|e| refuse(&e.to_string()))?;
         if closing(data, me) || !parent.dir.join("session.json").exists() {
@@ -215,7 +215,7 @@ pub fn start(
             model.as_deref().unwrap_or("")
         ),
         Some(why) => format!(
-            "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a lower row or waits. Go on with your work; its result comes to you when it runs.",
+            "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a model from another job or waits. Go on with your work; its result comes to you when it runs.",
             r.title, r.wid
         ),
         None => format!(
@@ -428,6 +428,7 @@ pub(super) fn say_result(
     text: &str,
 ) -> Value {
     let msg = core::message::Message::plain(text);
+    let spec = &crate::routing::told(&core::data_of(spec), spec);
     core::send(spec, f, child, call, id, origin, &msg, None, None)
 }
 

@@ -44,7 +44,7 @@ pub(crate) struct Plan {
     pub mark: Value,
 }
 
-/// Whether a worker at its limit moves within its row: a reviewer and a fix turn end there [D3026].
+/// Whether a worker at its limit moves within its job: a reviewer and a fix turn end there [D3026].
 pub(crate) fn moves(l: &Link) -> bool {
     l.review["of"].is_null() && l.review["state"] != "sent"
 }
@@ -71,10 +71,10 @@ pub(crate) fn plan(
     given: &str,
     flags: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Plan, Value> {
-    let named = ["--row", "--agent", "--model", "--effort", "--retry"];
+    let named = ["--job", "--agent", "--model", "--effort", "--retry"];
     if let Some(f) = named.into_iter().find(|f| flags(f).is_some()) {
         return Err(refuse(&format!(
-            "--reviewing takes no {f}: a review runs on another agent's Best model."
+            "--reviewing takes no {f}: a review runs on your Review job, on another agent than the author's."
         )));
     }
     let switch = flags(SWITCH).is_some();
@@ -92,12 +92,8 @@ pub(crate) fn plan(
         }
         let spec = core::load(data, me).map_err(|e| refuse(&e.to_string()))?;
         let f = core::fold(&spec.dir, true).map_err(|e| refuse(&e.to_string()))?;
-        // Its own agent and every agent its workers ran on; a reviewer wrote none of it.
-        let mut authors = vec![crate::models::next_agent(&spec, &f.fold).to_string()];
-        authors.extend((records(data, me).iter()).filter_map(|r| {
-            let l = link(data, &r.wid).filter(|l| l.review["of"].is_null())?;
-            l.ran["agent"].as_str().map(String::from)
-        }));
+        // Its author is the session's own agent [D385, §6].
+        let authors = vec![crate::models::next_agent(&spec, &f.fold).to_string()];
         let task = task.map_or(String::new(), |t| {
             format!("\n\nIts task, as it was given:\n{}", t.trim_end())
         });
@@ -323,7 +319,7 @@ fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
     });
     let mut gone = gone.collect::<Vec<_>>().join(" and ");
     let room = why.strip_prefix("Review didn't run: ");
-    if let Some(room) = room.filter(|w| w.contains("no account with room")) {
+    if let Some(room) = room.filter(|w| w.contains("has room")) {
         gone += &format!("; {room}");
     }
     Err(gone)

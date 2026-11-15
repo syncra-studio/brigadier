@@ -388,6 +388,8 @@ pub(crate) fn send(
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
         let running = child(data, &spec.id);
+        // A launch tells a session's agent the user's jobs as they are now [D387].
+        let spec = &crate::routing::told(data, spec);
         Ok(core::send(
             spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
         ))

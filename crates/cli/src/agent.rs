@@ -81,7 +81,8 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
             &[],
         ),
         "start" => (
-            "brigadier start \"<brief>\" [--row best|standard|quick] [--agent A] [--model M] [--effort E] [--title T] [--json]
+            "brigadier start --job \"<job>\" \"<brief>\" [--agent A] [--effort E] [--title T] [--json]
+brigadier start --model M \"<brief>\" [--agent A] [--effort E] [--title T] [--json]
 brigadier start --retry <id> \"<what failed>\" [--title T] [--json]
 brigadier start --reviewing <id>|session [\"<brief>\"] [--title T] [--json]
 
@@ -90,22 +91,23 @@ It returns at once. When the worker finishes, its result comes to you by itself:
 last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now.
 Its permission prompts and questions come to you the same way, never to the user: judge each and
 answer with `brigadier send <id> --allow`, `--deny \"<reason>\"` or your answer as the message.
-It runs on the first model of the user's routing row with an account that has room, Standard if none
-is named: best for hard problems, plans and reviews; standard for most work; quick for look-ups and
-small edits. --model runs that model where the user allows it, never replaced; --agent keeps to one
-agent. `brigadier models` lists the models and rows. A row out of quota holds the worker for the user.
---retry starts a fresh worker on your failed worker's first brief and what failed: the same model
-one effort up, then a row up, at most two steps, then the user decides; after a temporary failure
-it runs on the same pick again.
---reviewing starts an adversarial review: a worker on another agent's Best model that tries to
-break the work and commits nothing. <id> reviews your worker's commits against its brief; session
+Every start names a job, or a model. A job runs on the user's list for it (Settings › Routing): the
+first model with an account that has room; the next only when one is out of quota, and the worker's
+thread says so. Pick the job whose line fits; `brigadier models` lists them. --model runs that model
+where the user's rules allow it, never replaced; --agent keeps to one agent. A job whose models are
+all out of quota holds the worker for the user.
+--retry starts a fresh worker on your failed worker's first brief, on its job: the same model one effort
+up, then the job's next model, at most two steps, then the user decides; after a temporary failure it
+runs on the same pick again.
+--reviewing starts an adversarial review on the user's Review job, on another agent than the author's,
+that tries to break the work and commits nothing. <id> reviews your worker's commits against its brief; session
 your own plan or merged work, given in the brief. `brigadier help reviews` says when.
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
 Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
 A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
-            &["--row", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],
+            &["--job", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],
             &["--session"],
         ),
         "stop" => (
@@ -114,7 +116,7 @@ A Brigade's boss starts a full session instead with --session: `brigadier help b
             &[],
         ),
         "models" => (
-            "brigadier models [--json]\n\nThe agents, models and efforts the user lets you use; the default effort is marked *. Then the user's routing rows and rules, which `start --row` follows.",
+            "brigadier models [--json]\n\nThe agents, models and efforts the user lets you use; the default effort is marked *. Then the user's jobs and rules, which `start --job` follows.",
             &[],
             &[],
         ),
@@ -186,6 +188,11 @@ fn parse(args: &[String]) -> Result<Call<'_>, Value> {
             call.values.push((a, v));
         } else if plain.contains(&a) || matches!(a, "--json" | "--help") {
             call.flags.push(a);
+        } else if cmd == "start" && a == "--row" {
+            // Rows became jobs [D388 Q8].
+            return Err(refuse(
+                "--row is gone: name a job with --job \"<job>\". brigadier models lists them.",
+            ));
         } else if cmd == "send" && call.id.is_some() && call.text.is_none() {
             // A message may start with a dash.
             call.text = Some(a);

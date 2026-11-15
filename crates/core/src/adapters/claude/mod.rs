@@ -11,7 +11,7 @@ mod tools;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Launch, ModelInfo,
-    Retune, Rewound, Timing, Who, base_env, classify, home_path, probe_as, s, version,
+    Retune, Rewound, Seed, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -36,6 +36,18 @@ impl Adapter for Claude {
 
     fn short_label(&self) -> &'static str {
         "Claude"
+    }
+
+    fn seeds(&self) -> &'static [Seed] {
+        models::SEEDS
+    }
+
+    fn plans(&self) -> bool {
+        true
+    }
+
+    fn subagent_rules(&self) -> &'static [&'static str] {
+        &["model", "above"]
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
@@ -478,21 +490,6 @@ impl Adapter for Claude {
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
-        let text = std::fs::read_to_string(cleanup::transcript(spec, resume)).ok()?;
-        let (mut texts, mut tools) = (0, 0);
-        for v in text
-            .lines()
-            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .filter(|v| v["type"] == "assistant")
-        {
-            for b in v["message"]["content"].as_array().into_iter().flatten() {
-                match s(b, &["type"]) {
-                    "text" => texts += 1,
-                    "tool_use" => tools += 1,
-                    _ => {}
-                }
-            }
-        }
-        Some((texts, tools))
+        cleanup::counts(spec, resume)
     }
 }
