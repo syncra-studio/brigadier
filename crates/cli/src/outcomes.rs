@@ -112,8 +112,10 @@ pub(crate) fn results(data: &Path) -> Value {
     let mut reviews = (0u64, [Some(0u64); 3]);
     let mut add = |n: &Value| {
         reviews.0 += 1;
+        // "Findings: 0" fixed and rejected none, said or not [D74, D357].
+        let none = (n["findings"] == 0).then_some(0);
         for (sum, k) in reviews.1.iter_mut().zip(["findings", "fixed", "rejected"]) {
-            *sum = sum.zip(n[k].as_u64()).map(|(a, b)| a + b);
+            *sum = sum.zip(n[k].as_u64().or(none)).map(|(a, b)| a + b);
         }
     };
     for wid in core::ids(data) {
