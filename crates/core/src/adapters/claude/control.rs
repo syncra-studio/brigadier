@@ -58,9 +58,10 @@ fn request(body: Value) -> (String, String) {
 }
 
 /// A level or model change goes to the idle child as its own requests, confirmed before the
-/// message [D222]; an effort has no such request, so the child starts again with it.
+/// message [D222]; an effort, or its subagents' allowlist, has no such request, so the child starts
+/// again with it [D376].
 pub fn retune(last: &Spec, next: &Spec) -> Retune {
-    if last.effort != next.effort {
+    if last.effort != next.effort || last.ruled.models != next.ruled.models {
         return Retune::Restart;
     }
     let mut changes = vec![];

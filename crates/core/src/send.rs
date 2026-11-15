@@ -210,6 +210,10 @@ pub fn send(
                 effort: text("effort"),
                 level: text("level"),
                 fast: g["fast"] == true,
+                ruled: crate::Ruled {
+                    models: serde_json::from_value(g["allowed"].clone()).unwrap_or_default(),
+                    ..run.ruled.clone()
+                },
                 ..run.clone()
             };
             match a.retune(&last, &run) {

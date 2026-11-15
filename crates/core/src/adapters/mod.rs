@@ -228,6 +228,10 @@ pub fn setup(spec: &Spec) -> Value {
         ("worker", spec.naked || spec.boss.is_some()),
     ];
     (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
+    // Its subagents' allowlist, launch-only, so a change restarts an idle child [D376].
+    if let Some(models) = &spec.ruled.models {
+        setup["allowed"] = models.clone().into();
+    }
     setup
 }
 
