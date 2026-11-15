@@ -146,10 +146,11 @@ impl Spec {
         let Some(check) = self.rules else {
             return Ok(self.clone());
         };
+        let model = adapters::get(agent).map_or(self.model.clone(), |a| a.runs(self));
         let ruled = check(
             &data_of(self),
             agent,
-            self.model.as_deref(),
+            model.as_deref(),
             self.effort.as_deref(),
         )?;
         Ok(Spec {

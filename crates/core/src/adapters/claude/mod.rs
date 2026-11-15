@@ -46,9 +46,12 @@ impl Adapter for Claude {
         true
     }
 
-    // `availableModels` bars its subagents the rest; their effort can't be set [D376].
     fn subagents(&self) -> super::Subagents {
         super::Subagents::Barred
+    }
+
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        Some(control::model(spec))
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
@@ -194,9 +197,7 @@ impl Adapter for Claude {
         }
         // The standing text [D181], and its own messages between sessions off. Its hook echoes each
         // Bash call's input, whose folder its ask lacks, into the stream [D391].
-        let mut standing = control::standing(spec);
-        models::bar(spec, &mut standing);
-        argv.extend(standing);
+        argv.extend(models::bar(spec, control::standing(spec)));
         argv.push("--include-hook-events".into());
         // A note chat reads the session's checkout beside its own folder [D282].
         if let Some(dir) = spec.opts.get("reads") {

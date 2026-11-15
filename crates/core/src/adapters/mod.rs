@@ -442,12 +442,15 @@ pub trait Adapter: Sync {
     fn subagents(&self) -> Subagents {
         Subagents::Untold
     }
+    /// The model a launch of `spec` runs, where it names one when none is picked [D376].
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        spec.model.clone()
+    }
 }
 
 /// What an agent's own subagents keep of the rules, by what its CLI lets Brigadier set [D376].
 #[derive(Clone, Copy, PartialEq)]
 pub enum Subagents {
-    /// Nothing reaches them.
     Untold,
     /// They can't run a model a rule bars.
     Barred,

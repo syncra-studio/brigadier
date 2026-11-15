@@ -73,7 +73,7 @@ pub(crate) fn written_for(
             (listed.iter().find(|m| m.id == model)).and_then(|m| m.efforts.first().cloned());
         run.model = Some(model);
     }
-    ok(&backend, run.model.as_deref())?;
+    ok(&backend, a.runs(&run).as_deref())?;
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);

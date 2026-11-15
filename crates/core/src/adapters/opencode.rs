@@ -91,9 +91,11 @@ impl Adapter for OpenCode {
         "OpenCode"
     }
 
-    // A subagent's configured model and variant are defaults its task tool overrides [D376].
     fn subagents(&self) -> super::Subagents {
         super::Subagents::Defaults
+    }
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        Some(control::model(spec))
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
