@@ -38,6 +38,7 @@ import { TabbedMain } from "./shell/tab-views";
 import { TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
 import { useNotices } from "./settings/notices";
+import { readRouting } from "./settings/routing";
 import { listenToSettingsKeys, SettingsNav, SettingsView, settingsPageOf } from "./settings/shell";
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
@@ -77,6 +78,8 @@ function App() {
     if (daemon) {
       void loadAccounts();
       loadSettings();
+      // Routing's dot, for an offer Brigadier works out on this read [D386].
+      readRouting().catch(() => {});
     }
   }, [daemon]);
   // Notices and the Dock badge for the app's lifetime [D200, D2012].

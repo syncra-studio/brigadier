@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
+import { StateDot } from "../components/state-dot";
 import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { matches } from "../shortcuts";
+import { useRoutingDot } from "./routing";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
 
 /*
@@ -75,6 +77,7 @@ export function SettingsNav({ current }: { current: string }) {
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
   const results = query.trim() ? searchSettings(query) : null;
+  const offered = useRoutingDot();
   const search = (value: string) => {
     setQuery(value);
     setActive(0);
@@ -165,6 +168,11 @@ export function SettingsNav({ current }: { current: string }) {
                       <NavRow aria-current={page.id === settingsPage(current).id ? "page" : undefined} onClick={() => openSettings(page.id)}>
                         <Icon className="text-quiet-foreground" />
                         <span className="truncate">{page.label}</span>
+                        {page.id === "routing" && offered && (
+                          <span className="ms-auto flex pe-1">
+                            <StateDot tone="unread" label="Brigadier offers a change" />
+                          </span>
+                        )}
                       </NavRow>
                     </li>
                   );

@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, D
 import { SettingsCard } from "../components/settings-card";
 import { Plus, X } from "../icons";
 import { SettingsSection } from "./parts";
-import { ROUTING_ROWS, type Rule } from "./routing";
+import { Note, ROUTING_ROWS, type Rule } from "./routing";
 
 const NOTHING: ModelChoice = { provider: "", model: "", effort: null };
 
@@ -24,9 +24,9 @@ export function ruleTitle(rule: Rule, groups: readonly ModelGroup[]): string {
 /**
  * Rules, the old app's card: each rule a row with × to remove it. Add rule opens a menu: "Never use a model…" (the
  * shared model picker) or "Never above an effort…" (every agent's efforts, or one agent's). No words to rewrite:
- * every rule is exact [D338, D341].
+ * every rule is exact [D338, D341]. `note`, under the card, is where they can't reach (Rust's words, spec §7).
  */
-export function Rules({ rules, groups, onSave }: { rules: readonly Rule[]; groups: ModelGroup[]; onSave: (rules: Rule[]) => void }) {
+export function Rules({ rules, groups, note, onSave }: { rules: readonly Rule[]; groups: ModelGroup[]; note: string; onSave: (rules: Rule[]) => void }) {
   const button = useRef<HTMLButtonElement>(null);
   const [asked, setAsked] = useState(0);
   const [picked, setPicked] = useState<ModelChoice>(NOTHING);
@@ -38,6 +38,7 @@ export function Rules({ rules, groups, onSave }: { rules: readonly Rule[]; group
   return (
     <SettingsSection
       title={ROUTING_ROWS.rules.label}
+      setting={ROUTING_ROWS.rules.label}
       description={ROUTING_ROWS.rules.description}
       actions={
         <DropdownMenu>
@@ -101,6 +102,7 @@ export function Rules({ rules, groups, onSave }: { rules: readonly Rule[]; group
           })}
         </SettingsCard>
       )}
+      <Note>{note}</Note>
     </SettingsSection>
   );
 }

@@ -11,6 +11,7 @@ import { spacingPx, tokenMs } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
+import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
 import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
 import { keysOf } from "../shortcuts";
@@ -229,9 +230,11 @@ function useGlide(open: boolean) {
 export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   const { open } = useSidebar();
   const foot = useGlide(open);
+  // An offer on a job is open [D386].
+  const offered = useRoutingDot();
   // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
   const icons = [
-    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} onClick={() => openSettings("general")}>
+    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
       <Settings />
     </TooltipIconButton>,
     <KeepAwakeMenu key="awake" />,
