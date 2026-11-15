@@ -287,11 +287,11 @@ pub(crate) fn launch(
     if !touched {
         return Ok(core::Ruled::default());
     }
-    let groups = groups(data, None);
-    let listed: Vec<&Value> = (groups.iter().find(|g| g["provider"] == agent))
-        .and_then(|g| g["models"].as_array())
-        .into_iter()
-        .flatten()
+    // The agent's whole listed catalogue, hidden models too: the pickers' is filtered [D2082].
+    let check = crate::setup::run(data, &["agents".into(), "--cached".into()]).unwrap_or_default();
+    let listed: Vec<&Value> = (check["agents"].as_array().into_iter().flatten())
+        .filter(|c| c["name"] == agent)
+        .flat_map(|c| c["models"].as_array().into_iter().flatten())
         .collect();
     // Unpicked, it runs its CLI's default model.
     let id = model
