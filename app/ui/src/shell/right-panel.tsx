@@ -1,25 +1,30 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
-import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
+import { TooltipIconButton } from "../components/icon-button";
+import { TitlebarTips } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { FilesView } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
-import { Folders } from "../icons";
+import { Folders, RobotHead, Sidebar, SidebarFloatingLeft } from "../icons";
 import { useGitWatch } from "../panel/git";
-import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
+import { openPanel, type PanelTab, setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory, usePanelTab } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
 import { keysOf, matches } from "../shortcuts";
+import { WORKERS_LABEL } from "../workers/list";
+import { finishedWords, useWorkers, WorkersPane } from "../workers/live";
+import { useAgents } from "../workers/subagents";
 import { HOME, openFile, useTabs } from "./tab-store";
 
 /*
- * The right panel [D410, D1014], as the old app's (WorkspacePane): a column at the window's end holding Files [D1284],
- * sliding open and closed as the sidebar does and pushing the chat aside. Its edge drags to resize it; dragged below
- * half its least width, it closes. ⌥⌘B and ⇧⌘E show or hide Files [D1284].
+ * The right panel [D410, D1014], as the old app's (WorkspacePane): a column at the window's end holding Files [D1284]
+ * and Workers [D56], their icons in a row at its top, sliding open and closed as the sidebar does and pushing the chat
+ * aside. Its edge drags to resize it, one width for both; dragged below half its least width, it closes. ⌥⌘B shows or
+ * hides it on its last view; ⇧⌘E shows Files, or hides the panel where Files already shows [D1284, D58].
  */
 
-/** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
+/** Sessions and project chats have Files; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
 export function useHasPanel(owner: string): boolean {
   const draft = useHomeDraft();
   const projects = useProjects();
@@ -30,30 +35,28 @@ export function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** The toggle as drawn. */
-export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
-  return (
-    <TooltipIconButton look="toggle" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
-      <Folders />
-    </TooltipIconButton>
-  );
+const BOTH: readonly PanelTab[] = ["files", "workers"];
+const TEAM: readonly PanelTab[] = ["workers"];
+const NONE: readonly PanelTab[] = [];
+
+/** The panel's views for `owner`: Files and Workers where it has Files, else Workers once it has workers, else none. */
+export function usePanelViews(owner: string): readonly PanelTab[] {
+  const files = useHasPanel(owner);
+  const team = useWorkers(owner).length + useAgents(owner).length > 0;
+  return files ? BOTH : team ? TEAM : NONE;
 }
 
-/** The toolbar's rightmost button [D1014]: a click always shows or hides the panel, as the old app's. */
+/** The toolbar's rightmost button [D1014, D56]: the left toggle's icon mirrored, as the old app's; a click always shows or hides the panel. */
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
-  const has = useHasPanel(owner);
-  if (!has) return null;
+  if (usePanelViews(owner).length === 0) return null;
   return (
     <span className={cx("app-no-drag flex", className)}>
-      <PanelToggleButton open={memory.open} onClick={() => setPanelOpen(!memory.open)} />
+      <TooltipIconButton look="toggle" tooltip="Right panel" shortcut={keysOf("right-panel")[0]} pressed={memory.open} aria-controls="right-panel-content" onClick={() => setPanelOpen(!memory.open)}>
+        {memory.open ? <Sidebar className="-scale-x-100" /> : <SidebarFloatingLeft className="-scale-x-100" />}
+      </TooltipIconButton>
     </span>
   );
-}
-
-/** Both Files shortcuts show or hide it [D1284]. */
-function panelKey(event: KeyboardEvent): boolean {
-  return !event.repeat && (matches(event, "right-panel") || matches(event, "show-files"));
 }
 
 /** Files lights up the file whose tab is in front; a click opens it in the preview tab, a double click keeps it. */
@@ -63,14 +66,61 @@ function Files({ owner }: { owner: string }) {
   return <FilesView owner={owner} shown={front} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />;
 }
 
-/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]; `beside`: the Workers panel's width while it shows. */
-export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: number }) {
+const VIEWS = { files: { title: "Files", Icon: Folders }, workers: { title: WORKERS_LABEL, Icon: RobotHead } } as const;
+
+/**
+ * The views' icons as tabs, centred in a row at the panel's top, as the old app's PaneViewTabs: the shown one filled
+ * as a pressed toolbar button, each named in its tip with its shortcut; ←/→, Home and End move between them.
+ */
+function PanelViews({ owner, views, active }: { owner: string; views: readonly PanelTab[]; active: PanelTab }) {
+  const finished = finishedWords(useWorkers(owner));
+  return (
+    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center justify-center gap-1 px-2 under-toggles:pe-toggles-clear">
+      <TitlebarTips>
+        {views.map((id, index) => {
+          const { title, Icon } = VIEWS[id];
+          return (
+            <TooltipIconButton
+              look="toolbar"
+              key={id}
+              role="tab"
+              id={`right-panel-${id}`}
+              aria-controls="right-panel-view"
+              aria-selected={active === id}
+              tabIndex={active === id ? 0 : -1}
+              className="aria-selected:bg-fill-subtle aria-selected:text-foreground aria-selected:hover:bg-fill-hover"
+              tooltip={id === "workers" && finished ? `${title} · ${finished}` : title}
+              shortcut={id === "files" ? keysOf("show-files")[0] : undefined}
+              onClick={() => openPanel(owner, id)}
+              onKeyDown={(event) => {
+                const step = { ArrowRight: index + 1, ArrowLeft: index - 1 + views.length, Home: 0, End: views.length - 1 }[event.key];
+                if (step === undefined) return;
+                event.preventDefault();
+                const next = views[step % views.length]!;
+                openPanel(owner, next);
+                document.getElementById(`right-panel-${next}`)?.focus();
+              }}
+            >
+              <Icon />
+            </TooltipIconButton>
+          );
+        })}
+      </TitlebarTips>
+    </div>
+  );
+}
+
+/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]. */
+export function RightPanelSlot({ owner }: { owner: string }) {
   useArchivedGitNotice(owner);
-  const has = useHasPanel(owner);
+  const files = useHasPanel(owner);
+  const views = usePanelViews(owner);
   const memory = usePanelMemory();
-  const open = has && memory.open;
+  const open = views.length > 0 && memory.open;
+  const picked = usePanelTab(owner);
+  const tab = views.includes(picked) ? picked : views[0];
   usePanelFromRust();
-  useGitWatch(has ? owner : null);
+  useGitWatch(files ? owner : null);
   const [resizing, setResizing] = useState(false);
   // Its contents stay through the closing slide, then go, so a closed panel reads nothing.
   const [shown, setShown] = useState(open);
@@ -80,23 +130,26 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
   }, [open, shown]);
 
   useEffect(() => {
-    if (!has) return;
+    if (views.length === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!panelKey(event) || event.defaultPrevented) return;
+      if (event.repeat || event.defaultPrevented) return;
+      const toggle = matches(event, "right-panel");
+      if (!toggle && !(files && matches(event, "show-files"))) return;
       event.preventDefault();
-      setPanelOpen(!memory.open);
+      if (toggle) setPanelOpen(!memory.open);
+      else if (open && tab === "files") setPanelOpen(false);
+      else openPanel(owner, "files");
     };
     addEventListener("keydown", onKeyDown);
     return () => removeEventListener("keydown", onKeyDown);
-  }, [has, memory.open]);
+  }, [views, files, memory.open, open, tab, owner]);
 
-  if (!has) return null;
+  if (!tab) return null;
   return (
     <aside
-      aria-label="Files"
+      aria-label="Right panel"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
-      data-beside={beside || undefined}
       className="right-panel-width-source relative flex h-full min-h-0 shrink-0"
     >
       <div
@@ -108,12 +161,19 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
         {/* A floating card 4px off the thread and 6px under the tab bar [new-design]. */}
         <div className="right-panel-width flex h-full min-h-0 flex-col ps-1 pt-1.5">
           <div id="right-panel-content" className="flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card ring-1 ring-glass-stroke ring-inset resize-lit:inset-shadow-resize-start rtl:resize-lit:inset-shadow-resize-end">
-            {shown && <Files key={owner} owner={owner} />}
+            {shown && (
+              <>
+                <PanelViews owner={owner} views={views} active={tab} />
+                <div id="right-panel-view" role="tabpanel" aria-labelledby={`right-panel-${tab}`} className="flex min-h-0 flex-1 flex-col">
+                  {tab === "files" ? <Files key={owner} owner={owner} /> : <WorkersPane key={owner} owner={owner} />}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
       {open && (
-        <ResizeHandle label="Resize Files" resizing={resizing} setResizing={setResizing} onWidth={setPanelWidth} onClose={() => setPanelOpen(false)} />
+        <ResizeHandle label="Resize right panel" resizing={resizing} setResizing={setResizing} onWidth={setPanelWidth} onClose={() => setPanelOpen(false)} />
       )}
     </aside>
   );
@@ -125,7 +185,7 @@ export const px = (name: string) => {
   return Number.parseFloat(root.getPropertyValue(name)) * Number.parseFloat(root.fontSize);
 };
 
-/** The grab area straddling a right column's start edge (the old SidebarResizeHandle's right side): Files' and Workers'. */
+/** The grab area straddling the right panel's start edge (the old SidebarResizeHandle's right side). */
 export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose }: {
   label: string;
   resizing: boolean;

@@ -23,7 +23,6 @@ import { ReviewView } from "../review/view";
 import { daemonRun } from "../session/composer";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
-import { WorkersPanelSlot } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
@@ -170,7 +169,6 @@ function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
  */
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);
-  const [workersShown, setWorkersShown] = useState(0);
   // Home's tabs read the picked project's repository until the first message makes its session [D279].
   const home = useHomeProject();
   const host = owner === HOME ? (home?.id ?? null) : null;
@@ -219,8 +217,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           </div>
         ))}
       </div>
-      <WorkersPanelSlot owner={owner} onShown={setWorkersShown} />
-      <RightPanelSlot owner={owner} beside={workersShown} />
+      <RightPanelSlot owner={owner} />
     </main>
   );
 }

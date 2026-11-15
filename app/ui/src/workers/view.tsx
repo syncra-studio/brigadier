@@ -35,7 +35,7 @@ export function WorkerHeader({ worker, details = false, onBack, actions, list = 
   actions?: ReactNode;
 }) {
   return (
-    <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2 under-toggles:pe-toggles-clear">
+    <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2">
       <TooltipIconButton tooltip={`Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
         <ArrowLeft />
       </TooltipIconButton>

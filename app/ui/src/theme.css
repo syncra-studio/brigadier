@@ -895,9 +895,9 @@
 @custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
 
 @custom-variant win (:where([data-platform="win32"]) &);
-/* On Windows, inside the rightmost right panel open, whose top row the fixed toggles sit over. */
-@custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]:not(:has(~ .right-panel-width-source[data-state="expanded"]))) &);
-/* On Windows, with no right panel open: what the fixed Context/Files toggles would cover. */
+/* On Windows, inside the right panel open, whose top row the fixed toggles sit over. */
+@custom-variant under-toggles (:where([data-platform="win32"] .right-panel-width-source[data-state="expanded"]) &);
+/* On Windows, with the right panel closed: what the fixed Context and right panel toggles would cover. */
 @custom-variant toggles-clear (:where([data-platform="win32"] main:not(:has(> .right-panel-width-source[data-state="expanded"]))) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
@@ -1277,13 +1277,10 @@
 @utility sidebar-card-width {
   width: calc(var(--sidebar-open-width) - var(--spacing) * 2);
 }
-/* A right column's width, Files' or Workers': where it was dragged (data-width on it) or the default, kept in its range
-   and leaving the chat its least room beside the left sidebar and the other right column (data-beside: Workers' width
-   while open, for Files; Files' least width while open, for Workers), as the old workspace-pane-width and
-   right-sidebar-panel-width. */
+/* The right panel's width: where it was dragged (data-width on it) or the default, kept in its range and leaving the
+   chat its least room beside the left sidebar, as the old workspace-pane-width. */
 @utility right-panel-width-source {
   --right-panel-width: attr(data-width px, var(--spacing-sidebar));
-  --right-panel-beside: attr(data-beside px, 0px);
 }
 @utility right-panel-width {
   width: clamp(
@@ -1291,7 +1288,7 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px))
     )
   );
 }
