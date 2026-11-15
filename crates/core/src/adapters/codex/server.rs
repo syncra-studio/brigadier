@@ -373,6 +373,14 @@ fn notification(state: &Shared, v: &mut Value) {
             let id = p["item"]["id"].as_str().unwrap_or("").to_string();
             st.items.insert(id, p["item"].clone());
         }
+        // A steer cuts the reply being written, and Codex never completes it: it ends as cut, so
+        // the reply after the steer is a row of its own, as on other agents [D82].
+        "item/started" if p["item"]["type"] == "agentMessage" && !st.writing.is_empty() => {
+            let text = std::mem::take(&mut st.writing);
+            say(
+                json!({"method": "item/completed", "params": {"item": {"type": "agentMessage", "text": text}}}),
+            );
+        }
         "item/completed" => {
             st.items.remove(p["item"]["id"].as_str().unwrap_or(""));
             if p["item"]["type"] == "agentMessage" {
