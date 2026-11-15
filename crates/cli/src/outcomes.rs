@@ -123,7 +123,8 @@ pub(crate) fn results(data: &Path) -> Value {
         if let Ok(f) = core::fold(&core::session_dir(data, &wid), true) {
             f.fold.plans.done.iter().for_each(&mut add);
         }
-        let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
+        // One that never ended (held unstarted, or still going) is no result yet [C5].
+        let Some(l) = workers::link(data, &wid).filter(|l| !l.session && !l.last.is_null()) else {
             continue;
         };
         let notes = workers::outcomes(data, &wid);
@@ -140,6 +141,14 @@ pub(crate) fn results(data: &Path) -> Value {
         }
         rows.push((wid, l.ran, end.unwrap_or_default()));
     }
+    // An alias its CLI didn't name the real model of groups under the one another worker on it
+    // said [D392 P7]. shortcut: any such worker's, not the latest, until an alias moves often.
+    let known: HashMap<(String, String), String> = (rows.iter())
+        .filter_map(|(_, r, _)| {
+            let key = (r["agent"].as_str()?.into(), r["model"].as_str()?.into());
+            Some((key, r["real"].as_str()?.into()))
+        })
+        .collect();
     let mut branches = HashMap::new();
     // (job, agent, model) → name, kept, of, finished, retried, any commits.
     type Tally = (Value, u64, u64, u64, u64, bool);
@@ -159,11 +168,10 @@ pub(crate) fn results(data: &Path) -> Value {
         let job = (ran["job"].as_str().map(String::from))
             .or(ran["row"].as_str().map(crate::routing::capital));
         let agent = ran["agent"].as_str().unwrap_or("").to_string();
-        let model = ran["real"]
-            .as_str()
-            .or(ran["model"].as_str())
-            .unwrap_or("")
-            .to_string();
+        let alias = ran["model"].as_str().unwrap_or("").to_string();
+        let model = (ran["real"].as_str().map(String::from))
+            .or(known.get(&(agent.clone(), alias.clone())).cloned())
+            .unwrap_or(alias);
         let t = tally.entry((job, agent, model)).or_default();
         if t.0.is_null() {
             t.0 = ran.get("name").cloned().unwrap_or_default();
