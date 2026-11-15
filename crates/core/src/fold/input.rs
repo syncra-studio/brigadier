@@ -49,7 +49,13 @@ impl Fold {
             self.acking.insert(cid.clone());
         }
         if item["setup"].is_object() {
+            // A reused child said its real model once, at its start: kept while it runs that model [D383].
+            let real = (self.given.as_ref())
+                .filter(|g| item["starts_child"] != true && g["model"] == item["setup"]["model"])
+                .map(|g| g["real"].clone())
+                .filter(|r| !r.is_null());
             self.given = Some(item["setup"].clone());
+            real.inspect(|r| self.took("real", r));
             self.plans.on = item["review"] == true;
         }
         if self.control(item, &cid) {
