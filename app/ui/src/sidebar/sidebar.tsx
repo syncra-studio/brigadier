@@ -5,10 +5,10 @@ import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavList, NavRow, NavSection } from "../components/nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
-import { SidebarPanel, useSidebar } from "../components/sidebar";
+import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
@@ -215,7 +215,9 @@ export function AppSidebar({
         {/* The card's top, under the tab bar [D48]: the name, New chat, Search. */}
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
           <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
-            <BrigadierMark className="size-icon-mark shrink-0" />
+            <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
+              <BrigadierMark spinOnHover className="block size-icon-mark" />
+            </button>
             <span className="min-w-0 truncate">Brigadier</span>
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
@@ -364,15 +366,13 @@ function ProjectRow({
 
 /**
  * The collapsed rail [new-design]: the logo, New chat and Search, a rule, then the lists (`children`). The sidebar
- * toggle is the History pill's; a click on the logo opens it too, its glyph showing the way while hovered.
+ * toggle is the History pill's. The logo spins under the pointer, as Home's does, and a click on it goes Home [D66].
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
-  const { setOpen } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-3 pt-2.75">
-      <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
-        <BrigadierMark className="size-icon-mark group-hover/mark:hidden group-focus-visible/mark:hidden" />
-        <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
+      <TooltipIconButton tooltip="Home" tip={false} look="strip" onClick={onNewChat}>
+        <BrigadierMark spinOnHover className="size-icon-mark" />
       </TooltipIconButton>
       <div className="flex flex-col items-center gap-0.5">
         <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
