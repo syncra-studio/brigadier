@@ -147,7 +147,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         )}
-        <div className="flex min-w-0 flex-1 flex-col pe-surface-inset pb-surface-inset">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col pe-window-inset pb-window-inset">{children}</div>
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>

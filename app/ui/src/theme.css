@@ -321,7 +321,7 @@
   --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px), and what clears the Context/Files
-     toggles fixed under them (70px wide, 16px in, 8px apart). */
+     toggles fixed under them (70px wide, 20px in: 12px inside the right panel's card [D55]; 8px apart). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
   --spacing-toggles-clear: 5.625rem;
   /* Safari's tabs [D52]: crowded, the front tab and Chat keep 12rem [D53], the others shrink to 33px then scroll;
@@ -394,6 +394,9 @@
   --spacing-narrow-window: 60rem;
   /* The page surface's gap to the window's sides. */
   --spacing-surface-inset: 0.25rem;
+  /* The window's inset [D55]: the sidebar card's gap to the window's start (the surface's 4px and the panel's own 4px),
+     kept by the right panel and the summary card at the window's end, and by every card and the composer at its bottom. */
+  --spacing-window-inset: calc(var(--spacing-surface-inset) + var(--spacing));
   /* A scroll view's faded edges. */
   --spacing-fade-top: 2rem;
   --spacing-fade-bottom: 2rem;
@@ -1251,7 +1254,7 @@
     var(--sidebar-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-open-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min))
     )
   );
   /* How wide the panel shows beside the content: what a right panel leaves it. */
@@ -1288,7 +1291,7 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
     )
   );
 }
@@ -1328,7 +1331,7 @@
   --spacing-titlebar-start: calc(var(--spacing) * 2);
 }
 :root:is([data-fullscreen], [data-platform="win32"]) {
-  --spacing-history-start: calc(var(--spacing-surface-inset) + var(--spacing));
+  --spacing-history-start: var(--spacing-window-inset);
 }
 
 /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
