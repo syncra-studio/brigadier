@@ -44,11 +44,14 @@ export function YourResults({ results, groups }: { results: Results | null; grou
   );
 }
 
-/** "✻ Claude · Opus 5.5  21 of 24 kept ▬▬▬ 88%"; below 20 runs, "5 of 7 kept · too few to compare"; no commits, "9 finished · 1 retried". */
+/** "✻ Claude · Opus 5.5  21 of 24 kept ▬▬▬ 88%"; below 20 runs, "5 of 7 kept · too few to compare"; no commits, "9 finished · 1 retried · 1 failed". */
 function ResultRow({ agent, name, kept, of, finished, retried, group }: Model & { group: ModelGroup | undefined }) {
   const share = kept !== null && of >= COMPARED ? Math.round((kept / of) * 100) : null;
   const counts =
-    kept === null ? [finished > 0 && `${finished} finished`, retried > 0 && `${retried} retried`].filter(Boolean).join(" · ") : `${kept} of ${of} kept${share === null ? " · too few to compare" : ""}`;
+    kept === null
+      ? // With no commits, a counted run not retried failed.
+        [finished > 0 && `${finished} finished`, retried > 0 && `${retried} retried`, of > retried && `${of - retried} failed`].filter(Boolean).join(" · ")
+      : `${kept} of ${of} kept${share === null ? " · too few to compare" : ""}`;
   return (
     <div data-slot="result-row" className="flex items-center gap-3.5 py-2">
       <span className="flex min-w-0 flex-1 items-center gap-2.5">

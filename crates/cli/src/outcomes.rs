@@ -201,6 +201,10 @@ pub(crate) fn results(data: &Path) -> Value {
     };
     let mut jobs: Vec<(Option<String>, Vec<Value>)> = vec![];
     for ((job, agent, model), (name, kept, of, finished, retried, commits)) in tally {
+        // Nothing to say yet: only stopped runs, or commits not merged yet.
+        if of == 0 && (commits || finished == 0) {
+            continue;
+        }
         let m = json!({"agent": agent, "model": model, "name": name, "kept": commits.then_some(kept),
             "of": of, "finished": finished, "retried": retried});
         match jobs.iter_mut().find(|(j, _)| *j == job) {
