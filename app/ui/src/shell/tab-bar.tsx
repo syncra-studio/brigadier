@@ -27,19 +27,21 @@ import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, mov
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
-/** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
-const CLOSING_MS = 200;
+/** The closing slide, --duration-session-tab: as long as the others take to grow, as Safari's. The tab itself is gone at once. */
+const CLOSING_MS = 300;
 
 // Fixed across the window's top from its start edge, as far as the page's end inset [D48].
 const BAR = "app-drag titlebar-clear fixed start-0 end-surface-inset top-0 flex h-tab-bar items-center gap-2 pt-3.5 pe-1 win:pt-0 win:pe-caption";
-const TAB = "session-tab @container/tab app-no-drag group/tab relative flex h-7 min-w-0 items-center gap-1 rounded-capsule ps-2.5 pe-1 select-none";
-const LOOK = (active: boolean) => (active ? "bg-selection shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
-// Squeezed to its icon (the crowded bar), a tab shows the icon alone, centred [new-design].
-const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring @max-tab-icon/tab:-ms-1.5 @max-tab-icon/tab:justify-center";
-const TITLE = "session-tab-title @max-tab-icon/tab:hidden min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
+const TAB = "session-tab @container/tab app-no-drag group/tab flex h-7 min-w-0 items-center gap-1 rounded-capsule px-1 select-none";
+// The front tab's fill is session-tab's, opaque as it holds at the strip's edge.
+const LOOK = (active: boolean) => (active ? "shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
+// Its icon and title centred, a title too long cut with "…"; squeezed under 88px, the icon alone, as Safari's [D52].
+const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center gap-1 rounded-sm px-5 focus-visible:focus-ring @max-tab-icon/tab:px-0";
+const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 // A press is a click until it moves: a drag that started on the press would take the click.
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
-const CLOSE = (active: boolean) => cx("flex @max-tab-icon/tab:hidden size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
+// × at the tab's start under the pointer, the front tab's too, over its padding so nothing moves; none under 64px, as Safari's.
+const CLOSE = "invisible absolute start-1 top-1 flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close group-focus-within/tab:visible group-hover/tab:visible hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
@@ -201,7 +203,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
           <TabIcon tab={tab} />
           <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
         </button>
-        <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>
+        <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE}>
           <X className="size-icon-xs" />
         </button>
       </ContextMenuTrigger>
@@ -283,12 +285,19 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     [owner, row],
   );
 
-  // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking.
+  // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking. It holds at
+  // the strip's edge (sticky), so it's measured at its own place for the moment: its place is what comes into view.
   const count = tabs.length;
   useEffect(() => {
     const list = strip.current;
     if (!list || count === 0) return;
-    const reveal = () => list.querySelector(`[data-tab-id="${CSS.escape(active)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const reveal = () => {
+      const tab = list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(active)}"]`);
+      if (!tab) return;
+      tab.toggleAttribute("data-measuring", true);
+      tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+      tab.toggleAttribute("data-measuring", false);
+    };
     reveal();
     const observer = new ResizeObserver(reveal);
     observer.observe(list);
@@ -358,8 +367,8 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       {/* The bar's room in the column; the bar itself runs across the window's top, over the sidebar too [D48]. */}
       <div aria-hidden className="h-tab-bar shrink-0" />
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
-        {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
-        <div className="session-tab-room flex min-w-0 flex-1 items-center gap-2 self-stretch">
+        {/* The pill fills the room up to "+", the tabs sharing it as Safari's [D52]. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge.
               The whole pill is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
           <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
@@ -385,7 +394,6 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
           </div>
           {newTab}
           {reconnecting}
-          <div className="min-w-0 flex-1 self-stretch" />
         </div>
         <Toolbar owner={owner} />
       </header>
