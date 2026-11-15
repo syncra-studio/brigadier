@@ -22,14 +22,14 @@ const VALUE: Plugins = {
     { id: "p3", name: "website" },
   ],
   items: [
-    { key: "linear", kind: "server", name: "Linear", description: "Issues, projects and cycles", detail: "https://mcp.linear.app/mcp", on: true, scope: { all: true }, status: "signed_in", sign_in: "brigadier", agents: BOTH, note: null },
-    { key: "notion", kind: "server", name: "Notion", description: "", detail: "https://mcp.notion.com/mcp", on: true, scope: { projects: ["p1"] }, status: "needs_sign_in", sign_in: "brigadier", agents: BOTH, note: null },
-    { key: "sentry", kind: "server", name: "Sentry", description: "Errors and releases", detail: "https://mcp.sentry.dev/mcp", on: true, scope: { projects: ["p1", "p2"] }, status: "cant_reach", sign_in: "brigadier", agents: BOTH, note: null },
-    { key: "figma", kind: "server", name: "Figma", description: "Design files and frames", detail: "https://mcp.figma.com/mcp", on: true, scope: { all: true }, status: null, sign_in: "cli", agents: BOTH, note: "Signed in by each agent: Figma doesn't take Brigadier's sign-in." },
-    { key: "postgres", kind: "server", name: "postgres", description: "", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/app", on: false, scope: { all: true }, status: null, sign_in: null, agents: [], note: null },
-    { key: "files", kind: "server", name: "files", description: "", detail: "uvx mcp-files --root .", on: false, scope: { projects: [] }, status: null, sign_in: null, agents: [], note: null },
-    { key: "review", kind: "skill", name: "review", description: "Reviews a change the way you would: correctness first, then reuse.", detail: "~/Library/Application Support/Brigadier/library/skills/review", on: true, scope: { all: true }, status: null, sign_in: null, agents: BOTH, note: null },
-    { key: "release", kind: "skill", name: "release", description: "Cuts a release: changelog, tag and notes.", detail: "~/Library/Application Support/Brigadier/library/skills/release", on: true, scope: { projects: ["p1"] }, status: null, sign_in: null, agents: ["Cloud agent", "Local agent"], note: "Other agent uses your own release skill: it can't turn just that one off for a session." },
+    { key: "linear", kind: "server", name: "Linear", description: "Issues, projects and cycles", detail: "https://mcp.linear.app/mcp", on: true, scope: { all: true }, status: "signed_in", sign_in: "brigadier", signed_in: true, agents: BOTH, note: null },
+    { key: "notion", kind: "server", name: "Notion", description: "", detail: "https://mcp.notion.com/mcp", on: true, scope: { projects: ["p1"] }, status: "needs_sign_in", sign_in: "brigadier", signed_in: false, agents: BOTH, note: null },
+    { key: "sentry", kind: "server", name: "Sentry", description: "Errors and releases", detail: "https://mcp.sentry.dev/mcp", on: true, scope: { projects: ["p1", "p2"] }, status: "cant_reach", sign_in: "brigadier", signed_in: true, agents: BOTH, note: null },
+    { key: "figma", kind: "server", name: "Figma", description: "Design files and frames", detail: "https://mcp.figma.com/mcp", on: true, scope: { all: true }, status: null, sign_in: "cli", signed_in: null, agents: BOTH, note: "Signed in by each agent: Figma doesn't take Brigadier's sign-in." },
+    { key: "postgres", kind: "server", name: "postgres", description: "", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/app", on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null },
+    { key: "files", kind: "server", name: "files", description: "", detail: "uvx mcp-files --root .", on: false, scope: { projects: [] }, status: null, sign_in: null, signed_in: null, agents: [], note: null },
+    { key: "review", kind: "skill", name: "review", description: "Reviews a change the way you would: correctness first, then reuse.", detail: "~/Library/Application Support/Brigadier/library/skills/review", on: true, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null },
+    { key: "release", kind: "skill", name: "release", description: "Cuts a release: changelog, tag and notes.", detail: "~/Library/Application Support/Brigadier/library/skills/release", on: true, scope: { projects: ["p1"] }, status: null, sign_in: null, signed_in: null, agents: ["Cloud agent", "Local agent"], note: "Other agent uses your own release skill: it can't turn just that one off for a session." },
   ],
   own: [
     { key: "own-cloud-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agent: "Cloud agent", in_library: false },
@@ -66,7 +66,7 @@ function useFake() {
       later((now) =>
         "own" in draft
           ? { ...now, own: now.own.map((own) => (own.key === draft.own ? { ...own, in_library: true } : own)) }
-          : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : draft.folder, on: false, scope: { all: true }, status: null, sign_in: null, agents: [], note: null }] },
+          : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : draft.folder, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
     remove: (key) => later((now) => ({ ...now, items: now.items.filter((item) => item.key !== key) })),

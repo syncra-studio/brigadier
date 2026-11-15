@@ -129,6 +129,8 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
       .finally(() => generation.current === current && setWaiting(false));
   };
   const signedIn = item.status === "signed_in";
+  // Signing in doesn't reach a server that's down; it's offered there only while there's no sign-in.
+  const offer = item.status !== "cant_reach" || item.signed_in === false;
   return (
     <div data-slot="sign-in-status" className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -155,6 +157,7 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
             </Button>
           </>
         ) : (
+          offer && (
           <>
             <Button variant="ghost" size="sm" onClick={() => run(() => actions.signIn(item.key), true)}>
               {signedIn ? "Sign in again" : "Sign in"}
@@ -165,6 +168,7 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
               </Button>
             )}
           </>
+          )
         )}
       </div>
       <ErrorLine error={error} />

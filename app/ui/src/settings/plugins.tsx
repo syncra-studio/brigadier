@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -8,7 +8,8 @@ import { ErrorLine } from "../components/error-line";
 import { Segmented } from "../components/segmented";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
-import { errorText } from "../onboarding/api";
+import { useDaemon } from "../daemon";
+import { errorText, run, useAgents } from "../onboarding/api";
 import { Folder, Folders, Mcp, Plus, Spinner, ToolsSkills } from "../icons";
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -33,6 +34,8 @@ export type Item = {
   scope: Scope;
   status: Status | null;
   sign_in: "brigadier" | "cli" | null;
+  /** Whether Brigadier holds its sign-in; null until 4.13 says. */
+  signed_in: boolean | null;
   /** The agents that get it, by label. */
   agents: string[];
   note: string | null;
@@ -103,6 +106,7 @@ export function PluginsPage({
   remote,
   open: openFirst = null,
   signing,
+  tab: firstTab = "server",
 }: {
   value: Plugins | null;
   error?: string | null;
@@ -114,9 +118,11 @@ export function PluginsPage({
   onDetail: (key: string | null) => void;
   remote: boolean;
   open?: Open | null;
+  /** The tab the list opens on, when no item's page is open. */
+  tab?: Kind;
   signing?: SignInStart;
 }) {
-  const [tab, setTab] = useState<Kind>(() => value?.items.find((item) => item.key === detail)?.kind ?? "server");
+  const [tab, setTab] = useState<Kind>(() => value?.items.find((item) => item.key === detail)?.kind ?? firstTab);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Open | null>(openFirst);
   const [checking, setChecking] = useState(false);
@@ -125,6 +131,8 @@ export function PluginsPage({
   const [mine, setMine] = useState<{ base: Plugins; shown: Plugins } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const ops = useRef(0);
+  // Rust's last answer on this page: a refused change goes back to it, not to the page as first read.
+  const confirmed = useRef<{ base: Plugins; shown: Plugins } | null>(null);
   const shown = mine && mine.base === value ? mine.shown : value;
 
   /** Shows `next` at once, then Rust's answer to `send`; its refusal puts the page back and says why. */
@@ -137,12 +145,13 @@ export function PluginsPage({
     setSaid(null);
     return send().then(
       (back) => {
-        if (op === ops.current) setMine({ base, shown: back });
+        confirmed.current = { base, shown: back };
+        if (op === ops.current) setMine(confirmed.current);
         return true;
       },
       (cause: unknown) => {
         if (op === ops.current) {
-          setMine(null);
+          setMine(confirmed.current?.base === value ? confirmed.current : null);
           setFailed(errorText(cause));
         }
         return false;
@@ -159,8 +168,11 @@ export function PluginsPage({
     );
   const remove = (key: string) => {
     if (!shown) return Promise.resolve(false);
-    onDetail(null);
-    return change({ ...shown, items: shown.items.filter((item) => item.key !== key) }, () => actions.remove(key));
+    // The list shows at once (the item is gone from it); the route follows once Rust agrees, so a refusal is said here.
+    return change({ ...shown, items: shown.items.filter((item) => item.key !== key) }, () => actions.remove(key)).then((done) => {
+      if (done) onDetail(null);
+      return done;
+    });
   };
   /** The only place an agent's new own items are looked for: what wasn't there before opens the dialog. */
   const refresh = () => {
@@ -170,7 +182,7 @@ export function PluginsPage({
     setSaid(null);
     void change(shown, async () => {
       const back = await actions.refresh();
-      const found = back.own.filter((own) => !before.has(own.key) && !own.in_library);
+      const found = back.own.filter((own) => !before.has(own.key) && !own.in_library && importable(own, remote));
       if (found.length) setOpen({ type: "refresh", found });
       else setSaid("Nothing changed. There are no new skills or MCP servers in your agents' own settings.");
       return back;
@@ -246,7 +258,7 @@ export function PluginsPage({
               ))}
             </div>
           )}
-          {own.length > 0 && <OwnList own={own} marks={marks} onAdd={(each) => void addOwn([each.key])} />}
+          {own.length > 0 && <OwnList own={own} marks={marks} remote={remote} onAdd={(each) => void addOwn([each.key])} />}
         </div>
       </SettingsPage>
     );
@@ -263,7 +275,7 @@ export function PluginsPage({
       {open?.type === "add" && shown && (
         <AddDialog remote={open.remote} first={open.first} pickFolder={actions.pickFolder} onAdd={(draft) =>
             actions.add(draft).then(
-              (back) => setMine({ base: value!, shown: back }),
+              (back) => setMine((confirmed.current = { base: value!, shown: back })),
               (cause: unknown) => {
                 // Said on the page too: the dialog may be hidden by then.
                 setFailed(errorText(cause));
@@ -299,16 +311,15 @@ export function PluginsPage({
 /** One item in the list's grid: its mark, name, line, where it's on, its standing and agents; its switch at the corner. */
 function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip: string | null; marks: Record<string, string | null>; onOpen: () => void; onSwitch: (on: boolean) => void }) {
   const status = item.on ? item.status : "off";
-  const signIn = item.sign_in === "brigadier" && item.status === "needs_sign_in";
-  // How it runs (a command, an address or a folder) is in code's letters.
-  const line = signIn ? "Must sign in" : item.description || item.detail;
+  // How it runs (a command, an address or a folder) is in code's letters; its chip says if it needs sign-in.
+  const line = item.description || item.detail;
   return (
     <SettingsCard data-slot="plugin-row" data-key={item.key} data-off={!item.on || undefined} split={false} className="flex-row items-start gap-3 px-4 py-3.5">
       <button type="button" onClick={onOpen} aria-label={`Open ${item.name}`} className={cx("flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-start focus-visible:focus-ring", !item.on && "opacity-disabled")}>
         <PluginMark item={item} />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-label font-medium">{item.name}</span>
-          <span className={cx("truncate text-xs", signIn ? "text-warning" : "text-quiet-foreground", !signIn && !item.description && "font-mono")}>{line}</span>
+          <span className={cx("truncate text-xs text-quiet-foreground", !item.description && "font-mono")}>{line}</span>
           {item.note && <span className="text-xs text-quiet-foreground">{item.note}</span>}
           <span className="flex flex-wrap items-center gap-1.5 pt-1.5">
             {chip && <ScopeChip text={chip} />}
@@ -336,7 +347,7 @@ export function ScopeChip({ text }: { text: string }) {
 }
 
 /** Each agent's own skills or servers, read-only; Add to library copies one in. */
-function OwnList({ own, marks, onAdd }: { own: Own[]; marks: Record<string, string | null>; onAdd: (own: Own) => void }) {
+function OwnList({ own, marks, remote, onAdd }: { own: Own[]; marks: Record<string, string | null>; remote: boolean; onAdd: (own: Own) => void }) {
   return (
     <SettingsSection title={PLUGINS_ROWS.own.label} description={PLUGINS_ROWS.own.description} setting={PLUGINS_ROWS.own.label}>
       <SettingsCard>
@@ -347,6 +358,8 @@ function OwnList({ own, marks, onAdd }: { own: Own[]; marks: Record<string, stri
             <span className="shrink-0 text-xs text-quiet-foreground">{each.agent}</span>
             {each.in_library ? (
               <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
+            ) : !importable(each, remote) ? (
+              <span className="w-28 shrink-0" />
             ) : (
               <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name} to library`} onClick={() => onAdd(each)}>
                 Add to library
@@ -358,6 +371,9 @@ function OwnList({ own, marks, onAdd }: { own: Own[]; marks: Record<string, stri
     </SettingsSection>
   );
 }
+
+// A server at an address comes to the library with 4.13's sign-in.
+const importable = (own: Own, remote: boolean) => remote || !/^[a-z][a-z0-9+.-]*:\/\//i.test(own.detail);
 
 /** A tab with nothing in it yet. */
 function EmptyTab({ tab, remote, onAdd }: { tab: Kind; remote: boolean; onAdd: () => void }) {
@@ -396,6 +412,56 @@ function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () =>
       confirm="Remove"
       destructive
       onConfirm={onRemove}
+    />
+  );
+}
+
+// The last page Rust sent: an item's page opens on it at once (Settings draws each route afresh), then reads again.
+let last: Plugins | null = null;
+// The kind of the item last opened, so going back from it, or removing it, lands on its tab.
+let lastTab: Kind = "server";
+// One change at a time, in the order made: the daemon answers each on its own thread.
+let chain: Promise<unknown> = Promise.resolve();
+const send = (...args: string[]) => {
+  const sent = chain.then(() => run(["plugins", ...args]) as Promise<Plugins>).then((page) => (last = page));
+  chain = sent.catch(() => {});
+  return sent;
+};
+
+/** The page in Settings: Rust's library, each change through `plugins`, its reply the page [D30, D2043]. Remote servers wait for 4.13's sign-in. */
+export function PluginsSettings({ detail }: { detail?: string }) {
+  const online = Boolean(useDaemon().daemon);
+  const agents = useAgents().list;
+  const [value, setValue] = useState<Plugins | null>(last);
+  const [error, setError] = useState<string | null>(null);
+  lastTab = (detail && value?.items.find((item) => item.key === detail)?.kind) || lastTab;
+  useEffect(() => {
+    if (!online) return;
+    setError(null);
+    send().then(setValue, (cause) => setError(errorText(cause)));
+  }, [online]);
+  const marks = Object.fromEntries((agents ?? []).map((agent) => [agent.label, agent.mark]));
+  const actions: PluginActions = {
+    add: (draft) => send("add", JSON.stringify(draft)),
+    set: (key, change) => send("set", key, JSON.stringify(change)),
+    remove: (key) => send("remove", key),
+    refresh: () => send(),
+    signIn: (key) => send("signin", key),
+    cancel: (key) => send("cancel", key),
+    signOut: (key) => send("signout", key),
+    pickFolder: async () => (await window.brigadier?.pickFolder()) ?? null,
+  };
+  return (
+    <PluginsPage
+      value={value}
+      error={error}
+      offline={!online}
+      marks={marks}
+      actions={actions}
+      detail={detail ?? null}
+      onDetail={(key) => (location.hash = key ? `#settings/plugins/${encodeURIComponent(key)}` : "#settings/plugins")}
+      remote={false}
+      tab={lastTab}
     />
   );
 }

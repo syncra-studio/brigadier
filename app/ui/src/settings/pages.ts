@@ -1,11 +1,12 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, type IconProps, KeyboardShortcut, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { Archive, Branch, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
 import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GIT_ROWS, GitPage } from "./git";
+import { PLUGINS_ROWS, PluginsSettings } from "./plugins";
 import { ROUTING_ROWS, RoutingSettings } from "./routing";
 import { SHORTCUTS_ROWS, ShortcutsPage } from "./shortcuts";
 
@@ -20,7 +21,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "routing" | "git" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -41,6 +42,7 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "configuration", label: "Configuration", icon: SettingsSlider, group: "Personal", component: ConfigurationPage, rows: Object.values(CONFIGURATION_ROWS) },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardShortcut, group: "Personal", component: ShortcutsPage, rows: SHORTCUTS_ROWS },
   { id: "providers", label: "Providers", formerly: ["Accounts", "Usage", "Switching"], icon: RobotHead, group: "Agents", component: ProvidersPage, rows: Object.values(PROVIDERS_ROWS) },
+  { id: "plugins", label: "Plugins", icon: Plugin, group: "Agents", component: PluginsSettings, rows: Object.values(PLUGINS_ROWS) },
   { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: Object.values(ROUTING_ROWS) },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
