@@ -53,8 +53,10 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         .and_then(|data| super::record(data, &l.parent, wid))
         .map(|r| r.retry)
         .unwrap_or_default();
-    let model = [&ran["agent"], &ran["model"], &ran["effort"]];
-    let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
+    // As the receipt draws it: "GPT-6.1-Sol · High" [D3018].
+    let shown = ran["name"].as_str().or(ran["model"].as_str());
+    let effort = ran["effort"].as_str().map(crate::routing::capital);
+    let model: Vec<&str> = [shown, effort.as_deref()].into_iter().flatten().collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
         "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))),

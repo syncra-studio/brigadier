@@ -112,6 +112,14 @@ fn model_of<'a>(groups: &'a [Value], agent: &str, id: &str) -> Option<&'a Value>
     (g["models"].as_array()?.iter()).find(|m| m["id"] == id)
 }
 
+/// A model's name as the pickers show it: from `me`'s folder's check, else the home folder's.
+pub(crate) fn name_of(data: &Path, me: &str, agent: &str, id: &str) -> Option<String> {
+    let groups = groups(data, Some(me));
+    model_of(&groups, agent, id)?["name"]
+        .as_str()
+        .map(String::from)
+}
+
 /// The table [C5]: the user's jobs (the seeds or carried rows until the first save), rules and
 /// review switch.
 fn table(data: &Path, groups: &[Value]) -> Value {

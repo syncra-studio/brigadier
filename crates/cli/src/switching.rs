@@ -223,7 +223,7 @@ fn attempt(
         );
     };
     let to_label = label(&v, to, &account);
-    let name = (model.as_deref()).and_then(|m| model_name(data, to.name(), m, &spec.cwd));
+    let name = (model.as_deref()).and_then(|m| crate::routing::name_of(data, id, to.name(), m));
     // "Opus 5.5 had no account with room, so the next in Write code ran: Codex · GPT-6.1-Sol · High".
     let moved = ran["note"]
         .as_str()
@@ -268,15 +268,6 @@ fn attempt(
     }
     reply["to"] = to_label.into();
     Ok(reply)
-}
-
-/// A model's name as the picker shows it, from the agent's last check here.
-fn model_name(data: &Path, agent: &str, model: &str, cwd: &str) -> Option<String> {
-    let args = ["agents", agent, "--cwd", cwd, "--cached"].map(String::from);
-    let checks = crate::setup::run(data, &args).ok()?;
-    let models = checks["agents"][0]["models"].as_array()?;
-    let m = models.iter().find(|m| m["id"] == model)?;
-    m["name"].as_str().map(String::from)
 }
 
 fn recent(v: &Value, key: &str) -> bool {
