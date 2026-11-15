@@ -453,6 +453,12 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
     }
 }
 
+/// Whether a session grant is for this exact command in this folder, as Codex keys its own cache:
+/// such a repeat is answered without asking the user [D193, D247, D389].
+pub fn repeat(g: &Value, command: &Value, cwd: &Value) -> bool {
+    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && g["cli"]["cwd"] == *cwd
+}
+
 /// Text of a JSON line's field, or empty.
 pub fn s<'a>(v: &'a Value, path: &[&str]) -> &'a str {
     path.iter().fold(v, |v, k| &v[*k]).as_str().unwrap_or("")

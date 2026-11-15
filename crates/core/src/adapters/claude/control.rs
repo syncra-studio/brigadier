@@ -128,7 +128,7 @@ pub fn standing(spec: &Spec) -> [String; 6] {
 /// What a session grant allowed, as launch-time rules for a child started anew [D193].
 pub fn rules(grants: &[Value]) -> Vec<String> {
     (grants.iter())
-        .flat_map(|g| widen(&g["cli"]["rule"]))
+        .flat_map(|g| (g["cli"]["rules"].as_array().into_iter().flatten()).flat_map(widen))
         .filter_map(|r| {
             let (tool, content) = (s(&r, &["toolName"]), s(&r, &["ruleContent"]));
             (!tool.is_empty() && !content.is_empty()).then(|| format!("{tool}({content})"))
@@ -212,36 +212,34 @@ fn approval(id: &str, r: &Value) -> Event {
         "" if tool == "Bash" => field("description"),
         why => why.to_string(),
     };
-    let suggested = (r["permission_suggestions"].as_array().into_iter().flatten())
+    let suggested: Vec<Value> = (r["permission_suggestions"].as_array().into_iter().flatten())
         .filter(|u| u["type"] == "addRules")
         .flat_map(|u| u["rules"].as_array().cloned().unwrap_or_default())
-        .find(|rule| rule["toolName"] == tool);
-    let content = suggested
-        .as_ref()
-        .map(|rule| s(rule, &["ruleContent"]).to_string());
+        .filter(|rule| rule["toolName"] == tool && !s(rule, &["ruleContent"]).is_empty())
+        .collect();
+    let content = (suggested.first()).map(|rule| s(rule, &["ruleContent"]).to_string());
     // The ask names its step, for the thread to find it: allowed, the step reads after its ask.
     let mut a = json!({"id": id, "action": "other", "reason": (!reason.is_empty()).then_some(reason), "tool": r["tool_use_id"]});
-    let mut grant = |scope: &str, pattern: &str, rule: Value| {
+    let mut grant = |scope: &str, pattern: &str, rules: Vec<Value>| {
         a["grant"] = json!({"scope": scope, "pattern": pattern});
-        a["cli"] = json!({"rule": rule});
+        a["cli"] = json!({"rules": rules});
     };
     match tool {
         "Bash" => {
-            let c = content
-                .filter(|c| !c.is_empty())
-                .unwrap_or_else(|| field("command"));
-            if !c.is_empty() {
-                let prefix = c.trim_end_matches(" *").trim_end_matches(":*");
-                let prefix = if crate::agent::call(&c) {
-                    "brigadier"
-                } else {
-                    prefix
-                };
-                grant(
-                    "command",
-                    prefix,
-                    json!({"toolName": tool, "ruleContent": c}),
-                );
+            let (command, agent) = (field("command"), crate::agent::call(&field("command")));
+            // Claude matches no rule to a nested command or a variable: Brigadier answers repeats [D389].
+            let rules = match agent {
+                true => vec![json!({"toolName": tool, "ruleContent": command})],
+                false if command.contains(['$', '`']) => vec![],
+                false => suggested,
+            };
+            let first = (rules.first()).map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
+            let first = first.map(|p| p.trim_end_matches(":*").to_string());
+            let pattern = (agent.then(|| "brigadier".into()))
+                .or(first)
+                .unwrap_or(command.clone());
+            if !command.is_empty() {
+                grant("command", &pattern, rules);
             }
             a["action"] = "command".into();
             a["command"] = field("command").into();
@@ -255,7 +253,7 @@ fn approval(id: &str, r: &Value) -> Event {
             let dir = Path::new(&path).parent().map(|d| d.display().to_string());
             if let Some(dir) = dir.filter(|d| d.starts_with('/')) {
                 let rule = json!({"toolName": "Edit", "ruleContent": format!("/{dir}/**")});
-                grant("edits", &dir, rule);
+                grant("edits", &dir, vec![rule]);
             }
             a["action"] = "edit".into();
             a["paths"] = json!([path]);
@@ -267,7 +265,7 @@ fn approval(id: &str, r: &Value) -> Event {
                 grant(
                     "network",
                     host,
-                    json!({"toolName": tool, "ruleContent": format!("domain:{host}")}),
+                    vec![json!({"toolName": tool, "ruleContent": format!("domain:{host}")})],
                 );
             }
             a["action"] = "network".into();
@@ -279,7 +277,7 @@ fn approval(id: &str, r: &Value) -> Event {
             grant(
                 "tool",
                 &pattern,
-                suggested.clone().unwrap_or(json!({"toolName": tool})),
+                vec![(suggested.first().cloned()).unwrap_or(json!({"toolName": tool}))],
             );
             a["input"] = format!("{tool} {input}").into();
         }
@@ -344,8 +342,14 @@ fn answers(r: &Value, msg: &Value) -> Value {
 fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
     Ok(match s(msg, &["decision"]) {
         "allow" => json!({"behavior": "allow"}),
-        "allowSession" if r["cli"]["rule"].is_object() => json!({"behavior": "allow",
-            "updatedPermissions": [{"type": "addRules", "rules": widen(&r["cli"]["rule"]), "behavior": "allow", "destination": "session"}]}),
+        "allowSession" if r["grant"].is_object() => {
+            let rules: Vec<Value> = (r["cli"]["rules"].as_array().into_iter().flatten())
+                .flat_map(widen)
+                .collect();
+            let add = json!({"type": "addRules", "rules": rules, "behavior": "allow", "destination": "session"});
+            // No rule: an exact command Brigadier remembers, and answers its repeats itself [D389].
+            json!({"behavior": "allow", "updatedPermissions": if rules.is_empty() { vec![] } else { vec![add] }})
+        }
         "deny" => json!({"behavior": "deny", "message": super::super::denied(msg)}),
         other => return Err(format!("no such decision here: {other:?}")),
     })

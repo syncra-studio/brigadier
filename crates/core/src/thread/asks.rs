@@ -14,8 +14,8 @@ impl Thread {
         self.agent_waits(at, true);
         self.pending.push(at);
         self.pending_changed = true;
-        if self.fold.for_parent(item) {
-            self.items[at]["to"] = "parent".into();
+        if let Some(to) = self.fold.to(item) {
+            self.items[at]["to"] = to.into();
             return;
         }
         self.user_waits(at, ts);
@@ -66,7 +66,7 @@ impl Thread {
     /// The turn's wait on the user ends once nothing waits on them any more [D128]; so does a held
     /// turn's, whose subagent asked.
     pub(super) fn end_wait(&mut self, ts: u64) {
-        if (self.pending.iter()).any(|&at| self.items[at]["to"] != "parent") {
+        if (self.pending.iter()).any(|&at| self.items[at]["to"].is_null()) {
             return;
         }
         let held = self.held.values_mut().map(|(o, _)| o);
@@ -327,7 +327,7 @@ impl Thread {
     pub(super) fn requests(&self) -> Value {
         let of = |kind: &str| -> Vec<Value> {
             (self.pending.iter())
-                .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"] != "parent")
+                .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"].is_null())
                 .map(|&at| {
                     let mut r = self.items[at]["request"].clone();
                     // The card names the subagent that asks [w43 #16].

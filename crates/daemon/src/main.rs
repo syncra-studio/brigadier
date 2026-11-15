@@ -169,6 +169,7 @@ fn main() -> io::Result<()> {
         switch::rebirth(&data, &index.rows);
         brigadier::rewind::ends(&data, &index.rows, &mut finished);
         brigadier::queue::drain(&data, &index.rows);
+        brigadier::control::repeats(&data, &index.rows);
         brigadier::workers::pass(&data, &index.rows);
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);

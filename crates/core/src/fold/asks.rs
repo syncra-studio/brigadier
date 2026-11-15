@@ -29,8 +29,8 @@ impl Fold {
     pub(super) fn ask(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("");
         let mut request = item["request"].clone();
-        if self.for_parent(item) {
-            request["to"] = "parent".into();
+        if let Some(to) = self.to(item) {
+            request["to"] = to.into();
         }
         if let Some(t) = self.turns.first_mut().filter(|_| !id.is_empty()) {
             t.asks.insert(id.into(), request);
@@ -84,6 +84,19 @@ impl Fold {
             (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
             _ => {}
         }
+    }
+
+    /// Who answers a request instead of the user: Brigadier, an exact repeat of a command allowed
+    /// for the session, as Codex's and OpenCode's helpers do [D389]; or a worker's parent agent.
+    pub fn to(&self, item: &Value) -> Option<&'static str> {
+        let r = &item["request"];
+        let cwd = &r["cli"]["cwd"];
+        if r["grant"]["scope"] == "command"
+            && (self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+        {
+            return Some("brigadier");
+        }
+        self.for_parent(item).then_some("parent")
     }
 
     /// Whether a request goes to the parent agent rather than the user: a worker's question, and

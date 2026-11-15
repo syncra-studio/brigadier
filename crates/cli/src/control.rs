@@ -134,6 +134,16 @@ pub fn answer_as(
     answered(data, id, request, control).map(Some)
 }
 
+/// Brigadier's own answer to an exact repeat of a command allowed for the session, which its
+/// agent's CLI asks again [D389].
+pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+    for (id, row) in rows {
+        if let Some(request) = row["reason"]["repeat"].as_str() {
+            let _ = answer_as(data, id, request, "allow", None, "brigadier");
+        }
+    }
+}
+
 fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
     let (decision, answers) = (
         control["decision"].as_str().map(String::from),

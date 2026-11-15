@@ -9,7 +9,7 @@ mod chips;
 mod command;
 mod commands;
 mod commit;
-mod control;
+pub mod control;
 mod feedback;
 mod fork;
 mod git;
