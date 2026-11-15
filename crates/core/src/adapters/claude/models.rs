@@ -86,13 +86,10 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
             models.remove(at);
         }
     }
-    // Its `opus` and `haiku` aliases, where its list names them: its top and small models.
-    let alias = |m: &ModelInfo, a: &str| m.id.split('[').next() == Some(a);
-    if let Some((m, _)) = models.iter_mut().find(|(m, _)| alias(m, "opus")) {
+    // Its `opus` alias, where its list names it: its top model.
+    if let Some((m, _)) = (models.iter_mut()).find(|(m, _)| m.id.split('[').next() == Some("opus"))
+    {
         m.top = true;
-    }
-    if let Some((m, _)) = models.iter_mut().find(|(m, _)| alias(m, "haiku")) {
-        m.small = true;
     }
     let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));
     // Two rows under one name: the long-context one says so.

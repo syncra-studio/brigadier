@@ -271,10 +271,9 @@ fn info(m: &Value) -> ModelInfo {
             .map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
-        // Its list marks the default only: no top or small model [D2075].
+        // Its list marks the default only: no top model [D2075].
         default: m["isDefault"] == true,
         top: false,
-        small: false,
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);
