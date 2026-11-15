@@ -3,7 +3,7 @@
 //! never on its answerer. Its review's notes (`plan_review`: running, sent, done, off) move it on:
 //! its findings go back as the reply that keeps the agent planning, and its next plan goes to its
 //! answerer with the review's line, counts as said, never guessed [D74, D357]. One review per plan:
-//! a plan built starts the next cycle.
+//! a plan built, or its turn ended, starts the next cycle.
 
 use super::Fold;
 use serde::{Deserialize, Serialize};

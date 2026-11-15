@@ -163,6 +163,8 @@ impl Fold {
                 outcome
             });
             self.turns.remove(0);
+            // A plan sent back, unbuilt when its turn ends, ends its review: the next is reviewed anew.
+            self.plans.now = Value::Null;
             if !turn.quiet {
                 self.finished = ts;
             }
