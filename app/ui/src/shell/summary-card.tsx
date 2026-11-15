@@ -101,8 +101,9 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-hidden={!shown || undefined}
         className={cx(
           "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
-          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's).
-          shown ? "summary-floats:invisible summary-floats:translate-x-full summary-floats:scale-80 summary-floats:opacity-0" : "invisible translate-x-full scale-80 opacity-0",
+          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). It shrinks
+          // and fades in place there, not out past the pane's end, where a fold's switch would show it cut by a right panel [D63].
+          shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" :"invisible translate-x-full scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
