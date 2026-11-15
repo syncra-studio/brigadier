@@ -231,8 +231,9 @@ impl Thread {
                 o.asked = None;
             }
         }
-        if c["by"] == "parent" {
-            row["by"] = "parent".into();
+        // Who answered, when not the user: a plan the review sent back says so [D394].
+        if matches!(c["by"].as_str(), Some("parent" | "review")) {
+            row["by"] = c["by"].clone();
         }
         self.changed_items.insert(at);
         if row["decision"] == "approved" {

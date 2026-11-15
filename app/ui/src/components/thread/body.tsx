@@ -173,6 +173,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           waiting={turn?.status === "running" || turn?.held === true}
           subject={subject}
           toParent={item.to === "parent"}
+          byReview={item.by === "review"}
         />
       );
     }

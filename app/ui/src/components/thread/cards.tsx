@@ -35,7 +35,8 @@ export const ParentName = createContext("Its parent");
 
 /**
  * An approval, read like a question: "Asking for approval · waiting" while it waits (the card to decide sits
- * in the composer's place), then "Asked for approval · allowed" or "· denied", which opens to what was asked.
+ * in the composer's place), then "Asked for approval · allowed" or "· denied", which opens to what was asked. A plan
+ * denied was sent back, by the review or with a reply: "· sent back by review", "· sent back" [D394].
  * Undecided once the turn has moved on, it was withdrawn. Its icon says what it asked to do.
  */
 export function ApprovalRow({
@@ -48,6 +49,7 @@ export function ApprovalRow({
   waiting,
   subject,
   toParent,
+  byReview,
 }: {
   keep: string;
   title: string;
@@ -61,9 +63,12 @@ export function ApprovalRow({
   subject?: string;
   /** A worker's, which only its parent answers: a quiet step, "‹parent› allowed: npm test" [D121, D131]. */
   toParent?: boolean;
+  /** The review answered it: a plan it sent back with findings [D394]. */
+  byReview?: boolean;
 }) {
   const icon = <StepIcon icon={ACTIONS[action]} />;
   const parent = useContext(ParentName);
+  const said = decision === "approved" ? "allowed" : action !== "plan" ? "denied" : byReview ? "sent back by review" : "sent back";
   if (decision === null || decision === "withdrawn") {
     waiting = waiting && decision === null;
     const asking = toParent ? `Asking ${parent}` : "Asking for approval";
@@ -87,11 +92,7 @@ export function ApprovalRow({
       }
     >
       {icon}
-      {toParent ? (
-        <Words verb={`${parent} ${decision === "approved" ? "allowed" : "denied"}:`} object={subject} />
-      ) : (
-        <Words verb={decision === "approved" ? "Asked for approval · allowed" : "Asked for approval · denied"} object={subject} />
-      )}
+      {toParent ? <Words verb={`${parent} ${said}:`} object={subject} /> : <Words verb={`Asked for approval · ${said}`} object={subject} />}
     </OpeningRow>
   );
 }
