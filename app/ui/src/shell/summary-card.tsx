@@ -137,7 +137,8 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               // opened before it floated keeps it.
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
-              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto px-3 pt-1.5 pb-3 outline-none menu-motion"
+              // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel [D59]; below, room for its shadow.
+              className="pointer-events-none flex max-h-available w-71 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
