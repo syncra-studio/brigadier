@@ -152,9 +152,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 None => home_pick(data, args)?,
             };
             // A model a rule bars is refused before anything is made, as Send as new's [D388 Q10].
-            if let Err(e) =
-                crate::routing::launch(data, &pick.0, pick.1.as_deref(), pick.2.as_deref())
-            {
+            if let Err(e) = crate::routing::launch(
+                data,
+                &dir.display().to_string(),
+                &pick.0,
+                pick.1.as_deref(),
+                pick.2.as_deref(),
+            ) {
                 return Ok(json!({"ok": false, "result": "refused", "error": e}));
             }
             // Kept first: a start cut short is still found, and deleted, with the session.

@@ -128,9 +128,9 @@ pub struct Spec {
     pub review: bool,
 }
 
-/// The check: `agent`'s `model` (None: its default) at `effort` (None: the model's default); the
-/// rule's words refusing it, else what the rules make of it.
-pub type Check = fn(&Path, &str, Option<&str>, Option<&str>) -> Result<Ruled, String>;
+/// The check: `agent`'s `model` (None: its default) at `effort` (None: the model's default), run in
+/// the folder `cwd`; the rule's words refusing it, else what the rules make of it.
+pub type Check = fn(&Path, &str, &str, Option<&str>, Option<&str>) -> Result<Ruled, String>;
 
 /// What the rules make of one launch [D376].
 #[derive(Clone, Default)]
@@ -153,6 +153,7 @@ impl Spec {
         let model = adapters::get(agent).map_or(self.model.clone(), |a| a.runs(self));
         let ruled = check(
             &data_of(self),
+            &self.cwd,
             agent,
             model.as_deref(),
             self.effort.as_deref(),

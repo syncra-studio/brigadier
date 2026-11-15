@@ -8,6 +8,7 @@ use super::*;
 /// the cap. Not a worker's whole `allowed`: a session keeps a model hidden or no longer listed.
 pub(crate) fn launch(
     data: &Path,
+    cwd: &str,
     agent: &str,
     model: Option<&str>,
     effort: Option<&str>,
@@ -18,12 +19,24 @@ pub(crate) fn launch(
     if !touched {
         return Ok(core::Ruled::default());
     }
-    // The agent's whole listed catalogue, hidden models too: the pickers' is filtered [D2082].
-    let check = crate::setup::run(data, &["agents".into(), "--cached".into()]).unwrap_or_default();
-    let listed: Vec<&Value> = (check["agents"].as_array().into_iter().flatten())
-        .filter(|c| c["name"] == agent)
-        .flat_map(|c| c["models"].as_array().into_iter().flatten())
-        .collect();
+    // The agent's whole listed catalogue, hidden models too: the pickers' is filtered [D2082]. The
+    // launch folder's check (a project's own models), else the home folder's, as the pickers read.
+    let listed_in = |cwd: &str| -> Vec<Value> {
+        let mut args = vec!["agents".to_string(), "--cached".into()];
+        if !cwd.is_empty() {
+            args.extend(["--cwd".into(), cwd.into()]);
+        }
+        let check = crate::setup::run(data, &args).unwrap_or_default();
+        (check["agents"].as_array().into_iter().flatten())
+            .filter(|c| c["name"] == agent)
+            .flat_map(|c| c["models"].as_array().into_iter().flatten())
+            .cloned()
+            .collect()
+    };
+    let mut listed = listed_in(cwd);
+    if listed.is_empty() {
+        listed = listed_in("");
+    }
     // Unpicked, it runs its CLI's default model.
     let id = model
         .or_else(|| (listed.iter().find(|m| m["default"] == true)).and_then(|m| m["id"].as_str()));

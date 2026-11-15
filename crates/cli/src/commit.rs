@@ -45,7 +45,7 @@ pub(crate) fn written_for(
     let prompt = prompt(&writer::asks(&spec.dir));
     // Each candidate a rule bars is skipped for the next: the chosen, the cheap, the session's own,
     // the offline one [D376].
-    let ok = |b: &str, m: Option<&str>| crate::routing::launch(data, b, m, None);
+    let ok = |b: &str, m: Option<&str>| crate::routing::launch(data, &spec.cwd, b, m, None);
     let chosen = chosen.filter(|c| ok(&c.backend, Some(&c.model)).is_ok());
     let backend = match chosen {
         Some(choice) => choice.backend.clone(),
