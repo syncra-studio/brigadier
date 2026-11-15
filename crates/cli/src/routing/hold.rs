@@ -114,13 +114,21 @@ pub(crate) fn stops(r: &workers::Record, by: &str) -> bool {
     r.state == "starting" || (r.state == "held" && by == "user")
 }
 
-/// A stopped worker's hold card goes, its wait with it.
+/// A stopped worker's hold card goes, by its id as its own answer's does, its wait with it.
 pub(crate) fn stopped(data: &Path, wid: &str, by: &str) {
-    let f = core::fold(&core::session_dir(data, wid), true);
-    if by == "user" && f.is_ok_and(|f| f.fold.hold.is_some()) {
-        let note = json!({"event": "hold", "phase": "answered", "choice": "Stop"});
-        let _ = owner::call(data, wid, json!({"op": "note", "data": note}));
-    }
+    let Ok(f) = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold) else {
+        return;
+    };
+    let Some(hold) = f.hold.filter(|_| by == "user") else {
+        return;
+    };
+    let choice = if hold["retry"] == true {
+        "Stop here"
+    } else {
+        "Stop"
+    };
+    let note = json!({"event": "hold", "phase": "answered", "id": hold["id"], "choice": choice});
+    let _ = owner::call(data, wid, json!({"op": "note", "data": note}));
 }
 
 /// The daemon's: a hold whose reset has passed goes on as picked.
