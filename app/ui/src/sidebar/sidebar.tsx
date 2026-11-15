@@ -215,7 +215,7 @@ export function AppSidebar({
         {/* The card's top, under the tab bar [D48]: the name, New chat, Search. */}
         <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
           <h1 className="flex h-7.5 min-w-0 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
-            <BrigadierMark className="size-icon-md shrink-0" />
+            <BrigadierMark className="size-icon-mark shrink-0" />
             <span className="min-w-0 truncate">Brigadier</span>
           </h1>
           <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
@@ -371,7 +371,7 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
   return (
     <div className="flex flex-col items-center gap-3 pt-2.75">
       <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" className="group/mark" onClick={() => setOpen(true)}>
-        <BrigadierMark className="group-hover/mark:hidden group-focus-visible/mark:hidden" />
+        <BrigadierMark className="size-icon-mark group-hover/mark:hidden group-focus-visible/mark:hidden" />
         <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
       </TooltipIconButton>
       <div className="flex flex-col items-center gap-0.5">

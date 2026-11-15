@@ -310,6 +310,8 @@
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
   --spacing-icon-lg: 1.25rem;
+  /* Brigadier's mark, one size in the strip and by the open sidebar's title (the board's strip mark) [D64, D18]. */
+  --spacing-icon-mark: 1.5rem;
   --spacing-titlebar: 2.5rem;
   /* The new design's tab bar: 56px, its controls 30px tall on the traffic lights' centre line (35px down). */
   --spacing-tab-bar: 3.5rem;
