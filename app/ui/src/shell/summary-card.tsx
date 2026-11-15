@@ -115,9 +115,9 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
 }
 
 /**
- * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, under the top bar, at
- * most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the Context button or
- * Escape closes it, so `open` is all it follows.
+ * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, its top on the side
+ * panels' [D55], at most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the
+ * Context button or Escape closes it, so `open` is all it follows.
  */
 function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
   // The pane's whole width, so the card follows the pane's end as the pane narrows.
@@ -137,7 +137,7 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               // opened before it floated keeps it.
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
-              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
+              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto px-3 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
