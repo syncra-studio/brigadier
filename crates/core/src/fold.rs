@@ -234,6 +234,10 @@ impl Fold {
             self.last_out = ts;
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
+                t.said |= matches!(
+                    kind,
+                    "text" | "text_delta" | "tool" | "reasoning" | "question" | "approval" | "plan"
+                );
                 if kind != "retrying" {
                     t.retry = Value::Null;
                 }

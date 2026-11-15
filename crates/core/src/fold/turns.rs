@@ -80,6 +80,9 @@ pub struct Turn {
     /// It did something new: an edit, a command or reply text, the rebirth guard's progress [D144].
     #[serde(default)]
     pub moved: bool,
+    /// The agent's own output for it: a reply, a step, a thought or an ask.
+    #[serde(default)]
+    pub said: bool,
     /// Its parent's turn woken by a worker's ask, till the user's own words join it: the user never
     /// sees it, so it leaves no mark, unread or notice [D119].
     #[serde(default)]
@@ -172,7 +175,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved, "said": turn.said,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );

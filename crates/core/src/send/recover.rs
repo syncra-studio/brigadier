@@ -121,6 +121,12 @@ pub fn recover(
             let backend = last["backend"].as_str().filter(|b| !b.is_empty());
             let old = last["cid"].as_str().unwrap_or("");
             let resend = last["never_ran"] == true && last["origin"] == "user";
+            // Stopped before the agent said or did anything for it, and with no ack proving it
+            // took it, the user's message may never have reached it (a stop drops what it hadn't
+            // read): it goes with the Resume, so nothing they sent is lost [D82, D154].
+            let acked = last["delivered"] == true
+                && adapters::get(backend.unwrap_or(&f.backend)).is_some_and(|a| a.acks());
+            let carried = !resend && last["origin"] == "user" && last["said"] == false && !acked;
             let (cid, origin, said) = match resend {
                 true => (format!("{old}.r{now}"), "user", "resent"),
                 false => (format!("rs{now}"), "system", "continued"),
@@ -129,6 +135,7 @@ pub fn recover(
             let picked = f.picked.is_some();
             // With no agent alive and no conversation to resume, the line would start a new one without the request.
             if !resend
+                && !carried
                 && !picked
                 && child.is_none()
                 && !f.resume.contains_key(backend.unwrap_or(&f.backend))
@@ -140,6 +147,11 @@ pub fn recover(
             } else {
                 Message::plain(RESUME)
             };
+            if carried {
+                let m = again(spec, last["text"].as_str().unwrap_or(""), &last["parts"]);
+                msg.agent = format!("{RESUME}\n\n{}", m.agent);
+                msg.images = m.images;
+            }
             msg.agent += more;
             let mut reply = send(
                 spec,
