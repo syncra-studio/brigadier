@@ -28,9 +28,8 @@ import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 type Layout = "beside" | "shift" | "float";
 
 // In rem. Below GUTTER_FROM the card floats over the thread rather than push it [D51]: the column it pushes keeps
-// 37.5rem (600px) beside the card's room (--container-reading-beside-summary's 71 spacings: the w-70 card and its 4px
-// inset) and the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's
-// --spacing-summary-beside-from.
+// 37.5rem (600px) beside the card's room (--spacing-summary-room's 71 spacings: the w-70 card and its 4px inset) and
+// the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's --spacing-summary-beside-from.
 const GUTTER_FROM = 17.75 + 1.25 + 37.5;
 const BESIDE_FROM = 25;
 
@@ -262,8 +261,8 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
         // As the old app: the reading column glides aside, narrowing, and back, with the card and a fold as one.
-        "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
-        settled && "reading-column:summary-shift-motion",
+        "reading-column:summary-column summary-shift:summary-room",
+        settled && "summary-shift-motion",
       )}
     >
       {children}

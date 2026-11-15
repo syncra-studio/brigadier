@@ -340,11 +340,9 @@
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
-  /* The pinned summary card moving the reading column aside (the old app's --spacing-summary-shift and
-     --container-thread-beside-summary): half the card's 18.75rem and its 0.75rem inset, and the column narrowed to
-     leave the card's 20.25rem stack its gutter. */
-  --spacing-summary-shift: calc((var(--spacing) * 70 + var(--spacing)) / 2);
-  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 71));
+  /* The room the pinned summary card takes from the reading column where it moves it aside (the old app's
+     --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-70 card and its 4px inset. */
+  --spacing-summary-room: calc(var(--spacing) * 71);
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
@@ -1489,10 +1487,27 @@
   }
 }
 
-/* The reading column moving aside for the pinned card and back, narrowing as it goes: with the card, and with a fold
-   when a panel's width is what makes the room [D45, D49]. */
+/* The card's room in the thread's pane, which the reading column leaves free (summary-column): the room itself eases,
+   not the column's move and width, so a fold that narrows the pane as it switches the card's layout moves both the
+   column's edges one way, never out and back [D68]. */
+@property --summary-room {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@utility summary-room {
+  --summary-room: var(--spacing-summary-room);
+}
+/* The reading column centred in what the card's room leaves of the pane, at most --container-reading wide (the old
+   app's shift: aside by half the room, narrowed by all of it); with no room, as it was. */
+@utility summary-column {
+  translate: calc(var(--summary-room) / -2) 0;
+  max-width: min(var(--container-reading), 100% - var(--summary-room));
+}
+
+/* The card's room easing in and out: with the card, and with a fold when a panel's width is what makes it [D45, D49]. */
 @utility summary-shift-motion {
-  transition-property: translate, max-width;
+  transition-property: --summary-room;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
