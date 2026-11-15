@@ -3,6 +3,7 @@
 //! its public CLI docs and observed output.
 
 mod cleanup;
+mod commands;
 mod control;
 mod mcp;
 mod models;
@@ -257,13 +258,13 @@ impl Adapter for Claude {
     }
 
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
-        control::fixed(cwd, run)
+        commands::fixed(cwd, run)
     }
     fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
         mcp::mcp_servers(folder)
     }
     fn locate(&self, run: &Spec, list: &mut [Value]) {
-        control::locate(run, list)
+        commands::locate(run, list)
     }
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
@@ -295,7 +296,7 @@ impl Adapter for Claude {
                 v["model"].as_str().map(|m| Event::Model(m.into())),
                 Some(Event::TurnStart),
                 control::level(&v),
-                control::commands(&v),
+                commands::commands(&v),
             ]
             .into_iter()
             .flatten()

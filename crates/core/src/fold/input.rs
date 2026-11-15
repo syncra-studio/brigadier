@@ -4,6 +4,13 @@ use super::{Fold, Picked, Turn};
 use serde_json::Value;
 
 impl Fold {
+    /// The level the running child takes from here, as its agent confirmed it.
+    pub(super) fn took_level(&mut self, item: &Value) {
+        if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
+            g["level"] = item["level"].clone();
+        }
+    }
+
     /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
     /// turn, which drops a pick; another agent is picked, for the next message [D90].
     pub(super) fn setup(&mut self, item: &Value) {
@@ -43,6 +50,7 @@ impl Fold {
         }
         if item["setup"].is_object() {
             self.given = Some(item["setup"].clone());
+            self.plans.on = item["review"] == true;
         }
         if self.control(item, &cid) {
             return;

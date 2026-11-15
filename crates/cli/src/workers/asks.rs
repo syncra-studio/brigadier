@@ -33,6 +33,17 @@ pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
             .is_some_and(|h| h["id"] == id)
 }
 
+/// The daemon's pass for a session whose turn waits on Brigadier's side: a worker's ask written
+/// for its parent, or a held plan's review started [§6].
+pub(super) fn pass(data: &Path, id: &str, row: &Value) {
+    if row["state"] == "asking" {
+        let _ = asked(data, id);
+    }
+    if let Some(request) = row["reason"]["review"].as_str() {
+        super::review::plan_held(data, id, request);
+    }
+}
+
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.
 pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
     let Some(l) = link(data, wid) else {
@@ -132,6 +143,18 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
                 "\nAnswer it from its brief, the user's words and the code: `brigadier send {wid} \"<your answer>\"`. Only if just the user can answer, ask them with your tool for asking the user (no reply of yours here is shown), then send their answer the same way."
             )
         }
+        None if r["action"] == "plan" => {
+            let mut t = format!(
+                "Worker {title} ({wid}) asks to build this plan:\n{}\n",
+                field("body")
+            );
+            if !field("reviewed").is_empty() {
+                t += &format!("{}.\n", field("reviewed"));
+            }
+            t + &format!(
+                "\nJudge it against its brief and the user's words: `brigadier send {wid} --allow` builds it; `brigadier send {wid} \"<what to change>\"` keeps it planning, and its agent reads your words."
+            )
+        }
         None => {
             let mut t = format!(
                 "Worker {title} ({wid}) asks for permission ({}):\n  {}\n",
@@ -172,7 +195,7 @@ pub fn for_user(data: &Path, id: &str) -> Option<String> {
             h["why"].as_str().unwrap_or("")
         ));
     }
-    let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"] != "parent")?;
+    let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"].is_null())?;
     let what = match r["items"].is_array() {
         true => "to answer its question".to_string(),
         false => format!(
@@ -216,10 +239,16 @@ pub fn answer(
             None => refuse(&for_user(data, wid).unwrap_or(format!("{wid} isn't waiting on you."))),
         };
     };
-    let question = r["items"].is_array();
-    let reply = match (question, allow, deny) {
+    let (question, plan) = (r["items"].is_array(), r["action"] == "plan");
+    let reply = match (question || plan, allow, deny) {
         (true, false, None) if !text.trim().is_empty() => {
             control::reply(data, wid, text, None, Some("parent"))
+        }
+        (true, true, None) if plan => control::answer_as(data, wid, &id, "allow", None, "parent"),
+        (true, ..) if plan => {
+            return refuse(&format!(
+                "{wid} asks to build its plan: `brigadier send {wid} --allow`, or reply with what to change, `brigadier send {wid} \"<what to change>\"`."
+            ));
         }
         (true, ..) => {
             return refuse(&format!(

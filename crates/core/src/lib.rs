@@ -122,6 +122,10 @@ pub struct Spec {
     /// What that check made of this launch, for its CLI's own subagents [D376].
     #[serde(skip)]
     pub ruled: Ruled,
+    /// Settings › Routing's Adversarial review, as it is when a turn starts: its plans wait on a
+    /// review [D385, §6]. Never kept.
+    #[serde(skip)]
+    pub review: bool,
 }
 
 /// The check: `agent`'s `model` (None: its default) at `effort` (None: the model's default); the

@@ -315,7 +315,7 @@ pub(super) fn write(
         at: log::now_ms(),
         // A stopped task's result never wakes the parent: it goes with its next turn [D314].
         state: match how {
-            _ if l.review["switch"] == true => "review",
+            _ if l.review["switch"] == true || l.review["plan"].is_string() => "review",
             "stopped" => "held",
             _ => "written",
         }

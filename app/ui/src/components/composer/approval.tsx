@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
 import { Commit, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
+import { MentionedWorker } from "../../workers/live";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
@@ -37,6 +38,10 @@ export type PendingApproval = {
   grant?: { scope: "command" | "edits" | "network" | "tool"; pattern: string } | null;
   /** The subagent that asks, by its title. */
   agent?: string;
+  /** A plan its adversarial review holds: the reviewer, a worker, and its model's name (§6). */
+  review?: { by: string; name: string };
+  /** A plan's review line: "Plan reviewed by ‹model›: 5 findings, 4 fixed, 1 rejected", or "Review didn't run: ‹why›". */
+  reviewed?: string;
 };
 
 export type ApprovalDecision = "allow" | "allowSession" | "deny";
@@ -108,8 +113,17 @@ export function describe(approval: PendingApproval): Shown {
         allow: "Land",
       };
     // The plan the agent proposed in its plan mode: build it, or reply to change it.
+    // While its review holds it, nothing to answer yet (§6).
     case "plan":
-      return { icon: <Sparkle />, kind: "Plan", title: reason || "Build this plan?", body: prose, allow: "Build it", noDeny: true };
+      return {
+        icon: <Sparkle />,
+        kind: "Plan",
+        title: approval.review ? `Reviewing this plan · ${approval.review.name}` : reason || "Build this plan?",
+        detail: approval.reviewed,
+        body: prose,
+        allow: "Build it",
+        noDeny: true,
+      };
     case "message":
       return {
         icon: <Sparkle />,
@@ -244,7 +258,8 @@ export function ApprovalCard({
     const active = document.activeElement;
     if (!inField(active) || active?.closest("[data-slot=composer-card]")) card.current?.focus({ preventScroll: true });
   }, []);
-  useCardKeys(!busy, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
+  const reviewing = approval.review;
+  useCardKeys(!busy && !reviewing, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
 
   const grant = approval.grant ? grantTip(approval.grant) : null;
   const allow = shown.allow ?? "Allow once";
@@ -270,99 +285,107 @@ export function ApprovalCard({
         <div role="alert" aria-atomic="true">
           <ActionCardTitle detail={shown.detail && <CodeSpans text={shown.detail} />}>
             <CodeSpans text={shown.title} />
+            {reviewing && (
+              <>
+                {" "}
+                <MentionedWorker id={reviewing.by} />
+              </>
+            )}
           </ActionCardTitle>
         </div>
       </div>
       {shown.body}
       <ErrorLine error={error} className="px-4 pt-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
-      <ActionCardActions
-        leading={
-          asksReason && (
-            <ActionFreeText
-              className="-ms-2 min-w-40 flex-1 @max-card-one-row/approval-card:basis-full"
-              field={
-                <div className="min-w-0 flex-1">
-                  <ComposerField
-                    ref={field}
-                    size="line"
-                    label="What to do instead"
-                    placeholder="Tell the agent what to do instead"
-                    initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
-                    onChange={(parts) => {
-                      const text = plainText(parts);
-                      setTyped(text);
-                      onReason?.(text);
-                    }}
-                    onSubmit={(other) => {
-                      if (refusing || !other) primary();
-                    }}
-                    onEscape={escape}
-                  />
-                </div>
-              }
-            />
-          )
-        }
-      >
-        {!shown.noDeny && (
-          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
-            <button type="button" className={actionButton("outline")} disabled={busy} onClick={deny}>
-              {shown.deny ?? "Deny"}
-              <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-                Esc
-              </Kbd>
-            </button>
-          </div>
-        )}
-        {grant && (
-          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className={actionButton("outline")}
-                  disabled={busy}
-                  onClick={() => answer("allowSession")}
-                />
-              }
-            >
-              Allow for this session
-            </TooltipTrigger>
-            <TooltipContent>{grant}</TooltipContent>
-          </Tooltip>
-          </div>
-        )}
-        <button
-          type="button"
-          className={actionButton("primary", "max-w-full")}
-          disabled={busy}
-          onClick={primary}
+      {!reviewing && (
+        <ActionCardActions
+          leading={
+            asksReason && (
+              <ActionFreeText
+                className="-ms-2 min-w-40 flex-1 @max-card-one-row/approval-card:basis-full"
+                field={
+                  <div className="min-w-0 flex-1">
+                    <ComposerField
+                      ref={field}
+                      size="line"
+                      label="What to do instead"
+                      placeholder="Tell the agent what to do instead"
+                      initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
+                      onChange={(parts) => {
+                        const text = plainText(parts);
+                        setTyped(text);
+                        onReason?.(text);
+                      }}
+                      onSubmit={(other) => {
+                        if (refusing || !other) primary();
+                      }}
+                      onEscape={escape}
+                    />
+                  </div>
+                }
+              />
+            )
+          }
         >
-          {asksReason ? (
-            <Morph
-              morphed={refusing}
-              from={
-                <>
-                  {allow}
-                  {ENTER_KEY}
-                </>
-              }
-              to={
-                <>
-                  {message ? "Send instead" : "Send"}
-                  {ENTER_KEY}
-                </>
-              }
-            />
-          ) : (
-            <>
-              {allow}
-              {ENTER_KEY}
-            </>
+          {!shown.noDeny && (
+            <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
+              <button type="button" className={actionButton("outline")} disabled={busy} onClick={deny}>
+                {shown.deny ?? "Deny"}
+                <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+                  Esc
+                </Kbd>
+              </button>
+            </div>
           )}
-        </button>
-      </ActionCardActions>
+          {grant && (
+            <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className={actionButton("outline")}
+                    disabled={busy}
+                    onClick={() => answer("allowSession")}
+                  />
+                }
+              >
+                Allow for this session
+              </TooltipTrigger>
+              <TooltipContent>{grant}</TooltipContent>
+            </Tooltip>
+            </div>
+          )}
+          <button
+            type="button"
+            className={actionButton("primary", "max-w-full")}
+            disabled={busy}
+            onClick={primary}
+          >
+            {asksReason ? (
+              <Morph
+                morphed={refusing}
+                from={
+                  <>
+                    {allow}
+                    {ENTER_KEY}
+                  </>
+                }
+                to={
+                  <>
+                    {message ? "Send instead" : "Send"}
+                    {ENTER_KEY}
+                  </>
+                }
+              />
+            ) : (
+              <>
+                {allow}
+                {ENTER_KEY}
+              </>
+            )}
+          </button>
+        </ActionCardActions>
+      )}
     </ActionCard>
   );
 }

@@ -177,6 +177,9 @@ pub fn send(
     if spec.brigade && origin == "user" {
         base["brigade"] = true.into();
     }
+    if spec.review {
+        base["review"] = true.into();
+    }
     if held {
         base["setup"]["held"] = true.into();
     }

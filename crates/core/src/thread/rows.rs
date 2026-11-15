@@ -175,8 +175,18 @@ impl Thread {
             }
             "approval" => {
                 self.break_group();
-                let at = self
-                    .add(json!({"kind": "approval", "request": item["request"], "decision": null}));
+                let mut request = item["request"].clone();
+                // A plan after its review carries the review's line, from the fold [§6].
+                let asked = self
+                    .fold
+                    .turns
+                    .first()
+                    .and_then(|t| t.asks.get(&str_of("id")));
+                if let Some(line) = asked.map(|r| &r["reviewed"]).filter(|l| l.is_string()) {
+                    request["reviewed"] = line.clone();
+                }
+                let at =
+                    self.add(json!({"kind": "approval", "request": request, "decision": null}));
                 self.wait_on(at, ts, item);
             }
             "resolved" => {
@@ -361,6 +371,7 @@ impl Thread {
             }
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
+            "note" if item["event"] == "plan_review" => self.plan_review(item, ts),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {
                 let forked = self.items.iter().rposition(|r| r["kind"] == "forked");

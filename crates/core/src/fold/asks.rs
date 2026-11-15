@@ -32,6 +32,7 @@ impl Fold {
         if let Some(to) = self.to(item) {
             request["to"] = to.into();
         }
+        self.plan_asked(&mut request);
         if let Some(t) = self.turns.first_mut().filter(|_| !id.is_empty()) {
             t.asks.insert(id.into(), request);
         }
@@ -96,6 +97,9 @@ impl Fold {
         {
             return Some("brigadier");
         }
+        if self.held_for_review(item) {
+            return Some("review");
+        }
         self.for_parent(item).then_some("parent")
     }
 
@@ -110,14 +114,18 @@ impl Fold {
 
     /// A pending request leaves, saying why: answered, withdrawn, or how its turn ended.
     pub(super) fn end_ask(&mut self, id: &str, why: &str) {
+        let mut left = vec![];
         for t in &mut self.turns {
-            if t.asks.remove(id).is_some() {
+            if let Some(r) = t.asks.remove(id) {
+                left.push(r);
                 self.closed.insert(id.into(), why.into());
                 if !t.asks.values().any(|r| r["items"].is_array()) {
                     t.question = None;
                 }
             }
         }
+        left.iter()
+            .for_each(|r| self.plan_left(r, &Value::Null, &Value::Null));
     }
 
     /// Every pending request of the first turn leaves: the turn ended [D77].
@@ -148,6 +156,7 @@ impl Fold {
                     if !t.asks.values().any(|r| r["items"].is_array()) {
                         t.question = None;
                     }
+                    self.plan_left(&request, &c["decision"], &c["by"]);
                     if c["decision"] == "allowSession" {
                         self.granting.insert(cid.into(), request);
                     }

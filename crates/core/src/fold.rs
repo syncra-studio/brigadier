@@ -7,6 +7,7 @@ use crate::adapters;
 mod asks;
 mod input;
 mod live;
+pub mod plan;
 mod rewind;
 pub mod runs;
 mod status;
@@ -187,6 +188,9 @@ pub struct Fold {
     /// Its CLI's newest usage report in a run, `{backend, account, limits, at}`, for the store [D2039].
     #[serde(default)]
     pub limits: Option<Value>,
+    /// Its plans' adversarial reviews [§6].
+    #[serde(default)]
+    pub plans: plan::Reviews,
 }
 
 impl Fold {
@@ -481,6 +485,7 @@ impl Fold {
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("peer") => self.passed_to_user(item),
+                Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);

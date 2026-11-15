@@ -66,7 +66,7 @@ impl Norm {
                 emit(
                     self,
                     json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "parts": v["parts"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
-                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "brigade": v["brigade"], "starts_child": v["starts_child"]}),
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "brigade": v["brigade"], "review": v["review"], "starts_child": v["starts_child"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),

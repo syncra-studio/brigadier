@@ -13,6 +13,8 @@
 //! the next eligible one; only when none is left does the review not run.
 
 mod line;
+mod plan;
+pub(crate) use plan::plan_held;
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};
@@ -78,11 +80,15 @@ pub(crate) fn plan(
         )));
     }
     let switch = flags(SWITCH).is_some();
+    let mut mark = json!({"of": of, "switch": switch});
+    if let Some(id) = flags(plan::PLAN) {
+        mark["plan"] = id.into();
+        return plan::plan_of(data, me, mark);
+    }
     let given = match given.trim() {
         "" => String::new(),
         g => format!("\n\nFrom the session that asked for this review:\n{g}"),
     };
-    let mark = json!({"of": of, "switch": switch});
     if of == "session" {
         let task = link(data, me).map(|l| l.brief);
         if task.is_none() && given.is_empty() {
@@ -349,6 +355,10 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         .then(|| last_of_turn(data, wid, turn))
         .flatten();
     let findings = said.as_deref().and_then(|t| count(t, "findings:"));
+    if l.review["plan"].is_string() {
+        plan::reviewed(data, l, how, said, findings);
+        return None;
+    }
     let reviewer = json!({"agent": l.ran["agent"], "model": l.ran["model"]});
     let why = (how != "finished").then(|| format!("the reviewer {}", word(how)));
     if l.review["switch"] != true {

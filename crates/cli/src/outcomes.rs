@@ -110,7 +110,17 @@ pub(crate) fn results(data: &Path) -> Value {
     let mut retried: HashMap<String, u64> = HashMap::new();
     // A sum any review left unknown is unknown, never 0 [D74].
     let mut reviews = (0u64, [Some(0u64); 3]);
+    let mut add = |n: &Value| {
+        reviews.0 += 1;
+        for (sum, k) in reviews.1.iter_mut().zip(["findings", "fixed", "rejected"]) {
+            *sum = sum.zip(n[k].as_u64()).map(|(a, b)| a + b);
+        }
+    };
     for wid in core::ids(data) {
+        // Plan reviews, in any session's own fold [§6, §8].
+        if let Ok(f) = core::fold(&core::session_dir(data, &wid), true) {
+            f.fold.plans.done.iter().for_each(&mut add);
+        }
         let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
             continue;
         };
@@ -123,10 +133,7 @@ pub(crate) fn results(data: &Path) -> Value {
                 *retried.entry(of.into()).or_default() += 1;
             }
             if n["phase"] == "review" && n["ran"] == true {
-                reviews.0 += 1;
-                for (sum, k) in reviews.1.iter_mut().zip(["findings", "fixed", "rejected"]) {
-                    *sum = sum.zip(n[k].as_u64()).map(|(a, b)| a + b);
-                }
+                add(n);
             }
         }
         rows.push((wid, l.ran, end.unwrap_or_default()));

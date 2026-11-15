@@ -51,6 +51,35 @@ impl Thread {
         }
     }
 
+    /// A plan's review moved on (fold `plan.rs`): its card names its reviewer, or the plan goes to
+    /// its answerer with the review's line [§6].
+    pub(super) fn plan_review(&mut self, item: &Value, ts: u64) {
+        let id = item["id"].as_str().unwrap_or("");
+        let r = self
+            .fold
+            .turns
+            .first()
+            .and_then(|t| t.asks.get(id))
+            .cloned();
+        let at = (self.pending.iter()).find(|&&at| self.items[at]["request"]["id"] == id);
+        let (Some(r), Some(&at)) = (r, at) else {
+            return;
+        };
+        for k in ["review", "reviewed"]
+            .into_iter()
+            .filter(|k| !r[*k].is_null())
+        {
+            self.items[at]["request"][k] = r[k].clone();
+        }
+        self.pending_changed = true;
+        self.changed_items.insert(at);
+        match r["to"].as_str() {
+            Some("review") => {}
+            Some(to) => self.items[at]["to"] = to.into(),
+            None => self.user_waits(at, ts),
+        }
+    }
+
     /// A worker's routing hold [D2028, D342]: Rust's question card for the user, as a sub-session's
     /// passed ask is, closed by the user's answer.
     pub(super) fn hold(&mut self, item: &Value, ts: u64) {
@@ -184,7 +213,8 @@ impl Thread {
         };
         let row = &mut self.items[at];
         if row["kind"] == "approval" {
-            row["decision"] = if c["decision"] == "deny" {
+            // A reply to a plan is its deny with words: the agent plans on [D177].
+            row["decision"] = if c["decision"] == "deny" || c["reply"].is_string() {
                 "denied"
             } else {
                 "approved"
@@ -210,6 +240,27 @@ impl Thread {
         self.changed_items.insert(at);
         if row["decision"] == "approved" {
             self.approval_tool(at, Some(c["at"].as_u64().unwrap_or_default()));
+        }
+        // Its words show: the reviewer's as its peer row [D3014], the user's as their message.
+        let reply = c["reply"]
+            .as_str()
+            .filter(|_| self.items[at]["kind"] == "approval");
+        if let Some(text) = reply.filter(|_| c["by"] != "parent") {
+            let (ts, cid) = (c["at"].as_u64().unwrap_or_default(), Value::from(cid));
+            let row = match c["by"] == "review" {
+                true => Self::peer_item(
+                    self.fold.plans.now["by"].as_str().unwrap_or(""),
+                    text,
+                    ts,
+                    &cid,
+                ),
+                false => {
+                    json!({"kind": "message", "role": "user", "text": text, "streaming": false,
+                    "origin": "user", "sentAt": ts, "cid": cid})
+                }
+            };
+            self.break_group();
+            self.add(row);
         }
     }
 
@@ -334,7 +385,9 @@ impl Thread {
     pub(super) fn requests(&self) -> Value {
         let of = |kind: &str| -> Vec<Value> {
             (self.pending.iter())
-                .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"].is_null())
+                // A plan its review holds shows, saying so, though it's nobody's to answer [§6].
+                .filter(|&&at| self.items[at]["kind"] == kind)
+                .filter(|&&at| matches!(self.items[at]["to"].as_str(), None | Some("review")))
                 .map(|&at| {
                     let mut r = self.items[at]["request"].clone();
                     // The card names the subagent that asks [w43 #16].

@@ -129,6 +129,9 @@ pub(crate) fn told(data: &Path, spec: &Spec) -> Spec {
         let t = current(data);
         spec.jobs = Some(jobs::lead(t["jobs"].as_array().map_or(&[], Vec::as_slice)));
     }
+    // A reviewer's own plans aren't reviewed: one review, never a chain [§6].
+    spec.review = review_on(data)
+        && crate::workers::link(data, &spec.id).is_none_or(|l| l.review["of"].is_null());
     spec
 }
 

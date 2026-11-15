@@ -181,7 +181,9 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
 
 /// A plain message while the agent waits on a question: that question's answer, through its
 /// control channel, so the agent and the log agree on what's pending. None when no question waits
-/// or the agent can't take it there: the message goes as any other [D159, D222].
+/// or the agent can't take it there: the message goes as any other [D159, D222]. Also a plan's
+/// reply, which keeps its agent planning: its answerer's words, or its reviewer's findings (`by`
+/// review) while the review holds it [D177, §6].
 pub fn reply(
     data: &Path,
     id: &str,
@@ -190,8 +192,12 @@ pub fn reply(
     by: Option<&str>,
 ) -> io::Result<Option<Value>> {
     let f = core::fold(&core::session_dir(data, id), true)?;
+    let review = by == Some("review");
     let asked = f.fold.turns.first().and_then(|t| {
-        let mut questions = t.asks.iter().filter(|(_, r)| r["items"].is_array());
+        let mut questions = t.asks.iter().filter(|(_, r)| {
+            let plan = r["action"] == "plan" && (r["to"] == "review") == review;
+            r["items"].is_array() && !review || plan
+        });
         questions.next().map(|(k, _)| k.clone())
     });
     let Some(request) = asked else {

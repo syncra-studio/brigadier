@@ -271,6 +271,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"] == "brigadier") {
         return ("working", serde_json::json!({"repeat": id}));
     }
+    // A plan its review holds: it works on, nobody's to answer yet [§6].
+    if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"] == "review") {
+        return ("working", serde_json::json!({"review": id}));
+    }
     // Only its parent agent is asked: the user sees it at work [D119].
     if let Some((id, _)) = turn
         .asks
