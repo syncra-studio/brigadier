@@ -329,7 +329,7 @@ impl Thread {
             let state = if live { "switching" } else { "switched" };
             let switched = json!({"state": state, "text": note, "from": sw["from_label"],
                 "to": sw["to_label"], "model": named, "handoff": sw["fresh"],
-                "automatic": sw["auto"], "error": null});
+                "automatic": sw["auto"], "moved": sw["moved"], "error": null});
             let at = match picked.or_else(|| self.limit_row.take()) {
                 Some(at) => at,
                 None => self.add(json!({"kind": "switch", "reason": reason(sw["why"].as_str())})),

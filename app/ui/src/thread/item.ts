@@ -219,6 +219,8 @@ export type Item = Base &
         model?: string | null;
         handoff: boolean;
         automatic: boolean;
+        /** A worker's move to its job's next model, as Rust wrote it [D375]. */
+        moved?: string | null;
         error?: string;
         /** The whole note as Rust wrote it, for a switch logged before the shape. */
         text: string;

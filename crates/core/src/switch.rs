@@ -26,6 +26,8 @@ pub struct Target<'a> {
     pub name: Option<&'a str>,
     pub label: &'a str,
     pub from: &'a str,
+    /// A worker's move to its job's next entry, in words: its divider's line [D375].
+    pub moved: Option<&'a str>,
 }
 
 /// Makes the switch, or says why not. `ping` is the host's answer taken before `f` was folded;
@@ -106,7 +108,7 @@ pub fn switch(
     let mut switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to.backend, "account": to.account, "model": to.model},
         "auto": auto, "fresh": fresh, "why": why, "note": note,
-        "from_label": to.from, "to_label": to.label});
+        "from_label": to.from, "to_label": to.label, "moved": to.moved});
     if let Some(name) = to.name {
         switch["to"]["name"] = name.into();
     }

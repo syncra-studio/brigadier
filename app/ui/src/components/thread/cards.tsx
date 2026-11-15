@@ -239,6 +239,7 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
       if (!change.to) return <span>{change.text}</span>;
       // Picked, not forced: no limit to explain.
       if (change.reason === "picked") return <span>Switched to {to}</span>;
+      if (change.moved) return <WithTip words={change.moved} tip={hit} />;
       return <WithTip words={refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`} tip={hit} />;
     case "failed":
       // An automatic one keeps the limit's words: nothing was clicked that the line could name.

@@ -173,7 +173,7 @@ fn attempt(
     if to.is_some() {
         target = to;
     } else if worker && pick.is_none() && auto {
-        // A worker moves within its own row, never by the session switch; out of it, it holds
+        // A worker moves within its own job, never by the session switch; out of it, it holds
         // for the user's call [D2037, D2041, D2028].
         if f.hold.is_some() {
             return Ok(
@@ -181,10 +181,10 @@ fn attempt(
             );
         }
         match crate::routing::next(data, id, &spec, &f, &cur)? {
-            Some((t, r)) => (target, ran, kind) = (Some(t), r, "row"),
+            Some((t, r)) => (target, ran, kind) = (Some(t), r, "job"),
             None => {
                 return Ok(
-                    json!({"ok": false, "error": "held", "message": "Its row is out; the user decides."}),
+                    json!({"ok": false, "error": "held", "message": "Its job is out; the user decides."}),
                 );
             }
         }
@@ -224,13 +224,28 @@ fn attempt(
     };
     let to_label = label(&v, to, &account);
     let name = (model.as_deref()).and_then(|m| model_name(data, to.name(), m, &spec.cwd));
+    // "Opus 5.5 had no account with room, so the next in Write code ran: Codex · GPT-6.1-Sol · High".
+    let moved = ran["note"]
+        .as_str()
+        .filter(|_| ran["job"].is_string())
+        .map(|n| {
+            let words = [
+                Some(to.short_label().to_string()),
+                name.clone().or(model.clone()),
+                effort.as_deref().map(crate::routing::capital),
+            ];
+            format!(
+                "{n}: {}",
+                words.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+            )
+        });
     // Asked again last: a setting turned off meanwhile stops an automatic switch [D51].
     let still = || {
         let v = load(data);
         !auto
             || match kind {
                 "agents" => v["agents"] == true,
-                "row" => true,
+                "job" => true,
                 _ => listed(&v, "auto", b),
             }
     };
@@ -243,8 +258,10 @@ fn attempt(
         name: name.as_deref(),
         label: &to_label,
         from: &from,
+        moved: moved.as_deref(),
     };
-    let mut reply = switch::switch(&spec, &f, &ping, &call, &target, auto, &still);
+    let told = crate::routing::told(data, &spec);
+    let mut reply = switch::switch(&told, &f, &ping, &call, &target, auto, &still);
     // The turn it carries on reports in place of the one cut, by the log [D2041].
     if reply["ok"] == true && worker && !ran.is_null() {
         crate::routing::set_ran(data, id, ran)?;
@@ -281,9 +298,9 @@ fn pick_account(data: &Path, v: &Value, a: &dyn Adapter, cur: &str, cwd: &str) -
         })
 }
 
-/// The next entry on another agent in the routing row that holds the session's model (Best, then
-/// Standard, then Quick, proposed), on its login or, where it switches accounts automatically, an
-/// account with room; none and it stays at its limit, never moved to a lower row [D2028]. Sign-in
+/// The next entry on another agent in the first job that holds the session's model, in the user's
+/// order, on its login or, where it switches accounts automatically, an account with room; none
+/// and it stays at its limit [D2028, D376]. Sign-in
 /// counts only where the model needs it, which the agent's own model list already says [D43, D89].
 fn pick_agent(
     data: &Path,
