@@ -73,7 +73,15 @@ pub(crate) fn written_for(
             (listed.iter().find(|m| m.id == model)).and_then(|m| m.efforts.first().cloned());
         run.model = Some(model);
     }
-    ok(&backend, a.runs(&run).as_deref())?;
+    // Its effort too: above a cap, it runs at the cap [D376].
+    let check = |run: Spec, agent: &str| {
+        Spec {
+            rules: Some(crate::routing::launch),
+            ..run
+        }
+        .ruled(agent)
+    };
+    let mut run = check(run, &backend)?;
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);
@@ -96,6 +104,7 @@ pub(crate) fn written_for(
         };
         let mut run = core::as_run(spec, f, local.name(), None);
         (run.account, run.model, run.effort) = (None, Some(model.id), None);
+        let mut run = check(run, local.name())?;
         ready(&mut run, local);
         return writer::write(local, &run, "", &prompt, active).map_err(|e| e.why);
     }
