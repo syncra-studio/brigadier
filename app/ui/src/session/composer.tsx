@@ -413,7 +413,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           <SessionQuestions id={id} run={run} source={source} />
         </>
       }
-      above={<SessionApprovals id={id} run={run} source={source} />}
+      above={<SessionApprovals id={id} run={run} source={source} field={field} />}
       // Kept while an approval has its place, so the draft and its caret stay.
       hidden={approval}
       onDragOver={files.onDragOver}
