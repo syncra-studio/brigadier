@@ -293,6 +293,7 @@ pub(super) fn write(
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
+    text += &why.map_or(String::new(), |w| take::retry(wid, w));
     if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
         if last.len() > LAST {
             let mut at = LAST;

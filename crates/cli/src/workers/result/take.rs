@@ -125,3 +125,10 @@ pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
     let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
     f.is_ok_and(|f| (reported(l, &f).iter()).all(|t| path_of(data, pid, wid, t).exists()))
 }
+
+/// A temporary failure's line in its result: the parent may run it again [D340] (proposed words).
+pub(super) fn retry(wid: &str, why: &str) -> String {
+    format!(
+        "It failed for a temporary reason ({why}): `brigadier start --retry {wid} \"<what failed>\"` runs it again on the same pick.\n"
+    )
+}
