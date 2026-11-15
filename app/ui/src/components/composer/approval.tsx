@@ -207,11 +207,10 @@ function Morph({ from, to, morphed }: { from: ReactNode; to: ReactNode; morphed:
 /**
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
  * session] [Allow once `⏎`]. Esc denies from anywhere in the view. The card takes focus as it comes, unless the user
- * is typing elsewhere, and Enter anywhere in it answers with its main button (D186), until something is typed on a card
- * with no field (it goes to the hidden draft); a held Enter counts once, so it can't answer the next card. With `onReason` a field beside the buttons takes
+ * is typing elsewhere, and Enter anywhere in it answers with its main button (D186); a held Enter counts once, so it can't answer the next card. With `onReason` a field beside the buttons takes
  * what the agent should do instead (D192). With words in it the card turns to refusing (D182): Deny and the session
  * grant make way, Allow becomes Send, which denies with the words and never allows. Esc clears the words and
- * brings the card back (D183); only with the field empty does it deny.
+ * brings the card back (D183); only with the field empty does it deny. A plan has no Deny: its words keep the agent planning (D400).
  * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card.
  */
 export function ApprovalCard({
@@ -223,7 +222,6 @@ export function ApprovalCard({
   onReason,
   step,
   dismiss,
-  onType,
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -236,18 +234,14 @@ export function ApprovalCard({
   step?: ApprovalStep;
   /** Nothing waits on it any more: Dismiss beside its error puts it away. */
   dismiss?: () => void;
-  /** A key typed on a card with no field of its own, for the draft it hides; null: Backspace. */
-  onType?: (text: string | null) => void;
 }) {
   const [typed, setTyped] = useState(reason);
-  // Typed since it showed: Enter no longer answers, so words meant as a reply never build the plan [D186].
-  const [keyed, setKeyed] = useState(false);
   const answer = (decision: ApprovalDecision) => {
     if (!busy) onAnswer(decision, decision === "deny" ? typed.trim() || undefined : undefined);
   };
   const deny = () => answer("deny");
   const shown = describe(approval);
-  const asksReason = Boolean(onReason) && !shown.noDeny;
+  const asksReason = Boolean(onReason);
   const refusing = asksReason && typed.trim() !== "";
   const primary = () => answer(refusing ? "deny" : "allow");
   const message = approval.action === "message";
@@ -255,7 +249,7 @@ export function ApprovalCard({
   const escape = () => {
     if (busy) return;
     if (refusing) field.current?.set([]);
-    else deny();
+    else if (!shown.noDeny) deny();
   };
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -264,11 +258,7 @@ export function ApprovalCard({
     if (!inField(active) || active?.closest("[data-slot=composer-card]")) card.current?.focus({ preventScroll: true });
   }, []);
   const reviewing = approval.review;
-  useCardKeys(!busy && !reviewing, { enter: keyed ? undefined : primary, escape: shown.noDeny ? undefined : escape }, card);
-  const keep = asksReason || !onType ? undefined : (text: string | null) => {
-    setKeyed(true);
-    onType(text);
-  };
+  useCardKeys(!busy && !reviewing, { enter: primary, escape }, card);
 
   const grant = approval.grant ? grantTip(approval.grant) : null;
   const allow = shown.allow ?? "Allow once";
@@ -278,20 +268,6 @@ export function ApprovalCard({
       tabIndex={0}
       aria-label="Approval"
       data-action="approval"
-      onKeyDown={(event) => {
-        // shortcut: plain keys, Backspace and paste only (no IME composing); enough while the field is out of sight.
-        const { key, target, currentTarget } = event;
-        if (!keep || event.metaKey || event.ctrlKey || inField(target) || (key === " " && target !== currentTarget)) return;
-        if (key !== "Backspace" && key.length !== 1) return;
-        event.preventDefault();
-        keep(key === "Backspace" ? null : key);
-      }}
-      onPaste={(event) => {
-        const text = event.clipboardData.getData("text/plain");
-        if (!keep || inField(event.target) || !text) return;
-        event.preventDefault();
-        keep(text);
-      }}
     >
       <div className="flex min-w-0 flex-col gap-2 px-4 pt-3.5 pb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-code leading-5 text-card-kind svg:size-4.5 svg:shrink-0">
@@ -408,7 +384,7 @@ export function ApprovalCard({
             ) : (
               <>
                 {allow}
-                {!keyed && ENTER_KEY}
+                {ENTER_KEY}
               </>
             )}
           </button>
@@ -429,7 +405,6 @@ export function ApprovalSlot({
   session = "",
   dismiss,
   error,
-  onType,
 }: {
   approvals: readonly PendingApproval[];
   /** `reason`: what to do instead, typed with a deny. */
@@ -442,8 +417,6 @@ export function ApprovalSlot({
   dismiss?: (id: string) => (() => void) | undefined;
   /** Rust's refusal, kept with the answer. */
   error?: (id: string) => string | null;
-  /** Keys typed on a card with no field of its own: the hidden composer's draft keeps them. */
-  onType?: (text: string | null) => void;
 }) {
   // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
   const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
@@ -479,7 +452,6 @@ export function ApprovalSlot({
         reason={reasons.get(cardKey(session, id))}
         onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
         dismiss={dismiss?.(id)}
-        onType={onType}
         step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
       />
     </div>

@@ -1,7 +1,6 @@
-import { type RefObject, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
-import type { ComposerFieldHandle } from "../components/composer/field";
 import { forgetQuestions, type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
 import { ask, threadSource, useDaemon } from "../daemon";
@@ -191,19 +190,11 @@ function useWaiting(id: string, source: Source) {
  * to do instead [D192], Allow … for this session from Rust's grant structure [D65, D193], Allow once; nothing else
  * while one waits [D327]. A refusal's error is Rust's, kept with the answer.
  */
-export function SessionApprovals({ id, run, source, field }: { id: string; run: Runner; source: Source; field: RefObject<ComposerFieldHandle | null> }) {
+export function SessionApprovals({ id, run, source }: { id: string; run: Runner; source: Source }) {
   const { approvals, dismiss, error } = useWaiting(id, source);
-  // What's typed on a card with no field (a plan) goes on the end of the draft it hides; null: Backspace [D74, D177].
-  const onType = (text: string | null) => {
-    const parts = field.current?.parts() ?? [];
-    const last = parts.at(-1);
-    const line = typeof last === "string" ? last : "";
-    field.current?.set([...(typeof last === "string" ? parts.slice(0, -1) : parts), text === null ? line.slice(0, -1) : line + text]);
-  };
   return (
     <ApprovalSlot
       session={id}
-      onType={onType}
       approvals={approvals}
       dismiss={dismiss}
       error={error}

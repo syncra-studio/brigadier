@@ -190,8 +190,8 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
             None => match decision.as_deref() {
                 Some("allow") => {}
                 Some("allowSession") if asked["grant"].is_object() => {}
-                // A plan has no deny: the user replies instead [D177].
-                Some("deny") if asked["action"] != "plan" => {}
+                // A plan has no bare deny: only one with words, its reply [D177, D400].
+                Some("deny") if asked["action"] != "plan" || control["reason"].is_string() => {}
                 _ => return wrong("decision"),
             },
         }

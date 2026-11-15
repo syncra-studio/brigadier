@@ -239,9 +239,11 @@ impl Thread {
         if row["decision"] == "approved" {
             self.approval_tool(at, Some(c["at"].as_u64().unwrap_or_default()));
         }
-        // Its words show: the reviewer's as its peer row [D3014], the user's as their message.
-        let reply = c["reply"]
-            .as_str()
+        // Its words show: the reviewer's as its peer row [D3014], the user's as their message, a
+        // reply or a plan's deny with words [D400].
+        let plan = self.items[at]["request"]["action"] == "plan";
+        let reply = (c["reply"].as_str())
+            .or(c["reason"].as_str().filter(|_| plan))
             .filter(|_| self.items[at]["kind"] == "approval");
         if let Some(text) = reply.filter(|_| c["by"] != "parent") {
             let (ts, cid) = (c["at"].as_u64().unwrap_or_default(), Value::from(cid));
