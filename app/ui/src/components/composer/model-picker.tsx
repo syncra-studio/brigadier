@@ -1,6 +1,7 @@
 import { type HTMLAttributes, type ReactElement, type RefObject, useEffect, useRef, useState } from "react";
 
 import { Bolt, Check, ChevronDown, ChevronRight, MagnifyingGlassSmSearch, Sparkles, Star, StarFilled, Terminal } from "../../icons";
+import { run } from "../../onboarding/api";
 import { setStar, useSettings } from "../../settings/api";
 import { cx } from "../cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
@@ -132,6 +133,11 @@ export function ModelPicker({
   const [older, setOlder] = useState<ReadonlySet<string>>(new Set());
   // The model under the keyboard: the footer follows it.
   const [underKeys, setUnderKeys] = useState<{ provider: string; model: Model } | null>(null);
+  // Usage moves while the list stays: each open reads it again, as the Usage popover does [D2039].
+  const [usage, setUsage] = useState<Record<string, Quota[] | null>>({});
+  useEffect(() => {
+    if (open) run(["models"]).then((reply) => setUsage(Object.fromEntries(reply.groups.map((each: ModelGroup) => [each.provider, each.usage ?? null]))), () => {});
+  }, [open]);
   const levelsNext = useRef(false);
   const search = useRef<HTMLInputElement>(null);
   const footer = useRef<HTMLDivElement>(null);
@@ -140,6 +146,7 @@ export function ModelPicker({
   const isStarred = (provider: string, entry: Model) => starred.includes(`${provider}/${entry.id}`);
   const favorites = groups.filter((entry) => !entry.unavailable).flatMap((entry) => entry.models.filter((each) => isStarred(entry.provider, each)).map((each) => ({ group: entry, model: each })));
   const group = browsing === FAVORITES ? undefined : (groups.find((entry) => entry.provider === browsing) ?? groups[0]);
+  const quota = group && (group.provider in usage ? usage[group.provider] : group.usage);
   const current = groups.find((entry) => entry.provider === value.provider);
   const model = current?.models.find((entry) => entry.id === value.model);
   const name = named(groups, value.provider, value.model);
@@ -414,7 +421,7 @@ export function ModelPicker({
                 {!matches && !group?.unavailable && group?.models.length === 0 && (
                   <p className="px-2.5 py-1.75 text-xs text-muted-foreground">No models listed yet</p>
                 )}
-                {!matches && group?.usage && <QuotaLines usage={group.usage} />}
+                {!matches && quota && <QuotaLines usage={quota} />}
               </div>
             </div>
             {efforts && (
