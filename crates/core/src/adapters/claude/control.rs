@@ -119,7 +119,7 @@ pub fn standing(spec: &Spec) -> [String; 6] {
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
         "--settings".into(),
-        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
+        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"cat"}]}]}}"#.into(),
         "--disallowedTools".into(),
         "ListAgents,SendMessage".into(),
     ]

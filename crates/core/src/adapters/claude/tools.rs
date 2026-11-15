@@ -232,3 +232,11 @@ pub fn tool_end(b: &Value, result: &Value, parent: Option<String>) -> Vec<Event>
         at: None,
     })]
 }
+
+/// The folder a Bash call runs in, from the launch's hook that echoes its input [D391].
+pub fn cwd(v: &Value) -> Option<Event> {
+    let input: Value = serde_json::from_str(s(v, &["stdout"])).ok()?;
+    let (tool, cwd) = (s(&input, &["tool_use_id"]), s(&input, &["cwd"]));
+    (v["hook_event"] == "PreToolUse" && !tool.is_empty() && !cwd.is_empty())
+        .then(|| Event::Cwd(tool.into(), cwd.into()))
+}

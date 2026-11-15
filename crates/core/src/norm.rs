@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 26;
+pub const VERSION: u32 = 27;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -27,6 +27,9 @@ pub struct Norm {
     /// Background subagents waiting on their own work, as their agent last listed them.
     #[serde(default)]
     awaiting: Vec<String>,
+    /// The last tool call's folder as its CLI said it beside its ask: (call id, folder) [D391].
+    #[serde(default)]
+    cwd: Option<(String, String)>,
 }
 
 impl Norm {
@@ -235,7 +238,18 @@ impl Norm {
                         .collect();
                     json!({"kind": "question", "id": q["id"], "text": first["text"], "options": options, "request": q})
                 }
-                Event::Approval(a) => json!({"kind": "approval", "id": a["id"], "request": a}),
+                // shortcut: one folder kept, so asks of parallel calls carry none and ask; keep one per call if that shows.
+                Event::Cwd(tool, cwd) => {
+                    self.cwd = Some((tool, cwd));
+                    continue;
+                }
+                Event::Approval(mut a) => {
+                    if let Some((_, cwd)) = self.cwd.take().filter(|(t, _)| a["tool"] == t.as_str())
+                    {
+                        a["cli"]["cwd"] = cwd.into();
+                    }
+                    json!({"kind": "approval", "id": a["id"], "request": a})
+                }
                 Event::Resolved(id) => json!({"kind": "resolved", "id": id}),
                 Event::External(path) => json!({"kind": "external", "path": path}),
                 Event::Decided(id, allowed) => {

@@ -10,11 +10,18 @@ impl Thread {
     /// the parent agent answers is a quiet step in the fold instead, with no card and no wait for
     /// the user [D119, D122].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64, item: &Value) {
-        self.approval_tool(at, None);
-        self.agent_waits(at, true);
+        let to = self.fold.to(item);
         self.pending.push(at);
         self.pending_changed = true;
-        if let Some(to) = self.fold.to(item) {
+        // A repeat Brigadier answers itself never shows: its step runs on as if never asked [D391].
+        if to == Some("brigadier") {
+            self.items[at]["to"] = "brigadier".into();
+            self.items[at]["hidden"] = true.into();
+            return self.resume_group();
+        }
+        self.approval_tool(at, None);
+        self.agent_waits(at, true);
+        if let Some(to) = to {
             self.items[at]["to"] = to.into();
             return;
         }

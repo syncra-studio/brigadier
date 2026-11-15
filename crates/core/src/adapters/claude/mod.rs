@@ -179,8 +179,10 @@ impl Adapter for Claude {
             argv.push("--allowedTools".into());
             argv.extend(rules);
         }
-        // The standing text [D181], and its own messages between sessions off.
+        // The standing text [D181], and its own messages between sessions off. Its hook echoes each
+        // Bash call's input, whose folder its ask lacks, into the stream [D391].
         argv.extend(control::standing(spec));
+        argv.push("--include-hook-events".into());
         // A note chat reads the session's checkout beside its own folder [D282].
         if let Some(dir) = spec.opts.get("reads") {
             argv.extend(["--add-dir".into(), dir.clone()]);
@@ -335,6 +337,7 @@ impl Adapter for Claude {
             {
                 vec![Event::TextDelta(s(&v, &["event", "delta", "text"]).into())]
             }
+            ("system", "hook_response") => tools::cwd(&v).into_iter().collect(),
             // A running subagent's heartbeat says nothing to show.
             ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
             // An API error the CLI answers for, as its SDK types it [D74].

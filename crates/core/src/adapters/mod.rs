@@ -64,6 +64,9 @@ pub enum Event {
     /// command, cwd, paths, files, branch, host, input, body, to, grant}`; structure only [D65].
     /// Optional `tool`: the normalised tool id whose work awaits this approval.
     Approval(Value),
+    /// The folder a tool call runs in, by the call's id, where its CLI says it only beside its ask:
+    /// the ask carries it [D391].
+    Cwd(String, String),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),
     /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
@@ -456,7 +459,9 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
 /// Whether a session grant is for this exact command in this folder, as Codex keys its own cache:
 /// such a repeat is answered without asking the user [D193, D247, D389].
 pub fn repeat(g: &Value, command: &Value, cwd: &Value) -> bool {
-    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && g["cli"]["cwd"] == *cwd
+    // An unknown folder never matches: the user is asked again [D391].
+    let folder = !cwd.is_null() && g["cli"]["cwd"] == *cwd;
+    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && folder
 }
 
 /// Text of a JSON line's field, or empty.
