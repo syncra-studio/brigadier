@@ -78,8 +78,8 @@ pub fn asks_in_prose(reply: &str) -> bool {
         })
 }
 
-/// The reply's prose paragraphs, each its lines: fenced blocks and `>` quotes are cut, inline code
-/// dropped.
+/// The reply's prose paragraphs, each its lines: fenced blocks, `>` quotes and headings are cut,
+/// inline code dropped.
 fn prose(reply: &str) -> Vec<Vec<String>> {
     let (mut out, mut para, mut fenced) = (vec![], vec![], false);
     for line in reply.lines() {
@@ -92,6 +92,7 @@ fn prose(reply: &str) -> Vec<Vec<String>> {
             || t.starts_with("```")
             || t.starts_with("~~~")
             || t.starts_with('>')
+            || t.starts_with('#')
         {
             if !para.is_empty() {
                 out.push(std::mem::take(&mut para));
