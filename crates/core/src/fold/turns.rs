@@ -109,11 +109,13 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
-    /// Its agent's output of this kind. A message is under way from its request read until a
-    /// step: it may be the reply that ends the turn.
-    pub(super) fn output(&mut self, kind: &str) {
+    /// Its agent's output of this kind. A message is under way from the reading that opens it
+    /// (Claude's), or else its first words, until a step: it may be the reply that ends the turn.
+    /// A reading that follows a step (Codex's, OpenCode's) leaves a safe point to cut at [D486].
+    pub(super) fn output(&mut self, kind: &str, opens: bool) {
         match kind {
-            "context" | "text" | "text_delta" | "reasoning" => self.replying = true,
+            "context" if opens => self.replying = true,
+            "text" | "text_delta" | "reasoning" => self.replying = true,
             "tool" | "tool_done" | "question" | "approval" | "plan" => self.replying = false,
             _ => {}
         }

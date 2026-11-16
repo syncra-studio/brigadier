@@ -31,7 +31,7 @@ pub fn records(v: &Value) -> Vec<Event> {
             });
             (usage
                 .is_object()
-                .then(|| Event::Context(read(usage), None))
+                .then(|| Event::Context(read(usage), None, true))
                 .into_iter())
             .chain(plans)
             .collect()
@@ -48,7 +48,7 @@ pub fn records(v: &Value) -> Vec<Event> {
             });
             let window = main.and_then(|m| m["contextWindow"].as_u64());
             let last = v["usage"]["iterations"].as_array().and_then(|i| i.last());
-            last.map(|u| Event::Context(read(u), window))
+            last.map(|u| Event::Context(read(u), window, false))
                 .into_iter()
                 .collect()
         }

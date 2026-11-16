@@ -274,8 +274,8 @@ impl Norm {
                     json!({"kind": "commands", "backend": self.backend, "list": list})
                 }
                 Event::Usage(u) => json!({"kind": "usage", "usage": u}),
-                Event::Context(used, window) => {
-                    json!({"kind": "context", "used": used, "window": window})
+                Event::Context(used, window, opens) => {
+                    json!({"kind": "context", "used": used, "window": window, "opens": opens})
                 }
                 Event::Plan(steps) => json!({"kind": "plan", "steps": steps}),
                 Event::Mark { start, end } => json!({"kind": "mark", "start": start, "end": end}),

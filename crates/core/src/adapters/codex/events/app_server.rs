@@ -44,7 +44,11 @@ pub fn events(v: &Value) -> Vec<Event> {
                 &p["tokenUsage"]["last"],
                 &p["tokenUsage"]["modelContextWindow"],
             );
-            let used = Event::Context(usage["totalTokens"].as_u64().unwrap_or(0), window.as_u64());
+            let used = Event::Context(
+                usage["totalTokens"].as_u64().unwrap_or(0),
+                window.as_u64(),
+                false,
+            );
             vec![Event::Usage(snake_keys(usage)), used]
         }
         "turn/plan/updated" => {

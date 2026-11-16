@@ -91,7 +91,7 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             let n = |v: &Value| v.as_u64().unwrap_or(0);
             let used =
                 n(&t["input"]) + n(&t["cache"]["read"]) + n(&t["cache"]["write"]) + n(&t["output"]);
-            vec![Event::Context(used, None)]
+            vec![Event::Context(used, None, false)]
         }
         "session.execution.interrupted" => vec![Event::TurnEnd(false)],
         "session.execution.failed" => {

@@ -111,8 +111,8 @@ pub enum Event {
     /// An action its CLI's own safety check gave no verdict on: not run, nobody asked [D455].
     Unchecked,
     Usage(Value),
-    /// Tokens in the conversation's window now, and the window's size where the CLI says [D88].
-    Context(u64, Option<u64>),
+    /// Tokens in the window now, its size where told, and if a model message opens [D88, D486].
+    Context(u64, Option<u64>, bool),
     /// The agent's to-do list as it last wrote it: `[{text, status}]` [D104].
     Plan(Vec<Value>),
     /// The agent's own commands, as its protocol lists them, replacing any listed before: each

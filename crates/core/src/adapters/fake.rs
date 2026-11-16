@@ -253,7 +253,11 @@ impl Adapter for Fake {
                 s(&v, &["to"]).into(),
             )],
             "check" => vec![Event::Checking(v["on"] == true)],
-            "context" => vec![Event::Context(v["used"].as_u64().unwrap_or(0), None)],
+            "context" => vec![Event::Context(
+                v["used"].as_u64().unwrap_or(0),
+                None,
+                v["opens"] == true,
+            )],
             "deny" => vec![Event::Denied],
             "limits" => serde_json::from_value(v["windows"].clone()).map_or_else(
                 |_| vec![Event::Unknown(line.into())],
