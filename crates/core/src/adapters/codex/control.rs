@@ -20,12 +20,15 @@ fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str
     }
 }
 
+/// Codex's own Default mode says to assume rather than ask, so its question tool is named [D484].
+const ASK: &str = "\n\nYour question tool is `request_user_input`, and it works in Default mode. The Default mode's advice to assume and go on rather than ask doesn't apply here: whenever the text above says to ask, ask with it.";
+
 /// `thread/start` or `thread/resume`'s settings.
 pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     let (policy, reviewer, sandbox, _) = level(spec);
     // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
     let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox,
-        "developerInstructions": crate::agent::standing(spec)});
+        "developerInstructions": crate::agent::standing(spec) + ASK});
     if let Some(model) = &spec.model {
         open["model"] = model.as_str().into();
     }
