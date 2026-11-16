@@ -8,6 +8,7 @@ use crate::load;
 use crate::repos::{failed, tool};
 
 mod actions;
+mod chip;
 mod prs;
 mod review;
 mod search;
@@ -15,7 +16,8 @@ mod timeline;
 mod touched;
 mod view;
 pub use actions::{kept_run, kept_runs};
-pub use prs::{chip, kept, moved_on, opened};
+pub use chip::{chip, moved_on, opened};
+pub use prs::kept;
 pub use search::kept_search;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
