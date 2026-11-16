@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 import { ask, type Row, setGitHandler, useDaemon } from "../daemon";
 import { useHomeProject, useStart } from "../home/start";
 import type { ComposerRow } from "../session/composer";
+import { store } from "../onboarding/api";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
@@ -173,13 +174,19 @@ setGitHandler((frame) => {
 export const isWorking = (row: Row | undefined) => (row as ComposerRow | undefined)?.running === true || row?.works === true;
 
 /** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
+/** A folder chat's repo the panel reads, by session: Files, Review and the watch follow it [D494]. */
+const repoPicks = store<Record<string, string>>({});
+export const useRepoPick = (owner: string) => repoPicks.use()[owner] ?? null;
+export const pickRepo = (owner: string, repo: string) => repoPicks.set({ ...repoPicks.get(), [owner]: repo });
+
 export function useGitWatch(owner: string | null): void {
   const { daemon, rows } = useDaemon();
+  const repo = useRepoPick(owner ?? "");
   const project = useHomeProject();
   // A Local or existing checkout is there once Rust has the session: no wait for its agent to start [D85].
   const start = useStart(owner ?? "");
   const starting = start?.asking === true && !(start.args.includes("--local") && rows?.some((each) => each.id === owner));
-  const target: Target | null = owner === null ? null : owner !== HOME ? { session: owner } : project ? { project: project.id } : null;
+  const target: Target | null = owner === null ? null : owner !== HOME ? { session: repo ? `${owner}@${repo}` : owner } : project ? { project: project.id } : null;
   const key = target && JSON.stringify(target);
   // Before the paint, so a switch never shows the last checkout's read or an empty one for a frame [D1258].
   useLayoutEffect(() => {

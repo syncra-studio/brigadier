@@ -8,7 +8,8 @@ import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
-import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
+import { AttachmentsCard, type CardFile, FolderCard, GitCard, summaryReady, type TouchedRepo } from "../panel/card";
+import { pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
@@ -310,10 +311,33 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const making = session?.id === owner ? session.setup?.steps.find((step) => step.kind === "worktree" && step.state !== "failed") : undefined;
   const named = making?.kind === "worktree" ? making.branch : null;
   const shown = summaryReady(data) || !named ? data : { ...data, source: { checkout: "worktree" as const, branch: named, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] } };
+  // A folder chat's card lists the repos it changed, read again as the session changes [D494, D544].
+  // shortcut: a repo's PRs show as of the session's last change; push them with the row if they lag.
+  const folderChat = projects?.find((each) => each.id === projectId)?.kind === "folder";
+  const picked = useRepoPick(owner);
+  const [touched, setTouched] = useState<TouchedRepo[] | null>(null);
+  useEffect(() => {
+    if (!has || !folderChat) return;
+    let live = true;
+    void daemonRun(["source", owner, "repos"]).then((reply) => {
+      if (!live || !reply.ok) return;
+      setTouched(reply.repos);
+      // Files and Review read the first repo it changed until another is picked.
+      if (!picked && reply.repos[0]) pickRepo(owner, reply.repos[0].name);
+    });
+    return () => {
+      live = false;
+    };
+  }, [owner, has, folderChat, updated, picked]);
+  const workers = <><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>;
   // Not drawn until its data is in: no skeleton first.
-  const card = has && summaryReady(shown) ? (
+  const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
     <>
-      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={() => openTab(owner, "pr", "list")} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>} />
+      {folderChat ? (
+        <FolderCard project={project} repos={touched ?? []} onReview={(repo) => (pickRepo(owner, repo), openReview(owner))} workers={workers} />
+      ) : (
+        <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={() => openTab(owner, "pr", "list")} onReview={() => openReview(owner)} workers={workers} />
+      )}
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

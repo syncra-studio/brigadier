@@ -21,7 +21,8 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const { target: watched, version } = useGit();
   const { daemon } = useDaemon();
   // Mounted on a switch, this view renders once before the watch moves to its owner: another checkout's, never read here [D1258].
-  const target = watched && ("session" in watched ? watched.session === owner : owner === HOME) ? watched : null;
+  // A folder chat's is one of its repos, `<owner>@<repo>` [D494].
+  const target = watched && ("session" in watched ? watched.session.split("@")[0] === owner : owner === HOME) ? watched : null;
   const key = target && JSON.stringify(target);
   const [listing, setListing] = useState<Listing>(() => (key && kept.get(key)?.listing) || { state: "loading" });
   const [marks, setMarks] = useState<ChangeMarks>(() => (key && kept.get(key)?.marks) || NO_MARKS);

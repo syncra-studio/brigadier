@@ -16,7 +16,8 @@ import { Gone } from "./source/hero";
 import { Counts, Line, Note, PrLine } from "./source/rows";
 import { ago } from "../landing/pr-words";
 import { useBranchPicker } from "./branch-picker";
-import type { Pr } from "./types";
+import type { KeptPrs, Pr } from "./types";
+import { openLink } from "../browser/links";
 
 /** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
 const folds = new Map<string, boolean>();
@@ -226,6 +227,46 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
       )}
       {workers}
       {pickers}
+    </>
+  );
+}
+
+/** A repo a folder chat changed, as `source <id> repos` gives it [D494]. */
+export type TouchedRepo = { name: string; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
+
+/**
+ * A folder chat's card [D494, D544]: the project as its title, then each repo the chat changed, its name, branch and
+ * +/− counts opening Review on that repo; their PRs, each with its repo's name, as the one-checkout card's; then the
+ * Workers section. A repo claimed and never changed isn't shown.
+ */
+export function FolderCard({ project, repos, onReview, workers }: { project: string | null; repos: TouchedRepo[]; onReview: (repo: string) => void; workers?: ReactNode }) {
+  const prs = repos.flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name })));
+  return (
+    <>
+      <CardSection title={project}>
+        {repos.map((repo) => (
+          <div key={repo.name} className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex h-control-sm min-w-0 items-center gap-1 text-sm text-muted-foreground svg:size-icon-md svg:shrink-0">
+              <span className="shrink-0 text-foreground">{repo.name}</span>
+              <Branch />
+              <span className="truncate">{repo.branch ?? "…"}</span>
+            </span>
+            <span className="flex-1" />
+            <button type="button" aria-label={`Review the changes in ${repo.name}`} onClick={() => onReview(repo.name)} className="shrink-0 cursor-pointer rounded-control hover:underline focus-visible:focus-ring">
+              <Counts added={repo.added} removed={repo.removed} />
+            </button>
+          </div>
+        ))}
+      </CardSection>
+      {prs.length > 0 && (
+        <CardSection title="Pull requests" fold="pull-requests" count={prs.length}>
+          {/* shortcut: a repo's PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
+          {prs.map((pr) => (
+            <PrLine key={`${pr.repo}#${pr.number}`} pr={pr} onClick={pr.url ? () => openLink(pr.url!) : undefined} />
+          ))}
+        </CardSection>
+      )}
+      {workers}
     </>
   );
 }
