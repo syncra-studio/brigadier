@@ -21,6 +21,7 @@ const COMMAND_SHIFT: Record<string, string> = {
 const COMMAND_ALT: Record<string, string> = {
   w: "close-others", s: "new-side-chat", n: "new-page",
   arrowleft: "previous-tab", arrowright: "next-tab",
+  ...Object.fromEntries(Array.from({ length: 9 }, (_, index) => [String(index + 1), `profile-${index + 1}`])),
 };
 
 /** What the key types, lowercase. Alt changes the character and layouts move the digits, so those read the key's place. */
@@ -47,7 +48,6 @@ export function guestKey(press: Press): string | null {
 
 /** Off macOS the page hears no pane shortcut yet, so there a key taken here would be lost. */
 export function installGuestKeys(guest: WebContents): void {
-  // shortcut: no profile keys (⌥⌘1-9) until profiles land; port the old profileKey with them.
   if (process.platform !== "darwin") return;
   guest.on("before-input-event", (event, input) => {
     // Not taken: the page's own Esc still happens; the find bar only hears of it.

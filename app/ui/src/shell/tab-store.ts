@@ -217,6 +217,14 @@ export function setTabUrl(owner: string, id: string, url: string): void {
   act(owner, { args: ["url", id, url], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, target: url } : tab)) }) });
 }
 
+/** A browser tab's profile, which its page opens on from then on (crates/cli/src/tabs.rs's `profile`) [D515]. */
+export function setTabProfile(owner: string, id: string, profile: string): void {
+  act(owner, { args: ["profile", id, profile], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, profile } : tab)) }) });
+}
+
+/** Every open tab of every chat and session the app has read, with where it is. */
+export const allTabs = (): { owner: string; tab: Tab }[] => [...slots].flatMap(([owner, slot]) => slot.shown.tabs.map((tab) => ({ owner, tab })));
+
 /** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
 export const tabOpenAnywhere = (id: string): boolean => tabAnywhere(id) !== null;
 

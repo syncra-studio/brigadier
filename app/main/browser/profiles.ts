@@ -18,6 +18,24 @@ export function profileOfStorage(storagePath: string | null): string | null {
   return /[\\/]browser-profile-([a-z0-9-]{1,64})$/.exec(storagePath ?? "")?.[1] ?? null;
 }
 
+/** The profile's folder under Chromium's Partitions; a bad id throws, so it can't name anything else. */
+export function profileFolderName(profileId: string): string {
+  return profilePartition(profileId).slice("persist:".length);
+}
+
+/** What main reads of Rust's list (crates/cli/src/browser/profiles.rs): enough to refuse removing one not marked, or a guarded one. */
+export type SavedProfiles = { profiles: { id: string; deleting?: boolean }[]; defaultId: string };
+
+/** Why a profile's data must not go; null when it may. The page has Rust mark it deleting and moves its tabs first. */
+export function refusalToRemove(profileId: string, saved: SavedProfiles | null): string | null {
+  if (!saved) return "The profile list couldn't be read";
+  if (saved.defaultId === profileId) return "The default profile can't be deleted";
+  const marked = saved.profiles.find((profile) => profile.id === profileId)?.deleting === true;
+  if (!marked) return "The profile isn't marked for deleting";
+  if (!saved.profiles.some((profile) => !profile.deleting)) return "The last profile can't be deleted";
+  return null;
+}
+
 export type SitePermission = "ask" | "allow" | "block";
 export type SiteDevice = "camera" | "microphone" | "location";
 /** `location` is absent from what was saved before sites could ask for it. */

@@ -11,10 +11,11 @@
 import { readFavicon } from "./favicon";
 import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 import { devToolsChanged, userUsed } from "./pause";
+import { recordDates } from "./profiles";
 
 declare global {
   interface Window {
-    /** The browser's door (main's preload.ts), there only while the browser is on (`window.brigadier.browser`). */
+    /** The browser's door (main's preload.ts). */
     brigadierShell: {
       profilePartition(profileId: string): Promise<string>;
       guestFavicon(id: number, href: string): Promise<string | null>;
@@ -28,6 +29,9 @@ declare global {
       openPermissionSettings(device: "camera" | "microphone" | "location"): Promise<void>;
       /** DevTools' panes and the element picker (main's browser/browserDevtools.ts), by the guest's id. */
       devtools(op: string, args: { guest: number } & Record<string, unknown>): Promise<unknown>;
+      /** A profile's Chromium data (main's browser/profileStore.ts): remove, counts, clear. */
+      profiles(op: string, args: { profile: string } & Record<string, unknown>): Promise<unknown>;
+      onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
     };
   }
@@ -167,6 +171,7 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused }));
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
+  window.brigadierShell.onBrowserDates(recordDates);
   // shortcut: no passkey or sign-in events until those sections land (guestPasskey, browserSignIn).
   window.brigadierShell.onAgentEvent(({ from, event }) => {
     const page = pageOf(from);
@@ -263,7 +268,7 @@ function listen(page: Page): void {
 const opening = new Map<string, Promise<void>>();
 
 /** Makes the tab's page at `url`, hidden at `bounds` until placed; a tab that has one loads `url` in it. */
-export function openPage(id: string, url: string, bounds: BrowserBounds, emit: (event: BrowserEvent) => void): Promise<void> {
+export function openPage(id: string, url: string, profileId: string, bounds: BrowserBounds, emit: (event: BrowserEvent) => void): Promise<void> {
   const inFlight = opening.get(id);
   if (inFlight) return inFlight;
   const existing = pages.get(id);
@@ -272,14 +277,12 @@ export function openPage(id: string, url: string, bounds: BrowserBounds, emit: (
     load(existing, url);
     return Promise.resolve();
   }
-  const open = makePage(id, url, bounds, emit).finally(() => opening.delete(id));
+  const open = makePage(id, url, profileId, bounds, emit).finally(() => opening.delete(id));
   opening.set(id, open);
   return open;
 }
 
-async function makePage(id: string, url: string, bounds: BrowserBounds, emit: (event: BrowserEvent) => void): Promise<void> {
-  // shortcut: every tab is on the default profile until profiles land; then each is pinned to its own (browserProfilePlaces).
-  const profileId = "default";
+async function makePage(id: string, url: string, profileId: string, bounds: BrowserBounds, emit: (event: BrowserEvent) => void): Promise<void> {
   const element = document.createElement("webview") as Webview;
   element.setAttribute("partition", await window.brigadierShell.profilePartition(profileId));
   element.setAttribute("allowpopups", "");

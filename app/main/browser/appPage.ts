@@ -1,6 +1,6 @@
 // What counts as the app's own page, the one thing that gets the shell's IPC. A guest has no preload to reach
 // it with; these checks hold if that ever stops being so, or if a window of ours is sent somewhere else.
-import { app, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent, webContents } from "electron";
 
 let page: URL | null = null;
 
@@ -23,6 +23,13 @@ export function isAppPage(url: string): boolean {
 export function fromAppPage(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
   const frame = event.senderFrame;
   return event.sender.getType() === "window" && frame !== null && frame.parent === null && isAppPage(frame.url);
+}
+
+/** Sends to the app's own windows, for what no one page owns (a profile's cookies). */
+export function toAppPages(channel: string, payload: unknown): void {
+  for (const contents of webContents.getAllWebContents()) {
+    if (contents.getType() === "window" && isAppPage(contents.getURL())) contents.send(channel, payload);
+  }
 }
 
 const refused = (channel: string, event: IpcMainEvent | IpcMainInvokeEvent) =>

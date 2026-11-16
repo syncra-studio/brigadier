@@ -358,6 +358,8 @@
   --spacing-browser-address: 48.125rem;
   --spacing-browser-site-info: 20rem;
   --spacing-browser-menu: 15rem;
+  /* The browser tab's profile menu (the old tokens.css). */
+  --spacing-browser-profiles: 18rem;
   --spacing-browser-menu-item: 1.8125rem;
   --spacing-browser-zoom: 1.625rem;
   --spacing-browser-zoom-value: 2.75rem;

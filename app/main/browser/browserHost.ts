@@ -3,6 +3,7 @@
 import { app, session } from "electron";
 
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
+import { watchProfileCookies } from "./browserClearData";
 import { watchGuest } from "./browserAgent";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
@@ -10,6 +11,7 @@ import { installGuestFavicon } from "./guestFavicon";
 import { installGuestKeys } from "./guestKeys";
 import { installGuest, webOrBlank } from "./guestPopups";
 import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers } from "./permissions";
+import { isDeleting, installProfileStore } from "./profileStore";
 import { isProfilePartition, profilePartition } from "./profiles";
 import { keepSessionCookies } from "./sessionCookies";
 
@@ -24,7 +26,8 @@ export function installBrowserHost(origin: string): void {
   installPermissionAnswers();
   installGuestFavicon();
   installBrowserDevtools();
-  // shortcut: no agent, import, bookmarks, logins or clear data until their sections land; their installs go here.
+  installProfileStore();
+  // shortcut: no agent, import, bookmarks or logins until their sections land; their installs go here.
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });
@@ -39,6 +42,7 @@ export function installBrowserHost(origin: string): void {
     }
     applyPermissionPolicy(created);
     keepSessionCookies(created);
+    watchProfileCookies(created);
   });
 
   app.on("web-contents-created", (_event, contents) => {
@@ -67,6 +71,7 @@ export function installBrowserHost(origin: string): void {
   });
 
   handleFromApp("brigadier:profile-partition", (_event, profileId: string) => {
+    if (isDeleting(profileId)) throw new Error("This profile is being deleted");
     const partition = profilePartition(profileId);
     profileSessions.add(partition);
     return partition;

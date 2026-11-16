@@ -17,6 +17,7 @@ import { pageShows, userUsed } from "./pause";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
 import { BrowserOptions } from "./options";
+import { ProfileButton } from "./profile-button";
 import { Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
 import { BrowserDevButton, BrowserDevFrame, BrowserPickerBar } from "./devtools";
 import { BrowserDeviceBar } from "./device-sizes";
@@ -362,7 +363,8 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
           <PermissionPrompt id={id} asking={active ? page?.asking : null} anchor={address} />
           <OsRefusedNotice id={id} refused={active && page?.osRefused?.origin === originOf(url) ? page?.osRefused : null} anchor={address} />
         </form>
-        {/* shortcut: no profile button (S7), downloads or screenshot until their sections land; they go here, in that order. */}
+        <ProfileButton owner={owner} tab={tab} />
+        {/* shortcut: no downloads or screenshot until their sections land; they go here, in that order. */}
         <BrowserDevButton id={id} ready={ready} />
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
         {/* shortcut: no agent pause or sign-in banners until agents drive the browser (S11). */}

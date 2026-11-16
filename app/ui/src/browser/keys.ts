@@ -92,6 +92,7 @@ const GUEST_KEYS: Record<string, { code: string; shift?: boolean; control?: bool
   "cycle-previous": { code: "Tab", control: true, shift: true },
   "terminal-alternate": { code: "Backquote", control: true },
   ...Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`tab-${index + 1}`, { code: `Digit${index + 1}` }])),
+  ...Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`profile-${index + 1}`, { code: `Digit${index + 1}`, alt: true }])),
   reload: { code: "KeyR" },
   "force-reload": { code: "KeyR", shift: true },
   find: { code: "KeyF" },

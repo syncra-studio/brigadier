@@ -170,6 +170,21 @@ impl Places {
                     &["tabs", session, "profile", get(1)?, get(2)?].map(String::from),
                 );
             }
+            // Main has cleared its engine data: the entry and the profile's own folder go.
+            "forget" => {
+                let id = get(1)?;
+                check_id(id)?;
+                let at = self
+                    .profiles
+                    .iter()
+                    .position(|p| p.id == id && p.deleting)
+                    .ok_or_else(|| io::Error::other("The profile isn't marked for deleting"))?;
+                match fs::remove_dir_all(data.join("browser").join(id)) {
+                    Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+                    _ => {}
+                }
+                self.profiles.remove(at);
+            }
             "rename" | "recolour" | "move" | "make-default" | "delete-mark" => {
                 let id = get(1)?;
                 self.known(id)?;

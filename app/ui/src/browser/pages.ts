@@ -3,7 +3,8 @@ import { useSyncExternalStore } from "react";
 import { closeTab, openTab } from "../shell/tab-store";
 import { stepZoom } from "./keys";
 import { closeFind, findState, forgetFind } from "./find";
-import { type BrowserBounds, closePage as closeInLayer, navigatePage, openPage as openInLayer, zoom } from "./layer";
+import { type BrowserBounds, closePage as closeInLayer, focusPage, navigatePage, openPage as openInLayer, zoom } from "./layer";
+import { pinTab } from "./profiles";
 
 /**
  * The Browser tabs' pages as the app knows them, one per tab: what each shows, heard from its
@@ -114,7 +115,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
       navigatePage(id, url, bounds);
       return;
     }
-    await openInLayer(id, url, bounds, (event) => {
+    await openInLayer(id, url, await pinTab(owner, id), bounds, (event) => {
       if (event.type === "load") {
         const shown = pages.get(id);
         if (!event.loading) syncZoom(id);
@@ -153,6 +154,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
     }
     made.add(id);
     update(id, { ready: true });
+    if (focusOnOpen.delete(id)) focusPage(id);
   } catch (error) {
     update(id, { loading: false });
     throw error;
@@ -185,6 +187,16 @@ export const zoomStep = (id: string, by: 1 | -1) => zoomPage(id, stepZoom(pages.
 
 export function dismissBlocked(id: string): void {
   update(id, { blocked: null });
+}
+
+/** Whether tab `id` has its page in the layer to act on. */
+export const pageReady = (id: string): boolean => made.has(id);
+
+const focusOnOpen = new Set<string>();
+/** The page goes and its tab makes it again where it shows, on the tab's profile now; `focus`: the keyboard goes back to it. */
+export function reopenPage(id: string, focus: boolean): void {
+  if (focus) focusOnOpen.add(id);
+  closeBrowserPage(id);
 }
 
 /** The tab closed: the page goes. */

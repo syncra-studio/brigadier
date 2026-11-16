@@ -1,4 +1,6 @@
 import { Select } from "../components/select";
+import { ProfileDetailPage } from "./browser-profile";
+import { ProfilesSection } from "./browser-profiles";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { type Settings, setSetting, useSettings } from "./api";
@@ -9,6 +11,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 export const BROWSER_ROWS = {
   webLinks: { label: "Open web links in", description: "Where links in answers, search results and pull requests open", section: "General" },
   localLinks: { label: "Open local dev URLs in", description: "Where localhost and other local development sites open, such as a running preview", section: "General" },
+  profiles: { label: "Profiles", description: "Separate sign-ins, history, bookmarks and passwords for each part of your life, and which profile new sessions start on" },
 } as const;
 
 const PAGE_DESCRIPTION = "The built-in browser, where links open, and what it keeps.";
@@ -30,9 +33,11 @@ function LinkRow({ setting, row }: { setting: "web_links_in" | "local_links_in";
 }
 
 /** Settings › Browser, the old app's page; its other sections come with their parts [D507, D516]. */
-export function BrowserPage() {
+export function BrowserPage({ detail }: { detail?: string }) {
+  if (detail?.startsWith("profile/")) return <ProfileDetailPage id={detail.slice("profile/".length)} />;
   return (
     <SettingsPage title="Browser" description={PAGE_DESCRIPTION}>
+      <ProfilesSection />
       <SettingsSection title="General">
         <SettingsCard>
           <LinkRow setting="web_links_in" row={BROWSER_ROWS.webLinks} />

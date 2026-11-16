@@ -1,6 +1,7 @@
 //! The app's browser data commands. Agent actions use separate verbs [D515, D516, D519].
 
 mod bookmarks;
+mod dates;
 mod history;
 pub(crate) mod profiles;
 mod records;
@@ -15,7 +16,7 @@ use std::{fs, io};
 use store::{Device, Store};
 use types::{HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import ... [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear ... [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     for flag in [
@@ -53,6 +54,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "sites",
         "imports",
         "bookmarks",
+        "dates",
     ]
     .contains(&area)
     {
@@ -80,6 +82,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return bookmarks::run(&folder, args);
     }
     let mut store = Store::open(&folder.join("browser.sqlite"))?;
+    if area == "dates" {
+        return dates::run(&store, args);
+    }
     stored(&mut store, area, args)
 }
 

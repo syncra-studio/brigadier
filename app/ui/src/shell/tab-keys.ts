@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { allProfiles, switchProfile } from "../browser/profiles";
 import { matches } from "../shortcuts";
 import { blocked } from "./titlebar";
 import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
@@ -18,6 +19,11 @@ export function useTabKeys(owner: string, archived: boolean): void {
       else if (is("reopen")) run = () => reopenTab(owner);
       else if (is("new-tab")) run = () => openTab(owner, "new");
       else if (is("show-tab")) run = () => selectNumber(owner, Number(event.code.slice(-1)));
+      else if (is("switch-profile") && window.brigadier) {
+        const profile = allProfiles()[Number(event.code.slice(-1)) - 1];
+        // One from a page comes as a press made here (browser/keys.ts): the page had the keyboard, and keeps it.
+        if (profile) run = () => void switchProfile(owner, profile.id, { keyboard: !event.isTrusted });
+      }
       if (!run) return;
       event.preventDefault();
       event.stopPropagation();

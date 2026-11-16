@@ -38,6 +38,16 @@ const SCHEMA: &[&str] = &[
     );
 ",
     "ALTER TABLE sites ADD COLUMN location TEXT NOT NULL DEFAULT 'ask';",
+    r"
+    CREATE TABLE site_activity (origin TEXT PRIMARY KEY, last_ms INTEGER NOT NULL);
+    CREATE TABLE cookie_changes (
+        domain TEXT NOT NULL,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        last_ms INTEGER NOT NULL,
+        PRIMARY KEY (domain, path, name)
+    );
+",
 ];
 
 /// The most pages a history list returns at once.

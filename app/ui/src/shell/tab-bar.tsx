@@ -7,6 +7,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouse
 import { Badge } from "../components/badge";
 import { shownAddress } from "../browser/address";
 import { useBrowserPage } from "../browser/pages";
+import { TabProfileDot } from "../browser/profile-mark";
 import { BrowserTabIcon } from "../browser/tab-icon";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
@@ -148,8 +149,8 @@ function BlankChatTab({ owner, active, separator }: { owner: string; active: boo
 const pathName = (tab: Tab) => (tab.target === undefined || tab.kind === "review" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
 const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/")[1] ?? TAB_KINDS.attachment.name) : pathName(tab));
 
-function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "browser") return <BrowserTabIcon tabId={tab.id} />;
+function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {
+  if (tab.kind === "browser") return <span className="relative flex shrink-0"><BrowserTabIcon tabId={tab.id} /><TabProfileDot owner={owner} tab={tab} /></span>;
   if ((tab.kind === "file" || tab.kind === "attachment") && tab.target !== undefined) return <FileIcon name={nameOf(tab)} size="sm" />;
   const Icon = TAB_KINDS[tab.kind].icon;
   return <Icon className="size-icon-sm shrink-0" />;
@@ -206,7 +207,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
           }}
           className={BUTTON}
         >
-          <TabIcon tab={tab} />
+          <TabIcon owner={owner} tab={tab} />
           <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
         </button>
         <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE}>

@@ -24,6 +24,7 @@
   { "id": "previous-tab", "keys": ["CmdOrCtrl+Shift+[", "CmdOrCtrl+Alt+Left", "Ctrl+Shift+Tab"], "name": "Previous tab", "line": "Show the tab to the left" },
   { "id": "next-tab", "keys": ["CmdOrCtrl+Shift+]", "CmdOrCtrl+Alt+Right", "Ctrl+Tab"], "name": "Next tab", "line": "Show the tab to the right" },
   { "id": "show-tab", "keys": ["CmdOrCtrl+1–9"], "name": "Show tab", "line": "1 shows the chat, 2 to 8 the tabs after it, 9 the last" },
+  { "id": "switch-profile", "keys": ["CmdOrCtrl+Alt+1–9"], "name": "Switch browser profile", "line": "Put the tab in front and new tabs on profile 1 to 9" },
   { "id": "terminal", "keys": ["CmdOrCtrl+J", "Ctrl+`"], "name": "Terminal", "line": "Open a terminal tab" },
   { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the right panel, Files and Workers, on its last view" },
   { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show the session's files in the right panel, or hide it where they show" },
