@@ -36,8 +36,8 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
 }
 
 /**
- * One item of the rail. `card` is a framed card (notices, the queue); `controls` a darker tab with no frame;
- * `model` the model picker's strip, in the boards' rail look [D85]; `decision` a card waiting for the user, which at
+ * One item of the rail, each on the project strip's fill [D480]. `card` is a framed card (notices, the queue);
+ * `controls` a tab with no frame; `model` the model picker's strip [D85]; `decision` a card waiting for the user, which at
  * the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items open to their
  * height as they come, except those the rail had as it appeared and those that came while the window was hidden.
  * One turned not `shown` folds back to nothing first, then is gone (`onGone`).
@@ -88,8 +88,9 @@ export function RailItem({
         !shown ? "motion-safe:animate-rail-close" : opens && "motion-safe:animate-rail-open",
         // The tuck under the card is padding, so the last item's content never hides behind it.
         variant !== "decision" && "last:pb-rail-tuck",
-        variant === "controls" ? "bg-code-surface" : "border-x border-t border-border",
-        variant === "model" ? "bg-model-strip backdrop-blur-model-strip" : variant !== "controls" && "bg-rail-glass",
+        // Every strip has the project strip's fill [D480].
+        "bg-code-surface",
+        variant !== "controls" && "border-x border-t border-border",
         variant === "decision" && "last:mb-rail-clear last:rounded-b-overlay last:border-b",
         className,
       )}

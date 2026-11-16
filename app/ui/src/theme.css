@@ -215,10 +215,8 @@
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
   --color-rail-line: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
   --color-rail-line-current: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  /* Kept as it was (the old card at 70%): the new design leaves the rail's cards alone. */
+  /* The live workers pane's fill (the old card at 70%). */
   --color-rail-glass: #232322b3;
-  /* The model picker's strip: the boards' rail fill (L2S6P's status slot) [D85]. */
-  --color-model-strip: #1c1c1e;
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
   /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
      text, an outlined button's wash, the filled button's hover, a file list's ground. */
@@ -528,8 +526,6 @@
   --blur-material: 24px;
   /* Behind a menu or the hover card (the new design's). */
   --blur-popover: 30px;
-  /* Behind the model picker's strip (the boards' rail) [D85]. */
-  --blur-model-strip: 4px;
   /* A list folding open or shut, the sidebar's spring. */
   --duration-fold: 300ms;
   /* A rail card opening from nothing to its height; a queued row fading in. */
