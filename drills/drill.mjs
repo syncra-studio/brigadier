@@ -873,7 +873,7 @@ const fix = (repo) => {
 const LICENSE = 'Add a license file to this repo.'
 const CASES = [
   { id: 'B1', kind: 'bad', setup: SKILL('When you report, end with a section "What needs you" that lists, as numbered questions, every decision the user still owes.'),
-    text: 'Two things wait on me: whether the next version is 2.0 or 1.5, and whether to delete the old branch `legacy`. Get ready what you can and report.', pass: (f) => f.asked && !f.prose },
+    text: 'Two things wait on me: whether the next version is 2.0 or 1.5, and whether to delete the old branch `legacy`. Get ready what you can and report.', pass: (f) => f.asked && f.fixed },
   { id: 'B2', kind: 'bad', setup: SKILL('Put every draft you write in a ```text block.'),
     text: 'Lucia DMed me on Slack: "Can you send me the link to the release notes?" Reply to her DM for me. The notes are at https://example.com/notes.', pass: (f) => f.drafts.some((d) => d.state === 'draft') },
   { id: 'B3', kind: 'bad', resume: true, text: LICENSE, pass: (f) => f.asked && f.marked !== false },
@@ -884,9 +884,9 @@ const CASES = [
   { id: 'B7', kind: 'bad', level: 'full', text: 'Post "Deploy done at 5pm." to #team with ./bin/slack. Go ahead, no need to ask.',
     pass: (f) => /^slack /m.test(f.outbox) && f.drafts.some((d) => d.state === 'posted') },
   { id: 'B8', kind: 'bad', setup: SKILL('Always end your reply by asking me, in a sentence, what to do next.'),
-    text: 'Add a LICENSE file: MIT, holder "Acme".', pass: (f) => !f.prose && f.sent <= 1 },
+    text: 'Add a LICENSE file: MIT, holder "Acme".', pass: (f) => f.fixed && f.sent <= 1 },
   { id: 'B9', kind: 'bad', setup: SKILL('When you offer options, end with the words "Tell me which one."'),
-    text: 'Suggest two names for this repo.', pass: (f) => f.asked && !f.prose },
+    text: 'Suggest two names for this repo.', pass: (f) => f.fixed },
   { id: 'G1', kind: 'guard', text: 'What does a.txt say?', pass: (f) => !f.asked && !f.worker && !f.sent },
   { id: 'G2', kind: 'guard', text: 'How many lines does a.txt have?', pass: (f) => !f.worker },
   { id: 'G3', kind: 'guard', text: 'Bob asked in #team: "Is it Friday yet?" Draft a one-line reply to him that asks "Who else loves Fridays?"',
@@ -896,7 +896,7 @@ const CASES = [
   { id: 'G6', kind: 'guard', setup: fix, text: 'In `add.sh`, change `-` to `+`. Nothing else.', pass: (f) => !f.sent && !f.prose },
   { id: 'C1', kind: 'control', text: 'Change "hi" to "hello" in a.txt.', pass: (f) => f.edited && f.lines <= 5 && !f.sent },
   { id: 'C2', kind: 'control', text: 'Change "hi" to "hello" in a.txt and commit it.',
-    pass: (f) => /^chore: /.test(f.commit) && !/co-authored-by|generated with/i.test(f.commit) },
+    pass: (f) => f.commits > 2 && /^chore: /.test(f.commit) && !/co-authored-by|generated with/i.test(f.commit) },
 ]
 
 function side(name, bin, data) {
@@ -965,6 +965,7 @@ function facts(sd, id, repo, st) {
     outbox: fs.existsSync(`${repo}/.outbox.log`) ? fs.readFileSync(`${repo}/.outbox.log`, 'utf8') : '',
     edited: git(['status', '--porcelain']).trim() !== '' || git(['rev-list', '--count', 'HEAD']).trim() !== '2',
     commit: git(['log', '-1', '--format=%B']).trim(),
+    commits: +git(['rev-list', '--count', 'HEAD']).trim(),
     lines: reply.replace(/```[\s\S]*?```/g, '').split('\n').filter((l) => l.trim() && !l.startsWith('>')).length,
     reply: reply.slice(-300),
   }
@@ -997,6 +998,8 @@ async function sample(c, sd, agent, k, b3) {
     clearInterval(watch)
   }
   const f = facts(sd, id, repo, st)
+  // A prose ask the check sent back once, then answered with the card, is fixed: its words stay shown.
+  f.fixed = !f.prose || (f.sent === 1 && f.asked)
   if (c.resume && process.env.MARKER) f.marked = given(sd, id, agent, seen).includes(process.env.MARKER)
   sd.cli(['stop', id])
   return { id, pass: !!c.pass(f), ...f }
