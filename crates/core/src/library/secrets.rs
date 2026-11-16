@@ -6,7 +6,7 @@
 use security_framework::os::macos::keychain::SecKeychain;
 use serde_json::{Map, Value};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
 const SERVICE: &str = "Brigadier";
@@ -24,25 +24,34 @@ fn fail(what: &str) -> impl Fn(security_framework::base::Error) -> io::Error {
     }
 }
 
+/// An instance on another data folder without BRIGADIER_KEYCHAIN: it never reaches the login
+/// keychain, so it can't put up a prompt there [D449]. It reads no secrets and can't write one.
+fn walled() -> bool {
+    std::env::var_os("BRIGADIER_KEYCHAIN").is_none()
+        && std::env::var_os("BRIGADIER_DATA")
+            .is_some_and(|d| Path::new(&d) != crate::default_data_dir())
+}
+
 /// The login keychain; a hidden instance's throwaway file instead, never on the default data folder
-/// [D416]. An instance on another data folder without one never reaches the login keychain, so it
-/// can't put up a prompt there [D449].
+/// [D416].
 fn keychain() -> io::Result<SecKeychain> {
-    let data = std::env::var_os("BRIGADIER_DATA").map(PathBuf::from);
-    match (&data, std::env::var_os("BRIGADIER_KEYCHAIN")) {
-        (Some(_), Some(file)) => SecKeychain::open(file),
-        (Some(d), None) if *d != crate::default_data_dir() => {
-            return Err(io::Error::other(
-                "Brigadier's Keychain item: this instance has its own data folder (BRIGADIER_DATA) and no BRIGADIER_KEYCHAIN, so it doesn't use your login keychain.",
-            ));
-        }
-        _ => SecKeychain::default(),
+    if walled() {
+        return Err(io::Error::other(
+            "Brigadier's Keychain item: this instance has its own data folder (BRIGADIER_DATA) and no BRIGADIER_KEYCHAIN, so it doesn't use your login keychain.",
+        ));
+    }
+    match std::env::var_os("BRIGADIER_DATA").and(std::env::var_os("BRIGADIER_KEYCHAIN")) {
+        Some(file) => SecKeychain::open(file),
+        None => SecKeychain::default(),
     }
     .map_err(fail("open"))
 }
 
-/// The whole payload; empty when there is no item.
+/// The whole payload; empty when there is no item, or none can be read here.
 pub fn read(data: &Path) -> io::Result<Map<String, Value>> {
+    if walled() {
+        return Ok(Map::new());
+    }
     match keychain()?.find_generic_password(SERVICE, &data.display().to_string()) {
         Ok((bytes, _)) => serde_json::from_slice(&bytes)
             .map_err(|_| io::Error::other("Brigadier's Keychain item isn't readable")),
