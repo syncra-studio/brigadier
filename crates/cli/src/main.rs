@@ -34,6 +34,10 @@ fn main() {
         }
         return;
     }
+    // Brigadier's own MCP server, which its CLI starts for the agent [D529].
+    if args.first().is_some_and(|a| a == "mcp-server") {
+        return brigadier::mcp::serve::run();
+    }
     let out = match agent_call(&data, &args) {
         None => brigadier::run(&data, &args)
             .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),

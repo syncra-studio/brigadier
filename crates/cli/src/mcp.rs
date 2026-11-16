@@ -5,6 +5,7 @@
 //! call; it closes after `IDLE` unused.
 
 mod http;
+pub mod serve;
 
 use brigadier_core::{self as core, adapters, projects};
 use serde_json::{Value, json};
