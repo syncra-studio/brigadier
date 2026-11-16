@@ -19,6 +19,11 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   // Last turn first: what the agent just did (D1188). Home's Review is a project's, with no turns.
   // The tab's record keeps the one picked last [D1187].
   const [scope, setScope] = useState<ReviewScope>((keptScope as ReviewScope | undefined) ?? (owner === HOME ? "uncommitted" : "last"));
+  // A folder chat's repo has no captured turns: its work is on its branch [D494].
+  const repo = git.target && "session" in git.target && git.target.session.includes("@") ? git.target.session : null;
+  useEffect(() => {
+    if (repo) setScope((now) => (now === "last" ? "branch" : now));
+  }, [repo]);
   const [review, setReview] = useState<Review | null>(null);
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
   const [error, setError] = useState<string | null>(null);

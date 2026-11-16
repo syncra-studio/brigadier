@@ -104,6 +104,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
 fn check(data: &Path, ids: &[String]) -> Value {
     let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
+    // A folder chat can't be archived yet: said before the app hides its row [D494].
+    let off = (ids.iter().filter_map(|id| core::load(data, id).ok()))
+        .find_map(|s| core::folder::off(&s, "Archive").err());
+    if let Some(e) = off {
+        return json!({"ok": false, "error": e.to_string()});
+    }
     let all = procs::all();
     let running: Vec<&String> = ids.iter().filter(|s| working(data, s, &all)).collect();
     json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids)})

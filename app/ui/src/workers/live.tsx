@@ -300,10 +300,17 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
         // The pointer on its controls is still on the row: the wash stays.
         className={cx(controls && "group-hover/row:before:bg-muted group-has-focus-visible/row:before:bg-muted")}
         icon={<WorkerGlyph id={worker.id} className="size-4" />}
-        end={changed && <span className={cx("text-2xs", controls && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
+        end={
+          (changed || Boolean(worker.repos?.length)) && (
+            <span className={cx("flex items-center gap-1.5", controls && "group-hover/row:invisible group-has-focus-visible/row:invisible")}>
+              {/* A folder chat's worker: the repos it claimed, kept whole as the name truncates [D494]. */}
+              {worker.repos?.join(", ")}
+              {changed && <span className="text-2xs"><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
+            </span>
+          )
+        }
       >
         {worker.name}
-        {worker.repos?.length ? <span className="text-muted-foreground"> · {worker.repos.join(", ")}</span> : null}
         <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
       </Line>
       {controls && (
