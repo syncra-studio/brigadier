@@ -5,6 +5,7 @@ mod accounts;
 pub mod agent;
 pub mod archived;
 mod attach;
+mod browser;
 mod chips;
 mod command;
 mod commands;
@@ -65,6 +66,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
        brigadier source <id> files | folder <path> | find <query> | since
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
+       brigadier browser <session|-> profiles|history|visit|downloads|sites|imports|bookmarks <op> ... [--profile ID] [--json]
        brigadier panel [open on|off | width <px>]
        brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head> | host <id> comment <n|owner/name#n> <body> | host <id> sides <n|owner/name#n> <path> | host <id> review <n|owner/name#n> <json>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
@@ -129,7 +131,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" | "routing" | "plugins" => &[][..],
+        | "panel" | "routing" | "plugins" | "browser" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
@@ -335,6 +337,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),
         "tabs" => tabs::run(data, args),
+        "browser" => browser::run(data, args),
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => queue::recover(data, arg(args, 1)?, false),

@@ -30,7 +30,7 @@ pub(super) fn relative(data: &Path, id: &str, target: String) -> io::Result<Stri
 /// A file, PR and attachment tab need their target, a Review tab may have one (its file), every other kind refuses one. A
 /// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
 /// PR is one tab [D1032].
-pub(super) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
+pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
     let ok = match (kind, target) {
         // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
         // A Review tab may open on one file [D1032, D1038].

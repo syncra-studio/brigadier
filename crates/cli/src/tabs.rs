@@ -4,7 +4,7 @@
 //! `reopen`, and answers the whole state with a `rev` that only grows, so the app can tell Rust's
 //! newer word from an older one after a lost reply [D30, D71].
 
-mod target;
+pub(crate) mod target;
 
 use crate::attach::note;
 use crate::{HOME_DRAFT, USAGE, arg};
@@ -382,6 +382,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 now.tabs[at].target = Some(url.into());
             }
         }
+        "profile" => {
+            let profile = arg(args, 4)?;
+            crate::browser::profiles::check_id(profile)?;
+            let at = now
+                .at(arg(args, 3)?)
+                .filter(|&at| now.tabs[at].kind == "browser")
+                .ok_or_else(|| io::Error::other("No such browser tab"))?;
+            now.tabs[at].profile = Some(profile.into());
+        }
         "select" => {
             let tab = arg(args, 3)?;
             if now.exists(tab) {
@@ -478,4 +487,13 @@ pub fn carry(data: &Path, to: &str) -> io::Result<()> {
     home.active = CHAT.into();
     home.rev += 1;
     write(&from, &home)
+}
+
+/// A browser tab's saved pin; the registry decides whether it is still live.
+pub(crate) fn profile(data: &Path, session: &str, tab: &str) -> Option<String> {
+    read(&file(data, session))
+        .tabs
+        .into_iter()
+        .find(|t| t.id == tab && t.kind == "browser")?
+        .profile
 }
