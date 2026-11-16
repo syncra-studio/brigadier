@@ -113,6 +113,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return set(data, args);
     }
     let (cwd, held) = cwd_of(data, args)?;
+    // A folder that's gone has no agent to check: it says so, never that no model is there.
+    if let Some(why) = Some(&cwd)
+        .filter(|c| !c.is_empty())
+        .and_then(|c| brigadier_frames::procs::gone(c))
+    {
+        return Err(io::Error::other(why));
+    }
     let mut ask = vec!["agents".to_string()];
     // No folder (a chat with no project): the home folder's check.
     if !cwd.is_empty() {
