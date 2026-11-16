@@ -35,6 +35,13 @@
   & p {
     @apply leading-relaxed;
   }
+  /* A lead-in line sits on its list [D520]. */
+  & p:has(+ :is(ul, ol)) {
+    @apply mb-1;
+  }
+  & p + :is(ul, ol) {
+    @apply mt-1;
+  }
   & :is(ul, ol) {
     @apply ms-7 marker:text-foreground;
   }
@@ -50,12 +57,21 @@
   & ul ul {
     list-style-type: circle;
   }
+  /* An item holding a card or code block leaves room after it before the next item [D520]. */
+  & li:has(> div) + li {
+    @apply mt-3;
+  }
   /* A child list sits as close to its item as the next item does, not a paragraph's gap away. */
   & li > :is(ul, ol) {
     @apply my-0.5;
   }
+  /* Someone's words, set off by a rounded bar [D477, D520]. */
   & blockquote {
-    @apply border-s-2 border-quote-edge ps-4 text-muted-foreground;
+    @apply relative ps-4 text-muted-foreground;
+    &::before {
+      @apply absolute inset-y-0 start-0 w-1 rounded-capsule bg-quote-edge;
+      content: "";
+    }
   }
   /* A GitHub alert drawn as a callout (markdown.tsx) [D477]. */
   & .callout {
