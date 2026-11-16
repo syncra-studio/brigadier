@@ -171,22 +171,49 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     let ids = projects::sessions(data, id)?;
     let all = procs::all();
     if has(args, "--check") {
-        let (mut worktrees, mut bytes, mut merged, mut branches) = (0, 0, 0, vec![]);
-        for s in &ids {
-            let dir = core::session_dir(data, s);
-            if core::worktrees::present(&dir) {
-                worktrees += 1;
-                bytes += size(&core::worktrees::path(data, s));
+        // Each read is a few git processes: run side by side (16 at a time), the preview takes about
+        // one session's time instead of their sum, so the dialog can open with it [D463].
+        let all = &all;
+        let (facts, lost) = std::thread::scope(|t| {
+            let lost = t.spawn(|| core::worktrees::lost::losses(data, &ids));
+            let mut facts = vec![];
+            for chunk in ids.chunks(16) {
+                let each: Vec<_> = (chunk.iter())
+                    .map(|s| {
+                        t.spawn(move || -> io::Result<_> {
+                            let dir = core::session_dir(data, s);
+                            let bytes = (core::worktrees::present(&dir))
+                                .then(|| size(&core::worktrees::path(data, s)));
+                            let unlanded = core::worktrees::unlanded(&dir)?;
+                            let merged =
+                                unlanded.is_none() && core::worktrees::branch(&dir)?.is_some();
+                            Ok((bytes, unlanded, merged, busy(data, s, all)))
+                        })
+                    })
+                    .collect();
+                facts.extend(each.into_iter().map(|h| h.join().expect("check thread")));
             }
-            match core::worktrees::unlanded(&dir)? {
-                Some(branch) => branches.push(json!({"id": s, "branch": branch})),
-                None => merged += core::worktrees::branch(&dir)?.is_some() as usize,
+            (facts, lost.join().expect("check thread"))
+        });
+        let (mut worktrees, mut bytes, mut merged, mut branches, mut working) =
+            (0, 0, 0, vec![], vec![]);
+        for (s, fact) in ids.iter().zip(facts) {
+            let (size, unlanded, landed, busy) = fact?;
+            if let Some(size) = size {
+                worktrees += 1;
+                bytes += size;
+            }
+            if let Some(branch) = unlanded {
+                branches.push(json!({"id": s, "branch": branch}));
+            }
+            merged += landed as usize;
+            if busy {
+                working.push(s);
             }
         }
-        let working: Vec<_> = ids.iter().filter(|s| busy(data, s, &all)).collect();
         return Ok(json!({"ok": true, "sessions": ids, "working": working,
             "worktrees": worktrees, "bytes": bytes, "merged": merged, "branches": branches,
-            "removing": project.removing, "lost": core::worktrees::lost::losses(data, &ids)}));
+            "removing": project.removing, "lost": lost}));
     }
     // Settling needs a host, which is refused once the project is marked as being removed.
     for s in &ids {

@@ -44,7 +44,7 @@ export function ArchivedSection({
   storeKey?: string;
 }) {
   const [open, setOpen] = useStored(`${storeKey}.archived`, false);
-  const [asking, setAsking] = useState<SessionRow | null>(null);
+  const [asking, setAsking] = useState<{ row: SessionRow; check: Check } | null>(null);
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   if (rows.length === 0 && !asking) return null;
   return (
@@ -87,7 +87,7 @@ export function ArchivedSection({
                         Restore
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem variant="destructive" onClick={() => setAsking(row)}>
+                    <DropdownMenuItem variant="destructive" onClick={() => void readDelete(row.id).then((check) => setAsking({ row, check }))}>
                       <Trash />
                       Delete…
                     </DropdownMenuItem>
@@ -99,7 +99,7 @@ export function ArchivedSection({
         </NavList>
       </NavSection>
       <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
-        <DialogContent showCloseButton={false}>{asking && <DeleteForm row={asking} onClose={() => setAsking(null)} />}</DialogContent>
+        <DialogContent showCloseButton={false}>{asking && <DeleteForm key={asking.row.id} row={asking.row} first={asking.check} onClose={() => setAsking(null)} />}</DialogContent>
       </Dialog>
     </div>
   );
@@ -107,24 +107,30 @@ export function ArchivedSection({
 
 /** `stays`: another session still works in its folder, which stays [D1080]. `running`, `lost`: as archive's [D1197]. */
 /** `workers`: its workers' branches with work that never landed, deleted with it under the one choice [D3017]. */
-type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null; workers?: { id: string; title: string; branch: string }[] } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
+export type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null; workers?: { id: string; title: string; branch: string }[] } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
+
+/** Rust's delete check, read before its confirm opens, so the confirm opens whole and never grows after [D463]. */
+export const readDelete = (id: string): Promise<Check> =>
+  run(["delete", id, "--check"]).then(
+    (reply) => ({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [], workers: reply.workers ?? [] }),
+    (cause) => ({ state: "failed", error: errorText(cause) }),
+  );
 
 /**
  * Delete's confirm [D35, D181]: a branch with work that never landed is named, kept unless asked. Delete
  * waits for Rust's check; Rust checks again as it runs. The row leaves at once and comes back if it fails.
  */
-export function DeleteForm({ row, onClose }: { row: SessionRow; onClose: () => void }) {
-  const [check, setCheck] = useState<Check>({ state: "checking" });
+export function DeleteForm({ row, first, onClose }: { row: SessionRow; first: Check; onClose: () => void }) {
+  const [check, setCheck] = useState<Check>(first);
   const { rows } = useDaemon();
   const [drop, setDrop] = useState("keep");
   const [attempt, setAttempt] = useState(0);
+  // Read again on Retry; the first read came with it.
   useEffect(() => {
+    if (!attempt) return;
     let live = true;
     setCheck({ state: "checking" });
-    run(["delete", row.id, "--check"]).then(
-      (reply) => live && setCheck({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [], workers: reply.workers ?? [] }),
-      (cause) => live && setCheck({ state: "failed", error: errorText(cause) }),
-    );
+    void readDelete(row.id).then((next) => live && setCheck(next));
     return () => {
       live = false;
     };

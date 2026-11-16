@@ -6,8 +6,8 @@ import { ErrorLine } from "../components/error-line";
 import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { errorText, run } from "../onboarding/api";
 import { hideDeleting } from "../sessions/archive";
+import { readDelete } from "../sessions/archived";
 
 type Check = { state: "checking" } | { state: "done"; branch: string | null } | { state: "failed"; error: string };
 
@@ -17,21 +17,17 @@ const titleOf = (row: { title: string }) => row.title || "New session";
  * Delete (N)… and Delete all…: DeleteForm's workflow for several sessions in one confirm [D35, D181]. Each
  * branch with work that never landed is named, kept unless asked; Delete waits for every check.
  */
-export function DeleteManyForm({ rows, onClose }: { rows: { id: string; title: string }[]; onClose: () => void }) {
-  const [checks, setChecks] = useState<Record<string, Check>>({});
+export function DeleteManyForm({ rows, first, onClose }: { rows: { id: string; title: string }[]; first: Check[]; onClose: () => void }) {
+  const [checks, setChecks] = useState<Record<string, Check>>(() => Object.fromEntries(rows.map((row, at) => [row.id, first[at]!])));
   const [drop, setDrop] = useState("keep");
   const live = useRef(true);
   const check = (id: string) => {
     setChecks((now) => ({ ...now, [id]: { state: "checking" } }));
-    run(["delete", id, "--check"]).then(
-      (reply) => live.current && setChecks((now) => ({ ...now, [id]: { state: "done", branch: reply.branch ?? null } })),
-      (cause) => live.current && setChecks((now) => ({ ...now, [id]: { state: "failed", error: errorText(cause) } })),
-    );
+    void readDelete(id).then((next) => live.current && setChecks((now) => ({ ...now, [id]: next })));
   };
-  // The rows are fixed while it's open.
+  // The rows and their first checks come with it; Retry reads again.
   useEffect(() => {
     live.current = true;
-    for (const row of rows) check(row.id);
     return () => {
       live.current = false;
     };

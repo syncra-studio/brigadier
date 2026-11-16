@@ -38,12 +38,25 @@ type Look = { state: "looking" } | { state: "failed"; error: string } | { state:
 /** form; removing (its reply due); watching (no reply coming: the connection dropped, or another run holds it); removed with kept branches. */
 type Phase = { at: "form" } | { at: "removing" } | { at: "watching" } | { at: "removed"; repo: string; kept: string[] };
 
-const opened = store<string | null>(null);
-/** Opens Remove project… from the project's menu [D171, D212]. */
-export const openRemoveProject = (id: string) => opened.set(id);
+const opened = store<{ id: string; look: Look } | null>(null);
+const read = (id: string): Promise<Look> =>
+  run(["projects", "remove", id, "--check"]).then(
+    (reply) => ({ state: "ready", preview: reply as Preview }),
+    (cause) => ({ state: "failed", error: errorText(cause) }),
+  );
+let early: { id: string; look: Promise<Look> } | null = null;
+/** Starts Rust's preview as the project's menu opens, so it's usually in by the click [D463]. */
+export const readRemoval = (id: string) => void (early = { id, look: read(id) });
+/** Opens Remove project… from the project's menu once the preview is read: it opens whole, never growing after [D171, D212, D463]. */
+export const openRemoveProject = (id: string) => {
+  const look = early?.id === id ? early.look : read(id);
+  early = null;
+  void look.then((look) => opened.set({ id, look }));
+};
 
 export function RemoveProjectHost() {
-  const id = opened.use();
+  const asked = opened.use();
+  const id = asked?.id ?? null;
   const live = useProjects()?.find((each) => each.id === id && !each.pending);
   // Kept once the record is gone, for the Removed screen.
   const [last, setLast] = useState<Project | null>(null);
@@ -53,7 +66,7 @@ export function RemoveProjectHost() {
   return (
     <Dialog open={project !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent showCloseButton={false} frame="project-dialog max-w-project-dialog gap-5 p-6">
-        {project && <RemoveFlow key={project.id} project={project} onClose={close} />}
+        {project && asked && <RemoveFlow key={project.id} project={project} first={asked.look} onClose={close} />}
       </DialogContent>
     </Dialog>
   );
@@ -64,9 +77,9 @@ const MB = 1024 * 1024;
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < MB ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 * MB ? `${(bytes / MB).toFixed(1)} MB` : `${(bytes / (1024 * MB)).toFixed(1)} GB`;
 
-export function RemoveFlow({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [look, setLook] = useState<Look>({ state: "looking" });
-  const [phase, setPhase] = useState<Phase>({ at: "form" });
+export function RemoveFlow({ project, first, onClose }: { project: Project; first: Look; onClose: () => void }) {
+  const [look, setLook] = useState<Look>(first);
+  const [phase, setPhase] = useState<Phase>({ at: first.state === "ready" && first.preview.removing ? "watching" : "form" });
   const [error, setError] = useState<string | null>(null);
   const [drops, setDrops] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);

@@ -13,7 +13,7 @@ import { ask, useDaemon } from "../daemon";
 import { Branch, Chats, Folder, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useArchiveSplit } from "../sessions/archive";
-import { DeleteForm } from "../sessions/archived";
+import { type Check, DeleteForm, readDelete } from "../sessions/archived";
 import { DeleteManyForm } from "./archived-delete";
 import { type ArchivedFilter, KindMenu, MoreMenu, ProjectMenu, SearchField } from "./archived-toolbar";
 import { SettingsPage } from "./parts";
@@ -54,7 +54,7 @@ export function ArchivedPage() {
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
-  const [asking, setAsking] = useState<ArchivedRow[] | null>(null);
+  const [asking, setAsking] = useState<{ rows: ArchivedRow[]; checks: Check[] } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setFilter((now) => (now.query === typed ? now : { ...now, query: typed })), TYPING_MS);
@@ -124,9 +124,10 @@ export function ArchivedPage() {
   };
   const askDelete = (targets: ArchivedRow[]) => {
     setPicked([]);
-    setAsking(targets);
+    // Each check read first: the confirm opens whole [D463]. A later click's answer replaces it, keyed, so no choice carries over.
+    void Promise.all(targets.map((row) => readDelete(row.id))).then((checks) => setAsking({ rows: targets, checks }));
   };
-  const one = asking?.length === 1 ? byId.get(asking[0]!.id) : undefined;
+  const one = asking?.rows.length === 1 ? byId.get(asking.rows[0]!.id) : undefined;
   const project = reply?.projects.some((choice) => choice.value === filter.project) ? filter.project : "all";
   const retry = () => setAttempt(attempt + 1);
 
@@ -219,7 +220,7 @@ export function ArchivedPage() {
       </div>
       <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
         <DialogContent showCloseButton={false}>
-          {one ? <DeleteForm row={one} onClose={() => setAsking(null)} /> : asking && asking.length > 0 && <DeleteManyForm rows={asking} onClose={() => setAsking(null)} />}
+          {one ? <DeleteForm key={one.id} row={one} first={asking!.checks[0]!} onClose={() => setAsking(null)} /> : asking && asking.rows.length > 0 && <DeleteManyForm key={asking.rows.map((row) => row.id).join()} rows={asking.rows} first={asking.checks} onClose={() => setAsking(null)} />}
         </DialogContent>
       </Dialog>
     </SettingsPage>

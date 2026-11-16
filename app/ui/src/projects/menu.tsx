@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { newSession } from "../home/start";
 import { copyWithToast } from "../components/copy-button";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
@@ -5,7 +7,7 @@ import { showToast } from "../components/toast";
 import { ComposeEditSquare, Copy, FolderOpen, SettingsCog, Trash } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "./projects";
-import { openRemoveProject } from "./remove";
+import { openRemoveProject, readRemoval } from "./remove";
 import { openProjectSettings } from "./settings";
 
 /**
@@ -13,6 +15,8 @@ import { openProjectSettings } from "./settings";
  * Reveal in Finder and Remove project… (1w), plus Copy path. The sidebar's project row puts these in its ⋯ menu.
  */
 export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "name" | "folder"> }) {
+  // Mounted as the menu opens: Remove project…'s preview is read by the time it's picked [D463].
+  useEffect(() => readRemoval(project.id), [project.id]);
   return (
     <>
       <DropdownMenuItem onClick={() => newSessionIn(project.id)}>
