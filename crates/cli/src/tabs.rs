@@ -211,7 +211,7 @@ impl Tabs {
 
 /// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
-/// reopen]`, for a session or Home.
+/// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let path = file(data, id);
@@ -430,7 +430,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => return Err(io::Error::other(USAGE)),
     }
-    // A worker's `show` opens its tab behind the one in front [D519].
     crate::has(args, "--behind").then(|| now.active.clone_from(&was.active));
     if now != was {
         now.rev = was.rev + 1;
