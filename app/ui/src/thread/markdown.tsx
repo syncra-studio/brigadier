@@ -18,7 +18,8 @@ const plugins = [remarkGfm, remarkBreaks, remarkRefs];
  * react-markdown draws each block. `chip` draws a `[@](chip:n)` link as the message's n-th chip, where the user
  * put it [D2107]. The chunks a streaming reply grows by fade in [D53].
  */
-export function Markdown({ text, keep, chip, streaming }: { text: string; keep: string; chip?: (n: number) => ReactNode; streaming?: boolean }) {
+export function Markdown({ text: written, keep, chip, streaming }: { text: string; keep: string; chip?: (n: number) => ReactNode; streaming?: boolean }) {
+  const text = nestUnderItems(written);
   const chunks = useChunks(text);
   const tokens = marked.lexer(text);
   const tail = streaming ? tokens.findLastIndex((token) => token.type !== "space") : -1;
@@ -46,6 +47,58 @@ export function Markdown({ text, keep, chip, streaming }: { text: string; keep: 
       })}
     </div>
   );
+}
+
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const ITEM = /^(\d{1,9})[.)] \S/;
+const BULLET = /^[-*+] \S/;
+
+/**
+ * Agents often leave a draft's fence, or an item's bullets, at column 0 under a numbered item, which ends the
+ * list there. They are indented into the item before drawing [D520]: a fence always, bullets when
+ * another numbered item follows, there are two or more, or the item ends with ":". shortcut: an indent added
+ * mid-stream shifts that moment's fading chunk by its width, until chunks are kept by the written text.
+ */
+function nestUnderItems(text: string): string {
+  if (!/^\d{1,9}[.)] /m.test(text)) return text;
+  const lines = text.split("\n");
+  // The end (exclusive) of the fence opening at `from`, or of the text if it never closes.
+  const fenceEnd = (from: number) => {
+    const mark = FENCE.exec(lines[from]!)![1]!;
+    let at = from + 1;
+    while (at < lines.length && !new RegExp(`^ {0,3}${mark[0]}{${mark.length},}\\s*$`).test(lines[at]!)) at++;
+    return Math.min(at + 1, lines.length);
+  };
+  for (let at = 0; at < lines.length; at++) {
+    if (FENCE.test(lines[at]!)) {
+      at = fenceEnd(at) - 1;
+      continue;
+    }
+    const item = ITEM.exec(lines[at]!);
+    if (!item) continue;
+    // The blocks right under the item: fences and bullet runs, a blank line apart at most.
+    let end = at + 1;
+    let bullets = 0;
+    let fences = 0;
+    for (let next = end; next < lines.length; ) {
+      const from = lines[next] === "" ? next + 1 : next;
+      if (from < lines.length && /^(`{3,}|~{3,})/.test(lines[from]!)) {
+        fences++;
+        next = end = fenceEnd(from);
+      } else if (from < lines.length && BULLET.test(lines[from]!)) {
+        next = from;
+        while (next < lines.length && (BULLET.test(lines[next]!) || /^ {2,}\S/.test(lines[next]!))) bullets += +BULLET.test(lines[next++]!);
+        end = next;
+      } else break;
+    }
+    if (end === at + 1) continue;
+    const following = lines.slice(end).find((line) => line !== "");
+    if (bullets && !(following !== undefined && ITEM.test(following)) && bullets < 2 && !lines[at]!.trimEnd().endsWith(":")) continue;
+    const pad = " ".repeat(item[1]!.length + 2);
+    for (let line = at + 1; line < end; line++) if (lines[line]) lines[line] = pad + lines[line];
+    at = end - 1;
+  }
+  return lines.join("\n");
 }
 
 /** A reply's last block while it's still written: a mark it opened and hasn't closed yet (code, bold, a link's address) is closed, so it never shows raw. */
