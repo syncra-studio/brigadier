@@ -145,7 +145,12 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
 type Next = (Instant, Option<SystemTime>);
 
 fn kept_at(data: &Path, id: &str) -> Option<SystemTime> {
-    std::fs::metadata(host::dir(data, id).join("prs.json"))
+    // A claimed repo's are beside its claim; a session's own, read without the projects list.
+    let dir = match id.contains('@') {
+        true => host::dir(data, id),
+        false => session_dir(data, id),
+    };
+    std::fs::metadata(dir.join("prs.json"))
         .and_then(|m| m.modified())
         .ok()
 }
