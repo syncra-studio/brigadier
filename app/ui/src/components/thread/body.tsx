@@ -7,6 +7,7 @@ import { useKept } from "../../thread/kept";
 import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
+import { Answers } from "../../thread/reply-cards";
 import { duration } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
@@ -124,7 +125,9 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           older={older}
         >
           <AnswerRefs text={item.text} done={!item.streaming}>
-            <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
+            <Answers>
+              <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
+            </Answers>
           </AnswerRefs>
         </AssistantMessage>
         </>

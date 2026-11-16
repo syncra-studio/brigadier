@@ -6,6 +6,7 @@ import { marked } from "marked";
 
 import { Chat, Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
+import { replyCard } from "./reply-cards";
 import { RefWord, remarkRefs } from "./refs";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
@@ -216,6 +217,9 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
           }
         />
       );
+    // A reply's card, drawn once its JSON is whole and fits; until then, or if it never does, a code block [D477].
+    const card = replyCard(language, text);
+    if (card) return card;
     // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
     // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
     const named = language === "text" && !code.data?.meta ? /^([^\n]{1,100} · [^\n]*)\n/.exec(text) : null;

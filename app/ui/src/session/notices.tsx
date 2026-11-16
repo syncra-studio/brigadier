@@ -12,7 +12,7 @@ import { retry, useStart } from "../home/start";
 import { store } from "../onboarding/api";
 import { askModel, type Retiring, useRetiring } from "./model";
 import type { Source } from "../thread/thread";
-import { daemonRun, failure, retryMessage, type Runner } from "./composer";
+import { daemonRun, failure, sendMessage, type Runner } from "./composer";
 import { newId } from "./store";
 import { putBack } from "./side";
 import { useGitNotice } from "../panel/notice";
@@ -31,7 +31,7 @@ export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, 
   const message = session?.items.findLast((item) => item.kind === "message" && item.role === "user");
   // An agent that never started left nothing to rewind: its message just goes again [D476].
   const fresh = why === "start-failed" && at && !at.offline && message?.kind === "message" && message.turnId === turn;
-  if (fresh) return <ErrorAction onClick={() => void retryMessage(daemonRun, at.id, message.text, turn, message.draft)}>Retry</ErrorAction>;
+  if (fresh) return <ErrorAction onClick={() => void sendMessage(daemonRun, at.id, message.text, turn, message.draft)}>Retry</ErrorAction>;
   if (!at || at.offline || session?.id !== at.id || message?.kind !== "message" || message.turnId !== turn || !session.rewind?.includes(turn) || (retrying && retrying.turn !== turn)) return choose;
   if (retrying && !retrying.error) return <>{choose}<span className="shimmer">Retrying…</span></>;
   const entry = retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false };
@@ -140,7 +140,7 @@ function rewindRetry(run: Runner, id: string, entry: Retrying) {
       keepRetry(id, { ...entry, asking: false, unknown: back.error === "disconnected", error: String(back.message ?? back.error ?? "Refused") });
       return;
     }
-    await retryMessage(run, id, entry.text, entry.turn, entry.draft);
+    await sendMessage(run, id, entry.text, entry.turn, entry.draft);
     keepRetry(id, null);
   }, () => keepRetry(id, { ...entry, asking: false, unknown: true }));
 }
