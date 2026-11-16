@@ -200,7 +200,8 @@ impl Thread {
             self.changed_items.insert(at);
             return;
         }
-        if kind.is_empty() {
+        // An empty message, as Codex sends one after a send-back's reply, is no row.
+        if kind.is_empty() || (kind == "text" && s(item, &["text"]).trim().is_empty()) {
             return;
         }
         self.break_group();

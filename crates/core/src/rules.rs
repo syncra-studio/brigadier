@@ -10,7 +10,11 @@ pub const SEND_BACK: &str = "[Brigadier: your reply ends by asking the user in p
 
 /// Words that ask the user for a choice, a fact or a go-ahead the next step waits on. A sign-off
 /// about later events ("let me know if anything breaks") is none of them.
-const ASKS: [&str; 14] = [
+const ASKS: [&str; 18] = [
+    "please provide",
+    "please confirm",
+    "please choose",
+    "please pick",
     "tell me which",
     "tell me whether",
     "let me know which",
