@@ -2,6 +2,8 @@
 # Builds out/Brigadier-darwin-arm64/Brigadier.app, signed ad hoc. The Rust binaries ride in
 # Contents/Resources/bin; the app installs them outside the bundle at launch [D40].
 # APP_ID gives a test build its own bundle id, and with it its own privacy permissions.
+# BRIGADIER_SIGN_IDENTITY (+ BRIGADIER_SIGN_KEYCHAIN) signs with a fixed local certificate instead, so
+# the keychain's Always Allow survives new builds [D461].
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -37,7 +39,8 @@ await packager({
   // Only what the app reads at run time: the UI is bundled, so no node_modules; the menu bar's icon (tray.ts).
   ignore: /^\/(?!package\.json$|app($|\/main($|\/dist|\/icons($|\/tray\.png$))|\/ui($|\/dist($|\/)|\/src($|\/(theme\.css|shortcuts\.json)$))))/,
   osxSign: {
-    identity: "-",
+    identity: process.env.BRIGADIER_SIGN_IDENTITY || "-",
+    keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || undefined,
     identityValidation: false,
     // Ad hoc code has no Team ID, so hardened runtime's library validation would refuse Electron's
     // own framework. A Developer ID build turns it on: notarization requires it.
