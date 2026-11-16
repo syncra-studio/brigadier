@@ -134,11 +134,13 @@ fn str(v: &Value) -> &str {
 fn list(data: &Path) -> Value {
     let items = library::items(data);
     let all = projects::list(data).unwrap_or_default();
-    // Only what the page draws: an own server's env and headers may hold its token.
+    // Only what the page draws: an own server's env and headers may hold its token. One the library
+    // holds isn't listed [D445].
     let own: Vec<Value> = (own(&items, &all).into_iter())
+        .filter(|o| o["in_library"] != true)
         .map(|o| {
             json!({"key": o["key"], "kind": o["kind"], "name": o["name"], "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"], "in_library": o["in_library"]})
+            "agents": o["agents"], "project": o["project"]})
         })
         .collect();
     let agents: Vec<_> = crate::setup::available().into_iter().collect();

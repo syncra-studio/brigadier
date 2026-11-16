@@ -32,17 +32,16 @@ const VALUE: Plugins = {
     { key: "release", kind: "skill", name: "release", description: "Cuts a release: changelog, tag and notes.", detail: "~/Library/Application Support/Brigadier/library/skills/release", on: true, scope: { projects: ["p1"] }, status: null, sign_in: null, signed_in: null, agents: ["Cloud agent", "Local agent"], note: "Other agent uses your own release skill: it can't turn just that one off for a session." },
   ],
   own: [
-    { key: "own-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agents: ["Cloud agent", "Other agent"], project: null, in_library: false },
-    { key: "own-linear", kind: "server", name: "linear", detail: "https://mcp.linear.app/mcp", agents: ["Other agent"], project: null, in_library: true },
-    { key: "own-tidy", kind: "skill", name: "tidy", detail: "~/.cloud/skills/tidy", agents: ["Cloud agent", "Other agent", "Local agent"], project: null, in_library: false },
-    { key: "own-p2-postgres", kind: "server", name: "postgres", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", agents: ["Cloud agent", "Other agent"], project: "freelogo", in_library: false },
-    { key: "own-p2-logo-kit", kind: "skill", name: "logo-kit", detail: "~/Development/freelogo/.cloud/skills/logo-kit", agents: ["Cloud agent"], project: "freelogo", in_library: false },
-    { key: "own-p3-deploy", kind: "skill", name: "deploy", detail: "~/Development/website/.agents/skills/deploy", agents: ["Other agent"], project: "website", in_library: false },
+    { key: "own-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agents: ["Cloud agent", "Other agent"], project: null },
+    { key: "own-tidy", kind: "skill", name: "tidy", detail: "~/.cloud/skills/tidy", agents: ["Cloud agent", "Other agent", "Local agent"], project: null },
+    { key: "own-p2-postgres", kind: "server", name: "postgres", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", agents: ["Cloud agent", "Other agent"], project: "freelogo" },
+    { key: "own-p2-logo-kit", kind: "skill", name: "logo-kit", detail: "~/Development/freelogo/.cloud/skills/logo-kit", agents: ["Cloud agent"], project: "freelogo" },
+    { key: "own-p3-deploy", kind: "skill", name: "deploy", detail: "~/Development/website/.agents/skills/deploy", agents: ["Other agent"], project: "website" },
   ],
 };
 const FOUND = [
-  { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null, in_library: false },
-  { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier", in_library: false },
+  { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null },
+  { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier" },
 ];
 
 /** A page in a box of its own, scrolled inside it as Settings scrolls it. */
@@ -68,7 +67,7 @@ function useFake() {
     add: (draft) =>
       later((now) =>
         "own" in draft
-          ? { ...now, own: now.own.map((own) => (own.key === draft.own ? { ...own, in_library: true } : own)) }
+          ? { ...now, own: now.own.map((own) => (own.key === draft.own ? { ...own } : own)) }
           : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),

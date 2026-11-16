@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 
+import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { CopyButton } from "../components/copy-button";
 import { ErrorLine } from "../components/error-line";
@@ -11,7 +12,7 @@ import { DeviceCode } from "../onboarding/agents";
 import { errorText } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "./parts";
 import { AgentTile, PluginMark } from "./plugins-marks";
-import type { Item, PluginActions, Plugins, Scope } from "./plugins";
+import { type Item, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
 
 /** How the gallery opens a sign-in: waiting on the browser, or failed with these words. */
 /** A device sign-in's one-time code and the page it's entered on (GitHub's). */
@@ -20,7 +21,7 @@ export type SignInStart = "waiting" | Device | { error: string } | undefined;
 
 const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
 
-/** One item: its sign-in, where it's on, how it runs, and Remove. */
+/** One item: its switch, its sign-in, where it's on, how it runs, and Remove. */
 export function DetailsPage({
   value,
   item,
@@ -28,6 +29,7 @@ export function DetailsPage({
   actions,
   signing,
   onScope,
+  onSwitch,
   onRemove,
 }: {
   value: Plugins;
@@ -36,6 +38,7 @@ export function DetailsPage({
   actions: PluginActions;
   signing: SignInStart;
   onScope: (scope: Scope) => void;
+  onSwitch: (on: boolean) => void;
   onRemove: () => void;
 }) {
   const some = "projects" in item.scope ? item.scope.projects : null;
@@ -47,6 +50,8 @@ export function DetailsPage({
       description={`${KIND_LABEL[item.kind]} · ${item.description || item.detail.replace(/^https:\/\//, "")}`}
       mark={<PluginMark item={item} large />}
       back={{ label: "Plugins", href: "#settings/plugins" }}
+      // The same switch as its card's in the list [D443].
+      actions={<Switch aria-label={item.name} checked={item.on} onCheckedChange={onSwitch} />}
     >
       {(item.note || item.agents.length > 0) && (
         <div className="flex flex-col gap-2">
@@ -116,9 +121,14 @@ export function DetailsPage({
   );
 }
 
-const STANDING = { signed_in: "Signed in", needs_sign_in: "Not signed in", cant_reach: "Can't reach it. Brigadier keeps trying.", off: "Off" } as const;
+/** What its standing means, beside its chip. */
+const LINE = {
+  signed_in: "Brigadier holds the sign-in and keeps it fresh for every session.",
+  needs_sign_in: "Sign in once and every session, on every agent, uses it.",
+  cant_reach: "Can't reach it. Brigadier keeps trying.",
+} as const;
 
-/** A server Brigadier signs in to: its standing, Sign in (Waiting for browser… with Cancel while it runs), Sign out, and what failed. */
+/** A server Brigadier signs in to, as one row [D444]: its standing as the list's chip, what that means, and Sign in (Waiting for browser… with Cancel while it runs), Sign out, and what failed. */
 function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; start: SignInStart }) {
   const [waiting, setWaiting] = useState(start === "waiting" || (typeof start === "object" && "code" in start));
   const [device, setDevice] = useState<Device | null>(typeof start === "object" && "code" in start ? start : null);
@@ -135,22 +145,27 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
   };
   // Signed in while off or unreachable too: Brigadier still holds and refreshes the grant.
   const signedIn = item.signed_in === true;
+  const standing = item.status === "cant_reach" ? "cant_reach" : signedIn ? "signed_in" : "needs_sign_in";
   // Signing in doesn't reach a server that's down; it's offered there only while there's no sign-in.
   const offer = item.status !== "cant_reach" || item.signed_in === false;
+  const signIn = () => run((current) => actions.signIn(item.key, (shown) => generation.current === current && setDevice(shown)), true);
   return (
-    <div data-slot="sign-in-status" className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <p role="status" className="text-label text-quiet-foreground">
-          {item.status ? STANDING[item.status] : "Not signed in"}
-        </p>
+    <SettingsCard data-slot="sign-in-status">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+        <span className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+          <Badge role="status" variant={STATUS[standing].variant}>
+            {STATUS[standing].label}
+          </Badge>
+          <span className="text-xs text-quiet-foreground">{waiting ? "Finish signing in in your browser." : LINE[standing]}</span>
+        </span>
         {waiting ? (
           <>
-            <Button variant="ghost" size="sm" disabled>
-              <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />
+            <span className="flex items-center gap-2 text-label text-quiet-foreground">
+              <Spinner aria-hidden className="size-icon-sm animate-spin motion-reduce:animate-none" />
               Waiting for browser…
-            </Button>
+            </span>
             <Button
-              variant="ghost"
+              variant="soft"
               size="sm"
               onClick={() => {
                 // The sign-in's own promise settles as cancelled; its words aren't an error.
@@ -163,23 +178,31 @@ function SignIn({ item, actions, start }: { item: Item; actions: PluginActions; 
               Cancel
             </Button>
           </>
-        ) : (
+        ) : signedIn ? (
           <>
             {offer && (
-              <Button variant="ghost" size="sm" onClick={() => run((current) => actions.signIn(item.key, (shown) => generation.current === current && setDevice(shown)), true)}>
-                {signedIn ? "Sign in again" : "Sign in"}
+              <Button variant="ghost" size="sm" onClick={signIn}>
+                Sign in again
               </Button>
             )}
-            {signedIn && (
-              <Button variant="ghost" size="sm" onClick={() => run(() => actions.signOut(item.key), false)}>
-                Sign out
-              </Button>
-            )}
+            <Button variant="soft" size="sm" onClick={() => run(() => actions.signOut(item.key), false)}>
+              Sign out
+            </Button>
           </>
+        ) : (
+          offer && (
+            <Button size="sm" onClick={signIn}>
+              Sign in
+            </Button>
+          )
         )}
       </div>
-      {waiting && device && <DeviceCode page={device.page} code={device.code} />}
-      <ErrorLine error={error} />
-    </div>
+      {((waiting && device) || error) && (
+        <div className="flex flex-col gap-2 px-4 py-3">
+          {waiting && device && <DeviceCode page={device.page} code={device.code} />}
+          <ErrorLine error={error} />
+        </div>
+      )}
+    </SettingsCard>
   );
 }

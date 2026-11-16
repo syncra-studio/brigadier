@@ -40,8 +40,8 @@ export type Item = {
   agents: string[];
   note: string | null;
 };
-/** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name). Read-only: Add to library copies its definition, never its tokens [D424]. */
-export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; in_library: boolean };
+/** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
+export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null };
 export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[] };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
@@ -72,7 +72,7 @@ export const PLUGINS_ROWS = {
   own: { label: "Each agent's own", description: "What your agents have in their own settings, and in your projects'. Add to library copies it, never its sign-in." },
 } as const;
 
-const STATUS: Record<Status, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
+export const STATUS: Record<Status, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
   signed_in: { label: "Signed in", variant: "success" },
   needs_sign_in: { label: "Needs sign-in", variant: "warning" },
   cant_reach: { label: "Can't reach", variant: "destructive" },
@@ -165,7 +165,7 @@ export function PluginsPage({
   /** Copies agents' own items into the library, one after another; the page settles on the last answer. */
   const addOwn = (keys: string[]) =>
     shown &&
-    change({ ...shown, own: shown.own.map((each) => (keys.includes(each.key) ? { ...each, in_library: true } : each)) }, () =>
+    change({ ...shown, own: shown.own.filter((each) => !keys.includes(each.key)) }, () =>
       keys.reduce<Promise<Plugins>>((before, key) => before.then(() => actions.add({ own: key })), Promise.resolve(shown)),
     );
   const remove = (key: string) => {
@@ -184,7 +184,7 @@ export function PluginsPage({
     setChecking(true);
     void change(shown, async () => {
       const back = await actions.refresh();
-      const found = back.own.filter((own) => !before.has(own.key) && !own.in_library && importable(own, remote));
+      const found = back.own.filter((own) => !before.has(own.key) && importable(own, remote));
       if (found.length) setOpen({ type: "refresh", found });
       setSaid(found.length ? null : "Nothing changed. There are no new skills or MCP servers in your agents' own settings.");
       return back;
@@ -197,7 +197,7 @@ export function PluginsPage({
   if (detail === "browse") {
     page = <BrowsePage tab={tab} browse={actions.browse} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />;
   } else if (shown && item) {
-    page = <DetailsPage value={shown} item={item} marks={marks} actions={actions} signing={signing} onScope={(scope) => set(item.key, { scope })} onRemove={() => setOpen({ type: "remove", key: item.key })} />;
+    page = <DetailsPage value={shown} item={item} marks={marks} actions={actions} signing={signing} onScope={(scope) => set(item.key, { scope })} onSwitch={(on) => set(item.key, { on })} onRemove={() => setOpen({ type: "remove", key: item.key })} />;
   } else {
     const count = (kind: Kind) => shown?.items.filter((each) => each.kind === kind).length ?? 0;
     const items = shown?.items.filter((each) => each.kind === tab && matches(query, each.name, each.description, each.detail)) ?? [];
@@ -385,9 +385,7 @@ function OwnList({ own, marks, remote, onAdd }: { own: Own[]; marks: Record<stri
                       ))}
                     </span>
                     <span className="shrink-0 text-xs text-quiet-foreground">{each.agents.join(" · ")}</span>
-                    {each.in_library ? (
-                      <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
-                    ) : !importable(each, remote) ? (
+                    {!importable(each, remote) ? (
                       <span className="w-28 shrink-0" />
                     ) : (
                       <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name} to library`} onClick={() => onAdd(each)}>
