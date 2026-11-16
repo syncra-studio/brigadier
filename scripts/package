@@ -2,8 +2,9 @@
 # Builds out/Brigadier-darwin-arm64/Brigadier.app, signed ad hoc. The Rust binaries ride in
 # Contents/Resources/bin; the app installs them outside the bundle at launch [D40].
 # APP_ID gives a test build its own bundle id, and with it its own privacy permissions.
-# BRIGADIER_SIGN_IDENTITY (+ BRIGADIER_SIGN_KEYCHAIN) signs with a fixed local certificate instead, so
-# the keychain's Always Allow survives new builds [D461].
+# BRIGADIER_SIGN_IDENTITY (+ BRIGADIER_SIGN_KEYCHAIN) signs with that identity instead. Only one with an
+# Apple Team ID (a Developer ID) keeps the keychain's Always Allow across builds: the keychain ties code
+# without a team to each build's cdhash, so a self-signed certificate asks again every build [D492, D493].
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 export PATH="$HOME/.cargo/bin:$PATH"
