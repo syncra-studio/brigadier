@@ -4,7 +4,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
-import { Eye } from "../icons";
+import { Chat, Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { RefWord, remarkRefs } from "./refs";
 
@@ -104,6 +104,22 @@ const fadeChunks = (chunks: Chunk[]) => (tree: Node) => {
   walk(tree);
 };
 
+/** GitHub's alert, a quote opening with `[!WARNING]` or its kin: the quote is marked as that callout and loses the marker [D477]. */
+const callouts = () => (tree: Node) => {
+  const walk = (node: Node) => {
+    for (const child of node.children ?? []) walk(child);
+    if (node.tagName !== "blockquote") return;
+    const p = node.children?.find((c) => c.tagName === "p");
+    const first = p?.children?.[0];
+    const hit = first?.type === "text" ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(first.value ?? "") : null;
+    if (!p || !first || !hit) return;
+    node.properties = { ...node.properties, dataCallout: hit[1] };
+    first.value = first.value!.slice(hit[0].length);
+    if (!first.value && p.children![1]?.tagName === "br") p.children!.splice(0, 2);
+  };
+  walk(tree);
+};
+
 /** A chunk fading in; drawn again or reused mid-fade, it carries on from when its text arrived. */
 function Fade({ at, children }: { at: number; children: ReactNode }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -123,7 +139,7 @@ const Block = memo(function Block({ text, keep, chip, chunks }: { text: string; 
   return (
     <ReactMarkdown
       remarkPlugins={plugins}
-      rehypePlugins={chunks.length ? [[fadeChunks, chunks]] : undefined}
+      rehypePlugins={chunks.length ? [callouts, [fadeChunks, chunks]] : [callouts]}
       components={components}
       urlTransform={chip ? keepChips : defaultUrlTransform}
     >
@@ -138,7 +154,7 @@ type Node = {
   type: string;
   tagName?: string;
   value?: string;
-  properties?: { className?: unknown; dataAt?: number; dataRef?: string };
+  properties?: { className?: unknown; dataAt?: number; dataRef?: string; dataCallout?: string };
   data?: { meta?: string };
   position?: { start: { offset?: number }; end: { offset?: number } };
   children?: Node[];
@@ -200,6 +216,38 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
           }
         />
       );
-    return <CodeBlock code={text.replace(/\n$/, "")} language={language} keep={at} />;
+    // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
+    // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
+    const named = language === "text" && !code.data?.meta ? /^([^\n]{1,100} · [^\n]*)\n/.exec(text) : null;
+    const meta = code.data?.meta || named?.[1];
+    const said = (named ? text.slice(named[0].length) : text).replace(/\n$/, "");
+    const Icon = KIND_ICONS[language] ?? Code;
+    const title = meta ? (
+      <>
+        <Icon className="size-icon-sm" />
+        <span className="font-medium text-foreground">{meta}</span>
+      </>
+    ) : undefined;
+    // A titled `text` block is a message for a person: drawn in the reply's own font, copied as written.
+    const message = meta && language === "text" ? <div className="px-3 pb-3 leading-relaxed break-words whitespace-pre-wrap">{said}</div> : undefined;
+    return <CodeBlock code={said} language={language} keep={at} title={title} body={message} />;
+  },
+  // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].
+  blockquote: ({ node, children }) => {
+    const kind = (node as Node | undefined)?.properties?.dataCallout;
+    if (!kind) return <blockquote>{children}</blockquote>;
+    const warn = kind === "WARNING" || kind === "CAUTION";
+    const Mark = warn ? Warning : Info;
+    return (
+      <div data-callout={kind.toLowerCase()} className={warn ? "callout callout-warn" : "callout"}>
+        <div className="callout-head">
+          <Mark className="size-icon-sm" />
+          {warn ? "Watch out" : "Note"}
+        </div>
+        {children}
+      </div>
+    );
   },
 });
+
+const KIND_ICONS: Record<string, typeof Code> = { text: Chat, sh: Terminal, bash: Terminal, zsh: Terminal, shell: Terminal, diff: Compare };

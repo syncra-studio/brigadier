@@ -57,6 +57,19 @@
   & blockquote {
     @apply border-s-2 border-quote-edge ps-4 text-muted-foreground;
   }
+  /* A GitHub alert drawn as a callout (markdown.tsx) [D477]. */
+  & .callout {
+    @apply my-3 rounded-thread border border-border bg-code-surface px-3 py-2 first:mt-0 last:mb-0;
+  }
+  & .callout-warn {
+    @apply border-warning-edge;
+  }
+  & .callout-head {
+    @apply mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground;
+  }
+  & .callout-warn .callout-head {
+    @apply text-warning;
+  }
   & hr {
     @apply border-prose-rule;
   }
