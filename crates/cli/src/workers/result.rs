@@ -306,6 +306,10 @@ pub(super) fn write(
         text += &format!("Its last message:\n{}\n", last.trim_end());
     }
     text += &format!("\n`brigadier read {wid}` for more.");
+    // A lead that waited on this result often went on without ticking its list [D441].
+    if core::rebirth::todo() {
+        text += "\n\nTick off on your to-do list what this settles.";
+    }
     let res = Res {
         id: format!("r{}", core::adapters::uuid()[..13].replace('-', "")),
         wid: wid.into(),
