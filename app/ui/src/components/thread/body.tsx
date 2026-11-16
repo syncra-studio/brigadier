@@ -7,6 +7,7 @@ import { useKept } from "../../thread/kept";
 import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
+import { tidy } from "../../thread/tidy";
 import { duration } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
@@ -113,18 +114,20 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           </>
         );
       }
+      // Drawn and copied with its shape repaired [D530].
+      const shaped = tidy(item.text);
       return (
         <>
         {item.final && <Said backend={turn?.backend} />}
         <AssistantMessage
-          text={item.text}
+          text={shaped}
           final={actions && item.final === true}
           time={item.sentAt}
           fork={fork}
           older={older}
         >
-          <AnswerRefs text={item.text} done={!item.streaming}>
-            <Markdown text={item.text} keep={item.id} streaming={item.streaming} />
+          <AnswerRefs text={shaped} done={!item.streaming}>
+            <Markdown text={shaped} keep={item.id} streaming={item.streaming} />
           </AnswerRefs>
         </AssistantMessage>
         </>
