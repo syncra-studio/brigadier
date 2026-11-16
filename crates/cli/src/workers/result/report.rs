@@ -186,6 +186,11 @@ pub(in crate::workers) fn write(
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
+    // A review's result goes to the work it reviewed, never its parent: its end row all the same [D115, D456].
+    if res.state == "review" {
+        let note = json!({"event": "worker", "phase": "result", "result": take::said(&res)});
+        let _ = owner::call(data, &l.parent, json!({"op": "note", "data": note}));
+    }
     open(data, &l.parent);
     let link_path = dir.join("worker.json");
     if let Some(mut l) = read_json::<Link>(&link_path) {
