@@ -31,7 +31,13 @@ pub fn show(data: &Path, me: &str, what: &str) -> Value {
             .into()
     } else {
         let file = match relative(data, me, path.trim_start_matches("./").into()).and_then(|rel| {
-            let root = git::checkout(data, &git::Target::Session(me))?.root;
+            let root = git::checkout(data, &git::Target::Session(me))
+                .map_err(|_| {
+                    std::io::Error::other(
+                        "Only a file of a git checkout can be shown, and your folder isn't one.",
+                    )
+                })?
+                .root;
             match root.join(&rel).is_file() {
                 true => Ok(rel),
                 false => Err(std::io::Error::other(format!(
