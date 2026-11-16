@@ -4,7 +4,7 @@ import { newId } from "../session/store";
 import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } from "../shell/tab-store";
 import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun } from "./hands";
 import { agentPage, go } from "./layer";
-import { browserPage, loadStarts, openPage } from "./pages";
+import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
 import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged } from "./pause";
 import { onProfileChanged } from "./profiles";
 import { signInCleared, signInStopOf, stopAgent, stoppedWords } from "./sign-in";
@@ -50,10 +50,16 @@ async function endTurn({ owner, driver, op }: Call): Promise<void> {
   await tabsRead(owner);
   const current = tabsOf(owner);
   const gone = (op.tabs as string[]).filter((tab) => tab !== current.active && !isPaused(tab) && current.tabs.some((each) => each.id === tab));
-  for (const tab of gone) closeTab(owner, tab);
+  for (const tab of gone) closeAgentTab(owner, tab);
   for (const tab of browserTabs(owner)) {
     if (tab.driver === driver && !gone.includes(tab.id)) agentDrive(tab.id, false).catch(holdChangeFailed);
   }
+}
+
+/** Its page goes with it: a tab of a session not on screen has no view whose unmount would close it. */
+function closeAgentTab(owner: string, tab: string): void {
+  closeTab(owner, tab);
+  closeBrowserPage(tab);
 }
 
 const PROFILE_CHANGED = "profile_changed: this tab's profile was deleted, so it moved to the user's default profile. Your refs are void and what it's signed in to may differ. Nothing was done: read it again before going on, and don't assume you are still the same user on the site.";
@@ -243,7 +249,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       return { result: "shot", tab, url: browserPage(tab)?.url ?? "", png: base64(png) };
     }
     case "close":
-      closeTab(owner, tab);
+      closeAgentTab(owner, tab);
       return { result: "closed", tab };
     default:
       return failed(`Unknown browser call ${op.op}.`);
@@ -264,7 +270,7 @@ function approvedHere(tab: string, approved: { generation: number; url: string }
   return approved && approved.generation === agentPage(tab).generation ? approved.url : null;
 }
 
-const SENSITIVE = ["pay", "send", "signIn", "credentials", "card", "oneTimeCode", "script"];
+const SENSITIVE = ["pay", "send", "signIn", "credentials", "card", "oneTimeCode", "script", "action"];
 
 function askOf(answer: unknown): { sensitive: string; what: string } | null {
   if (typeof answer !== "object" || !answer || !("ask" in answer)) return null;

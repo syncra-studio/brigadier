@@ -30,11 +30,11 @@ export function visited(owner: string, id: string, url: string): void {
       return;
     }
     if (restored) {
-      // It carries on the newest row of that address, or none if it was cleared.
+      // It carries on the newest row of that address. With none it is a first visit: a tab Rust opened before the app
+      // read its session (`brigadier show`, an agent's) looks restored too.
       const rows = (await run(["browser", owner, "history", "list", "--query", url, "--limit", "20", ...at])).history as { id: number; url: string; atMs: number }[];
       const row = rows.find((each) => each.url === url);
-      Object.assign(guest, { id: row?.id ?? null, url, atMs: row?.atMs ?? 0, cleared: row ? null : url });
-      return;
+      if (row) return void Object.assign(guest, { id: row.id, url, atMs: row.atMs, cleared: null });
     }
     if (url === guest.cleared) return;
     guest.cleared = null;
