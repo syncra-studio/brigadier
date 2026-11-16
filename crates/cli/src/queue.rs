@@ -18,7 +18,7 @@ use std::thread;
 mod judge;
 mod peer;
 mod to;
-pub use peer::{add_peer, pending};
+pub use peer::{add_peer, pending, send_back};
 pub use to::held as give_held;
 
 #[derive(Serialize, Deserialize, Default, PartialEq)]

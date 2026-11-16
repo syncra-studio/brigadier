@@ -135,11 +135,23 @@ pub fn own(spec: &Spec, env: &mut Vec<(String, String)>) {
 pub fn standing(spec: &Spec) -> Vec<String> {
     let load = "\n\nYour to-do tool, TodoWrite, is deferred: load it with ToolSearch `select:TodoWrite` before its first use.";
     let fresh = crate::adapters::setup::newer(&crate::cli_version(spec, &super::Claude), "2.1.321");
+    // Its `Stop` hook sends a reply that asks in prose back once, inside the turn [D529].
+    let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+    let stop = format!(
+        "'{}' hook stop claude",
+        me.display().to_string().replace('\'', r"'\''")
+    );
+    let mut settings = json!({"attribution": {"commit": "", "pr": ""}, "crossSessionInbound": "refuse", "hooks": {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "cat"}]}]}});
+    // A worker's last words go to its lead as its result, a question included.
+    if !spec.naked {
+        settings["hooks"]["Stop"] = json!([{"hooks": [{"type": "command", "command": stop}]}]);
+    }
     let mut args = vec![
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
         "--settings".into(),
-        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"cat"}]}]}}"#.into(),
+        settings.to_string(),
         "--disallowedTools".into(),
         "ListAgents,SendMessage".into(),
     ];

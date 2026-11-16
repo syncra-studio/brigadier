@@ -18,6 +18,7 @@ pub mod projects;
 pub mod rebirth;
 pub mod repos;
 pub mod rewind;
+pub mod rules;
 mod send;
 pub mod session;
 pub mod share;

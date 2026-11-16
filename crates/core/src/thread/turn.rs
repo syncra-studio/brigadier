@@ -244,9 +244,12 @@ impl Thread {
         // fold [D154]. So does the agent waking on its own, for a command it left running that
         // ended after its block folded: no new block without the user's words [D117, D179].
         let resume = t.origin == "system" && t.text == crate::send::RESUME;
+        // Brigadier's send-back of a reply that asked in prose goes on in its block [D529].
+        let back = t.origin == "system" && t.text == crate::rules::SEND_BACK;
         let resumed = (self.ended.take())
             .filter(|o| o.at + 1 == self.turns.len())
-            .filter(|o| match resume {
+            .filter(|o| match resume || back {
+                true if back => self.turns[o.at]["status"] == "done",
                 true => {
                     self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user")
                 }

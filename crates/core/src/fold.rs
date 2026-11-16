@@ -235,7 +235,7 @@ impl Fold {
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
                 t.unchecked |= item["unchecked"] == true; // its own check gave no verdict [D455]
-                t.output(kind, item["opens"] == true);
+                t.output(kind, item);
                 if kind != "retrying" {
                     t.retry = Value::Null;
                 }

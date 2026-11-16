@@ -24,6 +24,16 @@ fn main() {
         }
         return;
     }
+    // Claude's `Stop` hook: it only judges the reply on stdin and counts it [D529].
+    if args.first().is_some_and(|a| a == "hook") && args.get(1).is_some_and(|a| a == "stop") {
+        let input = serde_json::from_reader(std::io::stdin()).unwrap_or_default();
+        let dir = env::var_os(brigadier_core::agent::SESSION).map(std::path::PathBuf::from);
+        let agent = args.get(2).map_or("", String::as_str);
+        if let Some(out) = brigadier_core::rules::stop_hook(&input, agent, dir.as_deref()) {
+            println!("{out}");
+        }
+        return;
+    }
     let out = match agent_call(&data, &args) {
         None => brigadier::run(&data, &args)
             .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),

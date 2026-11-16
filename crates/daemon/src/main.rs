@@ -55,6 +55,7 @@ use std::time::{Duration, Instant};
 
 mod awake;
 mod caller;
+mod check;
 mod git;
 mod install;
 mod ops;
@@ -157,6 +158,7 @@ fn main() -> io::Result<()> {
                     {
                         let _ = ended.send(id.into());
                         brigadier::browser::turn_ended(id);
+                        check::turn_ended(&data, id);
                     }
                 }
                 for id in &gone {

@@ -91,6 +91,9 @@ pub struct Turn {
     /// The agent's own output for it: a reply, a step, a thought or an ask.
     #[serde(default)]
     pub said: bool,
+    /// The text since its last step: the reply it ends on, for the turn-end check [D529].
+    #[serde(default)]
+    pub reply: String,
     /// Its parent's turn woken by a worker's ask, till the user's own words join it: the user never
     /// sees it, so it leaves no mark, unread or notice [D119].
     #[serde(default)]
@@ -112,12 +115,20 @@ impl Turn {
     /// Its agent's output of this kind. A message is under way from the reading that opens it
     /// (Claude's), or else its first words, until a step: it may be the reply that ends the turn.
     /// A reading that follows a step (Codex's, OpenCode's) leaves a safe point to cut at [D486].
-    pub(super) fn output(&mut self, kind: &str, opens: bool) {
+    pub(super) fn output(&mut self, kind: &str, item: &Value) {
         match kind {
-            "context" if opens => self.replying = true,
+            "context" if item["opens"] == true => self.replying = true,
             "text" | "text_delta" | "reasoning" => self.replying = true,
             "tool" | "tool_done" | "question" | "approval" | "plan" => self.replying = false,
             _ => {}
+        }
+        match kind {
+            "text" if !self.reply.is_empty() => self.reply += "\n\n",
+            "tool" | "question" | "approval" | "plan" => self.reply.clear(),
+            _ => {}
+        }
+        if kind == "text" {
+            self.reply += item["text"].as_str().unwrap_or("");
         }
         let what = [
             "text",
@@ -250,7 +261,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "unchecked": turn.unchecked,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "reply": turn.reply, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );
