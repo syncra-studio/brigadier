@@ -49,8 +49,11 @@ impl Thread {
         };
         match item["phase"].as_str() {
             Some("started") => {
-                if let (Some(id), Some(turn)) = (item["id"].as_str(), self.open.as_ref()) {
-                    self.workers.insert(id.into(), turn.id.clone());
+                if let Some(id) = item["id"].as_str() {
+                    self.over.remove(id);
+                    if let Some(turn) = self.open.as_ref() {
+                        self.workers.insert(id.into(), turn.id.clone());
+                    }
                 }
                 let at = self.items.len().checked_sub(1);
                 let joins = at
@@ -66,7 +69,10 @@ impl Thread {
                 self.team_row(json!({"kind": "team", "word": "started", "workers": ids}));
             }
             Some("ended") => {
-                self.workers_ended(ids.as_array().map_or(&[], Vec::as_slice), ts);
+                let ended = ids.as_array().map_or(&[][..], Vec::as_slice);
+                self.over
+                    .extend(ended.iter().filter_map(Value::as_str).map(String::from));
+                self.workers_ended(ended, ts);
                 // An ended worker's result wakes no one, so a block it alone held folds now [D314, D330].
                 self.settle_held(false);
                 self.team_row(json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}));
@@ -98,6 +104,7 @@ impl Thread {
             return;
         }
         let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
+        self.over.insert(wid.into());
         self.workers_ended(&[wid.into()], ts);
         let merge =
             (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));

@@ -93,6 +93,9 @@ pub struct Thread {
     /// Workers not yet ended, by id, with the turn that started them: they hold it as subagents do [D151].
     #[serde(default)]
     workers: HashMap<String, String>,
+    /// Workers whose end the thread showed: a message to one starts it again [D115, D456].
+    #[serde(default)]
+    over: HashSet<String>,
     /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
     /// rows' `cid`s, rows by a custom id, and each turn's first row.
     cids: HashSet<String>,

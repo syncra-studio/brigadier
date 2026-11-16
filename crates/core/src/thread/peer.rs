@@ -39,7 +39,12 @@ impl Thread {
             // A message to its own worker reads as the old lead's row: "Messaged ‹worker›", its words folded under it.
             if phase == "sent" && item["worker"] == true {
                 let row = json!({"kind": "team_step", "type": "messaged", "byUser": false, "workers": [item["to"]], "text": item["text"]});
-                return self.team_row(row);
+                self.team_row(row);
+                // One that had ended starts its next turn with it: it works again [D115, D456].
+                if (item["to"].as_str()).is_some_and(|w| self.over.contains(w)) {
+                    self.team(&json!({"phase": "started", "id": item["to"]}), 0);
+                }
+                return;
             }
             if matches!(phase, "sent" | "stopped" | "refused") {
                 let state = if phase == "sent" { "sending" } else { phase };
