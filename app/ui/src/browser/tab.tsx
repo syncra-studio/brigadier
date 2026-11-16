@@ -6,6 +6,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { ArrowUpRight, Globe } from "../icons";
 import { useDaemon } from "../daemon";
+import { BrowserPasswordsPrompts } from "../settings/browser-passwords-prompts";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
 import { BookmarkStar } from "./bookmark-star";
@@ -429,6 +430,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
       )}
       <BrowserDevFrame id={id} active={active}>
         <div ref={area} data-slot="browser-page" className="browser-device flex min-h-0 w-full flex-1">
+          {active && <BrowserPasswordsPrompts tab={id} anchor={area} />}
           {!made &&
             (children ?? (
               <div className="m-auto p-6 text-center text-sm text-muted-foreground">

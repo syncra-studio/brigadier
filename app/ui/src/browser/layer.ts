@@ -13,6 +13,7 @@ import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 import { watchUserComposition } from "./focus-guard";
 import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
+import { installGuestLogins } from "./logins";
 import { type SignInSeen, signInSeen } from "./sign-in";
 import { recordDates } from "./profiles";
 
@@ -39,6 +40,11 @@ declare global {
       onDownload(listener: (details: unknown) => void): void;
       /** A profile's saved site choices, for main's permission checks (main's browser/permissions.ts). */
       sites(profile: string, sites: unknown[]): Promise<void>;
+      /** Saved passwords' part in main (main's browser/browserLogins.ts): `check` asks the system (Touch ID) before one shows; `fill` gives a tab's page its site's logins. */
+      logins(op: "check", args: { reason: string }): Promise<"passed" | "declined" | "unavailable">;
+      logins(op: "fill", args: { guest: number; logins: { username: string; password: string; usedMs: number }[] }): Promise<void>;
+      /** A guest's sign-in worked (`signed-in`, with what was typed) or its page has fields to fill (`fields`). */
+      onGuestLogin(listener: (details: { from: number; kind: "signed-in" | "fields"; site: string; username?: string; password?: string }) => void): void;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
@@ -169,7 +175,7 @@ export function installTabLayer(): void {
   installKeyboardHandover();
   installAgentOverlays();
   watchUserComposition();
-  // shortcut: no saved logins until that section lands (guestLogins).
+  installGuestLogins((from) => [...pages].find(([, page]) => page.ready && page.element.getWebContentsId() === from)?.[0] ?? null);
 
   // A drag anywhere in the app must not fall into a page it crosses: the divider's or a text
   // selection's pointer stays with the app until it's let go.
@@ -189,7 +195,7 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
   window.brigadierShell.onBrowserDates(recordDates);
-  // shortcut: no passkey events until that section lands (guestPasskey).
+  // shortcut: no passkey notice until that section lands (guestPasskey's refusal); the passkey preload already fails a request at once.
   window.brigadierShell.onGuestSignIn(({ from, ...seen }) => {
     const page = pageOf(from);
     if (page) signInSeen(page.id, seen);

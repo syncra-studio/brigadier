@@ -14,7 +14,7 @@ const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 export const formatTime = (epochMs: number): string => timeFormat.format(epochMs);
 
 /** A page of Settings › Browser: `#settings/browser/<view>`, and `/<profile>` when opened for one. */
-export type BrowserSettingsView = "history" | "downloads" | "bookmarks" | "sites";
+export type BrowserSettingsView = "history" | "downloads" | "passwords" | "bookmarks" | "sites";
 
 /** Clear browsing data is a dialog over Settings › Browser, never a route of its own. */
 const clearing = store(false);

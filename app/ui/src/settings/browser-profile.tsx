@@ -95,7 +95,7 @@ export function ProfileDetailPage({ id }: { id: string }) {
             </Button>
           </SettingsRow>
           <SettingsRow label="Bookmarks" />
-          {/* shortcut: no Saved passwords row until passwords land (S9); it goes here. */}
+          <SettingsRow label="Saved passwords" description="Agents never see these." />
           <SettingsRow label="Site settings" description="Which sites may use your camera, microphone and location in this profile.">
             <Button variant="soft" size="sm" aria-label="Manage site settings" onClick={() => openBrowserSettings("sites", id)}>
               Manage

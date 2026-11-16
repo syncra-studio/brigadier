@@ -4,6 +4,7 @@
 import { BrowserWindow, type HandlerDetails, type WebContents } from "electron";
 
 import { watchSiteActivity } from "./browserClearData";
+import { installGuestLogins } from "./browserLogins";
 import { watchSignIn } from "./browserSignIn";
 import { installFailedLoad } from "./guestFailedLoad";
 import { installGuestLinks, takeOsLink } from "./guestLinks";
@@ -33,7 +34,8 @@ export function openAsTab(from: WebContents, url: string): void {
 export function installGuest(contents: WebContents): void {
   installGuestMenu(contents, openAsTab);
   watchSiteActivity(contents);
-  // shortcut: no history or passkey watch until those sections land (browserHistory, guestPasskey).
+  installGuestLogins(contents);
+  // shortcut: no passkey notice until that section lands (guestPasskey's refusal); the passkey preload already fails a request at once.
   installFailedLoad(contents);
   watchSignIn(contents, tabGuest.get(contents) ?? contents);
   installGuestLinks(contents);

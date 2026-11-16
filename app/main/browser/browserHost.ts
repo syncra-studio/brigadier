@@ -6,6 +6,7 @@ import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
 import { watchProfileCookies } from "./browserClearData";
 import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
 import { installDownloads, watchDownloads } from "./browserDownloads";
+import { guestPasskeyPath, guestPasswordsPath, installBrowserLogins } from "./browserLogins";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
@@ -30,7 +31,8 @@ export function installBrowserHost(origin: string): void {
   installProfileStore();
   installBrowserAgent();
   installDownloads();
-  // shortcut: no import or logins until their sections land; their installs go here.
+  installBrowserLogins();
+  // shortcut: no import until its section lands; its install goes here.
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });
@@ -46,6 +48,8 @@ export function installBrowserHost(origin: string): void {
     applyPermissionPolicy(created);
     keepSessionCookies(created);
     watchProfileCookies(created);
+    if (process.platform === "darwin") created.registerPreloadScript({ type: "frame", filePath: guestPasskeyPath });
+    created.registerPreloadScript({ type: "frame", filePath: guestPasswordsPath });
     watchNetwork(created);
     const profileId = profileOfStorage(created.storagePath ?? null);
     if (profileId) watchDownloads(created, profileId);
@@ -67,7 +71,7 @@ export function installBrowserHost(origin: string): void {
       }
       delete preferences.preload;
       preferences.nodeIntegration = false;
-      // Sandboxed, so no Node reaches any frame: this only lets a frame preload (the passkey one, later) run in subframes too.
+      // Sandboxed, so no Node reaches any frame: this only lets a frame preload (the passkey one) run in subframes too.
       preferences.nodeIntegrationInSubFrames = true;
       preferences.contextIsolation = true;
       preferences.sandbox = true;
