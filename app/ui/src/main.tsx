@@ -46,6 +46,7 @@ import { listenToSearchKey } from "./sidebar/search";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
 import { installTabLayer } from "./browser/layer";
+import { installLinks } from "./browser/links";
 import "./theme.css";
 
 // A hash change is in-page, so Electron's will-navigate guard lets it through.
@@ -293,6 +294,7 @@ const Screen = Gallery ?? ThreadDemo;
 if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
 // The browser's pages, under the app, only while main's gate has the browser on.
 if (window.brigadier?.browser) installTabLayer();
+installLinks();
 
 createRoot(document.getElementById("root")!).render(
   <TooltipProvider>

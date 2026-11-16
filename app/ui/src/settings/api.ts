@@ -14,6 +14,9 @@ export type Settings = {
   workers: string;
   /** Each agent's own memory in sessions, off unless turned on; workers never [D2049]. */
   memory: boolean;
+  /** Where web links and local dev URLs open: Brigadier's browser or the default one (Settings › Browser) [D507]. */
+  web_links_in: "brigadier" | "system";
+  local_links_in: "brigadier" | "system";
   /** The models starred in the model picker, as `<agent>/<id>`. */
   models_starred: string[];
 };

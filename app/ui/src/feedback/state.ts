@@ -1,3 +1,4 @@
+import { openLink } from "../browser/links";
 import { errorText, run, store } from "../onboarding/api";
 
 /*
@@ -173,7 +174,7 @@ export function sendFeedback(): void {
     show({ phase: "working", step: { step: "writing" } });
     const written = await run(["feedback", "write", text]);
     if (written.opened) {
-      window.brigadier?.openLink(written.opened.url);
+      openLink(written.opened.url);
       return [{ kind: written.opened.kind, title: written.opened.title, outcome: "opened" }];
     }
     show({ phase: "working", step: { step: "filing", count: written.reports.length } });

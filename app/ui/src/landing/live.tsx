@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { openLink } from "../browser/links";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { addChip, useChips } from "../panel/chips";
@@ -145,7 +146,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
                 : "check" in what
                   ? pr?.checks.find((c) => c.id === what.check)?.url
                   : pr?.comments.find((c) => c.id === what.comment)?.url;
-          if (url) window.brigadier?.openLink(url);
+          if (url) openLink(url);
         },
       }}
       posted={posted}

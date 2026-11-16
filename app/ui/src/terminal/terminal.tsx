@@ -3,6 +3,7 @@ import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 
+import { openLink, swapped } from "../browser/links";
 import { ask, setTermHandler, useDaemon } from "../daemon";
 
 /** The pane's states: the stream loading, the run not started yet, live, ended, failed. */
@@ -51,6 +52,8 @@ export function TerminalPane({ id }: { id: string }) {
       cursorStyle: "bar",
       cursorBlink: true,
       scrollback: 5000,
+      // OSC 8 links.
+      linkHandler: { activate: (event, uri) => openLink(uri, { swap: swapped(event) }) },
     });
     const fit = new FitAddon();
     xterm.loadAddon(fit);

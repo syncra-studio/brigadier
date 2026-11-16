@@ -15,6 +15,7 @@ import { TablePlugin } from "@lexical/react/LexicalTablePlugin";
 import { $getRoot, type EditorThemeClasses, type LexicalEditor } from "lexical";
 import { type RefObject, useState } from "react";
 
+import { openLink } from "../browser/links";
 import { $exportPage, $importPage, PAGE_NODES, PAGE_TRANSFORMERS } from "./markdown";
 import { DragHandles, SelectionToolbar, SlashMenu } from "./tools";
 
@@ -77,7 +78,7 @@ export function NoteEditor({ body, label, editorRef, onChange }: { body: string;
           const href = event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null;
           if (!href || !(event.metaKey || event.ctrlKey)) return;
           event.preventDefault();
-          if (safeLink(href)) window.brigadier?.openLink(href);
+          if (safeLink(href)) openLink(href);
         }}
       >
         <RichTextPlugin contentEditable={<ContentEditable aria-label={label} className="note-content" spellCheck />} placeholder={null} ErrorBoundary={LexicalErrorBoundary} />

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import { openLink } from "../browser/links";
 import { Button } from "../components/button";
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
@@ -24,7 +25,6 @@ const NEW_ISSUE = "https://github.com/syncra-studio/brigadier/issues/new";
 const INSTALL_GH = "brew install gh";
 export const FEEDBACK_FRAME = "max-w-feedback gap-0 p-0";
 
-const openLink = (url: string) => window.brigadier?.openLink(url);
 
 export function FeedbackDialog() {
   const { open, text, sending, account } = feedback.use();

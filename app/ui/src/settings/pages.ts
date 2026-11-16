@@ -1,7 +1,8 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { Archive, Branch, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { BROWSER_ROWS, BrowserPage } from "./browser";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
 import { GENERAL_ROWS, GeneralPage } from "./general";
@@ -19,9 +20,9 @@ import { SHORTCUTS_ROWS, ShortcutsPage } from "./shortcuts";
 export type SettingsRowCopy = { readonly label: string; readonly description?: string; readonly section?: string };
 
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
-type SettingsGroup = "Personal" | "Agents" | "end";
+type SettingsGroup = "Personal" | "Agents" | "Browser & Data" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "browser" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -35,7 +36,10 @@ type SettingsPageEntry = {
   rows: readonly SettingsRowCopy[];
 };
 
-export const SETTINGS_GROUPS: readonly SettingsGroup[] = ["Personal", "Agents", "end"];
+// shortcut: Browser & Data shows only with BRIGADIER_BROWSER=1 until the New tab is the browser (S5).
+const browser = window.brigadier?.browser === true;
+
+export const SETTINGS_GROUPS: readonly SettingsGroup[] = ["Personal", "Agents", ...(browser ? (["Browser & Data"] as const) : []), "end"];
 
 export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "general", label: "General", icon: SettingsCog, group: "Personal", component: GeneralPage, rows: Object.values(GENERAL_ROWS) },
@@ -45,6 +49,7 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "plugins", label: "Plugins", icon: Plugin, group: "Agents", component: PluginsSettings, rows: Object.values(PLUGINS_ROWS) },
   { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: Object.values(ROUTING_ROWS) },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
+  ...(browser ? [{ id: "browser", label: "Browser", icon: Globe, group: "Browser & Data", component: BrowserPage, rows: Object.values(BROWSER_ROWS) } as const] : []),
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];
 

@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 8] = [
+const KEYS: [(&str, &[&str]); 10] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -40,6 +40,9 @@ const KEYS: [(&str, &[&str]); 8] = [
     ),
     // Each CLI's own memory in sessions, read at each launch; workers never [D2049, D89].
     ("memory", SWITCH_OFF),
+    // Where a web link and a local dev URL open: Brigadier's browser or the default one [D507].
+    ("web_links_in", &["system", "brigadier"]),
+    ("local_links_in", &["brigadier", "system"]),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.
