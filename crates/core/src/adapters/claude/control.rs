@@ -135,14 +135,18 @@ pub fn own(spec: &Spec, env: &mut Vec<(String, String)>) {
 pub fn standing(spec: &Spec) -> Vec<String> {
     let load = "\n\nYour to-do tool, TodoWrite, is deferred: load it with ToolSearch `select:TodoWrite` before its first use.";
     let fresh = crate::adapters::setup::newer(&crate::cli_version(spec, &super::Claude), "2.1.321");
-    // Its `Stop` hook sends a reply that asks in prose back once, inside the turn [D529].
+    // Its `Stop` hook sends a reply that asks in prose back once, inside the turn [D529], and
+    // `show_draft` shows a message for someone as a card [D529, D530].
     let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
     let stop = format!(
         "'{}' hook stop claude",
         me.display().to_string().replace('\'', r"'\''")
     );
+    // Brigadier's own tools, always loaded and never asked about: they only show the user things.
+    let tools = json!({"mcpServers": {"brigadier": {"command": me, "args": ["mcp-server"], "alwaysLoad": true}}});
     let mut settings = json!({"attribution": {"commit": "", "pr": ""}, "crossSessionInbound": "refuse", "hooks": {
-        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "cat"}]}]}});
+        "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "cat"}]}]},
+        "permissions": {"allow": ["mcp__brigadier__show_draft"]}});
     // A worker's last words go to its lead as its result, a question included.
     if !spec.naked {
         settings["hooks"]["Stop"] = json!([{"hooks": [{"type": "command", "command": stop}]}]);
@@ -154,6 +158,8 @@ pub fn standing(spec: &Spec) -> Vec<String> {
         settings.to_string(),
         "--disallowedTools".into(),
         "ListAgents,SendMessage".into(),
+        "--mcp-config".into(),
+        tools.to_string(),
     ];
     if fresh {
         args.extend(["--system-prompt-snapshot".into(), "off".into()]);

@@ -13,6 +13,20 @@ impl Agent {
         let left = n.saturating_sub(done_before);
         match name {
             "say" => (0..n).for_each(|i| self.say(&format!("line {i}"))),
+            // `draft`: Brigadier's own `show_draft` for Lucia; `draft:1` the same as a fence [D529].
+            "draft" => {
+                let msg = json!({"to": "Lucia · DM", "state": "draft", "text": format!("Hi Lucia,\nit ships on {}.", self.tools)});
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                if n == 1 {
+                    self.say(&format!("```brigadier-message\n{msg}\n```"));
+                } else {
+                    emit(
+                        json!({"t": "tool", "id": id, "name": "show_draft", "server": "brigadier", "input": msg}),
+                    );
+                    emit(json!({"t": "tool_done", "id": id, "output": "Shown to the user."}));
+                }
+            }
             "recall" => self.say(&format!("I remember: {}", self.conv().join(" | "))),
             "write" => {
                 let file = word.split_once(':').map_or("", |w| w.1);

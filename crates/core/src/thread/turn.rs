@@ -147,6 +147,7 @@ impl Thread {
             stop: (None, false),
             quiet: t.quiet,
             joins: None,
+            after: None,
         });
     }
 
@@ -159,7 +160,11 @@ impl Thread {
             self.streaming = Some(*n as usize - 1);
             self.items[*n as usize - 1]["streaming"] = (kind == "text_delta").into();
         }
+        if self.drafted(item, kind, ts) {
+            return;
+        }
         if let Some(at) = self.streaming {
+            let after = self.open.as_ref().and_then(|o| o.after.clone());
             let joins = (self.open.as_mut())
                 .and_then(|o| o.joins.as_mut())
                 .filter(|(n, ..)| *n as usize == at + 1);
@@ -176,7 +181,7 @@ impl Thread {
                 (_, joins) => {
                     // A reply cut off before its whole text came keeps what was written.
                     if kind == "text" {
-                        let text = s(item, &["text"]);
+                        let text = &(after.unwrap_or_default() + s(item, &["text"]));
                         let text = joins.map_or(text.into(), |(_, cut, _)| {
                             super::subagents::joined(cut, text)
                         });
@@ -187,6 +192,9 @@ impl Thread {
                     }
                     row["streaming"] = false.into();
                     self.streaming = None;
+                    if let Some(o) = self.open.as_mut() {
+                        o.after = None;
+                    }
                 }
             }
             self.changed_items.insert(at);

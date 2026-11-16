@@ -216,6 +216,8 @@ impl Adapter for Fake {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
                 step: "other",
+                input: v.get("input").map_or(String::new(), Value::to_string),
+                server: v["server"].as_str().map(String::from),
                 ..Default::default()
             })],
             "tool_done" => vec![Event::ToolEnd(Done {

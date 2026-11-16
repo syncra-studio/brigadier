@@ -118,6 +118,26 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             if s(d, &["name"]) == "question" {
                 return Some(vec![]);
             }
+            // Its MCP tools run from code (`execute`): Brigadier's own `show_draft` calls are their
+            // cards once it ended, the call itself no step [D529].
+            // shortcut: code calling other tools beside it loses its row; split it if agents do that.
+            if s(d, &["name"]) == "execute" && s(d, &["input", "code"]).contains("tools.brigadier.")
+            {
+                let calls =
+                    (d["metadata"]["toolCalls"].as_array().into_iter().flatten()).filter(|c| {
+                        kind == "session.tool.success" && c["tool"] == "brigadier.show_draft"
+                    });
+                let draft = |(k, c): (usize, &Value)| {
+                    Event::ToolStart(Tool {
+                        id: format!("{}:{k}", id("id")),
+                        name: "show_draft".into(),
+                        input: c["input"].to_string(),
+                        server: Some("brigadier".into()),
+                        ..Default::default()
+                    })
+                };
+                return Some(calls.enumerate().map(draft).collect());
+            }
             let content = d["content"].as_array().into_iter().flatten();
             let output: Vec<&str> = content.filter_map(|p| p["text"].as_str()).collect();
             let (status, at) = match kind {

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 29;
+pub const VERSION: u32 = 30;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -33,7 +33,14 @@ pub struct Norm {
     /// This turn's agent's own safety check gave no verdict: its asks say so [D455].
     #[serde(default)]
     unchecked: bool,
+    /// This turn's `show_draft` calls, by id: each shows once, as its card, never as a step.
+    #[serde(default)]
+    drafts: Vec<String>,
 }
+
+/// How a `show_draft` call reads in its reply: the message card's fence, its JSON on one line
+/// [D525, D529]. Its info names the tool, so the turn-end counters tell it from a fence draft.
+pub const DRAFT: &str = "```brigadier-message show_draft\n";
 
 impl Norm {
     /// True when no partial line is held, so the state is small enough to checkpoint.
@@ -182,6 +189,7 @@ impl Norm {
             let item = match event {
                 Event::TurnStart => {
                     self.edits.clear();
+                    self.drafts.clear();
                     let resume = self
                         .announced
                         .get(&self.backend)
@@ -198,6 +206,22 @@ impl Norm {
                 Event::Text(t) => json!({"kind": "text", "text": t}),
                 Event::TextDelta(t) => json!({"kind": "text_delta", "text": t}),
                 Event::Reasoning(t) => json!({"kind": "reasoning", "text": t}),
+                // Brigadier's own `show_draft` as the card in the reply (Codex starts it twice).
+                Event::ToolStart(t)
+                    if t.server.as_deref() == Some("brigadier") && t.name == "show_draft" =>
+                {
+                    if self.drafts.contains(&t.id) {
+                        continue;
+                    }
+                    self.drafts.push(t.id);
+                    let args: Value = serde_json::from_str(&t.input).unwrap_or_default();
+                    let args = match args.as_str() {
+                        Some(s) => serde_json::from_str(s).unwrap_or_default(),
+                        None => args,
+                    };
+                    json!({"kind": "text", "text": format!("{DRAFT}{args}\n```")})
+                }
+                Event::ToolEnd(d) if self.drafts.contains(&d.id) => continue,
                 Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
                     "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server.as_deref().map(crate::library::plain), "description": t.description}),
                 Event::Background(task, label) => {

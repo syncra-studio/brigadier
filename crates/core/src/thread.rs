@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod asks;
+mod drafts;
 mod find;
 mod page;
 mod peer;
@@ -57,6 +58,8 @@ struct Open {
     quiet: bool,
     /// The reply its stop cut mid-way, by `n`, with its text as cut, and the carry-on's text so far.
     joins: Option<(u64, String, String)>,
+    /// The reply row's text through its `show_draft` card, that the words being written follow.
+    after: Option<String>,
 }
 
 impl Open {

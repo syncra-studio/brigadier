@@ -48,6 +48,11 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
         true => naked(spec),
         false => library(spec, &mut open),
     };
+    // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
+    let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+    open["config"]["mcp_servers.brigadier.command"] = me.display().to_string().into();
+    open["config"]["mcp_servers.brigadier.args"] = json!(["mcp-server"]);
+    open["config"]["mcp_servers.brigadier.tools.show_draft.approval_mode"] = "approve".into();
     // Its memory as the switch says; `generate_memories` off keeps the thread out of its later
     // extraction too (codex-rs `thread_persistence_metadata`) [D2049].
     let memory = super::super::memory(spec);

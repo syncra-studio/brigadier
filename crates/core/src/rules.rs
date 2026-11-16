@@ -159,6 +159,7 @@ pub fn count(dir: &Path, reply: &str, hit: bool, sent: bool, retry: bool, by: Va
             "fence_drafts",
             fences
                 .filter(|l| l[3..].starts_with("text") || l[3..].starts_with("brigadier-message"))
+                .filter(|l| *l != crate::norm::DRAFT.trim_end())
                 .count(),
         );
         add("replies", 1);

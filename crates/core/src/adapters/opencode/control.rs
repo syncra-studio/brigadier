@@ -29,6 +29,12 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     } else if let Some(kit) = crate::library::kit(spec, &[]) {
         library(&mut config, &kit, spec);
     }
+    // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
+    if !spec.naked {
+        let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        let command = json!([me.display().to_string(), "mcp-server"]);
+        config["mcp"]["servers"]["brigadier"] = json!({"type": "local", "command": command});
+    }
     config
 }
 
@@ -120,7 +126,16 @@ pub fn rules(spec: &Spec) -> Value {
     if spec.level.as_deref() == Some("full") {
         return json!([rule("*", "*", "allow")]);
     }
-    let free = ["read", "glob", "grep", "question", "todowrite"].map(|a| rule(a, "*", "allow"));
+    // Brigadier's `show_draft` asks nothing: it only shows the user a message [D529].
+    let free = [
+        "read",
+        "glob",
+        "grep",
+        "question",
+        "todowrite",
+        "brigadier_show_draft",
+    ];
+    let free = free.map(|a| rule(a, "*", "allow"));
     let secrets = [
         rule("read", "*.env", "ask"),
         rule("read", "*.env.*", "ask"),
