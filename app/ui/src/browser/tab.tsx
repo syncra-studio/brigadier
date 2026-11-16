@@ -13,6 +13,7 @@ import { showPage } from "./hole";
 import { type BrowserKey, browserKey, stepZoom } from "./keys";
 import { type BrowserBounds, focusPage, go, placePage, printPage } from "./layer";
 import { closeBrowserPage, dismissBlocked, openPage, originOf, syncZoom, useBrowserPage, zoomPage } from "./pages";
+import { pageShows, userUsed } from "./pause";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
 import { BrowserOptions } from "./options";
@@ -73,12 +74,14 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
       placed = key;
       placePage(id, bounds);
       showPage(id, bounds);
+      pageShows(id, bounds !== null);
     };
     const stop = followLayout(() => [element], place);
     return () => {
       stop();
       placePage(id, null);
       showPage(id, null);
+      pageShows(id, false);
     };
   }, [id, page?.ready, active]);
 
@@ -100,6 +103,7 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
   }, [active, ready, id]);
 
   const act = (action: NavAction | "back-unless-typing" | "forward-unless-typing" | "force-reload") => {
+    userUsed(id);
     try {
       go(id, action);
     } catch (error) {
@@ -203,6 +207,7 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
   const goTo = (text: string) => {
     const to = browserAddress(text);
     if (!to || !area.current) return;
+    userUsed(id);
     setTyped(null);
     field.current?.blur();
     openPage(owner, id, to, boundsOf(area.current)).catch(failed);

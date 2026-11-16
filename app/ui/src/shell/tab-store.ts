@@ -34,7 +34,7 @@ export type TabKind = keyof typeof TAB_KINDS;
  * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244], a browser tab's page. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes; a browser tab its profile, none for the default one.
  */
-export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string };
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string; driver?: string };
 export type Tabs = { tabs: Tab[]; active: string };
 
 type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
@@ -218,7 +218,16 @@ export function setTabUrl(owner: string, id: string, url: string): void {
 }
 
 /** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
-export const tabOpenAnywhere = (id: string): boolean => [...slots.values()].some((slot) => slot.shown.tabs.some((tab) => tab.id === id));
+export const tabOpenAnywhere = (id: string): boolean => tabAnywhere(id) !== null;
+
+/** Tab `id` and the session or Home it's in, wherever it is open. */
+export function tabAnywhere(id: string): { owner: string; tab: Tab } | null {
+  for (const [owner, slot] of slots) {
+    const tab = slot.shown.tabs.find((each) => each.id === id);
+    if (tab) return { owner, tab };
+  }
+  return null;
+}
 
 export function selectTab(owner: string, id: string): void {
   act(owner, { args: ["select", id], change: (now) => (has(now, id) ? { ...now, active: id } : now) });

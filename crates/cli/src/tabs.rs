@@ -62,6 +62,9 @@ struct Tab {
     /// A browser tab's profile; none is the default one [D516].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     profile: Option<String>,
+    /// The session of the agent working a browser tab, its own or a worker's; none for the user's own [D516].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    driver: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -115,6 +118,13 @@ fn read(path: &Path) -> Tabs {
     for tab in tabs.tabs.iter_mut().chain(saved) {
         if !tab.profile.as_deref().is_none_or(plain) {
             tab.profile = None;
+        }
+        if tab
+            .driver
+            .as_deref()
+            .is_some_and(|d| core::check_id(d).is_err())
+        {
+            tab.driver = None;
         }
     }
     if !tabs.tabs.iter().any(|t| t.id == tabs.active) {
