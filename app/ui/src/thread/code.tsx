@@ -2,7 +2,8 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
-import { ChevronDown, ChevronUp, Code } from "../icons";
+import { TooltipIconButton } from "../components/icon-button";
+import { ArrowCurvedLeft, ChevronDown, ChevronUp, Code } from "../icons";
 import { useFindSearching } from "./find-text";
 import { highlight } from "./highlight";
 import { useKept } from "./kept";
@@ -89,8 +90,11 @@ export function CodeBlock({
   const cut = long && !open && searched;
   const shown = long && !open && !searched ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
-  // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248].
+  // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248]; code wraps when asked,
+  // by its own toggle [D525].
   const prose = /^(|text|txt|plain|plaintext)$/i.test(language);
+  const [wrap, setWrap] = useKept(`${keep}:wrap`);
+  const canWrap = !body && !prose && look === "code";
   return (
     <div data-look={look} className={cx("relative overflow-clip border border-border", frame.card)}>
       <div className={cx("flex items-center ps-3", frame.head)}>
@@ -101,11 +105,22 @@ export function CodeBlock({
           </>
         )}
         {long && <span>· {count.toLocaleString()} lines</span>}
-        {!live && <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />}
+        {canWrap && (
+          <TooltipIconButton
+            tooltip={wrap ? "Don't wrap lines" : "Wrap lines"}
+            pressed={wrap}
+            size="icon-xs"
+            className="ms-auto aria-pressed:bg-fill-subtle aria-pressed:text-foreground"
+            onClick={() => setWrap(!wrap)}
+          >
+            <ArrowCurvedLeft />
+          </TooltipIconButton>
+        )}
+        {!live && <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className={canWrap ? undefined : "ms-auto"} />}
       </div>
       {body ?? (
         <div className="relative">
-          <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", prose && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
+          <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", (prose || wrap) && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
             {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
           </pre>
           {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}
