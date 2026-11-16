@@ -71,7 +71,7 @@ const TAGS = [
 // Every badge's one square and corners, initials or logo, so none is wider than another [D62].
 const BADGE = "size-icon-md shrink-0 overflow-hidden rounded-badge";
 
-// Which projects have a logo, found once a run. shortcut: a logo added or removed shows after a reload, watch the folder if that bites.
+// Which projects have a logo, asked once a page load (main looks once a run).
 const logos = new Map<string, boolean>();
 
 /**
