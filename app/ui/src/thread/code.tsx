@@ -58,7 +58,8 @@ const LOOKS = {
 
 /**
  * A fenced code block: its language and copy over the code, coloured once it settles, folded when long.
- * `title` stands in for the language's icon and name; `look` "diff" draws it as a file change's diff card.
+ * `title` stands in for the language's icon and name; `look` "diff" draws it as a file change's diff card;
+ * `body`, drawn in place of the code, shows it another way (a preview drawn as it will post) and never folds.
  */
 export function CodeBlock({
   code,
@@ -66,17 +67,19 @@ export function CodeBlock({
   keep,
   title,
   look = "code",
+  body,
 }: {
   code: string;
   language: string;
   keep: string;
   title?: ReactNode;
   look?: keyof typeof LOOKS;
+  body?: ReactNode;
 }) {
   const frame = LOOKS[look];
   const [open, setOpen] = useKept(keep);
   const count = code.split("\n").length;
-  const long = count > LONG_LINES;
+  const long = !body && count > LONG_LINES;
   // Folded, only the lines on show are drawn and coloured, so a huge block costs no more than a short one; while
   // find searches, all of them, cut to the fold, so they are found (find.tsx opens it to go to one).
   const searched = useFindSearching();
@@ -97,12 +100,14 @@ export function CodeBlock({
         {long && <span>· {count.toLocaleString()} lines</span>}
         <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
       </div>
-      <div className="relative">
-        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", prose && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
-          {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
-        </pre>
-        {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}
-      </div>
+      {body ?? (
+        <div className="relative">
+          <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", prose && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
+            {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
+          </pre>
+          {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}
+        </div>
+      )}
       {long && (
         <button
           type="button"

@@ -4,6 +4,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
+import { Eye } from "../icons";
 import { CodeBlock } from "./code";
 import { RefWord, remarkRefs } from "./refs";
 
@@ -138,6 +139,7 @@ type Node = {
   tagName?: string;
   value?: string;
   properties?: { className?: unknown; dataAt?: number; dataRef?: string };
+  data?: { meta?: string };
   position?: { start: { offset?: number }; end: { offset?: number } };
   children?: Node[];
 };
@@ -177,6 +179,27 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
     const language = classes.find((name) => name.startsWith("language-"))?.slice("language-".length) ?? "";
     const text = (code.children ?? []).map((child) => child.value ?? "").join("");
     // Keyed by where the code starts, so two code blocks in one list keep their own fold.
-    return <CodeBlock code={text.replace(/\n$/, "")} language={language} keep={`${keep}:${code.position?.start.offset ?? 0}`} />;
+    const at = `${keep}:${code.position?.start.offset ?? 0}`;
+    // Something to post, as it will look: its markdown drawn in the block, copied as written [D446].
+    if (language === "preview")
+      return (
+        <CodeBlock
+          code={text.replace(/\n$/, "")}
+          language=""
+          keep={at}
+          title={
+            <>
+              <Eye className="size-icon-sm" />
+              <span className="font-medium">{code.data?.meta || "Preview"}</span>
+            </>
+          }
+          body={
+            <div className="px-3 pt-1 pb-3">
+              <Markdown text={text} keep={at} />
+            </div>
+          }
+        />
+      );
+    return <CodeBlock code={text.replace(/\n$/, "")} language={language} keep={at} />;
   },
 });
