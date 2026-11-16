@@ -10,11 +10,11 @@ use std::process::{Command, Stdio};
 /// A pre-registered public client: GitHub offers neither CIMD nor DCR [wave4 D2045, D312].
 const GITHUB: &str = "https://github.com/login/oauth";
 
-/// The client id of the owner's GitHub OAuth app, given at build (D312); the environment's
-/// for a hidden instance.
+/// Brigadier's GitHub OAuth app, public with no secret [D312, D438]; the environment's wins, and an
+/// empty one turns GitHub sign-in off.
 fn github_client() -> Option<String> {
-    let built = option_env!("BRIGADIER_GITHUB_CLIENT_ID").map(String::from);
-    (std::env::var("BRIGADIER_GITHUB_CLIENT_ID").ok().or(built)).filter(|v| !v.is_empty())
+    let id = std::env::var("BRIGADIER_GITHUB_CLIENT_ID");
+    Some(id.unwrap_or_else(|_| "Ov23lijQ8PbCwmourxws".into())).filter(|v| !v.is_empty())
 }
 
 /// The https URL of Brigadier's client metadata document on brigadier.sh (D312), given at build.
