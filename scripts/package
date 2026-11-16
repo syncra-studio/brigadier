@@ -38,7 +38,7 @@ await packager({
     CFBundleDocumentTypes: [{ CFBundleTypeName: "Folder", CFBundleTypeRole: "Viewer", LSHandlerRank: "Alternate", LSItemContentTypes: ["public.folder"] }],
   },
   // Only what the app reads at run time: the UI is bundled, so no node_modules; the menu bar's icon (tray.ts).
-  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist|\/icons($|\/tray\.png$))|\/ui($|\/dist($|\/)|\/src($|\/(theme\.css|shortcuts\.json)$))))/,
+  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist|\/browser($|\/browser_agent\.js$)|\/icons($|\/tray\.png$))|\/ui($|\/dist($|\/)|\/src($|\/(theme\.css|shortcuts\.json)$))))/,
   osxSign: {
     identity: process.env.BRIGADIER_SIGN_IDENTITY || "-",
     keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || undefined,
