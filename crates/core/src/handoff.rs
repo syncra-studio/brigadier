@@ -154,16 +154,21 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                     .and_then(|id| steps.get(id))
                     .and_then(|&i| p.entries.get_mut(i));
                 if let Some(e) = step.filter(|e| e.from == "tool" && !o.is_empty()) {
-                    e.out = format!(
-                        "  returned {} lines, {} chars; whole output: `brigadier read {}#{at}`\n",
-                        o.lines().count(),
-                        o.chars().count(),
-                        spec.id
-                    );
-                    if tails {
-                        let end = tail(o, 300);
-                        let cut = if end.len() < o.len() { "…" } else { "" };
-                        e.out += &format!("  it ends:\n    {cut}{}\n", end.replace('\n', "\n    "));
+                    let end = tail(o, 300);
+                    let whole = end.len() == o.len();
+                    let end = end.replace('\n', "\n    ");
+                    // An output its end holds whole needs no reference.
+                    e.out = match (tails, whole) {
+                        (true, true) => format!("  returned:\n    {end}\n"),
+                        _ => format!(
+                            "  returned {} lines, {} chars; whole output: `brigadier read {}#{at}`\n",
+                            o.lines().count(),
+                            o.chars().count(),
+                            spec.id
+                        ),
+                    };
+                    if tails && !whole {
+                        e.out += &format!("  it ends:\n    …{end}\n");
                     }
                 }
             }
