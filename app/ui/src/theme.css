@@ -361,6 +361,9 @@
   /* The browser tab's profile menu (the old tokens.css). */
   --spacing-browser-profiles: 18rem;
   --spacing-browser-downloads: 22rem;
+  /* The import dialog's pick and results steps, wider than a plain dialog, and how tall its results get (the old tokens.css). */
+  --container-import-dialog: 37.5rem;
+  --spacing-import-results: 26rem;
   --spacing-browser-menu-item: 1.8125rem;
   --spacing-browser-zoom: 1.625rem;
   --spacing-browser-zoom-value: 2.75rem;

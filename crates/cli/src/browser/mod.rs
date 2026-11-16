@@ -4,6 +4,7 @@ mod bookmarks;
 mod dates;
 mod history;
 mod hub;
+mod imports;
 pub(crate) mod profiles;
 mod records;
 mod store;
@@ -16,12 +17,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
 use store::{Device, Store};
-use types::{DownloadState, HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
+use types::{DownloadState, HistoryFilter, SitePermission};
 
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page, turn_ended};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|write|finish | bookmarks list|add|update|remove|import | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
@@ -93,6 +94,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     if area == "vault" {
         return vault::run(data, &folder, args);
+    }
+    if area == "imports" {
+        return imports::run(data, &folder, &profile, args);
     }
     let mut store = Store::open(&folder.join("browser.sqlite"))?;
     if area == "dates" {
@@ -230,28 +234,6 @@ fn stored(store: &mut Store, area: &str, args: &[String]) -> io::Result<Value> {
         ("sites", "clear") => {
             store.clear_sites(since, until).map_err(sql)?;
             done()
-        }
-        ("imports", "list") => Ok(json!({"ok": true, "imports": store.imports().map_err(sql)?})),
-        ("imports", "save") => {
-            let record: ImportRecord = serde_json::from_str(get(2)?)?;
-            store.save_import(get(1)?, &record).map_err(sql)?;
-            done()
-        }
-        ("imports", "denied") => {
-            store.import_denied(get(1)?).map_err(sql)?;
-            done()
-        }
-        ("imports", "visits") => {
-            let visits: Vec<ImportedVisit> = serde_json::from_str(get(1)?)?;
-            let added = store
-                .import_visits(
-                    visits
-                        .iter()
-                        .filter(|v| web_address(&v.url).is_ok())
-                        .map(|v| (v.url.as_str(), v.title.as_str(), v.at_ms)),
-                )
-                .map_err(sql)?;
-            Ok(json!({"ok": true, "added": added}))
         }
         _ => Err(io::Error::other(USAGE)),
     }

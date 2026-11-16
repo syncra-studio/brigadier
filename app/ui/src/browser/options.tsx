@@ -4,7 +4,10 @@ import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { DotsHorizontal, Minus, Plus, Reload } from "../icons";
 import { openBrowserSettings } from "../settings/browser-parts";
+import { openSettings } from "../settings/shell";
 import { stepZoom, ZOOM_LEAST, ZOOM_MOST, zoomLabel } from "./keys";
+
+const MAC = window.brigadier?.platform === "darwin";
 
 /** The zoom stepper's buttons: faint while they can't act. */
 const STEP = "flex size-6 items-center justify-center hover:bg-fill disabled:opacity-disabled disabled:hover:bg-transparent";
@@ -76,7 +79,11 @@ export function BrowserOptions({
           </button>
         </div>
         <DropdownMenuSeparator className="mx-2" />
-        {/* shortcut: no Import Browser Data… until import lands (S10); it goes first here. */}
+        {MAC && (
+          <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
+            Import Browser Data…
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("downloads")}>
           Downloads
         </DropdownMenuItem>

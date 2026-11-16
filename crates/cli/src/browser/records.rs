@@ -148,50 +148,6 @@ impl Store {
         Ok(())
     }
 
-    /// What the last import from each browser brought, by browser key, and whether the last
-    /// try was refused the browser's Keychain key.
-    pub fn imports(
-        &self,
-    ) -> rusqlite::Result<std::collections::HashMap<String, (Option<ImportRecord>, bool)>> {
-        let mut stmt = self
-            .db
-            .prepare("SELECT browser, record, keychain_denied FROM imports")?;
-        let rows = stmt.query_map([], |row| {
-            let record: Option<String> = row.get(1)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                (
-                    record.and_then(|json| serde_json::from_str(&json).ok()),
-                    row.get::<_, i64>(2)? != 0,
-                ),
-            ))
-        })?;
-        rows.collect()
-    }
-
-    /// Keeps what an import from `browser` brought, in place of the last; it got the Keychain
-    /// key if it needed one, so a refusal before is forgotten.
-    pub fn save_import(&self, browser: &str, record: &ImportRecord) -> rusqlite::Result<()> {
-        let json = serde_json::to_string(record)
-            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
-        self.db.execute(
-            "INSERT INTO imports (browser, record, keychain_denied) VALUES (?1, ?2, 0)
-             ON CONFLICT (browser) DO UPDATE SET record = ?2, keychain_denied = 0",
-            params![browser, json],
-        )?;
-        Ok(())
-    }
-
-    /// An import from `browser` was refused its Keychain key; its last record stays.
-    pub fn import_denied(&self, browser: &str) -> rusqlite::Result<()> {
-        self.db.execute(
-            "INSERT INTO imports (browser, keychain_denied) VALUES (?1, 1)
-             ON CONFLICT (browser) DO UPDATE SET keychain_denied = 1",
-            params![browser],
-        )?;
-        Ok(())
-    }
-
     /// Forgets sites in the time range, and their choices.
     pub fn clear_sites(
         &self,

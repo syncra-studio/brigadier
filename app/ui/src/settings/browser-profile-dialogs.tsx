@@ -1,6 +1,6 @@
 import { type FormEvent, useId, useState } from "react";
 
-import { HUES, type BrowserProfile, canDelete, createProfile, deleteProfile, recolourProfile, renameProfile, sessionsOn, tabsOn, useDefaultProfile, useProfiles, useSessionPicks } from "../browser/profiles";
+import { type BrowserProfile, canDelete, createProfile, nextHue, deleteProfile, recolourProfile, renameProfile, sessionsOn, tabsOn, useDefaultProfile, useProfiles, useSessionPicks } from "../browser/profiles";
 import { ProfileSwatches } from "../browser/profile-mark";
 import { Button } from "../components/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
@@ -9,9 +9,9 @@ import { showToast } from "../components/toast";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { plural } from "../panel/words";
+import { openSettings } from "./shell";
 
-/** The colour no profile has yet, else the first. */
-const nextHue = (profiles: readonly BrowserProfile[]): number => HUES.find((hue) => !profiles.some((profile) => profile.hue === hue)) ?? HUES[0];
+const MAC = window.brigadier?.platform === "darwin";
 
 /** New profile, or (with `editing`) Rename: a name and a colour. */
 export function ProfileDialog({
@@ -70,14 +70,27 @@ function Form({ editing, onClose, onCreated }: { editing: BrowserProfile | undef
           </div>
         </div>
       </div>
-      {/* shortcut: no "Import from a browser instead…" link until import lands (S10); it goes at this footer's start. */}
-      <DialogFooter>
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={!ready}>
-          {editing ? "Save" : "Create profile"}
-        </Button>
+      <DialogFooter className={editing || !MAC ? undefined : "sm:justify-between"}>
+        {!editing && MAC && (
+          <Button
+            variant="link-blue"
+            size="inline"
+            onClick={() => {
+              onClose();
+              openSettings("browserImport");
+            }}
+          >
+            Import from a browser instead…
+          </Button>
+        )}
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!ready}>
+            {editing ? "Save" : "Create profile"}
+          </Button>
+        </div>
       </DialogFooter>
     </form>
   );

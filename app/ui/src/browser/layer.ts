@@ -35,6 +35,8 @@ declare global {
       devtools(op: string, args: { guest: number } & Record<string, unknown>): Promise<unknown>;
       /** A profile's Chromium data (main's browser/profileStore.ts): remove, counts, clear. */
       profiles(op: string, args: { profile: string } & Record<string, unknown>): Promise<unknown>;
+      /** Import's engine half (main's browser/browserImport.ts): icon, opened, clear, cookies, settled, access. */
+      browserImport(op: string, args: Record<string, unknown>): Promise<unknown>;
       /** Downloads (main's browser/browserDownloads.ts): configure, cancel, open, reveal; and each one's steps. */
       downloads(op: string, args: Record<string, unknown>): Promise<unknown>;
       onDownload(listener: (details: unknown) => void): void;

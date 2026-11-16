@@ -19,6 +19,8 @@ type Places = { profiles: BrowserProfile[]; defaultId: string; sessions: Record<
 
 /** The colours in the order new profiles take them. */
 export const HUES = [6, 4, 1, 5, 2, 3, 7, 8] as const;
+/** The colour no profile has yet, else the first. */
+export const nextHue = (profiles: readonly BrowserProfile[]): number => HUES.find((hue) => !profiles.some((profile) => profile.hue === hue)) ?? HUES[0];
 
 let places: Places = { profiles: [{ id: "default", name: "Personal", hue: 6 }], defaultId: "default", sessions: {} };
 /** Goes up with every change: what a session resolves to is read again. */

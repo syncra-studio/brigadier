@@ -1,8 +1,9 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { Archive, Branch, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
 import { BROWSER_ROWS, BrowserPage } from "./browser";
+import { BROWSER_IMPORT_ROWS, BrowserImportPage } from "./browser-import";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
 import { GENERAL_ROWS, GeneralPage } from "./general";
@@ -22,7 +23,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "Browser & Data" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "browser" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "browser" | "browserImport" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -47,6 +48,10 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: Object.values(ROUTING_ROWS) },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
   { id: "browser", label: "Browser", icon: Globe, group: "Browser & Data", component: BrowserPage, rows: Object.values(BROWSER_ROWS) },
+  // Importing reads other browsers' macOS profiles: macOS only.
+  ...(window.brigadier?.platform === "darwin"
+    ? [{ id: "browserImport", label: "Import Browser Data", icon: Download, group: "Browser & Data", component: BrowserImportPage, rows: Object.values(BROWSER_IMPORT_ROWS) } as const]
+    : []),
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];
 

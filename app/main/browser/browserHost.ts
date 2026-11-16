@@ -6,6 +6,7 @@ import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
 import { watchProfileCookies } from "./browserClearData";
 import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
 import { installDownloads, watchDownloads } from "./browserDownloads";
+import { installBrowserImport } from "./browserImport";
 import { guestPasskeyPath, guestPasswordsPath, installBrowserLogins } from "./browserLogins";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
@@ -32,7 +33,7 @@ export function installBrowserHost(origin: string): void {
   installBrowserAgent();
   installDownloads();
   installBrowserLogins();
-  // shortcut: no import until its section lands; its install goes here.
+  installBrowserImport();
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });

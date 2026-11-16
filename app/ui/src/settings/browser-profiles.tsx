@@ -1,7 +1,8 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { importOrigins } from "../browser/imports";
 import { ProfileDisc, ProfileSwatches } from "../browser/profile-mark";
 import { type BrowserProfile, makeDefaultProfile, moveProfile, recolourProfile, sessionsOn, useDefaultProfile, useProfiles, useSessionPicks } from "../browser/profiles";
 import { Badge } from "../components/badge";
@@ -17,9 +18,13 @@ import { plural } from "../panel/words";
 import { ClearBrowsingDataDialog } from "./browser-clear";
 import { ProfileDeleteDialog, ProfileDialog, useSessionIds } from "./browser-profile-dialogs";
 import { SettingsSection } from "./parts";
+import { openSettings } from "./shell";
+
+const MAC = window.brigadier?.platform === "darwin";
 
 /** How a profile started and how many sessions are on it. */
-export const profileLine = (sessions: number): string => `Started empty · ${sessions === 0 ? "No sessions" : plural(sessions, "session")}`;
+export const profileLine = (sessions: number, importedFrom?: string): string =>
+  `${importedFrom ? `Imported from ${importedFrom}` : "Started empty"} · ${sessions === 0 ? "No sessions" : plural(sessions, "session")}`;
 
 export const profileHref = (id: string) => `#settings/browser/profile/${encodeURIComponent(id)}`;
 
@@ -30,17 +35,25 @@ export function ProfilesSection() {
   const picks = useSessionPicks();
   const sessions = useSessionIds();
   const [creating, setCreating] = useState(false);
+  const [origins, setOrigins] = useState<Partial<Record<string, string>>>({});
+  useEffect(() => void importOrigins().then(setOrigins), []);
   return (
     <SettingsSection
       title="Profiles"
       setting="Profiles"
       description="Each profile keeps its own sign-ins, history, bookmarks and passwords."
       actions={
-        // shortcut: no Import… button until import lands (S10); it goes before New profile.
-        <Button variant="soft" size="sm" onClick={() => setCreating(true)}>
-          <Plus className="size-icon-sm" />
-          New profile
-        </Button>
+        <>
+          {MAC && (
+            <Button variant="ghost" size="sm" onClick={() => openSettings("browserImport")}>
+              Import…
+            </Button>
+          )}
+          <Button variant="soft" size="sm" onClick={() => setCreating(true)}>
+            <Plus className="size-icon-sm" />
+            New profile
+          </Button>
+        </>
       }
     >
       <SettingsCard>
@@ -58,6 +71,7 @@ export function ProfilesSection() {
               count={profiles.length}
               isDefault={profile.id === fallback.id}
               sessions={sessionsOn(profile.id, picks, sessions)}
+              importedFrom={origins[profile.id]}
             />
           ))}
         </DragDropProvider>
@@ -72,7 +86,7 @@ export function ProfilesSection() {
   );
 }
 
-function ProfileRow({ profile, index, count, isDefault, sessions }: { profile: BrowserProfile; index: number; count: number; isDefault: boolean; sessions: number }) {
+function ProfileRow({ profile, index, count, isDefault, sessions, importedFrom }: { profile: BrowserProfile; index: number; count: number; isDefault: boolean; sessions: number; importedFrom: string | undefined }) {
   const { ref, handleRef, isDragging } = useSortable({ id: profile.id, index, disabled: count < 2 });
   const [renaming, setRenaming] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -108,7 +122,7 @@ function ProfileRow({ profile, index, count, isDefault, sessions }: { profile: B
               )}
             </span>
           }
-          line={profileLine(sessions)}
+          line={profileLine(sessions, importedFrom)}
         />
       </a>
       <div className="flex shrink-0 items-center gap-1">

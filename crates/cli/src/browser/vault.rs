@@ -109,7 +109,7 @@ fn write(data: &Path, folder: &Path, vault: &Vault) -> io::Result<()> {
 }
 
 /// The site a password belongs to: its origin, for http and https only.
-fn login_site(url: &str) -> Option<String> {
+pub(super) fn login_site(url: &str) -> Option<String> {
     let (scheme, rest) = url.split_once("://")?;
     let scheme = scheme.to_ascii_lowercase();
     let host = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?;

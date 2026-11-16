@@ -165,7 +165,8 @@ const ONE: readonly TabKind[] = ["review", "actions"];
 const keyOf = (kind: TabKind, target?: string) => (kind === "attachment" ? target?.split("/")[0] : target);
 const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && keyOf(kind, tab.target) === keyOf(kind, target)));
 
-export function openTab(owner: string, kind: TabKind, target?: string): void {
+/** Returns the new tab's id. */
+export function openTab(owner: string, kind: TabKind, target?: string): string {
   const id = `t-${newId()}`;
   // A file or PR already open, or the one tab of its kind, comes to the front as Rust does, so no tab of this id ever shows.
   if (!tabsOf(owner).tabs.some((tab) => isSame(tab, kind, target))) opened.add(id);
@@ -180,6 +181,7 @@ export function openTab(owner: string, kind: TabKind, target?: string): void {
       return { tabs: now.tabs.toSpliced(at, 0, { id, kind, opener: now.active, ...(target === undefined ? {} : { target }) }), active: id };
     },
   });
+  return id;
 }
 
 /** A New tab becomes what was picked on it, in place, as Rust does: only a New tab; a browser with the page typed in it. */

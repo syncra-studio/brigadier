@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld("brigadierShell", {
   openPermissionSettings: (device: string) => ipcRenderer.invoke("brigadier:permission-open-settings", device),
   devtools: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:devtools", op, args),
   profiles: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:profiles", op, args),
+  browserImport: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:browser-import", op, args),
   downloads: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:downloads", op, args),
   onDownload: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:browser-download", (_event, details) => listener(details)),
   sites: (profile: string, sites: unknown) => ipcRenderer.invoke("brigadier:sites", profile, sites),
