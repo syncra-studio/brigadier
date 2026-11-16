@@ -292,8 +292,8 @@ const Screen = Gallery ?? ThreadDemo;
 
 // The platform the window is drawn for, which the `win:` styles read [new-design].
 if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
-// The browser's pages, under the app, only while main's gate has the browser on.
-if (window.brigadier?.browser) installTabLayer();
+// The browser's pages, under the app.
+if (window.brigadier) installTabLayer();
 installLinks();
 
 createRoot(document.getElementById("root")!).render(

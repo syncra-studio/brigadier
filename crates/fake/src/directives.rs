@@ -98,6 +98,22 @@ impl Agent {
                     .spawn();
                 emit(json!({"t": "tool_done", "id": id, "ok": started.is_ok()}));
             }
+            // `server:PORT`: a dev server left running on PORT, its address in the step's output (the New tab's Local servers) [D508].
+            "server" => {
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                let cmd = format!("python3 -m http.server {n} --bind 127.0.0.1");
+                emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
+                let started = Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
+                let output = format!("\x1b[32m  ➜  Local:\x1b[0m   http://localhost:{n}/\n");
+                emit(json!({"t": "tool_done", "id": id, "ok": started.is_ok(), "output": output}));
+            }
             // `agent:N`: a subagent that takes N one-second steps of its own, then answers [D78];
             // `bgagent:N` runs it in the background, past its turn's end, and wakes itself on its end
             // as Claude's CLI does [D114, D106].

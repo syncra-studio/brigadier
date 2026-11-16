@@ -46,9 +46,18 @@ const subscribe = (listener: () => void) => {
 
 export const useBrowserPage = (id: string): BrowserPage | undefined => useSyncExternalStore(subscribe, () => pages.get(id));
 
+/** Bumped on every change, so a reader of all the pages draws again. */
+let version = 0;
+/** Every tab's page, by tab. */
+export function useBrowserPages(): ReadonlyMap<string, BrowserPage> {
+  useSyncExternalStore(subscribe, () => version);
+  return pages;
+}
+
 function set(id: string, page: BrowserPage | undefined): void {
   if (page) pages.set(id, page);
   else pages.delete(id);
+  version++;
   for (const listener of listeners) listener();
 }
 

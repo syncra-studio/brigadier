@@ -1,11 +1,11 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { ArrowUpRight, Globe } from "../icons";
-import { setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
+import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
 import { followLayout } from "./follow";
@@ -20,6 +20,7 @@ import { BrowserOptions } from "./options";
 import { Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
 import { BrowserDevButton, BrowserDevFrame, BrowserPickerBar } from "./devtools";
 import { BrowserDeviceBar } from "./device-sizes";
+import { AddressSuggestions, stepSuggestion, type Suggestion, useAddressSuggestions } from "./suggestions";
 
 /**
  * A Browser tab: one page, such as the app a worker is running on localhost. The page is a <webview> in the layer
@@ -42,7 +43,8 @@ function failed(cause: unknown) {
 
 const openOutside = (url: string) => window.brigadier?.openLink(url);
 
-export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; active: boolean }) {
+/** `children` show until a page is made; `onNavigate` takes the first address instead (the New tab, which becomes a page). */
+export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner: string; tab: Tab; active: boolean; children?: ReactNode; onNavigate?: (url: string) => void }) {
   const id = tab.id;
   const page = useBrowserPage(id);
   const area = useRef<HTMLDivElement>(null);
@@ -52,6 +54,9 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
   const finding = useBrowserFind(id).open;
   const [typed, setTyped] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
+  /** The suggestion the arrow keys are on; -1: the field itself. */
+  const [highlight, setHighlight] = useState(-1);
+  const [suggesting, setSuggesting] = useState(true);
   const made = page !== undefined;
   const initialUrl = tab.target;
 
@@ -212,10 +217,28 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
     userUsed(id);
     setTyped(null);
     field.current?.blur();
+    // Reading the page comes next, as in any browser.
+    if (onNavigate) {
+      onNavigate(to);
+      keyboardToPage();
+      return;
+    }
     openPage(owner, id, to, boundsOf(area.current)).catch(failed);
     keyboardToPage();
   };
   const editing = focused || typed !== null;
+  const suggestions = useAddressSuggestions(owner, id, focused ? typed : null);
+  const suggestionsOpen = focused && suggesting && typed !== null && suggestions.rows.length > 0;
+  const pick = (row: Suggestion) => {
+    setHighlight(-1);
+    if (row.kind === "tab") {
+      setTyped(null);
+      field.current?.blur();
+      selectTab(owner, row.id);
+      return;
+    }
+    goTo(row.kind === "go" ? row.text : row.url);
+  };
   // What Open in external browser opens: what is being typed, else the page.
   const outside = (typed !== null ? browserAddress(typed) : null) ?? (url || null);
 
@@ -246,17 +269,27 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
             className="group/address flex h-control-md w-full max-w-browser-address min-w-0 items-center rounded-capsule bg-control p-0.5 ring-1 ring-glass-stroke ring-inset"
           >
             {!editing && <SiteInfo url={url} />}
-            {/* shortcut: no suggestions under the field (open tabs, history) until the New tab is the browser (S5). */}
             <input
               ref={field}
+              // ⌘T opens the tab to type an address at once. A tab with an address has its page coming.
+              autoFocus={active && !made && !initialUrl}
               value={typed ?? (focused ? url : shownAddress(url, false))}
               placeholder="Search or enter a URL"
               aria-label="Address"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={suggestionsOpen}
+              aria-controls={suggestionsOpen ? "browser-suggestions" : undefined}
+              aria-activedescendant={suggestionsOpen && highlight >= 0 ? `browser-suggestion-${highlight}` : undefined}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
               autoComplete="off"
-              onChange={(event) => setTyped(event.target.value)}
+              onChange={(event) => {
+                setTyped(event.target.value);
+                setHighlight(-1);
+                setSuggesting(true);
+              }}
               onFocus={(event) => {
                 setFocused(true);
                 // The whole URL replaces the site first, then is selected.
@@ -266,8 +299,29 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
                   if (document.activeElement === input) input.select();
                 });
               }}
-              onBlur={() => setFocused(false)}
+              onBlur={() => {
+                setFocused(false);
+                setHighlight(-1);
+              }}
               onKeyDown={(event) => {
+                if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                  event.preventDefault();
+                  setHighlight((at) => stepSuggestion(at, event.key === "ArrowDown" ? 1 : -1, suggestions.rows.length));
+                  return;
+                }
+                const row = suggestionsOpen && highlight >= 0 ? suggestions.rows[highlight] : undefined;
+                if (event.key === "Enter" && row) {
+                  event.preventDefault();
+                  pick(row);
+                  return;
+                }
+                if (event.key === "Escape" && suggestionsOpen) {
+                  // The first Esc closes the suggestions; the next puts the page's address back.
+                  event.stopPropagation();
+                  setSuggesting(false);
+                  setHighlight(-1);
+                  return;
+                }
                 if (event.key === "Escape" && typed !== null) {
                   event.stopPropagation();
                   setTyped(null);
@@ -293,6 +347,17 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
               </TooltipIconButton>
             )}
           </div>
+          <AddressSuggestions
+            anchor={address}
+            field={field}
+            rows={suggestions.rows}
+            open={suggestionsOpen}
+            highlight={highlight}
+            onPick={pick}
+            onHighlight={setHighlight}
+            onRemove={suggestions.remove}
+            onClose={() => setSuggesting(false)}
+          />
           {/* Only over its own tab: a question waits, unanswered, while another tab is in front. */}
           <PermissionPrompt id={id} asking={active ? page?.asking : null} anchor={address} />
           <OsRefusedNotice id={id} refused={active && page?.osRefused?.origin === originOf(url) ? page?.osRefused : null} anchor={address} />
@@ -316,13 +381,14 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
       )}
       <BrowserDevFrame id={id} active={active}>
         <div ref={area} data-slot="browser-page" className="browser-device flex min-h-0 w-full flex-1">
-          {!made && (
-            <div className="m-auto p-6 text-center text-sm text-muted-foreground">
-              <Globe aria-hidden className="mx-auto mb-3 size-6" />
-              <p className="font-medium text-foreground">Start browsing</p>
-              <p className="mt-1">Enter a URL to open a page</p>
-            </div>
-          )}
+          {!made &&
+            (children ?? (
+              <div className="m-auto p-6 text-center text-sm text-muted-foreground">
+                <Globe aria-hidden className="mx-auto mb-3 size-6" />
+                <p className="font-medium text-foreground">Start browsing</p>
+                <p className="mt-1">Enter a URL to open a page</p>
+              </div>
+            ))}
         </div>
       </BrowserDevFrame>
     </div>

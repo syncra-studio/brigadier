@@ -14,6 +14,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 mod audit;
+mod servers;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
@@ -40,6 +41,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, true)?;
             let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
             return Ok(json!({"ok": true, "history": fold::history(&spec.dir, &left)}));
+        }
+        // `jobs <id> servers`: the local servers its steps printed, while a job its turns left runs [D508].
+        "jobs" if arg(args, 2)? == "servers" => {
+            let f = core::fold(&spec.dir, true)?;
+            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
+            let servers = if left.is_empty() {
+                vec![]
+            } else {
+                servers::of(&spec.dir)
+            };
+            return Ok(json!({"ok": true, "servers": servers}));
         }
         // `jobs <id> stop <pid> <start_us>`: one process tree its turns left running [D105].
         "jobs" => {

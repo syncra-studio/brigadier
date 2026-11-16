@@ -33,8 +33,6 @@ const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
 // Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
-// shortcut: hidden until the New tab is the browser (S5), then this gate goes.
-const browser = process.env.BRIGADIER_BROWSER === "1";
 // The tab bar's height and the traffic lights' top: their centre on its controls' line, 35px down [new-design].
 const TAB_BAR = 56;
 const LIGHTS_Y = 29;
@@ -183,13 +181,13 @@ function openWindow(): void {
     // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
     ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
     webPreferences: {
-      additionalArguments: [`--brigadier-platform=${platform}`, ...(browser ? ["--brigadier-browser"] : [])],
+      additionalArguments: [`--brigadier-platform=${platform}`],
       preload: path.join(__dirname, "preload.js"),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       // The browser's pages are <webview>s of this page; main guards what each may be (browser/browserHost.ts).
-      webviewTag: browser,
+      webviewTag: true,
     },
   });
   // A web link (a sign-in's code page) opens in the browser; nothing opens in the app.
@@ -404,6 +402,6 @@ void app.whenReady().then(() => {
   serveTray();
   startDaemon();
   serveUi();
-  if (browser) installBrowserHost(ORIGIN);
+  installBrowserHost(ORIGIN);
   openWindow();
 });

@@ -18,12 +18,9 @@ ipcRenderer.on("full-screen", (_event, on: boolean) => document.documentElement.
 
 // The platform main draws the window for, which a dev flag can stand in for (main.ts).
 const platform = process.argv.find((arg) => arg.startsWith("--brigadier-platform="))?.split("=")[1] ?? process.platform;
-// Whether the browser is on (main.ts's gate).
-const browser = process.argv.includes("--brigadier-browser");
 
 contextBridge.exposeInMainWorld("brigadier", {
   platform,
-  browser,
   trafficLights: (x: number) => ipcRenderer.send("traffic-lights", x),
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFolders: (options?: { at?: string; multi?: boolean }) => ipcRenderer.invoke("pick-folders", options),
@@ -59,7 +56,7 @@ contextBridge.exposeInMainWorld("brigadier", {
 });
 
 // The browser's door, for the tabs' <webview> layer (app/ui/src/browser/layer.ts); main answers only the app's top frame.
-if (browser) contextBridge.exposeInMainWorld("brigadierShell", {
+contextBridge.exposeInMainWorld("brigadierShell", {
   profilePartition: (profileId: string) => ipcRenderer.invoke("brigadier:profile-partition", profileId),
   guestFavicon: (id: number, href: string) => ipcRenderer.invoke("brigadier:guest-favicon", id, href),
   onGuestPopup: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-popup", (_event, details) => listener(details)),

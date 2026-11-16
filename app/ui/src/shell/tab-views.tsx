@@ -21,6 +21,7 @@ import { ReviewView } from "../review/view";
 import { daemonRun } from "../session/composer";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
+import { LocalServers, SuggestedSites } from "../browser/new-tab";
 import { BrowserTab } from "../browser/tab";
 import { AttachmentTab } from "./attachment-tab";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
@@ -47,7 +48,7 @@ function Card({ why, children }: { why: string | null; children: ReactNode }) {
   );
 }
 
-/** The old app's New tab, with no browser yet: what's picked replaces it; Side chat and Find file aren't built yet [D361, D388, D240, D244]. */
+/** The old app's New tab, under the browser's toolbar: what's picked replaces it; Side chat and Find file aren't built yet [D361, D388, D240, D244, D508]. */
 function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; archived: boolean; active: boolean }) {
   // What's picked opens in this tab's place, as Terminal does, though Rust's replace takes no target [D240].
   const replaceWith = (open: () => void) => {
@@ -118,7 +119,9 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
             </DropdownMenu>
           </div>
         </div>
+        <LocalServers owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
         <NoteList owner={owner} active={active} onOpen={(note) => replaceWith(() => openTab(owner, "note", note))} />
+        <SuggestedSites owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
       </div>
     </div>
   );
@@ -130,7 +133,7 @@ function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; o
   useEffect(() => {
     if (!active || owner === HOME) return;
     let live = true;
-    void daemonRun(["note", owner, "list"]).then((reply) => live && reply.ok && setNotes(reply.notes));
+    void daemonRun(["note", owner, "list"]).then((reply) => live && reply.ok && setNotes(reply.notes.slice(0, 20)));
     return () => {
       live = false;
     };
@@ -205,10 +208,13 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
                 <Actions owner={owner} />
               ) : tab.kind === "note" ? (
                 <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} tabId={tab.id} active={tab.id === active} />
-              ) : tab.kind === "browser" && window.brigadier?.browser ? (
+              ) : tab.kind === "browser" ? (
                 <BrowserTab owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "new" ? (
-                <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
+                // The New tab is the browser: Enter or a site turns it into the page, drawn anew [D508].
+                <BrowserTab key="new" owner={owner} tab={tab} active={tab.id === active} onNavigate={(url) => replaceTab(owner, tab.id, "browser", url)}>
+                  <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
+                </BrowserTab>
               ) : (
                 <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />
               )}

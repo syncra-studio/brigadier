@@ -39,8 +39,7 @@ export function openLink(url: string, { swap = false, session }: { swap?: boolea
   const chosen = localUrl(url) ? (settings?.local_links_in ?? "brigadier") : (settings?.web_links_in ?? "system");
   const target = swap ? (chosen === "brigadier" ? "system" : "brigadier") : chosen;
   const owner = session ?? sessionInFront();
-  // shortcut: the browser exists only with BRIGADIER_BROWSER=1 until the New tab is the browser (S5).
-  if (window.brigadier?.browser && target === "brigadier" && owner) openTab(owner, "browser", url);
+  if (target === "brigadier" && owner) openTab(owner, "browser", url);
   else window.brigadier?.openLink(url);
 }
 

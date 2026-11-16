@@ -165,11 +165,11 @@ export function openTab(owner: string, kind: TabKind, target?: string): void {
   });
 }
 
-/** A New tab becomes what was picked on it, in place, as Rust does: only a New tab, only a kind with no target. */
-export function replaceTab(owner: string, id: string, kind: "new" | "terminal"): void {
+/** A New tab becomes what was picked on it, in place, as Rust does: only a New tab; a browser with the page typed in it. */
+export function replaceTab(owner: string, id: string, kind: "new" | "terminal" | "browser", target?: string): void {
   act(owner, {
-    args: ["replace", id, kind],
-    change: (now) => (now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind } : tab)), active: id } : now),
+    args: ["replace", id, kind, ...(target === undefined ? [] : [target])],
+    change: (now) => (now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind, ...(target === undefined ? {} : { target }) } : tab)), active: id } : now),
   });
 }
 
