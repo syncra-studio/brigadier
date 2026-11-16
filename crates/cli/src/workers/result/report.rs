@@ -23,6 +23,21 @@ fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
     shown
 }
 
+/// Where HEAD forked from `base` or from its upstream, whichever is nearer: a stale local base
+/// doesn't count others' merged work as the worker's.
+fn fork(dir: &str, base: &str) -> String {
+    let ahead = |c: &String| git(dir, &["rev-list", "--count", &format!("{c}..HEAD")]);
+    [base.to_string(), format!("{base}@{{u}}")]
+        .iter()
+        .filter_map(|b| git(dir, &["merge-base", "HEAD", b]))
+        .min_by_key(|c| {
+            ahead(c)
+                .and_then(|n| n.parse::<u64>().ok())
+                .unwrap_or(u64::MAX)
+        })
+        .unwrap_or_else(|| base.into())
+}
+
 /// Writes one result: the sender's record, first, in the parent's folder [D54]. Then the worker's
 /// row shows how it ended. `error`: a start that failed, whose worker never ran.
 pub(in crate::workers) fn write(
@@ -78,12 +93,18 @@ pub(in crate::workers) fn write(
         for line in &log {
             text += &format!("  {line}\n");
         }
+        // Its own changes: from where it forked, the base's upstream when it rebased onto that [D456].
+        let own = if merged {
+            from.to_string()
+        } else {
+            fork(&cwd, base)
+        };
         let stat =
-            git(&cwd, &["diff", "--shortstat", &format!("{from}...HEAD")]).unwrap_or_default();
+            git(&cwd, &["diff", "--shortstat", &format!("{own}...HEAD")]).unwrap_or_default();
         if !stat.trim().is_empty() {
             text += &format!("{}\n", stat.trim());
         }
-        let num = git(&cwd, &["diff", "--numstat", &format!("{from}...HEAD")]).unwrap_or_default();
+        let num = git(&cwd, &["diff", "--numstat", &format!("{own}...HEAD")]).unwrap_or_default();
         for line in num.lines() {
             let mut n = line
                 .split_whitespace()
