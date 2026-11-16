@@ -217,7 +217,7 @@ impl Adapter for Claude {
         }
         let input = text.map(|t| self.encode(spec, t));
         let mut env = base_env(spec, &exe, self.keys());
-        control::own(&mut env);
+        control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
         Launch {
             argv,

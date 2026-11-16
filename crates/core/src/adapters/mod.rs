@@ -479,7 +479,7 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
     all().into_iter().find(|a| a.name() == name)
 }
 
-pub use setup::{base_env, probe, probe_as};
+pub use setup::{base_env, memory, probe, probe_as};
 
 pub fn home_path(rest: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)

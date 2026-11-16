@@ -97,9 +97,8 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 /// the `brigadier` line [D2025]. Its own messages between sessions off, so every one goes through
 /// Brigadier and shows in the thread [D2035]: none come in, and it can't list or message the
 /// others. A subagent's final result comes back without `SendMessage` [D311].
-/// A worker's launch: no MCP servers, skills or user settings, only the project's, and its own
-/// memory off (code.claude.com/docs/en/env-vars) [D89].
-pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
+/// A worker's launch: no MCP servers, skills or user settings, only the project's [D89].
+pub fn naked(argv: &mut Vec<String>) {
     let flags = [
         "--strict-mcp-config",
         "--mcp-config",
@@ -111,14 +110,16 @@ pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
         "project,local",
     ];
     argv.extend(flags.into_iter().chain(more).map(String::from));
-    env.push(("CLAUDE_CODE_DISABLE_AUTO_MEMORY".into(), "1".into()));
 }
 
 /// Every launch's own env: no compaction, as Brigadier's rebirth stands in for it and `/compact`
 /// still works [D88]; its to-do tool on every model, as TodoWrite's whole list
-/// (code.claude.com/docs/en/tools-reference) [D104, D116].
-pub fn own(env: &mut Vec<(String, String)>) {
+/// (code.claude.com/docs/en/tools-reference) [D104, D116]; its auto memory as the switch says, `0`
+/// even over the user's `autoMemoryEnabled: false` (code.claude.com/docs/en/env-vars) [D2049].
+pub fn own(spec: &Spec, env: &mut Vec<(String, String)>) {
     env.push(("DISABLE_AUTO_COMPACT".into(), "1".into()));
+    let memory = if super::super::memory(spec) { "0" } else { "1" };
+    env.push(("CLAUDE_CODE_DISABLE_AUTO_MEMORY".into(), memory.into()));
     if crate::rebirth::todo() {
         let todo = [
             ("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1"),

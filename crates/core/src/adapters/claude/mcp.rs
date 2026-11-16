@@ -31,7 +31,7 @@ pub fn mcp_servers(folder: &Path) -> Vec<Value> {
 /// A worker's launch is naked [D89]; any other gets the library.
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     if spec.naked {
-        return super::control::naked(argv, env);
+        return super::control::naked(argv);
     }
     // Its own skill of a library skill's name wins, and no flag turns only that one off: the
     // library's isn't linked [D415].

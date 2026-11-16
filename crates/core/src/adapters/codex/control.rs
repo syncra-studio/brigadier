@@ -36,6 +36,11 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
         true => naked(spec),
         false => library(spec, &mut open),
     };
+    // Its memory as the switch says; `generate_memories` off keeps the thread out of its later
+    // extraction too (codex-rs `thread_persistence_metadata`) [D2049].
+    let memory = super::super::memory(spec);
+    open["config"]["features.memories"] = memory.into();
+    open["config"]["memories.generate_memories"] = memory.into();
     // Its compaction can't be turned off: as late as it lets, so Brigadier's rebirth comes first [D88, D98].
     open["config"]["model_auto_compact_token_limit"] = 1_000_000_000u64.into();
     // Its plan tool, off unless asked for (codex-rs config `tools.update_plan`) [D104, D116].
@@ -52,10 +57,10 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     open
 }
 
-/// A worker's overrides: no memory, plugins, apps, skills or MCP servers of its own [D89].
+/// A worker's overrides: no plugins, apps, skills or MCP servers of its own [D89].
 /// Codex can't turn its compaction off, so it keeps its own late one [D98].
 fn naked(spec: &Spec) -> Value {
-    let mut config = json!({"features.memories": false, "features.plugins": false,
+    let mut config = json!({"features.plugins": false,
         "features.apps": false, "skills.include_instructions": false, "skills.bundled.enabled": false});
     // Its servers can only be turned off by name: the user's and the project's.
     let home = super::super::cli_home(spec, ".codex", "");

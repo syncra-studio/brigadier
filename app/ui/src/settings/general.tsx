@@ -143,7 +143,7 @@ function NotificationsSection({ settings }: { settings: Settings }) {
   );
 }
 
-function SwitchRow({
+export function SwitchRow({
   row,
   checked,
   dimmed = false,

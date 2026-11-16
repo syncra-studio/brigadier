@@ -5,7 +5,7 @@ import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { Select } from "../components/select";
 import { type Settings, setSetting, useSettings } from "./api";
-import { useSave } from "./general";
+import { SwitchRow, useSave } from "./general";
 import { SettingsPage, SettingsSection } from "./parts";
 
 /** The Configuration page's rows, for the page and for Settings search. */
@@ -14,6 +14,12 @@ export const CONFIGURATION_ROWS = {
   ...Object.fromEntries(LEVELS.map(({ level, label, detail }) => [level, { label, description: detail, section: "Default permission level" }])),
   // The old app's row; its description is proposed [D3029].
   workers: { label: "Workers at once", description: "How many workers a session and its workers may run at the same time", section: "Workers" },
+  // Proposed words [D2049, D466].
+  memory: {
+    label: "Agents’ own memory",
+    description: "Let each agent keep its own notes between sessions. Workers never do. A running session picks it up the next time its agent starts.",
+    section: "Agents",
+  },
 } as const;
 
 /** The numbers Workers at once offers; Rust refuses any other [D3001]. */
@@ -27,6 +33,7 @@ const COUNTS = 12;
 export function ConfigurationPage() {
   const { value: settings, error } = useSettings();
   const save = useSave();
+  const memory = useSave();
   const [confirming, setConfirming] = useState(false);
   const pick = (level: Settings["default_level"]) => save.run(() => setSetting("default_level", level));
   return (
@@ -54,6 +61,13 @@ export function ConfigurationPage() {
                 onChange={(count) => save.run(() => setSetting("workers", count))}
               />
             </SettingsRow>
+          </SettingsCard>
+        </SettingsSection>
+      )}
+      {settings && (
+        <SettingsSection title="Agents">
+          <SettingsCard>
+            <SwitchRow row={CONFIGURATION_ROWS.memory} checked={settings.memory} save={memory} onChange={(on) => setSetting("memory", on)} />
           </SettingsCard>
         </SettingsSection>
       )}

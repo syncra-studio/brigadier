@@ -15,9 +15,10 @@ use std::sync::Mutex;
 static SETTINGS: Mutex<()> = Mutex::new(());
 
 const SWITCH: &[&str] = &["true", "false"];
+const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 7] = [
+const KEYS: [(&str, &[&str]); 8] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -37,6 +38,8 @@ const KEYS: [(&str, &[&str]); 7] = [
             "6", "1", "2", "3", "4", "5", "7", "8", "9", "10", "11", "12",
         ],
     ),
+    // Each CLI's own memory in sessions, read at each launch; workers never [D2049, D89].
+    ("memory", SWITCH_OFF),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.
@@ -52,7 +55,7 @@ pub fn read(data: &Path) -> Value {
                 .iter()
                 .find(|c| saved[key].as_str() == Some(c))
                 .unwrap_or(&choices[0]);
-            let value = match *choices == SWITCH {
+            let value = match choices.contains(&"true") {
                 true => json!(*picked == "true"),
                 false => json!(picked),
             };
@@ -234,9 +237,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn save(data: &Path, mut saved: Value) -> io::Result<()> {
     // Switches are kept as the words they're set with, so one read rule covers every key.
-    for (k, choices) in KEYS.iter().filter(|(_, c)| *c == SWITCH) {
+    for (k, _) in KEYS.iter().filter(|(_, c)| c.contains(&"true")) {
         if let Some(on) = saved[*k].as_bool() {
-            saved[*k] = choices[usize::from(!on)].into();
+            saved[*k] = on.to_string().into();
         }
     }
     fs::create_dir_all(data)?;

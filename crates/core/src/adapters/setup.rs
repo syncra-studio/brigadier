@@ -82,6 +82,14 @@ pub fn chosen(name: &str) -> Option<PathBuf> {
     is_exe(&path).then_some(path)
 }
 
+/// Whether its CLI's own memory is on: the Configuration switch (`memory` in the settings), read
+/// at each launch; never a worker's [D2049, D89].
+pub fn memory(spec: &crate::Spec) -> bool {
+    let saved = std::fs::read(crate::data_dir().join("settings.json")).unwrap_or_default();
+    let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap_or_default();
+    !spec.naked && saved["memory"] == "true"
+}
+
 /// The first line of its `--version`.
 pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
     let out = super::probe(exe, cwd, &[], &["--version"], 10)?;

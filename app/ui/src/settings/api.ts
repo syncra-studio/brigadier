@@ -12,6 +12,8 @@ export type Settings = {
   awake: "off" | "work" | "always";
   /** How many workers a family runs at once: a number, as Rust keeps it [D3001, D3007]. */
   workers: string;
+  /** Each agent's own memory in sessions, off unless turned on; workers never [D2049]. */
+  memory: boolean;
   /** The models starred in the model picker, as `<agent>/<id>`. */
   models_starred: string[];
 };
