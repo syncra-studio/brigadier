@@ -241,6 +241,11 @@ pub fn turn(spec: &Spec, text: &str) -> Value {
     let (policy, reviewer, _, sandbox) = level(spec);
     let mut turn = json!({"input": input(spec, text), "approvalPolicy": policy,
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
+    // A folder chat's copies commit into their repos' own git folders [D494].
+    let roots = crate::folder::git_dirs(spec);
+    if sandbox == "workspaceWrite" && !roots.is_empty() {
+        turn["sandboxPolicy"]["writableRoots"] = roots.into();
+    }
     if let Some(model) = &spec.model {
         turn["model"] = model.as_str().into();
     }

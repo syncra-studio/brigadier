@@ -123,8 +123,22 @@ pub(super) const PATHS: [&str; 3] = ["* /*", "* ~*", "*..*"];
 /// commands and network installs still ask [D130].
 pub fn rules(spec: &Spec) -> Value {
     let rule = |action: &str, resource: &str, effect: &str| json!({"action": action, "resource": resource, "effect": effect});
+    // A folder chat reads the repos where they are and never edits them there, at every level,
+    // after the level's own rules so they win [D494].
+    let folder = crate::folder::of(spec).map(|p| format!("{}/*", p.folder));
+    let folder = (folder.iter()).flat_map(|f| {
+        [
+            ("external_directory", "allow"),
+            ("read", "allow"),
+            ("edit", "deny"),
+        ]
+        .map(|(a, e)| rule(a, f, e))
+    });
     if spec.level.as_deref() == Some("full") {
-        return json!([rule("*", "*", "allow")]);
+        return [rule("*", "*", "allow")]
+            .into_iter()
+            .chain(folder)
+            .collect();
     }
     // Brigadier's `show_draft` asks nothing: it only shows the user a message [D529].
     let free = [
@@ -151,6 +165,7 @@ pub fn rules(spec: &Spec) -> Value {
         all.extend(RISKY.split('|').map(|c| rule("shell", c, "ask")));
     }
     all.extend(secrets);
+    all.extend(folder);
     all.into()
 }
 

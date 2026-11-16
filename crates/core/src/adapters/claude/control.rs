@@ -151,6 +151,15 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     if !spec.naked {
         settings["hooks"]["Stop"] = json!([{"hooks": [{"type": "command", "command": stop}]}]);
     }
+    // A folder chat reads the repos where they are, and its edit hook keeps it out of them [D494].
+    let home = crate::folder::of(spec).map(|p| p.folder);
+    if home.is_some() {
+        let edit = stop.replace("hook stop", "hook edit");
+        let guard = json!({"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": edit}]});
+        if let Some(hooks) = settings["hooks"]["PreToolUse"].as_array_mut() {
+            hooks.push(guard);
+        }
+    }
     let mut args = vec![
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
@@ -164,6 +173,7 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     if fresh {
         args.extend(["--system-prompt-snapshot".into(), "off".into()]);
     }
+    args.extend(home.into_iter().flat_map(|h| ["--add-dir".into(), h]));
     args
 }
 

@@ -3,7 +3,7 @@
 //! change there, which makes that repository's branch and worktree for this session only.
 
 use crate::{Spec, data_of, projects, worktrees};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -274,4 +274,45 @@ pub fn off(spec: &Spec, what: &str) -> io::Result<()> {
         )),
         false => Ok(()),
     }
+}
+
+/// Whether `path` is in `home`, through links: the nearest folder of it that exists decides.
+fn inside(home: &Path, path: &Path) -> bool {
+    let home = fs::canonicalize(home).unwrap_or_else(|_| home.into());
+    let near = path.ancestors().find(|a| a.exists());
+    near.and_then(|a| fs::canonicalize(a).ok())
+        .is_some_and(|a| a.starts_with(home))
+}
+
+/// Claude's edit hook in a folder chat [D494]: a write into the folder itself, a
+/// repo's own checkout, is denied, at every level; its copies are in the session's folder.
+pub fn edit_hook(input: &Value, dir: &Path) -> Option<Value> {
+    let tool = &input["tool_input"];
+    let file = tool["file_path"]
+        .as_str()
+        .or(tool["notebook_path"].as_str())?;
+    let path = Path::new(input["cwd"].as_str().unwrap_or("/")).join(file);
+    let id = dir.file_name()?.to_string_lossy();
+    let spec = crate::load(dir.parent()?.parent()?, &id).ok()?;
+    let home = of(&spec)?.folder;
+    inside(Path::new(&home), &path).then(|| {
+        let why = format!("{home} holds the repos' own checkouts: never edit them there. Run `brigadier repo <name>` and edit your copy in the folder it prints.");
+        json!({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "permissionDecision": "deny", "permissionDecisionReason": why}})
+    })
+}
+
+/// The git folders of the repos the session claimed, which its copies' commits write to: Codex's
+/// sandbox lets them be written [D494].
+pub fn git_dirs(spec: &Spec) -> Vec<String> {
+    let Some(p) = of(spec) else { return vec![] };
+    (claims(&spec.dir).into_iter())
+        .map(|(name, _)| {
+            Path::new(&p.folder)
+                .join(name)
+                .join(".git")
+                .display()
+                .to_string()
+        })
+        .collect()
 }

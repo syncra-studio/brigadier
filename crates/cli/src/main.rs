@@ -24,12 +24,20 @@ fn main() {
         }
         return;
     }
-    // Claude's `Stop` hook: it only judges the reply on stdin and counts it [D529].
-    if args.first().is_some_and(|a| a == "hook") && args.get(1).is_some_and(|a| a == "stop") {
+    // Claude's `Stop` hook: it only judges the reply on stdin and counts it [D529]. Its edit
+    // hook keeps a folder chat's edits out of the repos' own checkouts [D494].
+    let hook = args
+        .get(1)
+        .filter(|_| args.first().is_some_and(|a| a == "hook"));
+    if let Some(hook @ ("stop" | "edit")) = hook.map(String::as_str) {
         let input = serde_json::from_reader(std::io::stdin()).unwrap_or_default();
         let dir = env::var_os(brigadier_core::agent::SESSION).map(std::path::PathBuf::from);
         let agent = args.get(2).map_or("", String::as_str);
-        if let Some(out) = brigadier_core::rules::stop_hook(&input, agent, dir.as_deref()) {
+        let out = match hook {
+            "stop" => brigadier_core::rules::stop_hook(&input, agent, dir.as_deref()),
+            _ => dir.and_then(|d| brigadier_core::folder::edit_hook(&input, &d)),
+        };
+        if let Some(out) = out {
             println!("{out}");
         }
         return;
