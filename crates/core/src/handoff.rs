@@ -86,7 +86,9 @@ struct Past {
     stopped: bool,
 }
 
-fn past(dir: &Path) -> io::Result<Past> {
+/// `tails`: a step's output also shows its end, not only its size and reference [D485].
+fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
+    let dir = spec.dir.as_path();
     let mut p = Past {
         entries: archive::inherited(dir),
         answers: vec![],
@@ -103,6 +105,8 @@ fn past(dir: &Path) -> io::Result<Past> {
     // Inside a stop (Brigadier's own: a rebirth, a picked model or level, the guard; or the
     // user's): a step it ended may read as refused in its CLI's words; nobody refused it.
     let mut cutting = String::new();
+    // A step's entry by its tool id, for its output's pointer once it's done.
+    let mut steps = std::collections::HashMap::<String, usize>::new();
     crate::rewind::read_active(dir, |item| {
         let at = archive::at(item);
         let fresh = &item["switch"];
@@ -143,8 +147,29 @@ fn past(dir: &Path) -> io::Result<Past> {
                 let (at, text, _) = given.remove(&cid("id")).unwrap_or_default();
                 p.answers.push((at, text));
             }
+            // A step's output stays in the log: the hand-off gives its size, end and reference.
+            Some("tool_done") if item["ok"] != false => {
+                let o = item["output"].as_str().unwrap_or("").trim_end();
+                let step = (item["id"].as_str())
+                    .and_then(|id| steps.get(id))
+                    .and_then(|&i| p.entries.get_mut(i));
+                if let Some(e) = step.filter(|e| e.from == "tool" && !o.is_empty()) {
+                    e.out = format!(
+                        "  returned {} lines, {} chars; whole output: `brigadier read {}#{at}`\n",
+                        o.lines().count(),
+                        o.chars().count(),
+                        spec.id
+                    );
+                    if tails {
+                        let end = tail(o, 300);
+                        let cut = if end.len() < o.len() { "…" } else { "" };
+                        e.out += &format!("  it ends:\n    {cut}{}\n", end.replace('\n', "\n    "));
+                    }
+                }
+            }
             _ => {}
         }
+        let before = p.entries.len();
         p.entries.extend(archive::entry(item, at).map(|mut e| {
             if e.from == "error" && item["kind"] == "tool_done" {
                 e.from = match cutting.as_str() {
@@ -155,11 +180,16 @@ fn past(dir: &Path) -> io::Result<Past> {
             }
             e
         }));
+        let id = item["id"].as_str().filter(|i| !i.is_empty());
+        if let Some(id) = id.filter(|_| item["kind"] == "tool" && p.entries.len() > before) {
+            steps.insert(id.to_string(), before);
+        }
     })?;
     Ok(p)
 }
 
-/// One entry as the last exchange shows it: messages whole, steps on one short line.
+/// One entry as the last exchange shows it: messages whole, steps on one short line, then where
+/// their output is.
 fn line(id: &str, e: &Entry) -> String {
     let at = format!("{id}#{}", e.at);
     match e.from {
@@ -183,9 +213,10 @@ fn line(id: &str, e: &Entry) -> String {
         ),
         _ if e.who.is_empty() => format!("- changed {}\n", e.files.join(", ")),
         _ => format!(
-            "- {}: {}\n",
+            "- {}: {}\n{}",
             e.who,
-            head(e.text.lines().next().unwrap_or(""), 200)
+            head(e.text.lines().next().unwrap_or(""), 200),
+            e.out
         ),
     }
 }
@@ -195,7 +226,8 @@ fn line(id: &str, e: &Entry) -> String {
 /// unresumable, picked, switched (picked mid-turn, which it carries on) or forked; `from` names where it came from; `last` is its last turn.
 pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::Result<String> {
     let id = spec.id.as_str();
-    let p = past(&spec.dir)?;
+    // An output's end goes only to the same agent's fresh conversation [D485].
+    let p = past(spec, matches!(why, "rebirth" | "cut"))?;
     let said = |e: &&Entry| matches!(e.from, "user" | "worker" | "peer");
     let reason = match why {
         "rebirth" | "cut" => "its context was getting full; this is a fresh one".to_string(),
@@ -427,7 +459,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             let asked = newest.map_or(String::new(), |n| format!(" of the newest message ({id}#{})", n.at));
             // Only a git checkout has a status to check.
             let check = if branch.is_empty() { "Carry on" } else { "Check `git status` first, then carry on" };
-            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked.")
+            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked. A step above that returned output gives its size and reference: take what you need from it, or for a file read only the lines you need, rather than running it again.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),

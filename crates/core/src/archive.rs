@@ -19,6 +19,8 @@ pub struct Entry {
     pub text: String,
     pub files: Vec<String>,
     pub ts: u64,
+    /// A hand-off's pointer to the step's output in the log; never set in the archive [D485].
+    pub out: String,
 }
 
 fn capped(s: &str) -> String {
@@ -80,12 +82,39 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
         text,
         files,
         ts: item["ts"].as_u64().unwrap_or(0),
+        out: String::new(),
     })
 }
 
 /// An own log item's reference: its frame.
 pub fn at(item: &Value) -> String {
     item["f"].as_u64().unwrap_or(0).to_string()
+}
+
+/// A step's tool and whole output, from the log, by its `tool_done` frame: what a hand-off's step
+/// reference opens [D485]. Nothing indexes it; only the log keeps it.
+pub fn output(dir: &Path, at: &str) -> Option<(String, String)> {
+    let f = at.parse::<u64>().ok()?;
+    let (mut names, mut found) = (std::collections::HashMap::new(), None);
+    // shortcut: steps that end in one shared frame open as its last; key by step if an agent does so.
+    crate::rewind::read_active(dir, |item| match item["kind"].as_str() {
+        Some("tool") => {
+            names.insert(
+                item["id"].to_string(),
+                item["name"].as_str().unwrap_or("").to_string(),
+            );
+        }
+        Some("tool_done") if item["f"].as_u64() == Some(f) && item["ok"] != false => {
+            let name = names
+                .get(&item["id"].to_string())
+                .cloned()
+                .unwrap_or_default();
+            found = Some((name, item["output"].as_str().unwrap_or("").to_string()));
+        }
+        _ => {}
+    })
+    .ok()?;
+    found.filter(|(_, o)| !o.trim().is_empty())
 }
 
 /// A fork's inherited copy as entries, by line; none for any other session.

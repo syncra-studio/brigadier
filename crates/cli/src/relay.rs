@@ -260,6 +260,17 @@ pub(crate) fn read(
     last: u64,
     user: bool,
 ) -> Value {
+    // A step's reference from a hand-off opens its whole output, from the log [D485].
+    let dir = core::session_dir(data, id);
+    if let Some((at, (tool, out))) = at.and_then(|at| Some((at, core::archive::output(&dir, at)?)))
+    {
+        let out = crate::agent::cap(out.trim_end());
+        let text = format!("[{id}#{at} output of {tool}]\n{out}\n");
+        let list = vec![
+            json!({"ref": format!("{id}#{at}"), "from": format!("output of {tool}"), "text": out, "files": []}),
+        ];
+        return opened(data, id, row, text, list, 0);
+    }
     let mut all = archive(data, id, at.is_some());
     if user {
         all.retain(|e| e.from == "user");
@@ -302,6 +313,21 @@ pub(crate) fn read(
             last + from as u64
         );
     }
+    let list: Vec<Value> = (shown.iter())
+        .map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}))
+        .collect();
+    opened(data, id, row, text, list, from)
+}
+
+/// What `read` opened, under a line naming the session's agent and project.
+fn opened(
+    data: &Path,
+    id: &str,
+    row: &Value,
+    text: String,
+    list: Vec<Value>,
+    from: usize,
+) -> Value {
     let agent = row["backend"].as_str().unwrap_or("");
     let project = (row["project"].as_str())
         .and_then(|p| {
@@ -314,9 +340,6 @@ pub(crate) fn read(
     let place = project
         .as_ref()
         .map_or("no project".into(), |p| format!("project {p}"));
-    text = format!("[{id}: {agent}, {place}]\n\n{text}");
-    let list: Vec<Value> = (shown.iter())
-        .map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}))
-        .collect();
+    let text = format!("[{id}: {agent}, {place}]\n\n{text}");
     json!({"ok": true, "agent": agent, "project": project, "messages": list, "earlier": from, "text": text})
 }
