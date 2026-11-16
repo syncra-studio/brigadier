@@ -425,7 +425,9 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             let tool = p.entries.iter().rev().find(|e| e.from == "tool" && !e.who.is_empty());
             let at = tool.map_or(String::new(), |t| format!(", its last step {} ({id}#{})", t.who, t.at));
             let asked = newest.map_or(String::new(), |n| format!(" of the newest message ({id}#{})", n.at));
-            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. Check `git status` first, then carry on with the next step{asked}; don't redo what's done, nor what an older message asked.")
+            // Only a git checkout has a status to check.
+            let check = if branch.is_empty() { "Carry on" } else { "Check `git status` first, then carry on" };
+            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),
