@@ -28,7 +28,7 @@ export function installGuestLogins(tabOf: (guest: number) => string | null): voi
     }
     waiting.delete(tab);
     saved(tab, site)
-      .then(({ logins }) => (logins.length > 0 ? window.brigadierShell.logins("fill", { guest, logins }) : undefined))
+      .then(({ logins }) => (logins.length > 0 ? window.brigadierShell.logins("fill", { guest, site, logins }) : undefined))
       .catch(failed);
   };
   // A sign-in worked: the same login only gets its date, and anything else asks, unless the site is on the never list.

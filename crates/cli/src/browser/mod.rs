@@ -179,7 +179,10 @@ fn stored(store: &mut Store, area: &str, args: &[String]) -> io::Result<Value> {
             json!({"ok": true, "downloads": store.downloads(crate::flag(args, "--query").unwrap_or("")).map_err(sql)?}),
         ),
         ("downloads", "start") => {
-            web_address(get(1)?)?;
+            // A web app's own file comes from a blob: address, which no tab may load but a download may.
+            if !get(1)?.starts_with("blob:") {
+                web_address(get(1)?)?;
+            }
             let id = store.download_started(get(1)?, get(2)?, at).map_err(sql)?;
             Ok(json!({"ok": true, "id": id}))
         }

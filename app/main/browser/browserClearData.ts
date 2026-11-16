@@ -2,10 +2,12 @@
 // site choices are Rust's, cleared by the page. Chromium gives neither cookies nor site storage a date Electron can
 // read (`Cookie` has no creation time, `clearData` no range), so Rust keeps them (crates/cli/src/browser/dates.rs):
 // main sends when each cookie last changed and when each origin last had a frame. One last seen before this ran counts as older.
-import { session, webContents, type Session, type WebContents } from "electron";
+import fs from "node:fs";
+import path from "node:path";
+import { app, session, webContents, type Session, type WebContents } from "electron";
 
 import { toAppPages } from "./appPage";
-import { profileOfStorage, profilePartition } from "./profiles";
+import { profileFolderName, profileOfStorage, profilePartition } from "./profiles";
 
 const STORAGE_KINDS = ["backgroundFetch", "fileSystems", "indexedDB", "localStorage", "serviceWorkers", "webSQL"] as const;
 
@@ -88,6 +90,8 @@ async function clearCookiesAndSiteData(profileId: string, profileSession: Sessio
   if (sinceMs === null || dated === null) {
     await profileSession.clearData({ dataTypes: ["cookies", ...STORAGE_KINDS] });
     await profileSession.clearAuthCache();
+    // An import into an open profile waits there for the next start, which would sign it back in.
+    fs.rmSync(path.join(app.getPath("userData"), "browser-import-staged", profileFolderName(profileId)), { recursive: true, force: true });
   } else {
     const changed = new Set(dated.cookies.map(({ domain, path, name }) => `${domain}|${path}|${name}`));
     for (const [key, { lastMs }] of waiting.get(profileId)?.cookies ?? []) if (lastMs !== null && lastMs >= sinceMs) changed.add(key);

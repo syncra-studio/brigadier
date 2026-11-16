@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-import { closeTab, openTab, tabsOf } from "../shell/tab-store";
+import { newId } from "../session/store";
+import { closeTab, driveTab, openTab, setTabProfile, tabsOf } from "../shell/tab-store";
 import { stepZoom } from "./keys";
 import { closeFind, findState, forgetFind } from "./find";
 import { type BrowserBounds, closePage as closeInLayer, focusPage, navigatePage, openPage as openInLayer, zoom } from "./layer";
@@ -141,9 +142,14 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
       } else if (event.type === "escape") {
         if (findState(id).open) closeFind(id);
       } else if (event.type === "popup") {
-        // A page's new tab opens beside its own, as the old app's did.
+        // A page's new tab opens beside its own, as the old app's did, signed in as its opener; an agent's opens behind, still its.
         const at = owners.get(id);
-        if (at) openTab(at, "browser", event.url);
+        const from = at ? tabsOf(at).tabs.find((tab) => tab.id === id) : undefined;
+        if (at) {
+          const popup = from?.driver ? `t-${newId()}` : openTab(at, "browser", event.url);
+          if (from?.driver) driveTab(at, popup, event.url, from.driver);
+          if (from?.profile) setTabProfile(at, popup, from.profile);
+        }
       } else if (event.type === "closed") {
         const at = owners.get(id);
         if (at) closeTab(at, id);

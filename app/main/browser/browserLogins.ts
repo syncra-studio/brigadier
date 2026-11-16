@@ -96,12 +96,13 @@ export function installGuestLogins(guest: WebContents): void {
 }
 
 /** The app's page says this tab isn't driven and hands over the site's logins: the last used goes into its boxes. */
-function fill(id: number, logins: Login[]): void {
+function fill(id: number, asked: string, logins: Login[]): void {
   const guest = webContents.fromId(id);
   if (!guest || guest.getType() !== "webview") return;
   const site = loginSite(guest.mainFrame.url);
   const login = logins.toSorted((a, b) => b.usedMs - a.usedMs)[0];
-  if (!site || !login) return;
+  // The page may have moved on while the vault was read: these logins are only for the site they were asked for.
+  if (!site || site !== asked || !login) return;
   const step = names.get(id);
   const chosen = (step?.site === site && logins.find((one) => one.username === step.username)) || login;
   guest.mainFrame.send("brigadier:guest-login-fill", { site, username: chosen.username, password: passwordBoxes.get(id) ? chosen.password : null });
@@ -117,11 +118,11 @@ async function systemCheck(reason: string): Promise<"passed" | "declined" | "una
   return systemPreferences.promptTouchID(reason).then(() => "passed" as const, () => "declined" as const);
 }
 
-type Args = { guest: number; logins: Login[]; reason: string };
+type Args = { guest: number; site: string; logins: Login[]; reason: string };
 
 const OPS: Record<string, (args: Args) => unknown> = {
   check: ({ reason }) => systemCheck(String(reason)),
-  fill: ({ guest, logins }) => fill(Number(guest), Array.isArray(logins) ? logins : []),
+  fill: ({ guest, site, logins }) => fill(Number(guest), String(site), Array.isArray(logins) ? logins : []),
 };
 
 export function installBrowserLogins(): void {

@@ -75,7 +75,9 @@ function removeDeletedFolders(): void {
   const removed = readJson<string[]>(removedFile());
   if (!removed) return;
   for (const profileId of removed) {
-    fs.rmSync(path.join(app.getPath("userData"), "Partitions", profileFolderName(profileId)), { recursive: true, force: true });
+    for (const place of ["Partitions", "browser-import-staged"]) {
+      fs.rmSync(path.join(app.getPath("userData"), place, profileFolderName(profileId)), { recursive: true, force: true });
+    }
   }
   fs.rmSync(removedFile(), { force: true });
 }

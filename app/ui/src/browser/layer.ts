@@ -44,7 +44,7 @@ declare global {
       sites(profile: string, sites: unknown[]): Promise<void>;
       /** Saved passwords' part in main (main's browser/browserLogins.ts): `check` asks the system (Touch ID) before one shows; `fill` gives a tab's page its site's logins. */
       logins(op: "check", args: { reason: string }): Promise<"passed" | "declined" | "unavailable">;
-      logins(op: "fill", args: { guest: number; logins: { username: string; password: string; usedMs: number }[] }): Promise<void>;
+      logins(op: "fill", args: { guest: number; site: string; logins: { username: string; password: string; usedMs: number }[] }): Promise<void>;
       /** A guest's sign-in worked (`signed-in`, with what was typed) or its page has fields to fill (`fields`). */
       onGuestLogin(listener: (details: { from: number; kind: "signed-in" | "fields"; site: string; username?: string; password?: string }) => void): void;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;

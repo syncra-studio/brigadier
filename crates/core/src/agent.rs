@@ -201,7 +201,7 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
 /// goes to the default browser. Ported from the old app's AGENT_BROWSER_SHIM [D507, D516].
 const BROWSER_SHIM: &str = r#"#!/bin/sh
 case "$1" in
-  http://localhost*|https://localhost*|http://127.*|https://127.*|http://0.0.0.0*|http://\[::1\]*|http://*.localhost*)
+  http://localhost*|https://localhost*|http://127.*|https://127.*|http://0.0.0.0*|https://0.0.0.0*|http://\[::1\]*|https://\[::1\]*|http://*.localhost*|https://*.localhost*)
     if brigadier browser open "$1" --keep --dev-url >/dev/null 2>&1; then exit 0; fi ;;
 esac
 if command -v open >/dev/null 2>&1; then exec open "$1"; fi
