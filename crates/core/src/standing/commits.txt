@@ -1,0 +1,1 @@
+Commits match this repo's recent ones, else an imperative subject of at most 72 characters and, only if needed, a body wrapped at 72. No trailers or attribution in commits or PRs.

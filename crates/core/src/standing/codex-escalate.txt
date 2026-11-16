@@ -1,0 +1,1 @@
+Your sandbox blocks `brigadier`, so run every `brigadier` command with `sandbox_permissions: "require_escalated"`; one approval covers them all.

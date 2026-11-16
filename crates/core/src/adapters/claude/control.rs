@@ -133,7 +133,7 @@ pub fn own(spec: &Spec, env: &mut Vec<(String, String)>) {
 /// The text is rendered fresh, as its record would pin a conversation's first for good, on CLIs
 /// that know the flag; one whose version can't be read doesn't get it [D526].
 pub fn standing(spec: &Spec) -> Vec<String> {
-    let load = "\n\nYour to-do tool, TodoWrite, is deferred: load it with ToolSearch `select:TodoWrite` before its first use.";
+    let load = concat!("\n\n", include_str!("../../standing/claude-todo.txt"));
     let fresh = crate::adapters::setup::newer(&crate::cli_version(spec, &super::Claude), "2.1.321");
     // Its `Stop` hook sends a reply that asks in prose back once, inside the turn [D529], and
     // `show_draft` shows a message for someone as a card [D529, D530].

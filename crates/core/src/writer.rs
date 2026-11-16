@@ -18,9 +18,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// How the agents write their own commits, so theirs match the writer's [D1029].
-pub const STYLE: &str = "When you write a git commit message, write it the way this repository's recent commits are written. Otherwise: a subject line in the imperative mood of at most 72 characters, then, only when the change needs it, a blank line and a short body wrapped at 72 characters. No trailers or attribution in commits or pull requests.";
-
 /// Proposed: the user's own messages the writer reads, newest first, and each one's length.
 const ASKS: usize = 10;
 const ASK_CHARS: usize = 500;

@@ -108,6 +108,7 @@ your own plan or merged work, given in the brief. `brigadier help reviews` says 
 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
+It reaches MCP servers through `brigadier mcp`, on Brigadier's one sign-in, so such a job can go to it too.
 Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
 A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
             &["--job", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],

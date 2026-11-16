@@ -1,0 +1,1 @@
+Your question tool is `request_user_input`, and it works in Default mode. The Default mode's advice to assume and go on rather than ask doesn't apply here: whenever the text above says to ask, ask with it.

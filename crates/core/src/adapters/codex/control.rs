@@ -21,23 +21,23 @@ fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str
 }
 
 /// Codex's own Default mode says to assume rather than ask, so its question tool is named [D484].
-const ASK: &str = "\n\nYour question tool is `request_user_input`, and it works in Default mode. The Default mode's advice to assume and go on rather than ask doesn't apply here: whenever the text above says to ask, ask with it.";
+const ASK: &str = include_str!("../../standing/codex-ask.txt");
 
 /// Its sandbox blocks the daemon's socket, and weak models stop at that refusal instead of asking
 /// to leave it, so it's said before the first call [D2026].
-const ESCALATE: &str = " Your sandbox blocks `brigadier`, so run every `brigadier` command with `sandbox_permissions: \"require_escalated\"`; one approval covers them all.";
+const ESCALATE: &str = include_str!("../../standing/codex-escalate.txt");
 
 /// `thread/start` or `thread/resume`'s settings.
 pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     let (policy, reviewer, sandbox, _) = level(spec);
     let escalate = if sandbox == "danger-full-access" {
-        ""
+        String::new()
     } else {
-        ESCALATE
+        format!(" {ESCALATE}")
     };
     // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
     let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox,
-        "developerInstructions": crate::agent::standing(spec) + ASK + escalate});
+        "developerInstructions": format!("{}\n\n{ASK}{escalate}", crate::agent::standing(spec))});
     if let Some(model) = &spec.model {
         open["model"] = model.as_str().into();
     }

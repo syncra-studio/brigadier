@@ -168,7 +168,8 @@ pub(crate) fn lead(jobs: &[Value]) -> String {
     for j in startable(jobs) {
         text += &format!("- {}: {}\n", str_of(j, "name"), str_of(j, "for"));
     }
-    text + "A start with no --job is refused unless it names a model with --model. `brigadier models` lists the jobs as they are now."
+    // A start with neither --job nor --model is refused with how to fix it, so that isn't said here [D529].
+    text.trim_end().into()
 }
 
 /// "A", "A and B", "A, B and C".
