@@ -109,8 +109,8 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   session?: string | null;
   ops?: SourceOps;
   onPr?: (pr: Pr) => void;
-  /** The section's own button: the list of them, or the one [D200, D205]. */
-  onPrs?: (prs: Pr[]) => void;
+  /** The section's own button: always the Pull requests list [D200, D454]. */
+  onPrs?: () => void;
   onReview?: () => void;
   /** The session's Workers section, after the PRs [D65]. */
   workers?: ReactNode;
@@ -195,7 +195,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
           count={prs.length}
           end={
             first && (
-              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.(prs)}>
+              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.()}>
                 <PullRequestOpen />
               </TooltipIconButton>
             )
@@ -214,7 +214,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
               ),
             )}
             {prs.length > 5 && (
-              <Line onClick={() => onPrs?.(prs)} className="text-muted-foreground hover:text-foreground">
+              <Line onClick={() => onPrs?.()} className="text-muted-foreground hover:text-foreground">
                 {prs.length - 5} more
               </Line>
             )}

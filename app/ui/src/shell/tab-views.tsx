@@ -6,7 +6,6 @@ import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { useDaemon } from "../daemon";
 import { ChatCompose, ChevronDown, Dock, Document, Grid, PlayCircle, Search } from "../icons";
 import { FileViewer } from "../files/viewer";
 import { useHomeProject } from "../home/start";
@@ -17,7 +16,6 @@ import { LivePrTab } from "../landing/live";
 import { PrList } from "../landing/pr-list";
 import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
-import { openPrs } from "../panel/open";
 import { ago } from "../panel/words";
 import { ReviewView } from "../review/view";
 import { daemonRun } from "../session/composer";
@@ -56,8 +54,6 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
     open();
     closeTab(owner, tab.id);
   };
-  // The card's last known PRs, so it opens what the card's PR button opens [D200, D240].
-  const prs = useDaemon().rows?.find((row) => row.id === owner)?.prs?.prs ?? [];
   // Before the first message they read the picked project's repository; a chat with no project has none [D279].
   const home = useHomeProject();
   const noRepo = owner === HOME && home === null;
@@ -94,7 +90,7 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               <span className={LABEL}>New note</span>
             </button>
           </Card>
-          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceWith(() => openPrs(owner, prs)))}
+          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceWith(() => openTab(owner, "pr", "list")))}
           {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
           {repoTile(PlayCircle, "Actions", "workflow runs", () => replaceWith(() => openTab(owner, "actions")))}
           <div className={CARD}>

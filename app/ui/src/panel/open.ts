@@ -10,7 +10,5 @@ type PrAt = { number: number; repo?: string | null };
 /** `owner`'s Pull requests tab on a PR [D1017, D1113]: its number, `owner/name#n` for another repository's [D213]. */
 export const openPr = (owner: string, pr: PrAt) => openTab(owner, "pr", pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number));
 
-/** `owner`'s pull requests: the list when it has several, else its one PR [D205]. */
-export const openPrs = (owner: string, prs: readonly PrAt[]) => (prs.length === 1 ? openPr(owner, prs[0]) : openTab(owner, "pr", "list"));
 /** `owner`'s Background history: everything that ran in its background [D200]. */
 export const openBackgroundHistory = (owner: string) => openTab(owner, "background");

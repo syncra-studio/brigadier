@@ -11,12 +11,12 @@ import { BackgroundCard } from "../panel/background";
 import { AttachmentsCard, type CardFile, GitCard, summaryReady } from "../panel/card";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
-import { openPr, openPrs, openReview } from "../panel/open";
+import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
 import { WorkersCard } from "../workers/live";
 import { SubagentsCard } from "../workers/subagents";
 import { useHasPanel } from "./right-panel";
-import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
+import { CHAT, HOME, openAttachment, openTab, useTabs } from "./tab-store";
 
 /*
  * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end. Where the pane
@@ -281,7 +281,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   // Not drawn until its data is in: no skeleton first.
   const card = has && summaryReady(shown) ? (
     <>
-      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={(prs) => openPrs(owner, prs)} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>} />
+      <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={() => openTab(owner, "pr", "list")} onReview={() => openReview(owner)} workers={<><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;
