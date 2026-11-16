@@ -10,13 +10,9 @@ impl Thread {
     /// A turn's end: its work folds now, or, while subagents it started run on, it stays one open
     /// block, its answer an update in it, counting on and saying how many run [D67, D114, D118].
     pub(super) fn end_work(&mut self, o: Open, work: Value, ts: u64) {
-        // Only a turn that ended well waits on its workers; a stopped or failed one says which still run [D3011].
-        if self.turns[o.at]["status"] != "done" {
-            self.workers.retain(|_, t| *t != o.id);
-        }
         self.ended = Some(o.clone());
         let helpers = self.helpers(&o.id);
-        if helpers > 0 || self.working(&o.id) {
+        if helpers > 0 || self.working() {
             self.turns[o.at]["helpers"] = helpers.into();
             self.turns[o.at]["held"] = true.into();
             self.final_answer(&o, false);
@@ -32,18 +28,16 @@ impl Thread {
             .count()
     }
 
-    /// A worker the turn started still runs: it holds the turn as a subagent does, its result the
-    /// wake that carries the block on [D106, D151].
-    fn working(&self, turn: &str) -> bool {
-        self.workers.values().any(|t| t == turn)
+    /// A worker a turn started still runs: it holds the newest block as a subagent does, its
+    /// result the wake that carries the block on [D106, D151]. The status fold keeps which.
+    pub(super) fn working(&self) -> bool {
+        !self.fold.workers.is_empty()
     }
 
-    /// Workers ended, by their result or an End: the turn they held counts them out.
-    pub(super) fn workers_ended(&mut self, ids: &[Value], ts: u64) {
-        for id in ids {
-            if let Some(turn) = id.as_str().and_then(|id| self.workers.remove(id)) {
-                self.held_left(&turn, ts);
-            }
+    /// A worker ended, by its result or an End: a block held meanwhile counts its time up to now.
+    pub(super) fn worker_ended(&mut self, ts: u64) {
+        for turn in self.held.keys().cloned().collect::<Vec<_>>() {
+            self.held_left(&turn, ts);
         }
     }
 
@@ -51,15 +45,23 @@ impl Thread {
     /// the log (a build before results were noted, or a note a dead host missed): they hold it no
     /// more, its time still its own end's [D328, D336].
     pub fn workers_over(&mut self, over: impl Fn(&str) -> bool) {
-        let held = &self.held;
-        let gone: Vec<String> = (self.workers.iter())
-            .filter(|(w, t)| held.contains_key(*t) && over(w))
-            .map(|(w, _)| w.clone())
-            .collect();
-        if !gone.is_empty() {
-            gone.iter().for_each(|w| _ = self.workers.remove(w));
+        let n = self.fold.workers.len();
+        if !self.held.is_empty() {
+            self.fold.workers.retain(|w| !over(w));
+        }
+        if self.fold.workers.len() < n {
             self.settle_held(false);
         }
+    }
+
+    /// A fork's copy of its source's rows: the workers its source still waits on aren't the
+    /// fork's, so no block of it is held for them.
+    pub(super) fn settled(items: &[Value]) -> Thread {
+        let mut from = Thread::default();
+        items.iter().for_each(|item| from.push(item));
+        from.fold.workers.clear();
+        from.settle_held(false);
+        from
     }
 
     /// A subagent at row `row` ended: the turn that waits on it counts one fewer. With none left it
@@ -87,7 +89,7 @@ impl Thread {
         self.turns[at]["helpers"] = left.into();
         self.turns[at]["endedAt"] = ts.into();
         self.changed_turns.insert(at);
-        if left == 0 && !self.working(turn) && self.open.is_some() {
+        if left == 0 && !self.working() && self.open.is_some() {
             self.settle_held(false);
         }
     }
@@ -97,8 +99,8 @@ impl Thread {
     /// past its process's end, until `cuts` says another turn came instead [D108, D124].
     pub(super) fn settle_held(&mut self, cuts: bool) {
         let done: Vec<String> = (self.held.iter())
-            .filter(|(id, (o, _))| {
-                (cuts || !o.cut()) && self.turns[o.at]["helpers"] == 0 && !self.working(id)
+            .filter(|(_, (o, _))| {
+                (cuts || !o.cut()) && self.turns[o.at]["helpers"] == 0 && !self.working()
             })
             .map(|(id, _)| id.clone())
             .collect();

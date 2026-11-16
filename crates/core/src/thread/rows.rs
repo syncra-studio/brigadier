@@ -404,8 +404,7 @@ impl Thread {
     /// its own copy, then the line saying where it came from. The copy never reaches this fold:
     /// its turns aren't the fork's own [D35].
     pub(crate) fn inherit(&mut self, items: &[Value], forked: &Value) {
-        let mut from = Thread::default();
-        items.iter().for_each(|item| from.push(item));
+        let from = Thread::settled(items);
         for mut row in from.items.iter().cloned() {
             row["inherited"] = true.into();
             self.changed_items.insert(self.items.len());

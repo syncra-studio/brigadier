@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 const DIR: &str = "thread";
 /// Bumped when what's saved changes shape.
-const FORMAT: u64 = 1;
+const FORMAT: u64 = 2;
 /// Where a row only in memory is.
 const MEMORY: u64 = u64::MAX;
 

@@ -78,3 +78,18 @@ pub(crate) fn clock(ms: u64) -> String {
         tm.tm_min
     )
 }
+
+/// Whether session `id`'s answered turn is still held open by what it started (`Fold::holding`),
+/// `child` saying its agent's process lives. A message sent then waits in the queue, a Steer and a
+/// worker's result carry the block on [D521]. Workers the user paused keep the block open but make
+/// no message wait, as the old app's: they may wait for that very message.
+pub fn holds(data: &Path, id: &str, f: &Fold, child: bool) -> bool {
+    let paused = |w: &str| super::link(data, w).is_some_and(|l| l.paused);
+    f.holding(child, |w| paused(w) || super::over(data, id, w))
+}
+
+/// The same, read from its log and its host.
+pub fn holding(data: &Path, id: &str) -> bool {
+    core::fold(&core::session_dir(data, id), true)
+        .is_ok_and(|f| holds(data, id, &f.fold, crate::child(data, id).is_some()))
+}

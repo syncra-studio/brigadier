@@ -183,7 +183,7 @@ pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) 
                 let note = "The safety check that gives this session's Auto verdicts was \
                     unavailable, so the rest of this turn asks the user to approve each action \
                     instead. Retry the denied command now, as it was.";
-                if let Err(e) = steer_as(&data, &id, note, &Value::Null, None, "system") {
+                if let Err(e) = steer_as(&data, &id, note, &Value::Null, None, "system", false) {
                     eprintln!("brigadierd: unchecked {id}: {e}");
                 }
             }
@@ -288,18 +288,8 @@ pub fn reply(
     Ok((reply["result"] != "refused").then_some(reply))
 }
 
-/// A message into the turn that runs, where the agent can take one [D109, D159].
-pub fn steer(
-    data: &Path,
-    id: &str,
-    text: &str,
-    parts: &Value,
-    cid: Option<&str>,
-) -> io::Result<Value> {
-    steer_as(data, id, text, parts, cid, "user")
-}
-
-/// The same from `origin`: the user, or another session's `peer:<id>` [D2034].
+/// A message into the turn that runs, where the agent can take one [D109, D159], from `origin`:
+/// the user, or another session's `peer:<id>` [D2034]. `queued`: the caller holds the queue's lock.
 pub fn steer_as(
     data: &Path,
     id: &str,
@@ -307,10 +297,20 @@ pub fn steer_as(
     parts: &Value,
     cid: Option<&str>,
     origin: &str,
+    queued: bool,
 ) -> io::Result<Value> {
-    let cid = cid.map_or_else(new_cid, String::from);
     let spec = core::load(data, id)?;
+    let cid = cid.map_or_else(new_cid, String::from);
     core::message::take(data, &spec.dir, parts, None)?;
+    // With no turn to take it the user's starts one, which carries on a block its subagents or
+    // workers hold open [D521]; a turn that began meanwhile takes it as any steer.
+    if origin == "user" && core::fold(&spec.dir, true)?.fold.turns.is_empty() {
+        let (p, c) = (parts.clone(), Some(cid.as_str()));
+        let reply = send(data, &spec, text, p, c, None, None, queued)?;
+        if reply["error"] != "busy: a turn is running" {
+            return Ok(reply);
+        }
+    }
     let msg = core::message::compose(&spec, text, parts.clone())?;
     let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
     if !parts.is_null() {
@@ -442,7 +442,8 @@ pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "level": spec.level, "op": op}))
 }
 
-/// The user's message, or a start's first [D54].
+/// The user's message, or a start's first [D54]. `queued`: the caller holds the queue's lock.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn send(
     data: &Path,
     spec: &Spec,
@@ -451,11 +452,14 @@ pub(crate) fn send(
     cid: Option<&str>,
     backend: Option<&str>,
     retry_of: Option<&str>,
+    queued: bool,
 ) -> io::Result<Value> {
-    crate::rewind::settled(data, spec)?;
     // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
     // Taken before the fence, the order every rewind and delivery takes them in [JR-FX2].
-    let (_lock, _) = crate::queue::hold(&spec.dir)?;
+    let _lock = (!queued)
+        .then(|| crate::queue::hold(&spec.dir))
+        .transpose()?;
+    crate::rewind::settle_held(data, spec)?;
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);

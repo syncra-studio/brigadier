@@ -198,7 +198,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setEmpty(false);
     });
   }, []);
-  const { running, busy, held: holding, resumable } = useTurn(id, row, source, useOnItsWay(id));
+  const { running, busy, resumable } = useTurn(id, row, source, useOnItsWay(id));
   const canSteer = row?.steer === true;
   // Queue or Steer, Rust's setting [D188].
   const followUp = useSettings().value?.follow_up ?? "queue";
@@ -444,7 +444,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={model.pill}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={(busy || holding) && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}

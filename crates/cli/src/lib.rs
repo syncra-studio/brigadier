@@ -234,9 +234,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
-                Some(text) => {
-                    control::send(data, &spec, text, parts, flag(args, "--cid"), None, None)
-                }
+                Some(text) => control::send(
+                    data,
+                    &spec,
+                    text,
+                    parts,
+                    flag(args, "--cid"),
+                    None,
+                    None,
+                    false,
+                ),
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
@@ -248,7 +255,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 if let Some(from) = flag(args, "--from") {
                     core::message::take(data, &core::load(data, id)?.dir, &parts, Some(from))?;
                 }
-                return control::steer(data, id, text, &parts, flag(args, "--cid"));
+                return control::steer_as(
+                    data,
+                    id,
+                    text,
+                    &parts,
+                    flag(args, "--cid"),
+                    "user",
+                    false,
+                );
             }
             if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"), None)? {
                 return Ok(reply);
@@ -257,16 +272,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             owner::ensure(data, &spec)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
-            let reply = control::send(
-                data,
-                &spec,
-                text,
-                parts,
-                Some(&cid),
-                flag(args, "--backend"),
-                // A failed turn's message again, after its rewind: it replaces that attempt [D492].
-                flag(args, "--retry-of"),
-            )?;
+            // A block its subagents or workers hold open is still running: as mid-turn [D521].
+            let reply = match workers::holding(data, id) {
+                true => json!({"error": "busy: a turn is running"}),
+                false => control::send(
+                    data,
+                    &spec,
+                    text,
+                    parts,
+                    Some(&cid),
+                    flag(args, "--backend"),
+                    // A failed turn's message again, after its rewind: it replaces that attempt [D492].
+                    flag(args, "--retry-of"),
+                    false,
+                )?,
+            };
             // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
             // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
             if reply["error"] != "busy: a turn is running" {

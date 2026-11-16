@@ -15,14 +15,15 @@ const newest = (id: string, source: Source) => {
 /**
  * The session's turn as its thread shows it, so the send button changes in the same frame as the thread's Thinking:
  * Rust's row only until the thread is this session's and holds its newest turns. A message on its way runs already.
- * `held`: answered, its block open on its subagents [D118], so Stop stays.
+ * Answered, its block still open on its subagents or workers, it runs on: Stop stays, and a message queues or steers
+ * as mid-turn [D118, D151, D521].
  */
-export function useTurn(id: string, row: ComposerRow | undefined, source: Source, sending: boolean) {
+export function useTurn(id: string, row: (ComposerRow & { holding?: boolean }) | undefined, source: Source, sending: boolean) {
   const turn = useSyncExternalStore(source.subscribe, () => newest(id, source));
-  const running = turn ? turn.status === "running" : row?.running === true;
+  const running = turn ? turn.status === "running" || turn.held === true : row?.running === true || row?.holding === true;
   // Only after a stopped turn; stopped in the thread before Rust's row says so (it still runs there), Resume at once.
   const resumable = !sending && (turn ? turn.status === "cancelled" && (row?.resumable === true || row?.running === true) : row?.resumable === true);
-  return { running, busy: running || sending, held: turn?.held === true, resumable };
+  return { running, busy: running || sending, resumable };
 }
 
 /**

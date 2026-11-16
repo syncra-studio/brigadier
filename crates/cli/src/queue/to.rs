@@ -72,7 +72,15 @@ pub(super) fn give(
     let item = q.items[at].clone();
     let dir = core::session_dir(data, &wid);
     core::message::take(data, &dir, &item.parts, Some(id))?;
-    let reply = control::steer_as(data, &wid, &item.text, &item.parts, Some(qid), "user")?;
+    let reply = control::steer_as(
+        data,
+        &wid,
+        &item.text,
+        &item.parts,
+        Some(qid),
+        "user",
+        false,
+    )?;
     if went(&dir, &reply, qid) {
         q.items.remove(at);
     }

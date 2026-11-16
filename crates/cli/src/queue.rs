@@ -247,6 +247,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     &item.parts.clone(),
                     Some(&qid),
                     origin,
+                    true,
                 )?;
                 let went = went(&dir, &reply, &qid);
                 if went {
@@ -370,10 +371,10 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
     for (id, row) in rows {
         let q = &row["queue"];
         let mine = q["items"].as_array().into_iter().flatten();
-        let first = mine
-            .into_iter()
-            .find(|i| i["to"].is_null())
-            .unwrap_or(&Value::Null);
+        // While its block is held open the user's own wait, as mid-turn; another session's goes [D521, D300].
+        let goes =
+            |i: &&Value| i["to"].is_null() && (row["holding"] != true || !i["origin"].is_null());
+        let first = mine.into_iter().find(goes).unwrap_or(&Value::Null);
         let state = row["state"].as_str().unwrap_or("");
         if !first.is_object()
             || q["paused"] == true
@@ -404,10 +405,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     };
     let spec = core::load(data, id)?;
     crate::rewind::settle_held(data, &spec)?;
+    let holding = crate::workers::holding(data, id);
     locked(&dir, |q| {
-        let at = q.items.iter().position(|i| i.to.is_none()).unwrap_or(0);
+        let goes = |i: &Item| i.to.is_none() && (!holding || i.origin.is_some());
+        let at = q.items.iter().position(goes).unwrap_or(0);
         let Some(item) = (q.items.get(at))
-            .filter(|i| !q.paused && i.to.is_none() && i.error.is_none())
+            .filter(|i| !q.paused && goes(i) && i.error.is_none())
             .cloned()
         else {
             return Ok(());

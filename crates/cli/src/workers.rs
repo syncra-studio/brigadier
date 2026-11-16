@@ -23,7 +23,7 @@ pub use pause::held;
 pub use result::{deliver, take, take_ask, went_with, with_next};
 pub(crate) use result::{hop as result_hop, settled, unrun};
 pub(crate) use review::{last_of_turn, moves};
-pub use row::row;
+pub use row::{holding, holds, row};
 
 use crate::{arg, owner, queue, settings};
 use brigadier_core::{self as core};
@@ -232,14 +232,14 @@ pub fn busy(data: &Path, id: &str) -> bool {
         || result::going(&l, &f)
 }
 
-/// Whether parent `pid`'s worker `wid` ended with nothing left to tell it: not being made, not
-/// paused, each task it reports ended with its result written, and none still on its way.
+/// Whether parent `pid`'s worker `wid` ended with nothing left to wake it for: not being made, not
+/// paused, each task it reports ended with its result written, and none still on its way. A
+/// stopped one's result, held for the parent's next turn, wakes no one [D314].
 pub fn over(data: &Path, pid: &str, wid: &str) -> bool {
     let Some(l) = link(data, wid) else {
         return record(data, pid, wid).is_none_or(|r| r.state != "starting");
     };
-    let due =
-        |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent" | "held");
+    let due = |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent");
     !l.paused
         && !busy(data, wid)
         && result::told(data, pid, wid, &l)

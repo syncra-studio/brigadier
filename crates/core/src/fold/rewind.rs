@@ -73,6 +73,7 @@ impl Fold {
             self.boundaries.truncate(at);
         }
         self.turns.clear();
+        self.workers.clear(); // no block is held past a rewind [D521]
         self.last = None;
         (self.limit, self.resets, self.sign_in, self.refused) = (None, None, None, None);
         let backend = item["backend"].as_str().unwrap_or("").to_string();

@@ -71,6 +71,9 @@ pub struct Fold {
     /// till they end [D118].
     #[serde(default)]
     pub agents: BTreeSet<String>,
+    /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
+    #[serde(default)]
+    pub workers: BTreeSet<String>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -471,8 +474,7 @@ impl Fold {
                     (self.cut, self.switched) = (Some(str_of("turn")), item["switch"] == true)
                 }
                 Some("go_on") => self.go_on = Some(str_of("turn")),
-                // A new level the running child confirmed mid-turn [D166].
-                Some("level") => self.took("level", &item["level"]),
+                Some("level") => self.took("level", &item["level"]), // the running child confirmed it mid-turn [D166]
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
@@ -489,6 +491,7 @@ impl Fold {
                     self.grants.clear();
                     self.granting.clear();
                 }
+                Some("worker") => self.worker(item),
                 _ => {}
             },
             _ => {}

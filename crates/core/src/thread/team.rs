@@ -51,9 +51,6 @@ impl Thread {
             Some("started") => {
                 if let Some(id) = item["id"].as_str() {
                     self.over.remove(id);
-                    if let Some(turn) = self.open.as_ref() {
-                        self.workers.insert(id.into(), turn.id.clone());
-                    }
                 }
                 let at = self.items.len().checked_sub(1);
                 let joins = at
@@ -72,21 +69,27 @@ impl Thread {
                 let ended = ids.as_array().map_or(&[][..], Vec::as_slice);
                 self.over
                     .extend(ended.iter().filter_map(Value::as_str).map(String::from));
-                self.workers_ended(ended, ts);
+                self.worker_ended(ts);
                 // An ended worker's result wakes no one, so a block it alone held folds now [D314, D330].
                 self.settle_held(false);
                 self.team_row(json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}));
             }
             // The user's Stop ended the block: the workers that run on hold it no longer.
             Some("still") => {
-                (ids.as_array().into_iter().flatten())
-                    .filter_map(Value::as_str)
-                    .for_each(|id| _ = self.workers.remove(id));
                 self.settle_held(false);
                 self.team_row(json!({"kind": "team_still", "workers": ids}));
             }
-            // A result its parent's own `wait` took, never sent: its sentence all the same [D97].
-            Some("result") => self.team_result(item["result"].as_str().unwrap_or(""), ts),
+            // A result its parent's own `wait` or next message took, never sent: its sentence all
+            // the same [D97]. No wake comes for it, so a block it alone held folds now.
+            Some("result") => {
+                self.team_result(item["result"].as_str().unwrap_or(""), ts);
+                self.settle_held(false);
+            }
+            // Stopped, its result waits for the parent's next turn and wakes no one [D314].
+            Some("held") => {
+                self.worker_ended(ts);
+                self.settle_held(false);
+            }
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
                 self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}));
@@ -105,7 +108,7 @@ impl Thread {
         }
         let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
         self.over.insert(wid.into());
-        self.workers_ended(&[wid.into()], ts);
+        self.worker_ended(ts);
         let merge =
             (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));
         let word = match how {

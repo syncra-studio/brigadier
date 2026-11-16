@@ -240,9 +240,11 @@ impl Index {
             }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
+            let holds = crate::workers::holds(&self.data, id, &f.fold, live.child.is_some());
+            let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, holds);
             let mark = match &e.error {
                 Some(_) => Some("amber"),
-                None => marked(fold::mark(&f.fold, &live, e.marks.seen, auto), &e.marks.pr),
+                None => marked(mark, &e.marks.pr),
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -306,6 +308,7 @@ impl Index {
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
+            row["holding"] = holds.into(); // answered, its block open on its subagents or workers: a message waits or steers [D521]
             row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
@@ -315,10 +318,7 @@ impl Index {
             row["limits"] = json!(f.fold.limits); // its CLI's newest usage report, for the store [D2039]
             row["context"] = json!(f.fold.context); // how full its context is; a rebirth due now below [D88, D108]
             let lost = state == "undelivered"
-                && f.fold
-                    .turns
-                    .first()
-                    .is_some_and(|t| t.switch["why"] == "cut");
+                && (f.fold.turns.first()).is_some_and(|t| t.switch["why"] == "cut");
             let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
             row["rebirth"] = json!(due.or(lost.then_some("cut")));
             // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].

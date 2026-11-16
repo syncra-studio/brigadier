@@ -90,9 +90,6 @@ pub struct Thread {
     held: HashMap<String, (Open, Value)>,
     /// The turn that just ended, for a Continue or the agent's own wake to carry on [D154, D179].
     ended: Option<Open>,
-    /// Workers not yet ended, by id, with the turn that started them: they hold it as subagents do [D151].
-    #[serde(default)]
-    workers: HashMap<String, String>,
     /// Workers whose end the thread showed: a message to one starts it again [D115, D456].
     #[serde(default)]
     over: HashSet<String>,
@@ -212,6 +209,9 @@ impl Thread {
         }
         self.switch_shown(kind);
         self.fold.push(item);
+        if kind == "note" && item["event"] == "rewound" {
+            self.settle_held(true); // no block is held past a rewind
+        }
         if let Some(before) = pick {
             self.picked(item, before);
         }

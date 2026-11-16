@@ -119,8 +119,15 @@ const SWITCH_GRACE_MS: u64 = 10_000;
 
 /// A row's one mark [D173], from the fold's facts: "working", "needs" (you), "amber" (failed or
 /// stuck), "unread" (a turn ended after `seen`), or none. `auto` says an automatic switch takes this
-/// session's limit or refused resume on [D51], so it spins while that switch is on its way.
-pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static str> {
+/// session's limit or refused resume on [D51], so it spins while that switch is on its way. `holding`:
+/// `Fold::holding`'s answer.
+pub fn mark(
+    fold: &Fold,
+    live: &Live,
+    seen: u64,
+    auto: bool,
+    holding: bool,
+) -> Option<&'static str> {
     let (state, _) = state(fold, live);
     let state = if quiet(fold, state) { "idle" } else { state };
     let ended = fold
@@ -133,8 +140,8 @@ pub fn mark(fold: &Fold, live: &Live, seen: u64, auto: bool) -> Option<&'static 
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking" => {
             Some("working")
         }
-        // Its answer is in, but the block stays open on its subagents: still working [D118].
-        "idle" | "idle_jobs" if !fold.agents.is_empty() && live.child.is_some() => Some("working"),
+        // Its answer is in, but the block stays open on its subagents or workers: still working [D118, D151].
+        "idle" | "idle_jobs" if holding => Some("working"),
         // The agent is done; what it left running is only a calm mark [D68, D105].
         "idle_jobs" if fold.finished > seen => Some("unread"),
         "idle_jobs" => Some("background"),

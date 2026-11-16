@@ -173,7 +173,42 @@ impl Turn {
     }
 }
 
+/// The worker a result (`<how>:<worker>[:…]`) is from; none for its ask, which ends nothing [D121].
+fn result_of(said: &str) -> Option<&str> {
+    let (how, wid) = said.split_once(':').unwrap_or(("finished", said));
+    (how != "asks").then(|| wid.split(':').next().unwrap_or(wid))
+}
+
 impl Fold {
+    /// A `worker` note: one a running turn started holds that turn open; its end, its stop (its
+    /// result `held` for the parent's next turn), or the result its parent's own `wait` or next
+    /// message took, lets go [D151, D3009, D314].
+    pub(super) fn worker(&mut self, item: &Value) {
+        let ids = item["ids"].as_array().into_iter().flatten();
+        match item["phase"].as_str() {
+            Some("started") if !self.turns.is_empty() => {
+                self.workers.extend(item["id"].as_str().map(String::from));
+            }
+            Some("ended" | "still" | "held") => ids.filter_map(Value::as_str).for_each(|w| {
+                self.workers.remove(w);
+            }),
+            Some("result") => {
+                if let Some(w) = item["result"].as_str().and_then(result_of) {
+                    self.workers.remove(w);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether its answered turn's block is still open on what that turn started: its agent's
+    /// subagents, while their process lives, or workers not `over`. The one answer for the
+    /// thread, the row, a send, a Steer, the queue and results [D118, D151, D521].
+    pub fn holding(&self, child: bool, over: impl Fn(&str) -> bool) -> bool {
+        let agents = child && !self.agents.is_empty();
+        self.turns.is_empty() && (agents || self.workers.iter().any(|w| !over(w)))
+    }
+
     pub(super) fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
             if turn.held {
@@ -191,6 +226,13 @@ impl Fold {
                 outcome
             });
             self.turns.remove(0);
+            // Only a turn that ended well, or one Brigadier cut to carry on, waits on its workers
+            // [D3011, D108]; the turn a worker's result woke ends that worker's hold [D151].
+            if outcome != "done" && reason != "rebirth" {
+                self.workers.clear();
+            } else if let Some(w) = turn.origin.strip_prefix("result:").and_then(result_of) {
+                self.workers.remove(w);
+            }
             // A plan sent back, unbuilt when its turn ends, ends its review: the next is reviewed anew.
             self.plans.now = Value::Null;
             if !turn.quiet {

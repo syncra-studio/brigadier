@@ -7,7 +7,7 @@ use crate::owner;
 use crate::workers::{Link, git, read_json, write_json};
 use brigadier_core::{self as core};
 use brigadier_frames::log;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -187,8 +187,13 @@ pub(in crate::workers) fn write(
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
     // A review's result goes to the work it reviewed, never its parent: its end row all the same [D115, D456].
-    if res.state == "review" {
-        let note = json!({"event": "worker", "phase": "result", "result": take::said(&res)});
+    // A stopped one's waits for the parent's next turn, so its log says it holds no block open [D314].
+    let note = match res.state.as_str() {
+        "review" => json!({"event": "worker", "phase": "result", "result": take::said(&res)}),
+        "held" => json!({"event": "worker", "phase": "held", "ids": [wid]}),
+        _ => Value::Null,
+    };
+    if !note.is_null() {
         let _ = owner::call(data, &l.parent, json!({"op": "note", "data": note}));
     }
     open(data, &l.parent);

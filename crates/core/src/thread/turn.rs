@@ -226,8 +226,9 @@ impl Thread {
         self.shown.insert(t.id.clone());
         // A turn no one sent, or a worker's result, while a turn is held for its helpers, or right
         // after they ended: the agent woke for them, and carries that block on [D106, D118, D151].
-        // Any other ends what waits, as does one the user's turn came after: no block spans it.
-        // So does the input that carries on a turn Brigadier cut [D108, D124].
+        // So does the input that carries on a turn Brigadier cut [D108, D124]. While its helpers
+        // still run the block is running: any turn that starts then is part of it, the user's
+        // message a steer in it, never a second block beside it [D521]. Any other ends what waits.
         let last = (self.held.values().map(|(o, _)| o.at).max())
             .filter(|&at| at + 1 == self.turns.len())
             .and_then(|at| self.turns[at]["id"].as_str().map(String::from));
@@ -237,6 +238,8 @@ impl Thread {
         let wakes = (matches!(t.origin.as_str(), "agent" | "system")
             || t.origin.starts_with("result:"))
             && (t.switch.is_null() || (cut && t.origin == "system"));
+        let holds =
+            !cut && (last.as_ref()).is_some_and(|id| self.helpers(id) > 0 || self.working());
         // Continue after the user's Stop carries the stopped block on, the pause a wait: one clock, one
         // fold [D154]. So does the agent waking on its own, for a command it left running that
         // ended after its block folded: no new block without the user's words [D117, D179].
@@ -247,7 +250,11 @@ impl Thread {
                 true => {
                     self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user")
                 }
-                false => t.origin == "agent" && !self.held.contains_key(&o.id),
+                // A stopped worker's result, let go after the turn, follows on in its block [D316].
+                false => {
+                    (t.origin == "agent" || t.origin.starts_with("result:stopped:"))
+                        && !self.held.contains_key(&o.id)
+                }
             })
             .map(|mut o| {
                 if resume {
@@ -259,8 +266,10 @@ impl Thread {
             });
         let resuming = resumed.is_some();
         let held = last
-            .filter(|_| wakes && !resuming)
+            .filter(|_| (wakes || holds) && !resuming)
             .and_then(|id| self.held.remove(&id));
+        // The user's or another session's words into a block only its helpers held: a steer's bubble.
+        let steers = held.is_some() && !wakes;
         match resumed.or(held.map(|(o, _)| o)) {
             // Carried on by another agent, the turn is that agent's now [D124].
             Some(mut o) => {
@@ -367,14 +376,20 @@ impl Thread {
             self.team_result(rest, ts);
         } else if t.cid.is_some() {
             let origin = if t.origin == "user" { "user" } else { "system" };
-            let row = match t.origin.strip_prefix("peer:") {
+            let peer = t.origin.strip_prefix("peer:");
+            let mut row = match peer {
                 Some(from) => Self::peer_item(from, &t.text, t.ts, &t.id.clone().into()),
                 None => {
                     json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
                     "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts, "brigade": t.brigade})
                 }
             };
-            self.add(row);
+            if steers {
+                row["steer"] = true.into();
+                self.steered(row, peer.is_some());
+            } else {
+                self.add(row);
+            }
         }
         // A turn its agent woke for on its own folds its work too, from its first row.
         if let Some(o) = self.open.as_mut() {

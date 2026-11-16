@@ -291,7 +291,8 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
             (rec.how, rec.turn, rec.state) =
                 ("steer".into(), Some(t.id.clone()), "steering".into());
             save(data, &to, "in", &mid, &rec)?;
-            let reply = control::steer_as(data, &to, &body, &Value::Null, Some(&mid), &origin)?;
+            let reply =
+                control::steer_as(data, &to, &body, &Value::Null, Some(&mid), &origin, false)?;
             let logged = core::fold(&dir, true).is_ok_and(|f| f.fold.cids.contains_key(&mid));
             let state = match reply["result"].as_str() {
                 Some("delivered") => Some("delivered"),
