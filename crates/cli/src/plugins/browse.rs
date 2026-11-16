@@ -263,36 +263,63 @@ pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> 
             "Couldn't reach GitHub for {id}. Check your connection and try again."
         ))
     };
-    // shortcut: GitHub's API without a token allows 60 requests an hour; one per skill added.
-    let tree = get(
-        &format!("https://api.github.com/repos/{source}/git/trees/HEAD?recursive=1"),
-        32 << 20,
-    )
-    .map_err(|_| gone())?;
-    let tree: Value = serde_json::from_slice(&tree).map_err(|_| gone())?;
-    let all = tree["tree"].as_array().cloned().unwrap_or_default();
+    // shortcut: GitHub's API without a token allows 60 requests an hour; two per skill added.
+    let api = |path: &str| -> io::Result<Value> {
+        let bytes = get(
+            &format!("https://api.github.com/repos/{source}/{path}"),
+            32 << 20,
+        );
+        serde_json::from_slice(&bytes.map_err(|_| gone())?).map_err(|_| gone())
+    };
+    // One commit for the tree and every file, so what was checked is what's copied.
+    let commit = api("commits/HEAD")?;
+    let sha = str(&commit["sha"]);
+    if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(gone());
+    }
+    let raw = |path: &str, max: u64| {
+        let path = (path.split('/')).map(enc).collect::<Vec<_>>().join("/");
+        get(
+            &format!("https://raw.githubusercontent.com/{source}/{sha}/{path}"),
+            max,
+        )
+        .map_err(|_| gone())
+    };
+    let all = api(&format!("git/trees/{sha}?recursive=1"))?["tree"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let dirs: Vec<&str> = (all.iter())
         .filter_map(|e| str(&e["path"]).strip_suffix("SKILL.md"))
         .filter(|d| d.is_empty() || d.ends_with('/'))
         .collect();
-    let named = dirs
-        .iter()
-        .find(|d| d.trim_end_matches('/').rsplit('/').next() == Some(id));
+    // The folder named after it, the repo's only skill, else the one whose SKILL.md declares its name.
+    let named = (dirs.iter()).find(|d| d.trim_end_matches('/').rsplit('/').next() == Some(id));
     let only = (dirs.len() == 1).then(|| &dirs[0]);
-    let dir =
-        (named.or(only)).ok_or_else(|| refuse(&format!("Couldn't find {id} in {source}.")))?;
+    let declared = || {
+        (dirs.iter().take(50)).find(|d| {
+            let text = raw(&format!("{d}SKILL.md"), 1 << 20).unwrap_or_default();
+            declared(&String::from_utf8_lossy(&text)).as_deref() == Some(id)
+        })
+    };
+    let dir = (named.or(only).or_else(declared))
+        .ok_or_else(|| refuse(&format!("Couldn't find {id} in {source}.")))?;
     let files: Vec<&Value> = (all.iter())
         .filter(|e| e["type"] != "tree" && str(&e["path"]).starts_with(*dir))
         .collect();
     let size: u64 = files.iter().filter_map(|e| e["size"].as_u64()).sum();
-    if files.len() > MAX_FILES || size > MAX_BYTES {
-        return Err(refuse(&format!(
+    let big = || {
+        refuse(&format!(
             "{id} is larger than Brigadier copies (10 MB, 200 files)."
-        )));
+        ))
+    };
+    if files.len() > MAX_FILES || size > MAX_BYTES {
+        return Err(big());
     }
     let to = incoming(data).join(id);
     let _ = fs::remove_dir_all(incoming(data));
     fs::create_dir_all(&to)?;
+    let mut left = MAX_BYTES;
     for e in files {
         let path = str(&e["path"]);
         let rel = &path[dir.len()..];
@@ -303,12 +330,8 @@ pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> 
                 "{id} holds links or paths Brigadier won't copy."
             )));
         }
-        let raw = (path.split('/')).map(enc).collect::<Vec<_>>().join("/");
-        let bytes = get(
-            &format!("https://raw.githubusercontent.com/{source}/HEAD/{raw}"),
-            MAX_BYTES,
-        )
-        .map_err(|_| gone())?;
+        let bytes = raw(path, left)?;
+        left = left.checked_sub(bytes.len() as u64).ok_or_else(big)?;
         let file = to.join(rel);
         fs::create_dir_all(file.parent().unwrap_or(&to))?;
         fs::write(&file, bytes)?;
@@ -317,4 +340,11 @@ pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> 
         }
     }
     Ok(to)
+}
+
+/// The `name:` a SKILL.md's front matter declares.
+fn declared(text: &str) -> Option<String> {
+    let front = text.strip_prefix("---")?.split("\n---").next()?;
+    let name = front.lines().find_map(|l| l.strip_prefix("name:"))?;
+    Some(name.trim().trim_matches(['"', '\'']).to_string())
 }

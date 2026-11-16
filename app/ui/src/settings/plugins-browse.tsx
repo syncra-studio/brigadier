@@ -96,7 +96,7 @@ export function BrowsePage({ tab: firstTab, browse, onAdd }: { tab: Kind; browse
             {found.map((each) => (
               <div key={each.key} data-slot="found-row" className="flex items-center gap-3 px-4 py-3">
                 {/* Its maker's mark only from its own address or package: anyone can name a server "Linear" [D437]. */}
-                <PluginMark item={{ kind: each.kind, name: "", detail: each.mark }} />
+                <PluginMark item={{ kind: each.kind, name: "", detail: each.mark }} exact />
                 <RowText
                   title={each.name}
                   line={

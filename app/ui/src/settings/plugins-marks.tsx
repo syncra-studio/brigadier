@@ -59,15 +59,15 @@ const BRANDS: [Brand, names: string[], details: string[]][] = [
 /** A name's words, lowercased: "GitHub MCP" → ["github", "mcp"]. */
 const words = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 
-/** The maker's mark for an MCP server, by its name, then by how it runs; null for one the app doesn't know. */
-function brandOf(item: { kind: string; name: string; detail: string }): Brand | null {
+/** The maker's mark for an MCP server, by its name, then by how it runs; null for one the app doesn't know. `exact`: only a detail that is one of its parts whole, for an untrusted listing's host or package [D437]. */
+function brandOf(item: { kind: string; name: string; detail: string }, exact = false): Brand | null {
   if (item.kind !== "server") return null;
   const named = words(item.name);
   const joined = named.join("");
   const detail = item.detail.toLowerCase();
   return (
     BRANDS.find(([, names]) => names.some((name) => named.includes(name) || joined === name))?.[0] ??
-    BRANDS.find(([, , details]) => details.some((part) => detail.includes(part)))?.[0] ??
+    BRANDS.find(([, , details]) => details.some((part) => (exact ? detail === part : detail.includes(part))))?.[0] ??
     null
   );
 }
@@ -109,8 +109,8 @@ function SkillArt({ className }: { className: string }) {
 }
 
 /** An item's mark: its maker's for a well-known server, else the illustration for its kind; `large` beside its page's title. */
-export function PluginMark({ item, large = false }: { item: { kind: string; name: string; detail: string }; large?: boolean }) {
-  const brand = brandOf(item);
+export function PluginMark({ item, large = false, exact = false }: { item: { kind: string; name: string; detail: string }; large?: boolean; exact?: boolean }) {
+  const brand = brandOf(item, exact);
   const size = large ? "size-11" : "size-9";
   if (!brand) return item.kind === "skill" ? <SkillArt className={size} /> : <ServerArt className={size} />;
   return (
