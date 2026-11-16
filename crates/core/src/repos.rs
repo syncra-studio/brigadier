@@ -223,7 +223,15 @@ pub fn inspect(data: &Path, path: &str) -> io::Result<Value> {
             .is_ok_and(|m| m.is_dir())
             .then_some(())
             .ok_or_else(|| io::Error::other("That's a file. Choose a folder."));
+        // A folder of repos is added as it is, one project [D494].
+        let repos = crate::folder::repos(&dir);
         return Ok(match plain.and_then(|()| projects::plain(data, &dir)) {
+            Ok(()) if !repos.is_empty() => {
+                let folder = fs::canonicalize(&dir)?.display().to_string();
+                let added = projects::list(data)?.into_iter().find(|p| p.folder == folder);
+                json!({"kind": "folder", "path": dir, "name": added.as_ref().map_or(name, |p| Some(p.name.clone())),
+                    "repos": repos, "project_id": added.map(|p| p.id)})
+            }
             Ok(()) => json!({"kind": "plain", "path": dir, "name": name}),
             Err(e) => invalid(e),
         });

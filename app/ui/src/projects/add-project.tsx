@@ -91,6 +91,7 @@ function splitPath(path: string): { parent: string; name: string } {
 function rowOf(check: FolderCheck): Repo | null {
   if (check.kind === "repo") return { path: check.repo, name: check.name, project_id: check.project_id };
   if (check.kind === "plain") return { path: check.path, name: check.name, project_id: null, plain: true };
+  if (check.kind === "folder") return { path: check.path, name: check.name, project_id: check.project_id, folder: check.repos };
   return null;
 }
 
@@ -192,6 +193,15 @@ function PickView({
         }
         setChosen(rowOf(check));
         setSelected(check.repo);
+        return;
+      case "folder":
+        if (check.project_id) {
+          closeAddProject();
+          showProject(check.project_id);
+          return;
+        }
+        setChosen(rowOf(check));
+        setSelected(check.path);
         return;
       case "plain":
         setChosen(rowOf(check));
@@ -304,6 +314,11 @@ function PickView({
             </p>
           )}
         </div>
+        {current?.folder && (
+          <p className="px-3 text-xs text-muted-foreground">
+            {current.folder.join(" · ")}. Each stays its own repository: nothing is set up in this folder. A chat gets its own branch in a repo only when it first changes it.
+          </p>
+        )}
         <ErrorLine error={error ?? adding.error} className="px-3" />
         <OfflineLine offline={offline && busy} />
       </div>
@@ -331,7 +346,7 @@ function PickView({
   );
 }
 
-/** A repository in the list: its folder tile, name, path, "Not a repository" or Added, and its radio. */
+/** A repository in the list: its folder tile, name, path, "Not a repository", "Folder of N repos" or Added, and its radio. */
 function RepoRow({ row, chosen, onPick, onAdd }: { row: Repo; chosen: boolean; onPick: () => void; onAdd: () => void }) {
   const added = row.project_id !== null;
   return (
@@ -362,7 +377,7 @@ function RepoRow({ row, chosen, onPick, onAdd }: { row: Repo; chosen: boolean; o
           Added
         </Badge>
       ) : (
-        row.plain && <span className="shrink-0 text-xs text-muted-foreground">Not a repository</span>
+        (row.plain || row.folder) && <span className="shrink-0 text-xs text-muted-foreground">{row.folder ? `Folder of ${row.folder.length} repos` : "Not a repository"}</span>
       )}
       <span aria-hidden className={cx("flex size-4.5 shrink-0 items-center justify-center rounded-capsule", chosen ? "bg-toggle-on text-foreground" : "border border-input")}>
         {chosen && <Check className="size-icon-xs" />}

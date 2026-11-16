@@ -4,12 +4,14 @@ import { errorText, run, store } from "../onboarding/api";
 import { addProject, newProjectId } from "./projects";
 
 /** A repository found on this Mac, or a folder the user chose; `project_id` once it is a project. */
-export type Repo = { path: string; name: string; project_id: string | null; plain?: boolean };
+export type Repo = { path: string; name: string; project_id: string | null; plain?: boolean; folder?: string[] };
 
 /** What a chosen folder is, as Rust checked it [D165]. */
 export type FolderCheck =
   | { kind: "repo"; repo: string; name: string; project_id: string | null }
   | { kind: "plain"; path: string; name: string }
+  // A folder holding repositories, added as it is [D494].
+  | { kind: "folder"; path: string; name: string; repos: string[]; project_id: string | null }
   | { kind: "missing"; path: string }
   | { kind: "invalid"; reason: string };
 
