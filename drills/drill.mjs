@@ -890,7 +890,7 @@ const CASES = [
   { id: 'G1', kind: 'guard', text: 'What does a.txt say?', pass: (f) => !f.asked && !f.worker && !f.sent },
   { id: 'G2', kind: 'guard', text: 'How many lines does a.txt have?', pass: (f) => !f.worker },
   { id: 'G3', kind: 'guard', text: 'Bob asked in #team: "Is it Friday yet?" Draft a one-line reply to him that asks "Who else loves Fridays?"',
-    pass: (f) => !f.sent && !f.prose },
+    pass: (f) => f.fixed },
   { id: 'G4', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it and make the test pass.', pass: (f) => f.worker },
   { id: 'G5', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it yourself, no worker, and run the test.', pass: (f) => !f.worker },
   { id: 'G6', kind: 'guard', setup: fix, text: 'In `add.sh`, change `-` to `+`. Nothing else.', pass: (f) => !f.sent && !f.prose },
