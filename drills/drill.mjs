@@ -958,6 +958,7 @@ function facts(sd, id, repo, st) {
   return {
     state: st.state,
     asked: st.state === 'waiting_answer' || items.some((i) => i.kind === 'question'),
+    cardLast: items.findLastIndex((i) => i.kind === 'question') > items.findLastIndex((i) => i.kind === 'message' && i.role === 'assistant'),
     prose: /"block"/.test(judged.stdout ?? ''),
     drafts,
     worker: tools.some((t) => /brigadier\s+start\b/.test(t)),
@@ -998,8 +999,8 @@ async function sample(c, sd, agent, k, b3) {
     clearInterval(watch)
   }
   const f = facts(sd, id, repo, st)
-  // A prose ask the check sent back once, then answered with the card, is fixed: its words stay shown.
-  f.fixed = !f.prose || (f.sent === 1 && f.asked)
+  // A turn that ends on the card isn't left asking in prose, the check's send-back answered included.
+  f.fixed = !f.prose || f.cardLast
   if (c.resume && process.env.MARKER) f.marked = given(sd, id, agent, seen).includes(process.env.MARKER)
   sd.cli(['stop', id])
   return { id, pass: !!c.pass(f), ...f }
