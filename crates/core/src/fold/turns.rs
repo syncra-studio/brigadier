@@ -80,11 +80,14 @@ pub struct Turn {
     pub edited: BTreeSet<String>,
     #[serde(default)]
     pub editing: BTreeMap<String, Vec<String>>,
-    /// It did something new: an edit, or a command that does more than look and wasn't run since
-    /// the last message, the rebirth guard's progress [D144]. A reply ends its turn, so no cut
-    /// follows it; text before a cut is only what it's about to do.
+    /// It did something new: an edit, a command that does more than look and wasn't run since
+    /// the last message, or a reply: text its turn ended on, the rebirth guard's progress [D144].
     #[serde(default)]
     pub moved: bool,
+    /// A message of its agent's is under way: a reply if its turn ends there, so no cut comes
+    /// mid-message [D144].
+    #[serde(default)]
+    pub replying: bool,
     /// The agent's own output for it: a reply, a step, a thought or an ask.
     #[serde(default)]
     pub said: bool,
@@ -106,6 +109,26 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
+    /// Its agent's output of this kind. A message is under way from its request read until a
+    /// step: it may be the reply that ends the turn.
+    pub(super) fn output(&mut self, kind: &str) {
+        match kind {
+            "context" | "text" | "text_delta" | "reasoning" => self.replying = true,
+            "tool" | "tool_done" | "question" | "approval" | "plan" => self.replying = false,
+            _ => {}
+        }
+        let what = [
+            "text",
+            "text_delta",
+            "tool",
+            "reasoning",
+            "question",
+            "approval",
+            "plan",
+        ];
+        self.said |= what.contains(&kind);
+    }
+
     /// A tool began: it's open until its end, and an edit's paths wait for it. `again`: a command
     /// that only looks or ran before since the last message.
     pub(super) fn tool_started(&mut self, item: &Value, ts: u64, again: bool) {
@@ -183,7 +206,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved, "said": turn.said, "unchecked": turn.unchecked,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );

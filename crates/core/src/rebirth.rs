@@ -68,9 +68,9 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
 }
 
 /// Why the session needs a rebirth on its own, now: "cut" for a running turn past its threshold
-/// with no tool running (it's stopped first) or a last turn the window refused; "switch" for a
-/// running turn whose model or agent the user picked another of, or the turn cut for that
-/// [D124]; "stall" for a running turn past it that the guard stops instead [D144]; none
+/// with no tool running and no message under way (it's stopped first) or a last turn the window
+/// refused; "switch" for a running turn whose model or agent the user picked another of, or the
+/// turn cut for that [D124]; "stall" for a running turn past it that the guard stops instead [D144]; none
 /// otherwise. A stopped or paused session is left as the user left it.
 pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
@@ -81,6 +81,8 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
         if idle && switching(spec, f, &t.backend) {
             return Some("switch");
         }
+        // A message under way may be the reply that ends the turn: a cut waits for a step or the end.
+        let idle = idle && !t.replying;
         return (idle && full(spec, f)).then_some(match again(f, &t.id, &t.switch, t.moved) {
             true => "cut",
             false => "stall",
@@ -116,8 +118,8 @@ fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
 }
 
 /// The fresh conversations in a row, this turn's the last, that a cut began and that did nothing
-/// new: no edit, nor a command that does more than look and wasn't run since the last message
-/// [D144]. The user's Continue starts it over.
+/// new: no edit, nor a command that does more than look and wasn't run since the last message,
+/// nor a reply [D144]. The user's Continue starts it over.
 fn empty(f: &Fold, id: &str, switch: &Value, moved: bool) -> u64 {
     let n = switch["empty"].as_u64().unwrap_or(0);
     let going = f.go_on.as_deref() == Some(id);
