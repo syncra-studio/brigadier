@@ -67,7 +67,7 @@ function useFake() {
     add: (draft) =>
       later((now) =>
         "own" in draft
-          ? { ...now, own: now.own.map((own) => (own.key === draft.own ? { ...own } : own)) }
+          ? { ...now, own: now.own.filter((own) => own.key !== draft.own) }
           : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
