@@ -3,7 +3,6 @@ import { type FC, useContext, useState } from "react";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips } from "../components/tooltip";
-import { X } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { finished, lowerFirst, onHand, type Worker, WorkersPanel, waiting } from "./chip";
 import { type Act, RowTime, StopWorker } from "./strip";
@@ -16,17 +15,10 @@ import { type Act, RowTime, StopWorker } from "./strip";
 /** What the UI calls a session's workers (the user chose "Workers" over "Subagents"). */
 export const WORKERS_LABEL = "Workers";
 
-/** The panel's tabs and close in a row at its top; a worker's view has its own header in its place. */
-export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
-  active: string;
-  tabs: readonly string[];
-  /** "1 done · 1 ended": the Workers tab's tip after its name. */
-  finishedWords?: string;
-  onSelect: (tab: string) => void;
-  onClose: () => void;
-}) {
+/** Workers' and the CLI's subagents' lists, switched in a row at the Workers view's top; a worker's view has its own header in its place. */
+export function PanelTabs({ active, tabs, onSelect }: { active: string; tabs: readonly string[]; onSelect: (tab: string) => void }) {
   return (
-    <div role="tablist" aria-label="Right panel" className="flex h-11.5 shrink-0 items-center gap-1 bg-background px-2">
+    <div role="tablist" aria-label="Lists" className="flex h-11.5 shrink-0 items-center gap-1 px-2">
       <TitlebarTips>
         {tabs.map((tab) => (
           <TooltipIconButton
@@ -36,18 +28,12 @@ export function PanelTabs({ active, tabs, finishedWords, onSelect, onClose }: {
             aria-selected={active === tab}
             pressed={active === tab}
             className="w-auto px-2"
-            tooltip={tab === WORKERS_LABEL && finishedWords ? `${tab} · ${finishedWords}` : tab}
+            tooltip={tab}
             onClick={() => onSelect(tab)}
           >
             <span className="text-label">{tab}</span>
           </TooltipIconButton>
         ))}
-      </TitlebarTips>
-      <span className="flex-1" />
-      <TitlebarTips>
-        <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
-          <X />
-        </TooltipIconButton>
       </TitlebarTips>
     </div>
   );

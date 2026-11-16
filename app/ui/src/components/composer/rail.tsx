@@ -1,4 +1,4 @@
-import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useLayoutEffect, useRef, useState } from "react";
+import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ChevronDown, ChevronRight, ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
 import { Button } from "../button";
@@ -37,36 +37,59 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
 
 /**
  * One item of the rail. `card` is a framed card (notices, the queue); `controls` a darker tab with no frame;
- * `decision` a card waiting for the user, which at the rail's bottom shows its whole frame a small gap above
- * the card instead of tucking under it. Items open to their height as they come, except those the rail had
- * as it appeared and those that came while the window was hidden.
+ * `model` the model picker's strip, in the boards' rail look [D85]; `decision` a card waiting for the user, which at
+ * the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items open to their
+ * height as they come, except those the rail had as it appeared and those that came while the window was hidden.
+ * One turned not `shown` folds back to nothing first, then is gone (`onGone`).
  */
 export function RailItem({
   variant = "card",
   label,
+  shown = true,
+  onGone,
   className,
   children,
 }: {
-  variant?: "controls" | "card" | "decision";
+  variant?: "controls" | "card" | "decision" | "model";
   label: string;
+  shown?: boolean;
+  onGone?: () => void;
   className?: string;
   children: ReactNode;
 }) {
   const railShown = useContext(RailShown);
-  const [opens] = useState(
+  const [opens, setOpens] = useState(
     () => document.visibilityState === "visible" && (railShown === null || performance.now() - railShown > SETTLE_MS),
   );
+  const [present, setPresent] = useState(shown);
+  if (shown && !present) {
+    setPresent(true);
+    setOpens(true);
+  }
+  // Without motion there is no fold to wait for.
+  useEffect(() => {
+    if (shown || !present || !matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setPresent(false);
+    onGone?.();
+  }, [shown]);
+  if (!present) return null;
   return (
     <section
       data-slot="composer-rail-item"
       data-variant={variant}
       aria-label={label}
+      onAnimationEnd={(event) => {
+        if (shown || event.target !== event.currentTarget) return;
+        setPresent(false);
+        onGone?.();
+      }}
       className={cx(
         "grid grid-rows-1 first:rounded-t-overlay",
-        opens && "motion-safe:animate-rail-open",
+        !shown ? "motion-safe:animate-rail-close" : opens && "motion-safe:animate-rail-open",
         // The tuck under the card is padding, so the last item's content never hides behind it.
         variant !== "decision" && "last:pb-rail-tuck",
-        variant === "controls" ? "bg-code-surface" : "border-x border-t border-border bg-rail-glass",
+        variant === "controls" ? "bg-code-surface" : "border-x border-t border-border",
+        variant === "model" ? "bg-model-strip backdrop-blur-model-strip" : variant !== "controls" && "bg-rail-glass",
         variant === "decision" && "last:mb-rail-clear last:rounded-b-overlay last:border-b",
         className,
       )}

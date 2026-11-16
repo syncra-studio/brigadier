@@ -7,14 +7,30 @@
 @theme static {
   --*: initial;
 
-  /* oklch(0.21 0.002 106) in hex: main reads this line for the window, and Electron can't parse oklch. */
-  --color-background: #181817;
-  --color-chrome: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
-  --color-card: oklch(0.255 0.003 106);
-  --color-popover: oklch(0.297 0.002 106);
+  /* The new design's bg-window, in hex: main reads this line for the window, and Electron can't parse oklch. */
+  --color-background: #151517;
+  /* The window around the floating sidebar and panels: the page itself now [new-design]. */
+  --color-chrome: var(--color-background);
+  /* The floating sidebar, strip, right panel and summary card (the new design's #222224). */
+  --color-card: #222224;
+  /* Menus and the hover card: the new design's menu-bg, its edge, and its blur behind. */
+  --color-popover: #2b2b2ef2;
+  --color-popover-edge: #ffffff1f;
+  /* The new design's glass: a pill's fill (control-fill) and edge (glass-stroke), and the active tab and picked row (selection). */
+  --color-control: #ffffff12;
+  --color-glass-stroke: #ffffff14;
+  --color-selection: #ffffff1c;
+  /* A card's edge while its resize handle is hovered or dragged [D16]. */
+  --color-resize-edge: #ffffff47;
+  /* Context and Files at rest; on, they glow (--drop-shadow-toggle-glow) [new-design]. */
+  --color-toggle-off: #ffffff59;
+  /* A user's message bubble: control-fill with the glass edge. */
+  --color-bubble: var(--color-control);
+  --color-bubble-edge: var(--color-glass-stroke);
   --color-muted: oklch(0.315 0.004 106);
-  --color-foreground: oklch(0.985 0.002 106);
-  --color-muted-foreground: oklch(0.708 0.004 106);
+  /* The new design's label and label-2; label-3 is --color-placeholder (label-2 at 60%). */
+  --color-foreground: #f5f5f7;
+  --color-muted-foreground: #ebebf599;
   --color-primary: oklch(0.922 0.002 106);
   --color-primary-fg: oklch(0.255 0.003 106);
   /* Apple's system red (HIG, dark), the owner's pick. */
@@ -22,7 +38,8 @@
   --color-warning: oklch(0.769 0.165 62);
   --color-success: oklch(0.765 0.15 155);
   --color-border: oklch(0.985 0.002 106 / 10%);
-  --color-divider: oklch(0.985 0.002 106 / 8%);
+  /* The new design's separator. */
+  --color-divider: #ffffff14;
   /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
   --color-find-match: oklch(0.86 0.17 95 / 38%);
   --color-find-match-active: oklch(0.66 0.18 50 / 85%);
@@ -43,6 +60,21 @@
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
+  /* Finder's tag colours (Apple's system colours, dark), a project badge's text on its 15% wash [new-design]. */
+  --color-tag-red: rgb(255 69 58);
+  --color-tag-red-wash: color-mix(in oklab, var(--color-tag-red) 15%, transparent);
+  --color-tag-orange: rgb(255 159 10);
+  --color-tag-orange-wash: color-mix(in oklab, var(--color-tag-orange) 15%, transparent);
+  --color-tag-yellow: rgb(255 214 10);
+  --color-tag-yellow-wash: color-mix(in oklab, var(--color-tag-yellow) 15%, transparent);
+  --color-tag-green: rgb(48 209 88);
+  --color-tag-green-wash: color-mix(in oklab, var(--color-tag-green) 15%, transparent);
+  --color-tag-blue: rgb(10 132 255);
+  --color-tag-blue-wash: color-mix(in oklab, var(--color-tag-blue) 15%, transparent);
+  --color-tag-purple: rgb(191 90 242);
+  --color-tag-purple-wash: color-mix(in oklab, var(--color-tag-purple) 15%, transparent);
+  --color-tag-grey: rgb(152 152 157);
+  --color-tag-grey-wash: color-mix(in oklab, var(--color-tag-grey) 15%, transparent);
   /* Pull request words, the old app's PR colours. */
   --color-pr-yellow: #fbc959;
   --color-pr-purple: #d080e2;
@@ -177,13 +209,16 @@
   /* The line between a split button's halves (the old border-background/40). */
   --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
   /* The composer card, and a field's placeholder in it. */
-  --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
+  --color-composer: var(--color-card);
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
   --color-rail-line: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
   --color-rail-line-current: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  --color-rail-glass: color-mix(in oklab, var(--color-card) 70%, transparent);
+  /* Kept as it was (the old card at 70%): the new design leaves the rail's cards alone. */
+  --color-rail-glass: #232322b3;
+  /* The model picker's strip: the boards' rail fill (L2S6P's status slot) [D85]. */
+  --color-model-strip: #1c1c1e;
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
   /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
      text, an outlined button's wash, the filled button's hover, a file list's ground. */
@@ -230,8 +265,8 @@
   --text-page-title--line-height: 2.125rem;
   --text-nav-title: 1.125rem;
   --text-nav-title--line-height: 1.5rem;
-  /* A project's initials in its badge. */
-  --text-badge: 0.5625rem;
+  /* A project's initials in its badge: two wide letters ("MW") fit its 16px square [D62]. */
+  --text-badge: 0.5rem;
   --text-badge--line-height: 1rem;
   --text-diff: 0.75rem;
   --text-diff--line-height: 1.35rem;
@@ -277,27 +312,39 @@
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
   --spacing-icon-lg: 1.25rem;
+  /* Brigadier's mark, one size in the strip and by the open sidebar's title (the board's strip mark) [D64, D18]. */
+  --spacing-icon-mark: 1.5rem;
   --spacing-titlebar: 2.5rem;
-  /* A tab's width in the bar, and the rule between two tabs in back. */
-  --spacing-session-tab-min: 5.625rem;
-  --spacing-session-tab-max: 15rem;
+  /* The new design's tab bar: 56px, its controls 30px tall on the traffic lights' centre line (35px down). */
+  --spacing-tab-bar: 3.5rem;
+  /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
+  --spacing-history: 6.6875rem;
+  /* Its start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge. */
+  --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
+  /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
+     overlay's env values; with none, as under the dev flag, the board's 138px). */
+  --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
+  /* Safari's tabs [D52]: crowded, the front tab and Chat keep 12rem [D53], the others shrink to 33px then scroll;
+     below 88px a tab shows its icon alone, below 64px no × either. The rule between two tabs in back. */
+  --spacing-session-tab-active: 12rem;
+  --spacing-session-tab-icon: 2.0625rem;
+  --container-tab-icon: 5.5rem;
+  --container-tab-close: 4rem;
   --spacing-session-tab-rule: 1px;
-  --spacing-session-tab-rule-height: 0.75rem;
+  --spacing-session-tab-rule-height: 1rem;
   --container-new-tab: 28rem;
-  --shadow-session-tab: inset 0 0 0 0.5px var(--color-fill), 0 1px 2px -1px oklch(0 0 0 / 8%);
+  /* The active tab's lift (the new design's). */
+  --shadow-session-tab: 0 1px 3px #00000040;
   --ease-session-tab: cubic-bezier(0.333, 0.667, 0.667, 1);
-  --session-tab-title-mask: linear-gradient(to right, #000 calc(100% - 1rem), transparent);
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
   /* Back, Forward and the sidebar toggle: Back's centre 26px past the traffic lights, 6px apart. */
   --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
-  /* The pinned summary card moving the reading column aside (the old app's --spacing-summary-shift and
-     --container-thread-beside-summary): half the card's 18.75rem and its 0.75rem inset, and the column narrowed to
-     leave the card's 20.25rem stack its gutter. */
-  --spacing-summary-shift: calc((var(--spacing) * 75 + var(--spacing) * 3) / 2);
-  --container-reading-beside-summary: min(var(--container-reading), calc(100% - var(--spacing) * 81));
+  /* The room the pinned summary card takes from the reading column where it moves it aside (the old app's
+     --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-70 card and its 4px inset. */
+  --spacing-summary-room: calc(var(--spacing) * 71);
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
@@ -323,8 +370,6 @@
   /* An approval card narrower than this gives its "what to do instead" field a row of its own above the buttons. */
   --container-card-one-row: 38rem;
   --container-toast: 32rem;
-  /* The ⌘K search palette's card (the old app's). */
-  --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
   --spacing-nav-header: 3.25rem;
@@ -336,17 +381,22 @@
   /* The sidebar panel: its default width, how far it resizes, the content's least room beside it. */
   --spacing-sidebar: 18rem;
   --spacing-sidebar-min: 11.75rem;
+  /* The open sidebar's least [new-design]: its top row holds the real traffic lights (24 to 84) and the History pill
+     8px after them, ending 10px in (84 + 8 + 107 + 10). */
+  --spacing-sidebar-open-min: 13.125rem;
   --spacing-sidebar-max: 29.25rem;
   --spacing-sidebar-thread-min: 20rem;
-  /* Collapsed to a strip of icons, each where it sits in the expanded panel. */
-  --spacing-sidebar-strip: calc(var(--spacing) * 8 + var(--spacing-icon-md));
-  /* The window's start edge that peeks the hidden sidebar, and the panel's grab area. */
-  --spacing-sidebar-peek-edge: 0.5rem;
+  /* Collapsed to a strip of icons: the old app's 48px strip, as the rail card inside the panel's 4px insets. */
+  --spacing-sidebar-strip: calc(var(--spacing) * 10 + var(--spacing-icon-md));
+  /* The panel's grab area, over the gap and its card's edge. */
   --spacing-resize-handle: 1rem;
   /* A window narrower than this folds the sidebar by itself. */
   --spacing-narrow-window: 60rem;
   /* The page surface's gap to the window's sides. */
   --spacing-surface-inset: 0.25rem;
+  /* The window's inset [D55]: the sidebar card's gap to the window's start (the surface's 4px and the panel's own 4px),
+     kept by the right panel and the summary card at the window's end, and by every card and the composer at its bottom. */
+  --spacing-window-inset: calc(var(--spacing-surface-inset) + var(--spacing));
   /* A scroll view's faded edges. */
   --spacing-fade-top: 2rem;
   --spacing-fade-bottom: 2rem;
@@ -390,21 +440,27 @@
   /* A sent message's image, above its bubble (the old app's). */
   --spacing-attachment-sent: 5rem;
   --spacing-attachment-card: 14rem;
-  /* The model picker: its width and its one height. */
-  --spacing-model-picker: 33.75rem;
-  --spacing-model-picker-height: 22.25rem;
+  /* The model picker's shelf (EJkBJ, EMxDa): its width in the popover (the strip's 497 inside), its one height, and
+     its marks' two columns of 32 [D84, D89]. */
+  --spacing-model-picker: 31.0625rem;
+  --spacing-model-picker-height: 10.0625rem;
+  --spacing-model-marks: 4.125rem;
 
   --radius-sm: 0.375rem;
   --radius-session-tab: 0.5rem;
   --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
+  /* A project's badge, initials or logo (the board's 4) [D62]. */
+  --radius-badge: 0.25rem;
   --radius-control: 0.5rem;
   --radius-surface: 0.75rem;
   /* The image the viewer shows (the old app's rounded-lg). */
   --radius-image-viewer: 0.625rem;
   --radius-tooltip: 1rem;
   --radius-overlay: 1.25rem;
+  /* The floating sidebar, strip and right panel cards (the new design's 18). */
+  --radius-panel: 1.125rem;
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
   --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
   --radius-capsule: 9999px;
@@ -422,10 +478,17 @@
   /* An image attachment's thumbnail. */
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
+  /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
+  /* A card's own edge lit on its resize handle's side, an inset line that curves into its corners [D16]. */
+  --inset-shadow-resize-start: inset 1px 0 0 var(--color-resize-edge);
+  --inset-shadow-resize-end: inset -1px 0 0 var(--color-resize-edge);
+  --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
-  /* The pinned summary card's edge and lift (the old app's --shadow-summary). */
-  --shadow-summary: 0 0 0 0.5px oklch(1 0 0 / 16%), 0 3px 7.5px oklch(0 0 0 / 4%), 0 0 20px oklch(0 0 0 / 5%);
-  --shadow-overlay: 0 12px 32px oklch(0 0 0 / 35%);
+  /* The summary card's lift (the new design's Context card; its edge is the glass stroke). */
+  --shadow-summary: 0 8px 24px #00000040;
+  /* The new design's menu shadow. */
+  --shadow-overlay: 0 10px 32px #00000080;
+  --drop-shadow-toggle-glow: 0 0 8px #ffffffa6;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
@@ -453,21 +516,22 @@
 
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-popup: ease;
-  /* The sidebar opening and closing: a spring. */
-  --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1.001, 1.001, 1.002, 1.001, 1.001, 1);
-  /* The summary card's motion, the old app's springs: the thread's column moving aside, the card easing in and out. */
-  --ease-summary-shift: linear(0, 0.055, 0.177, 0.322, 0.463, 0.589, 0.694, 0.779, 0.844, 0.893, 0.929, 0.954, 0.972, 0.983, 0.991, 0.996, 1);
-  --ease-summary-card: linear(0, 0.109, 0.309, 0.503, 0.658, 0.773, 0.852, 0.906, 0.941, 0.963, 0.978, 0.986, 0.992, 0.995, 0.997, 0.998, 1);
+  /* The sidebar and the right panels opening and closing, and what moves with them (the thread's column, the summary
+     card): one smooth ease out, the old spring without its bounce [D49]. */
+  --ease-sidebar: linear(0, 0.07, 0.218, 0.383, 0.537, 0.666, 0.768, 0.844, 0.899, 0.937, 0.962, 0.979, 0.989, 0.995, 0.999, 1 75%, 1);
   --default-transition-duration: 150ms;
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
-  --duration-session-tab: 200ms;
+  --duration-session-tab: 300ms;
   --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
-  /* A list folding open or shut, the sidebar's spring; the peek's way out. */
+  /* Behind a menu or the hover card (the new design's). */
+  --blur-popover: 30px;
+  /* Behind the model picker's strip (the boards' rail) [D85]. */
+  --blur-model-strip: 4px;
+  /* A list folding open or shut, the sidebar's spring. */
   --duration-fold: 300ms;
-  --duration-peek-out: 200ms;
   /* A rail card opening from nothing to its height; a queued row fading in. */
   --animate-rail-open: rail-open var(--duration-fold) var(--ease-enter);
   @keyframes rail-open {
@@ -478,6 +542,18 @@
     to {
       grid-template-rows: 1fr;
       opacity: 1;
+    }
+  }
+  /* Folding it back to nothing, from its height. */
+  --animate-rail-close: rail-close var(--duration-fold) var(--ease-enter) both;
+  @keyframes rail-close {
+    from {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+    to {
+      grid-template-rows: 0fr;
+      opacity: 0;
     }
   }
   --animate-fade-in: fade-in 200ms;
@@ -523,19 +599,6 @@
       transform: translate(calc(var(--spacing) * -2), var(--spacing)) scale(0.92);
     }
   }
-  --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
-  --animate-peek-out: peek-out var(--duration-peek-out) var(--ease-sidebar) forwards;
-  /* The collapsed sidebar peeking: it only fades, so the mark never moves. */
-  @keyframes peek-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes peek-out {
-    to {
-      opacity: 0;
-    }
-  }
   /* The jump button's three dots while a reply streams: each rises in turn. */
   --animate-wave-dot: wave-dot 1s ease-in-out infinite;
   @keyframes wave-dot {
@@ -563,6 +626,9 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
+  /* The model picker's dimmed parts: an effort its model doesn't take, a CLI not set up; the Fast key of a model without one [D84]. */
+  --opacity-picker-dim: 35%;
+  --opacity-picker-none: 30%;
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
   --opacity-tab-close: 60%;
@@ -832,8 +898,6 @@
 @custom-variant svg (& :where(svg:not([class*="size-"])));
 /* A part placed in another: a key hint on a button or in a tooltip. */
 @custom-variant in-button (:where([data-slot="button"]) &);
-/* The strip's mark button hovered or focused: the logo drawn over it gives way. */
-@custom-variant strip-mark-lit (:where([data-slot="sidebar-panel"]:has([data-strip-mark]:is(:hover, :focus-visible))) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
@@ -842,6 +906,15 @@
 @custom-variant summary-shift (&[data-pinned][data-summary="shift"]);
 @custom-variant summary-floats (:where([data-summary="float"]) &);
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
+/* A field's box while its input has focus (the sidebar's search). */
+@custom-variant field-focus (&:has(input:focus-visible));
+/* The toolbar pill's button while it is the only one there. */
+@custom-variant lone-toggle (& > :only-child > button);
+/* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
+/* A card whose resize handle, its panel's direct child, is hovered or dragged [D16]. */
+@custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
+
+@custom-variant win (:where([data-platform="win32"]) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. */
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][data-popup-open])));
 
@@ -1102,14 +1175,6 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--spacing-control-sm));
 }
 
-/* A project's badge: its place in the list turned by the golden angle, so neighbours land far apart.
-   shortcut: hues stay at least 32° apart up to 8 projects and about 20° by 13, pick from a fixed set if people run more. */
-@utility project-tone {
-  --tone-hue: calc(20 + attr(data-tone type(<number>), 0) * 137.508);
-  background-color: oklch(0.36 0.08 var(--tone-hue));
-  color: oklch(0.88 0.1 var(--tone-hue));
-}
-
 /* Something on a bar or in a list that is only sometimes there: it grows along data-axis while data-open. */
 @utility bar-item {
   display: grid;
@@ -1201,29 +1266,42 @@
 @utility sidebar-width-source {
   --sidebar-width: attr(data-width px, var(--spacing-sidebar));
   --sidebar-open-width: clamp(
-    var(--spacing-sidebar-min),
+    var(--spacing-sidebar-open-min),
     var(--sidebar-width, var(--spacing-sidebar)),
     max(
-      var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
+      var(--spacing-sidebar-open-min),
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min))
     )
   );
-  /* How wide the panel shows beside the content: what the title bar keeps clear of. */
+  /* How wide the panel shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-sidebar-strip);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
+  }
+  &[data-state="collapsed"][data-collapse="hidden"] {
+    --sidebar-shown: 0px;
   }
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* A right column's width, Files' or Workers': where it was dragged (data-width on it) or the default, kept in its range
-   and leaving the chat its least room beside the left sidebar and the other right column (data-beside: Workers' width
-   while open, for Files; Files' least width while open, for Workers), as the old workspace-pane-width and
-   right-sidebar-panel-width. */
+/* The sidebar's room clips its card, out to the window's start, so a hiding card slides off the window [D63]. */
+@utility sidebar-clip {
+  overflow: clip;
+  overflow-clip-margin: var(--spacing-surface-inset);
+}
+/* The panel's top above its card: the right panel's, 6px under the tab bar, in every mode [D48]. */
+@utility sidebar-top {
+  padding-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
+}
+/* The floating card inside it, the panel's 4px inset off each side. */
+@utility sidebar-card-width {
+  width: calc(var(--sidebar-open-width) - var(--spacing) * 2);
+}
+/* The right panel's width: where it was dragged (data-width on it) or the default, kept in its range and leaving the
+   chat its least room beside the left sidebar, as the old workspace-pane-width. */
 @utility right-panel-width-source {
   --right-panel-width: attr(data-width px, var(--spacing-sidebar));
-  --right-panel-beside: attr(data-beside px, 0px);
 }
 @utility right-panel-width {
   width: clamp(
@@ -1231,27 +1309,12 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px))
     )
   );
 }
 /* The right panel's start edge: the old app's hairline, fading with its slide. */
 @utility start-hairline {
-  &::before {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: 0.5px;
-    background: var(--color-divider);
-    pointer-events: none;
-    z-index: 1;
-  }
-}
-
-/* The peeking sidebar beside the strip: a hairline down its start edge, and nothing painted past it. */
-@utility peek-edge {
-  clip-path: inset(calc(var(--spacing) * -12) calc(var(--spacing) * -12) calc(var(--spacing) * -12) 0);
   &::before {
     content: "";
     position: absolute;
@@ -1285,52 +1348,37 @@
 :root[data-fullscreen] {
   --spacing-titlebar-start: calc(var(--spacing) * 2);
 }
+:root:is([data-fullscreen], [data-platform="win32"]) {
+  --spacing-history-start: var(--spacing-window-inset);
+}
 
 /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
 @utility titlebar-nav {
   --opacity-disabled: var(--opacity-titlebar-nowhere);
 }
 
-/* A top bar's start: its own 12px, or more where Back, Forward and the toggle reach past the sidebar's edge,
-   so its first control starts 8px after them. It moves with the sidebar. */
+/* The History pill, first in the tab bar across the window's top: on the sidebar card's start edge, or with traffic
+   lights 4px past them. It never moves with the sidebar [D48]. */
+@utility history-pill {
+  top: calc(var(--spacing) * 5);
+  inset-inline-start: var(--spacing-history-start);
+}
+
+/* The tab bar runs from the window's start: its tabs 8px past the History pill [D48]. */
 @utility titlebar-clear {
-  padding-inline-start: max(
-    calc(var(--spacing) * 3),
-    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-shown))
-  );
-  transition-property: padding-inline-start;
-  transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-sidebar);
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
+  padding-inline-start: calc(var(--spacing-history-start) + var(--spacing-history) + var(--spacing) * 2);
 }
 
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
 @utility strip-rule {
-  height: 0.5px;
-  width: calc(var(--spacing) * 5);
+  height: 1px;
+  width: calc(var(--spacing) * 6);
   background: var(--color-divider);
 }
 
 /* The tab bar [D360]: the old app's. It starts after a short rule, at the sidebar's edge or, with the sidebar folded,
    after Back, Forward and the toggle. */
 @utility session-tab-bar {
-  position: relative;
-  &::before {
-    content: "";
-    position: absolute;
-    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-shown)));
-    top: calc((var(--spacing-titlebar) - var(--spacing) * 5) / 2);
-    height: calc(var(--spacing) * 5);
-    width: 0.5px;
-    background: var(--color-divider);
-    pointer-events: none;
-    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
-    @media (prefers-reduced-motion: reduce) {
-      transition: none;
-    }
-  }
   /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
   &:not([data-settled]) .session-tab,
   &:not([data-settled]) .session-tab::after {
@@ -1338,15 +1386,21 @@
   }
 }
 
-/* The room the tabs and "+" share: the tabs' widths come from it, never from their own list, so "+" stays at their edge. */
-@utility session-tab-room {
-  container-type: inline-size;
-}
-
-/* The tabs share the bar's room, then scroll once they reach their least width. */
+/* The tabs fill the pill, which fills the bar's room, all one width as Safari's [D52]; crowded, Chat and the front tab
+   keep 12rem [D53] and the others share what they leave down to their icon, then the strip scrolls. */
 @utility session-tab-list {
+  container-type: inline-size;
+  flex: 1 1 0;
   --session-tab-count: attr(data-count type(<number>), 1);
-  flex: 0 1 auto;
+  /* The pill's room less the gaps between its tabs. */
+  --session-tab-room: calc(100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2);
+  --session-tab-share: calc(var(--session-tab-room) / var(--session-tab-count));
+  /* The tabs kept at 12rem: Chat and the front tab, or Chat alone while it's in front. */
+  --session-tab-kept: 2;
+  &:has(> [data-tab-id="chat"] [aria-selected="true"]) {
+    --session-tab-kept: 1;
+  }
+  --session-tab-behind: calc((var(--session-tab-room) - var(--session-tab-kept) * var(--spacing-session-tab-active)) / max(var(--session-tab-count) - var(--session-tab-kept), 1));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::after {
     opacity: 0;
@@ -1354,25 +1408,47 @@
 }
 
 @utility session-tab {
+  position: relative;
   font-size: var(--text-label);
   line-height: var(--text-label--line-height);
   font-weight: 430;
-  /* The room less "+" (its size, its margin and the gaps either side of it) and the gaps between the tabs. */
-  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  /* The even share while it's more than what the kept tabs leave, which it is once they'd go under 12rem. */
+  flex: 0 0 max(var(--spacing-session-tab-icon), min(var(--session-tab-share), var(--session-tab-behind)));
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
+    margin var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
+  &[data-active],
+  &[data-tab-id="chat"] {
+    flex-basis: max(var(--spacing-session-tab-active), var(--session-tab-share));
+  }
+  /* The front tab stays in view as Safari's: scrolled past, it holds at the strip's edge and the others pass under it,
+     so its fill is the pill's and its own over the page, nothing showing through. */
+  &[data-active] {
+    position: sticky;
+    inset-inline: 0;
+    z-index: 1;
+    background-color: var(--color-background);
+    background-image: linear-gradient(var(--color-selection) 0 0), linear-gradient(var(--color-control) 0 0);
+    /* Brought into view (tab-bar.tsx), it's measured at its own place. */
+    &[data-measuring] {
+      position: relative;
+    }
+  }
+  /* Growing in and closing, it takes its gap with it, so the tabs fill the pill exactly all the way. */
   &[data-fresh] {
     @starting-style {
       flex-basis: 0;
       padding-inline: 0;
+      margin-inline-end: calc(var(--spacing) * -0.5);
       opacity: 0;
     }
   }
   &[data-closing] {
     flex-basis: 0;
     padding-inline: 0;
+    margin-inline-end: calc(var(--spacing) * -0.5);
     opacity: 0;
     overflow: hidden;
   }
@@ -1387,10 +1463,11 @@
     transition: opacity var(--duration-session-tab-rule);
     pointer-events: none;
   }
+  /* A rule between two tabs in back; none beside the front tab (no data-separator) or a hovered one, either side,
+     as Safari's; it only fades, so nothing moves [D437]. */
   &[data-separator]::after {
     opacity: 1;
   }
-  /* No rule beside a hovered tab, either side, as Chrome does; it only fades, so nothing moves [D437]. */
   &:hover::after,
   &:has(+ .session-tab:hover)::after {
     opacity: 0;
@@ -1405,10 +1482,6 @@
       transition: none;
     }
   }
-}
-
-@utility session-tab-title {
-  mask-image: var(--session-tab-title-mask);
 }
 
 /* Home's mark brightening under the pointer. */
@@ -1427,21 +1500,53 @@
   transition-duration: var(--duration-bar);
 }
 
-/* The pinned summary card easing in from the pane's end and out (the old app's): visible until it has gone. */
+/* The pinned summary card shrinking and fading in and out where it sits [D67]: visible until it has gone. */
 @utility summary-card-motion {
-  transition-property: opacity, translate, scale, visibility;
+  transition-property: opacity, scale, visibility;
   transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-summary-card);
+  transition-timing-function: var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
 }
 
-/* The sidebar's column easing between its widths on a spring; still while it is dragged. */
-@utility sidebar-motion {
-  transition-property: width;
+/* The card's room in the thread's pane, which the reading column leaves free (summary-column): the room itself eases,
+   not the column's move and width, so a fold that narrows the pane as it switches the card's layout moves both the
+   column's edges one way, never out and back [D68]. */
+@property --summary-room {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+@utility summary-room {
+  --summary-room: var(--spacing-summary-room);
+}
+/* The reading column centred in what the card's room leaves of the pane, at most --container-reading wide (the old
+   app's shift: aside by half the room, narrowed by all of it); with no room, as it was. */
+@utility summary-column {
+  translate: calc(var(--summary-room) / -2) 0;
+  max-width: min(var(--container-reading), 100% - var(--summary-room));
+}
+
+/* The card's room easing in and out: with the card, and with a fold when a panel's width is what makes it [D45, D49]. */
+@utility summary-shift-motion {
+  transition-property: --summary-room;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* The sidebar's column easing between its widths, or its card sliding off and onto the window at its width; still
+   while it is dragged. */
+@utility sidebar-motion {
+  transition-property: width, translate;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
+  &[data-slide] {
+    transition-property: translate;
+  }
   &[data-resizing] {
     transition: none;
   }
@@ -1492,6 +1597,32 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--edge-top), black calc(100% - var(--edge-bottom)), transparent);
   animation: edge-fade linear both;
   animation-timeline: scroll(self y);
+}
+/* The same fade along a row that scrolls sideways (the model picker's marks past ten). */
+@property --edge-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --edge-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes edge-fade-x {
+  from {
+    --edge-start: 0px;
+    --edge-end: var(--spacing-group-fade);
+  }
+  to {
+    --edge-start: var(--spacing-group-fade);
+    --edge-end: 0px;
+  }
+}
+@utility scroll-edge-fade-x {
+  mask-image: linear-gradient(to right, transparent, black var(--edge-start), black calc(100% - var(--edge-end)), transparent);
+  animation: edge-fade-x linear both;
+  animation-timeline: scroll(self x);
 }
 @utility edge-fade-shell {
   --edge-size-top: 2rem;

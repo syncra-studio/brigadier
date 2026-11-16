@@ -84,7 +84,10 @@ export function SettingsNav({ current }: { current: string }) {
   };
   return (
     <>
-      <NavHeader title="Settings" />
+      {/* At the card's top, its title on the app sidebar's name line [D48]. */}
+      <div className="shrink-0 pt-0.25">
+        <NavHeader title="Settings" />
+      </div>
       <div className="px-2 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
