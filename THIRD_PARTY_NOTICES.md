@@ -28,7 +28,7 @@ SOFTWARE.
 
 ## Lucide
 
-The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), under the ISC License:
+The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev), and `ListFilter` is Lucide's own list-filter, both under the ISC License:
 
 ```
 ISC License
@@ -47,6 +47,10 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
+
+## Codicons
+
+`FilesGlyph` in `app/ui/src/icons/index.tsx` is the SVG path of an icon from Codicons (https://github.com/microsoft/vscode-codicons), Copyright (c) Microsoft Corporation, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); the path is unchanged, wrapped as a React component, as the old app had it.
 
 ## Seti UI
 

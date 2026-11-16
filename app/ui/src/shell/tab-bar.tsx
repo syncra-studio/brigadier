@@ -2,7 +2,7 @@ import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
 import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
@@ -27,16 +27,21 @@ import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, mov
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
-/** The closing slide, --duration-session-tab: as long as the others take to grow, so "+" holds still. The tab itself is gone at once. */
-const CLOSING_MS = 200;
+/** The closing slide, --duration-session-tab: as long as the others take to grow, as Safari's. The tab itself is gone at once. */
+const CLOSING_MS = 300;
 
-const TAB = "session-tab app-no-drag group/tab relative flex h-control-md min-w-0 items-center gap-1 rounded-session-tab ps-2.5 pe-1.75 select-none";
-const LOOK = (active: boolean) => (active ? "bg-fill shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
-const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm focus-visible:focus-ring";
-const TITLE = "session-tab-title min-w-0 flex-1 overflow-clip text-start whitespace-nowrap";
+// Fixed across the window's top from its start edge, as far as the page's end inset [D48].
+const BAR = "app-drag titlebar-clear fixed start-0 end-surface-inset top-0 flex h-tab-bar items-center gap-2 pt-3.5 pe-1 win:pt-0 win:pe-caption";
+const TAB = "session-tab @container/tab app-no-drag group/tab flex h-7 min-w-0 items-center gap-1 rounded-capsule px-1 select-none";
+// The front tab's fill is session-tab's, opaque as it holds at the strip's edge.
+const LOOK = (active: boolean) => (active ? "shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill");
+// Its icon and title centred, a title too long cut with "…"; squeezed under 88px, the icon alone, as Safari's [D52].
+const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center gap-1 rounded-sm px-5 focus-visible:focus-ring @max-tab-icon/tab:px-0";
+const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 // A press is a click until it moves: a drag that started on the press would take the click.
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
-const CLOSE = (active: boolean) => cx("flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
+// × at the tab's start under the pointer, the front tab's too, over its padding so nothing moves; none under 64px, as Safari's.
+const CLOSE = "invisible absolute start-1 top-1 flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close group-focus-within/tab:visible group-hover/tab:visible hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
@@ -198,7 +203,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
           <TabIcon tab={tab} />
           <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
         </button>
-        <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>
+        <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE}>
           <X className="size-icon-xs" />
         </button>
       </ContextMenuTrigger>
@@ -280,12 +285,19 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     [owner, row],
   );
 
-  // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking.
+  // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking. It holds at
+  // the strip's edge (sticky), so it's measured at its own place for the moment: its place is what comes into view.
   const count = tabs.length;
   useEffect(() => {
     const list = strip.current;
     if (!list || count === 0) return;
-    const reveal = () => list.querySelector(`[data-tab-id="${CSS.escape(active)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const reveal = () => {
+      const tab = list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(active)}"]`);
+      if (!tab) return;
+      tab.toggleAttribute("data-measuring", true);
+      tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+      tab.toggleAttribute("data-measuring", false);
+    };
     reveal();
     const observer = new ResizeObserver(reveal);
     observer.observe(list);
@@ -295,18 +307,6 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       list.removeEventListener("transitionend", reveal);
     };
   }, [active, count]);
-
-  // The rule before the toolbar shows once the tabs fill the bar.
-  const [gap, setGap] = useState<HTMLDivElement | null>(null);
-  const [full, setFull] = useState(false);
-  useLayoutEffect(() => {
-    if (!gap) return;
-    const measure = () => setFull(gap.getBoundingClientRect().width < 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(gap);
-    return () => observer.disconnect();
-  }, [gap]);
 
   const onKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -329,8 +329,18 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     focus(order[next]!);
   };
 
+  // The wheel scrolls the strip from anywhere on the pill: the chat tab and the pill's edge move it as the tabs do,
+  // and a mouse wheel's up and down move it along; a sideways swipe over the strip it already scrolls itself.
+  const onWheel = (event: ReactWheelEvent) => {
+    const list = strip.current;
+    if (!list) return;
+    const sideways = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+    if (sideways && list.contains(event.target as Node)) return;
+    list.scrollLeft += sideways ? event.deltaX : event.deltaY;
+  };
+
   const newTab = (
-    <TooltipIconButton look="toolbar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className={cx("app-no-drag", !bare && "ms-0.5")} onClick={() => openTab(owner, "new")}>
+    <TooltipIconButton look="round" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
       <Plus />
     </TooltipIconButton>
   );
@@ -342,44 +352,51 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   // Home with no tab of its own has no tab bar, as the old app's untabbed draft: "+" leads the toolbar at the end [D39].
   if (bare)
     return (
-      <header data-slot="session-tabs" className="app-drag titlebar-clear flex h-titlebar shrink-0 items-center justify-end gap-1 pe-1">
-        {reconnecting}
-        {newTab}
-        <Toolbar owner={owner} />
-      </header>
+      <>
+        <div aria-hidden className="h-tab-bar shrink-0" />
+        <header data-slot="session-tabs" className={cx(BAR, "justify-end")}>
+          {reconnecting}
+          {newTab}
+          <Toolbar owner={owner} />
+        </header>
+      </>
     );
 
   return (
-    <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
-      {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
-      <div className="session-tab-room flex min-w-0 flex-1 items-center gap-1 self-stretch">
-        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex min-w-0 items-center gap-0.5" onKeyDown={onKeys}>
-          {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
-          <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">
-            {/* Held inside the strip, which is a tab high: it moves along the row only. */}
-            <DragDropProvider
-              sensors={SENSORS}
-              modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
-              onDragEnd={({ operation, canceled }) => {
-                const { source } = operation;
-                if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
-              }}
-            >
-              {presence.tabs.map((tab) => {
-                const index = tabs.findIndex((each) => each.id === tab.id);
-                const selected = tab.id === active;
-                const closing = presence.closing.has(tab.id);
-                return <OtherTab key={tab.id} owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />;
-              })}
-            </DragDropProvider>
+    <>
+      {/* The bar's room in the column; the bar itself runs across the window's top, over the sidebar too [D48]. */}
+      <div aria-hidden className="h-tab-bar shrink-0" />
+      <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
+        {/* The pill fills the room up to "+", the tabs sharing it as Safari's [D52]. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+          {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge.
+              The whole pill is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
+          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
+            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
+            <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto empty:hidden">
+              {/* Held inside the strip, which is a tab high: it moves along the row only. */}
+              <DragDropProvider
+                sensors={SENSORS}
+                modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
+                onDragEnd={({ operation, canceled }) => {
+                  const { source } = operation;
+                  if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
+                }}
+              >
+                {presence.tabs.map((tab) => {
+                  const index = tabs.findIndex((each) => each.id === tab.id);
+                  const selected = tab.id === active;
+                  const closing = presence.closing.has(tab.id);
+                  return <OtherTab key={tab.id} owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />;
+                })}
+              </DragDropProvider>
+            </div>
           </div>
+          {newTab}
+          {reconnecting}
         </div>
-        {newTab}
-        {reconnecting}
-        <div ref={setGap} className="min-w-0 flex-1 self-stretch" />
-      </div>
-      <span aria-hidden data-hidden={!full || undefined} className="mx-0.5 h-4 w-px shrink-0 bg-fill transition-opacity data-hidden:opacity-0 motion-reduce:transition-none" />
-      <Toolbar owner={owner} />
-    </header>
+        <Toolbar owner={owner} />
+      </header>
+    </>
   );
 }

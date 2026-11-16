@@ -12,7 +12,7 @@ export type Quota = { account: string; name: string; limits: { name: string; use
 export function QuotaLines({ usage }: { usage: readonly Quota[] }) {
   const now = Date.now();
   return (
-    <div data-slot="model-picker-quota" className="flex flex-col gap-0.5 px-2.5 pt-2 pb-1.75 text-xs text-muted-foreground tabular-nums">
+    <div data-slot="model-picker-quota" className="flex shrink-0 flex-col gap-0.5 text-xs text-muted-foreground tabular-nums">
       {usage.map((account) => (
         <p key={account.account} className="truncate">
           {quotaWords(account, now)}

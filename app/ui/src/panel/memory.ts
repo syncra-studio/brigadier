@@ -80,3 +80,23 @@ export function setPanelOpen(open: boolean) {
 export function setPanelWidth(width: number) {
   act(["width", String(width)], (now) => ({ ...now, width }));
 }
+
+/** The right panel's views, in its icon row's order [D56]. */
+export type PanelTab = "files" | "workers";
+
+// shortcut: each session's last view lasts until the app quits, as the old app's per-session tab; keep it in Rust's panel memory if the owner wants it kept.
+let tabs: Record<string, PanelTab> = {};
+
+/** The view the panel shows for `owner`, Files until another is picked. */
+export function usePanelTab(owner: string): PanelTab {
+  return useSyncExternalStore(subscribe, () => tabs[owner] ?? "files");
+}
+
+/** Shows `tab` for `owner`, opening the panel if it's closed, as the old app's openWorkspacePane. */
+export function openPanel(owner: string, tab: PanelTab) {
+  if (tabs[owner] !== tab) {
+    tabs = { ...tabs, [owner]: tab };
+    for (const listener of listeners) listener();
+  }
+  if (!memory.open) setPanelOpen(true);
+}
