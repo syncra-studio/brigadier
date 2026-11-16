@@ -6,7 +6,7 @@
 use security_framework::os::macos::keychain::SecKeychain;
 use serde_json::{Map, Value};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const SERVICE: &str = "Brigadier";
@@ -24,12 +24,19 @@ fn fail(what: &str) -> impl Fn(security_framework::base::Error) -> io::Error {
     }
 }
 
-/// The login keychain; a hidden instance's throwaway file instead, never on the default data folder [D416].
+/// The login keychain; a hidden instance's throwaway file instead, never on the default data folder
+/// [D416]. An instance on another data folder without one never reaches the login keychain, so it
+/// can't put up a prompt there [D449].
 fn keychain() -> io::Result<SecKeychain> {
-    let hidden = std::env::var_os("BRIGADIER_DATA").and(std::env::var_os("BRIGADIER_KEYCHAIN"));
-    match hidden {
-        Some(file) => SecKeychain::open(file),
-        None => SecKeychain::default(),
+    let data = std::env::var_os("BRIGADIER_DATA").map(PathBuf::from);
+    match (&data, std::env::var_os("BRIGADIER_KEYCHAIN")) {
+        (Some(_), Some(file)) => SecKeychain::open(file),
+        (Some(d), None) if *d != crate::default_data_dir() => {
+            return Err(io::Error::other(
+                "Brigadier's Keychain item: this instance has its own data folder (BRIGADIER_DATA) and no BRIGADIER_KEYCHAIN, so it doesn't use your login keychain.",
+            ));
+        }
+        _ => SecKeychain::default(),
     }
     .map_err(fail("open"))
 }

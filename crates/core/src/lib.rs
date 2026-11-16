@@ -170,7 +170,12 @@ impl Spec {
 pub fn data_dir() -> PathBuf {
     std::env::var_os("BRIGADIER_DATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| adapters::home_path("Library/Application Support/Brigadier"))
+        .unwrap_or_else(default_data_dir)
+}
+
+/// The data folder when BRIGADIER_DATA doesn't name another.
+pub fn default_data_dir() -> PathBuf {
+    adapters::home_path("Library/Application Support/Brigadier")
 }
 
 /// A session id names one folder under `sessions/`, so it may hold only plain name characters:
