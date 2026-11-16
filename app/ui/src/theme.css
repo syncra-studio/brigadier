@@ -1908,6 +1908,82 @@
   &[data-locked] webview {
     pointer-events: none;
   }
+  /* Behind its tab, painting for an agent's input or picture: the app over it covers it (layer.ts's whilePainting). */
+  & webview[data-painting] {
+    visibility: visible;
+  }
+}
+/* An agent's tab: its shield and named cursor (browser/overlay.ts), with the old agentOverlay's fixed colours, since
+   it lies over any site. */
+#brigadier-agent-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  contain: strict;
+  pointer-events: none;
+}
+.brigadier-agent-frame {
+  position: absolute;
+  display: none;
+  left: attr(data-left px, 0px);
+  top: attr(data-top px, 0px);
+  width: attr(data-width px, 0px);
+  height: attr(data-height px, 0px);
+  overflow: hidden;
+  outline: none;
+  &[data-shown] {
+    display: block;
+  }
+  &[data-shielded] {
+    pointer-events: auto;
+  }
+}
+/* A menu of the app is open or a drag crosses the page: the click is the app's, as it is over a page. */
+#brigadier-tab-layer[data-locked] ~ #brigadier-agent-layer .brigadier-agent-frame {
+  pointer-events: none;
+}
+.brigadier-agent-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+  will-change: transform;
+  transform: translate(calc(attr(data-x px, 0px) - 2px), calc(attr(data-y px, 0px) - 1px));
+  & path {
+    fill: #1a1a1a;
+    stroke: #fff;
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+  }
+}
+.brigadier-agent-name {
+  margin: 14px 0 0 -3px;
+  max-width: 180px;
+  padding: 2px 7px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #1a1a1a;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.5);
+  font: 500 11px/15px system-ui, sans-serif;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.brigadier-agent-press {
+  position: absolute;
+  left: attr(data-x px, 0px);
+  top: attr(data-y px, 0px);
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 2px solid #1a1a1a;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
+  border-radius: 50%;
+  pointer-events: none;
 }
 #brigadier-tab-layer ~ #root {
   position: relative;

@@ -210,7 +210,7 @@ impl Tabs {
     }
 }
 
-/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | file <tab> <path> <line|-> <keep|preview> |
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen]`, for a session or Home.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -391,6 +391,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .ok_or_else(|| io::Error::other("No such browser tab"))?;
             now.tabs[at].profile = Some(profile.into());
         }
+        "drive" => now.drive(arg(args, 3)?, arg(args, 4)?, arg(args, 5)?)?,
         "select" => {
             let tab = arg(args, 3)?;
             if now.exists(tab) {

@@ -3,6 +3,7 @@
 mod bookmarks;
 mod dates;
 mod history;
+mod hub;
 pub(crate) mod profiles;
 mod records;
 mod store;
@@ -16,9 +17,16 @@ use std::{fs, io};
 use store::{Device, Store};
 use types::{HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
 
+pub(crate) use hub::{HELP, answered};
+pub use hub::{agent, leave, page};
+
 const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear ... [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
+    if args.get(1).is_some_and(|a| a == "answer") || args.get(2).is_some_and(|a| a == "paused") {
+        return hub::run(args);
+    }
     for flag in [
         "--profile",
         "--tab",

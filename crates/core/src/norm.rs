@@ -114,7 +114,12 @@ impl Norm {
                             .insert(moved.into(), v["turns"].as_u64().unwrap_or(0));
                     }
                 }
-                v["kind"] = "note".into();
+                // Brigadier's own card for a browser action, as any agent's approval [D518].
+                if v["event"] == "browser" && v["item"].is_object() {
+                    v = v["item"].take();
+                } else {
+                    v["kind"] = "note".into();
+                }
                 emit(self, v);
             }
             kind => emit(

@@ -135,6 +135,16 @@ export function useTabsFromRust(owner: string): void {
 }
 
 export const tabsOf = (owner: string): Tabs => slotOf(owner).shown;
+
+/** `owner`'s tabs, asked of Rust first if nothing has yet: an agent's browser call on a session not on screen. */
+export function tabsRead(owner: string): Promise<Tabs> {
+  const slot = slotOf(owner);
+  if (slot.rev !== null) return Promise.resolve(slot.shown);
+  return new Promise((resolve) => ask({ op: "run", args: ["tabs", owner] }, (reply) => {
+    if (reply.ok) land(slot, reply);
+    resolve(slot.shown);
+  }));
+}
 /** Chat first, then the rest. */
 export const tabOrder = ({ tabs }: Tabs): string[] => [CHAT, ...tabs.map((tab) => tab.id)];
 /** True once, for a tab just opened: it grows into its slot; one already open at a switch doesn't. */
@@ -224,6 +234,17 @@ export function setTabProfile(owner: string, id: string, profile: string): void 
 
 /** Every open tab of every chat and session the app has read, with where it is. */
 export const allTabs = (): { owner: string; tab: Tab }[] => [...slots].flatMap(([owner, slot]) => slot.shown.tabs.map((tab) => ({ owner, tab })));
+
+/** An agent's browser tab `id`, opened at the end with the front left as it is, or one it goes on in, as Rust does. */
+export function driveTab(owner: string, id: string, url: string, driver: string): void {
+  act(owner, {
+    args: ["drive", id, url, driver],
+    change: (now) => {
+      if (now.tabs.some((tab) => tab.id === id)) return { ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, driver } : tab)) };
+      return { ...now, tabs: [...now.tabs, { id, kind: "browser", opener: now.active, target: url, driver }] };
+    },
+  });
+}
 
 /** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
 export const tabOpenAnywhere = (id: string): boolean => tabAnywhere(id) !== null;

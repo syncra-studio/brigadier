@@ -4,7 +4,7 @@ import { app, session } from "electron";
 
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
 import { watchProfileCookies } from "./browserClearData";
-import { watchGuest } from "./browserAgent";
+import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
@@ -27,7 +27,8 @@ export function installBrowserHost(origin: string): void {
   installGuestFavicon();
   installBrowserDevtools();
   installProfileStore();
-  // shortcut: no agent, import, bookmarks or logins until their sections land; their installs go here.
+  installBrowserAgent();
+  // shortcut: no import, bookmarks or logins until their sections land; their installs go here.
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });
@@ -43,6 +44,7 @@ export function installBrowserHost(origin: string): void {
     applyPermissionPolicy(created);
     keepSessionCookies(created);
     watchProfileCookies(created);
+    watchNetwork(created);
   });
 
   app.on("web-contents-created", (_event, contents) => {

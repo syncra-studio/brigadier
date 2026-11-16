@@ -13,9 +13,15 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 11] = [
-    "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search", "mcp",
+pub const COMMANDS: [&str; 12] = [
+    "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search",
+    "mcp", "browser",
 ];
+
+/// The `brigadier browser` actions that only read, or open a local page: the grant covers them.
+/// Every other acts in the user's signed-in pages, so like `mcp call` it follows the session's
+/// level [D503, D3023].
+pub const BROWSER_READS: [&str; 6] = ["snapshot", "events", "screenshot", "show", "help", "--help"];
 
 /// How a message from another session opens, for its receiving agent; its bubble shows the rest [D2034].
 pub const PEER_HEAD: &str = "[From session ";
@@ -111,9 +117,39 @@ pub fn call(command: &str) -> bool {
     let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
     let mcp_call = words.get(1).is_some_and(|w| w == "mcp")
         && !action.is_some_and(|a| a == "list" || a == "tools");
+    let browser_act = words.get(1).is_some_and(|w| w == "browser")
+        && !match words.get(2).map(String::as_str) {
+            Some("open") => words.get(3).is_some_and(|u| local_address(u)),
+            a => a.is_some_and(|a| BROWSER_READS.contains(&a)),
+        };
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
         && !mcp_call
+        && !browser_act
+}
+
+/// Whether `url`'s host is one a local development server answers on: localhost, *.localhost,
+/// 127.x, 0.0.0.0 and [::1] [D507].
+pub fn local_address(url: &str) -> bool {
+    let Some((_, rest)) = url.trim().split_once("://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority
+        .rsplit('@')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if let Some(after) = host.strip_prefix("[::1]") {
+        return after.is_empty() || after.starts_with(':');
+    }
+    let host = host.split(':').next().unwrap_or_default();
+    let loopback = host.strip_prefix("127.").is_some_and(|rest| {
+        let parts: Vec<&str> = rest.split('.').collect();
+        parts.len() == 3
+            && (parts.iter()).all(|p| (1..=3).contains(&p.len()) && p.parse::<u8>().is_ok())
+    });
+    host == "localhost" || host.ends_with(".localhost") || host == "0.0.0.0" || loopback
 }
 
 /// The command after any `cd <folder> &&`, each folder plain words only; None when one isn't.

@@ -67,3 +67,26 @@ pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
         )))
     }
 }
+
+impl super::Tabs {
+    /// An agent's browser tab: opened at the end with the front left as it is, or one it goes on
+    /// in, now worked by `driver` [D516].
+    pub(super) fn drive(&mut self, tab: &str, url: &str, driver: &str) -> io::Result<()> {
+        core::check_id(tab)?;
+        core::check_id(driver)?;
+        check_target("browser", Some(url))?;
+        match self.at(tab).filter(|&at| self.tabs[at].kind == "browser") {
+            Some(at) => self.tabs[at].driver = Some(driver.into()),
+            None if !self.exists(tab) => self.tabs.push(super::Tab {
+                id: tab.into(),
+                kind: "browser".into(),
+                opener: self.active.clone(),
+                target: Some(url.into()),
+                driver: Some(driver.into()),
+                ..Default::default()
+            }),
+            None => {}
+        }
+        Ok(())
+    }
+}

@@ -10,6 +10,8 @@
 
 import { readFavicon } from "./favicon";
 import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
+import { watchUserComposition } from "./focus-guard";
+import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
 import { recordDates } from "./profiles";
 
@@ -33,6 +35,8 @@ declare global {
       profiles(op: string, args: { profile: string } & Record<string, unknown>): Promise<unknown>;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
+      /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
+      agent(call: Record<string, unknown>): Promise<unknown>;
     };
   }
 }
@@ -87,6 +91,8 @@ type Page = {
   /** The element's own methods throw until its first dom-ready, so this follows the events. */
   url: string;
   loading: boolean;
+  /** The page loads so far: an agent's refs and the user's yes hold within one. */
+  generation: number;
 };
 
 const pages = new Map<string, Page>();
@@ -152,12 +158,14 @@ export function installTabLayer(): void {
   document.body.prepend(layer);
 
   installKeyboardHandover();
-  // shortcut: no agent overlays, focus guard or saved logins until those sections land (agentOverlay, agentFocusGuard, guestLogins).
+  installAgentOverlays();
+  watchUserComposition();
+  // shortcut: no saved logins until that section lands (guestLogins).
 
   // A drag anywhere in the app must not fall into a page it crosses: the divider's or a text
   // selection's pointer stays with the app until it's let go.
   window.addEventListener("pointerdown", (event) => {
-    if (event.target instanceof Element && event.target.closest("webview")) return;
+    if (event.target instanceof Element && event.target.closest("webview, .brigadier-agent-frame")) return;
     pageHadKey = false;
     layer?.toggleAttribute("data-locked", true);
   }, { capture: true });
@@ -193,6 +201,7 @@ function need(id: string): Page {
 
 function place(page: Page, bounds: BrowserBounds | null): void {
   const { element } = page;
+  placeOverlay(page.id, bounds);
   if (bounds === null) {
     element.removeAttribute("data-shown");
     if (wantsKeyboard === page.id) wantsKeyboard = null;
@@ -235,7 +244,7 @@ function listen(page: Page): void {
   // A load drops a find in flight, with no answer from the old document: the bar looks again when it stops.
   on("did-start-loading", () => { answerFind(page, NOT_FOUND); page.loading = true; loadChanged(); });
   on("did-stop-loading", () => { page.loading = false; loadChanged(); });
-  on<{ url: string }>("did-navigate", ({ url }) => { page.url = url; loadChanged(); });
+  on<{ url: string }>("did-navigate", ({ url }) => { page.url = url; page.generation += 1; loadChanged(); });
   on<{ url: string; isMainFrame: boolean }>("did-navigate-in-page", ({ url, isMainFrame }) => {
     // A frame's own navigation adds to the tab's history too.
     if (!isMainFrame) { history(); return; }
@@ -287,11 +296,12 @@ async function makePage(id: string, url: string, profileId: string, bounds: Brow
   element.setAttribute("partition", await window.brigadierShell.profilePartition(profileId));
   element.setAttribute("allowpopups", "");
   element.dataset.tab = id;
-  const page: Page = { id, element, profileId, emit, ready: false, finding: null, shown: false, url, loading: true };
+  const page: Page = { id, element, profileId, emit, ready: false, finding: null, shown: false, url, loading: true, generation: 0 };
   pages.set(id, page);
   listen(page);
   place(page, bounds);
   element.removeAttribute("data-shown");
+  page.shown = false;
   await new Promise<void>((resolve) => {
     element.addEventListener("dom-ready", () => { page.ready = true; resolve(); }, { once: true });
     // Main destroys a guest with any other first address, and dom-ready would never come (a tab restored at a blob:).
@@ -311,6 +321,37 @@ function load(page: Page, url: string): void {
 /** Loads `url` in the tab's page where it is, showing nothing new. */
 export function loadPage(id: string, url: string): void {
   load(need(id), url);
+}
+
+/** The tab's guest, for an agent's call; the element's methods work only from its first dom-ready. */
+export function agentPage(id: string): { guest: number; element: Webview; generation: number } {
+  const page = need(id);
+  if (!page.ready) throw new Error(`The page of tab ${id} isn't ready yet.`);
+  return { guest: page.element.getWebContentsId(), element: page.element, generation: page.generation };
+}
+
+/**
+ * Runs `take` with the tab's page painting. A page behind its tab has no surface for capturePage (UnknownVizError). The
+ * layer lies under the app, which covers it where it cuts no hole, so the page can show for this long with nothing seen.
+ */
+export async function whilePainting<T>(id: string, take: () => Promise<T>): Promise<T> {
+  const { element, shown } = need(id);
+  if (shown) return take();
+  element.toggleAttribute("data-painting", true);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return await take();
+  } finally {
+    element.removeAttribute("data-painting");
+  }
+}
+
+/** Where the tab's page shows now; null behind its tab. */
+export function pageBounds(id: string): BrowserBounds | null {
+  const { element, shown } = need(id);
+  if (!shown) return null;
+  const { left, top, width, height } = element.dataset;
+  return { x: Number(left), y: Number(top), width: Number(width), height: Number(height) };
 }
 
 export function navigatePage(id: string, url: string, bounds: BrowserBounds): void {
@@ -401,5 +442,6 @@ export function closePage(id: string): void {
   if (!page) return;
   answerFind(page, NOT_FOUND);
   pages.delete(id);
+  dropOverlay(id);
   page.element.remove();
 }

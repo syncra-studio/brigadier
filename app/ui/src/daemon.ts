@@ -84,6 +84,7 @@ const listeners = new Set<() => void>();
 const replies = new Map<number, (frame: Record<string, any>) => void>();
 let onTerm: ((frame: Record<string, any>) => void) | undefined;
 let onGit: ((frame: Record<string, any>) => void) | undefined;
+let onBrowser: ((call: Record<string, any>) => void) | undefined;
 
 /** The open thread's request: what the view shows beside the rows (loading, not found, an error). */
 export type ThreadState = { id: string; status: "loading" | "ready" | "missing" | "error"; error?: string };
@@ -131,6 +132,12 @@ export function ask(request: object, onReply?: (frame: Record<string, any>) => v
 /** Where the git watch's pushed frames go: one watch per connection [D71]. */
 export function setGitHandler(handler: typeof onGit): void {
   onGit = handler;
+}
+
+/** Where agents' browser calls go: this window runs them once the daemon is told so, on each connect [D516]. */
+export function setBrowserHandler(handler: typeof onBrowser): void {
+  onBrowser = handler;
+  if (view.daemon) send({ op: "browser" });
 }
 
 /** Where a sign-in terminal's pushed frames go: one at a time [D45]. */
@@ -298,9 +305,11 @@ function onFrame(frame: Record<string, any>): void {
   }
   if (frame.term !== undefined) return onTerm?.(frame);
   if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
+  if (frame.browser !== undefined && frame.re === undefined) return onBrowser?.(frame.browser);
   if (frame.status === "running") {
     set({ daemon: { pid: frame.pid, version: frame.version, build: frame.build }, refused: undefined });
     subscribe();
+    if (onBrowser) send({ op: "browser" });
     // The open thread's snapshot reaches the rows it still shows, so a place far up stays put [D537].
     watch(reachOf(session));
   } else if (frame.status === "refused") {

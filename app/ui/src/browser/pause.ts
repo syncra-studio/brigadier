@@ -18,6 +18,16 @@ const set = (change: (now: Pause) => Partial<Pause>) => {
 const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
 export const useAgentPause = (): Pause => useSyncExternalStore(subscribe, () => state);
 
+/** Hears each change of the pauses, with what they were before (the agent's side lets go and takes back its hold). */
+export function onPauseChanged(listener: (now: Pause, before: Pause) => void): () => void {
+  let before = state;
+  return subscribe(() => {
+    const was = before;
+    before = state;
+    listener(state, was);
+  });
+}
+
 /** The agent working browser tab `id`, with its session; null for the user's own tabs. */
 export function driverOf(id: string): { session: string; driver: string } | null {
   const found = tabAnywhere(id);

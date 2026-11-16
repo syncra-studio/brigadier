@@ -46,6 +46,7 @@ const subscribe = (listener: () => void) => {
 };
 
 export const useBrowserPage = (id: string): BrowserPage | undefined => useSyncExternalStore(subscribe, () => pages.get(id));
+export const browserPage = (id: string): BrowserPage | undefined => pages.get(id);
 
 /** Bumped on every change, so a reader of all the pages draws again. */
 let version = 0;
@@ -184,6 +185,9 @@ export function syncZoom(id: string): void {
 }
 
 export const zoomStep = (id: string, by: 1 | -1) => zoomPage(id, stepZoom(pages.get(id)?.zoom ?? 1, by));
+
+/** A load starts now (the page says so too, a moment later). */
+export const loadStarts = (id: string) => update(id, { loading: true });
 
 export function dismissBlocked(id: string): void {
   update(id, { blocked: null });

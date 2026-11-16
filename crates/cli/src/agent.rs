@@ -29,6 +29,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier skill [name]      the user's skills, or one whole
   brigadier search \"…\"        every session's past: messages, tool calls, errors holding these words
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
+  brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.
@@ -220,6 +221,9 @@ pub fn run(
     if args.first().is_some_and(|a| a == "mcp") {
         return crate::relay::mcp(data, me, args);
     }
+    if args.first().is_some_and(|a| a == "browser") {
+        return crate::browser::agent(data, me, args, here);
+    }
     let call = match parse(args) {
         Ok(c) => c,
         Err(e) => return e,
@@ -228,6 +232,7 @@ pub fn run(
         let text = match call.id {
             Some("brigade") => include_str!("agent/brigade.txt"),
             Some("reviews") => include_str!("agent/reviews.txt"),
+            Some("browser") => crate::browser::HELP,
             Some(c) => match spec(c) {
                 Some((h, ..)) => h,
                 None => return refuse(&format!("No command `{c}`. `brigadier help` lists yours.")),

@@ -76,5 +76,6 @@ contextBridge.exposeInMainWorld("brigadierShell", {
   devtools: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:devtools", op, args),
   profiles: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:profiles", op, args),
   onBrowserDates: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:browser-dates", (_event, details) => listener(details)),
+  agent: (call: unknown) => ipcRenderer.invoke("brigadier:agent", call),
   onAgentEvent: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:agent-event", (_event, details) => listener(details)),
 });

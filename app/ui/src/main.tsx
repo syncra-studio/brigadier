@@ -45,6 +45,7 @@ import { SidebarFoot } from "./sidebar/foot";
 import { listenToSearchKey } from "./sidebar/search";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
+import { installBrowserAgent } from "./browser/agent";
 import { installTabLayer } from "./browser/layer";
 import { installLinks } from "./browser/links";
 import "./theme.css";
@@ -292,8 +293,11 @@ const Screen = Gallery ?? ThreadDemo;
 
 // The platform the window is drawn for, which the `win:` styles read [new-design].
 if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
-// The browser's pages, under the app.
-if (window.brigadier) installTabLayer();
+// The browser's pages, under the app, and the agents' calls on them.
+if (window.brigadier) {
+  installTabLayer();
+  installBrowserAgent();
+}
 installLinks();
 
 createRoot(document.getElementById("root")!).render(

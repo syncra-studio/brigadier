@@ -1,5 +1,7 @@
 import { store } from "../onboarding/api";
+import { agentDrive } from "./hands";
 import { type BrowserBounds, guestOf } from "./layer";
+import { isDriven } from "./pause";
 
 /**
  * The developer tools of each Browser tab: DevTools docked beside or below the page, the element picker and device
@@ -77,12 +79,12 @@ export function changeDev(id: string, change: Partial<TabDev>): void {
 const devtools = <T>(op: string, id: string, args: Record<string, unknown> = {}) =>
   window.brigadierShell.devtools(op, { guest: guestOf(id), ...args }) as Promise<T>;
 
-/** Starts the picker; ends with what was picked, or with nothing when the user leaves it. */
+/** Starts the picker; ends with what was picked, or with nothing when the user leaves it. The tab's agent lets go first. */
 export async function startPicking(id: string): Promise<void> {
   if (devOf(id).picking) return;
   changeDev(id, { picking: true, picked: null });
   try {
-    // shortcut: no agent hold to let go of first until the agent verbs land (the old browserAgentDrive(id, false)).
+    if (isDriven(id)) await agentDrive(id, false);
     const picked = await devtools<PickedElement | null>("pick", id);
     changeDev(id, { picking: false, picked });
   } catch (error) {

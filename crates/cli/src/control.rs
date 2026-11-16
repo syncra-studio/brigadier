@@ -9,7 +9,9 @@ use brigadier_core::fold::Fold;
 use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{io, process, thread};
@@ -93,10 +95,8 @@ pub(crate) fn deliver(
 /// `answer <id> <request> --answers JSON` for a question: one answer per item, null skipped [D177].
 pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     let usage = || io::Error::other(crate::USAGE);
-    let (id, request) = (
-        args.get(1).ok_or_else(usage)?,
-        args.get(2).ok_or_else(usage)?,
-    );
+    let id = args.get(1).ok_or_else(usage)?;
+    let request = args.get(2).ok_or_else(usage)?;
     let decision = args.get(3).filter(|d| !d.starts_with("--")).cloned();
     let reason = flag(args, "--reason");
     let answers: Option<Vec<Value>> = match flag(args, "--answers") {
@@ -136,7 +136,7 @@ pub fn answer_as(
 
 /// Brigadier's own answer to an exact repeat of a command allowed for the session, which its
 /// agent's CLI asks again [D389].
-pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+pub fn repeats(data: &Path, rows: &BTreeMap<String, Value>) {
     for (id, row) in rows {
         if let Some(request) = row["reason"]["repeat"].as_str() {
             let _ = answer_as(data, id, request, "allow", None, "brigadier");
@@ -148,9 +148,8 @@ pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
 /// Ask for the rest of that turn, its agent told to retry what was denied [D460], and at the
 /// session's own level again once it ends, however it ends [D453, D455]. Each once a turn; a new
 /// child starts at the session's level anyway.
-pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
-    static DONE: std::sync::Mutex<std::collections::BTreeSet<String>> =
-        std::sync::Mutex::new(std::collections::BTreeSet::new());
+pub fn unchecked(data: &Path, rows: &BTreeMap<String, Value>) {
+    static DONE: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
     for (id, row) in rows {
         let (Some(to), Some(turn)) = (row["unchecked"][0].as_str(), row["unchecked"][1].as_str())
         else {
@@ -193,9 +192,8 @@ pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) 
 
 /// A session the user stopped or paused that its CLI woke on its own (a background task ended):
 /// stopped again at once, as the user left it, by the same hand [D90, D95].
-pub fn hush(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
-    static HUSHING: std::sync::Mutex<std::collections::BTreeSet<String>> =
-        std::sync::Mutex::new(std::collections::BTreeSet::new());
+pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
+    static HUSHING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
     for (id, row) in rows {
         let Some(by) = row["woke"].as_str() else {
             continue;
@@ -214,10 +212,11 @@ pub fn hush(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
 }
 
 fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
-    let (decision, answers) = (
-        control["decision"].as_str().map(String::from),
-        control["answers"].as_array().cloned(),
-    );
+    if request.starts_with("browser-") {
+        return crate::browser::answered(data, id, request, &control);
+    }
+    let decision = control["decision"].as_str().map(String::from);
+    let answers = control["answers"].as_array().cloned();
     let req = json!({"cid": new_cid(), "control": control});
     deliver(data, id, req, true, |f| {
         let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request)) else {

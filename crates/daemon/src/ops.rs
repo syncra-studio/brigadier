@@ -229,6 +229,11 @@ pub(super) fn serve(
                 let (out, data, gitting) = (out.clone(), PathBuf::from(data), gitting.clone());
                 thread::spawn(move || git::subscribe(&data, conn, &req, &out, mine, &gitting));
             }
+            // This connection's page runs the agents' browser calls, pushed as `{"browser": …}` [D516].
+            "browser" => {
+                brigadier::browser::page(conn, out.clone());
+                let _ = out.send(json!({"re": re, "ok": true}).to_string());
+            }
             "git_refresh" => {
                 git::refresh(conn);
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
@@ -334,6 +339,7 @@ pub(super) fn serve(
     terming.fetch_add(1, Ordering::SeqCst);
     gitting.fetch_add(1, Ordering::SeqCst);
     git::leave(conn);
+    brigadier::browser::leave(conn);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
 }

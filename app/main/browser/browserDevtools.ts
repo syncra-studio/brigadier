@@ -9,7 +9,7 @@
 import { BrowserWindow, webContents, WebContentsView, type IpcMainInvokeEvent, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
-import { devToolsEnded, devToolsOpen } from "./browserAgent";
+import { beforeDevTools, devToolsEnded, devToolsOpen } from "./browserAgent";
 import { agentScriptBody, sweptAndScrubbed } from "./browserAgentSecrets";
 
 /** The session of DevTools' front ends, in memory: it isn't a profile and holds nothing of one. */
@@ -54,7 +54,7 @@ async function openDevTools(sender: WebContents, guest: WebContents, bounds: Bou
   fronts.set(guest.id, { view, window });
   placeFront(guest.id, bounds);
   window.contentView.addChildView(view);
-  // shortcut: no agent hold to let go of until the agent verbs land; then `await beforeDevTools(guest)` goes here.
+  await beforeDevTools(guest);
   view.webContents.once("destroyed", () => devToolsEnded(guest));
   guest.once("destroyed", () => dropFront(guest.id));
   guest.setDevToolsWebContents(view.webContents);

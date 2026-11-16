@@ -5,6 +5,7 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { ArrowUpRight, Globe } from "../icons";
+import { useDaemon } from "../daemon";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
@@ -13,7 +14,7 @@ import { showPage } from "./hole";
 import { type BrowserKey, browserKey, stepZoom } from "./keys";
 import { type BrowserBounds, focusPage, go, placePage, printPage } from "./layer";
 import { closeBrowserPage, dismissBlocked, openPage, originOf, syncZoom, useBrowserPage, zoomPage } from "./pages";
-import { pageShows, userUsed } from "./pause";
+import { handBack, pageShows, useAgentPause, userUsed } from "./pause";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
 import { BrowserOptions } from "./options";
@@ -60,6 +61,12 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   const [suggesting, setSuggesting] = useState(true);
   const made = page !== undefined;
   const initialUrl = tab.target;
+  const pause = useAgentPause();
+  const paused = id in pause.paused;
+  const devtoolsOpen = id in pause.devtools;
+  // The agent working the tab, as the user knows it.
+  const { rows } = useDaemon();
+  const driver = tab.driver ? (rows?.find((row) => row.id === tab.driver)?.title ?? "The agent") : null;
 
   useEffect(() => {
     if (!active || !initialUrl || made || !area.current) return;
@@ -367,9 +374,21 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
         {/* shortcut: no downloads or screenshot until their sections land; they go here, in that order. */}
         <BrowserDevButton id={id} ready={ready} />
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
-        {/* shortcut: no agent pause or sign-in banners until agents drive the browser (S11). */}
       </div>
       {finding && ready && <FindBar id={id} input={findInput} onClose={hideFind} />}
+      {/* shortcut: no sign-in or captcha stop words in this banner until S12 ports browserSignIn. */}
+      {paused && driver !== null && (
+        <Banner
+          slot="browser-paused"
+          text={devtoolsOpen
+            ? <>DevTools is open on this page, so <span className="font-medium">{driver}</span> is waiting. Close it to hand the page back.</>
+            : <>You're using this page, so <span className="font-medium">{driver}</span> is waiting.</>}
+        >
+          <Button size="sm" disabled={devtoolsOpen} onClick={() => handBack(id)}>
+            Continue
+          </Button>
+        </Banner>
+      )}
       <BrowserPickerBar id={id} />
       <BrowserDeviceBar id={id} />
       {page?.blocked && (
