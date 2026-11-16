@@ -107,7 +107,7 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
         match s("kind") {
             "spawned" => (spawn, stop) = (item.clone(), None),
             "resume_id" => {
-                let name = format!("{} {}", s("backend"), &s("id")[..s("id").len().min(8)]);
+                let name = format!("{} {}", s("backend"), s("id")); // whole: Codex's and OpenCode's share their start
                 cur = convs
                     .iter()
                     .position(|c| c.name == name)
@@ -158,10 +158,10 @@ fn audit(spec: &Spec) -> io::Result<Sections> {
                     .skip(1)
                     .map(|w: &String| w.split_whitespace().count());
                 let line = format!(
-                    "{} #{f} {why}: a fresh {} conversation, with {} in context before it; the user's words before it: {}, {} of three words or fewer",
+                    "{} #{f} {why}: a fresh {} conversation, with {} in context at most before it; the user's words before it: {}, {} of three words or fewer",
                     clock(ts),
                     s("backend"),
-                    k(ctx),
+                    k((convs.get(cur).and_then(|c| c.ctx.iter().max().copied())).unwrap_or(ctx)), // its conversation's peak
                     said.clone().count(),
                     said.filter(|&n| n <= 3).count()
                 );
