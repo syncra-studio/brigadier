@@ -251,7 +251,15 @@ pub(crate) fn archive(data: &Path, id: &str, steps: bool) -> Vec<core::archive::
     all
 }
 
-pub(crate) fn read(data: &Path, id: &str, at: Option<&str>, last: u64, user: bool) -> Value {
+/// `row` is the session's own index row: its agent and project head what's read.
+pub(crate) fn read(
+    data: &Path,
+    id: &str,
+    row: &Value,
+    at: Option<&str>,
+    last: u64,
+    user: bool,
+) -> Value {
     let mut all = archive(data, id, at.is_some());
     if user {
         all.retain(|e| e.from == "user");
@@ -294,8 +302,21 @@ pub(crate) fn read(data: &Path, id: &str, at: Option<&str>, last: u64, user: boo
             last + from as u64
         );
     }
+    let agent = row["backend"].as_str().unwrap_or("");
+    let project = (row["project"].as_str())
+        .and_then(|p| {
+            core::projects::list(data)
+                .ok()?
+                .into_iter()
+                .find(|x| x.id == p)
+        })
+        .map(|p| p.name);
+    let place = project
+        .as_ref()
+        .map_or("no project".into(), |p| format!("project {p}"));
+    text = format!("[{id}: {agent}, {place}]\n\n{text}");
     let list: Vec<Value> = (shown.iter())
         .map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}))
         .collect();
-    json!({"ok": true, "messages": list, "earlier": from, "text": text})
+    json!({"ok": true, "agent": agent, "project": project, "messages": list, "earlier": from, "text": text})
 }

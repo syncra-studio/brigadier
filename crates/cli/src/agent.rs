@@ -53,7 +53,7 @@ fn spec(
 brigadier read <id>#<n> [--around N] [--json]
 
 A session's last N messages (10 by default), the user's and its agent's, oldest first, each under its
-reference. --user keeps only the user's own words. A reference (from `search` or an earlier read)
+reference, after a line naming its agent and project. --user keeps only the user's own words. A reference (from `search` or an earlier read)
 opens that message, step or error with N entries on each side (3 by default), tool calls and errors
 included. A fork's messages from before it was forked are its own. Long output is cut from the
 oldest; --last or --around reads fewer.",
@@ -276,8 +276,12 @@ pub fn run(
                 Some(_) => ("--around", 3),
                 None => ("--last", 10),
             };
+            let row = rows()
+                .into_iter()
+                .find(|r| r["id"] == id)
+                .unwrap_or_default();
             call.number(n, default, 1000)
-                .map(|n| crate::relay::read(data, id, at, n, call.has("--user")))
+                .map(|n| crate::relay::read(data, id, &row, at, n, call.has("--user")))
         }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
         "wait" => workers::waited(data, me, id).and_then(|ids| {
