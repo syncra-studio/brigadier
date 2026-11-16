@@ -21,6 +21,7 @@ import { ReviewView } from "../review/view";
 import { daemonRun } from "../session/composer";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
+import { BrowserTab } from "../browser/tab";
 import { AttachmentTab } from "./attachment-tab";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
@@ -204,6 +205,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
                 <Actions owner={owner} />
               ) : tab.kind === "note" ? (
                 <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} tabId={tab.id} active={tab.id === active} />
+              ) : tab.kind === "browser" && window.brigadier?.browser ? (
+                <BrowserTab owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "new" ? (
                 <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
               ) : (

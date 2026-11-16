@@ -54,7 +54,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
-       brigadier tabs <id> [open|replace <tab> <kind> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen] | note <id> read <note> | write <note> <head> <body> [--base R] | list | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
+       brigadier tabs <id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen] | note <id> read <note> | write <note> <head> <body> [--base R] | list | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...

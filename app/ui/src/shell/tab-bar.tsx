@@ -5,6 +5,9 @@ import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
+import { shownAddress } from "../browser/address";
+import { useBrowserPage } from "../browser/pages";
+import { BrowserTabIcon } from "../browser/tab-icon";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -146,6 +149,7 @@ const pathName = (tab: Tab) => (tab.target === undefined || tab.kind === "review
 const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/")[1] ?? TAB_KINDS.attachment.name) : pathName(tab));
 
 function TabIcon({ tab }: { tab: Tab }) {
+  if (tab.kind === "browser") return <BrowserTabIcon tabId={tab.id} />;
   if ((tab.kind === "file" || tab.kind === "attachment") && tab.target !== undefined) return <FileIcon name={nameOf(tab)} size="sm" />;
   const Icon = TAB_KINDS[tab.kind].icon;
   return <Icon className="size-icon-sm shrink-0" />;
@@ -157,7 +161,9 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
   // It grows in once: a node moved in the DOM (a drag, a drop) would otherwise replay it [D432].
   const [fresh, setFresh] = useState(() => justOpened(tab.id));
   const note = useNoteTitle(owner, tab.kind === "note" ? (tab.target ?? "") : "");
-  const name = tab.kind === "note" ? note : nameOf(tab);
+  // A page is named by its title, else its site, as a browser's tab.
+  const page = useBrowserPage(tab.kind === "browser" ? tab.id : "");
+  const name = tab.kind === "note" ? note : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);
   return (
     <ContextMenu>
       <ContextMenuTrigger

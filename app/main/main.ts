@@ -275,9 +275,10 @@ ipcMain.handle("pick-folders", (event, options) => pickFolders(BrowserWindow.fro
 ipcMain.on("text-undo", (event) => event.sender.undo());
 // While Settings › Keyboard shortcuts records a press, the menu's own keys (⌘N, ⌘W…) don't fire either.
 ipcMain.on("ignore-menu-keys", (event, on: boolean) => event.sender.setIgnoreMenuShortcuts(on));
-// A web link opens in the browser: from window.open, or from the page once a click's wait is over (a push, then its PR page).
+// A web link opens in the browser: from window.open, or from the page once a click's wait is over (a push, then its PR page),
+// and a Browser tab's page, which may be a local server's (http:), as the old app's Open in external browser.
 function openLink(url: string): void {
-  if (/^https:/.test(url)) void shell.openExternal(url);
+  if (/^https?:/.test(url)) void shell.openExternal(url);
 }
 ipcMain.on("open-link", (_event, url: string) => openLink(url));
 // Saves a copy of a sent file where the user picks, starting in Downloads, as the old image viewer's Download [D2098].

@@ -67,4 +67,13 @@ if (browser) contextBridge.exposeInMainWorld("brigadierShell", {
   onGuestPermissionRefused: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-permission-refused", (_event, details) => listener(details)),
   onGuestEscape: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-escape", (_event, details) => listener(details)),
   onGuestKey: (listener: () => void) => void ipcRenderer.on("brigadier:guest-key", () => listener()),
+  // A key a page gave up (main's browser/guestKeys.ts). ⌘W, ⌘[ and ⌘] are the menu's, which never saw the press: they go
+  // on as its commands; the rest to the page as presses (browser/keys.ts).
+  onGuestShortcut: (listener: (key: string) => void) => void ipcRenderer.on("brigadier:guest-shortcut", (event, key: string) => {
+    const command = ({ close: "close-tab", back: "back", forward: "forward" } as Record<string, string>)[key];
+    if (command) ipcRenderer.emit("menu", event, command);
+    else listener(key);
+  }),
+  answerPermission: (request: number, answer: string) => ipcRenderer.invoke("brigadier:permission-answer", request, answer),
+  openPermissionSettings: (device: string) => ipcRenderer.invoke("brigadier:permission-open-settings", device),
 });

@@ -4,6 +4,8 @@
 //! `reopen`, and answers the whole state with a `rev` that only grows, so the app can tell Rust's
 //! newer word from an older one after a lost reply [D30, D71].
 
+mod target;
+
 use crate::attach::note;
 use crate::{HOME_DRAFT, USAGE, arg};
 use brigadier_core::{self as core, projects, session, worktrees};
@@ -12,13 +14,15 @@ use serde_json::{Value, json};
 use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
+use target::{check_target, relative};
 
 const CHAT: &str = "chat";
 /// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
-/// card's Background history [D200]; a note, by its id [D244]; the session repository's Actions [D264].
-const KINDS: [&str; 8] = [
+/// card's Background history [D200]; a note, by its id [D244]; the session repository's Actions [D264]; a web page, by
+/// its address [D2002].
+const KINDS: [&str; 9] = [
     "new",
     "terminal",
     "pr",
@@ -27,6 +31,7 @@ const KINDS: [&str; 8] = [
     "background",
     "note",
     "actions",
+    "browser",
 ];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";
@@ -54,6 +59,9 @@ struct Tab {
     /// A Review tab's scope last picked, so it comes back after a restart [D1187].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
+    /// A browser tab's profile; none is the default one [D516].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    profile: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -98,6 +106,17 @@ fn read(path: &Path) -> Tabs {
     let known = |t: &Tab| t.kind == FILE || KINDS.contains(&t.kind.as_str());
     tabs.tabs.retain(known);
     tabs.closed.retain(|c| known(&c.tab));
+    // A profile names the browser's storage folder (main's browser/profiles.ts): one that isn't plain is the default.
+    let plain = |id: &str| {
+        (1..=64).contains(&id.len())
+            && (id.bytes()).all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    let saved = tabs.closed.iter_mut().map(|c| &mut c.tab);
+    for tab in tabs.tabs.iter_mut().chain(saved) {
+        if !tab.profile.as_deref().is_none_or(plain) {
+            tab.profile = None;
+        }
+    }
     if !tabs.tabs.iter().any(|t| t.id == tabs.active) {
         tabs.active = CHAT.into();
     }
@@ -181,58 +200,7 @@ impl Tabs {
     }
 }
 
-/// A thread row's path may be absolute: a Review tab keeps it relative to the session's checkout [D1038].
-fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
-    let path = Path::new(&target);
-    if !path.is_absolute() {
-        return Ok(target);
-    }
-    let root = core::git::checkout(data, &core::git::Target::Session(id))?.root;
-    // The checkout's root is canonical; a deleted file's folder still resolves.
-    let real = (path.parent().and_then(|dir| fs::canonicalize(dir).ok()))
-        .zip(path.file_name())
-        .map_or_else(|| path.to_path_buf(), |(dir, name)| dir.join(name));
-    match real.strip_prefix(&root) {
-        Ok(rel) => Ok(rel.to_string_lossy().into_owned()),
-        Err(_) => Err(io::Error::other(format!(
-            "{target} isn't in this session's checkout"
-        ))),
-    }
-}
-
-/// A file, PR and attachment tab need their target, a Review tab may have one (its file), every other kind refuses one. A
-/// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
-/// PR is one tab [D1032].
-fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
-    let ok = match (kind, target) {
-        // shortcut: a string check, so a symlink in the checkout could lead out; resolve it when 2.23 reads the file.
-        // A Review tab may open on one file [D1032, D1038].
-        ("file" | "review", Some(path)) => {
-            !path.contains('\0')
-                && path
-                    .split('/')
-                    .all(|s| !s.is_empty() && s != "." && s != "..")
-        }
-        // `list`: the session's PRs when it has several [D205]; `owner/name#n`, another repository's [D213].
-        ("pr", Some(target)) => target == "list" || core::host::pr_ref(target).is_some(),
-        ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
-            core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
-        }),
-        ("note", Some(note)) => core::check_id(note).is_ok(),
-        ("file" | "pr" | "attachment" | "note", None) => false,
-        (_, target) => target.is_none(),
-    };
-    if ok {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!(
-            "not a {kind} tab's target: {}",
-            target.unwrap_or("none")
-        )))
-    }
-}
-
-/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> | file <tab> <path> <line|-> <keep|preview> |
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen]`, for a session or Home.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -382,8 +350,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "replace" => {
             let (tab, kind) = (arg(args, 3)?, kind()?);
-            // A New tab becomes what was picked on it: a kind with no target.
-            check_target(&kind, None)?;
+            // A New tab becomes what was picked on it, or the page typed in it.
+            let target = args.get(5).cloned();
+            check_target(&kind, target.as_deref())?;
             // A kind there's one of, already open, comes to the front and the New tab stays.
             if let Some(same) = now.same(&kind, &None) {
                 now.active = same;
@@ -391,7 +360,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 && now.tabs[at].kind == NEW
             {
                 now.tabs[at].kind = kind;
+                now.tabs[at].target = target;
                 now.active = tab.into();
+            }
+        }
+        // A browser tab follows its page, so it opens there again after a restart.
+        "url" => {
+            let (tab, url) = (arg(args, 3)?, arg(args, 4)?);
+            check_target("browser", Some(url))?;
+            if let Some(at) = now.at(tab).filter(|&at| now.tabs[at].kind == "browser") {
+                now.tabs[at].target = Some(url.into());
             }
         }
         "select" => {

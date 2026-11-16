@@ -9,6 +9,7 @@
 // Where a page shows is in data attributes, which the theme reads (theme.css's #brigadier-tab-layer).
 
 import { readFavicon } from "./favicon";
+import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 
 declare global {
   interface Window {
@@ -21,6 +22,9 @@ declare global {
       onGuestPermissionRefused(listener: (details: { from: number; origin: string; refused: string[] }) => void): void;
       onGuestEscape(listener: (details: { from: number }) => void): void;
       onGuestKey(listener: () => void): void;
+      onGuestShortcut(listener: (key: string) => void): void;
+      answerPermission(request: number, answer: "once" | "visiting" | "never" | "dismiss"): Promise<void>;
+      openPermissionSettings(device: "camera" | "microphone" | "location"): Promise<void>;
     };
   }
 }
@@ -40,9 +44,6 @@ export type BrowserEvent =
   | { type: "closed" }
   | { type: "permissionRefused"; origin: string; refused: string[] }
   | { type: "permission"; request: number; origin: string; camera: boolean; microphone: boolean; location: boolean };
-
-const ZOOM_LEAST = 0.3;
-const ZOOM_MOST = 3;
 
 /** Electron's <webview> element, as far as the layer uses it. */
 export type Webview = HTMLElement & {
@@ -161,6 +162,7 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestPermission(({ from, ...question }) => pageOf(from)?.emit({ type: "permission", ...question }));
   window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused }));
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
+  window.brigadierShell.onGuestShortcut(pressGuestKey);
   // shortcut: no passkey, sign-in or agent events until those sections land (guestPasskey, browserSignIn, browserAgent).
 }
 

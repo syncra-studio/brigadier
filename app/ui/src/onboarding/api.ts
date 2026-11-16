@@ -25,7 +25,7 @@ declare global {
       ignoreMenuKeys(on: boolean): void;
       /** A dropped file's or folder's path on disk; "" for one that has none. */
       pathForFile(file: File): string;
-      /** Opens an https link in the browser, with no click needed. */
+      /** Opens a web link (http or https) in the browser, with no click needed. */
       openLink(url: string): void;
       /** Opens an attachment (`/attachment/<home|session>/<id>`) in its default app. */
       /** False when the file would run a program, so it wasn't opened. */

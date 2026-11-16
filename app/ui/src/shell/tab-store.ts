@@ -27,13 +27,14 @@ export const TAB_KINDS = {
   background: { name: "Background history", icon: Clock },
   note: { name: "Note", icon: Document },
   actions: { name: "Actions", icon: PlayCircle },
+  browser: { name: "Browser", icon: Globe },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244]. A file tab also has the line last asked for, and whether it's
- * the preview the next file takes.
+ * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244], a browser tab's page. A file tab also has the line last asked for, and whether it's
+ * the preview the next file takes; a browser tab its profile, none for the default one.
  */
-export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string };
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string };
 export type Tabs = { tabs: Tab[]; active: string };
 
 type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
@@ -210,6 +211,14 @@ export function keepTab(owner: string, id: string): void {
 export function setTabScope(owner: string, id: string, scope: string): void {
   act(owner, { args: ["scope", id, scope], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, scope } : tab)) }) });
 }
+
+/** A browser tab follows its page, so it opens there again after a restart. */
+export function setTabUrl(owner: string, id: string, url: string): void {
+  act(owner, { args: ["url", id, url], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, target: url } : tab)) }) });
+}
+
+/** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
+export const tabOpenAnywhere = (id: string): boolean => [...slots.values()].some((slot) => slot.shown.tabs.some((tab) => tab.id === id));
 
 export function selectTab(owner: string, id: string): void {
   act(owner, { args: ["select", id], change: (now) => (has(now, id) ? { ...now, active: id } : now) });
