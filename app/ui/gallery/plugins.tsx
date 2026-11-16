@@ -69,7 +69,7 @@ function useFake() {
       later((now) =>
         "own" in draft
           ? { ...now, own: now.own.map((own) => (own.key === draft.own ? { ...own, in_library: true } : own)) }
-          : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : draft.folder, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
+          : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
     remove: (key) => later((now) => ({ ...now, items: now.items.filter((item) => item.key !== key) })),
@@ -78,6 +78,7 @@ function useFake() {
     cancel: () => Promise.resolve(),
     signOut: () => later((now) => now),
     pickFolder: () => Promise.resolve("~/skills/changelog"),
+    browse: () => Promise.resolve([]),
   };
   return { value, actions, refuses, setRefuses };
 }
@@ -91,6 +92,7 @@ const still: PluginActions = {
   cancel: () => Promise.resolve(),
   signOut: () => Promise.resolve(),
   pickFolder: () => Promise.resolve(null),
+  browse: () => Promise.resolve([]),
 };
 
 /** One still: the page as given, opened where it says. */

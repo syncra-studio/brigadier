@@ -1,19 +1,21 @@
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
+import { ConfirmDialog } from "../components/confirm-dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { Segmented } from "../components/segmented";
 import { Plus, Spinner, X } from "../icons";
 import { errorText } from "../onboarding/api";
-import type { Own } from "./plugins";
+import type { Item, Own } from "./plugins";
 import { PluginMark } from "./plugins-marks";
 
 /** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]. */
 export type Draft =
   | { kind: "skill"; folder: string }
+  | { kind: "skill"; source: string; skill: string }
   | { kind: "server"; name: string; url: string; headers?: Record<string, string> }
   | { kind: "server"; name: string; command: string; args: string[]; env: Record<string, string> };
 
@@ -42,16 +44,16 @@ function PluginDialog({ onClose, title, description, slot, children }: { onClose
 /** One env value or header: its name, and its value hidden as it's typed. Values go to Brigadier's Keychain item, names to the library. */
 type ValueRow = { id: number; name: string; value: string };
 /** The Add form as filled so far; the gallery opens it filled. */
-export type AddForm = { kind: "skill" | "server"; remote: boolean; name: string; url: string; command: string; values: ValueRow[]; folder: string | null };
+export type AddForm = { kind: "skill" | "server"; remote: boolean; name: string; url: string; command: string; values: ValueRow[]; folder: string | null; from?: { source: string; skill: string } };
 type Step = "form" | "confirm" | "adding" | "added";
-/** Where the gallery opens Add. */
-export type AddFirst = { form: Partial<AddForm>; step?: Step };
+/** Where the gallery and Browse open Add; `start` adds it at once (a skill from Browse, D436). */
+export type AddFirst = { form: Partial<AddForm>; step?: Step; start?: boolean };
 
 const EMPTY: AddForm = { kind: "server", remote: false, name: "", url: "", command: "", values: [], folder: null };
 
 /** The Add form's draft: a local command's words split on spaces. */
 function draftOf(form: AddForm): Draft {
-  if (form.kind === "skill") return { kind: "skill", folder: form.folder ?? "" };
+  if (form.kind === "skill") return form.from ? { kind: "skill", ...form.from } : { kind: "skill", folder: form.folder ?? "" };
   const values = Object.fromEntries(form.values.filter((row) => row.name.trim()).map((row) => [row.name.trim(), row.value]));
   if (form.remote) return { kind: "server", name: form.name.trim(), url: form.url.trim(), ...(Object.keys(values).length ? { headers: values } : {}) };
   // shortcut: no quoting, so an argument can't hold a space; upgrade when someone needs one.
@@ -95,13 +97,18 @@ export function AddDialog({
       },
     );
   };
+  useEffect(() => {
+    if (first?.start) add("adding");
+  }, []);
   const choose = () => pickFolder().then((folder) => folder && edit({ folder }), (cause: unknown) => setError(errorText(cause)));
-  const shownName = form.kind === "skill" ? (form.folder?.split("/").filter(Boolean).pop() ?? "skill") : form.name.trim();
+  const shownName = form.kind === "skill" ? (form.from?.skill ?? form.folder?.split("/").filter(Boolean).pop() ?? "skill") : form.name.trim();
 
   if (step === "adding" || step === "added") {
     return (
       <PluginDialog slot="adding" onClose={onClose} title={`Adding ${shownName}`} description="Saved in Brigadier's library for your next sessions.">
-        {step === "adding" ? (
+        {error ? (
+          <ErrorLine error={error} />
+        ) : step === "adding" ? (
           <div className="flex items-center gap-3 text-label text-quiet-foreground">
             <Spinner aria-label="Adding" className="size-icon-sm animate-spin motion-reduce:animate-none" />
             Adding it to your library…
@@ -110,8 +117,8 @@ export function AddDialog({
           <p className="text-label text-quiet-foreground">Added to your library. It's off until you switch it on, for all projects or only some.</p>
         )}
         <div className="flex justify-end gap-2">
-          {step === "added" ? (
-            <Button onClick={onClose}>Done</Button>
+          {step === "added" || error ? (
+            <Button onClick={onClose}>{error ? "Close" : "Done"}</Button>
           ) : (
             <Button variant="ghost" onClick={onClose}>
               Hide
@@ -129,7 +136,8 @@ export function AddDialog({
       <PluginDialog slot="add-confirm" onClose={onClose} title={`Add ${shownName}?`} description="Your agents start this command on this computer, with your permissions, whenever a session that has it is on starts.">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3 rounded-control bg-fill-subtle px-4 py-3">
-            <PluginMark item={{ kind: "server", name: form.name, detail: form.command }} />
+            {/* Its maker's mark from its command only: anyone can name a server "linear" [D437]. */}
+            <PluginMark item={{ kind: "server", name: "", detail: form.command }} />
             <span className="min-w-0 flex-1 font-mono text-xs break-all">{form.command.trim()}</span>
           </div>
           {names.length > 0 && <p className="text-xs text-quiet-foreground">With {names.join(", ")} set. Their values stay in Brigadier's Keychain item.</p>}
@@ -294,5 +302,20 @@ export function RefreshDialog({ found, onApply, onClose }: { found: Own[]; onApp
         </Button>
       </div>
     </PluginDialog>
+  );
+}
+
+/** Removing one library item: one choice, the old app's (proposed). */
+export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () => void; onClose: () => void }) {
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={`Remove ${item.name}?`}
+      description="Removes it from Brigadier's library. Sessions already running keep it until they end."
+      confirm="Remove"
+      destructive
+      onConfirm={onRemove}
+    />
   );
 }

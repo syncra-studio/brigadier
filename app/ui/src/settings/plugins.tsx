@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
-import { ConfirmDialog } from "../components/confirm-dialog";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { Segmented } from "../components/segmented";
@@ -13,7 +12,8 @@ import { errorText, run, useAgents } from "../onboarding/api";
 import { Folder, Folders, Mcp, Plus, Spinner, ToolsSkills } from "../icons";
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
-import { type AddFirst, AddDialog, type Draft, RefreshDialog } from "./plugins-dialogs";
+import { type AddFirst, AddDialog, type Draft, RefreshDialog, RemoveDialog } from "./plugins-dialogs";
+import { BrowsePage, type Found } from "./plugins-browse";
 import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
@@ -57,6 +57,8 @@ export type PluginActions = {
   signOut: (key: string) => Promise<unknown>;
   /** A skill's folder, from the system's picker; null when none was chosen. */
   pickFolder: () => Promise<string | null>;
+  /** Searches the internet's servers or skills through Rust [D434]. */
+  browse: (kind: Kind, query: string) => Promise<Found[]>;
 };
 
 export const TAB_LABEL: Record<Kind, string> = { server: "MCP servers", skill: "Skills" };
@@ -88,7 +90,7 @@ export function chipOf(value: Plugins, item: Item): string | null {
 const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
 /** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string };
+export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string };
 
 /**
  * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each card
@@ -192,7 +194,9 @@ export function PluginsPage({
   const item = detail ? shown?.items.find((each) => each.key === detail) : undefined;
   const close = () => setOpen(null);
   let page;
-  if (shown && item) {
+  if (detail === "browse") {
+    page = <BrowsePage tab={tab} browse={actions.browse} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />;
+  } else if (shown && item) {
     page = <DetailsPage value={shown} item={item} marks={marks} actions={actions} signing={signing} onScope={(scope) => set(item.key, { scope })} onRemove={() => setOpen({ type: "remove", key: item.key })} />;
   } else {
     const count = (kind: Kind) => shown?.items.filter((each) => each.kind === kind).length ?? 0;
@@ -215,6 +219,7 @@ export function PluginsPage({
               }))}
               onChange={(next) => {
                 setTab(next);
+                lastTab = next;
                 setQuery("");
               }}
             />
@@ -227,6 +232,9 @@ export function PluginsPage({
             <Button variant="soft" size="sm" className="min-w-24" disabled={!shown || checking} aria-busy={checking} onClick={refresh}>
               {checking && <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />}
               Refresh
+            </Button>
+            <Button variant="soft" size="sm" onClick={() => onDetail("browse")}>
+              Browse
             </Button>
             <Button size="sm" disabled={!shown} onClick={() => setOpen({ type: "add", remote })}>
               <Plus aria-hidden />
@@ -276,7 +284,10 @@ export function PluginsPage({
       {open?.type === "add" && shown && (
         <AddDialog remote={open.remote} first={open.first} pickFolder={actions.pickFolder} onAdd={(draft) =>
             actions.add(draft).then(
-              (back) => setMine((confirmed.current = { base: value!, shown: back })),
+              (back) => {
+                setMine((confirmed.current = { base: value!, shown: back }));
+                open.added?.();
+              },
               (cause: unknown) => {
                 // Said on the page too: the dialog may be hidden by then.
                 setFailed(errorText(cause));
@@ -422,21 +433,6 @@ function EmptyTab({ tab, remote, onAdd }: { tab: Kind; remote: boolean; onAdd: (
 
 const ADD_HINT = "A skill folder with a SKILL.md, an MCP server your agents start on this computer";
 
-/** Removing one library item: one choice, the old app's (proposed). */
-function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () => void; onClose: () => void }) {
-  return (
-    <ConfirmDialog
-      open
-      onOpenChange={(next) => !next && onClose()}
-      title={`Remove ${item.name}?`}
-      description="Removes it from Brigadier's library. Sessions already running keep it until they end."
-      confirm="Remove"
-      destructive
-      onConfirm={onRemove}
-    />
-  );
-}
-
 // The last page Rust sent: an item's page opens on it at once (Settings draws each route afresh), then reads again.
 let last: Plugins | null = null;
 // The kind of the item last opened, so going back from it, or removing it, lands on its tab.
@@ -478,6 +474,8 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     cancel: (key) => send("cancel", key).then(setValue),
     signOut: (key) => send("signout", key).then(setValue),
     pickFolder: async () => (await window.brigadier?.pickFolder()) ?? null,
+    // Outside the chain: a search never waits behind a change, nor holds one up.
+    browse: async (kind, query) => (await run(["plugins", "browse", kind, query])).found as Found[],
   };
   return (
     <PluginsPage

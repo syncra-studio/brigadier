@@ -1,6 +1,8 @@
-//! `plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key>]`:
-//! Settings › Plugins [D2043, D2046]. Each prints the library's items, each agent's own (read
-//! only) and the projects; `signin` its URL instead.
+//! `plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> |
+//! browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
+//! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
+
+mod browse;
 
 use brigadier_core::library::{self, secrets};
 use brigadier_core::{adapters, projects};
@@ -26,15 +28,23 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             _ => list(data),
         });
     }
+    // A search reaches the internet, outside the library's lock [D434].
+    if arg(1) == "browse" {
+        return browse::run(data, arg(2), &args[3.min(args.len())..].join(" "));
+    }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match arg(1) {
         "" => {}
-        "add" => add(data, json(2)?)?,
+        "add" => {
+            let added = add(data, json(2)?);
+            let _ = std::fs::remove_dir_all(browse::incoming(data));
+            added?
+        }
         "set" => set(data, arg(2), json(3)?)?,
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key>]",
+                "usage: brigadier plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }
@@ -197,9 +207,13 @@ fn plain(name: &str) -> io::Result<()> {
 }
 
 /// `{own: <key>}` copies one of an agent's own, its definition and never a token; `{kind: "skill",
-/// folder}`; `{kind: "server", name, url}`; `{kind: "server", name, command, args, env}`, its
-/// command shown and confirmed in the Add dialog first. New items start off [D2046].
+/// folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
+/// `{kind: "server", name, url}`; `{kind: "server", name, command, args, env}`, its command shown
+/// and confirmed in the Add dialog first. New items start off [D2046].
 fn add(data: &Path, mut v: Value) -> io::Result<()> {
+    if let Some(source) = v["source"].as_str() {
+        v = json!({"kind": "skill", "folder": browse::fetch(data, source, str(&v["skill"]))?});
+    }
     if let Some(key) = v["own"].as_str() {
         let all = projects::list(data).unwrap_or_default();
         let o = (own(&library::items(data), &all).into_iter()).find(|o| o["key"] == key);
