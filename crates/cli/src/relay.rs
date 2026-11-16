@@ -2,6 +2,8 @@
 //! a naked worker's only way to them: the user's own skills, read only from each agent's own
 //! folders, and past sessions.
 
+mod show;
+
 use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -42,6 +44,16 @@ so, and the user signs in again in Brigadier (Settings › Plugins).",
             &[],
             &[],
         ),
+        "show" => (
+            "brigadier show <file>[:<line>] | <url> [--json]
+
+Shows the user a file of your checkout in the file viewer, at its line, or a web page (http or https,
+such as your dev server's) in a browser tab of your session, one already on that page reused. A
+file:// or other address isn't shown: to show an .html file rendered, serve it and show its address.
+A worker's tab opens behind; the user sees it in your session's tabs.",
+            &[],
+            &[],
+        ),
         _ => return None,
     })
 }
@@ -78,6 +90,7 @@ pub fn run(
     match cmd {
         "skill" => Some(skill(data, me, arg)),
         "search" => Some(search(data, arg.unwrap_or(""), value, rows)),
+        "show" => Some(show::show(data, me, arg.unwrap_or(""))),
         _ => None,
     }
 }

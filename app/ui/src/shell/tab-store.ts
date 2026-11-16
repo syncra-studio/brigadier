@@ -124,14 +124,16 @@ export function useTabsRead(owner: string): boolean {
   return useSyncExternalStore(subscribe, () => (slots.get(owner)?.rev ?? null) !== null);
 }
 
-/** Asks Rust on opening and on every reconnect, and sends again what the link took. */
+/** Asks Rust on opening, on every reconnect and when the session's folder changed (an agent's `brigadier show` opens
+ *  a tab there), and sends again what the link took. */
 export function useTabsFromRust(owner: string): void {
-  const { daemon } = useDaemon();
+  const { daemon, rows } = useDaemon();
+  const touched = rows?.find((row) => row.id === owner)?.touched;
   useEffect(() => {
     if (!daemon) return;
     read(owner);
     for (const each of slots.keys()) pump(each);
-  }, [owner, daemon]);
+  }, [owner, daemon, touched]);
 }
 
 export const tabsOf = (owner: string): Tabs => slotOf(owner).shown;

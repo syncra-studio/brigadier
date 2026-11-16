@@ -13,9 +13,9 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 12] = [
+pub const COMMANDS: [&str; 13] = [
     "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search",
-    "mcp", "browser",
+    "mcp", "browser", "show",
 ];
 
 /// The `brigadier browser` actions that only read, or open a local page: the grant covers them.

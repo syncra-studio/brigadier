@@ -9,7 +9,7 @@ use std::path::Path;
 const URL_MAX: usize = 8192;
 
 /// A thread row's path may be absolute: a Review tab keeps it relative to the session's checkout [D1038].
-pub(super) fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
+pub(crate) fn relative(data: &Path, id: &str, target: String) -> io::Result<String> {
     let path = Path::new(&target);
     if !path.is_absolute() {
         return Ok(target);

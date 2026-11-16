@@ -6,8 +6,7 @@
 
 pub(crate) mod target;
 
-use crate::attach::note;
-use crate::{HOME_DRAFT, USAGE, arg};
+use crate::{HOME_DRAFT, USAGE, arg, attach::note};
 use brigadier_core::{self as core, projects, session, worktrees};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -431,6 +430,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => return Err(io::Error::other(USAGE)),
     }
+    // A worker's `show` opens its tab behind the one in front [D519].
+    crate::has(args, "--behind").then(|| now.active.clone_from(&was.active));
     if now != was {
         now.rev = was.rev + 1;
         write(&path, &now)?;
