@@ -17,13 +17,12 @@ fn github_client() -> Option<String> {
     Some(id.unwrap_or_else(|_| "Ov23lijQ8PbCwmourxws".into())).filter(|v| !v.is_empty())
 }
 
-/// The https URL of Brigadier's client metadata document on brigadier.sh (D312), given at build.
+/// Brigadier's client metadata document on brigadier.sh [D312, D439]; the environment's wins, and an
+/// empty one turns CIMD off.
 fn cimd() -> Option<String> {
-    let built = option_env!("BRIGADIER_CLIENT_METADATA_URL").map(String::from);
-    (std::env::var("BRIGADIER_CLIENT_METADATA_URL")
-        .ok()
-        .or(built))
-    .filter(|d| d.starts_with("https://"))
+    let doc = std::env::var("BRIGADIER_CLIENT_METADATA_URL");
+    Some(doc.unwrap_or_else(|_| "https://brigadier.sh/oauth/client.json".into()))
+        .filter(|d| d.starts_with("https://"))
 }
 
 pub(super) struct Reply {
