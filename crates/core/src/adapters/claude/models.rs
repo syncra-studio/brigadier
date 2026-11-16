@@ -38,7 +38,7 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
 /// Its own subagents can't run a model a rule bars: the allowlist, merged into the one `--settings`
 /// object of `standing` (`deniedModels` is read from managed settings only); their effort can't
 /// be set [D376].
-pub fn bar(spec: &Spec, mut standing: [String; 6]) -> [String; 6] {
+pub fn bar(spec: &Spec, mut standing: Vec<String>) -> Vec<String> {
     let at = standing.iter().position(|a| a == "--settings");
     if let (Some(models), Some(at)) = (&spec.ruled.models, at) {
         let mut settings: Value = serde_json::from_str(&standing[at + 1]).unwrap_or_default();

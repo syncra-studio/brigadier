@@ -130,16 +130,23 @@ pub fn own(spec: &Spec, env: &mut Vec<(String, String)>) {
 }
 
 /// TodoWrite is deferred; `ENABLE_TOOL_SEARCH=false` loads it but costs 16-31k tokens [D250].
-pub fn standing(spec: &Spec) -> [String; 6] {
+/// The text is rendered fresh, as its record would pin a conversation's first for good, on CLIs
+/// that know the flag; one whose version can't be read doesn't get it [D526].
+pub fn standing(spec: &Spec) -> Vec<String> {
     let load = "\n\nYour to-do tool, TodoWrite, is deferred: load it with ToolSearch `select:TodoWrite` before its first use.";
-    [
+    let fresh = crate::adapters::setup::newer(&crate::cli_version(spec, &super::Claude), "2.1.321");
+    let mut args = vec![
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
         "--settings".into(),
         r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"cat"}]}]}}"#.into(),
         "--disallowedTools".into(),
         "ListAgents,SendMessage".into(),
-    ]
+    ];
+    if fresh {
+        args.extend(["--system-prompt-snapshot".into(), "off".into()]);
+    }
+    args
 }
 
 /// What a session grant allowed, as launch-time rules for a child started anew [D193].
