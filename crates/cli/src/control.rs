@@ -145,8 +145,9 @@ pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
 }
 
 /// A turn whose agent's own safety check gave no verdict asks the user instead: its child runs at
-/// Ask for the rest of that turn, and at the session's own level again once it ends, however it
-/// ends [D453, D455]. Each once a turn; a new child starts at the session's level anyway.
+/// Ask for the rest of that turn, its agent told to retry what was denied [D460], and at the
+/// session's own level again once it ends, however it ends [D453, D455]. Each once a turn; a new
+/// child starts at the session's level anyway.
 pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
     static DONE: std::sync::Mutex<std::collections::BTreeSet<String>> =
         std::sync::Mutex::new(std::collections::BTreeSet::new());
@@ -176,6 +177,15 @@ pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) 
             };
             if let Err(e) = relevel() {
                 eprintln!("brigadierd: unchecked {id}: {e}");
+            } else if ask {
+                // Told in its running turn, hidden: else it may wait the "temporary error" out and
+                // the card never comes [D460]. A turn that ended refuses it: nothing is sent.
+                let note = "The safety check that gives this session's Auto verdicts was \
+                    unavailable, so the rest of this turn asks the user to approve each action \
+                    instead. Retry the denied command now, as it was.";
+                if let Err(e) = steer_as(&data, &id, note, &Value::Null, None, "system") {
+                    eprintln!("brigadierd: unchecked {id}: {e}");
+                }
             }
         });
     }
