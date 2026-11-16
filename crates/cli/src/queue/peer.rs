@@ -34,6 +34,7 @@ pub fn add_peer(
             error: None,
             origin: Some(origin.into()),
             to: None,
+            deciding: false,
         });
         q.paused |= q.stopping;
         Ok("queued")

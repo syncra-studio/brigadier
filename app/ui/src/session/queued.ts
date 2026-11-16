@@ -3,7 +3,7 @@ import type { QueuedMessage } from "../components/composer/queue";
 import type { Row } from "../daemon";
 
 /** A message in Rust's queue: `origin` names another session's; `to` the user's for one of this session's workers. */
-export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string };
+export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string; deciding?: boolean };
 
 /**
  * Rust's queue as the card's rows: another session's message without the envelope's first line, with who sent it
@@ -15,7 +15,7 @@ export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): Qu
     // Rust's error on one for a worker: that worker has ended [D96].
     const to = each.to ? { to: { name: title(each.to), ended: each.error !== undefined } } : {};
     const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
-    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: "queued", ...to };
+    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: each.deciding ? "deciding" : "queued", ...to };
     const at = each.text.indexOf("]\n\n");
     const words = at < 0 ? each.text : each.text.slice(at + 3);
     return { id: each.id, draft: { parts: [words], attachmentIds: [] }, state: "queued", peer: { title: title(peer) } };

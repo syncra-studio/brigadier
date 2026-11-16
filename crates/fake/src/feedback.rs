@@ -7,13 +7,29 @@ use serde_json::{Value, json};
 
 const WRITE: &str = "You turn a note a user wrote about Brigadier";
 const JUDGE: &str = "You decide whether new reports about Brigadier";
+/// The queue's judge (cli's `queue/judge`): a message that says "fits" does, one that says "late"
+/// answers only after the judge's patience has run out.
+const FITS: &str = "You decide whether a new message from the user fits";
 
-/// Whether `text` is one of Send feedback's prompts.
+/// Whether `text` is one of Send feedback's prompts, or the queue judge's.
 pub fn asked(text: &str) -> bool {
-    text.starts_with(WRITE) || text.starts_with(JUDGE)
+    text.starts_with(WRITE) || text.starts_with(JUDGE) || text.starts_with(FITS)
 }
 
 pub fn reply(text: &str) -> String {
+    if text.starts_with(FITS) {
+        let said = text.split_once("New message from the user:\n");
+        let words = said.map_or("", |(_, w)| w.split("\n\nFITS when").next().unwrap_or(""));
+        if words.contains("late") {
+            std::thread::sleep(std::time::Duration::from_secs(8));
+        }
+        return if words.contains("fits") {
+            "FITS"
+        } else {
+            "WAITS"
+        }
+        .into();
+    }
     match text.starts_with(WRITE) {
         true => reports(text),
         false => matches(text),

@@ -15,6 +15,7 @@ use std::io;
 use std::path::Path;
 use std::thread;
 
+mod judge;
 mod peer;
 mod to;
 pub use peer::{add_peer, pending};
@@ -49,6 +50,9 @@ struct Item {
     /// The user's message for this worker of the session's (the To chip), held while it works.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     to: Option<String>,
+    /// Being judged whether it joins the work in progress (`judge`): its row reads Deciding [D521].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    deciding: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -74,12 +78,7 @@ fn read(dir: &Path) -> io::Result<Queue> {
 
 /// Changes the queue under its lock; a change is written as a new file renamed into place.
 fn change<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Result<T> {
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(dir.join("queue.lock"))?;
-    lock.lock()?;
+    let _lock = hold(dir)?.0;
     locked(dir, f)
 }
 
@@ -162,6 +161,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     parts,
                     at: brigadier_frames::log::now_ms(),
                     error: None,
+                    deciding: origin.is_none() && to.is_none() && judge::judges(q, qid, at),
                     origin,
                     to: to.clone(),
                 };
@@ -186,7 +186,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let to: usize = to.parse().map_err(|_| io::Error::other(crate::USAGE))?;
             change(&dir, |q| {
                 let from = q.items.iter().position(|i| i.id == qid);
-                let item = q.items.remove(from.ok_or_else(|| missing(&qid))?);
+                let mut item = q.items.remove(from.ok_or_else(|| missing(&qid))?);
+                item.deciding = false; // the user placed it: the judge's answer is dropped
                 q.items.insert(to.min(q.items.len()), item);
                 Ok(())
             })?;
@@ -319,6 +320,7 @@ fn restore(q: &mut Queue) {
             error: None,
             origin: e.origin,
             to: e.to,
+            deciding: false,
         };
         q.items.insert(slot, item);
     }
@@ -369,6 +371,7 @@ const DRAINS: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
 pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
     to::pass(data, rows);
     for (id, row) in rows {
+        judge::pass(data, id, row);
         let q = &row["queue"];
         let mine = q["items"].as_array().into_iter().flatten();
         // While its block is held open the user's own wait, as mid-turn; another session's goes [D521, D300].
