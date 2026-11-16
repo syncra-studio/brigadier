@@ -40,7 +40,7 @@ export function SettingsPage({
     return () => cancelAnimationFrame(frame);
   }, []);
   return (
-    <div data-slot="settings-page" className="relative flex h-full min-h-0 flex-1 flex-col">
+    <div data-slot="settings-page" className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
         {/* The band under the titlebar drags the window; it scrolls away with the page. */}
         <div className="app-drag h-settings-band shrink-0" />

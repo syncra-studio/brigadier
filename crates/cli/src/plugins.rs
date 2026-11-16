@@ -41,34 +41,70 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(list(data))
 }
 
-/// A skill's folder and name, a server's URL or command; `in_library` where the library holds one
-/// of its name, URL or command.
-fn own(lib: &[Value]) -> Vec<Value> {
+/// Each skill (its folder) and server (its URL or command) in the agents' own settings, once
+/// however many agents have it [D424]: those at home first, then each trusted project's own that
+/// aren't at home too, `project` its name, once under each project [D430]. `in_library` where the
+/// library holds one of its name, URL or command.
+fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
     let home = adapters::home_path("");
-    let mut all: Vec<Value> = vec![];
-    for a in crate::setup::available() {
-        let skills = (a.fixed_commands(None, None).into_iter())
+    let agents: Vec<_> = crate::setup::available().into_iter().collect();
+    let skills = |a: &dyn adapters::Adapter, folder: Option<&Path>| -> Vec<Value> {
+        (a.fixed_commands(folder, None).into_iter())
             .filter(|k| {
                 k["kind"] == "skill" && k["path"].is_string() && !str(&k["name"]).contains(':')
             })
+            // A project's own are those in its folder.
+            .filter(|k| folder.is_none_or(|f| Path::new(str(&k["path"])).starts_with(f)))
             .map(|k| {
                 let folder = Path::new(str(&k["path"])).parent().map(Path::to_path_buf);
                 json!({"kind": "skill", "name": k["name"], "detail": folder})
-            });
-        let servers = (a.mcp_servers(&home).into_iter()).map(|mut s| {
-            s["kind"] = "server".into();
-            s["detail"] = library::detail(&s).into();
-            s
-        });
-        for mut o in skills.chain(servers) {
-            let key = format!("own:{}:{}:{}", a.name(), str(&o["kind"]), str(&o["name"]));
-            if all.iter().any(|x| x["key"] == *key) {
-                continue;
+            })
+            .collect()
+    };
+    let servers = |a: &dyn adapters::Adapter, folder: Option<&Path>| -> Vec<Value> {
+        let at_home = a.mcp_servers(&home);
+        let here = folder.map_or_else(|| at_home.clone(), |f| a.mcp_servers(f));
+        (here.into_iter())
+            .filter(|s| folder.is_none() || !at_home.contains(s))
+            .map(|mut s| {
+                s["kind"] = "server".into();
+                s["detail"] = library::detail(&s).into();
+                s
+            })
+            .collect()
+    };
+    // A project's folder is read only once trusted, as the "/" menu's [D2098].
+    let places = [None].into_iter().chain(
+        (projects.iter())
+            .filter(|p| p.trusted == Some(true))
+            .map(Some),
+    );
+    let mut all: Vec<Value> = vec![];
+    for p in places {
+        let folder = p.map(|p| PathBuf::from(&p.folder));
+        let id = p.map_or("", |p| p.id.as_str());
+        for a in &agents {
+            let found = skills(*a, folder.as_deref());
+            for mut o in found.into_iter().chain(servers(*a, folder.as_deref())) {
+                let kin = |x: &Value| x["kind"] == o["kind"] && same(&o, x);
+                // One at home too is shown there only.
+                if p.is_some() && all.iter().any(|x| x["place"] == "" && kin(x)) {
+                    continue;
+                }
+                if let Some(row) = all.iter_mut().find(|x| x["place"] == id && kin(x)) {
+                    let names = row["agents"].as_array_mut();
+                    if let Some(names) = names.filter(|n| !n.contains(&a.label().into())) {
+                        names.push(a.label().into());
+                    }
+                    continue;
+                }
+                let key = format!("own:{id}:{}:{}", str(&o["kind"]), str(&o["name"]));
+                let held = |i: &&Value| i["kind"] == o["kind"];
+                o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
+                o["project"] = p.map(|p| p.name.clone()).into();
+                (o["key"], o["agents"], o["place"]) = (key.into(), json!([a.label()]), id.into());
+                all.push(o);
             }
-            let held = |i: &&Value| i["kind"] == o["kind"];
-            o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
-            (o["key"], o["agent"]) = (key.into(), a.label().into());
-            all.push(o);
         }
     }
     all
@@ -87,15 +123,15 @@ fn str(v: &Value) -> &str {
 
 fn list(data: &Path) -> Value {
     let items = library::items(data);
+    let all = projects::list(data).unwrap_or_default();
     // Only what the page draws: an own server's env and headers may hold its token.
-    let own: Vec<Value> = (own(&items).into_iter())
+    let own: Vec<Value> = (own(&items, &all).into_iter())
         .map(|o| {
             json!({"key": o["key"], "kind": o["kind"], "name": o["name"], "detail": o["detail"],
-            "agent": o["agent"], "in_library": o["in_library"]})
+            "agents": o["agents"], "project": o["project"], "in_library": o["in_library"]})
         })
         .collect();
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
-    let all = projects::list(data).unwrap_or_default();
     let projects: Vec<Value> = (all.iter())
         .map(|p| json!({"id": p.id, "name": p.name}))
         .collect();
@@ -165,7 +201,8 @@ fn plain(name: &str) -> io::Result<()> {
 /// command shown and confirmed in the Add dialog first. New items start off [D2046].
 fn add(data: &Path, mut v: Value) -> io::Result<()> {
     if let Some(key) = v["own"].as_str() {
-        let o = (own(&library::items(data)).into_iter()).find(|o| o["key"] == key);
+        let all = projects::list(data).unwrap_or_default();
+        let o = (own(&library::items(data), &all).into_iter()).find(|o| o["key"] == key);
         let o = o.ok_or_else(|| refuse("That agent's entry is gone. Refresh and try again."))?;
         v = match o["kind"] == "skill" {
             true => json!({"kind": "skill", "folder": o["detail"]}),

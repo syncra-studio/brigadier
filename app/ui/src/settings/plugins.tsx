@@ -40,8 +40,8 @@ export type Item = {
   agents: string[];
   note: string | null;
 };
-/** One of an agent's own skills or servers, read-only: Add to library copies its definition, never its tokens. */
-export type Own = { key: string; kind: Kind; name: string; detail: string; agent: string; in_library: boolean };
+/** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name). Read-only: Add to library copies its definition, never its tokens [D424]. */
+export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; in_library: boolean };
 export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[] };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
@@ -60,13 +60,14 @@ export type PluginActions = {
 };
 
 export const TAB_LABEL: Record<Kind, string> = { server: "MCP servers", skill: "Skills" };
-const DESCRIPTION = "Skills and MCP servers your agents can use.";
+// How library items reach sessions [D429, D432]: only where on; each agent loads skills and MCP tools by name first.
+const DESCRIPTION = "Skills and MCP servers your agents can use. Only what's on for a project reaches its sessions, and loads when used.";
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const PLUGINS_ROWS = {
   server: { label: "MCP servers", description: "Servers every agent can use, in every project or only some" },
   skill: { label: "Skills", description: "Skills every agent can use, in every project or only some" },
-  own: { label: "Each agent's own", description: "What each agent has in its own settings. Add to library copies it, never its sign-in." },
+  own: { label: "Each agent's own", description: "What your agents have in their own settings, and in your projects'. Add to library copies it, never its sign-in." },
 } as const;
 
 const STATUS: Record<Status, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
@@ -142,7 +143,6 @@ export function PluginsPage({
     const base = value;
     setMine({ base, shown: next });
     setFailed(null);
-    setSaid(null);
     return send().then(
       (back) => {
         confirmed.current = { base, shown: back };
@@ -178,13 +178,13 @@ export function PluginsPage({
   const refresh = () => {
     if (!shown || checking) return;
     const before = new Set(shown.own.map((own) => own.key));
+    // The page stays as it is while Rust reads again: its line is replaced only by the answer [D427].
     setChecking(true);
-    setSaid(null);
     void change(shown, async () => {
       const back = await actions.refresh();
       const found = back.own.filter((own) => !before.has(own.key) && !own.in_library && importable(own, remote));
       if (found.length) setOpen({ type: "refresh", found });
-      else setSaid("Nothing changed. There are no new skills or MCP servers in your agents' own settings.");
+      setSaid(found.length ? null : "Nothing changed. There are no new skills or MCP servers in your agents' own settings.");
       return back;
     }).finally(() => setChecking(false));
   };
@@ -197,7 +197,7 @@ export function PluginsPage({
   } else {
     const count = (kind: Kind) => shown?.items.filter((each) => each.kind === kind).length ?? 0;
     const items = shown?.items.filter((each) => each.kind === tab && matches(query, each.name, each.description, each.detail)) ?? [];
-    const own = shown?.own.filter((each) => each.kind === tab && matches(query, each.name, each.detail, each.agent)) ?? [];
+    const own = shown?.own.filter((each) => each.kind === tab && matches(query, each.name, each.detail, ...each.agents, each.project ?? "")) ?? [];
     page = (
       <SettingsPage title="Plugins" description={DESCRIPTION}>
         <div className="flex flex-col gap-5">
@@ -223,9 +223,10 @@ export function PluginsPage({
             <div className="flex max-w-60 min-w-28 flex-1">
               <SearchField label={tab === "server" ? "Search MCP servers" : "Search skills"} value={query} onChange={setQuery} />
             </div>
-            <Button variant="soft" size="sm" disabled={!shown || checking} onClick={refresh}>
+            {/* One width while it checks, so the toolbar doesn't move. */}
+            <Button variant="soft" size="sm" className="min-w-24" disabled={!shown || checking} aria-busy={checking} onClick={refresh}>
               {checking && <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />}
-              {checking ? "Checking…" : "Refresh"}
+              Refresh
             </Button>
             <Button size="sm" disabled={!shown} onClick={() => setOpen({ type: "add", remote })}>
               <Plus aria-hidden />
@@ -346,28 +347,48 @@ export function ScopeChip({ text }: { text: string }) {
   );
 }
 
-/** Each agent's own skills or servers, read-only; Add to library copies one in. */
+/** Agents' own skills or servers, read-only, each once: those at home, then each project's; Add to library copies one in. */
 function OwnList({ own, marks, remote, onAdd }: { own: Own[]; marks: Record<string, string | null>; remote: boolean; onAdd: (own: Own) => void }) {
+  const groups = [...new Set(own.map((each) => each.project))].sort((a, b) => (a === null ? -1 : b === null ? 1 : 0));
   return (
     <SettingsSection title={PLUGINS_ROWS.own.label} description={PLUGINS_ROWS.own.description} setting={PLUGINS_ROWS.own.label}>
-      <SettingsCard>
-        {own.map((each) => (
-          <div key={each.key} data-slot="own-row" className="flex items-center gap-3 px-4 py-3">
-            <AgentTile agent={each.agent} mark={marks[each.agent]} large />
-            <RowText title={each.name} line={<span className="font-mono">{each.detail}</span>} truncate />
-            <span className="shrink-0 text-xs text-quiet-foreground">{each.agent}</span>
-            {each.in_library ? (
-              <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
-            ) : !importable(each, remote) ? (
-              <span className="w-28 shrink-0" />
-            ) : (
-              <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name} to library`} onClick={() => onAdd(each)}>
-                Add to library
-              </Button>
+      <div className="flex flex-col gap-3">
+        {groups.map((project) => (
+          <div key={project ?? ""} className="flex flex-col gap-1.5">
+            {project !== null && (
+              <span data-slot="own-project" className="flex items-center gap-1.5 text-xs text-quiet-foreground">
+                <Folder aria-hidden className="size-3" />
+                {project}
+              </span>
             )}
+            <SettingsCard>
+              {own
+                .filter((each) => each.project === project)
+                .map((each) => (
+                  <div key={each.key} data-slot="own-row" className="flex items-center gap-3 px-4 py-3">
+                    <PluginMark item={each} />
+                    <RowText title={each.name} line={<span className="font-mono">{each.detail}</span>} truncate />
+                    <span className="flex shrink-0 items-center gap-1">
+                      {each.agents.map((agent) => (
+                        <AgentTile key={agent} agent={agent} mark={marks[agent]} />
+                      ))}
+                    </span>
+                    <span className="shrink-0 text-xs text-quiet-foreground">{each.agents.join(" · ")}</span>
+                    {each.in_library ? (
+                      <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
+                    ) : !importable(each, remote) ? (
+                      <span className="w-28 shrink-0" />
+                    ) : (
+                      <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name} to library`} onClick={() => onAdd(each)}>
+                        Add to library
+                      </Button>
+                    )}
+                  </div>
+                ))}
+            </SettingsCard>
           </div>
         ))}
-      </SettingsCard>
+      </div>
     </SettingsSection>
   );
 }

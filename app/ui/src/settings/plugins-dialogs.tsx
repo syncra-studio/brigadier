@@ -277,7 +277,7 @@ export function RefreshDialog({ found, onApply, onClose }: { found: Own[]; onApp
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="truncate text-label font-medium">{own.name}</span>
                 <span className="truncate text-xs text-quiet-foreground">
-                  {KIND_LABEL[own.kind]} in {own.agent}
+                  {KIND_LABEL[own.kind]} in {[...own.agents, ...(own.project ? [own.project] : [])].join(" · ")}
                 </span>
                 <span className="truncate font-mono text-xs text-quiet-foreground">{own.detail.replace(/^https:\/\//, "")}</span>
               </span>
